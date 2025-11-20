@@ -1,0 +1,51 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-full);
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+/* Sizes */
+.sizeSm {
+  padding: 4px 12px;
+  font-size: var(--font-size-xs);
+}
+
+.sizeMd {
+  padding: 6px 16px;
+  font-size: var(--font-size-sm);
+}
+
+/* Variants */
+.variantSuccess {
+  background-color: var(--color-success-light);
+  color: var(--color-success);
+  border-color: rgba(22, 163, 74, 0.2);
+}
+
+.variantWarning {
+  background-color: var(--color-warning-light);
+  color: var(--color-warning);
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.variantDanger {
+  background-color: var(--color-danger-light);
+  color: var(--color-danger);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.variantInfo {
+  background-color: var(--color-info-light);
+  color: var(--color-info);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.variantDefault {
+  background-color: var(--color-sand);
+  color: var(--color-text-base);
+  border-color: var(--color-border);
+}
+

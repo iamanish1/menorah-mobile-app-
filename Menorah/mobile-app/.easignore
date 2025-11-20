@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build artifacts
+android/app/build/
+android/build/
+ios/build/
+*.apk
+*.aab
+*.ipa
+
+# Development files
+.git/
+.vscode/
+.idea/
+*.log
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+!README.md
+
+# Test files
+**/__tests__/
+**/*.test.*
+**/*.spec.*
+
+# Misc
+.DS_Store
+Thumbs.db
+*.orig
+
+# Backend (not needed for mobile build)
+../backend/
+
+# Web app (not needed for mobile build)
+../web-app/
+
+# Large assets that aren't needed
+**/*.psd
+**/*.ai
+**/*.sketch
+

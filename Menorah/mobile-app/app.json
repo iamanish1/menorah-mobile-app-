@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "Menorah Health",
+    "slug": "menorah-health-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/brand/glyph.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/brand/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#fbf3e4"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/brand/glyph.png",
+        "backgroundColor": "#fbf3e4"
+      },
+      "statusBar": {
+        "barStyle": "light-content",
+        "backgroundColor": "#314830",
+        "translucent": false
+      },
+      "navigationBar": {
+        "visible": "leanback",
+        "backgroundColor": "#ffffff",
+        "barStyle": "dark-content"
+      }
+    },
+    "web": {
+      "favicon": "./assets/brand/glyph.png"
+    },
+    "plugins": [],
+    "extra": {
+      "API_BASE_URL": "http://192.168.1.2:3000/api",
+      "CHECKOUT_RETURN_URL": "http://192.168.1.2:8081/checkout/return",
+      "JITSI_BASE_URL": "http://192.168.1.2:8080",
+      "eas": {
+        "projectId": "d2eb3d97-6034-4f64-8c36-8479f5bb658d"
+      }
+    },
+    "owner": "iamanish"
+  }
+}

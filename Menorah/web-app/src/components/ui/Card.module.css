@@ -1,0 +1,40 @@
+.card {
+  background: var(--color-bg-base);
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-base);
+}
+
+.cardHover:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+  border-color: var(--color-primary);
+}
+
+/* Padding Variants */
+.paddingSm {
+  padding: var(--spacing-md);
+}
+
+.paddingMd {
+  padding: var(--spacing-lg);
+}
+
+.paddingLg {
+  padding: var(--spacing-xl);
+}
+
+/* Elevation */
+.elevation1 {
+  box-shadow: var(--shadow-sm);
+}
+
+.elevation2 {
+  box-shadow: var(--shadow-md);
+}
+
+.elevation3 {
+  box-shadow: var(--shadow-lg);
+}
+
