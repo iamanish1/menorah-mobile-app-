@@ -73,13 +73,14 @@ class ApiClient {
       }
       return response.data;
     } catch (error: any) {
-      if (error.response?.data) {
-        console.error('Login API error:', error.response.data);
+      const errorResponse = error.response?.data;
+      if (errorResponse) {
+        console.error('Login API error:', errorResponse);
       }
       return {
         success: false,
-        message: error.response?.data?.message || error.message || 'Login failed',
-        errors: error.response?.data?.errors || [],
+        message: errorResponse?.message || error.message || 'Login failed',
+        errors: errorResponse?.errors || [],
       };
     }
   }
@@ -89,13 +90,14 @@ class ApiClient {
       const response = await this.client.get('/users/me');
       return response.data;
     } catch (error: any) {
-      if (error.response?.data) {
-        console.error('Get current user API error:', error.response.data);
+      const errorResponse = error.response?.data;
+      if (errorResponse) {
+        console.error('Get current user API error:', errorResponse);
       }
       return {
         success: false,
-        message: error.response?.data?.message || error.message || 'Failed to get user',
-        errors: error.response?.data?.errors || [],
+        message: errorResponse?.message || error.message || 'Failed to get user',
+        errors: errorResponse?.errors || [],
       };
     }
   }
@@ -141,13 +143,14 @@ class ApiClient {
       });
       return response.data;
     } catch (error: any) {
-      if (error.response?.data) {
-        console.error('My bookings API error:', error.response.data);
+      const errorResponse = error.response?.data;
+      if (errorResponse) {
+        console.error('My bookings API error:', errorResponse);
       }
       return {
         success: false,
-        message: error.response?.data?.message || error.message || 'Failed to get bookings',
-        errors: error.response?.data?.errors || [],
+        message: errorResponse?.message || error.message || 'Failed to get bookings',
+        errors: errorResponse?.errors || [],
       };
     }
   }
@@ -172,13 +175,16 @@ class ApiClient {
       });
       return response.data;
     } catch (error: any) {
+      const errorResponse = error.response?.data;
+      const errorStatus = error.response?.status;
+      
       // Enhanced error logging for debugging
       const errorDetails = {
         message: error.message,
-        status: error.response?.status,
+        status: errorStatus,
         statusText: error.response?.statusText,
-        data: error.response?.data,
-        validationErrors: error.response?.data?.errors,
+        data: errorResponse,
+        validationErrors: errorResponse?.errors,
         config: {
           url: error.config?.url,
           method: error.config?.method,
@@ -188,23 +194,23 @@ class ApiClient {
       console.error('Pending bookings API error details:', errorDetails);
       
       // Also log validation errors separately if they exist
-      if (error.response?.data?.errors && Array.isArray(error.response.data.errors)) {
-        console.error('Validation errors:', error.response.data.errors);
+      if (errorResponse?.errors && Array.isArray(errorResponse.errors)) {
+        console.error('Validation errors:', errorResponse.errors);
       }
       
       // Extract error message with better user-friendly messages
       let errorMessage = 'Failed to get pending bookings';
       
-      if (error.response?.status === 500) {
+      if (errorStatus === 500) {
         errorMessage = 'Server error occurred. Please try again later or contact support if the problem persists.';
-      } else if (error.response?.status === 401) {
+      } else if (errorStatus === 401) {
         errorMessage = 'Your session has expired. Please log in again.';
-      } else if (error.response?.status === 403) {
+      } else if (errorStatus === 403) {
         errorMessage = 'You do not have permission to access this resource.';
-      } else if (error.response?.status === 404) {
+      } else if (errorStatus === 404) {
         errorMessage = 'The requested resource was not found.';
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+      } else if (errorResponse?.message) {
+        errorMessage = errorResponse.message;
       } else if (error.message && !error.message.includes('Network Error')) {
         errorMessage = error.message;
       }
@@ -212,7 +218,7 @@ class ApiClient {
       return {
         success: false,
         message: errorMessage,
-        errors: error.response?.data?.errors || [],
+        errors: errorResponse?.errors || [],
       };
     }
   }
@@ -222,13 +228,14 @@ class ApiClient {
       const response = await this.client.get(`/counsellors/me/bookings/${bookingId}`);
       return response.data;
     } catch (error: any) {
-      if (error.response?.data) {
-        console.error('Get booking by ID API error:', error.response.data);
+      const errorResponse = error.response?.data;
+      if (errorResponse) {
+        console.error('Get booking by ID API error:', errorResponse);
       }
       return {
         success: false,
-        message: error.response?.data?.message || error.message || 'Failed to get booking',
-        errors: error.response?.data?.errors || [],
+        message: errorResponse?.message || error.message || 'Failed to get booking',
+        errors: errorResponse?.errors || [],
       };
     }
   }
@@ -237,42 +244,46 @@ class ApiClient {
     try {
       const response = await this.client.post(`/counsellors/me/bookings/${bookingId}/accept`);
       return response.data;
-    } catch (error: any) {
-      // Enhanced error logging for debugging
-      const errorDetails = {
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        validationErrors: error.response?.data?.errors,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
+    } catch (error: unknown) {
+      // Safely extract error information
+      const axiosError = error as any;
+      const errorResponse = axiosError?.response?.data;
+      const errorStatus = axiosError?.response?.status;
+      const errorMessage = axiosError?.message || 'Unknown error';
+      
+      // Log error details safely (only in development)
+      if (process.env.NODE_ENV === 'development') {
+        try {
+          console.error('Accept booking API error:', errorMessage, {
+            status: errorStatus,
+            errorData: errorResponse,
+          });
+        } catch {
+          // Silently fail if logging causes issues
         }
-      };
-      console.error('Accept booking API error:', errorDetails);
+      }
       
       // Extract error message with better user-friendly messages
-      let errorMessage = 'Failed to accept booking';
+      let userMessage = 'Failed to accept booking';
       
-      if (error.response?.status === 500) {
-        errorMessage = 'Server error occurred. Please try again later or contact support if the problem persists.';
-      } else if (error.response?.status === 401) {
-        errorMessage = 'Your session has expired. Please log in again.';
-      } else if (error.response?.status === 403) {
-        errorMessage = 'You do not have permission to accept this booking.';
-      } else if (error.response?.status === 404) {
-        errorMessage = 'Booking not found.';
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.message && !error.message.includes('Network Error')) {
-        errorMessage = error.message;
+      if (errorStatus === 500) {
+        userMessage = 'Server error occurred. Please try again later or contact support if the problem persists.';
+      } else if (errorStatus === 401) {
+        userMessage = 'Your session has expired. Please log in again.';
+      } else if (errorStatus === 403) {
+        userMessage = 'You do not have permission to accept this booking.';
+      } else if (errorStatus === 404) {
+        userMessage = 'Booking not found.';
+      } else if (errorResponse?.message) {
+        userMessage = errorResponse.message;
+      } else if (errorMessage && !errorMessage.includes('Network Error')) {
+        userMessage = errorMessage;
       }
       
       return {
         success: false,
-        message: errorMessage,
-        errors: error.response?.data?.errors || [],
+        message: userMessage,
+        errors: errorResponse?.errors || [],
       };
     }
   }
@@ -284,13 +295,14 @@ class ApiClient {
       });
       return response.data;
     } catch (error: any) {
-      if (error.response?.data) {
-        console.error('Schedule booking API error:', error.response.data);
+      const errorResponse = error.response?.data;
+      if (errorResponse) {
+        console.error('Schedule booking API error:', errorResponse);
       }
       return {
         success: false,
-        message: error.response?.data?.message || error.message || 'Failed to schedule booking',
-        errors: error.response?.data?.errors || [],
+        message: errorResponse?.message || error.message || 'Failed to schedule booking',
+        errors: errorResponse?.errors || [],
       };
     }
   }
@@ -304,13 +316,14 @@ class ApiClient {
       const response = await this.client.get('/counsellors/me/dashboard');
       return response.data;
     } catch (error: any) {
-      if (error.response?.data) {
-        console.error('Dashboard API error:', error.response.data);
+      const errorResponse = error.response?.data;
+      if (errorResponse) {
+        console.error('Dashboard API error:', errorResponse);
       }
       return {
         success: false,
-        message: error.response?.data?.message || error.message || 'Failed to get dashboard',
-        errors: error.response?.data?.errors || [],
+        message: errorResponse?.message || error.message || 'Failed to get dashboard',
+        errors: errorResponse?.errors || [],
       };
     }
   }
@@ -321,13 +334,14 @@ class ApiClient {
       const response = await this.client.put(`/bookings/${bookingId}/start`);
       return response.data;
     } catch (error: any) {
-      if (error.response?.data) {
-        console.error('Start session API error:', error.response.data);
+      const errorResponse = error.response?.data;
+      if (errorResponse) {
+        console.error('Start session API error:', errorResponse);
       }
       return {
         success: false,
-        message: error.response?.data?.message || error.message || 'Failed to start session',
-        errors: error.response?.data?.errors || [],
+        message: errorResponse?.message || error.message || 'Failed to start session',
+        errors: errorResponse?.errors || [],
       };
     }
   }
@@ -337,13 +351,14 @@ class ApiClient {
       const response = await this.client.put(`/bookings/${bookingId}/complete`);
       return response.data;
     } catch (error: any) {
-      if (error.response?.data) {
-        console.error('Complete session API error:', error.response.data);
+      const errorResponse = error.response?.data;
+      if (errorResponse) {
+        console.error('Complete session API error:', errorResponse);
       }
       return {
         success: false,
-        message: error.response?.data?.message || error.message || 'Failed to complete session',
-        errors: error.response?.data?.errors || [],
+        message: errorResponse?.message || error.message || 'Failed to complete session',
+        errors: errorResponse?.errors || [],
       };
     }
   }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, ScrollView, Platform, PermissionsAndroid } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Wifi, CheckCircle, XCircle, Video, Mic, Camera } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
@@ -13,13 +13,51 @@ export default function PreCallCheck({ navigation, route }: any) {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
   const [networkOk, setNetworkOk] = useState(false);
+  const [micPermission, setMicPermission] = useState<boolean | null>(null);
+  const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
 
   useEffect(() => {
     checkNetwork();
+    requestPermissions();
     // Don't pre-load video room - let join endpoint handle room creation
   }, [bookingId]);
+
+  const requestPermissions = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const permissions = [
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+        ];
+        
+        const granted = await PermissionsAndroid.requestMultiple(permissions);
+        
+        setMicPermission(granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED);
+        setCameraPermission(granted[PermissionsAndroid.PERMISSIONS.CAMERA] === PermissionsAndroid.RESULTS.GRANTED);
+        
+        if (
+          granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] !== PermissionsAndroid.RESULTS.GRANTED ||
+          granted[PermissionsAndroid.PERMISSIONS.CAMERA] !== PermissionsAndroid.RESULTS.GRANTED
+        ) {
+          Alert.alert(
+            'Permissions Required',
+            'Microphone and camera permissions are required for video calls. Please enable them in app settings.',
+            [{ text: 'OK' }]
+          );
+        }
+      } catch (err) {
+        console.error('Permission request error:', err);
+        setMicPermission(false);
+        setCameraPermission(false);
+      }
+    } else {
+      // iOS permissions are handled automatically
+      setMicPermission(true);
+      setCameraPermission(true);
+    }
+  };
 
   const checkNetwork = async () => {
     try {
@@ -129,12 +167,23 @@ export default function PreCallCheck({ navigation, route }: any) {
                 Camera
               </Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <CheckCircle size={20} color="#10B981" />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#10B981', marginLeft: 8 }}>
-                Ready
-              </Text>
-            </View>
+            {cameraPermission === null ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : cameraPermission ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <CheckCircle size={20} color="#10B981" />
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#10B981', marginLeft: 8 }}>
+                  Ready
+                </Text>
+              </View>
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <XCircle size={20} color="#EF4444" />
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#EF4444', marginLeft: 8 }}>
+                  Permission Needed
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -153,19 +202,30 @@ export default function PreCallCheck({ navigation, route }: any) {
                 Microphone
               </Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <CheckCircle size={20} color="#10B981" />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#10B981', marginLeft: 8 }}>
-                Ready
-              </Text>
-            </View>
+            {micPermission === null ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : micPermission ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <CheckCircle size={20} color="#10B981" />
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#10B981', marginLeft: 8 }}>
+                  Ready
+                </Text>
+              </View>
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <XCircle size={20} color="#EF4444" />
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#EF4444', marginLeft: 8 }}>
+                  Permission Needed
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
         <Button
           title="Join Session"
           onPress={handleJoinSession}
-          disabled={!networkOk || loading}
+          disabled={!networkOk || loading || micPermission === false || cameraPermission === false}
           style={{ marginTop: 20 }}
           loading={loading}
         />

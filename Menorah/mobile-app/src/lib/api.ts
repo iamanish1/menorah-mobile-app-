@@ -57,6 +57,8 @@ export interface Booking {
   amount: number;
   currency: string;
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
+  paymentMethod?: 'stripe' | 'razorpay' | 'wallet' | 'subscription';
+  isSubscriptionBooking?: boolean;
   canBeCancelled: boolean;
   canBeRescheduled: boolean;
   createdAt?: string; // Date when booking was created/paid

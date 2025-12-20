@@ -1,6 +1,6 @@
 import { View, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CheckCircle } from 'lucide-react-native';
+import { CheckCircle, Crown } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
@@ -8,6 +8,7 @@ import { palettes } from "@/theme/colors";
 export default function BookingSuccess({ navigation, route }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const { isSubscriptionBooking } = route.params || {};
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -30,8 +31,30 @@ export default function BookingSuccess({ navigation, route }: any) {
           marginBottom: 12,
           textAlign: 'center'
         }}>
-          Payment Successful!
+          {isSubscriptionBooking ? 'Session Booked!' : 'Payment Successful!'}
         </Text>
+        
+        {isSubscriptionBooking && (
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#FEF3C7',
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            borderRadius: 20,
+            marginBottom: 12
+          }}>
+            <Crown size={16} color="#F59E0B" style={{ marginRight: 6 }} />
+            <Text style={{
+              fontSize: 14,
+              fontWeight: '600',
+              color: '#92400E'
+            }}>
+              Covered by Subscription
+            </Text>
+          </View>
+        )}
         
         <Text style={{
           fontSize: 16,
@@ -40,7 +63,9 @@ export default function BookingSuccess({ navigation, route }: any) {
           textAlign: 'center',
           lineHeight: 24
         }}>
-          Your session has been confirmed. We'll match you with the perfect therapist based on your preferences.
+          {isSubscriptionBooking 
+            ? 'Your session has been booked using your active subscription. We\'ll match you with the perfect therapist based on your preferences.'
+            : 'Your session has been confirmed. We\'ll match you with the perfect therapist based on your preferences.'}
         </Text>
 
         {/* Next Steps */}

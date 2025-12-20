@@ -3,6 +3,7 @@ const { body, param, query, validationResult } = require('express-validator');
 const moment = require('moment');
 const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
+const User = require('../models/User');
 const { auth } = require('../middleware/auth');
 const { sendBookingConfirmationEmail, sendSessionReminderEmail } = require('../utils/email');
 const { sendBookingConfirmationSMS, sendSessionReminderSMS, sendCancellationSMS } = require('../utils/sms');
@@ -140,6 +141,41 @@ router.post('/', [
       }
     }
 
+    // Check if user has active subscription
+    const user = await User.findById(req.user._id);
+    let isSubscriptionBooking = false;
+    let paymentStatus = 'pending';
+    let paymentMethod = 'razorpay';
+    
+    console.log('Checking subscription for user:', req.user._id);
+    console.log('User subscription:', user?.subscription);
+    
+    if (user && user.subscription) {
+      const now = new Date();
+      const endDate = user.subscription.endDate ? new Date(user.subscription.endDate) : null;
+      
+      // Check if subscription is active and not expired
+      const subscriptionActive = user.subscription.isActive === true;
+      const subscriptionNotExpired = endDate && endDate > now;
+      
+      console.log('Subscription check:', {
+        isActive: subscriptionActive,
+        endDate: endDate,
+        now: now,
+        notExpired: subscriptionNotExpired,
+        willUseSubscription: subscriptionActive && subscriptionNotExpired
+      });
+      
+      if (subscriptionActive && subscriptionNotExpired) {
+        isSubscriptionBooking = true;
+        paymentStatus = 'paid';
+        paymentMethod = 'subscription';
+        // Set amount to 0 for subscription bookings
+        amount = 0;
+        console.log('Using subscription for booking - amount set to 0');
+      }
+    }
+
     // Create booking
     const scheduledTime = new Date(scheduledAt);
     const booking = new Booking({
@@ -150,7 +186,9 @@ router.post('/', [
       scheduledAt: scheduledTime,
       amount,
       currency: currency,
-      paymentMethod: 'razorpay', // Default, can be updated later
+      paymentMethod: paymentMethod,
+      paymentStatus: paymentStatus,
+      isSubscriptionBooking: isSubscriptionBooking,
       preferences: preferences || {},
       symptoms,
       concerns,
@@ -221,7 +259,10 @@ router.post('/', [
           scheduledAt: booking.scheduledAt,
           amount: booking.amount,
           currency: booking.currency,
-          status: booking.status
+          status: booking.status,
+          paymentStatus: booking.paymentStatus,
+          paymentMethod: booking.paymentMethod,
+          isSubscriptionBooking: booking.isSubscriptionBooking || false
         }
       }
     });

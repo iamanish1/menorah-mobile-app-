@@ -98,6 +98,9 @@ router.get('/me/bookings/pending', [
         scheduledAt: booking.scheduledAt,
         amount: booking.amount,
         currency: booking.currency,
+        paymentStatus: booking.paymentStatus,
+        isSubscriptionBooking: booking.isSubscriptionBooking || false,
+        paymentMethod: booking.paymentMethod,
         preferences: booking.preferences,
         symptoms: booking.symptoms,
         concerns: booking.concerns,
@@ -304,6 +307,8 @@ router.get('/me/bookings', [
       amount: booking.amount,
       currency: booking.currency,
       paymentStatus: booking.paymentStatus,
+      isSubscriptionBooking: booking.isSubscriptionBooking || false,
+      paymentMethod: booking.paymentMethod,
       symptoms: booking.symptoms,
       concerns: booking.concerns,
       goals: booking.goals,
@@ -831,7 +836,9 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
             sessionType: booking.sessionType,
             sessionDuration: booking.sessionDuration,
             scheduledAt: booking.scheduledAt,
-            status: booking.status
+            status: booking.status,
+            isSubscriptionBooking: booking.isSubscriptionBooking || false,
+            paymentMethod: booking.paymentMethod
           })),
         recentBookings: recentBookings
           .filter(booking => booking.user)
@@ -843,7 +850,9 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
           scheduledAt: booking.scheduledAt,
           status: booking.status,
           amount: booking.amount,
-          currency: booking.currency
+          currency: booking.currency,
+          isSubscriptionBooking: booking.isSubscriptionBooking || false,
+          paymentMethod: booking.paymentMethod
         }))
       }
     });

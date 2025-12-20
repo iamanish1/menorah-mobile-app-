@@ -22,6 +22,8 @@ export interface Booking {
   amount: number;
   currency: string;
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
+  paymentMethod?: 'stripe' | 'razorpay' | 'wallet' | 'subscription';
+  isSubscriptionBooking?: boolean;
   symptoms?: string[];
   concerns?: string;
   goals?: string[];
