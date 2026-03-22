@@ -104,6 +104,12 @@ export interface PaginationResponse<T> {
   };
 }
 
+export interface ProfileImageUpload {
+  uri: string;
+  name?: string;
+  type?: string;
+}
+
 // API Client
 class ApiClient {
   private client: AxiosInstance;
@@ -601,6 +607,61 @@ class ApiClient {
       url: '/users/profile',
       data: profileData,
     });
+  }
+
+  async updateProfileWithImage(profileData: {
+    firstName?: string;
+    lastName?: string;
+    dateOfBirth?: string;
+    gender?: string;
+    preferredLanguage?: string;
+    timezone?: string;
+    profileImage?: ProfileImageUpload;
+  }): Promise<ApiResponse<{ user: User }>> {
+    try {
+      const formData = new FormData();
+
+      Object.entries(profileData).forEach(([key, value]) => {
+        if (!value || key === 'profileImage') {
+          return;
+        }
+        formData.append(key, value);
+      });
+
+      if (profileData.profileImage?.uri) {
+        formData.append('profileImage', {
+          uri: profileData.profileImage.uri,
+          name: profileData.profileImage.name || `profile-${Date.now()}.jpg`,
+          type: profileData.profileImage.type || 'image/jpeg',
+        } as any);
+      }
+
+      const response = await this.client.put('/users/profile', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      if (errorResponse) {
+        return errorResponse;
+      }
+
+      const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error');
+      if (isNetworkError) {
+        return {
+          success: false,
+          message: 'Network error: Unable to upload image. Please check your internet connection and try again.'
+        };
+      }
+
+      return {
+        success: false,
+        message: error.message || 'Failed to update profile image',
+      };
+    }
   }
 
   async updateAddress(addressData: {

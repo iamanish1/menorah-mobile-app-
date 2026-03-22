@@ -2,6 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';    
 import { View, ActivityIndicator } from 'react-native';
 import { useEffect, useRef } from 'react';
+import * as Linking from 'expo-linking';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { useAuth } from '@/state/useAuth';
@@ -11,6 +12,7 @@ import Onboarding from '@/screens/auth/Onboarding';
 import Login from '@/screens/auth/Login';
 import Register from '@/screens/auth/Register';
 import Forgot from '@/screens/auth/Forgot';
+import ResetPassword from '../screens/auth/ResetPassword';
 import Verify from '@/screens/auth/Verify';
 import BookingReview from '@/screens/booking/BookingReview';
 import PaymentSheet from '@/screens/booking/PaymentSheet';
@@ -29,6 +31,7 @@ import TwoFactorAuth from '@/screens/profile/TwoFactorAuth';
 import PrivacySettings from '@/screens/profile/PrivacySettings';
 import SubscriptionPayment from '@/screens/subscription/SubscriptionPayment';
 import SubscriptionSuccess from '@/screens/subscription/SubscriptionSuccess';
+import Notifications from '@/screens/profile/Notifications';
 
 const Stack = createNativeStackNavigator();
 
@@ -38,6 +41,15 @@ export default function RootNavigator() {
   const colors = palettes[scheme];
   const prevIsAuthedRef = useRef<boolean | null>(null);
   const prevIsLoadingRef = useRef<boolean>(true);
+  const publicRoutes = new Set(['Onboarding', 'Login', 'Register', 'Forgot', 'ResetPassword', 'Verify']);
+  const linking = {
+    prefixes: [Linking.createURL('/'), 'menorah-health://', 'exp+menorah-health-app://'],
+    config: {
+      screens: {
+        ResetPassword: 'reset-password',
+      },
+    },
+  };
 
   // Ensure navigation happens when loading completes
   useEffect(() => {
@@ -49,7 +61,7 @@ export default function RootNavigator() {
           if (navigationRef.isReady()) {
             const currentRoute = navigationRef.getCurrentRoute();
             console.log('[RootNavigator] Current route:', currentRoute?.name);
-            if (currentRoute?.name !== 'Onboarding') {
+            if (currentRoute?.name && !publicRoutes.has(currentRoute.name)) {
               console.log('[RootNavigator] Resetting to Onboarding');
               navigationRef.reset({
                 index: 0,
@@ -108,13 +120,14 @@ export default function RootNavigator() {
   const initialRouteName = isAuthed ? 'Tabs' : 'Onboarding';
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer ref={navigationRef} linking={linking}>
       <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRouteName}>
         <Stack.Screen name="Tabs" component={TabNavigator} />
         <Stack.Screen name="Onboarding" component={Onboarding} />
         <Stack.Screen name="Login" component={Login} />
         <Stack.Screen name="Register" component={Register} />
         <Stack.Screen name="Forgot" component={Forgot} />
+        <Stack.Screen name="ResetPassword" component={ResetPassword} />
         <Stack.Screen name="Verify" component={Verify} />
         <Stack.Screen name="BookingReview" component={BookingReview} />
         <Stack.Screen name="PaymentSheet" component={PaymentSheet} />
@@ -131,6 +144,7 @@ export default function RootNavigator() {
         <Stack.Screen name="ChangePassword" component={ChangePassword} />
         <Stack.Screen name="TwoFactorAuth" component={TwoFactorAuth} />
         <Stack.Screen name="PrivacySettings" component={PrivacySettings} />
+        <Stack.Screen name="Notifications" component={Notifications} />
         <Stack.Screen name="SubscriptionPayment" component={SubscriptionPayment} />
         <Stack.Screen name="SubscriptionSuccess" component={SubscriptionSuccess} />
       </Stack.Navigator>

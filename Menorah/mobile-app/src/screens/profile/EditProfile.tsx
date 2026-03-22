@@ -3,8 +3,8 @@ import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Camera, User, Mail, Phone } from 'lucide-react-native';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import Input from '@/components/ui/Input';
-import Button from '@/components/ui/Button';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from "@/state/useAuth";
@@ -12,6 +12,11 @@ import { api } from "@/lib/api";
 
 export default function EditProfile({ navigation }: any) {
   const { user, updateUser } = useAuth();
+  const [selectedImage, setSelectedImage] = useState<{
+    uri: string;
+    name?: string;
+    type?: string;
+  } | null>(null);
   const [formData, setFormData] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
@@ -48,20 +53,29 @@ export default function EditProfile({ navigation }: any) {
 
     setLoading(true);
     try {
-      const response = await api.updateProfile({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        dateOfBirth: formData.dateOfBirth,
-        gender: formData.gender,
-        profileImage: formData.profileImage
-      });
+      const finalResponse = selectedImage
+        ? await api.updateProfileWithImage({
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            dateOfBirth: formData.dateOfBirth,
+            gender: formData.gender,
+            profileImage: selectedImage
+          })
+        : await api.updateProfile({
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            dateOfBirth: formData.dateOfBirth,
+            gender: formData.gender,
+            profileImage: formData.profileImage
+          });
 
-      if (response.success && response.data) {
-        updateUser(response.data.user);
+      if (finalResponse.success && finalResponse.data) {
+        updateUser(finalResponse.data.user);
+        setSelectedImage(null);
         Alert.alert('Success', 'Profile updated successfully!');
         navigation.goBack();
       } else {
-        Alert.alert('Error', response.message || 'Failed to update profile. Please try again.');
+        Alert.alert('Error', finalResponse.message || 'Failed to update profile. Please try again.');
       }
     } catch (error: any) {
       console.error('Error updating profile:', error);
@@ -80,6 +94,49 @@ export default function EditProfile({ navigation }: any) {
         { text: 'Delete', style: 'destructive', onPress: () => navigation.navigate('Login') }
       ]
     );
+  };
+
+  const handlePickImage = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Please allow photo library access to upload a profile picture.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const filename = asset.fileName || `profile-${Date.now()}.jpg`;
+      const mimeType = asset.mimeType || 'image/jpeg';
+
+      setSelectedImage({
+        uri: asset.uri,
+        name: filename,
+        type: mimeType,
+      });
+
+      setFormData((prev) => ({
+        ...prev,
+        profileImage: asset.uri,
+      }));
+    } catch (error) {
+      console.error('Image picker error:', error);
+      Alert.alert('Upload Failed', 'Unable to select image. Please try again.');
+    }
   };
 
   return (
@@ -115,7 +172,15 @@ export default function EditProfile({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 24 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 24,
+          paddingBottom: 120
+        }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Profile Photo */}
         <View style={{ alignItems: 'center' }}>
           <View style={{ position: 'relative' }}>
@@ -140,7 +205,7 @@ export default function EditProfile({ navigation }: any) {
               </View>
             )}
             <TouchableOpacity 
-              onPress={() => Alert.alert('Upload Photo', 'Photo upload feature coming soon')}
+              onPress={handlePickImage}
               style={{
                 position: 'absolute',
                 bottom: 0,
@@ -158,7 +223,7 @@ export default function EditProfile({ navigation }: any) {
             marginTop: 8,
             fontSize: 14
           }}>
-            Tap to change photo
+            Tap to choose a profile photo
           </Text>
         </View>
 
@@ -274,7 +339,8 @@ export default function EditProfile({ navigation }: any) {
               backgroundColor: '#EF4444' + '0A',
               borderRadius: 16,
               padding: 16,
-              alignItems: 'center'
+              alignItems: 'center',
+              marginBottom: 32
             }}
           >
             <Text style={{ color: '#EF4444', fontWeight: '600' }}>Delete Account</Text>

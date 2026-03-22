@@ -9,7 +9,7 @@ import type { SessionType, TherapistGender } from '@/components/discover/Session
 interface GenderSelectionProps {
   navigation: any;
   route: {
-    params: {
+    params?: {
       sessionType: SessionType;
       duration: number;
       price: number;
@@ -50,7 +50,9 @@ const SESSION_DETAILS = {
 };
 
 export default function GenderSelection({ navigation, route }: GenderSelectionProps) {
-  const { sessionType, duration, price } = route.params;
+  const fallbackSessionType: SessionType = 'basic';
+  const routeParams = route?.params;
+  const sessionType = routeParams?.sessionType ?? fallbackSessionType;
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const [selectedGender, setSelectedGender] = useState<TherapistGender | null>(null);

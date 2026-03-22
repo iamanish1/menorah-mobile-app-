@@ -15,15 +15,15 @@ export const palettes = {
   },
   dark: {
     primary: '#314830',
-    secondary: '#83834c',
-    sand: '#fbf3e4',     // Light beige for content boxes
-    bg: '#0B0F0A',
-    surface: '#fbf3e4',  // Light beige for content boxes
-    text: '#ffffff',     // White text for headings (on dark background)
-    muted: '#A4A9A5',    // Light grey for muted text
-    border: '#E5E7EB',   // Light border for contrast
-    card: '#fbf3e4',     // Light beige for cards
-    cardText: '#151a16', // Black text inside content boxes
+    secondary: '#a7a06a',
+    sand: '#111915',
+    bg: '#07100c',
+    surface: '#101915',
+    text: '#f6f2e8',
+    muted: '#97a39b',
+    border: '#25332b',
+    card: '#101915',
+    cardText: '#f6f2e8',
   },
 } as const;
 

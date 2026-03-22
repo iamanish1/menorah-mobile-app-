@@ -1,11 +1,46 @@
+import os from 'os';
 import { ExpoConfig, ConfigContext } from 'expo/config';
+
+const detectLocalIp = () => {
+  const interfaces = os.networkInterfaces();
+
+  for (const addresses of Object.values(interfaces)) {
+    for (const address of addresses ?? []) {
+      if (
+        address.family === 'IPv4' &&
+        !address.internal &&
+        (
+          address.address.startsWith('10.') ||
+          address.address.startsWith('192.168.') ||
+          /^172\.(1[6-9]|2\d|3[0-1])\./.test(address.address)
+        )
+      ) {
+        return address.address;
+      }
+    }
+  }
+
+  return undefined;
+};
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const isDev = process.env.NODE_ENV !== 'production';
-  
-  // For mobile devices, use local network IP instead of localhost
-  // Replace '192.168.1.2' with your actual local IP address
-  const LOCAL_IP = '192.168.1.2'; // CHANGE THIS TO YOUR IP
+  const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  const configuredLocalIp = process.env.EXPO_PUBLIC_LOCAL_IP?.trim();
+  const detectedLocalIp = detectLocalIp();
+
+  // Prefer a full API base URL from env. Otherwise build one from a local IP if provided.
+  const devApiBaseUrl = configuredApiBaseUrl
+    ? configuredApiBaseUrl.replace(/\/+$/, '')
+    : configuredLocalIp
+      ? `http://${configuredLocalIp}:3000/api`
+      : detectedLocalIp
+        ? `http://${detectedLocalIp}:3000/api`
+        : 'http://localhost:3000/api';
+
+  const devApiUrl = new URL(devApiBaseUrl);
+  const devApiHost = devApiUrl.hostname;
+  const devApiProtocol = devApiUrl.protocol;
   
   return {
     ...config,
@@ -13,10 +48,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: 'menorah-health-app',
     version: '1.0.0',
     orientation: 'portrait',
-    icon: './assets/brand/glyph.png',
+    icon: './assets/icon.png',
     userInterfaceStyle: 'light',
     splash: {
-      image: './assets/brand/splash.png',
+      image: './assets/splash.png',
       resizeMode: 'contain',
       backgroundColor: '#fbf3e4'
     },
@@ -29,7 +64,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: './assets/brand/glyph.png',
+        foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#fbf3e4'
       },
       package: 'com.menorah.health.app',
@@ -45,24 +80,33 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       }
     },
     web: {
-      favicon: './assets/brand/glyph.png',
+      favicon: './assets/favicon.png',
       bundler: 'metro'
     },
+    plugins: [
+      [
+        'expo-image-picker',
+        {
+          photosPermission: 'Allow Menorah Health to access your photos so you can update your profile picture.',
+        }
+      ]
+    ],
     scheme: 'menorah-health',
     extra: {
-      // API Base URL - use IP for mobile, localhost for web
+      // In Expo Go on a phone, localhost points to the phone itself.
+      // Set EXPO_PUBLIC_API_BASE_URL or EXPO_PUBLIC_LOCAL_IP before starting Expo.
       API_BASE_URL: isDev
-        ? `http://${LOCAL_IP}:3000/api`  // Use IP for mobile devices
+        ? devApiBaseUrl
         : 'https://app-api.menorahhealth.app/api',
       
       // Checkout Return URL
       CHECKOUT_RETURN_URL: isDev
-        ? `http://${LOCAL_IP}:8081/checkout/return`
+        ? `${devApiProtocol}//${devApiHost}:8081/checkout/return`
         : 'https://menorahhealth.app/checkout/return',
       
       // Jitsi Base URL
       JITSI_BASE_URL: isDev
-        ? `http://${LOCAL_IP}:8080`
+        ? `${devApiProtocol}//${devApiHost}:8080`
         : 'https://meet.menorahhealth.app',
       
       // EAS project configuration

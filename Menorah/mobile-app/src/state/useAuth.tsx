@@ -2,6 +2,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { api, User } from '@/lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { socketService } from '@/lib/socket';
+import { ENV } from '@/lib/env';
 
 interface AuthContextType {
   user: User | null;
@@ -140,7 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error')) {
         return { 
           success: false, 
-          message: 'Network error: Unable to connect to server. Please ensure the backend server is running at http://192.168.1.3:3000' 
+          message: `Network error: Unable to connect to server. Please ensure the backend server is running and reachable at ${ENV.API_BASE_URL}` 
         };
       }
       

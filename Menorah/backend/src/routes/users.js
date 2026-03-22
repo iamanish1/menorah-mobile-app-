@@ -1,9 +1,23 @@
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
+const multer = require('multer');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
+const { uploadBuffer } = require('../utils/cloudinary');
 
 const router = express.Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: parseInt(process.env.MAX_FILE_SIZE, 10) || 5 * 1024 * 1024,
+  },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype || !file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image uploads are allowed'));
+    }
+    cb(null, true);
+  },
+});
 
 // @route   GET /api/users/me
 // @desc    Get current user
@@ -50,14 +64,14 @@ router.get('/profile', auth, async (req, res) => {
 // @route   PUT /api/users/profile
 // @desc    Update current user's profile
 // @access  Private
-router.put('/profile', [
+router.put('/profile', auth, upload.single('profileImage'), [
   body('firstName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
   body('dateOfBirth').optional().isISO8601().withMessage('Please provide a valid date of birth'),
   body('gender').optional().isIn(['male', 'female', 'other', 'prefer-not-to-say']).withMessage('Please provide a valid gender'),
   body('preferredLanguage').optional().isString(),
   body('timezone').optional().isString()
-], auth, async (req, res) => {
+], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -92,6 +106,24 @@ router.put('/profile', [
     if (gender) user.gender = gender;
     if (preferredLanguage) user.preferredLanguage = preferredLanguage;
     if (timezone) user.timezone = timezone;
+
+    if (req.file?.buffer) {
+      try {
+        const uploadResult = await uploadBuffer(req.file.buffer, {
+          folder: 'menorah/profile-images',
+          resource_type: 'image',
+          public_id: `user_${user._id}_${Date.now()}`,
+        });
+
+        user.profileImage = uploadResult.secure_url;
+      } catch (uploadError) {
+        console.error('Profile image upload error:', uploadError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to upload profile image'
+        });
+      }
+    }
 
     await user.save();
 

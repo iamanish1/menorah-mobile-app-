@@ -29,6 +29,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
   const colors = palettes[scheme];
   const returnUrl = ENV.CHECKOUT_RETURN_URL || 'menorah://payments/subscription/return';
   const USE_RAZORPAY_SDK = ENV.USE_RAZORPAY_SDK ?? true;
+  const canUseRazorpaySdk = USE_RAZORPAY_SDK && typeof RazorpayCheckout?.open === 'function';
 
   const pollOrderStatus = useCallback(async (maxAttempts: number = 15) => {
     if (!orderId || paymentMethod !== 'razorpay') {
@@ -127,7 +128,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         if (url) {
           console.log('Checkout URL received:', url);
           setCheckoutUrl(url);
-        } else if (!USE_RAZORPAY_SDK || paymentMethod !== 'razorpay') {
+        } else if (!canUseRazorpaySdk || paymentMethod !== 'razorpay') {
           console.error('No checkout URL in response:', response);
           setError('Checkout URL not found in response');
         }
@@ -141,9 +142,14 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     } finally {
       setLoading(false);
     }
-  }, [subscriptionType, paymentMethod, USE_RAZORPAY_SDK]);
+  }, [subscriptionType, paymentMethod, canUseRazorpaySdk]);
 
   const initiateSDKPayment = useCallback(async () => {
+    if (!canUseRazorpaySdk) {
+      console.warn('Razorpay SDK unavailable for subscription payment, using WebView fallback');
+      return;
+    }
+
     if (!keyId || !orderId || !amount) {
       console.error('Missing required payment data:', { keyId, orderId, amount });
       setError('Payment data incomplete. Please try again.');
@@ -223,7 +229,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         [{ text: 'OK' }]
       );
     }
-  }, [keyId, orderId, amount, currency, user, subscriptionType, navigation, pollOrderStatus]);
+  }, [canUseRazorpaySdk, keyId, orderId, amount, currency, user, subscriptionType, navigation, pollOrderStatus]);
 
   useEffect(() => {
     if (subscriptionType) {
@@ -240,7 +246,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
 
   useEffect(() => {
     if (
-      USE_RAZORPAY_SDK &&
+      canUseRazorpaySdk &&
       paymentMethod === 'razorpay' &&
       !loading &&
       keyId &&
@@ -252,7 +258,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
       setSdkPaymentInitiated(true);
       initiateSDKPayment();
     }
-  }, [keyId, orderId, amount, loading, error, paymentMethod, sdkPaymentInitiated, USE_RAZORPAY_SDK, initiateSDKPayment]);
+  }, [keyId, orderId, amount, loading, error, paymentMethod, sdkPaymentInitiated, canUseRazorpaySdk, initiateSDKPayment]);
 
   const handleNavigationStateChange = async (nav: any) => {
     const url = nav.url;
@@ -277,7 +283,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     );
   };
 
-  if (loading || (USE_RAZORPAY_SDK && paymentMethod === 'razorpay' && !sdkPaymentInitiated && !error)) {
+  if (loading || (canUseRazorpaySdk && paymentMethod === 'razorpay' && !sdkPaymentInitiated && !error)) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
@@ -318,7 +324,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     );
   }
 
-  if (!checkoutUrl && (!USE_RAZORPAY_SDK || paymentMethod !== 'razorpay')) {
+  if (!checkoutUrl && (!canUseRazorpaySdk || paymentMethod !== 'razorpay')) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
@@ -382,7 +388,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         </View>
       )}
 
-      {!USE_RAZORPAY_SDK || paymentMethod !== 'razorpay' ? (
+      {!canUseRazorpaySdk || paymentMethod !== 'razorpay' ? (
         <WebView
           source={{ uri: checkoutUrl || '' }}
           onNavigationStateChange={handleNavigationStateChange}

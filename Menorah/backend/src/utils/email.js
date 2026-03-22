@@ -1,5 +1,31 @@
 const nodemailer = require('nodemailer');
 
+const buildPasswordResetUrl = (token) => {
+  const configuredTemplate = process.env.PASSWORD_RESET_URL_TEMPLATE?.trim();
+  const configuredBaseUrl = process.env.PASSWORD_RESET_BASE_URL?.trim();
+  const apiBaseUrl = process.env.API_BASE_URL?.trim();
+  const appScheme = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
+
+  if (configuredTemplate) {
+    return configuredTemplate.includes('{token}')
+      ? configuredTemplate.replace('{token}', encodeURIComponent(token))
+      : `${configuredTemplate.replace(/\/+$/, '')}?token=${encodeURIComponent(token)}`;
+  }
+
+  if (configuredBaseUrl) {
+    const separator = configuredBaseUrl.includes('?') ? '&' : '?';
+    return `${configuredBaseUrl}${separator}token=${encodeURIComponent(token)}`;
+  }
+
+  if (apiBaseUrl && !/localhost|127\.0\.0\.1/i.test(apiBaseUrl)) {
+    const normalizedApiBaseUrl = apiBaseUrl.replace(/\/+$/, '').replace(/\/api$/i, '');
+    return `${normalizedApiBaseUrl}/api/auth/reset-password?token=${encodeURIComponent(token)}`;
+  }
+
+  const separator = appScheme.includes('?') ? '&' : '?';
+  return `${appScheme}${separator}token=${encodeURIComponent(token)}`;
+};
+
 // Create transporter
 const createTransporter = () => {
   // Validate SMTP configuration
@@ -170,11 +196,10 @@ const sendVerificationEmail = async (email, code) => {
 const sendPasswordResetEmail = async (email, token) => {
   try {
     const transporter = createTransporter();
-    
-    const resetUrl = `${process.env.API_BASE_URL}/api/auth/reset-password?token=${token}`;
+    const resetUrl = buildPasswordResetUrl(token);
     
     const mailOptions = {
-      from: process.env.EMAIL_FROM,
+      from: process.env.EMAIL_FROM || process.env.SMTP_USER,
       to: email,
       subject: 'Reset Your Password - Menorah Health',
       html: `
@@ -187,7 +212,7 @@ const sendPasswordResetEmail = async (email, token) => {
             <h2 style="color: #333; margin-bottom: 20px;">Password Reset Request</h2>
             
             <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              We received a request to reset your password for your Menorah Health account. Click the button below to create a new password.
+              We received a request to reset your password for your Menorah Health account. Tap the button below to open the app and create a new password.
             </p>
             
             <div style="text-align: center; margin: 30px 0;">
@@ -204,7 +229,7 @@ const sendPasswordResetEmail = async (email, token) => {
             </div>
             
             <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              If the button doesn't work, you can copy and paste this link into your browser:
+              If the button doesn't work, copy and paste this link into your phone browser:
             </p>
             
             <p style="color: #667eea; word-break: break-all; margin-bottom: 20px;">

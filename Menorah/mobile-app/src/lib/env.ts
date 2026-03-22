@@ -15,7 +15,14 @@ const configBaseURL = (Constants.expoConfig?.extra as any)?.API_BASE_URL as stri
 
 const normalizeBaseURL = (url?: string) => {
   const candidate = (url ?? DEFAULT_API_BASE_URL).trim();
-  return candidate.replace(/\/+$/, '');
+  const normalized = candidate.replace(/\/+$/, '');
+
+  // Android emulators cannot reach services on the host machine via localhost.
+  if (Platform.OS === 'android') {
+    return normalized.replace('http://localhost', 'http://10.0.2.2');
+  }
+
+  return normalized;
 };
 
 const buildAPIBaseURL = () => normalizeBaseURL(configBaseURL);
@@ -30,16 +37,18 @@ const deriveAPIOrigin = (baseUrl: string) => {
 
 const API_BASE_URL = buildAPIBaseURL();
 const API_ORIGIN = deriveAPIOrigin(API_BASE_URL);
+const IS_EXPO_GO = Constants.appOwnership === 'expo';
 
 // Feature flag for Razorpay SDK integration
-// Set to false to fallback to WebView approach
-const USE_RAZORPAY_SDK = true;
+// Expo Go cannot load the native Razorpay module, so force WebView fallback there.
+const USE_RAZORPAY_SDK = !IS_EXPO_GO;
 
 export const ENV = {
   API_BASE_URL,
   API_ORIGIN,
   CHECKOUT_RETURN_URL: (Constants.expoConfig?.extra as any)?.CHECKOUT_RETURN_URL as string,
   JITSI_BASE_URL: (Constants.expoConfig?.extra as any)?.JITSI_BASE_URL as string,
+  IS_EXPO_GO,
   USE_RAZORPAY_SDK,
 };
 
@@ -48,6 +57,7 @@ console.log('Environment Configuration:', {
   Platform: Platform.OS,
   __DEV__,
   configIP,
+  IS_EXPO_GO: ENV.IS_EXPO_GO,
   API_BASE_URL: ENV.API_BASE_URL,
   API_ORIGIN: ENV.API_ORIGIN,
   CHECKOUT_RETURN_URL: ENV.CHECKOUT_RETURN_URL,

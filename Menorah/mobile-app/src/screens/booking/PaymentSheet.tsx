@@ -27,6 +27,7 @@ export default function PaymentSheet({ route, navigation }: any) {
   const colors = palettes[scheme];
   const returnUrl = ENV.CHECKOUT_RETURN_URL || 'menorah://payments/return';
   const USE_RAZORPAY_SDK = ENV.USE_RAZORPAY_SDK ?? true;
+  const canUseRazorpaySdk = USE_RAZORPAY_SDK && typeof RazorpayCheckout?.open === 'function';
 
   const checkPaymentStatus = useCallback(async () => {
     try {
@@ -151,7 +152,7 @@ export default function PaymentSheet({ route, navigation }: any) {
         if (url) {
           console.log('Checkout URL received:', url);
           setCheckoutUrl(url);
-        } else if (!USE_RAZORPAY_SDK || paymentMethod !== 'razorpay') {
+        } else if (!canUseRazorpaySdk || paymentMethod !== 'razorpay') {
           // Only error if WebView is needed
           console.error('No checkout URL in response:', response);
           setError('Checkout URL not found in response');
@@ -171,9 +172,14 @@ export default function PaymentSheet({ route, navigation }: any) {
     } finally {
       setLoading(false);
     }
-  }, [bookingId, paymentMethod, USE_RAZORPAY_SDK]);
+  }, [bookingId, paymentMethod, canUseRazorpaySdk]);
 
   const initiateSDKPayment = useCallback(async () => {
+    if (!canUseRazorpaySdk) {
+      console.warn('Razorpay SDK unavailable, using WebView fallback');
+      return;
+    }
+
     if (!keyId || !orderId || !amount) {
       console.error('Missing required payment data:', { keyId, orderId, amount });
       setError('Payment data incomplete. Please try again.');
@@ -266,7 +272,7 @@ export default function PaymentSheet({ route, navigation }: any) {
         ]
       );
     }
-  }, [keyId, orderId, amount, currency, user, bookingId, navigation, pollOrderStatus]);
+  }, [canUseRazorpaySdk, keyId, orderId, amount, currency, user, bookingId, navigation, pollOrderStatus]);
 
   useEffect(() => {
     if (bookingId) {
@@ -285,7 +291,7 @@ export default function PaymentSheet({ route, navigation }: any) {
   // Initiate SDK payment after checkout session is created
   useEffect(() => {
     if (
-      USE_RAZORPAY_SDK &&
+      canUseRazorpaySdk &&
       paymentMethod === 'razorpay' &&
       !loading &&
       keyId &&
@@ -297,7 +303,7 @@ export default function PaymentSheet({ route, navigation }: any) {
       setSdkPaymentInitiated(true);
       initiateSDKPayment();
     }
-  }, [keyId, orderId, amount, loading, error, paymentMethod, sdkPaymentInitiated, USE_RAZORPAY_SDK, initiateSDKPayment]);
+  }, [keyId, orderId, amount, loading, error, paymentMethod, sdkPaymentInitiated, canUseRazorpaySdk, initiateSDKPayment]);
 
   const handleMessage = async (event: any) => {
     try {
@@ -404,13 +410,13 @@ export default function PaymentSheet({ route, navigation }: any) {
     }
   };
 
-  if (loading || (USE_RAZORPAY_SDK && paymentMethod === 'razorpay' && !sdkPaymentInitiated && !error)) {
+  if (loading || (canUseRazorpaySdk && paymentMethod === 'razorpay' && !sdkPaymentInitiated && !error)) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={{ fontSize: 16, color: colors.text, marginTop: 16 }}>
-            {USE_RAZORPAY_SDK && paymentMethod === 'razorpay' 
+            {canUseRazorpaySdk && paymentMethod === 'razorpay' 
               ? 'Preparing payment...' 
               : 'Preparing payment...'}
           </Text>
@@ -448,7 +454,7 @@ export default function PaymentSheet({ route, navigation }: any) {
   }
 
   // For SDK flow, don't require checkoutUrl
-  if (!checkoutUrl && (!USE_RAZORPAY_SDK || paymentMethod !== 'razorpay')) {
+  if (!checkoutUrl && (!canUseRazorpaySdk || paymentMethod !== 'razorpay')) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
@@ -537,7 +543,7 @@ export default function PaymentSheet({ route, navigation }: any) {
       )}
 
       {/* WebView - Only show if not using SDK or for Stripe payments */}
-      {(!USE_RAZORPAY_SDK || paymentMethod !== 'razorpay') && checkoutUrl && (
+      {(!canUseRazorpaySdk || paymentMethod !== 'razorpay') && checkoutUrl && (
         <TouchableOpacity
           onPress={openInBrowser}
           style={{
@@ -553,7 +559,7 @@ export default function PaymentSheet({ route, navigation }: any) {
           </Text>
         </TouchableOpacity>
       )}
-      {(!USE_RAZORPAY_SDK || paymentMethod !== 'razorpay') && checkoutUrl && (
+      {(!canUseRazorpaySdk || paymentMethod !== 'razorpay') && checkoutUrl && (
         <WebView
           source={{ uri: checkoutUrl }}
           onMessage={handleMessage}

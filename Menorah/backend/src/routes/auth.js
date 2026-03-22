@@ -522,9 +522,9 @@ router.post('/forgot-password', [
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
+      return res.json({
+        success: true,
+        message: 'If an account exists for that email, a password reset link has been sent'
       });
     }
 
@@ -535,15 +535,21 @@ router.post('/forgot-password', [
     await user.save();
 
     // Send reset email
-    try {
-      await sendPasswordResetEmail(user.email, resetToken);
-    } catch (error) {
-      console.error('Error sending password reset email:', error);
+    const emailSent = await sendPasswordResetEmail(user.email, resetToken);
+    if (!emailSent) {
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save();
+
+      return res.status(500).json({
+        success: false,
+        message: 'Unable to send reset email right now. Please try again in a moment.'
+      });
     }
 
     res.json({
       success: true,
-      message: 'Password reset email sent'
+      message: 'If an account exists for that email, a password reset link has been sent'
     });
 
   } catch (error) {
@@ -553,6 +559,60 @@ router.post('/forgot-password', [
       message: 'Internal server error'
     });
   }
+});
+
+// @route   GET /api/auth/reset-password
+// @desc    Redirect password reset links into the mobile app
+// @access  Public
+router.get('/reset-password', async (req, res) => {
+  const token = req.query.token;
+
+  if (!token) {
+    return res.status(400).send(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Menorah Health</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; background: #f5f3eb; padding: 32px; color: #1f2937;">
+          <div style="max-width: 420px; margin: 0 auto; background: white; border-radius: 18px; padding: 28px; box-shadow: 0 12px 35px rgba(0,0,0,0.08);">
+            <h1 style="margin-top: 0;">Invalid reset link</h1>
+            <p>This password reset link is missing a token. Please request a new reset email from the app.</p>
+          </div>
+        </body>
+      </html>
+    `);
+  }
+
+  const appScheme = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
+  const separator = appScheme.includes('?') ? '&' : '?';
+  const appUrl = `${appScheme}${separator}token=${encodeURIComponent(token)}`;
+
+  return res.status(200).send(`
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Reset your password</title>
+        <meta http-equiv="refresh" content="0;url=${appUrl}" />
+      </head>
+      <body style="font-family: Arial, sans-serif; background: #f5f3eb; padding: 32px; color: #1f2937;">
+        <div style="max-width: 420px; margin: 0 auto; background: white; border-radius: 18px; padding: 28px; box-shadow: 0 12px 35px rgba(0,0,0,0.08);">
+          <h1 style="margin-top: 0;">Open Menorah Health</h1>
+          <p style="line-height: 1.6;">We're redirecting you to the app so you can choose a new password securely.</p>
+          <a href="${appUrl}" style="display: inline-block; margin-top: 8px; background: #314830; color: white; padding: 14px 20px; border-radius: 12px; text-decoration: none; font-weight: 600;">
+            Open the app
+          </a>
+          <p style="margin-top: 18px; color: #6b7280; line-height: 1.6;">
+            If the app doesn't open, make sure Menorah Health is installed on this device and request a fresh reset email.
+          </p>
+        </div>
+      </body>
+    </html>
+  `);
 });
 
 // @route   POST /api/auth/reset-password

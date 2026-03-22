@@ -46,6 +46,10 @@ export default function Bookings({ navigation }: any) {
     setRefreshing(false);
   };
 
+  const handleBookSession = () => {
+    navigation.navigate('GenderSelection');
+  };
+
   const formatBookingDate = (booking: Booking) => {
     // Use createdAt (when booking was created/paid) to get the day of month
     const bookingDate = booking.createdAt ? new Date(booking.createdAt) : new Date(booking.scheduledAt);
@@ -285,6 +289,22 @@ export default function Bookings({ navigation }: any) {
               <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginTop: 8 }}>
                 Book your first session to get started
               </Text>
+              <TouchableOpacity
+                onPress={handleBookSession}
+                style={{
+                  backgroundColor: colors.primary,
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 16,
+                  marginTop: 24,
+                  minWidth: 170,
+                  alignItems: 'center'
+                }}
+              >
+                <Text style={{ color: 'white', fontSize: 15, fontWeight: '600' }}>
+                  Book Session
+                </Text>
+              </TouchableOpacity>
             </View>
           )
         ) : (

@@ -7,6 +7,7 @@ import RootNavigator from '@/navigation/RootNavigator';
 import { ThemeProvider, useThemeMode } from '@/theme/ThemeProvider';     
 import { AuthProvider } from '@/state/useAuth';
 import { ChatProvider } from '@/state/useChat';
+import { NotificationProvider } from '@/state/useNotifications';
 import FreeSessionModal from '@/components/modals/FreeSessionModal';
 import SessionNotificationHandler from '@/components/SessionNotificationHandler';
 import subscriptionService from '@/services/subscriptionService';
@@ -66,16 +67,18 @@ export default function App() {
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>
-            <ChatProvider>
-              <RootNavigator />
-              <ThemeStatusBar />
-              <SessionNotificationHandler />
-              <FreeSessionModal
-                visible={showFreeSessionModal}
-                onClose={handleCloseModal}
-                onBookSession={handleBookSession}
-              />
-            </ChatProvider>
+            <NotificationProvider>
+              <ChatProvider>
+                <RootNavigator />
+                <ThemeStatusBar />
+                <SessionNotificationHandler />
+                <FreeSessionModal
+                  visible={showFreeSessionModal}
+                  onClose={handleCloseModal}
+                  onBookSession={handleBookSession}
+                />
+              </ChatProvider>
+            </NotificationProvider>
           </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>

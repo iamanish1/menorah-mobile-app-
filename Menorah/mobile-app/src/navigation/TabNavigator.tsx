@@ -19,19 +19,19 @@ export default function TabNavigator() {
       initialRouteName="Discover"
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: scheme === 'dark' ? '#9AA09B' : '#9CA3AF',
+        tabBarActiveTintColor: scheme === 'dark' ? colors.secondary : colors.primary,
+        tabBarInactiveTintColor: scheme === 'dark' ? colors.muted : '#9CA3AF',
         tabBarStyle: {
-          backgroundColor: scheme === 'dark' ? '#0f120f' : '#ffffff',
+          backgroundColor: scheme === 'dark' ? '#0c1511' : '#ffffff',
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          paddingBottom: 8,
+          paddingBottom: 10,
           paddingTop: 8,
-          height: 60,
+          height: 64,
         },
         tabBarLabelStyle: {
           fontSize: 12,
-          fontWeight: '500',
+          fontWeight: '600',
         },
       }}
     >

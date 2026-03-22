@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { View, Text, ScrollView, FlatList, TouchableOpacity, Linking, useWindowDimensions } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { useState } from "react";
+import { View, ScrollView, FlatList, Linking, useWindowDimensions } from "react-native";
 import Navbar from "@/components/nav/Navbar";
 import HelpSheet from "@/components/help/HelpSheet";
 import Input from "@/components/ui/Input";
@@ -9,26 +8,17 @@ import QuickTile from "@/components/discover/QuickTile";
 import HeroBanner from "@/components/discover/HeroBanner";
 import SessionTypeSelector from "@/components/discover/SessionTypeSelector";
 import SubscriptionSelector from "@/components/discover/SubscriptionSelector";
-import { CounsellorCard } from "@/components/cards/CounsellorCard";
 import ArticleCard from "@/components/cards/ArticleCard";
 import InstaPostCard from "@/components/cards/InstaPostCard";
-import { api } from "@/lib/api";
 import { ARTICLES } from "@/mock/articles";
 import { INSTA } from "@/mock/instagram";
+import { useNotifications } from "@/state/useNotifications";
 import { palettes } from "@/theme/colors";
 import { useThemeMode } from "@/theme/ThemeProvider";
-import { ActivityIndicator, Alert } from "react-native";
-
-const CATEGORIES = ["Anxiety","Depression","Relationships","Stress","Trauma","Mindfulness"];
-const LANGS = ["English","Hindi","Urdu","Bengali","Tamil"];
 
 export default function Discover({ navigation }: any) {
   const [help, setHelp] = useState(false);
   const [q, setQ] = useState("");
-  const [cat, setCat] = useState<string | null>(null);
-  const [lang, setLang] = useState<string | null>(null);
-  const [all, setAll] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const { width } = useWindowDimensions();
   const GAP = 12;
   const H_PAD = 16 * 2;
@@ -37,70 +27,37 @@ export default function Discover({ navigation }: any) {
 
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const { unreadCount } = useNotifications();
 
-  // Same gradient as navbar - lighter on left, darker on right
-  const navbarGradient = scheme === 'dark' ? ['#4a5a4a', '#1a2a1a'] : ['#6a7a6a', '#314830'];
-
-  useEffect(() => {
-    fetchCounsellors();
-  }, [q, cat, lang]);
-
-  const fetchCounsellors = async () => {
-    setLoading(true);
-    try {
-      const response = await api.getCounsellors({
-        search: q || undefined,
-        specialization: cat || undefined,
-        language: lang || undefined,
-        page: 1,
-        limit: 50,
-        sortBy: 'rating',
-        sortOrder: 'desc'
-      });
-      
-      if (response.success && response.data) {
-        setAll(response.data.counsellors || []);
-      } else {
-        console.error('Failed to fetch counsellors:', response.message);
-        setAll([]);
-      }
-    } catch (error: any) {
-      console.error('Error fetching counsellors:', error);
-      Alert.alert('Error', 'Failed to load counsellors. Please try again.');
-      setAll([]);
-    } finally {
-      setLoading(false);
-    }
+  const handleBellPress = () => {
+    navigation.navigate('Notifications');
   };
-
-  const topRated = useMemo(
-    () => [...all].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)).slice(0, 10),
-    [all]
-  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header: creamy background for both light and dark modes */}
       <View style={{ 
-        paddingBottom: 16, 
+        paddingBottom: 10, 
         backgroundColor: colors.sand,
         borderBottomLeftRadius: 24,
-        borderBottomRightRadius: 24
+        borderBottomRightRadius: 24,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border
       }}>
-        <Navbar onHelp={() => setHelp(true)} onBell={() => {}} />
+        <Navbar onHelp={() => setHelp(true)} onBell={handleBellPress} unreadCount={unreadCount} />
         <View style={{ paddingHorizontal: 16 }}>
-          <View style={{ marginTop: 12 }}>
+          <View style={{ marginTop: 6 }}>
             <Input 
               value={q} 
               onChangeText={setQ} 
               placeholder="Search by name, issue, therapy..." 
-              style={{ backgroundColor: 'white' }}
+              style={{ backgroundColor: colors.card, marginBottom: 0 }}
             />
           </View>
         </View>
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20, paddingTop: 8 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20, paddingTop: 14 }} showsVerticalScrollIndicator={false}>
         {/* Hero Banner */}
         <HeroBanner />
 
@@ -185,29 +142,6 @@ export default function Discover({ navigation }: any) {
           contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 4 }}
           renderItem={({ item }) => <InstaPostCard item={item} />}
         />
-
-        {/* Our Top Counsellors (horizontal) */}
-        <SectionHeader title="Our Top Counsellors" />
-        {loading ? (
-          <View style={{ padding: 20, alignItems: 'center' }}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
-        ) : (
-          <FlatList
-            data={topRated}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(i: any) => String(i.id)}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 4 }}
-            renderItem={({ item }) => (
-              <CounsellorCard
-                counsellor={item}
-                variant="compact"
-                onPress={() => navigation.navigate('CounsellorProfile', { counsellorId: item.id })}
-              />
-            )}
-          />
-        )}
       </ScrollView>
 
       <HelpSheet visible={help} onClose={() => setHelp(false)} />

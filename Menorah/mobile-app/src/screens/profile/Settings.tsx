@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Bell, Moon, Shield, HelpCircle, FileText, Heart, LogOut } from 'lucide-react-native';
+import { ArrowLeft, Bell, Moon, Shield, HelpCircle, FileText, Heart, LogOut, KeyRound, LockKeyhole, UserLock } from 'lucide-react-native';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from "@/state/useAuth";
@@ -16,7 +16,8 @@ const SettingItem = ({ title, subtitle, icon: Icon, onPress, disabled, colors }:
       alignItems: 'center',
       paddingVertical: 16,
       borderBottomWidth: 1,
-      borderBottomColor: colors.border
+      borderBottomColor: colors.border,
+      paddingHorizontal: 16
     }}
   >
     <View style={{
@@ -26,11 +27,12 @@ const SettingItem = ({ title, subtitle, icon: Icon, onPress, disabled, colors }:
       borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: 16
+      marginRight: 16,
+      flexShrink: 0
     }}>
       <Icon size={20} color={colors.muted} />
     </View>
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, paddingRight: 4 }}>
       <Text style={{ fontSize: 16, color: colors.cardText }}>{title}</Text>
       {subtitle && <Text style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>{subtitle}</Text>}
     </View>
@@ -244,26 +246,27 @@ export default function Settings({ navigation }: any) {
             backgroundColor: colors.card,
             borderRadius: 20,
             borderWidth: 1,
-            borderColor: colors.border
+            borderColor: colors.border,
+            overflow: 'hidden'
           }}>
             <SettingItem
               title="Change Password"
               subtitle="Update your password"
-              icon={Shield}
+              icon={KeyRound}
               onPress={() => navigation.navigate("ChangePassword")}
               colors={colors}
             />
             <SettingItem
               title="Two-Factor Authentication"
               subtitle="Add extra security"
-              icon={Shield}
+              icon={LockKeyhole}
               onPress={() => navigation.navigate("TwoFactorAuth")}
               colors={colors}
             />
             <SettingItem
               title="Privacy Settings"
               subtitle="Manage your privacy"
-              icon={Shield}
+              icon={UserLock}
               onPress={() => navigation.navigate("PrivacySettings")}
               colors={colors}
             />
@@ -279,7 +282,8 @@ export default function Settings({ navigation }: any) {
             backgroundColor: colors.card,
             borderRadius: 20,
             borderWidth: 1,
-            borderColor: colors.border
+            borderColor: colors.border,
+            overflow: 'hidden'
           }}>
             <SettingItem
               title="Help & Support"
@@ -291,7 +295,7 @@ export default function Settings({ navigation }: any) {
             <SettingItem
               title="Terms & Privacy"
               subtitle="Read our terms and privacy policy"
-              icon={FileText}
+              icon={Shield}
               onPress={() => navigation.navigate("Legal")}
               colors={colors}
             />
@@ -307,11 +311,13 @@ export default function Settings({ navigation }: any) {
               borderRadius: 20,
               padding: 16,
               alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'row',
               borderWidth: 1,
               borderColor: '#EF4444' + '20'
             }}
           >
-            <LogOut size={20} color="#EF4444" style={{ marginRight: 8 }} />
+            <LogOut size={20} color="#EF4444" />
             <Text style={{ color: '#EF4444', fontWeight: '600', fontSize: 16 }}>Logout</Text>
           </TouchableOpacity>
         </View>
