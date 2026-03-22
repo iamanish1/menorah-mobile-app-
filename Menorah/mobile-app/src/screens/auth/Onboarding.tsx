@@ -81,7 +81,7 @@ export default function Onboarding({ navigation }: any) {
           <Button
             title="Help & Helplines"
             variant="outline"
-            onPress={() => Linking.openURL("https://manhoarhealth.vercel.app/helplines")}
+            onPress={() => Linking.openURL("https://menorahhealth.com/")}
             style={{ marginBottom: 24 }}
           />
           
@@ -93,14 +93,14 @@ export default function Onboarding({ navigation }: any) {
           }}>
             By continuing, you agree to our{' '}
             <Text 
-              onPress={() => Linking.openURL("https://manhoarhealth.vercel.app/terms")}
+              onPress={() => Linking.openURL("https://menorahhealth.com/terms-and-conditions")}
               style={{ color: colors.primary, fontWeight: '600' }}
             >
               Terms
             </Text>
             {' '}and{' '}
             <Text 
-              onPress={() => Linking.openURL("https://manhoarhealth.vercel.app/privacy")}
+              onPress={() => Linking.openURL("https://menorahhealth.app/privacy-policy")}
               style={{ color: colors.primary, fontWeight: '600' }}
             >
               Privacy Policy

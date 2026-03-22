@@ -1,9 +1,9 @@
 import React from "react";
-import { View, TextInput, Text } from "react-native";
+import { View, TextInput, Text, TextInputProps } from "react-native";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 
-interface InputProps {
+interface InputProps extends TextInputProps {
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
@@ -20,7 +20,8 @@ export default function Input({
   label, 
   error, 
   secureTextEntry = false,
-  style 
+  style,
+  ...rest
 }: InputProps) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
@@ -43,6 +44,7 @@ export default function Input({
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
         secureTextEntry={secureTextEntry}
+        {...rest}
         style={[
           {
             backgroundColor: colors.card,

@@ -19,10 +19,12 @@ export default function Navbar({
   const { scheme, toggle } = useThemeMode();
   const colors = palettes[scheme];
   const isCompact = width < 390;
-  const actionSize = isCompact ? 40 : 44;
-  const logoWidth = Math.min(180, Math.max(128, width - (isCompact ? 212 : 234)));
-  const helpHorizontalPadding = isCompact ? 10 : 12;
-  const helpLabelSize = isCompact ? 13 : 14;
+  const actionSize = isCompact ? 36 : 40;
+  const logoWidth = Math.min(180, Math.max(128, width - (isCompact ? 196 : 220)));
+  const helpHorizontalPadding = isCompact ? 8 : 10;
+  const helpLabelSize = isCompact ? 12 : 13;
+  const actionIconSize = isCompact ? 16 : 17;
+  const helpIconSize = isCompact ? 14 : 15;
   const baseStyle = {
     paddingTop: Math.max(insets.top, 12),
     paddingHorizontal: 16,
@@ -70,7 +72,7 @@ export default function Navbar({
             justifyContent: 'center'
           }}
         >
-          {scheme === 'dark' ? <Sun size={18} color={actionIcon} /> : <Moon size={18} color={actionIcon} />}
+          {scheme === 'dark' ? <Sun size={actionIconSize} color={actionIcon} /> : <Moon size={actionIconSize} color={actionIcon} />}
         </Pressable>
         
         <Pressable
@@ -87,7 +89,7 @@ export default function Navbar({
             justifyContent: 'center'
           }}
         >
-          <Bell size={18} color={actionIcon} />
+          <Bell size={actionIconSize} color={actionIcon} />
           {unreadCount > 0 ? (
             <View
               style={{
@@ -124,7 +126,7 @@ export default function Navbar({
             gap: 6
           }}
         >
-          <LifeBuoy size={16} color={actionIcon} />
+          <LifeBuoy size={helpIconSize} color={actionIcon} />
           <Text
             numberOfLines={1}
             style={{ color: actionIcon, fontWeight: '600', fontSize: helpLabelSize }}

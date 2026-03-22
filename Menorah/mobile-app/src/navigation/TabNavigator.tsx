@@ -7,12 +7,16 @@ import ChatList from '@/screens/chat/ChatList';
 import ProfileHome from '@/screens/profile/ProfileHome';
 import { palettes } from '@/theme/colors';
 import { useThemeMode } from '@/theme/ThemeProvider';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const insets = useSafeAreaInsets();
+  const tabBarBottomPadding = Math.max(insets.bottom, 10);
+  const tabBarHeight = 54 + tabBarBottomPadding;
 
   return (
     <Tab.Navigator
@@ -25,9 +29,9 @@ export default function TabNavigator() {
           backgroundColor: scheme === 'dark' ? '#0c1511' : '#ffffff',
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          paddingBottom: 10,
+          paddingBottom: tabBarBottomPadding,
           paddingTop: 8,
-          height: 64,
+          height: tabBarHeight,
         },
         tabBarLabelStyle: {
           fontSize: 12,

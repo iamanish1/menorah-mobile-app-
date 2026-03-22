@@ -1,45 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
-import { Calendar, Clock, Crown } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { useNavigation } from '@react-navigation/native';
+import { SUBSCRIPTION_PLANS, type SubscriptionType } from '@/screens/subscription/subscriptionPlans';
 
-export type SubscriptionType = 'weekly' | 'monthly' | 'yearly';
 
 interface SubscriptionSelectorProps {
   onSubscriptionSelect?: (subscriptionType: SubscriptionType) => void;
 }
-
-const SUBSCRIPTION_TYPES = [
-  {
-    id: 'weekly' as SubscriptionType,
-    title: 'Weekly Plan',
-    description: 'Perfect for trying out',
-    price: '\u20B9500',
-    icon: Calendar,
-    color: '#10B981',
-    bgColor: '#D1FAE5',
-  },
-  {
-    id: 'monthly' as SubscriptionType,
-    title: 'Monthly Plan',
-    description: 'Most popular choice',
-    price: '\u20B91500',
-    icon: Clock,
-    color: '#3B82F6',
-    bgColor: '#DBEAFE',
-  },
-  {
-    id: 'yearly' as SubscriptionType,
-    title: 'Yearly Plan',
-    description: 'Best value for money',
-    price: '\u20B912000',
-    icon: Crown,
-    color: '#8B5CF6',
-    bgColor: '#EDE9FE',
-  },
-];
 
 export default function SubscriptionSelector({ onSubscriptionSelect }: SubscriptionSelectorProps) {
   const { scheme } = useThemeMode();
@@ -51,9 +20,8 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Subscript
   const handleSubscriptionSelect = (subscriptionType: SubscriptionType) => {
     setSelectedSubscription(subscriptionType);
 
-    navigation.navigate('SubscriptionPayment', {
+    navigation.navigate('SubscriptionDetails', {
       subscriptionType,
-      paymentMethod: 'razorpay',
     });
 
     onSubscriptionSelect?.(subscriptionType);
@@ -84,7 +52,7 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Subscript
         </Text>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          {SUBSCRIPTION_TYPES.map((subscription) => {
+          {SUBSCRIPTION_PLANS.map((subscription) => {
             const IconComponent = subscription.icon;
             const isSelected = selectedSubscription === subscription.id;
 

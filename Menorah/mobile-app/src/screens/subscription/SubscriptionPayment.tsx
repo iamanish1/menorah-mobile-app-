@@ -10,7 +10,7 @@ import { ENV } from '@/lib/env';
 import { api } from '@/lib/api';
 import { useAuth } from '@/state/useAuth';
 import subscriptionService from '@/services/subscriptionService';
-import type { SubscriptionType } from '@/components/discover/SubscriptionSelector';
+import type { SubscriptionType } from './subscriptionPlans';
 
 export default function SubscriptionPayment({ route, navigation }: any) {
   const { subscriptionType, paymentMethod = 'razorpay' } = route.params || {};

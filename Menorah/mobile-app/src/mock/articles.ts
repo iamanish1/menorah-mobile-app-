@@ -8,7 +8,7 @@ export const ARTICLES: Article[] = [
     category: "FEATURED",
     readTime: "4 min read",
     image: "https://images.unsplash.com/photo-1516302752625-fcc3c50ae61f?q=80&w=1200&auto=format&fit=crop",
-    url: "https://menorahhealth.com/",
+    url: "https://menorahhealth.com/newsletter",
   },
   {
     id: "a2",
@@ -17,7 +17,7 @@ export const ARTICLES: Article[] = [
     category: "GUIDE",
     readTime: "6 min read",
     image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=1200&auto=format&fit=crop",
-    url: "https://menorahhealth.com/",
+    url: "https://menorahhealth.com/newsletter",
   },
   {
     id: "a3",
@@ -26,7 +26,7 @@ export const ARTICLES: Article[] = [
     category: "INSIGHT",
     readTime: "5 min read",
     image: "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=1200&auto=format&fit=crop",
-    url: "https://menorahhealth.com/",
+    url: "https://menorahhealth.com/newsletter",
   },
   {
     id: "a4",
@@ -35,7 +35,7 @@ export const ARTICLES: Article[] = [
     category: "PRACTICAL",
     readTime: "3 min read",
     image: "https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?q=80&w=1200&auto=format&fit=crop",
-    url: "https://menorahhealth.com/",
+    url: "https://menorahhealth.com/newsletter",
   },
   {
     id: "a5",
@@ -44,6 +44,6 @@ export const ARTICLES: Article[] = [
     category: "WELLNESS",
     readTime: "4 min read",
     image: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?q=80&w=1200&auto=format&fit=crop",
-    url: "https://menorahhealth.com/",
+    url: "https://menorahhealth.com/newsletter",
   },
 ];

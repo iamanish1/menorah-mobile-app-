@@ -8,9 +8,10 @@ interface SectionHeaderProps {
   onPress?: () => void;
   showChevron?: boolean;
   style?: any;
+  titleStyle?: any;
 }
 
-export default function SectionHeader({ title, onPress, showChevron = true, style }: SectionHeaderProps) {
+export default function SectionHeader({ title, onPress, showChevron = true, style, titleStyle }: SectionHeaderProps) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
 
@@ -23,16 +24,17 @@ export default function SectionHeader({ title, onPress, showChevron = true, styl
       marginBottom: 12,
       marginTop: 8
     }, style]}>
-      <Text style={{ 
+      <Text style={[{ 
         fontSize: 20, 
         fontWeight: '700', 
-        color: colors.text 
-      }}>
+        color: colors.text,
+        flexShrink: 1
+      }, titleStyle]}>
         {title}
       </Text>
       
       {onPress && (
-        <TouchableOpacity onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <TouchableOpacity onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 12 }}>
           <Text style={{ 
             fontSize: 14, 
             color: colors.primary, 

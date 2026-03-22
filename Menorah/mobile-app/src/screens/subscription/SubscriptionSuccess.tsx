@@ -4,25 +4,13 @@ import { CheckCircle } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
-import type { SubscriptionType } from '@/components/discover/SubscriptionSelector';
+import { getSubscriptionPlan, type SubscriptionType } from './subscriptionPlans';
 
 export default function SubscriptionSuccess({ navigation, route }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const { subscriptionType } = route.params || {};
-
-  const getSubscriptionLabel = (type?: SubscriptionType) => {
-    switch (type) {
-      case 'weekly':
-        return 'Weekly';
-      case 'monthly':
-        return 'Monthly';
-      case 'yearly':
-        return 'Yearly';
-      default:
-        return 'Premium';
-    }
-  };
+  const planLabel = getSubscriptionPlan(subscriptionType as SubscriptionType)?.shortLabel || 'Premium';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -55,7 +43,7 @@ export default function SubscriptionSuccess({ navigation, route }: any) {
           textAlign: 'center',
           lineHeight: 24
         }}>
-          Your {getSubscriptionLabel(subscriptionType)} subscription has been successfully activated. You now have access to all premium features.
+          Your {planLabel} subscription has been successfully activated. You now have access to all premium features.
         </Text>
 
         {/* Benefits */}
