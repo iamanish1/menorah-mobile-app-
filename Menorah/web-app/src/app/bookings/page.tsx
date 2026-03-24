@@ -10,12 +10,13 @@ import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
+import AppLayout from '@/components/layout/AppLayout';
 import styles from './page.module.css';
 
 export default function BookingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -138,53 +139,8 @@ export default function BookingsPage() {
   ];
 
   return (
-    <div className={styles.container}>
-      <nav className={styles.nav}>
-        <div className={styles.navContainer}>
-          <div className={styles.navContent}>
-            <div className={styles.navLeft}>
-              <Link href="/dashboard" className={styles.navBrand}>
-                <div className={styles.navLogo}>
-                  <span className={styles.navLogoText}>M</span>
-                </div>
-                <h1 className={styles.navTitle}>Menorah Counselor</h1>
-              </Link>
-              <div className={styles.navLinks}>
-                <Link href="/dashboard" className={styles.navLink}>
-                  Dashboard
-                </Link>
-                <Link href="/bookings" className={`${styles.navLink} ${styles.navLinkActive}`}>
-                  Bookings
-                </Link>
-                <Link href="/chat" className={styles.navLink}>
-                  Chat
-                </Link>
-              </div>
-            </div>
-            <div className={styles.navRight}>
-              <div className={styles.userInfo}>
-                <p className={styles.userName}>{user?.firstName} {user?.lastName}</p>
-                <p className={styles.userRole}>Counsellor</p>
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={logout} 
-                style={{ 
-                  background: 'rgba(255,255,255,0.15)', 
-                  color: 'white', 
-                  borderColor: 'rgba(255,255,255,0.3)',
-                  fontWeight: 'var(--font-weight-semibold)'
-                }}
-              >
-                Logout
-              </Button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className={styles.main}>
+    <AppLayout>
+      <div>
         <div className={styles.header}>
           <h2 className={styles.headerTitle}>Bookings Management</h2>
           <p className={styles.headerSubtitle}>View and manage all your bookings</p>
@@ -433,7 +389,7 @@ export default function BookingsPage() {
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

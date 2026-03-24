@@ -1,375 +1,221 @@
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 
+// ─── Initialisation ────────────────────────────────────────────────────────
+let initialised = false;
+
+const initSendGrid = () => {
+  if (initialised) return true;
+  if (!process.env.SENDGRID_API_KEY) {
+    console.error('❌ SENDGRID_API_KEY is not set. Email sending is disabled.');
+    return false;
+  }
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  initialised = true;
+  return true;
+};
+
+const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@menorahhealth.app';
+const FROM_NAME  = 'Menorah Health';
+
+// ─── Shared send helper ────────────────────────────────────────────────────
+const sendEmail = async (to, subject, html) => {
+  if (!initSendGrid()) return false;
+  try {
+    await sgMail.send({ from: { email: FROM_EMAIL, name: FROM_NAME }, to, subject, html });
+    console.log(`✅ Email sent via SendGrid to: ${to}`);
+    return true;
+  } catch (error) {
+    const body = error.response?.body;
+    console.error('❌ SendGrid error:', body ?? error.message);
+    return false;
+  }
+};
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
 const buildPasswordResetUrl = (token) => {
   const configuredTemplate = process.env.PASSWORD_RESET_URL_TEMPLATE?.trim();
-  const configuredBaseUrl = process.env.PASSWORD_RESET_BASE_URL?.trim();
-  const apiBaseUrl = process.env.API_BASE_URL?.trim();
-  const appScheme = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
+  const configuredBaseUrl  = process.env.PASSWORD_RESET_BASE_URL?.trim();
+  const apiBaseUrl         = process.env.API_BASE_URL?.trim();
+  const appScheme          = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
 
   if (configuredTemplate) {
     return configuredTemplate.includes('{token}')
       ? configuredTemplate.replace('{token}', encodeURIComponent(token))
       : `${configuredTemplate.replace(/\/+$/, '')}?token=${encodeURIComponent(token)}`;
   }
-
   if (configuredBaseUrl) {
-    const separator = configuredBaseUrl.includes('?') ? '&' : '?';
-    return `${configuredBaseUrl}${separator}token=${encodeURIComponent(token)}`;
+    const sep = configuredBaseUrl.includes('?') ? '&' : '?';
+    return `${configuredBaseUrl}${sep}token=${encodeURIComponent(token)}`;
   }
-
   if (apiBaseUrl && !/localhost|127\.0\.0\.1/i.test(apiBaseUrl)) {
-    const normalizedApiBaseUrl = apiBaseUrl.replace(/\/+$/, '').replace(/\/api$/i, '');
-    return `${normalizedApiBaseUrl}/api/auth/reset-password?token=${encodeURIComponent(token)}`;
+    const base = apiBaseUrl.replace(/\/+$/, '').replace(/\/api$/i, '');
+    return `${base}/api/auth/reset-password?token=${encodeURIComponent(token)}`;
   }
-
-  const separator = appScheme.includes('?') ? '&' : '?';
-  return `${appScheme}${separator}token=${encodeURIComponent(token)}`;
+  const sep = appScheme.includes('?') ? '&' : '?';
+  return `${appScheme}${sep}token=${encodeURIComponent(token)}`;
 };
 
-// Create transporter
-const createTransporter = () => {
-  // Validate SMTP configuration
-  if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.error('❌ SMTP configuration is missing!');
-    console.error('Missing variables:', {
-      SMTP_HOST: !process.env.SMTP_HOST ? 'MISSING' : 'OK',
-      SMTP_PORT: !process.env.SMTP_PORT ? 'MISSING' : 'OK',
-      SMTP_USER: !process.env.SMTP_USER ? 'MISSING' : 'OK',
-      SMTP_PASS: !process.env.SMTP_PASS ? 'MISSING' : 'OK',
-      EMAIL_FROM: !process.env.EMAIL_FROM ? 'MISSING' : 'OK'
-    });
-    throw new Error('SMTP configuration is missing');
-  }
+// ─── Shared HTML wrapper ────────────────────────────────────────────────────
+const layout = (content) => `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;max-width:600px;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#3d9470 0%,#2d7055 100%);padding:28px 32px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:24px;letter-spacing:0.5px;">Menorah Health</h1>
+            <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px;">Your Mental Wellness Partner</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;">
+            ${content}
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #e5e7eb;">
+            <p style="color:#9ca3af;font-size:12px;margin:0;">
+              © ${new Date().getFullYear()} Menorah Health. All rights reserved.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 
-  const port = parseInt(process.env.SMTP_PORT);
-  const isSecure = port === 465;
-  const useTLS = port === 587;
-
-  console.log('📧 Creating SMTP transporter with config:', {
-    host: process.env.SMTP_HOST,
-    port: port,
-    secure: isSecure,
-    tls: useTLS,
-    user: process.env.SMTP_USER,
-    from: process.env.EMAIL_FROM
-  });
-
-  const transporterConfig = {
-    host: process.env.SMTP_HOST,
-    port: port,
-    secure: isSecure, // true for 465, false for other ports
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    },
-    // Connection timeout and retry options
-    connectionTimeout: 15000, // 15 seconds
-    greetingTimeout: 15000,
-    socketTimeout: 15000,
-    // TLS options for port 587
-    ...(useTLS && {
-      requireTLS: true,
-      tls: {
-        rejectUnauthorized: false // Allow self-signed certificates in development
-      }
-    })
-  };
-
-  return nodemailer.createTransporter(transporterConfig);
-};
-
-// Send verification email
+// ─── Email: Verification code ──────────────────────────────────────────────
 const sendVerificationEmail = async (email, code) => {
-  let transporter;
-  try {
-    console.log('📧 Attempting to send verification email...');
-    console.log('Recipient:', email);
-    console.log('Verification code:', code);
-    
-    transporter = createTransporter();
-    
-    // Test connection first (but don't fail if it doesn't work)
-    try {
-      await transporter.verify();
-      console.log('✅ SMTP connection verified successfully');
-    } catch (verifyError) {
-      console.warn('⚠️ SMTP verification failed, but continuing anyway:', verifyError.message);
-      // Continue anyway - some SMTP servers don't support verify()
-    }
-    
-    const mailOptions = {
-      from: process.env.EMAIL_FROM || process.env.SMTP_USER,
-      to: email,
-      subject: 'Verify Your Email - Menorah Health',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; text-align: center;">
-            <h1 style="color: white; margin: 0;">Menorah Health</h1>
-          </div>
-          
-          <div style="padding: 30px; background: #f9f9f9;">
-            <h2 style="color: #333; margin-bottom: 20px;">Welcome to Menorah Health!</h2>
-            
-            <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              Thank you for registering with Menorah Health. To complete your registration and start your wellness journey, please verify your email address using the code below.
-            </p>
-            
-            <div style="text-align: center; margin: 30px 0;">
-              <div style="background: white; padding: 20px; border-radius: 10px; display: inline-block; border: 2px solid #667eea;">
-                <p style="color: #667eea; font-size: 36px; font-weight: bold; letter-spacing: 8px; margin: 0; font-family: 'Courier New', monospace;">
-                  ${code}
-                </p>
-              </div>
-            </div>
-            
-            <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              Enter this 6-digit code in the Menorah Health app to verify your email address.
-            </p>
-            
-            <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              <strong>This code will expire in 10 minutes</strong> for security reasons.
-            </p>
-            
-            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-            
-            <p style="color: #999; font-size: 14px; text-align: center;">
-              If you didn't create an account with Menorah Health, please ignore this email.
-            </p>
-          </div>
-        </div>
-      `
-    };
-
-    console.log('📤 Sending email...');
-    const info = await transporter.sendMail(mailOptions);
-    
-    console.log('✅ Verification email sent successfully!');
-    console.log('Message ID:', info.messageId);
-    console.log('Response:', info.response);
-    console.log('Email sent to:', email);
-    
-    return true;
-  } catch (error) {
-    console.error('❌ Error sending verification email:');
-    console.error('Error message:', error.message);
-    console.error('Error code:', error.code);
-    console.error('Error command:', error.command);
-    console.error('Error response:', error.response);
-    
-    // Provide specific error messages for common issues
-    if (error.code === 'EAUTH') {
-      console.error('');
-      console.error('🔐 SMTP AUTHENTICATION FAILED');
-      console.error('This usually means:');
-      console.error('  1. Your SMTP_USER or SMTP_PASS is incorrect');
-      console.error('  2. For Gmail: You need to use an App Password, not your regular password');
-      console.error('  3. For Gmail: Enable 2-factor authentication and generate an App Password');
-      console.error('');
-      console.error('Gmail App Password setup:');
-      console.error('  1. Go to https://myaccount.google.com/apppasswords');
-      console.error('  2. Generate a new App Password');
-      console.error('  3. Use that 16-character password as SMTP_PASS');
-    } else if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT') {
-      console.error('');
-      console.error('🔌 SMTP CONNECTION FAILED');
-      console.error('This usually means:');
-      console.error('  1. Your SMTP_HOST is incorrect');
-      console.error('  2. Your SMTP_PORT is incorrect');
-      console.error('  3. Firewall is blocking the connection');
-      console.error('  4. Check your internet connection');
-    } else if (error.code === 'EENVELOPE') {
-      console.error('');
-      console.error('✉️ EMAIL ENVELOPE ERROR');
-      console.error('This usually means:');
-      console.error('  1. EMAIL_FROM is missing or invalid');
-      console.error('  2. Recipient email address is invalid');
-    } else {
-      console.error('');
-      console.error('🔍 Full error stack:', error.stack);
-    }
-    
-    return false;
-  }
+  console.log(`📧 Sending verification email to ${email} (code: ${code})`);
+  const html = layout(`
+    <h2 style="color:#111827;margin:0 0 16px;">Welcome to Menorah Health!</h2>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">
+      Thank you for signing up. Enter the code below to verify your email address and complete your registration.
+    </p>
+    <div style="text-align:center;margin:32px 0;">
+      <div style="display:inline-block;background:#f0fdf4;border:2px solid #3d9470;border-radius:12px;padding:20px 40px;">
+        <p style="color:#3d9470;font-size:40px;font-weight:700;letter-spacing:12px;margin:0;font-family:'Courier New',monospace;">
+          ${code}
+        </p>
+      </div>
+    </div>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;">
+      Enter this 6-digit code in the app to verify your email address.
+      <strong>It expires in 10 minutes.</strong>
+    </p>
+    <p style="color:#9ca3af;font-size:13px;margin:0;">
+      If you didn't create a Menorah Health account, you can safely ignore this email.
+    </p>
+  `);
+  return sendEmail(email, 'Verify Your Email – Menorah Health', html);
 };
 
-// Send password reset email
+// ─── Email: Password reset ─────────────────────────────────────────────────
 const sendPasswordResetEmail = async (email, token) => {
-  try {
-    const transporter = createTransporter();
-    const resetUrl = buildPasswordResetUrl(token);
-    
-    const mailOptions = {
-      from: process.env.EMAIL_FROM || process.env.SMTP_USER,
-      to: email,
-      subject: 'Reset Your Password - Menorah Health',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; text-align: center;">
-            <h1 style="color: white; margin: 0;">Menorah Health</h1>
-          </div>
-          
-          <div style="padding: 30px; background: #f9f9f9;">
-            <h2 style="color: #333; margin-bottom: 20px;">Password Reset Request</h2>
-            
-            <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              We received a request to reset your password for your Menorah Health account. Tap the button below to open the app and create a new password.
-            </p>
-            
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetUrl}" 
-                 style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                        color: white; 
-                        padding: 15px 30px; 
-                        text-decoration: none; 
-                        border-radius: 5px; 
-                        display: inline-block;
-                        font-weight: bold;">
-                Reset Password
-              </a>
-            </div>
-            
-            <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              If the button doesn't work, copy and paste this link into your phone browser:
-            </p>
-            
-            <p style="color: #667eea; word-break: break-all; margin-bottom: 20px;">
-              ${resetUrl}
-            </p>
-            
-            <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              This link will expire in 10 minutes for security reasons.
-            </p>
-            
-            <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              If you didn't request a password reset, please ignore this email. Your password will remain unchanged.
-            </p>
-            
-            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-            
-            <p style="color: #999; font-size: 14px; text-align: center;">
-              For security reasons, this link can only be used once.
-            </p>
-          </div>
-        </div>
-      `
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Password reset email sent:', info.messageId);
-    return true;
-  } catch (error) {
-    console.error('Error sending password reset email:', error);
-    return false;
-  }
+  const resetUrl = buildPasswordResetUrl(token);
+  const html = layout(`
+    <h2 style="color:#111827;margin:0 0 16px;">Password Reset Request</h2>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">
+      We received a request to reset your Menorah Health account password.
+      Tap the button below to open the app and create a new password.
+    </p>
+    <div style="text-align:center;margin:32px 0;">
+      <a href="${resetUrl}"
+         style="background:#3d9470;color:#fff;padding:14px 32px;text-decoration:none;
+                border-radius:8px;display:inline-block;font-weight:600;font-size:15px;">
+        Reset Password
+      </a>
+    </div>
+    <p style="color:#6b7280;font-size:13px;margin:0 0 8px;">
+      If the button doesn't work, copy and paste this link into your browser:
+    </p>
+    <p style="color:#3d9470;font-size:13px;word-break:break-all;margin:0 0 24px;">${resetUrl}</p>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 8px;">
+      This link expires in <strong>10 minutes</strong> and can only be used once.
+    </p>
+    <p style="color:#9ca3af;font-size:13px;margin:0;">
+      If you didn't request a password reset, your password is safe — no action needed.
+    </p>
+  `);
+  return sendEmail(email, 'Reset Your Password – Menorah Health', html);
 };
 
-// Send booking confirmation email
+// ─── Email: Booking confirmation ───────────────────────────────────────────
 const sendBookingConfirmationEmail = async (email, bookingDetails) => {
-  try {
-    const transporter = createTransporter();
-    
-    const mailOptions = {
-      from: process.env.EMAIL_FROM,
-      to: email,
-      subject: 'Booking Confirmed - Menorah Health',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; text-align: center;">
-            <h1 style="color: white; margin: 0;">Menorah Health</h1>
-          </div>
-          
-          <div style="padding: 30px; background: #f9f9f9;">
-            <h2 style="color: #333; margin-bottom: 20px;">Booking Confirmed!</h2>
-            
-            <div style="background: white; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-              <h3 style="color: #333; margin-bottom: 15px;">Session Details</h3>
-              <p><strong>Date:</strong> ${new Date(bookingDetails.scheduledAt).toLocaleDateString()}</p>
-              <p><strong>Time:</strong> ${new Date(bookingDetails.scheduledAt).toLocaleTimeString()}</p>
-              <p><strong>Duration:</strong> ${bookingDetails.sessionDuration} minutes</p>
-              <p><strong>Type:</strong> ${bookingDetails.sessionType}</p>
-              <p><strong>Counsellor:</strong> ${bookingDetails.counsellorName}</p>
-            </div>
-            
-            <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              Your session has been confirmed. Please join the session 5 minutes before the scheduled time.
-            </p>
-            
-            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-            
-            <p style="color: #999; font-size: 14px; text-align: center;">
-              Need to reschedule? Please contact us at least 24 hours before your session.
-            </p>
-          </div>
-        </div>
-      `
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Booking confirmation email sent:', info.messageId);
-    return true;
-  } catch (error) {
-    console.error('Error sending booking confirmation email:', error);
-    return false;
-  }
+  const { scheduledAt, sessionDuration, sessionType, counsellorName } = bookingDetails;
+  const dateStr = new Date(scheduledAt).toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const timeStr = new Date(scheduledAt).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+  const html = layout(`
+    <h2 style="color:#111827;margin:0 0 8px;">Booking Confirmed ✓</h2>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">
+      Great news! Your session has been confirmed. Here are your session details:
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin:0 0 24px;">
+      <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+        <span style="color:#9ca3af;font-size:13px;">Counsellor</span><br>
+        <strong style="color:#111827;">${counsellorName}</strong>
+      </td></tr>
+      <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+        <span style="color:#9ca3af;font-size:13px;">Date &amp; Time</span><br>
+        <strong style="color:#111827;">${dateStr} at ${timeStr}</strong>
+      </td></tr>
+      <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+        <span style="color:#9ca3af;font-size:13px;">Duration</span><br>
+        <strong style="color:#111827;">${sessionDuration} minutes</strong>
+      </td></tr>
+      <tr><td style="padding:16px 20px;">
+        <span style="color:#9ca3af;font-size:13px;">Session Type</span><br>
+        <strong style="color:#111827;text-transform:capitalize;">${sessionType}</strong>
+      </td></tr>
+    </table>
+    <p style="color:#6b7280;font-size:13px;margin:0;">
+      Please join your session 5 minutes early. Need to cancel? You can do so at least 24 hours before your session.
+    </p>
+  `);
+  return sendEmail(email, 'Booking Confirmed – Menorah Health', html);
 };
 
-// Send session reminder email
+// ─── Email: Session reminder ───────────────────────────────────────────────
 const sendSessionReminderEmail = async (email, sessionDetails) => {
-  try {
-    const transporter = createTransporter();
-    
-    const mailOptions = {
-      from: process.env.EMAIL_FROM,
-      to: email,
-      subject: 'Session Reminder - Menorah Health',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; text-align: center;">
-            <h1 style="color: white; margin: 0;">Menorah Health</h1>
-          </div>
-          
-          <div style="padding: 30px; background: #f9f9f9;">
-            <h2 style="color: #333; margin-bottom: 20px;">Session Reminder</h2>
-            
-            <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              This is a friendly reminder about your upcoming session with Menorah Health.
-            </p>
-            
-            <div style="background: white; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-              <h3 style="color: #333; margin-bottom: 15px;">Session Details</h3>
-              <p><strong>Date:</strong> ${new Date(sessionDetails.scheduledAt).toLocaleDateString()}</p>
-              <p><strong>Time:</strong> ${new Date(sessionDetails.scheduledAt).toLocaleTimeString()}</p>
-              <p><strong>Duration:</strong> ${sessionDetails.sessionDuration} minutes</p>
-              <p><strong>Type:</strong> ${sessionDetails.sessionType}</p>
-              <p><strong>Counsellor:</strong> ${sessionDetails.counsellorName}</p>
-            </div>
-            
-            <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-              Please ensure you have a stable internet connection and are in a quiet, private space for your session.
-            </p>
-            
-            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-            
-            <p style="color: #999; font-size: 14px; text-align: center;">
-              If you need to reschedule, please contact us immediately.
-            </p>
-          </div>
-        </div>
-      `
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Session reminder email sent:', info.messageId);
-    return true;
-  } catch (error) {
-    console.error('Error sending session reminder email:', error);
-    return false;
-  }
+  const { scheduledAt, sessionDuration, sessionType, counsellorName } = sessionDetails;
+  const dateStr = new Date(scheduledAt).toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const timeStr = new Date(scheduledAt).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+  const html = layout(`
+    <h2 style="color:#111827;margin:0 0 8px;">Session Reminder</h2>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">
+      This is a friendly reminder about your upcoming Menorah Health session.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin:0 0 24px;">
+      <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+        <span style="color:#9ca3af;font-size:13px;">Counsellor</span><br>
+        <strong style="color:#111827;">${counsellorName}</strong>
+      </td></tr>
+      <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+        <span style="color:#9ca3af;font-size:13px;">Date &amp; Time</span><br>
+        <strong style="color:#111827;">${dateStr} at ${timeStr}</strong>
+      </td></tr>
+      <tr><td style="padding:16px 20px;">
+        <span style="color:#9ca3af;font-size:13px;">Session Type</span><br>
+        <strong style="color:#111827;text-transform:capitalize;">${sessionType} · ${sessionDuration} min</strong>
+      </td></tr>
+    </table>
+    <p style="color:#6b7280;font-size:13px;margin:0;">
+      Please ensure you have a stable internet connection and are in a quiet, private space.
+      If you need to reschedule, please contact us immediately.
+    </p>
+  `);
+  return sendEmail(email, 'Session Reminder – Menorah Health', html);
 };
 
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendBookingConfirmationEmail,
-  sendSessionReminderEmail
+  sendSessionReminderEmail,
 };

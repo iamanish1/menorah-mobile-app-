@@ -281,9 +281,49 @@ router.post('/room/:bookingId/join', [
       });
     }
 
-    // If session is confirmed, start it
+    // Only the counsellor can start the session (move confirmed → in-progress).
+    // A user joining while the session is still 'confirmed' means the counsellor
+    // has not started yet — return a clear error so the frontend shows a waiting room.
     if (booking.status === 'confirmed') {
-      await booking.startSession();
+      if (isCounsellor) {
+        await booking.startSession();
+
+        // Create video room if needed
+        if (!booking.videoCall.roomId && booking.sessionType === 'video') {
+          const roomId = `menorah-${booking._id}`;
+          booking.videoCall.roomId = roomId;
+          booking.videoCall.roomUrl = `${process.env.JITSI_BASE_URL}/${roomId}`;
+          await booking.save();
+        }
+
+        // Notify user that session has started
+        if (req.app.get('io')) {
+          const io = req.app.get('io');
+          const counsellorName = booking.counsellor && booking.counsellor.user
+            ? `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`
+            : 'Your Counselor';
+
+          io.to(`user_${booking.user._id}`).emit('session_started', {
+            bookingId: booking._id.toString(),
+            status: 'in-progress',
+            sessionType: booking.sessionType,
+            counsellorName,
+            scheduledAt: booking.scheduledAt.toISOString(),
+            sessionDuration: booking.sessionDuration
+          });
+
+          io.to(`user_${booking.user._id}`).emit('booking_status_changed', {
+            bookingId: booking._id.toString(),
+            status: 'in-progress'
+          });
+        }
+      } else {
+        // User tried to join but counsellor hasn't started yet
+        return res.status(400).json({
+          success: false,
+          message: 'Session has not been started by the counsellor yet'
+        });
+      }
     }
 
     // If video room doesn't exist, create it
@@ -387,9 +427,20 @@ router.post('/room/:bookingId/leave', [
       });
     }
 
-    // If session is in progress, complete it
-    if (booking.status === 'in-progress') {
+    // Only the counsellor completing the session marks it as done.
+    // A user leaving the call should never complete the session — they may
+    // reconnect, or the counsellor may still be in the call.
+    if (booking.status === 'in-progress' && isCounsellor) {
       await booking.complete();
+
+      // Notify user that session has ended
+      if (req.app.get('io')) {
+        const io = req.app.get('io');
+        io.to(`user_${booking.user._id}`).emit('booking_status_changed', {
+          bookingId: booking._id.toString(),
+          status: 'completed'
+        });
+      }
     }
 
     res.json({
@@ -478,19 +529,23 @@ router.post('/room/:bookingId/recording', [
   }
 });
 
-// Helper function to generate Jitsi JWT token
+// Helper function to generate Jitsi JWT token.
+// Returns null when JITSI_APP_ID / JITSI_APP_SECRET are not configured —
+// the public meet.jit.si server works without JWT authentication.
 const generateJitsiToken = (roomId, userId) => {
+  const appId     = process.env.JITSI_APP_ID;
+  const appSecret = process.env.JITSI_APP_SECRET;
+
+  if (!appId || !appSecret) return null;
+
   const now = Math.floor(Date.now() / 1000);
   const exp = now + (60 * 60); // 1 hour
 
-  const header = {
-    alg: 'HS256',
-    typ: 'JWT'
-  };
+  const header = { alg: 'HS256', typ: 'JWT' };
 
   const payload = {
     aud: 'jitsi',
-    iss: process.env.JITSI_APP_ID,
+    iss: appId,
     sub: process.env.JITSI_BASE_URL,
     room: roomId,
     context: {
@@ -500,15 +555,15 @@ const generateJitsiToken = (roomId, userId) => {
         moderator: false
       }
     },
-    exp: exp,
+    exp,
     nbf: now
   };
 
-  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const encodedHeader  = Buffer.from(JSON.stringify(header)).toString('base64url');
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  
+
   const signature = require('crypto')
-    .createHmac('sha256', process.env.JITSI_APP_SECRET)
+    .createHmac('sha256', appSecret)
     .update(`${encodedHeader}.${encodedPayload}`)
     .digest('base64url');
 

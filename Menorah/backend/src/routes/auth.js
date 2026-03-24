@@ -71,14 +71,12 @@ router.post('/register', [
     }
     console.log('✅ User does not exist, proceeding...');
 
-    // Generate verification codes (6-digit codes for both email and phone)
-    console.log('🔐 Generating verification codes...');
-    const emailVerificationToken = crypto.randomInt(100000, 999999).toString();
+    // Generate SMS OTP only — email is auto-verified, no email OTP needed
+    console.log('🔐 Generating SMS OTP...');
     const phoneVerificationToken = crypto.randomInt(100000, 999999).toString();
-    console.log('   Email code:', emailVerificationToken);
-    console.log('   Phone code:', phoneVerificationToken);
+    console.log('   SMS OTP code:', phoneVerificationToken);
 
-    // Create user
+    // Create user — email is pre-verified (we use SMS OTP as the single factor)
     console.log('👤 Creating user in database...');
     const user = new User({
       firstName,
@@ -88,39 +86,23 @@ router.post('/register', [
       password,
       dateOfBirth,
       gender,
-      emailVerificationToken,
+      isEmailVerified: true,      // auto-verified; SMS OTP is the single verification
       phoneVerificationToken
     });
 
     await user.save();
     console.log('✅ User created successfully with ID:', user._id);
 
-    // Send verification emails/SMS
-    console.log('\n📧 ===== SENDING VERIFICATION EMAIL =====');
-    console.log('Recipient email:', user.email);
-    console.log('Verification code:', emailVerificationToken);
-    
+    // Send SMS OTP
+    console.log('\n📱 ===== SENDING SMS OTP =====');
     try {
-      const emailSent = await sendVerificationEmail(user.email, emailVerificationToken);
-      if (emailSent) {
-        console.log('✅ Email sent successfully!');
-      } else {
-        console.error('❌ Email sending returned false - check SMTP configuration');
-      }
-    } catch (emailError) {
-      console.error('❌ Exception caught while sending email:', emailError);
-      console.error('Error stack:', emailError.stack);
-    }
-    
-    console.log('\n📱 ===== SENDING SMS =====');
-    try {
-      await sendSMS(user.phone, `Your verification code is: ${phoneVerificationToken}`);
-      console.log('✅ SMS sent successfully!');
+      await sendSMS(user.phone, `Your Menorah Health verification code is: ${phoneVerificationToken}. Valid for 10 minutes.`);
+      console.log('✅ SMS OTP sent successfully!');
     } catch (smsError) {
-      console.error('❌ Error sending SMS:', smsError.message);
+      console.error('❌ Error sending SMS OTP:', smsError.message);
       // Don't fail registration if SMS fails
     }
-    
+
     console.log('\n✅ ===== REGISTRATION COMPLETE =====\n');
 
     // Generate token
@@ -128,7 +110,7 @@ router.post('/register', [
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully. Please verify your email and phone.',
+      message: 'User registered successfully. Please verify your phone number.',
       data: {
         user: {
           id: user._id,
@@ -385,6 +367,48 @@ router.post('/resend-email-verification', [
       success: false,
       message: 'Internal server error'
     });
+  }
+});
+
+// @route   POST /api/auth/resend-otp
+// @desc    Resend SMS OTP for phone verification
+// @access  Public
+router.post('/resend-otp', [
+  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      // Return success to avoid user enumeration
+      return res.json({ success: true, message: 'If an account exists, a new OTP has been sent.' });
+    }
+
+    if (user.isPhoneVerified) {
+      return res.status(400).json({ success: false, message: 'Phone number is already verified' });
+    }
+
+    const phoneVerificationToken = crypto.randomInt(100000, 999999).toString();
+    user.phoneVerificationToken = phoneVerificationToken;
+    await user.save();
+
+    try {
+      await sendSMS(user.phone, `Your Menorah Health verification code is: ${phoneVerificationToken}. Valid for 10 minutes.`);
+      console.log('✅ OTP resent to:', user.phone);
+    } catch (smsError) {
+      console.error('❌ Error resending OTP:', smsError.message);
+      return res.status(500).json({ success: false, message: 'Failed to send OTP. Please try again.' });
+    }
+
+    res.json({ success: true, message: 'OTP sent successfully' });
+  } catch (error) {
+    console.error('Resend OTP error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 

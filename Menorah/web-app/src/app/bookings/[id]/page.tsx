@@ -11,12 +11,13 @@ import ScheduleModal from '@/components/Calendar/ScheduleModal';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
+import AppLayout from '@/components/layout/AppLayout';
 import styles from './page.module.css';
 
 export default function BookingDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [booking, setBooking] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -198,50 +199,8 @@ export default function BookingDetailPage() {
   const canComplete = booking.status === 'in-progress';
 
   return (
-    <div className={styles.container}>
-      <nav className={styles.nav}>
-        <div className={styles.navContainer}>
-          <div className={styles.navContent}>
-            <div className={styles.navLeft}>
-              <Link href="/dashboard" className={styles.navBrand}>
-                <div className={styles.navLogo}>
-                  <span className={styles.navLogoText}>M</span>
-                </div>
-                <h1 className={styles.navTitle}>Menorah Counselor</h1>
-              </Link>
-              <div className={styles.navLinks}>
-                <Link href="/dashboard" className={styles.navLink}>
-                  Dashboard
-                </Link>
-                <Link href="/bookings" className={`${styles.navLink} ${styles.navLinkActive}`}>
-                  Bookings
-                </Link>
-              </div>
-            </div>
-            <div className={styles.navRight}>
-              <div className={styles.userInfo}>
-                <p className={styles.userName}>{user?.firstName} {user?.lastName}</p>
-                <p className={styles.userRole}>Counsellor</p>
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={logout} 
-                style={{ 
-                  background: 'rgba(255,255,255,0.15)', 
-                  color: 'white', 
-                  borderColor: 'rgba(255,255,255,0.3)',
-                  fontWeight: 'var(--font-weight-semibold)'
-                }}
-              >
-                Logout
-              </Button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className={styles.main}>
+    <AppLayout>
+      <div>
         {error && (
           <Card padding="md" className={styles.errorCard}>
             <div className={styles.errorContent}>
@@ -459,7 +418,7 @@ export default function BookingDetailPage() {
             </div>
           </div>
         )}
-      </main>
+      </div>
 
       {showScheduleModal && booking && (
         <ScheduleModal
@@ -469,6 +428,6 @@ export default function BookingDetailPage() {
           loading={actionLoading === 'schedule'}
         />
       )}
-    </div>
+    </AppLayout>
   );
 }

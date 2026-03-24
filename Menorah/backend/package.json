@@ -20,6 +20,7 @@
   "author": "Menorah Health Team",
   "license": "MIT",
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.41.0",
     "compression": "^1.7.4",
@@ -36,7 +37,6 @@
     "mongoose": "^8.0.3",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
-    "nodemailer": "^6.9.7",
     "rate-limiter-flexible": "^2.4.2",
     "razorpay": "^2.8.6",
     "socket.io": "^4.7.4",

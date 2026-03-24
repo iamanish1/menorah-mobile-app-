@@ -7,6 +7,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { api } from '@/lib/api';
 import { format } from 'date-fns';
 import Link from 'next/link';
+import AppLayout from '@/components/layout/AppLayout';
 import styles from './page.module.css';
 
 interface Message {
@@ -25,7 +26,7 @@ export default function ChatThreadPage() {
   const router = useRouter();
   const params = useParams();
   const roomId = params?.roomId as string;
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -226,39 +227,17 @@ export default function ChatThreadPage() {
   };
 
   return (
-    <div className={styles.container}>
-      <nav className={styles.nav}>
-        <div className={styles.navContainer}>
-          <div className={styles.navLeft}>
-            <Link href="/dashboard" className={styles.navLink}>
-              Dashboard
+    <AppLayout>
+      <div className={styles.chatWrapper}>
+        <div className={styles.chatContainer}>
+          <div className={styles.chatHeader}>
+            <Link href="/chat" className={styles.backButton}>
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to Chats
             </Link>
-            <Link href="/bookings" className={styles.navLink}>
-              Bookings
-            </Link>
-            <Link href="/chat" className={`${styles.navLink} ${styles.active}`}>
-              Chat
-            </Link>
-          </div>
-          <div className={styles.navRight}>
-            {user && (
-              <span className={styles.userInfo}>
-                {user.firstName} {user.lastName}
-              </span>
-            )}
-            <button onClick={logout} className={styles.logoutBtn}>
-              Logout
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      <div className={styles.chatContainer}>
-        <div className={styles.chatHeader}>
-          <Link href="/chat" className={styles.backButton}>
-            ← Back
-          </Link>
-          <div className={styles.chatHeaderInfo}>
+            <div className={styles.chatHeaderInfo}>
             {userImage ? (
               <img src={userImage} alt={userName} className={styles.headerAvatar} />
             ) : (
@@ -349,8 +328,9 @@ export default function ChatThreadPage() {
             {sending ? 'Sending...' : 'Send'}
           </button>
         </div>
+        </div>
       </div>
-    </div>
+    </AppLayout>
   );
 }
 
