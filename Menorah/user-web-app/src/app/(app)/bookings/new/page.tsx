@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Video, MessageCircle, Headphones, ChevronRight, ArrowLeft, Calendar } from 'lucide-react';
+import { Video, MessageCircle, Headphones, ChevronRight, ArrowLeft, Calendar, Clock, User, CreditCard, ShieldCheck } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Avatar, Button, Spinner } from '@/components/ui';
 import { formatCurrency } from '@/lib/utils';
@@ -277,30 +277,84 @@ function NewBookingForm() {
 
       {/* ── Step 3: Review ── */}
       {step === 'review' && (
-        <div className="space-y-5">
-          <div className="card p-5 space-y-3">
-            <h2 className="font-semibold text-gray-900">Session summary</h2>
-            {[
-              { label: 'Session type', value: draft.sessionType.charAt(0).toUpperCase() + draft.sessionType.slice(1) },
-              { label: 'Duration',     value: `${draft.sessionDuration} minutes` },
-              { label: 'Date & Time',  value: draft.scheduledAt ? new Date(draft.scheduledAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'Not set' },
-              { label: 'Counsellor',   value: counsellor?.name ?? 'Any available' },
-              { label: 'Rate',         value: counsellor ? formatCurrency(counsellor.hourlyRate, counsellor.currency) + '/hr' : 'TBD' },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex justify-between text-sm">
-                <span className="text-gray-500">{label}</span>
-                <span className="font-medium text-gray-900">{value}</span>
+        <div className="space-y-4">
+          {/* Session details card */}
+          <div className="card overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="font-semibold text-gray-900">Session summary</h2>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {/* Session type */}
+              <div className="flex items-center gap-3 px-5 py-3.5">
+                <div className="w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+                  {draft.sessionType === 'video' ? <Video className="w-4 h-4 text-primary-600" />
+                    : draft.sessionType === 'audio' ? <Headphones className="w-4 h-4 text-primary-600" />
+                    : <MessageCircle className="w-4 h-4 text-primary-600" />}
+                </div>
+                <span className="text-sm text-gray-500 flex-1">Session type</span>
+                <span className="text-sm font-medium text-gray-900 capitalize">{draft.sessionType}</span>
               </div>
-            ))}
+              {/* Duration */}
+              <div className="flex items-center gap-3 px-5 py-3.5">
+                <div className="w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+                  <Clock className="w-4 h-4 text-primary-600" />
+                </div>
+                <span className="text-sm text-gray-500 flex-1">Duration</span>
+                <span className="text-sm font-medium text-gray-900">{draft.sessionDuration} minutes</span>
+              </div>
+              {/* Date & Time */}
+              <div className="flex items-center gap-3 px-5 py-3.5">
+                <div className="w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+                  <Calendar className="w-4 h-4 text-primary-600" />
+                </div>
+                <span className="text-sm text-gray-500 flex-1">Date &amp; Time</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {draft.scheduledAt
+                    ? new Date(draft.scheduledAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+                    : 'Not set'}
+                </span>
+              </div>
+              {/* Counsellor */}
+              <div className="flex items-center gap-3 px-5 py-3.5">
+                <div className="w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+                  <User className="w-4 h-4 text-primary-600" />
+                </div>
+                <span className="text-sm text-gray-500 flex-1">Counsellor</span>
+                <span className="text-sm font-medium text-gray-900">{counsellor?.name ?? 'Any available'}</span>
+              </div>
+            </div>
+
+            {/* Price breakdown */}
+            <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 space-y-2">
+              {counsellor && (
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>{formatCurrency(counsellor.hourlyRate, counsellor.currency)}/hr × {draft.sessionDuration} min</span>
+                  <span>{formatCurrency((counsellor.hourlyRate / 60) * draft.sessionDuration, counsellor.currency)}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                <div className="flex items-center gap-1.5">
+                  <CreditCard className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm font-semibold text-gray-700">Total due</span>
+                </div>
+                <span className="text-lg font-bold text-primary-700">
+                  {counsellor
+                    ? formatCurrency((counsellor.hourlyRate / 60) * draft.sessionDuration, counsellor.currency)
+                    : 'TBD'}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="card p-4 bg-yellow-50 border border-yellow-200">
-            <p className="text-sm text-yellow-700">
-              Payment will be collected on the next step. You can cancel for free up to 24 hours before the session.
+          {/* Trust / cancellation note */}
+          <div className="flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+            <ShieldCheck className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+            <p className="text-sm text-green-700">
+              Payment is collected on the next step. Cancel for free up to 24 hours before your session.
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 pt-1">
             <Button variant="secondary" fullWidth onClick={() => setStep('preferences')}>Back</Button>
             <Button fullWidth size="lg" loading={loading} onClick={handleBook}>
               Confirm &amp; Pay

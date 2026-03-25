@@ -95,19 +95,21 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     extra: {
       // In Expo Go on a phone, localhost points to the phone itself.
       // Set EXPO_PUBLIC_API_BASE_URL or EXPO_PUBLIC_LOCAL_IP before starting Expo.
-      API_BASE_URL: isDev
-        ? devApiBaseUrl
-        : 'https://app-api.menorahhealth.app/api',
-      
+      // All URLs are driven by env vars — no domain is hardcoded in source.
+      // In production, set EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_CHECKOUT_RETURN_URL,
+      // and EXPO_PUBLIC_JITSI_BASE_URL before building. Leaving them unset in
+      // production will surface the misconfiguration immediately at startup.
+      API_BASE_URL: configuredApiBaseUrl
+        ? configuredApiBaseUrl.replace(/\/+$/, '')
+        : (isDev ? devApiBaseUrl : undefined),
+
       // Checkout Return URL
-      CHECKOUT_RETURN_URL: isDev
-        ? `${devApiProtocol}//${devApiHost}:8081/checkout/return`
-        : 'https://menorahhealth.app/checkout/return',
-      
+      CHECKOUT_RETURN_URL: process.env.EXPO_PUBLIC_CHECKOUT_RETURN_URL?.trim()
+        || (isDev ? `${devApiProtocol}//${devApiHost}:8081/checkout/return` : undefined),
+
       // Jitsi Base URL
-      JITSI_BASE_URL: isDev
-        ? `${devApiProtocol}//${devApiHost}:8080`
-        : 'https://meet.menorahhealth.app',
+      JITSI_BASE_URL: process.env.EXPO_PUBLIC_JITSI_BASE_URL?.trim()
+        || (isDev ? `${devApiProtocol}//${devApiHost}:8080` : undefined),
       
       // EAS project configuration
       eas: {

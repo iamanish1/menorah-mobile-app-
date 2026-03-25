@@ -17,7 +17,10 @@ export function connectSocket(): Socket {
     if (socket) return socket;
   }
 
-  const url = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
+  // Derive socket URL from the API URL by stripping the /api suffix.
+  // Only NEXT_PUBLIC_API_URL needs to be set in .env — socket URL auto-follows.
+  const apiURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+  const url = process.env.NEXT_PUBLIC_SOCKET_URL || apiURL.replace(/\/api\/?$/, '');
 
   // Use polling-first so that the WebSocket upgrade is a graceful upgrade
   // instead of throwing a "websocket error" on environments where the WS

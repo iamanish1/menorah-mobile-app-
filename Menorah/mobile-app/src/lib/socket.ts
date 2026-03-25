@@ -77,10 +77,9 @@ class SocketService {
         console.warn('No authentication token found, attempting connection without auth');
       }
 
-      // Create socket connection with proper URL (Socket.IO doesn't use /api prefix)
-      const socketUrl = ENV.API_ORIGIN || ENV.API_BASE_URL || (__DEV__ 
-        ? 'http://localhost:3000' 
-        : 'https://app-api.menorahhealth.app');
+      // Socket.IO connects to the origin (no /api prefix).
+      // URL is always derived from ENV — no domain is hardcoded here.
+      const socketUrl = ENV.API_ORIGIN || ENV.API_BASE_URL?.replace(/\/api\/?$/, '') || 'http://localhost:3000';
       console.log('Connecting to Socket.IO at:', socketUrl);
       
       this.socket = io(socketUrl, {

@@ -6,9 +6,10 @@ const configIP = (Constants.expoConfig?.extra as any)?.API_BASE_URL?.match(/http
 const isWeb = Platform.OS === 'web';
 
 // Default to IP from config or localhost for web
-const DEFAULT_API_BASE_URL = configIP 
+// Fallback to localhost for dev — production URL must come from app.config.ts via EXPO_PUBLIC_API_BASE_URL.
+const DEFAULT_API_BASE_URL = configIP
   ? `http://${configIP}:3000/api`
-  : (isWeb ? 'http://localhost:3000/api' : 'https://app-api.menorahhealth.app/api');
+  : 'http://localhost:3000/api';
 
 // Get base URL from config
 const configBaseURL = (Constants.expoConfig?.extra as any)?.API_BASE_URL as string;

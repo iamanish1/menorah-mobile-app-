@@ -84,7 +84,7 @@ router.post('/', [
       }
 
       // Check counsellor availability for the scheduled time
-      const dayOfWeek = scheduledTime.toLocaleDateString('en-US', { weekday: 'lowercase' });
+      const dayOfWeek = scheduledTime.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
       const timeString = scheduledTime.toTimeString().slice(0, 5);
       const daySchedule = counsellor.availability[dayOfWeek];
 
