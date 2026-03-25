@@ -1,7 +1,6 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { authStorage } from '@/lib/auth';
 import type { User } from '@/types';
@@ -36,7 +35,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]       = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter();
 
   const refreshUser = useCallback(async () => {
     if (!authStorage.getToken()) {
@@ -82,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     await api.logout();
     setUser(null);
-    router.replace('/login');
+    window.location.replace('/login');
   };
 
   const verifyEmail = async (code: string) => {
