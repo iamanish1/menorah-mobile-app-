@@ -10,6 +10,7 @@ import { ChatProvider } from '@/state/useChat';
 import { NotificationProvider } from '@/state/useNotifications';
 import FreeSessionModal from '@/components/modals/FreeSessionModal';
 import SessionNotificationHandler from '@/components/SessionNotificationHandler';
+import UpdateBanner from '@/components/UpdateBanner';
 import subscriptionService from '@/services/subscriptionService';
 
 const queryClient = new QueryClient();
@@ -72,6 +73,7 @@ export default function App() {
                 <RootNavigator />
                 <ThemeStatusBar />
                 <SessionNotificationHandler />
+                <UpdateBanner />
                 <FreeSessionModal
                   visible={showFreeSessionModal}
                   onClose={handleCloseModal}

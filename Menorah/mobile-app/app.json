@@ -4,24 +4,26 @@
     "slug": "menorah-health-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/brand/glyph.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/brand/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#fbf3e4"
+      "backgroundColor": "#f0f9f4"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.menorah.health.app"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/brand/glyph.png",
-        "backgroundColor": "#fbf3e4"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f0f9f4"
       },
+      "package": "com.menorah.health.app",
       "statusBar": {
         "barStyle": "light-content",
         "backgroundColor": "#314830",
@@ -34,13 +36,11 @@
       }
     },
     "web": {
-      "favicon": "./assets/brand/glyph.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
     },
     "plugins": [],
     "extra": {
-      "API_BASE_URL": "http://192.168.1.2:3000/api",
-      "CHECKOUT_RETURN_URL": "http://192.168.1.2:8081/checkout/return",
-      "JITSI_BASE_URL": "http://192.168.1.2:8080",
       "eas": {
         "projectId": "d2eb3d97-6034-4f64-8c36-8479f5bb658d"
       }

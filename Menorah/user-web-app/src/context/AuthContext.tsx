@@ -13,7 +13,7 @@ interface AuthContextValue {
   register: (data: RegisterData) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
   verifyEmail: (code: string) => Promise<{ success: boolean; message?: string }>;
-  verifyPhone: (token: string) => Promise<{ success: boolean; message?: string }>;
+  verifyPhone: (phone: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   forgotPassword: (email: string) => Promise<{ success: boolean; message?: string }>;
   resetPassword: (token: string, password: string) => Promise<{ success: boolean; message?: string }>;
   updateUser: (user: User) => void;
@@ -92,8 +92,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: false, message: res.message };
   };
 
-  const verifyPhone = async (token: string) => {
-    const res = await api.verifyPhone(token);
+  const verifyPhone = async (phone: string, otp: string) => {
+    const res = await api.verifyPhone(phone, otp);
     if (res.success) {
       await refreshUser();
       return { success: true };

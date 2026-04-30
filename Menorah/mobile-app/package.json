@@ -9,7 +9,11 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "prettier": "prettier --write ."
+    "prettier": "prettier --write .",
+    "build:preview": "eas build --profile preview --platform android",
+    "build:production": "eas build --profile production --platform android",
+    "update": "eas update --branch production --message",
+    "update:preview": "eas update --branch preview --message"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -36,6 +40,7 @@
     "expo-linking": "~8.0.8",
     "expo-localization": "~17.0.7",
     "expo-status-bar": "~3.0.8",
+    "expo-updates": "~29.0.17",
     "i18next": "^25.3.6",
     "lucide-react-native": "^0.539.0",
     "postcss": "^8.4.32",
@@ -66,11 +71,13 @@
     "@expo/cli": "^54.0.15",
     "@expo/metro-runtime": "^6.1.2",
     "@react-native/eslint-config": "^0.81.0",
+    "@types/node": "^25.6.0",
     "@types/react": "~19.1.10",
     "babel-plugin-module-resolver": "^5.0.2",
     "babel-preset-expo": "^54.0.6",
     "eslint": "^8.57.1",
     "prettier": "^3.6.2",
+    "react-refresh": "^0.18.0",
     "typescript": "~5.9.2"
   },
   "private": true

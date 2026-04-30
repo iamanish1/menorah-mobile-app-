@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, ActivityIndicator, Alert, ScrollView, Platform, PermissionsAndroid } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Wifi, CheckCircle, XCircle, Video, Mic, Camera } from 'lucide-react-native';
+import { Wifi, CheckCircle, XCircle, Video, Mic, Clock } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
@@ -15,13 +15,17 @@ export default function PreCallCheck({ navigation, route }: any) {
   const [networkOk, setNetworkOk] = useState(false);
   const [micPermission, setMicPermission] = useState<boolean | null>(null);
   const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
+  const [waitingForCounsellor, setWaitingForCounsellor] = useState(false);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
 
   useEffect(() => {
     checkNetwork();
     requestPermissions();
-    // Don't pre-load video room - let join endpoint handle room creation
+    return () => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
   }, [bookingId]);
 
   const requestPermissions = async () => {
@@ -72,43 +76,89 @@ export default function PreCallCheck({ navigation, route }: any) {
   };
 
 
+  const attemptJoin = async (): Promise<boolean> => {
+    try {
+      const joinResponse = await api.joinVideoRoom(bookingId);
+      if (joinResponse.success && joinResponse.data) {
+        navigation.navigate('CallJoin', {
+          bookingId,
+          roomId: joinResponse.data.roomId,
+          roomUrl: joinResponse.data.roomUrl,
+          jitsiToken: joinResponse.data.jitsiToken,
+          sessionType: joinResponse.data.sessionType,
+          counsellorName: joinResponse.data.counsellorName,
+          userName: joinResponse.data.userName,
+        });
+        return true;
+      }
+      const msg: string = (joinResponse as any).message || '';
+      if (msg.toLowerCase().includes('not been started') || msg.toLowerCase().includes('not active')) {
+        return false; // counsellor not started yet — keep waiting
+      }
+      Alert.alert('Error', msg || 'Failed to join session. Please try again.');
+      return true; // stop polling on unexpected errors
+    } catch (error: any) {
+      const msg: string = error.response?.data?.message || error.message || '';
+      if (msg.toLowerCase().includes('not been started') || msg.toLowerCase().includes('not active')) {
+        return false;
+      }
+      Alert.alert('Error', msg || 'Failed to join session. Please try again.');
+      return true;
+    }
+  };
+
+  const schedulePoll = () => {
+    pollTimerRef.current = setTimeout(async () => {
+      const done = await attemptJoin();
+      if (!done) schedulePoll(); // keep retrying every 5s
+    }, 5000);
+  };
+
   const handleJoinSession = async () => {
     if (!networkOk) {
       Alert.alert('Network Error', 'Please check your internet connection and try again.');
       return;
     }
-
     if (!bookingId) {
       Alert.alert('Error', 'Booking ID is missing. Please try again.');
       return;
     }
 
     setLoading(true);
-    try {
-      // Join the video room - this endpoint will create the room if it doesn't exist
-      const joinResponse = await api.joinVideoRoom(bookingId);
-      
-      if (joinResponse.success && joinResponse.data) {
-        navigation.navigate('CallJoin', {
-          bookingId: bookingId,
-          roomId: joinResponse.data.roomId,
-          roomUrl: joinResponse.data.roomUrl,
-          jitsiToken: joinResponse.data.jitsiToken,
-          sessionType: joinResponse.data.sessionType,
-          counsellorName: joinResponse.data.counsellorName,
-          userName: joinResponse.data.userName
-        });
-      } else {
-        Alert.alert('Error', joinResponse.message || 'Failed to join video room. Please try again.');
-      }
-    } catch (error: any) {
-      console.error('Error joining video room:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to join video room. Please try again.';
-      Alert.alert('Error', errorMessage);
-    } finally {
-      setLoading(false);
+    const done = await attemptJoin();
+    setLoading(false);
+
+    if (!done) {
+      // Counsellor hasn't started yet — show waiting state and poll
+      setWaitingForCounsellor(true);
+      schedulePoll();
     }
   };
+
+  if (waitingForCounsellor) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Clock size={56} color={colors.primary} />
+          <Text style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 24, marginBottom: 12, textAlign: 'center' }}>
+            Waiting for Counsellor
+          </Text>
+          <Text style={{ fontSize: 15, color: colors.muted, textAlign: 'center', marginBottom: 32 }}>
+            Your counsellor hasn't started the session yet. You'll be connected automatically once they begin.
+          </Text>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Button
+            title="Cancel"
+            onPress={() => {
+              if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+              navigation.goBack();
+            }}
+            style={{ marginTop: 32, backgroundColor: colors.border }}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>

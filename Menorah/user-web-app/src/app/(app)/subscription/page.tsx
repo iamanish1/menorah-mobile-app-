@@ -96,7 +96,6 @@ export default function SubscriptionPage() {
   const { user, refreshUser } = useAuth();
   const [selected, setSelected]   = useState<Plan['type']>('monthly');
   const [paying, setPaying]       = useState(false);
-  const [payMethod, setPayMethod] = useState<'razorpay' | 'stripe'>('razorpay');
   const [error, setError]         = useState('');
   const [success, setSuccess]     = useState(false);
 
@@ -116,7 +115,7 @@ export default function SubscriptionPage() {
     const loaded = await loadRazorpay();
     if (!loaded) { setError('Failed to load payment gateway.'); setPaying(false); return; }
 
-    const res = await api.createSubscriptionCheckout(selected, 'razorpay');
+    const res = await api.createSubscriptionCheckout(selected);
     if (!res.success || !res.data?.orderId) {
       setError(res.message || 'Failed to create subscription session');
       setPaying(false);
@@ -152,17 +151,6 @@ export default function SubscriptionPage() {
     rzp.open();
   };
 
-  const handleStripe = async () => {
-    setPaying(true);
-    setError('');
-    const res = await api.createSubscriptionCheckout(selected, 'stripe');
-    if (res.success && res.data?.sessionUrl) {
-      window.location.href = res.data.sessionUrl;
-    } else {
-      setError(res.message || 'Failed to initiate Stripe checkout');
-      setPaying(false);
-    }
-  };
 
   if (success) {
     return (
@@ -263,29 +251,9 @@ export default function SubscriptionPage() {
 
       {/* Payment method & CTA */}
       <div className="max-w-sm mx-auto space-y-4">
-        <div className="card p-4 space-y-3">
-          <p className="text-sm font-medium text-gray-700">Payment method</p>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { id: 'razorpay' as const, label: 'Razorpay 🇮🇳', desc: 'UPI, Cards, Wallets' },
-              { id: 'stripe'   as const, label: 'Stripe 🌍',    desc: 'International cards' },
-            ].map(({ id, label, desc }) => (
-              <button
-                key={id}
-                onClick={() => setPayMethod(id)}
-                className={`p-3 rounded-xl border-2 text-left transition-colors
-                  ${payMethod === id ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}
-              >
-                <p className="text-sm font-medium text-gray-900">{label}</p>
-                <p className="text-xs text-gray-500">{desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
         <Button
           fullWidth size="lg" loading={paying}
-          onClick={payMethod === 'razorpay' ? handleRazorpay : handleStripe}
+          onClick={handleRazorpay}
         >
           <CreditCard className="w-5 h-5" />
           Subscribe · {formatCurrency(selectedPlan.price, selectedPlan.currency)}

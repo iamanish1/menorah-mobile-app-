@@ -102,7 +102,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     try {
       console.log('Creating subscription checkout session with:', { subscriptionType, paymentMethod });
       
-      const response = await api.createSubscriptionCheckout(subscriptionType as SubscriptionType, paymentMethod);
+      const response = await api.createSubscriptionCheckout(subscriptionType as SubscriptionType);
       
       console.log('Subscription checkout session response:', response);
       

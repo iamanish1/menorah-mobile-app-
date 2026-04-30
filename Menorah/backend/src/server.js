@@ -9,6 +9,33 @@ const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
+// ─── Startup validation ────────────────────────────────────────────────────
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 64) {
+  console.error("FATAL: JWT_SECRET is not set or is too short (minimum 64 chars). Aborting.");
+  process.exit(1);
+}
+if (!process.env.MONGODB_URI) {
+  console.error("FATAL: MONGODB_URI is not set. Aborting.");
+  process.exit(1);
+}
+if (process.env.NODE_ENV === "production") {
+  const required = [
+    "ALLOWED_ORIGINS",
+    "RAZORPAY_KEY_ID",
+    "RAZORPAY_KEY_SECRET",
+    "RAZORPAY_WEBHOOK_SECRET",
+    "MSG91_AUTH_KEY",
+    "SENDGRID_API_KEY",
+  ];
+  required.forEach((key) => {
+    if (!process.env[key]) {
+      console.error(`FATAL: Required env var ${key} is missing in production. Aborting.`);
+      process.exit(1);
+    }
+  });
+}
+// ──────────────────────────────────────────────────────────────────────────
+
 const connectDB = require("./config/database");
 const errorHandler = require("./middleware/errorHandler");
 const notFound = require("./middleware/notFound");
@@ -24,73 +51,83 @@ const chatRoutes = require("./routes/chat");
 const videoRoutes = require("./routes/video");
 
 const app = express();
-const server = createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: true, // Allow any origin (true allows all origins with credentials)
-    credentials: true,
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  },
-  path: '/socket.io/', // Explicitly set the path
-  transports: ['polling', 'websocket'], // Allow both transports
-});
-
 const PORT = process.env.PORT || 3000;
 
-// Connect to database
-connectDB();
+// ─── CORS configuration ────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 
-// CORS middleware - must be before other middleware
-// Allow any origin - configured to accept requests from anywhere
+const corsOrigin = (origin, callback) => {
+  // Allow requests with no origin (mobile apps, curl, server-to-server)
+  if (!origin) return callback(null, true);
+  if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+  callback(new Error(`CORS: origin ${origin} not allowed`));
+};
+
 const corsOptions = {
-  origin: true, // Allow any origin (true allows all origins with credentials support)
+  origin: corsOrigin,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   exposedHeaders: ["Content-Range", "X-Content-Range"],
-  maxAge: 86400, // 24 hours
+  maxAge: 86400,
 };
+// ──────────────────────────────────────────────────────────────────────────
 
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: corsOrigin,
+    credentials: true,
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  },
+  path: "/socket.io/",
+  transports: ["polling", "websocket"],
+});
+
+// Connect to database
+connectDB();
+
+// CORS + preflight
 app.use(cors(corsOptions));
-
-// Handle preflight OPTIONS requests explicitly
 app.options("*", cors(corsOptions));
 
-// Security middleware - configure helmet to work with CORS
+// Security middleware
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
     crossOriginEmbedderPolicy: false,
-    contentSecurityPolicy: false, // Disable CSP for API endpoints
+    contentSecurityPolicy: false,
   })
 );
 
-// Rate limiting - more lenient for development and authenticated users
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || (process.env.NODE_ENV === 'development' ? 1000 : 100), // Higher limit for development
-  message: "Too many requests from this IP, please try again later.",
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  // Skip rate limiting for authenticated requests in development
-  skip: (req) => {
-    // In development, skip rate limiting if Authorization header is present (authenticated request)
-    if (process.env.NODE_ENV === 'development' && req.header('Authorization')) {
-      return true;
-    }
-    return false;
-  },
-  // Use a key generator that includes user info if available
-  keyGenerator: (req) => {
-    // In development, if authenticated, use user-specific key to avoid IP-based limiting
-    if (process.env.NODE_ENV === 'development' && req.header('Authorization')) {
-      return req.header('Authorization') || req.ip;
-    }
-    return req.ip;
-  },
+// ─── Rate limiting ─────────────────────────────────────────────────────────
+// Strict limiter for auth endpoints (brute-force protection)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: "Too many requests, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
 });
-app.use("/api/", limiter);
+
+// General API limiter
+const apiLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  message: "Too many requests from this IP, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
+app.use("/api/auth/forgot-password", authLimiter);
+app.use("/api/", apiLimiter);
+// ──────────────────────────────────────────────────────────────────────────
 
 // Body parsing middleware
 app.use(express.json({ limit: "10mb" }));
@@ -127,26 +164,22 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Welcome endpoint - Public API (no authentication required)
+// Welcome endpoint
 app.get("/api/welcome", (req, res) => {
   res.status(200).json({
     success: true,
     message: "Welcome to Menorah Health API",
-    description:
-      "Your trusted platform for mental health and counseling services",
+    description: "Your trusted platform for mental health and counseling services",
     version: "1.0.0",
     timestamp: new Date().toISOString(),
     endpoints: {
       health: "/api/health",
-      welcome: "/api/welcome",
       auth: "/api/auth",
       counsellors: "/api/counsellors",
       bookings: "/api/bookings",
       chat: "/api/chat",
       video: "/api/video",
     },
-    documentation:
-      "Visit our documentation for more information about available endpoints",
   });
 });
 
@@ -163,128 +196,86 @@ app.use("/api/video", videoRoutes);
 // Socket.IO Authentication Middleware
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
-
   if (!token) {
     return next(new Error("Authentication error: Token required"));
   }
-
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     socket.userId = decoded.userId;
-    socket.userName = decoded.fullName || '';
-    socket.userRole = decoded.role || 'user';
+    socket.userName = decoded.fullName || "";
+    socket.userRole = decoded.role || "user";
     next();
   } catch (error) {
     return next(new Error("Authentication error: Invalid token"));
   }
 });
 
-// Set Socket.IO instance for chat routes (must be after io is created)
+// Set Socket.IO instance for chat routes
 chatRoutes.setSocketIO(io);
-
-// Make io accessible to routes
-app.set('io', io);
+app.set("io", io);
 
 // Socket.IO Connection Handler
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.userId} (${socket.userName})`);
 
-  // Join user to their personal room
   socket.join(`user_${socket.userId}`);
 
-  // If user is a counsellor, join counsellor room
-  if (socket.userRole === 'counsellor' || socket.userRole === 'admin') {
-    // Get counsellor ID from user
-    const Counsellor = require('./models/Counsellor');
+  if (socket.userRole === "counsellor" || socket.userRole === "admin") {
+    const Counsellor = require("./models/Counsellor");
     Counsellor.findOne({ user: socket.userId })
-      .then(counsellor => {
+      .then((counsellor) => {
         if (counsellor) {
           socket.join(`counsellor_${counsellor._id}`);
-          console.log(`Counsellor ${socket.userId} joined room: counsellor_${counsellor._id}`);
         }
       })
-      .catch(err => {
-        console.error('Error finding counsellor:', err);
-      });
+      .catch((err) => console.error("Error finding counsellor:", err));
   }
 
-  // Handle joining chat rooms
   socket.on("join_room", (roomId) => {
     socket.join(`chat_${roomId}`);
-    console.log(`User ${socket.userId} joined chat room: ${roomId}`);
-
-    // Notify others in the room
     socket.to(`chat_${roomId}`).emit("user_joined", {
       userId: socket.userId,
       userName: socket.userName,
-      roomId: roomId,
+      roomId,
       timestamp: new Date().toISOString(),
     });
   });
 
-  // Handle leaving chat rooms
   socket.on("leave_room", (roomId) => {
     socket.leave(`chat_${roomId}`);
-    console.log(`User ${socket.userId} left chat room: ${roomId}`);
-
-    // Notify others in the room
     socket.to(`chat_${roomId}`).emit("user_left", {
       userId: socket.userId,
       userName: socket.userName,
-      roomId: roomId,
+      roomId,
       timestamp: new Date().toISOString(),
     });
   });
 
-  // Handle sending messages
   socket.on("send_message", (data) => {
     const { roomId, content, type = "text" } = data;
-
     const message = {
       id: Date.now().toString(),
       senderId: socket.userId,
       senderName: socket.userName,
       content,
       type,
+      roomId,
       timestamp: new Date().toISOString(),
       status: "sent",
     };
-
-    // Broadcast message to all users in the room
     io.to(`chat_${roomId}`).emit("new_message", message);
-
-    // Send delivery confirmation to sender
-    socket.emit("message_delivered", {
-      messageId: message.id,
-      timestamp: new Date().toISOString(),
-    });
-
-    console.log(
-      `Message sent in room ${roomId} by ${socket.userName}: ${content}`
-    );
+    socket.emit("message_delivered", { messageId: message.id, timestamp: new Date().toISOString() });
   });
 
-  // Handle typing indicators
   socket.on("typing_start", (roomId) => {
-    socket.to(`chat_${roomId}`).emit("user_typing", {
-      userId: socket.userId,
-      userName: socket.userName,
-      isTyping: true,
-    });
+    socket.to(`chat_${roomId}`).emit("user_typing", { userId: socket.userId, userName: socket.userName, isTyping: true });
   });
 
   socket.on("typing_stop", (roomId) => {
-    socket.to(`chat_${roomId}`).emit("user_typing", {
-      userId: socket.userId,
-      userName: socket.userName,
-      isTyping: false,
-    });
+    socket.to(`chat_${roomId}`).emit("user_typing", { userId: socket.userId, userName: socket.userName, isTyping: false });
   });
 
-  // Handle message read receipts
-  socket.on("mark_read", (data) => {
-    const { roomId, messageId } = data;
-
+  socket.on("mark_read", ({ roomId, messageId }) => {
     socket.to(`chat_${roomId}`).emit("message_read", {
       messageId,
       readBy: socket.userId,
@@ -293,9 +284,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  // Handle online status
   socket.on("set_online_status", (isOnline) => {
-    // Broadcast online status to relevant users
     socket.broadcast.emit("user_status_changed", {
       userId: socket.userId,
       userName: socket.userName,
@@ -304,11 +293,8 @@ io.on("connection", (socket) => {
     });
   });
 
-  // Handle disconnection
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.userId} (${socket.userName})`);
-
-    // Broadcast offline status
     socket.broadcast.emit("user_status_changed", {
       userId: socket.userId,
       userName: socket.userName,
@@ -326,52 +312,38 @@ app.use(errorHandler);
 server.listen(PORT, () => {
   console.log(`🚀 Menorah Health API server running on port ${PORT}`);
   console.log(`📱 Environment: ${process.env.NODE_ENV}`);
-  console.log(
-    `🔗 API Base URL: ${process.env.API_BASE_URL || `http://localhost:${PORT}`}`
-  );
+  console.log(`🔗 API Base URL: ${process.env.API_BASE_URL || `http://localhost:${PORT}`}`);
   console.log(`🔌 Socket.IO server is ready for real-time connections`);
 
-  // Verify SMTP configuration on startup
-  console.log("\n📧 Email Configuration Check:");
-  console.log(`   SMTP_HOST: ${process.env.SMTP_HOST || "❌ MISSING"}`);
-  console.log(`   SMTP_PORT: ${process.env.SMTP_PORT || "❌ MISSING"}`);
-  console.log(`   SMTP_USER: ${process.env.SMTP_USER || "❌ MISSING"}`);
-  console.log(
-    `   SMTP_PASS: ${
-      process.env.SMTP_PASS
-        ? "✅ SET (" + process.env.SMTP_PASS.length + " chars)"
-        : "❌ MISSING"
-    }`
-  );
-  console.log(`   EMAIL_FROM: ${process.env.EMAIL_FROM || "❌ MISSING"}`);
+  console.log("\n📧 Email (SendGrid):", process.env.SENDGRID_API_KEY ? "✅ Key set" : "❌ SENDGRID_API_KEY missing — email sending will fail");
+  console.log("📱 SMS (MSG91):", process.env.MSG91_AUTH_KEY ? "✅ Auth key set" : "❌ MSG91_AUTH_KEY missing — OTP sending will fail");
 
-  if (
-    !process.env.SMTP_HOST ||
-    !process.env.SMTP_PORT ||
-    !process.env.SMTP_USER ||
-    !process.env.SMTP_PASS
-  ) {
-    console.log(
-      "\n⚠️  WARNING: SMTP configuration is incomplete! Email sending will fail."
-    );
-  } else {
-    console.log("\n✅ SMTP configuration looks good!");
-  }
-
-  // Show CORS configuration
   console.log("\n🌐 CORS Configuration:");
-  console.log(`   Allowed Origins: * (Any origin allowed)`);
+  if (ALLOWED_ORIGINS.length > 0) {
+    console.log(`   Allowed Origins: ${ALLOWED_ORIGINS.join(", ")}`);
+  } else {
+    console.warn("   ⚠️  ALLOWED_ORIGINS not set — all browser origins blocked (mobile apps still work)");
+  }
   console.log(`   Credentials: Enabled`);
-  console.log(`   Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS`);
   console.log("");
+});
+
+// Handle port-already-in-use clearly instead of crashing
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`\nFATAL: Port ${PORT} is already in use.`);
+    console.error(`Run this to free it:  npx kill-port ${PORT}`);
+    console.error(`Or on Windows:        netstat -ano | findstr :${PORT}  then  taskkill /PID <pid> /F\n`);
+    process.exit(1);
+  } else {
+    throw err;
+  }
 });
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
   console.log("SIGTERM received, shutting down gracefully");
-  server.close(() => {
-    console.log("Process terminated");
-  });
+  server.close(() => console.log("Process terminated"));
 });
 
 module.exports = { app, io };

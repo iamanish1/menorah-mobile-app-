@@ -186,7 +186,7 @@ export default function Bookings({ navigation }: any) {
           </Text>
         </View>
         
-        {(booking.status === 'confirmed' || booking.status === 'in-progress') && (
+        {booking.status === 'in-progress' && (
           <TouchableOpacity
             onPress={() => handleJoinSession(booking)}
             style={{
@@ -196,9 +196,20 @@ export default function Bookings({ navigation }: any) {
               borderRadius: 12
             }}
           >
-            <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
-              {booking.status === 'in-progress' ? 'Join' : 'Join Session'}
-            </Text>
+            <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Join Now</Text>
+          </TouchableOpacity>
+        )}
+        {booking.status === 'confirmed' && (
+          <TouchableOpacity
+            onPress={() => handleJoinSession(booking)}
+            style={{
+              backgroundColor: '#F59E0B',
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 12
+            }}
+          >
+            <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Wait / Ready</Text>
           </TouchableOpacity>
         )}
       </View>

@@ -4,6 +4,7 @@
     "strict": true,
     "jsx": "react-jsx",
     "baseUrl": ".",
+    "types": ["node"],
     "paths": {
       "@/*": [
         "src/*"

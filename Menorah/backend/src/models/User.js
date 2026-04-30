@@ -31,7 +31,6 @@ const userSchema = new mongoose.Schema({
     default: false
   },
   emailVerificationToken: String,
-  phoneVerificationToken: String,
   passwordResetToken: String,
   passwordResetExpires: Date,
 
@@ -177,24 +176,11 @@ userSchema.pre('save', async function(next) {
 
 // Method to compare password
 userSchema.methods.comparePassword = async function(candidatePassword) {
-  if (!candidatePassword || !this.password) {
-    console.error('❌ Password comparison error: Missing password or hash');
-    return false;
-  }
-  
+  if (!candidatePassword || !this.password) return false;
   try {
-    // Check if password is already hashed (shouldn't happen, but just in case)
-    if (this.password.length < 60) {
-      console.error('❌ Password hash seems invalid (too short)');
-      console.error('   Hash length:', this.password.length);
-      return false;
-    }
-    
-    const result = await bcrypt.compare(candidatePassword, this.password);
-    return result;
+    return await bcrypt.compare(candidatePassword, this.password);
   } catch (error) {
-    console.error('❌ Error comparing password:', error);
-    console.error('   Error message:', error.message);
+    console.error('Password comparison error:', error.message);
     return false;
   }
 };

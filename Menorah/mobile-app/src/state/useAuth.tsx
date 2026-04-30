@@ -21,7 +21,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   verifyEmail: (code: string) => Promise<{ success: boolean; message?: string }>;
   resendEmailVerification: (email: string) => Promise<{ success: boolean; message?: string }>;
-  verifyPhone: (token: string) => Promise<{ success: boolean; message?: string }>;
+  verifyPhone: (phone: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   forgotPassword: (email: string) => Promise<{ success: boolean; message?: string }>;
   resetPassword: (token: string, password: string) => Promise<{ success: boolean; message?: string }>;
   updateUser: (userData: User) => void;
@@ -249,9 +249,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const verifyPhone = async (token: string) => {
+  const verifyPhone = async (phone: string, otp: string) => {
     try {
-      const response = await api.verifyPhone(token);
+      const response = await api.verifyPhone(phone, otp);
       
       if (response.success) {
         // Update user state if logged in

@@ -1,20 +1,42 @@
 {
-    "cli": {
-      "version": ">= 3.14.0"
-    },
-    "build": {
-      "preview": {
-        "distribution": "internal",
-        "android": {
-          "buildType": "apk"
-        }
+  "cli": {
+    "version": ">= 3.14.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "android": {
+        "buildType": "apk"
       },
-      "production": {
-        "distribution": "store",
-        "android": {
-          "buildType": "app-bundle"
-        }
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.menorahhealth.app/api"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://YOUR_API_DOMAIN/api",
+        "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://YOUR_DOMAIN/checkout/return"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://YOUR_API_DOMAIN/api",
+        "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://YOUR_DOMAIN/checkout/return"
       }
     }
   }
-  
+}

@@ -64,9 +64,10 @@ function VerifyOtpForm() {
   const handleSubmit = async () => {
     const code = otp.join('');
     if (code.length < 6) { setError('Enter the complete 6-digit code'); return; }
+    if (!user?.phone) { setError('Phone number not found. Please register again.'); return; }
     setLoading(true);
     setError('');
-    const res = await verifyPhone(code);
+    const res = await verifyPhone(user.phone, code);
     setLoading(false);
     if (res.success) {
       router.push('/discover');
@@ -78,10 +79,10 @@ function VerifyOtpForm() {
   };
 
   const handleResend = async () => {
-    if (countdown > 0 || !email) return;
+    if (countdown > 0 || !user?.phone) return;
     setResending(true);
     setError('');
-    await api.resendOTP(email);
+    await api.resendOTP(user.phone);
     setResending(false);
     setCountdown(60);
     setOtp(['', '', '', '', '', '']);
@@ -136,7 +137,7 @@ function VerifyOtpForm() {
       <div className="space-y-1">
         <button
           onClick={handleResend}
-          disabled={countdown > 0 || resending || !email}
+          disabled={countdown > 0 || resending || !user?.phone}
           className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-primary-600
                      disabled:opacity-50 disabled:cursor-not-allowed mx-auto transition-colors"
         >

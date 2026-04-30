@@ -84,12 +84,13 @@ class SocketService {
       
       this.socket = io(socketUrl, {
         auth: token ? { token } : {},
-        transports: ['websocket', 'polling'],
+        // polling first — React Native WebSocket upgrade is unreliable in Expo
+        transports: ['polling', 'websocket'],
         timeout: 20000,
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectDelay,
-        forceNew: true,
+        forceNew: false,
         autoConnect: true,
       });
 

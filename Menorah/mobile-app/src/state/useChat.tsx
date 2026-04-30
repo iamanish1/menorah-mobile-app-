@@ -51,7 +51,7 @@ interface ChatProviderProps {
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const { user } = useAuth();
-  
+
   // State
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [messages, setMessages] = useState<{ [roomId: string]: ChatMessage[] }>({});
@@ -60,20 +60,27 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [roomPresence, setRoomPresence] = useState<{ [roomId: string]: { [userId: string]: boolean } }>({});
   const [isConnected, setIsConnected] = useState(false);
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
-  
+
   // Loading states
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  
+
   // Typing timeout refs
   const typingTimeouts = React.useRef<{ [roomId: string]: NodeJS.Timeout }>({});
+  // Ref so connection callbacks always see the latest currentRoom without re-registering
+  const currentRoomRef = React.useRef<string | null>(null);
+
+  // Keep currentRoomRef in sync with currentRoom state
+  useEffect(() => {
+    currentRoomRef.current = currentRoom;
+  }, [currentRoom]);
 
   // Initialize socket connection
   useEffect(() => {
     if (user) {
       initializeSocket();
     }
-    
+
     return () => {
       socketService.disconnect();
     };
@@ -83,7 +90,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     try {
       console.log('Initializing Socket.IO connection...');
       await socketService.connect();
-      
+
+      // Socket is now connected — sync state and join any room that was requested
+      // before the connection was ready (common when ChatThread mounts first)
+      setIsConnected(true);
+      if (currentRoomRef.current) {
+        socketService.joinRoom(currentRoomRef.current);
+      }
+
       // Set up event listeners
       const unsubscribeMessage = socketService.onMessage(handleNewMessage);
       const unsubscribeTyping = socketService.onTyping(handleTyping);
@@ -92,9 +106,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       const unsubscribeConnection = socketService.onConnectionChange(handleConnectionChange);
       const unsubscribeSessionStarted = socketService.onSessionStarted(handleSessionStarted);
       const unsubscribeBookingStatus = socketService.onBookingStatusChanged(handleBookingStatus);
-      
+
       console.log('Socket.IO event listeners set up successfully');
-      
+
       return () => {
         unsubscribeMessage();
         unsubscribeTyping();
@@ -145,7 +159,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       console.warn('Received typing indicator without roomId:', typing);
       return;
     }
-    
+    // Ignore own typing events
+    if (user && typing.userId === user.id) return;
+
     setTypingUsers(prev => {
       const roomTyping = prev[typing.roomId] || [];
       const filtered = roomTyping.filter(t => t.userId !== typing.userId);
@@ -198,6 +214,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   const handleConnectionChange = useCallback((connected: boolean) => {
     setIsConnected(connected);
+    // Re-join the active room after any reconnect so incoming messages resume
+    if (connected && currentRoomRef.current) {
+      socketService.joinRoom(currentRoomRef.current);
+    }
   }, []);
 
   const handleSessionStarted = useCallback((data: SessionStartedData) => {
@@ -321,15 +341,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         });
       }
       
-      // Also try to send via Socket.IO for real-time (if connected)
-      if (isConnected) {
-        try {
-          socketService.sendMessage(roomId, content);
-        } catch (socketError) {
-          // Ignore socket errors, REST API already succeeded
-          console.warn('Socket.IO send failed, but message was sent via API:', socketError);
-        }
-      }
+      // REST API already emits new_message via Socket.IO on the server side,
+      // so no need to emit separately via socketService here.
     } catch (error) {
       console.error('Failed to send message:', error);
       throw error;

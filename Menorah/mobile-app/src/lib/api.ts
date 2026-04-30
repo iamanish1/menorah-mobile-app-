@@ -57,7 +57,7 @@ export interface Booking {
   amount: number;
   currency: string;
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
-  paymentMethod?: 'stripe' | 'razorpay' | 'wallet' | 'subscription';
+  paymentMethod?: 'razorpay' | 'wallet' | 'subscription';
   isSubscriptionBooking?: boolean;
   canBeCancelled: boolean;
   canBeRescheduled: boolean;
@@ -273,11 +273,11 @@ class ApiClient {
     });
   }
 
-  async verifyPhone(token: string): Promise<ApiResponse<void>> {
+  async verifyPhone(phone: string, otp: string): Promise<ApiResponse<void>> {
     return this.request({
       method: 'POST',
       url: '/auth/verify-phone',
-      data: { token },
+      data: { phone, otp },
     });
   }
 
@@ -431,11 +431,11 @@ class ApiClient {
   }
 
   // Payments API Methods
-  async createCheckoutSession(bookingId: string, paymentMethod: 'stripe' | 'razorpay'): Promise<ApiResponse<any>> {
+  async createCheckoutSession(bookingId: string): Promise<ApiResponse<any>> {
     return this.request({
       method: 'POST',
       url: '/payments/create-checkout-session',
-      data: { bookingId, paymentMethod },
+      data: { bookingId },
     });
   }
 
@@ -468,13 +468,12 @@ class ApiClient {
 
   // Subscription Payment API Methods
   async createSubscriptionCheckout(
-    subscriptionType: 'weekly' | 'monthly' | 'yearly',
-    paymentMethod: 'stripe' | 'razorpay' = 'razorpay'
+    subscriptionType: 'weekly' | 'monthly' | 'yearly'
   ): Promise<ApiResponse<any>> {
     return this.request({
       method: 'POST',
       url: '/payments/create-subscription-checkout',
-      data: { subscriptionType, paymentMethod },
+      data: { subscriptionType },
     });
   }
 

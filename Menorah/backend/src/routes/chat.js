@@ -28,8 +28,10 @@ router.get('/rooms', auth, async (req, res) => {
       user: userId,
       isActive: true
     })
-      .populate('counsellor', 'user')
-      .populate('counsellor.user', 'firstName lastName profileImage')
+      .populate({
+        path: 'counsellor',
+        populate: { path: 'user', select: 'firstName lastName profileImage' }
+      })
       .populate('lastMessage.senderId', 'firstName lastName')
       .sort({ updatedAt: -1 })
       .lean();
@@ -107,10 +109,9 @@ router.get('/rooms/:roomId/messages', [
 
     // Verify user has access to this room
     const room = await ChatRoom.findById(roomId)
-      .populate('counsellor', 'user')
-      .populate('counsellor.user', 'firstName lastName profileImage')
+      .populate({ path: 'counsellor', populate: { path: 'user', select: 'firstName lastName profileImage' } })
       .populate('user', 'firstName lastName profileImage');
-    
+
     if (!room) {
       return res.status(404).json({
         success: false,
@@ -121,9 +122,9 @@ router.get('/rooms/:roomId/messages', [
     // Check if user is part of this room
     const isUser = room.user && room.user._id.toString() === userId.toString();
     let isCounsellor = false;
-    
+
     if (room.counsellor && room.counsellor.user) {
-      const counsellorUserId = room.counsellor.user._id.toString();
+      const counsellorUserId = (room.counsellor.user._id || room.counsellor.user).toString();
       isCounsellor = counsellorUserId === userId.toString();
     }
 
@@ -231,8 +232,7 @@ router.post('/rooms/:roomId/messages', [
 
     // Verify room exists and user has access
     const room = await ChatRoom.findById(roomId)
-      .populate('counsellor', 'user')
-      .populate('counsellor.user', 'firstName lastName profileImage')
+      .populate({ path: 'counsellor', populate: { path: 'user', select: 'firstName lastName profileImage' } })
       .populate('user', 'firstName lastName profileImage');
 
     if (!room) {
@@ -245,9 +245,9 @@ router.post('/rooms/:roomId/messages', [
     // Check if user is part of this room
     const isUser = room.user && room.user._id.toString() === userId.toString();
     let isCounsellor = false;
-    
+
     if (room.counsellor && room.counsellor.user) {
-      const counsellorUserId = room.counsellor.user._id.toString();
+      const counsellorUserId = (room.counsellor.user._id || room.counsellor.user).toString();
       isCounsellor = counsellorUserId === userId.toString();
     }
 
@@ -343,10 +343,9 @@ router.put('/rooms/:roomId/messages/:messageId/read', [
 
     // Verify room exists and user has access
     const room = await ChatRoom.findById(roomId)
-      .populate('counsellor', 'user')
-      .populate('counsellor.user', 'firstName lastName profileImage')
+      .populate({ path: 'counsellor', populate: { path: 'user', select: 'firstName lastName profileImage' } })
       .populate('user', 'firstName lastName profileImage');
-    
+
     if (!room) {
       return res.status(404).json({
         success: false,
@@ -357,9 +356,9 @@ router.put('/rooms/:roomId/messages/:messageId/read', [
     // Check if user is part of this room
     const isUser = room.user && room.user._id.toString() === userId.toString();
     let isCounsellor = false;
-    
+
     if (room.counsellor && room.counsellor.user) {
-      const counsellorUserId = room.counsellor.user._id.toString();
+      const counsellorUserId = (room.counsellor.user._id || room.counsellor.user).toString();
       isCounsellor = counsellorUserId === userId.toString();
     }
 
@@ -534,7 +533,7 @@ router.post('/rooms/:roomId/typing', [
 
     // Emit typing indicator via Socket.IO
     if (socketIOInstance) {
-      socketIOInstance.to(`chat_${roomId}`).except(userId.toString()).emit('user_typing', {
+      socketIOInstance.to(`chat_${roomId}`).emit('user_typing', {
         userId: userId.toString(),
         userName: req.user.firstName + ' ' + req.user.lastName,
         isTyping: isTyping,
@@ -608,8 +607,10 @@ router.get('/available-counsellors', auth, async (req, res) => {
 
     console.log(`Found ${availableCounsellors.length} available counselors for chat`);
 
-    // Format response
-    const formattedCounsellors = availableCounsellors.map(counsellor => {
+    // Format response — skip counsellors whose user document was deleted
+    const formattedCounsellors = availableCounsellors
+      .filter(counsellor => counsellor.user != null)
+      .map(counsellor => {
       const counsellorUser = counsellor.user;
       const counsellorUserId = counsellorUser._id.toString();
       const isOnline = onlineUsers.has(counsellorUserId);
@@ -705,8 +706,7 @@ router.post('/start', [
     const room = await ChatRoom.findOrCreate(userId, counsellorId, null);
 
     // Populate room data
-    await room.populate('counsellor', 'user');
-    await room.populate('counsellor.user', 'firstName lastName profileImage');
+    await room.populate({ path: 'counsellor', populate: { path: 'user', select: 'firstName lastName profileImage' } });
     await room.populate('user', 'firstName lastName profileImage');
 
     // Format response

@@ -30,7 +30,6 @@ function PaymentForm() {
   const bookingId    = searchParams.get('bookingId') ?? '';
   const router       = useRouter();
 
-  const [method, setMethod]   = useState<'razorpay' | 'stripe'>('razorpay');
   const [paying, setPaying]   = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError]     = useState('');
@@ -51,7 +50,7 @@ function PaymentForm() {
     const loaded = await loadRazorpay();
     if (!loaded) { setError('Failed to load payment gateway. Please try again.'); setPaying(false); return; }
 
-    const sessionRes = await api.createCheckoutSession(bookingId, 'razorpay');
+    const sessionRes = await api.createCheckoutSession(bookingId);
     if (!sessionRes.success || !sessionRes.data?.orderId) {
       setError(sessionRes.message || 'Failed to create payment session');
       setPaying(false);
@@ -82,18 +81,6 @@ function PaymentForm() {
     rzp.open();
   };
 
-  const handleStripe = async () => {
-    if (!bookingId) { setError('Invalid booking.'); return; }
-    setPaying(true);
-    setError('');
-    const res = await api.createCheckoutSession(bookingId, 'stripe');
-    if (res.success && res.data?.sessionUrl) {
-      window.location.href = res.data.sessionUrl;
-    } else {
-      setError(res.message || 'Failed to create Stripe session');
-      setPaying(false);
-    }
-  };
 
   if (success) {
     return (
@@ -157,43 +144,17 @@ function PaymentForm() {
         </div>
       )}
 
-      <div className="card p-5 mb-5 space-y-3">
-        <h2 className="font-semibold text-gray-900">Payment method</h2>
-        {[
-          { id: 'razorpay' as const, label: 'Razorpay',  desc: 'UPI, Cards, Net Banking, Wallets', flag: '🇮🇳' },
-          { id: 'stripe'   as const, label: 'Stripe',    desc: 'International cards (Visa, Mastercard)', flag: '🌍' },
-        ].map(({ id, label, desc, flag }) => (
-          <button
-            key={id}
-            onClick={() => setMethod(id)}
-            className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-colors
-              ${method === id ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}
-          >
-            <span className="text-2xl">{flag}</span>
-            <div className="flex-1">
-              <p className="font-medium text-gray-900">{label}</p>
-              <p className="text-sm text-gray-500">{desc}</p>
-            </div>
-            {method === id && (
-              <div className="ml-auto w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center">
-                <div className="w-2 h-2 rounded-full bg-white" />
-              </div>
-            )}
-          </button>
-        ))}
-      </div>
-
       <Button
         fullWidth size="lg" loading={paying}
-        onClick={method === 'razorpay' ? handleRazorpay : handleStripe}
+        onClick={handleRazorpay}
       >
         <CreditCard className="w-5 h-5" />
-        Pay Now
+        Pay Now with Razorpay
       </Button>
 
       <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400 mt-4">
         <Shield className="w-3.5 h-3.5" />
-        Secured by {method === 'razorpay' ? 'Razorpay' : 'Stripe'}. Your payment is safe.
+        Secured by Razorpay. Your payment is safe.
       </div>
     </div>
   );

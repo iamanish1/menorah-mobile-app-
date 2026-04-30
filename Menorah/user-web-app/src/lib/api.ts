@@ -108,12 +108,12 @@ class ApiClient {
     return this.post<{ user: User }>('/auth/verify-email', { code });
   }
 
-  async resendOTP(email: string): Promise<ApiResponse<void>> {
-    return this.post<void>('/auth/resend-otp', { email });
+  async resendOTP(phone: string): Promise<ApiResponse<void>> {
+    return this.post<void>('/auth/resend-otp', { phone });
   }
 
-  async verifyPhone(token: string): Promise<ApiResponse<{ user: User }>> {
-    return this.post<{ user: User }>('/auth/verify-phone', { token });
+  async verifyPhone(phone: string, otp: string): Promise<ApiResponse<{ user: User }>> {
+    return this.post<{ user: User }>('/auth/verify-phone', { phone, otp });
   }
 
   async forgotPassword(email: string): Promise<ApiResponse<void>> {
@@ -218,11 +218,10 @@ class ApiClient {
   // ─── Payments ──────────────────────────────────────────────────────────────
   async createCheckoutSession(
     bookingId: string,
-    paymentMethod: 'stripe' | 'razorpay',
   ): Promise<ApiResponse<{ sessionId?: string; sessionUrl?: string; orderId?: string; amount?: number; currency?: string; paymentMethod: string }>> {
     return this.post<{ sessionId?: string; sessionUrl?: string; orderId?: string; amount?: number; currency?: string; paymentMethod: string }>(
       '/payments/create-checkout-session',
-      { bookingId, paymentMethod },
+      { bookingId },
     );
   }
 
@@ -241,11 +240,10 @@ class ApiClient {
 
   async createSubscriptionCheckout(
     subscriptionType: string,
-    paymentMethod: 'stripe' | 'razorpay',
   ): Promise<ApiResponse<{ orderId?: string; sessionUrl?: string; amount?: number; currency?: string }>> {
     return this.post<{ orderId?: string; sessionUrl?: string; amount?: number; currency?: string }>(
       '/payments/create-subscription-checkout',
-      { subscriptionType, paymentMethod },
+      { subscriptionType },
     );
   }
 

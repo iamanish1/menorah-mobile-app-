@@ -18,14 +18,14 @@ export default function CallJoin({ navigation, route }: any) {
   const webViewRef = useRef<WebView>(null);
 
   useEffect(() => {
-    if (!roomId || !jitsiToken) {
+    if (!roomId) {
       setError('Missing video room information');
       setLoading(false);
     } else {
       // Request permissions before loading WebView
       requestPermissions();
     }
-  }, [roomId, jitsiToken]);
+  }, [roomId]);
 
   const requestPermissions = async () => {
     if (Platform.OS === 'android') {
