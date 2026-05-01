@@ -416,8 +416,11 @@ router.get('/:id', [
       amount: booking.amount,
       currency: booking.currency,
       paymentStatus: booking.paymentStatus,
+      paymentMethod: booking.paymentMethod,
+      isSubscriptionBooking: booking.isSubscriptionBooking || false,
       canBeCancelled: booking.canBeCancelled,
-      canBeRescheduled: booking.canBeRescheduled
+      canBeRescheduled: booking.canBeRescheduled,
+      createdAt: booking.createdAt,
     };
 
     res.json({

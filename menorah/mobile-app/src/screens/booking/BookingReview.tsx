@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Calendar, Clock, User, Shield, CheckCircle } from 'lucide-react-native';
+import { Calendar, Clock, User, Shield, CheckCircle, Video, MessageCircle } from 'lucide-react-native';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { api } from '@/lib/api';
+import { socketService, SessionStartedData } from '@/lib/socket';
 
 // Price categories mapping
 const PRICE_CATEGORIES = {
@@ -36,15 +37,38 @@ export default function BookingReview({ navigation, route }: any) {
   const [isCreatingBooking, setIsCreatingBooking] = useState(false);
   const [loadingBooking, setLoadingBooking] = useState(false);
   const [existingBooking, setExistingBooking] = useState<any>(null);
-  
+  const [sessionReady, setSessionReady] = useState(false);
+
   const { categoryId, gender, price, bookingId } = route.params || {};
-  
+
   // If bookingId is provided, fetch existing booking details
   useEffect(() => {
     if (bookingId && !categoryId) {
       fetchBookingDetails();
     }
   }, [bookingId]);
+
+  // Real-time updates: refresh when counsellor assigns, reschedules, or starts session
+  useEffect(() => {
+    if (!bookingId || categoryId) return;
+    const refresh = () => fetchBookingDetails();
+    const unsub1 = socketService.onBookingConfirmed((data) => {
+      if (data.bookingId === bookingId) refresh();
+    });
+    const unsub2 = socketService.onBookingRescheduled((data) => {
+      if (data.bookingId === bookingId) refresh();
+    });
+    const unsub3 = socketService.onBookingStatusChanged((data) => {
+      if (data.bookingId === bookingId) refresh();
+    });
+    const unsub4 = socketService.onSessionStarted((data: SessionStartedData) => {
+      if (data.bookingId === bookingId) {
+        setSessionReady(true);
+        refresh();
+      }
+    });
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
+  }, [bookingId, categoryId]);
   
   const fetchBookingDetails = async () => {
     if (!bookingId) return;
@@ -108,87 +132,209 @@ export default function BookingReview({ navigation, route }: any) {
       );
     }
     
-    // Render existing booking details view
+    const isAssigned = existingBooking.counsellorName && existingBooking.counsellorName !== 'To be assigned';
+    const canJoin = existingBooking.status === 'in-progress' || sessionReady;
+    const isConfirmedWithCounsellor = existingBooking.status === 'confirmed' && isAssigned;
+    const isPending = existingBooking.status === 'pending' || !isAssigned;
+
+    const statusColors: Record<string, string> = {
+      pending: '#F59E0B',
+      confirmed: colors.primary,
+      'in-progress': '#10B981',
+      completed: '#6B7280',
+      cancelled: '#EF4444',
+    };
+    const statusColor = statusColors[existingBooking.status] || colors.muted;
+
+    const handleJoinSession = () => {
+      if (existingBooking.sessionType === 'video') {
+        navigation.navigate('PreCallCheck', { bookingId });
+      } else if (existingBooking.sessionType === 'chat') {
+        navigation.navigate('ChatThread', { roomId: bookingId });
+      } else {
+        Alert.alert('Audio Call', 'Audio call feature coming soon.');
+      }
+    };
+
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24 }}>
-          <View style={{ marginBottom: 24 }}>
-            <Text style={{ fontSize: 24, fontWeight: '700', color: colors.cardText, marginBottom: 8 }}>
+          {/* Header */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 16 }}>
+              <Text style={{ fontSize: 16, color: colors.primary }}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 22, fontWeight: '700', color: colors.cardText }}>
               Booking Details
             </Text>
           </View>
-          
+
+          {/* Session started banner */}
+          {(canJoin) && (
+            <TouchableOpacity
+              onPress={handleJoinSession}
+              style={{
+                backgroundColor: '#10B981',
+                borderRadius: 16,
+                padding: 16,
+                marginBottom: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Video size={20} color="white" style={{ marginRight: 8 }} />
+              <Text style={{ color: 'white', fontSize: 16, fontWeight: '700' }}>
+                {existingBooking.status === 'in-progress' ? 'Join Session Now' : 'Session is Ready — Join'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Status card */}
           <View style={{
             backgroundColor: colors.card,
             borderRadius: 20,
-            padding: 24,
-            marginBottom: 24,
+            padding: 20,
+            marginBottom: 16,
             borderWidth: 1,
-            borderColor: colors.border
+            borderColor: colors.border,
+            borderLeftWidth: 4,
+            borderLeftColor: statusColor,
           }}>
-            <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.muted, marginBottom: 4 }}>
-                Status
-              </Text>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: colors.cardText }}>
-                {existingBooking.status.charAt(0).toUpperCase() + existingBooking.status.slice(1)}
-              </Text>
-            </View>
-            
-            <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.muted, marginBottom: 4 }}>
-                Session Type
-              </Text>
-              <Text style={{ fontSize: 18, color: colors.cardText }}>
-                {existingBooking.sessionType?.charAt(0).toUpperCase() + existingBooking.sessionType?.slice(1) || 'Video'}
-              </Text>
-            </View>
-            
-            <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.muted, marginBottom: 4 }}>
-                Duration
-              </Text>
-              <Text style={{ fontSize: 18, color: colors.cardText }}>
-                {existingBooking.sessionDuration || 45} minutes
-              </Text>
-            </View>
-            
-            {existingBooking.scheduledAt && (
-              <View style={{ marginBottom: 16 }}>
-                <Text style={{ fontSize: 16, fontWeight: '600', color: colors.muted, marginBottom: 4 }}>
-                  Scheduled At
-                </Text>
-                <Text style={{ fontSize: 18, color: colors.cardText }}>
-                  {new Date(existingBooking.scheduledAt).toLocaleString()}
-                </Text>
-              </View>
-            )}
-            
-            {existingBooking.amount && (
-              <View style={{ marginBottom: 16 }}>
-                <Text style={{ fontSize: 16, fontWeight: '600', color: colors.muted, marginBottom: 4 }}>
-                  Amount
-                </Text>
-                <Text style={{ fontSize: 18, color: colors.cardText }}>
-                  ₹{existingBooking.amount}
-                </Text>
-              </View>
-            )}
-          </View>
-          
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{
-              backgroundColor: colors.primary,
-              paddingVertical: 16,
-              borderRadius: 12,
-              alignItems: 'center'
-            }}
-          >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
-              Go Back
+            <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 4 }}>Status</Text>
+            <Text style={{ fontSize: 20, fontWeight: '700', color: statusColor }}>
+              {existingBooking.status === 'in-progress' ? 'In Progress' :
+               existingBooking.status.charAt(0).toUpperCase() + existingBooking.status.slice(1)}
             </Text>
-          </TouchableOpacity>
+          </View>
+
+          {/* Counsellor card */}
+          <View style={{
+            backgroundColor: colors.card,
+            borderRadius: 20,
+            padding: 20,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{
+                width: 48, height: 48, borderRadius: 24,
+                backgroundColor: isAssigned ? colors.primary + '20' : colors.border,
+                alignItems: 'center', justifyContent: 'center', marginRight: 16,
+              }}>
+                <User size={24} color={isAssigned ? colors.primary : colors.muted} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 2 }}>Counsellor</Text>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.cardText }}>
+                  {isAssigned ? existingBooking.counsellorName : 'Awaiting Assignment'}
+                </Text>
+                {existingBooking.specialization && (
+                  <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>
+                    {existingBooking.specialization}
+                  </Text>
+                )}
+                {!isAssigned && (
+                  <Text style={{ fontSize: 12, color: '#F59E0B', marginTop: 4 }}>
+                    A counsellor will be assigned soon
+                  </Text>
+                )}
+              </View>
+            </View>
+          </View>
+
+          {/* Session details card */}
+          <View style={{
+            backgroundColor: colors.card,
+            borderRadius: 20,
+            padding: 20,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.cardText, marginBottom: 16 }}>
+              Session Details
+            </Text>
+
+            <View style={{ flexDirection: 'row', marginBottom: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 2 }}>Type</Text>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.cardText }}>
+                  {existingBooking.sessionType?.charAt(0).toUpperCase() + existingBooking.sessionType?.slice(1) || 'Video'}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 2 }}>Duration</Text>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.cardText }}>
+                  {existingBooking.sessionDuration || 45} min
+                </Text>
+              </View>
+            </View>
+
+            {existingBooking.scheduledAt && (
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 2 }}>Scheduled</Text>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.cardText }}>
+                  {new Date(existingBooking.scheduledAt).toLocaleString('en-IN', {
+                    weekday: 'short', day: 'numeric', month: 'short',
+                    hour: '2-digit', minute: '2-digit'
+                  })}
+                </Text>
+              </View>
+            )}
+
+            <View style={{ flexDirection: 'row' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 2 }}>Amount</Text>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.cardText }}>
+                  {existingBooking.isSubscriptionBooking ? 'Free (Subscription)' : `₹${existingBooking.amount || 0}`}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 2 }}>Payment</Text>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.cardText }}>
+                  {existingBooking.paymentStatus?.charAt(0).toUpperCase() + existingBooking.paymentStatus?.slice(1) || 'Pending'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Action buttons */}
+          {isConfirmedWithCounsellor && !canJoin && (
+            <TouchableOpacity
+              onPress={handleJoinSession}
+              style={{
+                backgroundColor: '#F59E0B',
+                paddingVertical: 16,
+                borderRadius: 14,
+                alignItems: 'center',
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: 'white', fontSize: 16, fontWeight: '700' }}>
+                Ready to Join (Waiting for Counsellor)
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {isPending && (
+            <View style={{
+              backgroundColor: '#FEF3C7',
+              borderRadius: 14,
+              padding: 16,
+              marginBottom: 12,
+              alignItems: 'center',
+            }}>
+              <ActivityIndicator size="small" color="#F59E0B" style={{ marginBottom: 8 }} />
+              <Text style={{ color: '#92400E', fontSize: 14, fontWeight: '600', textAlign: 'center' }}>
+                Waiting for counsellor assignment...
+              </Text>
+              <Text style={{ color: '#92400E', fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+                You'll be notified when a counsellor accepts your booking
+              </Text>
+            </View>
+          )}
         </ScrollView>
       </SafeAreaView>
     );

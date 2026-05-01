@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { api } from '@/lib/api';
+import { socketService } from '@/lib/socket';
 import NetInfo from '@react-native-community/netinfo';
 
 export default function PreCallCheck({ navigation, route }: any) {
@@ -26,6 +27,18 @@ export default function PreCallCheck({ navigation, route }: any) {
     return () => {
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
+  }, [bookingId]);
+
+  // When counsellor starts the session via socket, skip waiting and join immediately
+  useEffect(() => {
+    if (!bookingId) return;
+    const unsub = socketService.onSessionStarted((data) => {
+      if (data.bookingId !== bookingId) return;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      // Attempt join immediately — session is now in-progress
+      attemptJoin();
+    });
+    return () => unsub();
   }, [bookingId]);
 
   const requestPermissions = async () => {

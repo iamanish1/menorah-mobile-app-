@@ -20,11 +20,13 @@ export default function Bookings({ navigation }: any) {
     fetchBookings();
   }, [activeTab]);
 
-  // Refresh list when counsellor confirms or reschedules
+  // Refresh list on any booking state change
   useEffect(() => {
-    const unsub1 = socketService.onBookingConfirmed(() => fetchBookings());
-    const unsub2 = socketService.onBookingRescheduled(() => fetchBookings());
-    return () => { unsub1(); unsub2(); };
+    const refresh = () => fetchBookings();
+    const unsub1 = socketService.onBookingConfirmed(refresh);
+    const unsub2 = socketService.onBookingRescheduled(refresh);
+    const unsub3 = socketService.onBookingStatusChanged(refresh);
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [activeTab]);
 
   const fetchBookings = async () => {
@@ -145,10 +147,12 @@ export default function Bookings({ navigation }: any) {
         )}
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 16, fontWeight: '600', color: colors.cardText }}>
-            Counsellor
+            {booking.counsellorName && booking.counsellorName !== 'To be assigned'
+              ? booking.counsellorName
+              : 'Awaiting Assignment'}
           </Text>
           <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
-            {booking.specialization}
+            {booking.specialization || (booking.counsellorName === 'To be assigned' ? 'Counsellor will be assigned soon' : '')}
           </Text>
         </View>
       </View>
@@ -207,7 +211,7 @@ export default function Bookings({ navigation }: any) {
             <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Join Now</Text>
           </TouchableOpacity>
         )}
-        {booking.status === 'confirmed' && (
+        {booking.status === 'confirmed' && booking.counsellorName && booking.counsellorName !== 'To be assigned' && (
           <TouchableOpacity
             onPress={() => handleJoinSession(booking)}
             style={{
@@ -217,7 +221,7 @@ export default function Bookings({ navigation }: any) {
               borderRadius: 12
             }}
           >
-            <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Wait / Ready</Text>
+            <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Ready</Text>
           </TouchableOpacity>
         )}
       </View>
