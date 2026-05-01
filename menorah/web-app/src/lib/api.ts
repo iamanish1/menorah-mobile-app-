@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { Booking, DashboardStats, TodaySchedule, ApiResponse } from '@/types';
+import { Booking, DashboardStats, TodaySchedule, ApiResponse, CounsellorStatus } from '@/types';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -308,6 +308,7 @@ class ApiClient {
   }
 
   async getDashboard(): Promise<ApiResponse<{
+    counsellorStatus: CounsellorStatus;
     stats: DashboardStats;
     todaySchedule: TodaySchedule[];
     recentBookings: Booking[];
@@ -323,6 +324,20 @@ class ApiClient {
       return {
         success: false,
         message: errorResponse?.message || error.message || 'Failed to get dashboard',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async updateAvailabilityStatus(isAvailable: boolean): Promise<ApiResponse<{ isAvailable: boolean; isActive: boolean }>> {
+    try {
+      const response = await this.client.put('/counsellors/me/status', { isAvailable });
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        message: errorResponse?.message || error.message || 'Failed to update status',
         errors: errorResponse?.errors || [],
       };
     }

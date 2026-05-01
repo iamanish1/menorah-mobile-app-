@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
 import { api } from '@/lib/api';
-import { DashboardStats, TodaySchedule, Booking } from '@/types';
+import { DashboardStats, TodaySchedule, Booking, CounsellorStatus } from '@/types';
 import { format } from 'date-fns';
 import Link from 'next/link';
 import AppLayout from '@/components/layout/AppLayout';
@@ -20,6 +20,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [todaySchedule, setTodaySchedule] = useState<TodaySchedule[]>([]);
   const [recentBookings, setRecentBookings] = useState<Booking[]>([]);
+  const [counsellorStatus, setCounsellorStatus] = useState<CounsellorStatus | null>(null);
+  const [statusToggling, setStatusToggling] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -88,6 +90,7 @@ export default function DashboardPage() {
       setError(null);
       const response = await api.getDashboard();
       if (response.success && response.data) {
+        setCounsellorStatus(response.data.counsellorStatus);
         setStats(response.data.stats);
         setTodaySchedule(response.data.todaySchedule);
         setRecentBookings(response.data.recentBookings);
@@ -120,6 +123,20 @@ export default function DashboardPage() {
   }
 
   if (!isAuthenticated) return null;
+
+  const handleToggleAvailability = async () => {
+    if (!counsellorStatus || statusToggling) return;
+    const newStatus = !counsellorStatus.isAvailable;
+    setStatusToggling(true);
+    const response = await api.updateAvailabilityStatus(newStatus);
+    setStatusToggling(false);
+    if (response.success) {
+      setCounsellorStatus(prev => prev ? { ...prev, isAvailable: newStatus } : prev);
+      fetchDashboard();
+    } else {
+      setError(response.message || 'Failed to update availability');
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'default'> = {
@@ -206,6 +223,25 @@ export default function DashboardPage() {
           <Button variant="primary" size="md">View Pending</Button>
         </Link>
       </div>
+
+      {counsellorStatus && (
+        <div className={counsellorStatus.isAvailable ? styles.availabilityBannerGreen : styles.availabilityBannerOrange}>
+          <div className={styles.availabilityBannerLeft}>
+            <span className={counsellorStatus.isAvailable ? styles.availabilityDotGreen : styles.availabilityDotOrange} />
+            <span className={styles.availabilityBannerText}>
+              {counsellorStatus.isAvailable ? 'You are available to accept bookings' : 'You are currently unavailable — counsellors won\'t see you as available'}
+            </span>
+          </div>
+          <Button
+            variant={counsellorStatus.isAvailable ? 'outline' : 'primary'}
+            size="sm"
+            onClick={handleToggleAvailability}
+            isLoading={statusToggling}
+          >
+            {counsellorStatus.isAvailable ? 'Set Unavailable' : 'Set Available'}
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <div className={styles.skeletonGrid}>

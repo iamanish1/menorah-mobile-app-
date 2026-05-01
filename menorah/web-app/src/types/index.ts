@@ -41,6 +41,12 @@ export interface Booking {
   createdAt?: string;
 }
 
+export interface CounsellorStatus {
+  isActive: boolean;
+  isAvailable: boolean;
+  message: string;
+}
+
 export interface DashboardStats {
   totalBookings: number;
   upcomingSessions: number;

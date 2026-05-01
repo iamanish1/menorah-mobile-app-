@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { View, ScrollView, FlatList, Linking, useWindowDimensions, Text, TouchableOpacity } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Navbar from "@/components/nav/Navbar";
 import HelpSheet from "@/components/help/HelpSheet";
 import Input from "@/components/ui/Input";
@@ -17,10 +18,38 @@ import { useNotifications } from "@/state/useNotifications";
 import { palettes } from "@/theme/colors";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import FreeSessionModal from "@/components/modals/FreeSessionModal";
+import subscriptionService from "@/services/subscriptionService";
 
 export default function Discover({ navigation }: any) {
   const [help, setHelp] = useState(false);
   const [q, setQ] = useState("");
+  const [showFreeSessionModal, setShowFreeSessionModal] = useState(false);
+
+  useEffect(() => {
+    const checkModal = async () => {
+      try {
+        const seen = await AsyncStorage.getItem('hasSeenFreeSessionModal');
+        if (seen) return;
+        const hasPremium = await subscriptionService.hasPremiumSubscription();
+        if (!hasPremium) setShowFreeSessionModal(true);
+      } catch {}
+    };
+    // Small delay so the screen finishes mounting before showing modal
+    const t = setTimeout(checkModal, 800);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleCloseModal = async () => {
+    await AsyncStorage.setItem('hasSeenFreeSessionModal', 'true').catch(() => {});
+    setShowFreeSessionModal(false);
+  };
+
+  const handleBookFreeSession = async () => {
+    await AsyncStorage.setItem('hasSeenFreeSessionModal', 'true').catch(() => {});
+    setShowFreeSessionModal(false);
+    navigation.navigate('GenderSelection');
+  };
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const GAP = 12;
@@ -60,7 +89,7 @@ export default function Discover({ navigation }: any) {
     : [];
 
   const matchedSocialPosts = isSearching
-    ? INSTA.filter((post) => post.caption.toLowerCase().includes(normalizedQuery))
+    ? INSTA.filter((post) => (post.caption ?? '').toLowerCase().includes(normalizedQuery))
     : [];
 
   const totalResults = matchedCounsellors.length + matchedArticles.length + matchedSocialPosts.length;
@@ -324,6 +353,12 @@ export default function Discover({ navigation }: any) {
       </ScrollView>
 
       <HelpSheet visible={help} onClose={() => setHelp(false)} />
+
+      <FreeSessionModal
+        visible={showFreeSessionModal}
+        onClose={handleCloseModal}
+        onBookSession={handleBookFreeSession}
+      />
     </View>
   );
 }

@@ -810,10 +810,10 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
         counsellorStatus: {
           isActive: counsellor.isActive,
           isAvailable: counsellor.isAvailable,
-          message: !counsellor.isActive 
+          message: !counsellor.isActive
             ? 'Your account is not active. Please contact support.'
-            : !counsellor.isAvailable 
-            ? 'You are currently not available. Set your availability to "Available" to see and accept new bookings.'
+            : !counsellor.isAvailable
+            ? 'You are currently unavailable. Toggle your status to start accepting bookings.'
             : 'You are available to accept new bookings.'
         },
         stats: {
@@ -861,6 +861,35 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
       success: false,
       message: 'Internal server error'
     });
+  }
+});
+
+// @route   PUT /api/counsellors/me/status
+// @desc    Toggle counsellor availability (isAvailable on/off)
+// @access  Private (Counsellor)
+router.put('/me/status', counsellorAuth, async (req, res) => {
+  try {
+    const counsellor = await getCounsellorFromUser(req.user._id);
+    if (!counsellor) {
+      return res.status(404).json({ success: false, message: 'Counsellor profile not found' });
+    }
+
+    const { isAvailable } = req.body;
+    if (typeof isAvailable !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'isAvailable must be a boolean' });
+    }
+
+    counsellor.isAvailable = isAvailable;
+    await counsellor.save();
+
+    res.json({
+      success: true,
+      message: isAvailable ? 'You are now available to accept bookings' : 'You are now marked as unavailable',
+      data: { isAvailable: counsellor.isAvailable, isActive: counsellor.isActive }
+    });
+  } catch (error) {
+    console.error('Update counsellor status error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 

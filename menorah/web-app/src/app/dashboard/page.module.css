@@ -74,6 +74,61 @@
   opacity: 1;
 }
 
+/* Availability Banner */
+.availabilityBannerGreen,
+.availabilityBannerOrange {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--radius-xl);
+  margin-bottom: var(--spacing-lg);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  flex-wrap: wrap;
+}
+
+.availabilityBannerGreen {
+  background: var(--color-success-light);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+  color: var(--color-success);
+}
+
+.availabilityBannerOrange {
+  background: #fff7ed;
+  border: 1px solid rgba(234, 88, 12, 0.25);
+  color: #c2410c;
+}
+
+.availabilityBannerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.availabilityBannerText {
+  flex: 1;
+}
+
+.availabilityDotGreen,
+.availabilityDotOrange {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.availabilityDotGreen {
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.2);
+}
+
+.availabilityDotOrange {
+  background: #ea580c;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.2);
+}
+
 /* Page Header */
 .pageHeader {
   display: flex;

@@ -104,22 +104,30 @@ app.use(
 );
 
 // ─── Rate limiting ─────────────────────────────────────────────────────────
+const isLocalhost = (req) => {
+  const ip = req.ip || req.connection?.remoteAddress || '';
+  return process.env.NODE_ENV !== 'production' &&
+    (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1');
+};
+
 // Strict limiter for auth endpoints (brute-force protection)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 10,
   message: "Too many requests, please try again later.",
   standardHeaders: true,
   legacyHeaders: false,
+  skip: isLocalhost,
 });
 
 // General API limiter
 const apiLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 300,
   message: "Too many requests from this IP, please try again later.",
   standardHeaders: true,
   legacyHeaders: false,
+  skip: isLocalhost,
 });
 
 app.use("/api/auth/login", authLimiter);
