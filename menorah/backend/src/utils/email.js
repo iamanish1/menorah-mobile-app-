@@ -155,14 +155,14 @@ const sendPasswordResetEmail = async (email, token) => {
 
   // Always log links in dev for easy testing
   if (isDev) {
-    const scheme = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
-    const sep = scheme.includes('?') ? '&' : '?';
-    const deepLink = `${scheme}${sep}token=${encodeURIComponent(token)}`;
+    const encodedToken = encodeURIComponent(token);
+    const apkLink     = `menorah-health://reset-password?token=${encodedToken}`;
+    const expoGoLink  = `exp+menorah-health-app://reset-password?token=${encodedToken}`;
     console.log('\n🔑 ─── DEV PASSWORD RESET ────────────────────────');
-    console.log(`   Email:     ${email}`);
-    console.log(`   HTTP link: ${resetUrl}`);
-    console.log(`   Deep link: ${deepLink}`);
-    console.log(`   ↑ Paste the deep link in your phone browser (APK must be installed)`);
+    console.log(`   Email:          ${email}`);
+    console.log(`   If using APK:   ${apkLink}`);
+    console.log(`   If using Expo Go: ${expoGoLink}`);
+    console.log(`   → Paste the correct link in your phone Chrome address bar`);
     console.log('──────────────────────────────────────────────────\n');
   }
 
