@@ -1,29 +1,18 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-// Get IP from config, fallback to localhost for web, but should use IP for mobile
-const configIP = (Constants.expoConfig?.extra as any)?.API_BASE_URL?.match(/http:\/\/([^:]+)/)?.[1];
-const isWeb = Platform.OS === 'web';
-
-// Default to IP from config or localhost for web
-// Fallback to localhost for dev — production URL must come from app.config.ts via EXPO_PUBLIC_API_BASE_URL.
-const DEFAULT_API_BASE_URL = configIP
-  ? `http://${configIP}:3000/api`
-  : 'http://localhost:3000/api';
-
-// Get base URL from config
-const configBaseURL = (Constants.expoConfig?.extra as any)?.API_BASE_URL as string;
+// Get base URL from app config (set via EXPO_PUBLIC_API_BASE_URL in eas.json)
+const configBaseURL = (Constants.expoConfig?.extra as any)?.API_BASE_URL as string | undefined;
 
 const normalizeBaseURL = (url?: string) => {
-  const candidate = (url ?? DEFAULT_API_BASE_URL).trim();
-  const normalized = candidate.replace(/\/+$/, '');
+  const candidate = (url ?? 'http://localhost:3000/api').trim().replace(/\/+$/, '');
 
-  // Android emulators cannot reach services on the host machine via localhost.
-  if (Platform.OS === 'android') {
-    return normalized.replace('http://localhost', 'http://10.0.2.2');
+  // Only remap localhost for Android emulator (emulator can't reach host via localhost)
+  if (Platform.OS === 'android' && candidate.includes('localhost')) {
+    return candidate.replace('http://localhost', 'http://10.0.2.2');
   }
 
-  return normalized;
+  return candidate;
 };
 
 const buildAPIBaseURL = () => normalizeBaseURL(configBaseURL);

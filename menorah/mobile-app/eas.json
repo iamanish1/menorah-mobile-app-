@@ -12,7 +12,9 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api.menorahhealth.app/api"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.menorahhealth.app/api",
+        "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorahhealth.app/checkout/return"
       }
     },
     "preview": {
@@ -22,9 +24,9 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://YOUR_API_DOMAIN/api",
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.menorahhealth.app/api",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://YOUR_DOMAIN/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorahhealth.app/checkout/return"
       }
     },
     "production": {
@@ -34,9 +36,9 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://YOUR_API_DOMAIN/api",
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.menorahhealth.app/api",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://YOUR_DOMAIN/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorahhealth.app/checkout/return"
       }
     }
   }
