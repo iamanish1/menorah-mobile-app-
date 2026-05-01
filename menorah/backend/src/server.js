@@ -25,7 +25,6 @@ if (process.env.NODE_ENV === "production") {
     "RAZORPAY_KEY_SECRET",
     "RAZORPAY_WEBHOOK_SECRET",
     "MSG91_AUTH_KEY",
-    "SENDGRID_API_KEY",
   ];
   required.forEach((key) => {
     if (!process.env[key]) {
@@ -315,7 +314,7 @@ server.listen(PORT, () => {
   console.log(`🔗 API Base URL: ${process.env.API_BASE_URL || `http://localhost:${PORT}`}`);
   console.log(`🔌 Socket.IO server is ready for real-time connections`);
 
-  console.log("\n📧 Email (SendGrid):", process.env.SENDGRID_API_KEY ? "✅ Key set" : "❌ SENDGRID_API_KEY missing — email sending will fail");
+  console.log("\n📧 Email (MSG91):", process.env.MSG91_AUTH_KEY ? "✅ Auth key set" : "⚠️  MSG91_AUTH_KEY missing — email sending will fail");
   console.log("📱 SMS (MSG91):", process.env.MSG91_AUTH_KEY ? "✅ Auth key set" : "❌ MSG91_AUTH_KEY missing — OTP sending will fail");
 
   console.log("\n🌐 CORS Configuration:");

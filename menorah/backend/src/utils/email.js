@@ -14,19 +14,39 @@ const isConfigured = () => {
   return true;
 };
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 // ─── Core send helper ─────────────────────────────────────────────────────
 const sendEmail = async (to, subject, html, toName = '') => {
+  // In development, log the email to console instead of sending
+  if (isDev) {
+    console.log('\n📧 ─── DEV EMAIL (not sent) ───────────────────────');
+    console.log(`   To:      ${to}`);
+    console.log(`   Subject: ${subject}`);
+    console.log(`   (HTML content suppressed — check reset link below if applicable)`);
+    console.log('──────────────────────────────────────────────────\n');
+    return true;
+  }
+
   if (!isConfigured()) return false;
+
+  const templateId = process.env.MSG91_EMAIL_TEMPLATE_ID;
+  if (!templateId || templateId.startsWith('REPLACE_')) {
+    console.error('❌ MSG91_EMAIL_TEMPLATE_ID is not set. Email sending is disabled.');
+    return false;
+  }
+
   try {
     const { data } = await axios.post(
       MSG91_EMAIL_URL,
       {
-        recipients: [{ to: [{ email: to, name: toName || to }] }],
+        template_id: templateId,
+        recipients: [{
+          to: [{ email: to, name: toName || to }],
+          variables: { body: html, subject },
+        }],
         from: { email: FROM_EMAIL, name: FROM_NAME },
         domain: DOMAIN,
-        subject,
-        body: html,
-        'content-type': 'text/html',
       },
       {
         headers: {
@@ -35,7 +55,7 @@ const sendEmail = async (to, subject, html, toName = '') => {
         },
       }
     );
-    const success = data?.type === 'success' || data?.status === 'success' || data?.message === 'Email sent successfully';
+    const success = !data?.hasError && (data?.type === 'success' || data?.status === 'success' || data?.message === 'Email queued successfully');
     if (success) {
       console.log(`✅ Email sent via MSG91 to: ${to}`);
     } else {
@@ -132,31 +152,50 @@ const sendVerificationEmail = async (email, code) => {
 // ─── Email: Password reset ────────────────────────────────────────────────
 const sendPasswordResetEmail = async (email, token) => {
   const resetUrl = buildPasswordResetUrl(token);
-  const html = layout(`
-    <h2 style="color:#111827;margin:0 0 16px;">Password Reset Request</h2>
-    <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">
-      We received a request to reset your Menorah Health account password.
-      Tap the button below to open the app and create a new password.
-    </p>
-    <div style="text-align:center;margin:32px 0;">
-      <a href="${resetUrl}"
-         style="background:#2d7a5c;color:#fff;padding:14px 32px;text-decoration:none;
-                border-radius:8px;display:inline-block;font-weight:600;font-size:15px;">
-        Reset Password
-      </a>
-    </div>
-    <p style="color:#6b7280;font-size:13px;margin:0 0 8px;">
-      If the button doesn't work, copy and paste this link:
-    </p>
-    <p style="color:#2d7a5c;font-size:13px;word-break:break-all;margin:0 0 24px;">${resetUrl}</p>
-    <p style="color:#6b7280;line-height:1.6;margin:0 0 8px;">
-      This link expires in <strong>10 minutes</strong> and can only be used once.
-    </p>
-    <p style="color:#9ca3af;font-size:13px;margin:0;">
-      If you didn't request a password reset, no action is needed.
-    </p>
-  `);
-  return sendEmail(email, 'Reset Your Password – Menorah Health', html);
+
+  // Always log links in dev for easy testing
+  if (isDev) {
+    const scheme = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
+    const sep = scheme.includes('?') ? '&' : '?';
+    const deepLink = `${scheme}${sep}token=${encodeURIComponent(token)}`;
+    console.log('\n🔑 ─── DEV PASSWORD RESET ────────────────────────');
+    console.log(`   Email:     ${email}`);
+    console.log(`   HTTP link: ${resetUrl}`);
+    console.log(`   Deep link: ${deepLink}`);
+    console.log(`   ↑ Paste the deep link in your phone browser (APK must be installed)`);
+    console.log('──────────────────────────────────────────────────\n');
+  }
+
+  // Production: use dedicated MSG91 template with {{reset_link}} variable
+  const templateId = process.env.MSG91_EMAIL_TEMPLATE_ID;
+  if (!templateId || templateId.startsWith('REPLACE_')) {
+    console.error('❌ MSG91_EMAIL_TEMPLATE_ID not set');
+    return false;
+  }
+  if (!isConfigured()) return false;
+
+  try {
+    const { data } = await axios.post(
+      MSG91_EMAIL_URL,
+      {
+        template_id: templateId,
+        recipients: [{
+          to: [{ email, name: email }],
+          variables: { reset_link: resetUrl },
+        }],
+        from: { email: FROM_EMAIL, name: FROM_NAME },
+        domain: DOMAIN,
+      },
+      { headers: { authkey: process.env.MSG91_AUTH_KEY, 'Content-Type': 'application/json' } }
+    );
+    const success = !data?.hasError && (data?.type === 'success' || data?.status === 'success');
+    if (success) console.log(`✅ Password reset email sent to: ${email}`);
+    else console.error('❌ MSG91 password reset email error:', data);
+    return success;
+  } catch (err) {
+    console.error('❌ MSG91 password reset email error:', err.response?.data ?? err.message);
+    return false;
+  }
 };
 
 // ─── Email: Booking confirmation ──────────────────────────────────────────

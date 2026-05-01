@@ -27,7 +27,7 @@ const deriveAPIOrigin = (baseUrl: string) => {
 
 const API_BASE_URL = buildAPIBaseURL();
 const API_ORIGIN = deriveAPIOrigin(API_BASE_URL);
-const IS_EXPO_GO = Constants.appOwnership === 'expo';
+const IS_EXPO_GO = (Constants.executionEnvironment as string) === 'expo';
 
 // Feature flag for Razorpay SDK integration
 // Expo Go cannot load the native Razorpay module, so force WebView fallback there.
@@ -46,7 +46,6 @@ export const ENV = {
 console.log('Environment Configuration:', {
   Platform: Platform.OS,
   __DEV__,
-  configIP,
   IS_EXPO_GO: ENV.IS_EXPO_GO,
   API_BASE_URL: ENV.API_BASE_URL,
   API_ORIGIN: ENV.API_ORIGIN,

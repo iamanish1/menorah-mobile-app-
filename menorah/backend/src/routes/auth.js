@@ -342,13 +342,7 @@ router.post('/forgot-password', [
 
     const emailSent = await sendPasswordResetEmail(user.email, resetToken);
     if (!emailSent) {
-      user.passwordResetToken = undefined;
-      user.passwordResetExpires = undefined;
-      await user.save();
-      return res.status(500).json({
-        success: false,
-        message: 'Unable to send reset email right now. Please try again in a moment.'
-      });
+      console.error(`Failed to send password reset email to ${user.email}`);
     }
 
     res.json({ success: true, message: 'If an account exists for that email, a password reset link has been sent' });
