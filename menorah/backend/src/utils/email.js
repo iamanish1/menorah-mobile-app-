@@ -1,61 +1,78 @@
-const sgMail = require('@sendgrid/mail');
+const axios = require('axios');
 
-// ─── Initialisation ────────────────────────────────────────────────────────
-let initialised = false;
+const MSG91_EMAIL_URL = 'https://control.msg91.com/api/v5/email/send';
 
-const initSendGrid = () => {
-  if (initialised) return true;
-  if (!process.env.SENDGRID_API_KEY) {
-    console.error('❌ SENDGRID_API_KEY is not set. Email sending is disabled.');
+const FROM_EMAIL = process.env.EMAIL_FROM    || 'noreply@menorahhealth.app';
+const FROM_NAME  = 'Menorah Health';
+const DOMAIN     = process.env.MSG91_EMAIL_DOMAIN || 'menorahhealth.app';
+
+const isConfigured = () => {
+  if (!process.env.MSG91_AUTH_KEY || process.env.MSG91_AUTH_KEY.startsWith('REPLACE_')) {
+    console.error('❌ MSG91_AUTH_KEY is not set. Email sending is disabled.');
     return false;
   }
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  initialised = true;
   return true;
 };
 
-const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@menorahhealth.app';
-const FROM_NAME  = 'Menorah Health';
-
-// ─── Shared send helper ────────────────────────────────────────────────────
-const sendEmail = async (to, subject, html) => {
-  if (!initSendGrid()) return false;
+// ─── Core send helper ─────────────────────────────────────────────────────
+const sendEmail = async (to, subject, html, toName = '') => {
+  if (!isConfigured()) return false;
   try {
-    await sgMail.send({ from: { email: FROM_EMAIL, name: FROM_NAME }, to, subject, html });
-    console.log(`✅ Email sent via SendGrid to: ${to}`);
-    return true;
+    const { data } = await axios.post(
+      MSG91_EMAIL_URL,
+      {
+        recipients: [{ to: [{ email: to, name: toName || to }] }],
+        from: { email: FROM_EMAIL, name: FROM_NAME },
+        domain: DOMAIN,
+        subject,
+        body: html,
+        'content-type': 'text/html',
+      },
+      {
+        headers: {
+          authkey: process.env.MSG91_AUTH_KEY,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    const success = data?.type === 'success' || data?.status === 'success' || data?.message === 'Email sent successfully';
+    if (success) {
+      console.log(`✅ Email sent via MSG91 to: ${to}`);
+    } else {
+      console.error('❌ MSG91 email error:', data);
+    }
+    return success;
   } catch (error) {
-    const body = error.response?.body;
-    console.error('❌ SendGrid error:', body ?? error.message);
+    console.error('❌ MSG91 email error:', error.response?.data ?? error.message);
     return false;
   }
 };
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
+// ─── Reset URL builder ────────────────────────────────────────────────────
 const buildPasswordResetUrl = (token) => {
-  const configuredTemplate = process.env.PASSWORD_RESET_URL_TEMPLATE?.trim();
-  const configuredBaseUrl  = process.env.PASSWORD_RESET_BASE_URL?.trim();
-  const apiBaseUrl         = process.env.API_BASE_URL?.trim();
-  const appScheme          = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
+  const template  = process.env.PASSWORD_RESET_URL_TEMPLATE?.trim();
+  const base      = process.env.PASSWORD_RESET_BASE_URL?.trim();
+  const apiBase   = process.env.API_BASE_URL?.trim();
+  const scheme    = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
 
-  if (configuredTemplate) {
-    return configuredTemplate.includes('{token}')
-      ? configuredTemplate.replace('{token}', encodeURIComponent(token))
-      : `${configuredTemplate.replace(/\/+$/, '')}?token=${encodeURIComponent(token)}`;
+  if (template) {
+    return template.includes('{token}')
+      ? template.replace('{token}', encodeURIComponent(token))
+      : `${template.replace(/\/+$/, '')}?token=${encodeURIComponent(token)}`;
   }
-  if (configuredBaseUrl) {
-    const sep = configuredBaseUrl.includes('?') ? '&' : '?';
-    return `${configuredBaseUrl}${sep}token=${encodeURIComponent(token)}`;
+  if (base) {
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}token=${encodeURIComponent(token)}`;
   }
-  if (apiBaseUrl && !/localhost|127\.0\.0\.1/i.test(apiBaseUrl)) {
-    const base = apiBaseUrl.replace(/\/+$/, '').replace(/\/api$/i, '');
-    return `${base}/api/auth/reset-password?token=${encodeURIComponent(token)}`;
+  if (apiBase && !/localhost|127\.0\.0\.1/i.test(apiBase)) {
+    const cleanBase = apiBase.replace(/\/+$/, '').replace(/\/api$/i, '');
+    return `${cleanBase}/api/auth/reset-password?token=${encodeURIComponent(token)}`;
   }
-  const sep = appScheme.includes('?') ? '&' : '?';
-  return `${appScheme}${sep}token=${encodeURIComponent(token)}`;
+  const sep = scheme.includes('?') ? '&' : '?';
+  return `${scheme}${sep}token=${encodeURIComponent(token)}`;
 };
 
-// ─── Shared HTML wrapper ────────────────────────────────────────────────────
+// ─── Shared HTML wrapper ──────────────────────────────────────────────────
 const layout = (content) => `
 <!DOCTYPE html>
 <html>
@@ -65,7 +82,7 @@ const layout = (content) => `
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;max-width:600px;">
         <tr>
-          <td style="background:linear-gradient(135deg,#3d9470 0%,#2d7055 100%);padding:28px 32px;text-align:center;">
+          <td style="background:linear-gradient(135deg,#3d9470 0%,#2d7a5c 100%);padding:28px 32px;text-align:center;">
             <h1 style="color:#fff;margin:0;font-size:24px;letter-spacing:0.5px;">Menorah Health</h1>
             <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px;">Your Mental Wellness Partner</p>
           </td>
@@ -88,24 +105,22 @@ const layout = (content) => `
 </body>
 </html>`;
 
-// ─── Email: Verification code ──────────────────────────────────────────────
+// ─── Email: Verification code ─────────────────────────────────────────────
 const sendVerificationEmail = async (email, code) => {
-  console.log(`📧 Sending verification email to ${email} (code: ${code})`);
   const html = layout(`
     <h2 style="color:#111827;margin:0 0 16px;">Welcome to Menorah Health!</h2>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">
-      Thank you for signing up. Enter the code below to verify your email address and complete your registration.
+      Thank you for signing up. Enter the code below to verify your email address.
     </p>
     <div style="text-align:center;margin:32px 0;">
-      <div style="display:inline-block;background:#f0fdf4;border:2px solid #3d9470;border-radius:12px;padding:20px 40px;">
-        <p style="color:#3d9470;font-size:40px;font-weight:700;letter-spacing:12px;margin:0;font-family:'Courier New',monospace;">
+      <div style="display:inline-block;background:#f0f9f4;border:2px solid #2d7a5c;border-radius:12px;padding:20px 40px;">
+        <p style="color:#2d7a5c;font-size:40px;font-weight:700;letter-spacing:12px;margin:0;font-family:'Courier New',monospace;">
           ${code}
         </p>
       </div>
     </div>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;">
-      Enter this 6-digit code in the app to verify your email address.
-      <strong>It expires in 10 minutes.</strong>
+      Enter this 6-digit code in the app. <strong>It expires in 10 minutes.</strong>
     </p>
     <p style="color:#9ca3af;font-size:13px;margin:0;">
       If you didn't create a Menorah Health account, you can safely ignore this email.
@@ -114,7 +129,7 @@ const sendVerificationEmail = async (email, code) => {
   return sendEmail(email, 'Verify Your Email – Menorah Health', html);
 };
 
-// ─── Email: Password reset ─────────────────────────────────────────────────
+// ─── Email: Password reset ────────────────────────────────────────────────
 const sendPasswordResetEmail = async (email, token) => {
   const resetUrl = buildPasswordResetUrl(token);
   const html = layout(`
@@ -125,35 +140,33 @@ const sendPasswordResetEmail = async (email, token) => {
     </p>
     <div style="text-align:center;margin:32px 0;">
       <a href="${resetUrl}"
-         style="background:#3d9470;color:#fff;padding:14px 32px;text-decoration:none;
+         style="background:#2d7a5c;color:#fff;padding:14px 32px;text-decoration:none;
                 border-radius:8px;display:inline-block;font-weight:600;font-size:15px;">
         Reset Password
       </a>
     </div>
     <p style="color:#6b7280;font-size:13px;margin:0 0 8px;">
-      If the button doesn't work, copy and paste this link into your browser:
+      If the button doesn't work, copy and paste this link:
     </p>
-    <p style="color:#3d9470;font-size:13px;word-break:break-all;margin:0 0 24px;">${resetUrl}</p>
+    <p style="color:#2d7a5c;font-size:13px;word-break:break-all;margin:0 0 24px;">${resetUrl}</p>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 8px;">
       This link expires in <strong>10 minutes</strong> and can only be used once.
     </p>
     <p style="color:#9ca3af;font-size:13px;margin:0;">
-      If you didn't request a password reset, your password is safe — no action needed.
+      If you didn't request a password reset, no action is needed.
     </p>
   `);
   return sendEmail(email, 'Reset Your Password – Menorah Health', html);
 };
 
-// ─── Email: Booking confirmation ───────────────────────────────────────────
+// ─── Email: Booking confirmation ──────────────────────────────────────────
 const sendBookingConfirmationEmail = async (email, bookingDetails) => {
   const { scheduledAt, sessionDuration, sessionType, counsellorName } = bookingDetails;
-  const dateStr = new Date(scheduledAt).toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-  const timeStr = new Date(scheduledAt).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+  const dateStr = new Date(scheduledAt).toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const timeStr = new Date(scheduledAt).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
   const html = layout(`
     <h2 style="color:#111827;margin:0 0 8px;">Booking Confirmed ✓</h2>
-    <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">
-      Great news! Your session has been confirmed. Here are your session details:
-    </p>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">Your session has been confirmed. Here are your details:</p>
     <table width="100%" cellpadding="0" cellspacing="0"
            style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin:0 0 24px;">
       <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
@@ -174,21 +187,21 @@ const sendBookingConfirmationEmail = async (email, bookingDetails) => {
       </td></tr>
     </table>
     <p style="color:#6b7280;font-size:13px;margin:0;">
-      Please join your session 5 minutes early. Need to cancel? You can do so at least 24 hours before your session.
+      Please join your session 5 minutes early. You can cancel at least 24 hours before.
     </p>
   `);
   return sendEmail(email, 'Booking Confirmed – Menorah Health', html);
 };
 
-// ─── Email: Session reminder ───────────────────────────────────────────────
+// ─── Email: Session reminder ──────────────────────────────────────────────
 const sendSessionReminderEmail = async (email, sessionDetails) => {
   const { scheduledAt, sessionDuration, sessionType, counsellorName } = sessionDetails;
-  const dateStr = new Date(scheduledAt).toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-  const timeStr = new Date(scheduledAt).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+  const dateStr = new Date(scheduledAt).toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const timeStr = new Date(scheduledAt).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
   const html = layout(`
     <h2 style="color:#111827;margin:0 0 8px;">Session Reminder</h2>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">
-      This is a friendly reminder about your upcoming Menorah Health session.
+      Friendly reminder about your upcoming session:
     </p>
     <table width="100%" cellpadding="0" cellspacing="0"
            style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin:0 0 24px;">
@@ -206,8 +219,7 @@ const sendSessionReminderEmail = async (email, sessionDetails) => {
       </td></tr>
     </table>
     <p style="color:#6b7280;font-size:13px;margin:0;">
-      Please ensure you have a stable internet connection and are in a quiet, private space.
-      If you need to reschedule, please contact us immediately.
+      Ensure you have a stable internet connection and are in a quiet, private space.
     </p>
   `);
   return sendEmail(email, 'Session Reminder – Menorah Health', html);
