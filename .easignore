@@ -1,0 +1,7 @@
+# Exclude everything except the mobile app
+Menorah/backend
+Menorah/user-web-app
+Menorah/web-app
+**/.git
+**/node_modules
+**/.env
