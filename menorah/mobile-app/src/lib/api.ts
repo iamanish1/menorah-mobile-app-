@@ -390,7 +390,7 @@ class ApiClient {
   }
 
   async getBookings(params?: {
-    status?: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
+    status?: string;
     page?: number;
     limit?: number;
   }): Promise<ApiResponse<{ bookings: Booking[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {

@@ -52,6 +52,16 @@ export interface BookingStatusData {
   status: string;
 }
 
+export interface BookingConfirmedData {
+  bookingId: string;
+  counsellorName: string;
+}
+
+export interface BookingRescheduledData {
+  bookingId: string;
+  scheduledAt: string;
+}
+
 class SocketService {
   private socket: Socket | null = null;
   private isConnected = false;
@@ -67,6 +77,8 @@ class SocketService {
   private connectionListeners: ((connected: boolean) => void)[] = [];
   private sessionStartedListeners: ((data: SessionStartedData) => void)[] = [];
   private bookingStatusListeners: ((data: BookingStatusData) => void)[] = [];
+  private bookingConfirmedListeners: ((data: BookingConfirmedData) => void)[] = [];
+  private bookingRescheduledListeners: ((data: BookingRescheduledData) => void)[] = [];
 
   // Initialize socket connection
   async connect(): Promise<void> {
@@ -227,6 +239,18 @@ class SocketService {
       console.log('Booking status changed:', data);
       this.notifyBookingStatusListeners(data);
     });
+
+    // Booking confirmed by counsellor
+    this.socket.on('booking_confirmed', (data: BookingConfirmedData) => {
+      console.log('Booking confirmed by counsellor:', data);
+      this.notifyBookingConfirmedListeners(data);
+    });
+
+    // Booking rescheduled by counsellor
+    this.socket.on('booking_rescheduled', (data: BookingRescheduledData) => {
+      console.log('Booking rescheduled:', data);
+      this.notifyBookingRescheduledListeners(data);
+    });
   }
 
   // Join a chat room
@@ -352,6 +376,20 @@ class SocketService {
     };
   }
 
+  onBookingConfirmed(callback: (data: BookingConfirmedData) => void): () => void {
+    this.bookingConfirmedListeners.push(callback);
+    return () => {
+      this.bookingConfirmedListeners = this.bookingConfirmedListeners.filter(cb => cb !== callback);
+    };
+  }
+
+  onBookingRescheduled(callback: (data: BookingRescheduledData) => void): () => void {
+    this.bookingRescheduledListeners.push(callback);
+    return () => {
+      this.bookingRescheduledListeners = this.bookingRescheduledListeners.filter(cb => cb !== callback);
+    };
+  }
+
   // Notify listeners
   private notifyMessageListeners(message: ChatMessage): void {
     this.messageListeners.forEach(callback => callback(message));
@@ -379,6 +417,14 @@ class SocketService {
 
   private notifyBookingStatusListeners(data: BookingStatusData): void {
     this.bookingStatusListeners.forEach(callback => callback(data));
+  }
+
+  private notifyBookingConfirmedListeners(data: BookingConfirmedData): void {
+    this.bookingConfirmedListeners.forEach(callback => callback(data));
+  }
+
+  private notifyBookingRescheduledListeners(data: BookingRescheduledData): void {
+    this.bookingRescheduledListeners.forEach(callback => callback(data));
   }
 }
 

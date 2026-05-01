@@ -6,6 +6,7 @@ import { Image } from "expo-image";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { api, Booking } from "@/lib/api";
+import { socketService } from "@/lib/socket";
 
 export default function Bookings({ navigation }: any) {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'completed'>('upcoming');
@@ -19,10 +20,17 @@ export default function Bookings({ navigation }: any) {
     fetchBookings();
   }, [activeTab]);
 
+  // Refresh list when counsellor confirms or reschedules
+  useEffect(() => {
+    const unsub1 = socketService.onBookingConfirmed(() => fetchBookings());
+    const unsub2 = socketService.onBookingRescheduled(() => fetchBookings());
+    return () => { unsub1(); unsub2(); };
+  }, [activeTab]);
+
   const fetchBookings = async () => {
     setLoading(true);
     try {
-      const status = activeTab === 'upcoming' ? 'confirmed' : 'completed';
+      const status = activeTab === 'upcoming' ? 'pending,confirmed' : 'completed';
       const response = await api.getBookings({ status, page: 1, limit: 50 });
       
       if (response.success && response.data) {

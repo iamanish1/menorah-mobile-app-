@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { socketService, SessionStartedData, BookingStatusData, ChatMessage } from '@/lib/socket';
+import { socketService, SessionStartedData, BookingStatusData, BookingConfirmedData, BookingRescheduledData, ChatMessage } from '@/lib/socket';
 import { useAuth } from '@/state/useAuth';
 import { navigate } from '@/services/navigationService';
 
@@ -177,6 +177,30 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       });
     });
 
+    const unsubscribeBookingConfirmed = socketService.onBookingConfirmed((data: BookingConfirmedData) => {
+      addNotification({
+        type: 'booking',
+        title: 'Booking Confirmed',
+        body: `${data.counsellorName} has accepted your booking.`,
+        actionLabel: 'View Booking',
+        data: {
+          bookingId: data.bookingId,
+        },
+      });
+    });
+
+    const unsubscribeBookingRescheduled = socketService.onBookingRescheduled((data: BookingRescheduledData) => {
+      addNotification({
+        type: 'booking',
+        title: 'Session Rescheduled',
+        body: `Your session has been rescheduled.`,
+        actionLabel: 'View Booking',
+        data: {
+          bookingId: data.bookingId,
+        },
+      });
+    });
+
     const unsubscribeMessage = socketService.onMessage((message: ChatMessage) => {
       if (message.senderId === user.id) {
         return;
@@ -197,6 +221,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     return () => {
       unsubscribeSessionStarted();
       unsubscribeBookingStatus();
+      unsubscribeBookingConfirmed();
+      unsubscribeBookingRescheduled();
       unsubscribeMessage();
     };
   }, [addNotification, user?.id]);

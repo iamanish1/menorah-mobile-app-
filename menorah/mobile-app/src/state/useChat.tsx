@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { socketService, ChatMessage, TypingIndicator, UserStatus, MessageReadReceipt, SessionStartedData, BookingStatusData } from '@/lib/socket';
+import { socketService, ChatMessage, TypingIndicator, UserStatus, MessageReadReceipt, SessionStartedData, BookingStatusData, BookingConfirmedData, BookingRescheduledData } from '@/lib/socket';
 import { api, ChatRoom, Message } from '@/lib/api';
 import { useAuth } from './useAuth';
 
@@ -106,6 +106,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       const unsubscribeConnection = socketService.onConnectionChange(handleConnectionChange);
       const unsubscribeSessionStarted = socketService.onSessionStarted(handleSessionStarted);
       const unsubscribeBookingStatus = socketService.onBookingStatusChanged(handleBookingStatus);
+      const unsubscribeBookingConfirmed = socketService.onBookingConfirmed(handleBookingConfirmed);
+      const unsubscribeBookingRescheduled = socketService.onBookingRescheduled(handleBookingRescheduled);
 
       console.log('Socket.IO event listeners set up successfully');
 
@@ -117,6 +119,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         unsubscribeConnection();
         unsubscribeSessionStarted();
         unsubscribeBookingStatus();
+        unsubscribeBookingConfirmed();
+        unsubscribeBookingRescheduled();
       };
     } catch (error) {
       console.error('Failed to initialize socket:', error);
@@ -227,8 +231,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   }, []);
 
   const handleBookingStatus = useCallback((data: BookingStatusData) => {
-    // Handle booking status changes
     console.log('Booking status changed:', data);
+  }, []);
+
+  const handleBookingConfirmed = useCallback((data: BookingConfirmedData) => {
+    console.log('Booking confirmed by counsellor:', data);
+  }, []);
+
+  const handleBookingRescheduled = useCallback((data: BookingRescheduledData) => {
+    console.log('Booking rescheduled:', data);
   }, []);
 
   // Chat room management

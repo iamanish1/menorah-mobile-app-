@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { useSocket } from '@/hooks/useSocket';
 import { useBookings, usePendingBookings } from '@/hooks/useBookings';
 import { Booking } from '@/types';
 import { format } from 'date-fns';
@@ -29,12 +30,33 @@ export default function BookingsPage() {
     activeTab === 'all' ? { status: statusFilter || undefined } : undefined
   );
   const { bookings: pendingBookings, loading: pendingLoading, error: pendingError, refetch: refetchPendingBookings } = usePendingBookings();
+  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const { on, off } = useSocket(token);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.push('/login');
     }
   }, [isAuthenticated, isLoading, router]);
+
+  // Refresh bookings list on real-time events
+  useEffect(() => {
+    if (!token || !isAuthenticated) return;
+    let debounceTimer: NodeJS.Timeout;
+    const refresh = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => { refetchAllBookings(); refetchPendingBookings(); }, 800);
+    };
+    on('new_booking_available', refresh);
+    on('booking_assigned', refresh);
+    on('booking_status_changed', refresh);
+    return () => {
+      clearTimeout(debounceTimer);
+      off('new_booking_available', refresh);
+      off('booking_assigned', refresh);
+      off('booking_status_changed', refresh);
+    };
+  }, [token, isAuthenticated, on, off]);
 
   const getBookingsForTab = (): Booking[] => {
     let bookings: Booking[] = [];

@@ -147,32 +147,16 @@ router.post('/', [
     let paymentStatus = 'pending';
     let paymentMethod = 'razorpay';
     
-    console.log('Checking subscription for user:', req.user._id);
-    console.log('User subscription:', user?.subscription);
-    
     if (user && user.subscription) {
       const now = new Date();
       const endDate = user.subscription.endDate ? new Date(user.subscription.endDate) : null;
-      
-      // Check if subscription is active and not expired
       const subscriptionActive = user.subscription.isActive === true;
       const subscriptionNotExpired = endDate && endDate > now;
-      
-      console.log('Subscription check:', {
-        isActive: subscriptionActive,
-        endDate: endDate,
-        now: now,
-        notExpired: subscriptionNotExpired,
-        willUseSubscription: subscriptionActive && subscriptionNotExpired
-      });
-      
       if (subscriptionActive && subscriptionNotExpired) {
         isSubscriptionBooking = true;
         paymentStatus = 'paid';
         paymentMethod = 'subscription';
-        // Set amount to 0 for subscription bookings
         amount = 0;
-        console.log('Using subscription for booking - amount set to 0');
       }
     }
 
@@ -188,6 +172,7 @@ router.post('/', [
       currency: currency,
       paymentMethod: paymentMethod,
       paymentStatus: paymentStatus,
+      status: isSubscriptionBooking ? 'confirmed' : 'pending',
       isSubscriptionBooking: isSubscriptionBooking,
       preferences: preferences || {},
       symptoms,
@@ -280,7 +265,7 @@ router.post('/', [
 // @desc    Get user's bookings
 // @access  Private
 router.get('/', [
-  query('status').optional().isIn(['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show']),
+  query('status').optional(),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 50 })
 ], auth, async (req, res) => {
@@ -296,17 +281,24 @@ router.get('/', [
 
     const { status, page = 1, limit = 10 } = req.query;
 
-    // Build query
-    const query = { user: req.user._id };
+    const validStatuses = ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show'];
+
+    // Build query — support comma-separated status list (e.g. "pending,confirmed")
+    const dbQuery = { user: req.user._id };
     if (status) {
-      query.status = status;
+      const statuses = status.split(',').map(s => s.trim()).filter(s => validStatuses.includes(s));
+      if (statuses.length === 1) {
+        dbQuery.status = statuses[0];
+      } else if (statuses.length > 1) {
+        dbQuery.status = { $in: statuses };
+      }
     }
 
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     // Execute query
-    const bookings = await Booking.find(query)
+    const bookings = await Booking.find(dbQuery)
       .populate({
         path: 'counsellor',
         select: 'user specialization hourlyRate',
@@ -321,7 +313,7 @@ router.get('/', [
       .lean();
 
     // Get total count
-    const total = await Booking.countDocuments(query);
+    const total = await Booking.countDocuments(dbQuery);
 
     // Format response
     const formattedBookings = bookings.map(booking => ({

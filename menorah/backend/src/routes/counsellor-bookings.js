@@ -1,8 +1,11 @@
 const express = require('express');
 const { param, query, body, validationResult } = require('express-validator');
+const moment = require('moment-timezone');
 const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
 const { counsellorAuth } = require('../middleware/auth');
+
+const SERVER_TZ = process.env.SERVER_TZ || 'Asia/Kolkata';
 
 const router = express.Router();
 
@@ -50,11 +53,11 @@ router.get('/me/bookings/pending', [
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
 
-    // Find unassigned bookings (no counsellor, status pending)
+    // Find unassigned bookings — include subscription auto-confirmed bookings too
     const query = {
       counsellor: null,
-      status: 'pending',
-      scheduledAt: { $gte: new Date() } // Only future bookings
+      status: { $in: ['pending', 'confirmed'] },
+      scheduledAt: { $gte: new Date() }
     };
 
     // Optional: Filter by counselor's specialization or preferences
@@ -63,9 +66,6 @@ router.get('/me/bookings/pending', [
     // Calculate pagination
     const skip = (pageNum - 1) * limitNum;
 
-    // Debug logging
-    console.log('Pending bookings query:', JSON.stringify(query, null, 2));
-    console.log('Pagination:', { page: pageNum, limit: limitNum, skip });
 
     // Execute query
     const bookings = await Booking.find(query)
@@ -703,8 +703,9 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
     const isCounsellorAvailable = counsellor.isActive && counsellor.isAvailable;
 
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const nowLocal = moment.tz(now, SERVER_TZ);
+    const startOfMonth = nowLocal.clone().startOf('month').toDate();
+    const endOfMonth = nowLocal.clone().endOf('month').toDate();
     const next7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     // Total bookings - ALL bookings that counselors can work with
@@ -727,33 +728,31 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
       status: { $in: ['confirmed', 'pending'] }
     });
 
-    // Pending assignments (unassigned bookings available for any AVAILABLE counselor)
-    // For instant sessions, we show all pending bookings regardless of scheduledAt
-    // Only show to counselors who are available
-    const pendingAssignments = isCounsellorAvailable 
+    // Pending assignments — unassigned bookings (including subscription auto-confirmed ones)
+    const pendingAssignments = isCounsellorAvailable
       ? await Booking.countDocuments({
           counsellor: null,
-          status: 'pending'
+          status: { $in: ['pending', 'confirmed'] }
         })
       : 0;
 
-    // Monthly earnings - Calculate total from ALL bookings (not just completed/paid)
-    // This shows the total booking amount for the month
+    // Monthly earnings - only paid bookings, after counsellor's commission share
+    const commissionRate = counsellor.commissionRate ?? 20;
+    const counsellorShare = (100 - commissionRate) / 100;
     const monthlyBookings = await Booking.find({
       counsellor: counsellor._id,
       scheduledAt: { $gte: startOfMonth, $lte: endOfMonth },
-      status: { $ne: 'cancelled' } // Exclude cancelled bookings
-    }).select('amount currency').lean();
+      paymentStatus: 'paid'
+    }).select('amount').lean();
 
     const monthlyEarnings = monthlyBookings.reduce((total, booking) => {
-      // Sum all booking amounts (not just earnings after commission)
-      return total + (booking.amount || 0);
+      return total + (booking.amount || 0) * counsellorShare;
     }, 0);
 
-    // Today's schedule - ALL bookings available for counselors (assigned or unassigned)
-    // For instant sessions, we show all available bookings, prioritizing today's scheduled ones
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    // Today's schedule — use server timezone so "today" aligns with local date
+    const todayLocal = moment.tz(now, SERVER_TZ);
+    const startOfDay = todayLocal.clone().startOf('day').toDate();
+    const endOfDay = todayLocal.clone().endOf('day').toDate();
     
     // Get assigned bookings for today
     const assignedToday = await Booking.find({
@@ -765,12 +764,11 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
       .sort({ scheduledAt: 1 })
       .lean();
     
-    // Get all unassigned pending bookings (for instant sessions, these can be started anytime)
-    // Only show to counselors who are available
+    // Get all unassigned bookings (pending or subscription auto-confirmed)
     const unassignedPending = isCounsellorAvailable
       ? await Booking.find({
           counsellor: null,
-          status: 'pending'
+          status: { $in: ['pending', 'confirmed'] }
         })
           .populate('user', 'firstName lastName profileImage')
           .sort({ createdAt: -1 }) // Most recent first for instant sessions
@@ -797,7 +795,7 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
     const recentBookings = await Booking.find({
       $or: [
         { counsellor: counsellor._id }, // Always show assigned bookings
-        ...(isCounsellorAvailable ? [{ counsellor: null, status: { $in: ['pending', 'confirmed'] } }] : []) // Only show unassigned if available
+        ...(isCounsellorAvailable ? [{ counsellor: null, status: { $in: ['pending', 'confirmed'] } }] : [])
       ],
       status: { $ne: 'cancelled' }
     })
