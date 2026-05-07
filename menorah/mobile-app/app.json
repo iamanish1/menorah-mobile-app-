@@ -2,7 +2,7 @@
   "expo": {
     "name": "Menorah Health",
     "slug": "menorah-health-app",
-    "version": "1.0.0",
+    "version": "2.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -23,7 +23,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#f0f9f4"
       },
-      "package": "com.menorah.health.app",
+      "package": "com.menorah.healthmobile",
+      "versionCode": 2,
       "statusBar": {
         "barStyle": "light-content",
         "backgroundColor": "#314830",
