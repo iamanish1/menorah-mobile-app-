@@ -1,4 +1,4 @@
-package com.menorah.health.app
+package com.menorah.healthmobile
 
 import android.app.Application
 import android.content.res.Configuration

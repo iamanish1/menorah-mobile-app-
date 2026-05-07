@@ -1,4 +1,4 @@
-package com.menorah.health.app
+package com.menorah.healthmobile
 
 import android.os.Build
 import android.os.Bundle
