@@ -8,7 +8,7 @@ class SocketClient {
     // Get socket URL from environment or derive from API URL
     const apiURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
     // Remove /api suffix if present and use as base URL for Socket.IO
-    this.socketURL = process.env.NEXT_PUBLIC_SOCKET_URL || apiURL.replace('/api', '');
+    this.socketURL = process.env.NEXT_PUBLIC_SOCKET_URL || apiURL.replace(/\/api\/?$/, '');
     console.log('Socket.IO connecting to:', this.socketURL);
   }
 

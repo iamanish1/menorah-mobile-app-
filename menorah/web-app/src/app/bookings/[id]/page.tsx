@@ -79,13 +79,17 @@ export default function BookingDetailPage() {
     if (!booking) return;
     try {
       setActionLoading('schedule');
+      setError(null);
       const response = await api.scheduleBooking(booking.id, scheduledAt);
       if (response.success) {
         setShowScheduleModal(false);
         fetchBooking();
+      } else {
+        setError(response.message || 'Failed to schedule booking');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to schedule booking:', error);
+      setError(error.message || 'Failed to schedule booking');
     } finally {
       setActionLoading(null);
     }
@@ -137,12 +141,16 @@ export default function BookingDetailPage() {
     if (!booking) return;
     try {
       setActionLoading('complete');
+      setError(null);
       const response = await api.completeSession(booking.id);
       if (response.success) {
         fetchBooking();
+      } else {
+        setError(response.message || 'Failed to complete session');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to complete session:', error);
+      setError(error.message || 'Failed to complete session');
     } finally {
       setActionLoading(null);
     }

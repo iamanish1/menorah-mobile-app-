@@ -88,7 +88,7 @@ export interface Counsellor {
 export type BookingStatus = 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
 export type SessionType   = 'video' | 'audio' | 'chat';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
-export type PaymentMethod = 'stripe' | 'razorpay' | 'wallet' | 'subscription';
+export type PaymentMethod = 'razorpay' | 'wallet' | 'subscription';
 
 export interface Booking {
   id: string;

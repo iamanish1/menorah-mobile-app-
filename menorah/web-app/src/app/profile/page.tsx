@@ -163,7 +163,7 @@ export default function ProfilePage() {
                 {profile.counsellorProfile.hourlyRate !== undefined && (
                   <div className={styles.infoItem}>
                     <p className={styles.infoLabel}>Hourly Rate</p>
-                    <p className={styles.infoValue}>{profile.counsellorProfile.currency || 'AED'} {profile.counsellorProfile.hourlyRate}</p>
+                    <p className={styles.infoValue}>{profile.counsellorProfile.currency || 'INR'} {profile.counsellorProfile.hourlyRate}</p>
                   </div>
                 )}
                 {profile.counsellorProfile.licenseNumber && (
