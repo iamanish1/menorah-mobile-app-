@@ -6,14 +6,17 @@ import { useAuth } from '@/context/AuthContext';
 import { Spinner } from '@/components/ui/Spinner';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthed, isLoading } = useAuth();
+  const { isAuthed, isLoading, user } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && !isAuthed) {
+    if (isLoading) return;
+    if (!isAuthed) {
       router.replace('/login');
+    } else if (user && !user.isPhoneVerified) {
+      router.replace('/verify-otp');
     }
-  }, [isAuthed, isLoading, router]);
+  }, [isAuthed, isLoading, user, router]);
 
   if (isLoading) {
     return (
@@ -26,6 +29,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthed) return null;
+  if (!isAuthed || (user && !user.isPhoneVerified)) return null;
   return <>{children}</>;
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useState, useRef, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Smartphone, RefreshCw } from 'lucide-react';
 import { Button, Spinner } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
@@ -15,8 +15,6 @@ function maskPhone(phone?: string) {
 }
 
 function VerifyOtpForm() {
-  const searchParams = useSearchParams();
-  const email        = searchParams.get('email') || '';
   const router       = useRouter();
   const { verifyPhone, user } = useAuth();
 
@@ -26,6 +24,11 @@ function VerifyOtpForm() {
   const [resending, setResending] = useState(false);
   const [countdown, setCountdown] = useState(60);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Already verified — skip to app
+  useEffect(() => {
+    if (user?.isPhoneVerified) router.replace('/discover');
+  }, [user, router]);
 
   // Auto-focus first input on mount
   useEffect(() => {
