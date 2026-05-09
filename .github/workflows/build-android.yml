@@ -1,0 +1,43 @@
+name: Build Android AAB
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: menorah/mobile-app/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        working-directory: menorah/mobile-app
+        run: npm install
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Build Android AAB (local)
+        working-directory: menorah/mobile-app
+        run: eas build --platform android --profile production --local --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: "menorah/mobile-app/*.aab"
