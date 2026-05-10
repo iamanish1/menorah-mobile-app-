@@ -104,12 +104,21 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (project.hasProperty('ANDROID_KEYSTORE_FILE')) {
+                storeFile file(ANDROID_KEYSTORE_FILE)
+                storePassword project.property('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias project.property('ANDROID_KEY_ALIAS')
+                keyPassword project.property('ANDROID_KEY_PASSWORD')
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
+            signingConfig project.hasProperty('ANDROID_KEYSTORE_FILE') ? signingConfigs.release : null
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
