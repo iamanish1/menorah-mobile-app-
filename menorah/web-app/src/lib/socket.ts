@@ -49,8 +49,8 @@ class SocketClient {
       console.error('Socket URL:', this.socketURL);
       console.error('Error details:', {
         message: error.message,
-        type: error.type,
-        description: error.description
+        type: (error as any).type,
+        description: (error as any).description
       });
       // Don't show error to user, just log it
       // The socket will automatically retry with polling

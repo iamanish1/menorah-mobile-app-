@@ -129,15 +129,15 @@ export default function ChatThreadPage() {
           return acc;
         }, []);
         // Sort by timestamp to ensure correct order
-        uniqueMessages.sort((a, b) => 
+        uniqueMessages.sort((a: Message, b: Message) =>
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
         setMessages(uniqueMessages);
-        
+
         // Get user info from first message or room
         if (uniqueMessages.length > 0) {
           // Find a message not from current user
-          const userMsg = uniqueMessages.find(m => m.senderId !== user?.id);
+          const userMsg = uniqueMessages.find((m: Message) => m.senderId !== user?.id);
           if (userMsg) {
             setUserName(userMsg.senderName);
             setUserImage(userMsg.senderImage);

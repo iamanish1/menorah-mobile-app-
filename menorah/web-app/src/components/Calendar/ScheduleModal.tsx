@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Booking } from '@/types';
 import { format, addDays, startOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import Button from '@/components/ui/Button';
-import Card from '@/components/ui/Card';
 import styles from './ScheduleModal.module.css';
 
 interface ScheduleModalProps {
@@ -43,7 +42,7 @@ export default function ScheduleModal({ booking, onSchedule, onClose, loading }:
 
   return (
     <div className={styles.backdrop} onClick={onClose}>
-      <Card className={styles.modal} padding="lg" onClick={(e) => e.stopPropagation()}>
+      <div className={styles.modal} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className={styles.modalHeader}>
           <h3 className={styles.modalTitle}>Schedule Session</h3>
           <button
@@ -124,7 +123,7 @@ export default function ScheduleModal({ booking, onSchedule, onClose, loading }:
             </Button>
           </div>
         </form>
-      </Card>
+      </div>
     </div>
   );
 }

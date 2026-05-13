@@ -326,7 +326,7 @@ export default function BookingsPage() {
                           <h3 className={styles.bookingName}>{booking.userName}</h3>
                           {getStatusBadge(booking.status)}
                           {booking.isSubscriptionBooking && (
-                            <Badge variant="info" style={{ marginLeft: '8px' }}>Subscription</Badge>
+                            <span style={{ marginLeft: '8px' }}><Badge variant="info">Subscription</Badge></span>
                           )}
                         </div>
                         <p className={styles.bookingContact}>{booking.userEmail}</p>

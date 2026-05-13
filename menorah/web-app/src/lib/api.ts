@@ -115,7 +115,6 @@ class ApiClient {
         success: false,
         message: errorResponse?.message || 'Registration failed',
         errors: errorResponse?.errors || [],
-        errorDetails: errorResponse?.errorDetails || []
       };
     }
   }
