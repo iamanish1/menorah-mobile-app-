@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
@@ -14,7 +14,7 @@ import Badge from '@/components/ui/Badge';
 import AppLayout from '@/components/layout/AppLayout';
 import styles from './page.module.css';
 
-export default function BookingsPage() {
+function BookingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -413,5 +413,13 @@ export default function BookingsPage() {
         )}
       </div>
     </AppLayout>
+  );
+}
+
+export default function BookingsPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <BookingsContent />
+    </Suspense>
   );
 }
