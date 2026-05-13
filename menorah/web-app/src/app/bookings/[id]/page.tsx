@@ -199,7 +199,7 @@ export default function BookingDetailPage() {
     );
   }
 
-  const isPending = !booking.assignedAt;
+  const isPending = !booking?.assignedAt;
   // Allow starting session if booking is confirmed and assigned
   // For instant sessions, counselors can start immediately after acceptance
   // For scheduled sessions, the backend will validate the scheduled time
