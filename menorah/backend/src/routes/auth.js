@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
-const { sendOTP, resendOTP, sendEmailOTP, verifyEmailOTP, resendEmailOTP } = require('../utils/sms');
+const { sendOTP, resendOTP } = require('../utils/sms');
 
 const router = express.Router();
 
@@ -59,15 +59,17 @@ router.post('/register', [
       });
     }
 
-    // Store registration data pending OTP verification — do NOT create user yet
+    // Generate OTP and store registration data — do NOT create user yet
+    const otp = crypto.randomInt(100000, 999999).toString();
     pendingRegistrations.set(email, {
       firstName, lastName, email, phone, password, dateOfBirth, gender,
+      otp,
       expiresAt: Date.now() + 10 * 60 * 1000,
     });
 
-    // Send Email OTP — if this fails, remove pending entry and return error
-    const otpResult = await sendEmailOTP(email, `${firstName} ${lastName}`);
-    if (!otpResult.success) {
+    // Send OTP via existing email utility (MSG91 email send)
+    const emailSent = await sendVerificationEmail(email, otp);
+    if (!emailSent) {
       pendingRegistrations.delete(email);
       return res.status(500).json({
         success: false,
@@ -319,12 +321,7 @@ router.post('/verify-email-otp', [
 
     const { email, otp } = req.body;
 
-    const otpResult = await verifyEmailOTP(email, otp);
-    if (!otpResult.success) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
-    }
-
-    // Get pending registration data
+    // Get pending registration data and verify OTP locally
     const pending = pendingRegistrations.get(email);
     if (!pending || pending.expiresAt < Date.now()) {
       pendingRegistrations.delete(email);
@@ -332,6 +329,10 @@ router.post('/verify-email-otp', [
         success: false,
         message: 'Registration session expired. Please register again.'
       });
+    }
+
+    if (pending.otp !== otp) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
     }
 
     // Create the user now that OTP is verified
@@ -392,11 +393,13 @@ router.post('/resend-email-otp', [
       return res.status(400).json({ success: false, message: 'Registration session expired. Please register again.' });
     }
 
-    // Extend expiry on resend
+    // Generate new OTP and extend expiry
+    const newOtp = crypto.randomInt(100000, 999999).toString();
+    pending.otp = newOtp;
     pending.expiresAt = Date.now() + 10 * 60 * 1000;
 
-    const result = await resendEmailOTP(email);
-    res.json({ success: result.success, message: result.success ? 'OTP resent successfully' : 'Failed to resend OTP' });
+    const emailSent = await sendVerificationEmail(email, newOtp);
+    res.json({ success: emailSent, message: emailSent ? 'OTP resent successfully' : 'Failed to resend OTP' });
   } catch (error) {
     console.error('Resend email OTP error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
