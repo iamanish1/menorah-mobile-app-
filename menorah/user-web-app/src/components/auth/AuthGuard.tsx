@@ -13,7 +13,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (isLoading) return;
     if (!isAuthed) {
       router.replace('/login');
-    } else if (user && !user.isPhoneVerified) {
+    } else if (user && !user.isEmailVerified) {
       router.replace('/verify-otp');
     }
   }, [isAuthed, isLoading, user, router]);
@@ -29,6 +29,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthed || (user && !user.isPhoneVerified)) return null;
+  if (!isAuthed || (user && !user.isEmailVerified)) return null;
   return <>{children}</>;
 }
