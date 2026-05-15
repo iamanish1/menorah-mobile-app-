@@ -95,11 +95,64 @@ const sendReschedulingSMS = (phone, oldSession, newSession) =>
 const sendEmergencySMS = (phone, userDetails) =>
   sendSMS(phone, `Emergency: ${userDetails.fullName} has requested immediate assistance. Please contact them at ${userDetails.phone}.`);
 
+// ── Email OTP via MSG91 Email OTP API ──────────────────────────────────────
+const MSG91_EMAIL_BASE = 'https://control.msg91.com/api/v5/email';
+
+const sendEmailOTP = async (email, name = 'User') => {
+  if (!AUTH_KEY()) {
+    console.warn('MSG91 not configured. Email OTP not sent.');
+    return { success: false, error: 'MSG91 not configured' };
+  }
+  try {
+    const { data } = await axios.post(
+      `${MSG91_EMAIL_BASE}/otp`,
+      { to: [{ name, email }], otp_length: 6, otp_expiry: 10 },
+      { headers: { authkey: AUTH_KEY(), 'Content-Type': 'application/json' } }
+    );
+    return { success: data.type === 'success', raw: data };
+  } catch (err) {
+    console.error('MSG91 sendEmailOTP error:', err.response?.data ?? err.message);
+    return { success: false, error: err.message };
+  }
+};
+
+const verifyEmailOTP = async (email, otp) => {
+  if (!AUTH_KEY()) return { success: false, error: 'MSG91 not configured' };
+  try {
+    const { data } = await axios.get(
+      `${MSG91_EMAIL_BASE}/otp/verify`,
+      { params: { email, otp }, headers: { authkey: AUTH_KEY() } }
+    );
+    return { success: data.type === 'success', raw: data };
+  } catch (err) {
+    console.error('MSG91 verifyEmailOTP error:', err.response?.data ?? err.message);
+    return { success: false, error: err.message };
+  }
+};
+
+const resendEmailOTP = async (email) => {
+  if (!AUTH_KEY()) return { success: false, error: 'MSG91 not configured' };
+  try {
+    const { data } = await axios.post(
+      `${MSG91_EMAIL_BASE}/otp/resend`,
+      { email },
+      { headers: { authkey: AUTH_KEY(), 'Content-Type': 'application/json' } }
+    );
+    return { success: data.type === 'success', raw: data };
+  } catch (err) {
+    console.error('MSG91 resendEmailOTP error:', err.response?.data ?? err.message);
+    return { success: false, error: err.message };
+  }
+};
+
 module.exports = {
   sendOTP,
   verifyOTP,
   resendOTP,
   sendSMS,
+  sendEmailOTP,
+  verifyEmailOTP,
+  resendEmailOTP,
   sendVerificationSMS,
   sendBookingConfirmationSMS,
   sendCancellationSMS,

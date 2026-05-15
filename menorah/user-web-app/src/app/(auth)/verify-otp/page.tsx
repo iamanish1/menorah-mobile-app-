@@ -2,21 +2,21 @@
 
 import { Suspense, useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Smartphone, RefreshCw } from 'lucide-react';
+import { Mail, RefreshCw } from 'lucide-react';
 import { Button, Spinner } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 
-function maskPhone(phone?: string) {
-  if (!phone) return 'your phone number';
-  // Show first 3 and last 2 digits, mask the rest: +971•••••67
-  const visible = phone.slice(0, 4) + '•'.repeat(Math.max(0, phone.length - 6)) + phone.slice(-2);
-  return visible;
+function maskEmail(email?: string) {
+  if (!email) return 'your email address';
+  const [user, domain] = email.split('@');
+  const masked = user.slice(0, 2) + '•'.repeat(Math.max(0, user.length - 2));
+  return `${masked}@${domain}`;
 }
 
 function VerifyOtpForm() {
-  const router       = useRouter();
-  const { verifyPhone, user } = useAuth();
+  const router = useRouter();
+  const { verifyEmailOTP, user } = useAuth();
 
   const [otp, setOtp]             = useState(['', '', '', '', '', '']);
   const [error, setError]         = useState('');
@@ -27,7 +27,7 @@ function VerifyOtpForm() {
 
   // Already verified — skip to app
   useEffect(() => {
-    if (user?.isPhoneVerified) router.replace('/discover');
+    if (user?.isEmailVerified) router.replace('/discover');
   }, [user, router]);
 
   // Auto-focus first input on mount
@@ -67,10 +67,10 @@ function VerifyOtpForm() {
   const handleSubmit = async () => {
     const code = otp.join('');
     if (code.length < 6) { setError('Enter the complete 6-digit code'); return; }
-    if (!user?.phone) { setError('Phone number not found. Please register again.'); return; }
+    if (!user?.email) { setError('Email not found. Please register again.'); return; }
     setLoading(true);
     setError('');
-    const res = await verifyPhone(user.phone, code);
+    const res = await verifyEmailOTP(user.email, code);
     setLoading(false);
     if (res.success) {
       router.push('/discover');
@@ -82,29 +82,29 @@ function VerifyOtpForm() {
   };
 
   const handleResend = async () => {
-    if (countdown > 0 || !user?.phone) return;
+    if (countdown > 0 || !user?.email) return;
     setResending(true);
     setError('');
-    await api.resendOTP(user.phone);
+    await api.resendEmailOTP(user.email);
     setResending(false);
     setCountdown(60);
     setOtp(['', '', '', '', '', '']);
     inputRefs.current[0]?.focus();
   };
 
-  const displayPhone = maskPhone(user?.phone);
+  const displayEmail = maskEmail(user?.email);
 
   return (
     <div className="space-y-6 text-center">
       <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-100 rounded-2xl mx-auto">
-        <Smartphone className="w-8 h-8 text-primary-600" />
+        <Mail className="w-8 h-8 text-primary-600" />
       </div>
 
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Verify your phone</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Verify your email</h1>
         <p className="text-gray-500 mt-2 text-sm leading-relaxed">
-          We sent a 6-digit code via SMS to<br />
-          <span className="font-semibold text-gray-800">{displayPhone}</span>
+          We sent a 6-digit code to<br />
+          <span className="font-semibold text-gray-800">{displayEmail}</span>
         </p>
       </div>
 
@@ -134,13 +134,13 @@ function VerifyOtpForm() {
       </div>
 
       <Button fullWidth size="lg" loading={loading} onClick={handleSubmit}>
-        Verify Phone
+        Verify Email
       </Button>
 
       <div className="space-y-1">
         <button
           onClick={handleResend}
-          disabled={countdown > 0 || resending || !user?.phone}
+          disabled={countdown > 0 || resending || !user?.email}
           className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-primary-600
                      disabled:opacity-50 disabled:cursor-not-allowed mx-auto transition-colors"
         >
@@ -148,7 +148,7 @@ function VerifyOtpForm() {
           {countdown > 0 ? `Resend code in ${countdown}s` : 'Resend code'}
         </button>
         <p className="text-xs text-gray-400">
-          Didn&apos;t receive it? Check that your number is correct or tap resend.
+          Didn&apos;t receive it? Check your spam folder or tap resend.
         </p>
       </div>
     </div>

@@ -14,6 +14,7 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   verifyEmail: (code: string) => Promise<{ success: boolean; message?: string }>;
   verifyPhone: (phone: string, otp: string) => Promise<{ success: boolean; message?: string }>;
+  verifyEmailOTP: (email: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   forgotPassword: (email: string) => Promise<{ success: boolean; message?: string }>;
   resetPassword: (token: string, password: string) => Promise<{ success: boolean; message?: string }>;
   updateUser: (user: User) => void;
@@ -60,8 +61,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (res.success && res.data?.user) {
       setUser(res.data.user);
       const u = res.data.user;
-      if (!u.isPhoneVerified) {
-        return { success: true, needsVerification: true, message: 'Please verify your phone number.' };
+      if (!u.isEmailVerified) {
+        return { success: true, needsVerification: true, message: 'Please verify your email address.' };
       }
       return { success: true };
     }
@@ -101,6 +102,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: false, message: res.message };
   };
 
+  const verifyEmailOTP = async (email: string, otp: string) => {
+    const res = await api.verifyEmailOTP(email, otp);
+    if (res.success) {
+      await refreshUser();
+      return { success: true };
+    }
+    return { success: false, message: res.message };
+  };
+
   const forgotPassword = async (email: string) => {
     const res = await api.forgotPassword(email);
     return { success: res.success, message: res.message };
@@ -117,7 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{
       user, isAuthed: !!user, isLoading,
       login, register, logout,
-      verifyEmail, verifyPhone,
+      verifyEmail, verifyPhone, verifyEmailOTP,
       forgotPassword, resetPassword,
       updateUser, refreshUser,
     }}>

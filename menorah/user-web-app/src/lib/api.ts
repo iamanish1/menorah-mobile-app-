@@ -116,6 +116,14 @@ class ApiClient {
     return this.post<{ user: User }>('/auth/verify-phone', { phone, otp });
   }
 
+  async verifyEmailOTP(email: string, otp: string): Promise<ApiResponse<{ user: User }>> {
+    return this.post<{ user: User }>('/auth/verify-email-otp', { email, otp });
+  }
+
+  async resendEmailOTP(email: string): Promise<ApiResponse<void>> {
+    return this.post<void>('/auth/resend-email-otp', { email });
+  }
+
   async forgotPassword(email: string): Promise<ApiResponse<void>> {
     return this.post<void>('/auth/forgot-password', { email });
   }

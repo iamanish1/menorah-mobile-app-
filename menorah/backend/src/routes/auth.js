@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
-const { sendOTP, resendOTP } = require('../utils/sms');
+const { sendOTP, resendOTP, sendEmailOTP, verifyEmailOTP, resendEmailOTP } = require('../utils/sms');
 
 const router = express.Router();
 
@@ -63,11 +63,11 @@ router.post('/register', [
 
     await user.save();
 
-    // Send OTP via MSG91 (MSG91 manages OTP state — not stored in DB)
+    // Send Email OTP via MSG91 (MSG91 manages OTP state — not stored in DB)
     try {
-      await sendOTP(user.phone);
-    } catch (smsError) {
-      console.error('Error sending OTP:', smsError.message);
+      await sendEmailOTP(user.email, `${user.firstName} ${user.lastName}`);
+    } catch (otpError) {
+      console.error('Error sending email OTP:', otpError.message);
       // Don't fail registration if OTP send fails
     }
 
@@ -75,7 +75,7 @@ router.post('/register', [
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully. Please verify your phone number.',
+      message: 'User registered successfully. Please verify your email address.',
       data: {
         user: {
           id: user._id,
@@ -309,6 +309,63 @@ router.post('/verify-phone', [
 
   } catch (error) {
     console.error('Phone verification error:', error.message);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// @route   POST /api/auth/verify-email-otp
+// @desc    Verify email address via MSG91 Email OTP
+// @access  Public
+router.post('/verify-email-otp', [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('otp').matches(/^\d{4,6}$/).withMessage('OTP must be 4-6 digits')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const { email, otp } = req.body;
+
+    const result = await verifyEmailOTP(email, otp);
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
+    }
+
+    const user = await User.findOneAndUpdate(
+      { email },
+      { isEmailVerified: true },
+      { new: true }
+    );
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.json({ success: true, message: 'Email verified successfully' });
+  } catch (error) {
+    console.error('Email OTP verification error:', error.message);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// @route   POST /api/auth/resend-email-otp
+// @desc    Resend Email OTP via MSG91
+// @access  Public
+router.post('/resend-email-otp', [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const { email } = req.body;
+    const result = await resendEmailOTP(email);
+    res.json({ success: result.success, message: result.success ? 'OTP resent successfully' : 'Failed to resend OTP' });
+  } catch (error) {
+    console.error('Resend email OTP error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
