@@ -80,13 +80,12 @@ function VerifyOtpForm() {
     setError('');
     const res = await verifyEmailOTP(pendingEmail, code);
     setLoading(false);
-    if (res.success) {
-      router.push('/discover');
-    } else {
+    if (!res.success) {
       setError(res.message || 'Invalid code. Please try again.');
       setOtp(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
     }
+    // on success — useEffect watching user.isEmailVerified handles the redirect
   };
 
   const handleResend = async () => {
@@ -102,7 +101,7 @@ function VerifyOtpForm() {
 
   const displayEmail = maskEmail(pendingEmail);
 
-  if (!pendingEmail || isLoading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
         <Spinner size="lg" />
