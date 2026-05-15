@@ -125,6 +125,48 @@ const layout = (content) => `
 </body>
 </html>`;
 
+// ─── Email: OTP for registration ─────────────────────────────────────────
+const sendOTPEmail = async (email, otp, name = '') => {
+  if (!isConfigured()) return false;
+
+  const templateId = process.env.MSG91_EMAIL_OTP_TEMPLATE_ID;
+  if (!templateId || templateId.startsWith('REPLACE_')) {
+    console.error('❌ MSG91_EMAIL_OTP_TEMPLATE_ID is not set.');
+    return false;
+  }
+
+  if (isDev) {
+    console.log('\n📧 ─── DEV OTP EMAIL (not sent) ───────────────────');
+    console.log(`   To:  ${email}`);
+    console.log(`   OTP: ${otp}`);
+    console.log('──────────────────────────────────────────────────\n');
+    return true;
+  }
+
+  try {
+    const { data } = await axios.post(
+      MSG91_EMAIL_URL,
+      {
+        template_id: templateId,
+        recipients: [{
+          to: [{ email, name: name || email }],
+          variables: { otp_code: otp },
+        }],
+        from: { email: FROM_EMAIL, name: FROM_NAME },
+        domain: DOMAIN,
+      },
+      { headers: { authkey: process.env.MSG91_AUTH_KEY, 'Content-Type': 'application/json' } }
+    );
+    const success = !data?.hasError && (data?.type === 'success' || data?.status === 'success' || data?.message === 'Email queued successfully');
+    if (success) console.log(`✅ OTP email sent to: ${email}`);
+    else console.error('❌ MSG91 OTP email error:', data);
+    return success;
+  } catch (err) {
+    console.error('❌ MSG91 OTP email error:', err.response?.data ?? err.message);
+    return false;
+  }
+};
+
 // ─── Email: Verification code ─────────────────────────────────────────────
 const sendVerificationEmail = async (email, code) => {
   const html = layout(`
@@ -265,6 +307,7 @@ const sendSessionReminderEmail = async (email, sessionDetails) => {
 };
 
 module.exports = {
+  sendOTPEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendBookingConfirmationEmail,

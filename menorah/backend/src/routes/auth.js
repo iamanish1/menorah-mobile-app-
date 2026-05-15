@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
+const { sendOTPEmail, sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
 const { sendOTP, resendOTP } = require('../utils/sms');
 
 const router = express.Router();
@@ -67,8 +67,8 @@ router.post('/register', [
       expiresAt: Date.now() + 10 * 60 * 1000,
     });
 
-    // Send OTP via existing email utility (MSG91 email send)
-    const emailSent = await sendVerificationEmail(email, otp);
+    // Send OTP via dedicated OTP email template
+    const emailSent = await sendOTPEmail(email, otp, `${firstName} ${lastName}`);
     if (!emailSent) {
       pendingRegistrations.delete(email);
       return res.status(500).json({
@@ -398,7 +398,7 @@ router.post('/resend-email-otp', [
     pending.otp = newOtp;
     pending.expiresAt = Date.now() + 10 * 60 * 1000;
 
-    const emailSent = await sendVerificationEmail(email, newOtp);
+    const emailSent = await sendOTPEmail(email, newOtp);
     res.json({ success: emailSent, message: emailSent ? 'OTP resent successfully' : 'Failed to resend OTP' });
   } catch (error) {
     console.error('Resend email OTP error:', error.message);
