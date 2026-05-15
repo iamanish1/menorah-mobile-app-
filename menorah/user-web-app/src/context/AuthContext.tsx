@@ -71,8 +71,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (data: RegisterData) => {
     const res = await api.register(data);
-    if (res.success && res.data?.user) {
-      setUser(res.data.user);
+    if (res.success) {
+      // User not created yet — store email so verify-otp page can use it
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('pendingEmail', data.email);
+      }
       return { success: true };
     }
     return { success: false, message: res.message };
@@ -104,8 +107,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const verifyEmailOTP = async (email: string, otp: string) => {
     const res = await api.verifyEmailOTP(email, otp);
-    if (res.success) {
-      await refreshUser();
+    if (res.success && res.data?.user) {
+      setUser(res.data.user);
+      if (typeof window !== 'undefined') sessionStorage.removeItem('pendingEmail');
       return { success: true };
     }
     return { success: false, message: res.message };

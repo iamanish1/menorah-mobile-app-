@@ -92,10 +92,8 @@ class ApiClient {
   async register(data: {
     firstName: string; lastName: string; email: string;
     phone: string; password: string; dateOfBirth: string; gender: string;
-  }): Promise<ApiResponse<{ user: User; token: string }>> {
-    const res = await this.post<{ user: User; token: string }>('/auth/register', data);
-    if (res.success && res.data?.token) authStorage.setToken(res.data.token);
-    return res;
+  }): Promise<ApiResponse<{ email: string }>> {
+    return this.post<{ email: string }>('/auth/register', data);
   }
 
   async login(email: string, password: string): Promise<ApiResponse<{ user: User; token: string }>> {
@@ -116,8 +114,10 @@ class ApiClient {
     return this.post<{ user: User }>('/auth/verify-phone', { phone, otp });
   }
 
-  async verifyEmailOTP(email: string, otp: string): Promise<ApiResponse<{ user: User }>> {
-    return this.post<{ user: User }>('/auth/verify-email-otp', { email, otp });
+  async verifyEmailOTP(email: string, otp: string): Promise<ApiResponse<{ user: User; token: string }>> {
+    const res = await this.post<{ user: User; token: string }>('/auth/verify-email-otp', { email, otp });
+    if (res.success && res.data?.token) authStorage.setToken(res.data.token);
+    return res;
   }
 
   async resendEmailOTP(email: string): Promise<ApiResponse<void>> {

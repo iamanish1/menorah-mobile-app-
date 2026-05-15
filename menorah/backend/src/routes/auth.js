@@ -9,6 +9,16 @@ const { sendOTP, resendOTP, sendEmailOTP, verifyEmailOTP, resendEmailOTP } = req
 
 const router = express.Router();
 
+// Temporary in-memory store for pending registrations (not yet OTP-verified)
+// Entry expires after 10 minutes, matching MSG91 OTP expiry
+const pendingRegistrations = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, entry] of pendingRegistrations) {
+    if (entry.expiresAt < now) pendingRegistrations.delete(email);
+  }
+}, 5 * 60 * 1000);
+
 // Generate JWT Token
 const generateToken = (userId, role = 'user', fullName = '') => {
   return jwt.sign({ userId, role, fullName }, process.env.JWT_SECRET, {
@@ -40,7 +50,7 @@ router.post('/register', [
 
     const { firstName, lastName, email, phone, password, dateOfBirth, gender } = req.body;
 
-    // Check if user already exists
+    // Check if a verified user already exists
     const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
     if (existingUser) {
       return res.status(400).json({
@@ -49,45 +59,26 @@ router.post('/register', [
       });
     }
 
-    // Create user — email is pre-verified; SMS OTP is the single verification factor
-    const user = new User({
-      firstName,
-      lastName,
-      email,
-      phone,
-      password,
-      dateOfBirth,
-      gender,
-      isEmailVerified: true,
+    // Store registration data pending OTP verification — do NOT create user yet
+    pendingRegistrations.set(email, {
+      firstName, lastName, email, phone, password, dateOfBirth, gender,
+      expiresAt: Date.now() + 10 * 60 * 1000,
     });
 
-    await user.save();
-
-    // Send Email OTP via MSG91 (MSG91 manages OTP state — not stored in DB)
-    try {
-      await sendEmailOTP(user.email, `${user.firstName} ${user.lastName}`);
-    } catch (otpError) {
-      console.error('Error sending email OTP:', otpError.message);
-      // Don't fail registration if OTP send fails
+    // Send Email OTP — if this fails, remove pending entry and return error
+    const otpResult = await sendEmailOTP(email, `${firstName} ${lastName}`);
+    if (!otpResult.success) {
+      pendingRegistrations.delete(email);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send verification email. Please try again.'
+      });
     }
 
-    const token = generateToken(user._id, user.role || 'user', `${user.firstName} ${user.lastName}`);
-
-    res.status(201).json({
+    res.status(200).json({
       success: true,
-      message: 'User registered successfully. Please verify your email address.',
-      data: {
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          phone: user.phone,
-          isEmailVerified: user.isEmailVerified,
-          isPhoneVerified: user.isPhoneVerified
-        },
-        token
-      }
+      message: 'OTP sent to your email. Please verify to complete registration.',
+      data: { email }
     });
 
   } catch (error) {
@@ -328,21 +319,53 @@ router.post('/verify-email-otp', [
 
     const { email, otp } = req.body;
 
-    const result = await verifyEmailOTP(email, otp);
-    if (!result.success) {
+    const otpResult = await verifyEmailOTP(email, otp);
+    if (!otpResult.success) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
     }
 
-    const user = await User.findOneAndUpdate(
-      { email },
-      { isEmailVerified: true },
-      { new: true }
-    );
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+    // Get pending registration data
+    const pending = pendingRegistrations.get(email);
+    if (!pending || pending.expiresAt < Date.now()) {
+      pendingRegistrations.delete(email);
+      return res.status(400).json({
+        success: false,
+        message: 'Registration session expired. Please register again.'
+      });
     }
 
-    res.json({ success: true, message: 'Email verified successfully' });
+    // Create the user now that OTP is verified
+    const user = new User({
+      firstName: pending.firstName,
+      lastName: pending.lastName,
+      email: pending.email,
+      phone: pending.phone,
+      password: pending.password,
+      dateOfBirth: pending.dateOfBirth,
+      gender: pending.gender,
+      isEmailVerified: true,
+    });
+    await user.save();
+    pendingRegistrations.delete(email);
+
+    const token = generateToken(user._id, user.role || 'user', `${user.firstName} ${user.lastName}`);
+
+    res.json({
+      success: true,
+      message: 'Email verified. Registration complete.',
+      data: {
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone,
+          isEmailVerified: user.isEmailVerified,
+          isPhoneVerified: user.isPhoneVerified,
+        },
+        token,
+      }
+    });
   } catch (error) {
     console.error('Email OTP verification error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -362,6 +385,16 @@ router.post('/resend-email-otp', [
     }
 
     const { email } = req.body;
+
+    const pending = pendingRegistrations.get(email);
+    if (!pending || pending.expiresAt < Date.now()) {
+      pendingRegistrations.delete(email);
+      return res.status(400).json({ success: false, message: 'Registration session expired. Please register again.' });
+    }
+
+    // Extend expiry on resend
+    pending.expiresAt = Date.now() + 10 * 60 * 1000;
+
     const result = await resendEmailOTP(email);
     res.json({ success: result.success, message: result.success ? 'OTP resent successfully' : 'Failed to resend OTP' });
   } catch (error) {

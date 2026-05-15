@@ -16,8 +16,9 @@ function maskEmail(email?: string) {
 
 function VerifyOtpForm() {
   const router = useRouter();
-  const { verifyEmailOTP, user } = useAuth();
+  const { verifyEmailOTP, user, isLoading } = useAuth();
 
+  const [pendingEmail, setPendingEmail] = useState('');
   const [otp, setOtp]             = useState(['', '', '', '', '', '']);
   const [error, setError]         = useState('');
   const [loading, setLoading]     = useState(false);
@@ -25,15 +26,22 @@ function VerifyOtpForm() {
   const [countdown, setCountdown] = useState(60);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Already verified — skip to app
+  // Load pending email from sessionStorage on mount
   useEffect(() => {
-    if (user?.isEmailVerified) router.replace('/discover');
-  }, [user, router]);
-
-  // Auto-focus first input on mount
-  useEffect(() => {
+    const email = sessionStorage.getItem('pendingEmail') || '';
+    if (!email) {
+      // No pending registration — redirect to register
+      router.replace('/register');
+      return;
+    }
+    setPendingEmail(email);
     inputRefs.current[0]?.focus();
-  }, []);
+  }, [router]);
+
+  // Already verified and logged in — skip to app
+  useEffect(() => {
+    if (!isLoading && user?.isEmailVerified) router.replace('/discover');
+  }, [user, isLoading, router]);
 
   // Countdown timer
   useEffect(() => {
@@ -67,10 +75,10 @@ function VerifyOtpForm() {
   const handleSubmit = async () => {
     const code = otp.join('');
     if (code.length < 6) { setError('Enter the complete 6-digit code'); return; }
-    if (!user?.email) { setError('Email not found. Please register again.'); return; }
+    if (!pendingEmail) { setError('Email not found. Please register again.'); return; }
     setLoading(true);
     setError('');
-    const res = await verifyEmailOTP(user.email, code);
+    const res = await verifyEmailOTP(pendingEmail, code);
     setLoading(false);
     if (res.success) {
       router.push('/discover');
@@ -82,17 +90,25 @@ function VerifyOtpForm() {
   };
 
   const handleResend = async () => {
-    if (countdown > 0 || !user?.email) return;
+    if (countdown > 0 || !pendingEmail) return;
     setResending(true);
     setError('');
-    await api.resendEmailOTP(user.email);
+    await api.resendEmailOTP(pendingEmail);
     setResending(false);
     setCountdown(60);
     setOtp(['', '', '', '', '', '']);
     inputRefs.current[0]?.focus();
   };
 
-  const displayEmail = maskEmail(user?.email);
+  const displayEmail = maskEmail(pendingEmail);
+
+  if (!pendingEmail || isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 text-center">
