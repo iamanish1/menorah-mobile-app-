@@ -58,8 +58,6 @@ router.get('/', [
     // Build query
     const query = {
       isActive: true,
-      isAvailable: true,
-      isVerified: true
     };
 
     // Search functionality
@@ -189,7 +187,7 @@ router.get('/:id', [
       });
     }
 
-    if (!counsellor.isActive || !counsellor.isVerified) {
+    if (!counsellor.isActive) {
       return res.status(404).json({
         success: false,
         message: 'Counsellor not available'
@@ -499,7 +497,7 @@ router.post('/register', [
       education: education || [],
       certifications: certifications || [],
       availability: defaultAvailability,
-      isVerified: false, // Requires admin verification
+      isVerified: true,
       isActive: true,
       isAvailable: true
     });
