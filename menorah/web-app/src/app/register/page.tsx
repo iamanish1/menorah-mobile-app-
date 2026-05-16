@@ -44,6 +44,24 @@ export default function RegisterPage() {
   const [bioLength, setBioLength] = useState(0);
   const [passwordStrength, setPasswordStrength] = useState(0);
 
+  type DayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+  type DaySchedule = { start: string; end: string; isAvailable: boolean };
+  const [availability, setAvailability] = useState<Record<DayKey, DaySchedule>>({
+    monday:    { start: '09:00', end: '17:00', isAvailable: true },
+    tuesday:   { start: '09:00', end: '17:00', isAvailable: true },
+    wednesday: { start: '09:00', end: '17:00', isAvailable: true },
+    thursday:  { start: '09:00', end: '17:00', isAvailable: true },
+    friday:    { start: '09:00', end: '17:00', isAvailable: true },
+    saturday:  { start: '09:00', end: '17:00', isAvailable: false },
+    sunday:    { start: '09:00', end: '17:00', isAvailable: false },
+  });
+
+  const toggleDay = (day: DayKey) =>
+    setAvailability(prev => ({ ...prev, [day]: { ...prev[day], isAvailable: !prev[day].isAvailable } }));
+
+  const setDayTime = (day: DayKey, field: 'start' | 'end', value: string) =>
+    setAvailability(prev => ({ ...prev, [day]: { ...prev[day], [field]: value } }));
+
   const {
     register,
     handleSubmit,
@@ -82,6 +100,7 @@ export default function RegisterPage() {
         languages: languages.filter(lang => lang.trim() !== ''),
         experience: Number(data.experience),
         hourlyRate: Number(data.hourlyRate),
+        availability,
       };
 
       const result = await api.registerCounsellor(registrationData);
@@ -490,6 +509,51 @@ export default function RegisterPage() {
                   >
                     + Add Language
                   </Button>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>Weekly Availability</label>
+                  <p className={styles.helpText}>Set which days and hours you are available for sessions</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+                    {(Object.keys(availability) as DayKey[]).map((day) => (
+                      <div key={day} style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '110px', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={availability[day].isAvailable}
+                            onChange={() => toggleDay(day)}
+                            style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary, #16a34a)', cursor: 'pointer' }}
+                          />
+                          <span style={{ textTransform: 'capitalize', fontWeight: availability[day].isAvailable ? 600 : 400, color: availability[day].isAvailable ? 'inherit' : '#9ca3af' }}>
+                            {day}
+                          </span>
+                        </label>
+                        {availability[day].isAvailable && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input
+                              type="time"
+                              value={availability[day].start}
+                              onChange={(e) => setDayTime(day, 'start', e.target.value)}
+                              className={styles.input}
+                              style={{ width: '130px', padding: '6px 10px' }}
+                            />
+                            <span style={{ color: '#6b7280', fontSize: '14px' }}>to</span>
+                            <input
+                              type="time"
+                              value={availability[day].end}
+                              min={availability[day].start}
+                              onChange={(e) => setDayTime(day, 'end', e.target.value)}
+                              className={styles.input}
+                              style={{ width: '130px', padding: '6px 10px' }}
+                            />
+                          </div>
+                        )}
+                        {!availability[day].isAvailable && (
+                          <span style={{ fontSize: '13px', color: '#9ca3af' }}>Not available</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div className={styles.actionsRow}>

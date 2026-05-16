@@ -268,7 +268,7 @@ router.get('/:id/availability', [
     const end = new Date(endDate);
 
     for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
-      const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'lowercase' });
+      const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
       const daySchedule = counsellor.availability[dayOfWeek];
 
       if (daySchedule && daySchedule.isAvailable) {

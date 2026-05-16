@@ -258,8 +258,14 @@ counsellorSchema.methods.updateRating = function(newRating) {
 counsellorSchema.methods.isAvailableAt = function(dateTime) {
   if (!this.isActive || !this.isAvailable) return false;
   
-  const dayOfWeek = dateTime.toLocaleLowerCase();
-  const time = dateTime.toTimeString().slice(0, 5); // HH:MM format
+  const tz = this.timezone || 'Asia/Kolkata';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz
+  }).formatToParts(dateTime);
+  const dayOfWeek = parts.find(p => p.type === 'weekday').value.toLowerCase();
+  const hour   = parts.find(p => p.type === 'hour').value.padStart(2, '0');
+  const minute = parts.find(p => p.type === 'minute').value.padStart(2, '0');
+  const time = `${hour}:${minute}`;
   
   const daySchedule = this.availability[dayOfWeek];
   if (!daySchedule || !daySchedule.isAvailable) return false;

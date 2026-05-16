@@ -83,9 +83,15 @@ router.post('/', [
         });
       }
 
-      // Check counsellor availability for the scheduled time
-      const dayOfWeek = scheduledTime.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-      const timeString = scheduledTime.toTimeString().slice(0, 5);
+      // Check counsellor availability using their stored timezone
+      const tz = counsellor.timezone || 'Asia/Kolkata';
+      const tzParts = new Intl.DateTimeFormat('en-US', {
+        weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz
+      }).formatToParts(scheduledTime);
+      const dayOfWeek = tzParts.find(p => p.type === 'weekday').value.toLowerCase();
+      const hour   = tzParts.find(p => p.type === 'hour').value.padStart(2, '0');
+      const minute = tzParts.find(p => p.type === 'minute').value.padStart(2, '0');
+      const timeString = `${hour}:${minute}`;
       const daySchedule = counsellor.availability[dayOfWeek];
 
       if (!daySchedule || !daySchedule.isAvailable) {

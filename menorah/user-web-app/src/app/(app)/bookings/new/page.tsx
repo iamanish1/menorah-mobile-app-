@@ -29,12 +29,33 @@ const sessionTypes = [
 
 const durations = [30, 45, 60, 90];
 
+const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+
 /** Return a datetime-local string that is at least `minMinutes` from now */
 function minDateTime(minMinutes = 60): string {
   const d = new Date(Date.now() + minMinutes * 60 * 1000);
-  // datetime-local value format: "YYYY-MM-DDTHH:MM"
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Validate a datetime-local value against the counsellor's availability schedule */
+function checkSlotAvailability(scheduledAt: string, availability: Record<string, { start: string; end: string; isAvailable: boolean }> | undefined): string | null {
+  if (!scheduledAt || !availability) return null;
+  const date = new Date(scheduledAt);
+  const day = DAYS[date.getDay()];
+  const sched = availability[day];
+  if (!sched || !sched.isAvailable) {
+    return `Counsellor is not available on ${day.charAt(0).toUpperCase() + day.slice(1)}s. Please pick another day.`;
+  }
+  if (sched.start && sched.end) {
+    const hh = date.getHours().toString().padStart(2, '0');
+    const mm = date.getMinutes().toString().padStart(2, '0');
+    const time = `${hh}:${mm}`;
+    if (time < sched.start || time > sched.end) {
+      return `Counsellor is available ${sched.start}–${sched.end} on ${day.charAt(0).toUpperCase() + day.slice(1)}s. Please pick a time within those hours.`;
+    }
+  }
+  return null;
 }
 
 function NewBookingForm() {
@@ -94,8 +115,12 @@ function NewBookingForm() {
   ];
   const stepIdx = steps.findIndex((s) => s.id === step);
 
+  const availabilityWarning = counsellor?.availability
+    ? checkSlotAvailability(draft.scheduledAt, counsellor.availability)
+    : null;
+
   // Validate step 1 before proceeding
-  const canProceedFromSession = !!draft.scheduledAt;
+  const canProceedFromSession = !!draft.scheduledAt && !availabilityWarning;
 
   return (
     <div className="page-container max-w-2xl">
@@ -190,6 +215,31 @@ function NewBookingForm() {
             </div>
           </div>
 
+          {/* Counsellor availability summary */}
+          {counsellor?.availability && (
+            <div className="card p-5 space-y-2">
+              <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-primary-600" />
+                Counsellor's available hours
+              </h2>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-1">
+                {DAYS.map((day) => {
+                  const sched = counsellor.availability[day];
+                  return (
+                    <div key={day} className="flex items-center justify-between text-xs py-0.5">
+                      <span className={`capitalize font-medium ${sched?.isAvailable ? 'text-gray-700' : 'text-gray-400'}`}>
+                        {day}
+                      </span>
+                      <span className={sched?.isAvailable ? 'text-gray-600' : 'text-gray-400'}>
+                        {sched?.isAvailable ? `${sched.start} – ${sched.end}` : 'Unavailable'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="card p-5 space-y-3">
             <h2 className="font-semibold text-gray-900 flex items-center gap-2">
               <Calendar className="w-4 h-4 text-primary-600" />
@@ -205,6 +255,9 @@ function NewBookingForm() {
             />
             {!draft.scheduledAt && (
               <p className="text-xs text-amber-600">Please choose a date and time to continue.</p>
+            )}
+            {availabilityWarning && (
+              <p className="text-xs text-red-600 font-medium">{availabilityWarning}</p>
             )}
           </div>
 
