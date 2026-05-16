@@ -390,9 +390,27 @@ router.post('/me/bookings/:id/accept', [
     }
 
     if (booking.counsellor) {
+      // If already assigned to THIS counsellor, just set assignedAt and return success
+      if (booking.counsellor.toString() === counsellor._id.toString()) {
+        if (!booking.assignedAt) {
+          booking.assignedAt = new Date();
+          await booking.save();
+        }
+        return res.json({
+          success: true,
+          message: 'Booking confirmed',
+          data: {
+            booking: {
+              id: booking._id,
+              status: booking.status,
+              assignedAt: booking.assignedAt
+            }
+          }
+        });
+      }
       return res.status(400).json({
         success: false,
-        message: 'Booking is already assigned to a counsellor'
+        message: 'Booking is already assigned to another counsellor'
       });
     }
 
