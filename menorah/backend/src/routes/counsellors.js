@@ -165,13 +165,24 @@ router.get('/', [
 // @access  Public
 router.get('/specializations', async (req, res) => {
   try {
-    const specializations = await Counsellor.distinct('specializations');
-    const uniqueSpecializations = [...new Set(specializations.flat())].filter(Boolean).sort();
+    // Query both singular and plural fields to handle any DB inconsistency
+    const [singular, plural] = await Promise.all([
+      Counsellor.distinct('specialization'),
+      Counsellor.distinct('specializations'),
+    ]);
+    const seen = new Set();
+    const uniqueSpecializations = [...singular, ...plural.flat()]
+      .map(s => s.trim())
+      .filter(s => {
+        if (!s) return false;
+        const key = s.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort();
 
-    res.json({
-      success: true,
-      data: { specializations: uniqueSpecializations }
-    });
+    res.json({ success: true, data: { specializations: uniqueSpecializations } });
   } catch (error) {
     console.error('Get specializations error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -183,13 +194,20 @@ router.get('/specializations', async (req, res) => {
 // @access  Public
 router.get('/languages', async (req, res) => {
   try {
-    const languages = await Counsellor.distinct('languages');
-    const uniqueLanguages = [...new Set(languages.flat())].filter(Boolean).sort();
+    const raw = await Counsellor.distinct('languages');
+    const seen = new Set();
+    const uniqueLanguages = raw.flat()
+      .map(l => l.trim())
+      .filter(l => {
+        if (!l) return false;
+        const key = l.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort();
 
-    res.json({
-      success: true,
-      data: { languages: uniqueLanguages }
-    });
+    res.json({ success: true, data: { languages: uniqueLanguages } });
   } catch (error) {
     console.error('Get languages error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
