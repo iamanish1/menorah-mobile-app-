@@ -95,13 +95,15 @@ router.get('/', [
       if (maxPrice) query.hourlyRate.$lte = parseFloat(maxPrice);
     }
 
-    // Build sort object
+    // Build sort object — map frontend sort keys to actual MongoDB field names
+    const sortFieldMap = { rating: 'rating', price: 'hourlyRate', experience: 'experience' };
     const sort = {};
     if (sortBy === 'name') {
       sort['user.firstName'] = sortOrder === 'asc' ? 1 : -1;
-      sort['user.lastName'] = sortOrder === 'asc' ? 1 : -1;
+      sort['user.lastName']  = sortOrder === 'asc' ? 1 : -1;
     } else {
-      sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+      const field = sortFieldMap[sortBy] || 'rating';
+      sort[field] = sortOrder === 'asc' ? 1 : -1;
     }
 
     // Calculate pagination
@@ -155,6 +157,42 @@ router.get('/', [
       success: false,
       message: 'Internal server error'
     });
+  }
+});
+
+// @route   GET /api/counsellors/specializations
+// @desc    Get all available specializations
+// @access  Public
+router.get('/specializations', async (req, res) => {
+  try {
+    const specializations = await Counsellor.distinct('specializations');
+    const uniqueSpecializations = [...new Set(specializations.flat())].filter(Boolean).sort();
+
+    res.json({
+      success: true,
+      data: { specializations: uniqueSpecializations }
+    });
+  } catch (error) {
+    console.error('Get specializations error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// @route   GET /api/counsellors/languages
+// @desc    Get all available languages
+// @access  Public
+router.get('/languages', async (req, res) => {
+  try {
+    const languages = await Counsellor.distinct('languages');
+    const uniqueLanguages = [...new Set(languages.flat())].filter(Boolean).sort();
+
+    res.json({
+      success: true,
+      data: { languages: uniqueLanguages }
+    });
+  } catch (error) {
+    console.error('Get languages error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
@@ -288,50 +326,6 @@ router.get('/:id/availability', [
 
   } catch (error) {
     console.error('Get counsellor availability error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
-  }
-});
-
-// @route   GET /api/counsellors/specializations
-// @desc    Get all available specializations
-// @access  Public
-router.get('/specializations', async (req, res) => {
-  try {
-    const specializations = await Counsellor.distinct('specializations');
-    const uniqueSpecializations = [...new Set(specializations.flat())];
-
-    res.json({
-      success: true,
-      data: { specializations: uniqueSpecializations }
-    });
-
-  } catch (error) {
-    console.error('Get specializations error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
-  }
-});
-
-// @route   GET /api/counsellors/languages
-// @desc    Get all available languages
-// @access  Public
-router.get('/languages', async (req, res) => {
-  try {
-    const languages = await Counsellor.distinct('languages');
-    const uniqueLanguages = [...new Set(languages.flat())];
-
-    res.json({
-      success: true,
-      data: { languages: uniqueLanguages }
-    });
-
-  } catch (error) {
-    console.error('Get languages error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
