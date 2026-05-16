@@ -189,37 +189,8 @@ router.post('/', [
 
     await booking.save();
 
-    // Emit Socket.IO event for unassigned bookings
-    // Only notify AVAILABLE counselors about new unassigned bookings
-    if (!counsellor && req.app.get('io')) {
-      const io = req.app.get('io');
-      const Counsellor = require('../models/Counsellor');
-      
-      // Find all available and active counselors
-      const availableCounsellors = await Counsellor.find({
-        isActive: true,
-        isAvailable: true
-      }).select('_id').lean();
-      
-      // Notify each available counselor individually
-      const bookingNotification = {
-        bookingId: booking._id,
-        userId: booking.user._id,
-        sessionType: booking.sessionType,
-        sessionDuration: booking.sessionDuration,
-        scheduledAt: booking.scheduledAt,
-        amount: booking.amount,
-        preferences: booking.preferences,
-        createdAt: booking.createdAt
-      };
-      
-      // Emit to each available counselor's room
-      availableCounsellors.forEach(counsellor => {
-        io.to(`counsellor_${counsellor._id}`).emit('new_booking_available', bookingNotification);
-      });
-      
-      console.log(`Notified ${availableCounsellors.length} available counselor(s) about new booking ${booking._id}`);
-    }
+    // NOTE: counsellor socket notifications are sent only after payment is confirmed
+    // (see payments.js verify-razorpay handler)
 
     // Send confirmation notifications only if counsellor is assigned
     if (counsellor) {
@@ -299,6 +270,15 @@ router.get('/', [
         dbQuery.status = { $in: statuses };
       }
     }
+
+    // Never show bookings that are awaiting payment (created but payment not yet completed).
+    // These are excluded from all list views — they only exist temporarily while the
+    // user is in the Razorpay modal, and are auto-cancelled if payment is abandoned.
+    dbQuery.$nor = [{
+      status: 'pending',
+      paymentStatus: 'pending',
+      isSubscriptionBooking: { $ne: true }
+    }];
 
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);

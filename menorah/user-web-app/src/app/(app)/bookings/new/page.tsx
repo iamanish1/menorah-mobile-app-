@@ -3,11 +3,28 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Video, MessageCircle, Headphones, ChevronRight, ArrowLeft, Calendar, Clock, User, CreditCard, ShieldCheck } from 'lucide-react';
+import { Video, MessageCircle, Headphones, ChevronRight, ArrowLeft, Calendar, Clock, User, CreditCard, ShieldCheck, CheckCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Avatar, Button, Spinner } from '@/components/ui';
 import { formatCurrency } from '@/lib/utils';
 import type { SessionType } from '@/types';
+
+declare global {
+  interface Window {
+    Razorpay: new (options: Record<string, unknown>) => { open: () => void };
+  }
+}
+
+function loadRazorpay(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window !== 'undefined' && window.Razorpay) { resolve(true); return; }
+    const script = document.createElement('script');
+    script.src    = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload  = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 type Step = 'session' | 'preferences' | 'review';
 
@@ -73,6 +90,7 @@ function NewBookingForm() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+  const [success, setSuccess] = useState(false);
 
   const { data: counsellorData } = useQuery({
     queryKey: ['counsellor', counsellorId],
@@ -91,7 +109,9 @@ function NewBookingForm() {
     }
     setLoading(true);
     setError('');
-    const res = await api.createBooking({
+
+    // Step 1: Create the booking record
+    const bookingRes = await api.createBooking({
       counsellorId:    draft.counsellorId,
       sessionType:     draft.sessionType,
       sessionDuration: draft.sessionDuration,
@@ -100,12 +120,71 @@ function NewBookingForm() {
       concerns:        draft.concerns,
       goals:           draft.goals ? [draft.goals] : undefined,
     });
-    setLoading(false);
-    if (res.success && res.data?.booking) {
-      router.push(`/bookings/payment?bookingId=${res.data.booking.id}`);
-    } else {
-      setError(res.message || 'Failed to create booking. Please try again.');
+
+    if (!bookingRes.success || !bookingRes.data?.booking) {
+      setLoading(false);
+      setError(bookingRes.message || 'Failed to create booking. Please try again.');
+      return;
     }
+
+    const booking = bookingRes.data.booking;
+
+    // Subscription booking — already paid, no Razorpay needed
+    if (booking.isSubscriptionBooking) {
+      setLoading(false);
+      setSuccess(true);
+      return;
+    }
+
+    // Step 2: Load Razorpay SDK
+    const loaded = await loadRazorpay();
+    if (!loaded) {
+      await api.cancelBooking(booking.id, 'Payment gateway failed to load');
+      setLoading(false);
+      setError('Failed to load payment gateway. Please try again.');
+      return;
+    }
+
+    // Step 3: Create Razorpay order for this booking
+    const sessionRes = await api.createCheckoutSession(booking.id);
+    if (!sessionRes.success || !sessionRes.data?.orderId) {
+      await api.cancelBooking(booking.id, 'Failed to create payment session');
+      setLoading(false);
+      setError(sessionRes.message || 'Failed to initialise payment. Please try again.');
+      return;
+    }
+
+    const { orderId, amount, currency } = sessionRes.data;
+    setLoading(false);
+
+    // Step 4: Open Razorpay modal — payment happens here
+    const rzp = new window.Razorpay({
+      key:         process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? '',
+      amount:      amount ?? 0,
+      currency:    currency ?? 'INR',
+      order_id:    orderId,
+      name:        'Menorah Health',
+      description: 'Counselling Session',
+      theme:       { color: '#3d9470' },
+      handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+        setLoading(true);
+        const verify = await api.verifyRazorpayPayment({ ...response, bookingId: booking.id });
+        setLoading(false);
+        if (verify.success) {
+          setSuccess(true);
+        } else {
+          setError(verify.message || 'Payment verification failed. Please contact support.');
+        }
+      },
+      modal: {
+        ondismiss: async () => {
+          // User closed the modal without paying — silently cancel the booking
+          await api.cancelBooking(booking.id, 'Payment not completed');
+          setError('Payment was cancelled. Your booking has been removed. You can try again anytime.');
+        },
+      },
+    });
+    rzp.open();
   };
 
   const steps: { id: Step; label: string }[] = [
@@ -121,6 +200,24 @@ function NewBookingForm() {
 
   // Validate step 1 before proceeding
   const canProceedFromSession = !!draft.scheduledAt && !availabilityWarning;
+
+  if (success) {
+    return (
+      <div className="page-container max-w-md text-center space-y-6 pt-16">
+        <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mx-auto">
+          <CheckCircle className="w-10 h-10 text-green-600" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Booking Confirmed!</h1>
+          <p className="text-gray-500 mt-2">Your session has been booked and payment received. A counsellor will be assigned shortly.</p>
+        </div>
+        <div className="flex flex-col gap-3">
+          <Button fullWidth onClick={() => router.push('/bookings')}>View My Bookings</Button>
+          <Button variant="secondary" fullWidth onClick={() => router.push('/discover')}>Discover More</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-container max-w-2xl">
@@ -410,7 +507,7 @@ function NewBookingForm() {
           <div className="flex gap-3 pt-1">
             <Button variant="secondary" fullWidth onClick={() => setStep('preferences')}>Back</Button>
             <Button fullWidth size="lg" loading={loading} onClick={handleBook}>
-              Confirm &amp; Pay
+              <CreditCard className="w-4 h-4" /> Confirm &amp; Pay
             </Button>
           </div>
         </div>

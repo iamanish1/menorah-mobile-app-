@@ -155,9 +155,10 @@ router.post('/razorpay-webhook', async (req, res) => {
 
     const event = req.body;
 
+    const io = req.app.get('io');
     switch (event.event) {
       case 'payment.captured':
-        await handleRazorpayPaymentSuccess(event.payload.payment.entity);
+        await handleRazorpayPaymentSuccess(event.payload.payment.entity, io);
         break;
       case 'payment.failed':
         await handleRazorpayPaymentFailure(event.payload.payment.entity);
@@ -240,6 +241,25 @@ router.post('/verify-razorpay', [
     booking.orderStatus = 'paid';
     booking.status = 'confirmed';
     await booking.save();
+
+    // Now that payment is confirmed, notify available counsellors about unassigned bookings
+    if (!booking.counsellor && req.app.get('io')) {
+      const io = req.app.get('io');
+      const CounsellorModel = require('../models/Counsellor');
+      const availableCounsellors = await CounsellorModel.find({ isActive: true, isAvailable: true }).select('_id').lean();
+      const notification = {
+        bookingId: booking._id,
+        sessionType: booking.sessionType,
+        sessionDuration: booking.sessionDuration,
+        scheduledAt: booking.scheduledAt,
+        amount: booking.amount,
+        preferences: booking.preferences,
+        createdAt: booking.createdAt
+      };
+      availableCounsellors.forEach(c => {
+        io.to(`counsellor_${c._id}`).emit('new_booking_available', notification);
+      });
+    }
 
     res.json({ success: true, message: 'Payment verified successfully' });
 
@@ -533,7 +553,7 @@ router.get('/subscription/status', auth, async (req, res) => {
 });
 
 // Webhook helpers
-const handleRazorpayPaymentSuccess = async (payment) => {
+const handleRazorpayPaymentSuccess = async (payment, io) => {
   const bookingId = payment.notes?.bookingId;
   if (!bookingId) return;
   const booking = await Booking.findById(bookingId);
@@ -544,6 +564,17 @@ const handleRazorpayPaymentSuccess = async (payment) => {
   booking.orderStatus = 'paid';
   booking.status = 'confirmed';
   await booking.save();
+
+  if (!booking.counsellor && io) {
+    const CounsellorModel = require('../models/Counsellor');
+    const available = await CounsellorModel.find({ isActive: true, isAvailable: true }).select('_id').lean();
+    const notification = {
+      bookingId: booking._id, sessionType: booking.sessionType,
+      sessionDuration: booking.sessionDuration, scheduledAt: booking.scheduledAt,
+      amount: booking.amount, preferences: booking.preferences, createdAt: booking.createdAt
+    };
+    available.forEach(c => io.to(`counsellor_${c._id}`).emit('new_booking_available', notification));
+  }
 };
 
 const handleRazorpayPaymentFailure = async (payment) => {
