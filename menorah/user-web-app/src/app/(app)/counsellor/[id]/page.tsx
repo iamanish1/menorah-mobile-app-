@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Star, Clock, Globe, Video, MessageCircle, Headphones,
+  Star, Clock, Globe, Video, MessageCircle,
   GraduationCap, Award, ArrowLeft, CalendarDays, CheckCircle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -162,18 +162,10 @@ export default function CounsellorProfilePage() {
             </div>
 
             <div className="space-y-2 text-sm">
-              <p className="font-medium text-gray-700">Session types available:</p>
-              <div className="flex gap-2">
-                <span className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 rounded-lg text-primary-700">
-                  <Video className="w-3.5 h-3.5" /> Video
-                </span>
-                <span className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 rounded-lg text-primary-700">
-                  <MessageCircle className="w-3.5 h-3.5" /> Chat
-                </span>
-                <span className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 rounded-lg text-primary-700">
-                  <Headphones className="w-3.5 h-3.5" /> Audio
-                </span>
-              </div>
+              <p className="font-medium text-gray-700">Session type:</p>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 rounded-lg text-primary-700">
+                <Video className="w-3.5 h-3.5" /> Video Call
+              </span>
             </div>
 
             {c.sessionDuration && (
