@@ -301,6 +301,14 @@ class ApiClient {
     return this.post<{ room: ChatRoom }>('/chat/start', { counsellorId });
   }
 
+  async getAvailableCounsellorsForChat(): Promise<ApiResponse<{ counsellors: Array<{
+    id: string; counsellorId: string; name: string; profileImage: string | null;
+    specialization: string[]; rating: number; reviewCount: number;
+    isOnline: boolean; isAvailable: boolean;
+  }> }>> {
+    return this.get('/chat/available-counsellors');
+  }
+
   // ─── Video ─────────────────────────────────────────────────────────────────
   async createVideoRoom(bookingId: string): Promise<ApiResponse<VideoRoom>> {
     return this.post<VideoRoom>('/video/create-room', { bookingId });

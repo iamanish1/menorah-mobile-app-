@@ -39,9 +39,7 @@ interface BookingDraft {
 }
 
 const sessionTypes = [
-  { type: 'video' as SessionType,  label: 'Video Call',   icon: Video,         desc: 'Face-to-face video session' },
-  { type: 'audio' as SessionType,  label: 'Audio Call',   icon: Headphones,    desc: 'Voice-only session' },
-  { type: 'chat'  as SessionType,  label: 'Chat Session', icon: MessageCircle, desc: 'Text-based messaging' },
+  { type: 'video' as SessionType, label: 'Video Call', icon: Video, desc: 'Face-to-face video session' },
 ];
 
 const durations = [30, 45, 60, 90];
@@ -270,28 +268,14 @@ function NewBookingForm() {
       {/* ── Step 1: Session type, duration & date/time ── */}
       {step === 'session' && (
         <div className="space-y-6">
-          <div className="card p-5 space-y-3">
-            <h2 className="font-semibold text-gray-900">Choose session type</h2>
-            {sessionTypes.map(({ type, label, icon: Icon, desc }) => (
-              <button
-                key={type}
-                onClick={() => set('sessionType', type)}
-                className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-colors text-left
-                  ${draft.sessionType === type
-                    ? 'border-primary-500 bg-primary-50'
-                    : 'border-gray-200 hover:border-gray-300'}`}
-              >
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0
-                  ${draft.sessionType === type ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                  <Icon className="w-5 h-5" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">{label}</p>
-                  <p className="text-sm text-gray-500">{desc}</p>
-                </div>
-                {draft.sessionType === type && <ChevronRight className="w-5 h-5 text-primary-500" />}
-              </button>
-            ))}
+          <div className="card p-5 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-primary-600 text-white flex items-center justify-center shrink-0">
+              <Video className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-medium text-gray-900">Video Call</p>
+              <p className="text-sm text-gray-500">Face-to-face video session</p>
+            </div>
           </div>
 
           <div className="card p-5 space-y-3">
