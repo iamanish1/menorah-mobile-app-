@@ -1,56 +1,61 @@
 import Link from 'next/link';
+import { HeartPulse } from 'lucide-react';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex">
-      {/* Left panel – branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-primary-600 flex-col justify-between p-12">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
-            <span className="text-primary-600 font-bold text-lg">M</span>
+      {/* Left — editorial brand panel */}
+      <div className="hidden lg:flex lg:w-[44%] bg-primary-900 flex-col justify-between p-14 relative overflow-hidden">
+        {/* Decorative shapes — depth without decoration */}
+        <div className="absolute -top-24 -right-24 w-[28rem] h-[28rem] rounded-full bg-primary-800/40 pointer-events-none" />
+        <div className="absolute -bottom-20 -left-14 w-72 h-72 rounded-full bg-primary-700/25 pointer-events-none" />
+
+        <Link href="/" className="relative z-10 flex items-center gap-3">
+          <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center">
+            <HeartPulse className="w-5 h-5 text-white" />
           </div>
-          <span className="text-white text-xl font-semibold">Menorah Health</span>
+          <span className="text-white font-semibold tracking-tight">Menorah Health</span>
         </Link>
 
-        <div className="space-y-6">
-          <h1 className="text-4xl font-bold text-white leading-tight">
-            Your mental well-being<br />journey starts here.
-          </h1>
-          <p className="text-primary-100 text-lg">
-            Connect with certified counsellors, book sessions, and get the support you deserve — all in one place.
+        <div className="relative z-10">
+          <p className="text-primary-400 text-[11px] font-semibold uppercase tracking-[0.16em] mb-5">
+            Mental Wellness Platform
           </p>
-
-          <div className="grid grid-cols-2 gap-4 pt-4">
-            {[
-              { num: '500+', label: 'Expert Counsellors' },
-              { num: '10K+', label: 'Sessions Completed' },
-              { num: '4.9',  label: 'Average Rating' },
-              { num: '24/7', label: 'Always Available' },
-            ].map((s) => (
-              <div key={s.label} className="bg-primary-700/50 rounded-2xl p-4">
-                <div className="text-2xl font-bold text-white">{s.num}</div>
-                <div className="text-primary-200 text-sm mt-1">{s.label}</div>
-              </div>
-            ))}
-          </div>
+          <h2 className="text-[2.4rem] font-bold text-white leading-[1.13] mb-9">
+            Support that fits<br />the way you live.
+          </h2>
+          <figure className="border-l-2 border-primary-500/60 pl-5">
+            <blockquote>
+              <p className="text-primary-100/80 text-[15px] leading-[1.7]">
+                &ldquo;My counsellor understood exactly what I needed. Three months later, my anxiety is manageable for the first time.&rdquo;
+              </p>
+            </blockquote>
+            <figcaption className="mt-3 text-primary-400 text-sm font-medium">
+              — Priya M., Mumbai
+            </figcaption>
+          </figure>
         </div>
 
-        <p className="text-primary-200 text-sm">
+        <p className="relative z-10 text-primary-500 text-sm">
           &copy; {new Date().getFullYear()} Menorah Health. All rights reserved.
         </p>
       </div>
 
-      {/* Right panel – form */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 bg-white">
-        {/* Mobile logo */}
-        <Link href="/" className="flex items-center gap-2 mb-8 lg:hidden">
-          <div className="w-9 h-9 bg-primary-600 rounded-xl flex items-center justify-center">
-            <span className="text-white font-bold">M</span>
-          </div>
-          <span className="text-gray-900 text-lg font-semibold">Menorah Health</span>
-        </Link>
+      {/* Right — form panel */}
+      <div className="flex-1 flex flex-col bg-white">
+        {/* Mobile logo — only visible below lg */}
+        <div className="px-8 pt-7 lg:hidden">
+          <Link href="/" className="inline-flex items-center gap-2">
+            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+              <HeartPulse className="w-4 h-4 text-white" />
+            </div>
+            <span className="text-gray-900 font-semibold text-sm">Menorah Health</span>
+          </Link>
+        </div>
 
-        <div className="w-full max-w-md">{children}</div>
+        <div className="flex-1 flex items-center justify-center px-8 py-12">
+          <div className="w-full max-w-sm">{children}</div>
+        </div>
       </div>
     </div>
   );

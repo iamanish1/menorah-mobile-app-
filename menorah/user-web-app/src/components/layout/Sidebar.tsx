@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Search, CalendarDays, MessageCircle, User,
-  Bell, CreditCard, HeartPulse, LogOut, ChevronRight,
+  Bell, CreditCard, HeartPulse, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/Avatar';
@@ -13,12 +13,12 @@ import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
 
 const navItems = [
-  { href: '/discover',     label: 'Discover',       icon: Search },
-  { href: '/bookings',     label: 'My Bookings',    icon: CalendarDays },
-  { href: '/chat',         label: 'Chat',           icon: MessageCircle },
-  { href: '/subscription', label: 'Subscription',  icon: CreditCard },
-  { href: '/notifications',label: 'Notifications',  icon: Bell },
-  { href: '/profile',      label: 'Profile',        icon: User },
+  { href: '/discover',      label: 'Discover',       icon: Search },
+  { href: '/bookings',      label: 'My Bookings',    icon: CalendarDays },
+  { href: '/chat',          label: 'Chat',           icon: MessageCircle },
+  { href: '/subscription',  label: 'Subscription',   icon: CreditCard },
+  { href: '/notifications', label: 'Notifications',  icon: Bell },
+  { href: '/profile',       label: 'Profile',        icon: User },
 ];
 
 export function Sidebar() {
@@ -31,10 +31,13 @@ export function Sidebar() {
       {/* Logo */}
       <div className="px-6 py-5 border-b border-gray-100">
         <Link href="/discover" className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-primary-600 rounded-xl flex items-center justify-center shrink-0">
-            <HeartPulse className="w-5 h-5 text-white" />
+          <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
+            <HeartPulse className="w-4 h-4 text-white" />
           </div>
-          <span className="text-gray-900 font-semibold text-lg">Menorah</span>
+          <div>
+            <p className="text-gray-900 font-semibold text-sm leading-tight">Menorah</p>
+            <p className="text-gray-400 text-[11px] font-medium">Health Platform</p>
+          </div>
         </Link>
       </div>
 
@@ -48,18 +51,17 @@ export function Sidebar() {
               key={href}
               href={href}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors',
+                'flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors duration-150 rounded-lg',
                 active
-                  ? 'bg-primary-50 text-primary-700'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'shadow-[inset_3px_0_0_#3d9470] bg-primary-50 text-primary-700'
+                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
               )}
             >
-              <Icon className={cn('w-5 h-5 shrink-0', active ? 'text-primary-600' : 'text-gray-400')} />
+              <Icon className={cn('w-[18px] h-[18px] shrink-0', active ? 'text-primary-600' : 'text-gray-400')} />
               <span className="flex-1">{label}</span>
               {isNotif && unreadCount > 0 && (
-                <Badge variant="danger" size="sm">{unreadCount}</Badge>
+                <Badge variant="danger" size="sm">{unreadCount > 9 ? '9+' : unreadCount}</Badge>
               )}
-              {active && <ChevronRight className="w-4 h-4 text-primary-400" />}
             </Link>
           );
         })}
@@ -68,16 +70,21 @@ export function Sidebar() {
       {/* User footer */}
       {user && (
         <div className="px-3 py-4 border-t border-gray-100 space-y-1">
-          <Link href="/profile" className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors group">
+          <Link
+            href="/profile"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+          >
             <Avatar src={user.profileImage} name={`${user.firstName} ${user.lastName}`} size="sm" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{user.firstName} {user.lastName}</p>
+              <p className="text-sm font-medium text-gray-900 truncate leading-tight">
+                {user.firstName} {user.lastName}
+              </p>
               <p className="text-xs text-gray-400 truncate">{user.email}</p>
             </div>
           </Link>
           <button
             onClick={logout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
           >
             <LogOut className="w-4 h-4" />
             Sign out

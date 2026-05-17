@@ -8,11 +8,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import Button from '@/components/ui/Button';
-import Card from '@/components/ui/Card';
 import styles from './page.module.css';
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email:    z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
@@ -21,14 +20,10 @@ type LoginForm = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const { login, isAuthenticated, isLoading } = useAuth();
-  const [error, setError] = useState<string | null>(null);
+  const [error,        setError]        = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginForm>({
+  const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
   });
 
@@ -49,8 +44,7 @@ export default function LoginPage() {
         setError('Invalid email or password');
       }
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Login failed';
-      setError(errorMessage);
+      setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setIsSubmitting(false);
     }
@@ -58,37 +52,64 @@ export default function LoginPage() {
 
   if (isLoading) {
     return (
-      <div className={styles.container}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ 
-            display: 'inline-block',
-            width: '48px',
-            height: '48px',
-            border: '3px solid var(--color-primary)',
-            borderTopColor: 'transparent',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-            marginBottom: '16px'
-          }}></div>
-          <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-size-lg)' }}>Loading...</p>
-        </div>
+      <div className={styles.page} style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{
+          width: 40, height: 40,
+          border: '3px solid var(--color-primary)',
+          borderTopColor: 'transparent',
+          borderRadius: '50%',
+          animation: 'spin 0.7s linear infinite',
+        }} />
       </div>
     );
   }
 
   return (
-    <div className={styles.container}>
-      <div className={styles.content}>
-        <div className={styles.header}>
-          <div className={styles.logoContainer}>
-            <span className={styles.logoText}>M</span>
-          </div>
-          <h1 className={styles.title}>Welcome Back</h1>
-          <p className={styles.subtitle}>Sign in to your counselor account</p>
+    <div className={styles.page}>
+      {/* Left editorial panel */}
+      <div className={styles.panel}>
+        <div className={styles.panelDeco1} />
+        <div className={styles.panelDeco2} />
+
+        <span className={styles.panelLogo}>
+          <span className={styles.panelLogoIcon}>M</span>
+          <span className={styles.panelLogoName}>Menorah Health</span>
+        </span>
+
+        <div className={styles.panelBody}>
+          <p className={styles.panelEyebrow}>Counselor Portal</p>
+          <h1 className={styles.panelHeading}>
+            Your practice,<br />managed simply.
+          </h1>
+          <figure className={styles.panelQuote}>
+            <blockquote>
+              <p className={styles.panelQuoteText}>
+                &ldquo;The dashboard gives me everything I need in one place — scheduling, client chat, and earnings. I spend less time on admin.&rdquo;
+              </p>
+            </blockquote>
+            <figcaption>
+              <p className={styles.panelQuoteAuthor}>— Dr. Meera K., Clinical Psychologist</p>
+            </figcaption>
+          </figure>
         </div>
 
-        <Card padding="lg">
-          <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <p className={styles.panelFooter}>
+          &copy; {new Date().getFullYear()} Menorah Health
+        </p>
+      </div>
+
+      {/* Right form panel */}
+      <div className={styles.formPanel}>
+        <Link href="/" className={styles.mobileLogo}>
+          <span className={styles.mobileLogoIcon}>M</span>
+          <span className={styles.mobileLogoName}>Menorah Health</span>
+        </Link>
+
+        <div className={styles.formWrap}>
+          <div className={styles.formInner}>
+            <h2 className={styles.formHeading}>Welcome back</h2>
+            <p className={styles.formSubtitle}>Sign in to your counselor account</p>
+
             {error && (
               <div className={styles.errorAlert}>
                 <svg className={styles.errorIcon} fill="currentColor" viewBox="0 0 20 20">
@@ -98,89 +119,77 @@ export default function LoginPage() {
               </div>
             )}
 
-            <div className={styles.formGroup}>
-              <label htmlFor="email" className={styles.label}>
-                Email address
-              </label>
-              <div className={styles.inputWrapper}>
-                <svg className={styles.inputIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
-                </svg>
-                <input
-                  {...register('email')}
-                  type="email"
-                  id="email"
-                  autoComplete="email"
-                  className={styles.input}
-                  placeholder="you@example.com"
-                />
-              </div>
-              {errors.email && (
-                <p className={styles.errorMessage}>
-                  <svg className={styles.errorIconSmall} fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            <form onSubmit={handleSubmit(onSubmit)}>
+              <div className={styles.formGroup}>
+                <label htmlFor="email" className={styles.label}>Email address</label>
+                <div className={styles.inputWrapper}>
+                  <svg className={styles.inputIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
-                  {errors.email.message}
-                </p>
-              )}
-            </div>
-
-            <div className={styles.formGroup}>
-              <label htmlFor="password" className={styles.label}>
-                Password
-              </label>
-              <div className={styles.inputWrapper}>
-                <svg className={styles.inputIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-                <input
-                  {...register('password')}
-                  type="password"
-                  id="password"
-                  autoComplete="current-password"
-                  className={styles.input}
-                  placeholder="Enter your password"
-                />
+                  <input
+                    {...register('email')}
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    className={styles.input}
+                    placeholder="you@example.com"
+                  />
+                </div>
+                {errors.email && (
+                  <p className={styles.errorMessage}>
+                    <svg className={styles.errorIconSmall} fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {errors.email.message}
+                  </p>
+                )}
               </div>
-              {errors.password && (
-                <p className={styles.errorMessage}>
-                  <svg className={styles.errorIconSmall} fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+
+              <div className={styles.formGroup}>
+                <label htmlFor="password" className={styles.label}>Password</label>
+                <div className={styles.inputWrapper}>
+                  <svg className={styles.inputIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
-                  {errors.password.message}
-                </p>
-              )}
+                  <input
+                    {...register('password')}
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    className={styles.input}
+                    placeholder="Enter your password"
+                  />
+                </div>
+                {errors.password && (
+                  <p className={styles.errorMessage}>
+                    <svg className={styles.errorIconSmall} fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {errors.password.message}
+                  </p>
+                )}
+              </div>
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                isLoading={isSubmitting}
+                className={styles.fullWidth}
+              >
+                Sign in
+              </Button>
+            </form>
+
+            <div className={styles.formFooter}>
+              <p className={styles.footerText}>
+                Don&apos;t have an account?{' '}
+                <Link href="/register" className={styles.footerLink}>
+                  Register as Counselor
+                </Link>
+              </p>
             </div>
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              isLoading={isSubmitting}
-              className={styles.fullWidth}
-              style={{ width: '100%', marginTop: '8px' }}
-            >
-              Sign in
-            </Button>
-          </form>
-
-          <div className={styles.footer}>
-            <p className={styles.footerText}>
-              Don't have an account?{' '}
-              <Link href="/register" className={styles.footerLink}>
-                Register as Counselor
-              </Link>
-            </p>
           </div>
-        </Card>
-
-        <div className={styles.legal}>
-          <p className={styles.legalText}>
-            By signing in, you agree to our{' '}
-            <a href="#" className={styles.legalLink}>Terms of Service</a>
-            {' '}and{' '}
-            <a href="#" className={styles.legalLink}>Privacy Policy</a>
-          </p>
         </div>
       </div>
     </div>
