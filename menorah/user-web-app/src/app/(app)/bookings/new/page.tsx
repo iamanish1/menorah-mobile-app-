@@ -305,7 +305,7 @@ function NewBookingForm() {
               </h2>
               <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-1">
                 {DAYS.map((day) => {
-                  const sched = counsellor.availability[day];
+                  const sched = counsellor.availability?.[day];
                   return (
                     <div key={day} className="flex items-center justify-between text-xs py-0.5">
                       <span className={`capitalize font-medium ${sched?.isAvailable ? 'text-gray-700' : 'text-gray-400'}`}>
