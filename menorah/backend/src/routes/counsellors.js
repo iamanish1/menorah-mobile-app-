@@ -60,22 +60,43 @@ router.get('/', [
       isActive: true,
     };
 
-    // Search functionality
+    // Collect top-level $or conditions to combine later
+    const orConditions = [];
+
+    // Search — name lookup requires pre-querying User since 'user' is a ref (ObjectId at query time)
     if (search) {
-      query.$or = [
-        { specialization: { $regex: search, $options: 'i' } },
-        { specializations: { $in: [new RegExp(search, 'i')] } },
-        { 'user.firstName': { $regex: search, $options: 'i' } },
-        { 'user.lastName': { $regex: search, $options: 'i' } }
-      ];
+      const matchingUsers = await User.find({
+        $or: [
+          { firstName: { $regex: search, $options: 'i' } },
+          { lastName:  { $regex: search, $options: 'i' } },
+        ]
+      }).select('_id').lean();
+      const userIds = matchingUsers.map(u => u._id);
+
+      orConditions.push({
+        $or: [
+          { specialization:  { $regex: search, $options: 'i' } },
+          { specializations: { $in: [new RegExp(search, 'i')] } },
+          ...(userIds.length ? [{ user: { $in: userIds } }] : []),
+        ]
+      });
     }
 
-    // Filter by specialization
+    // Filter by specialization (separate from free-text search)
     if (specialization) {
-      query.$or = [
-        { specialization: { $regex: specialization, $options: 'i' } },
-        { specializations: { $in: [new RegExp(specialization, 'i')] } }
-      ];
+      orConditions.push({
+        $or: [
+          { specialization:  { $regex: specialization, $options: 'i' } },
+          { specializations: { $in: [new RegExp(specialization, 'i')] } },
+        ]
+      });
+    }
+
+    // Combine multiple $or blocks with $and so they don't overwrite each other
+    if (orConditions.length === 1) {
+      query.$or = orConditions[0].$or;
+    } else if (orConditions.length > 1) {
+      query.$and = orConditions;
     }
 
     // Filter by language
