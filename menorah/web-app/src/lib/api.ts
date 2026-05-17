@@ -462,6 +462,62 @@ class ApiClient {
       };
     }
   }
+
+  async updateUserProfile(data: {
+    firstName?: string;
+    lastName?: string;
+    dateOfBirth?: string;
+    gender?: string;
+  }): Promise<ApiResponse<{ user: any }>> {
+    try {
+      const response = await this.client.put('/users/profile', data);
+      return response.data;
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to update profile',
+        errors: error.response?.data?.errors || [],
+      };
+    }
+  }
+
+  async updateCounsellorProfile(data: {
+    specialization?: string;
+    specializations?: string[];
+    experience?: number;
+    hourlyRate?: number;
+    bio?: string;
+    languages?: string[];
+    licenseNumber?: string;
+    availability?: Record<string, { start: string; end: string; isAvailable: boolean }>;
+  }): Promise<ApiResponse<{ counsellor: any }>> {
+    try {
+      const response = await this.client.put('/counsellors/me/profile', data);
+      return response.data;
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to update counsellor profile',
+        errors: error.response?.data?.errors || [],
+      };
+    }
+  }
+
+  async changePassword(data: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<ApiResponse<void>> {
+    try {
+      const response = await this.client.put('/users/change-password', data);
+      return response.data;
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to change password',
+        errors: error.response?.data?.errors || [],
+      };
+    }
+  }
 }
 
 export const api = new ApiClient();

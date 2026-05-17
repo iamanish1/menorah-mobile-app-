@@ -882,6 +882,61 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
   }
 });
 
+// @route   PUT /api/counsellors/me/profile
+// @desc    Update counsellor professional profile
+// @access  Private (Counsellor)
+router.put('/me/profile', [
+  body('specialization').optional().trim().isLength({ min: 2, max: 100 }),
+  body('specializations').optional().isArray(),
+  body('experience').optional().isInt({ min: 0, max: 80 }),
+  body('hourlyRate').optional().isFloat({ min: 0 }),
+  body('bio').optional().trim().isLength({ max: 1000 }),
+  body('languages').optional().isArray(),
+  body('licenseNumber').optional().trim(),
+  body('availability').optional().isObject(),
+], counsellorAuth, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const counsellor = await getCounsellorFromUser(req.user._id);
+    if (!counsellor) {
+      return res.status(404).json({ success: false, message: 'Counsellor profile not found' });
+    }
+
+    const { specialization, specializations, experience, hourlyRate, bio, languages, licenseNumber, availability } = req.body;
+
+    if (specialization !== undefined) counsellor.specialization = specialization;
+    if (specializations !== undefined) counsellor.specializations = specializations;
+    if (experience !== undefined) counsellor.experience = experience;
+    if (hourlyRate !== undefined) counsellor.hourlyRate = hourlyRate;
+    if (bio !== undefined) counsellor.bio = bio;
+    if (languages !== undefined) counsellor.languages = languages;
+    if (licenseNumber !== undefined) counsellor.licenseNumber = licenseNumber;
+    if (availability !== undefined) {
+      const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      days.forEach((day) => {
+        if (availability[day] !== undefined) {
+          counsellor.availability[day] = { ...counsellor.availability[day], ...availability[day] };
+        }
+      });
+    }
+
+    await counsellor.save();
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: { counsellor }
+    });
+  } catch (error) {
+    console.error('Update counsellor profile error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // @route   PUT /api/counsellors/me/status
 // @desc    Toggle counsellor availability (isAvailable on/off)
 // @access  Private (Counsellor)
