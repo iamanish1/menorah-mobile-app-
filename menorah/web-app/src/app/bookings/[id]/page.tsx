@@ -23,6 +23,8 @@ export default function BookingDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -79,17 +81,23 @@ export default function BookingDetailPage() {
     if (!booking) return;
     try {
       setActionLoading('schedule');
-      setError(null);
+      setScheduleError(null);
       const response = await api.scheduleBooking(booking.id, scheduledAt);
       if (response.success) {
         setShowScheduleModal(false);
-        fetchBooking();
+        setScheduleError(null);
+        await fetchBooking();
+        const dt = new Date(scheduledAt).toLocaleString('en-IN', {
+          weekday: 'short', day: 'numeric', month: 'short',
+          hour: '2-digit', minute: '2-digit',
+        });
+        setSuccessMsg(`Session scheduled for ${dt}`);
+        setTimeout(() => setSuccessMsg(null), 4000);
       } else {
-        setError(response.message || 'Failed to schedule booking');
+        setScheduleError(response.message || 'Failed to schedule booking');
       }
     } catch (error: any) {
-      console.error('Failed to schedule booking:', error);
-      setError(error.message || 'Failed to schedule booking');
+      setScheduleError(error.message || 'Failed to schedule booking');
     } finally {
       setActionLoading(null);
     }
@@ -209,6 +217,19 @@ export default function BookingDetailPage() {
   return (
     <AppLayout>
       <div>
+        {successMsg && (
+          <Card padding="md" className={styles.errorCard} style={{ background: '#d1fae5', border: '1px solid #6ee7b7' }}>
+            <div className={styles.errorContent}>
+              <div className={styles.errorLeft}>
+                <svg className={styles.errorIcon} fill="currentColor" viewBox="0 0 20 20" style={{ color: '#065f46' }}>
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <p className={styles.errorText} style={{ color: '#065f46' }}>{successMsg}</p>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {error && (
           <Card padding="md" className={styles.errorCard}>
             <div className={styles.errorContent}>
@@ -432,8 +453,9 @@ export default function BookingDetailPage() {
         <ScheduleModal
           booking={booking}
           onSchedule={handleSchedule}
-          onClose={() => setShowScheduleModal(false)}
+          onClose={() => { setShowScheduleModal(false); setScheduleError(null); }}
           loading={actionLoading === 'schedule'}
+          error={scheduleError}
         />
       )}
     </AppLayout>

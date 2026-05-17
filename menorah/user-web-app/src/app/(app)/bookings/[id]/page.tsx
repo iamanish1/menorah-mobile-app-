@@ -1,21 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Video, MessageCircle, Clock, CreditCard, XCircle, RefreshCw } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Avatar, Badge, Button, Modal, Spinner } from '@/components/ui';
 import { formatBookingDate, formatCurrency, getStatusColor } from '@/lib/utils';
+import { useSocket } from '@/context/SocketContext';
 
 export default function BookingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router  = useRouter();
   const qc      = useQueryClient();
+  const { socket } = useSocket();
 
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason]         = useState('');
+  const [rescheduleNotice, setRescheduleNotice] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['booking', id],
@@ -23,6 +26,25 @@ export default function BookingDetailPage() {
   });
 
   const booking = data?.data?.booking;
+
+  // Invalidate cache and show notice when counsellor reschedules
+  useEffect(() => {
+    if (!socket) return;
+    const onRescheduled = (data: { bookingId?: string; scheduledAt?: string; counsellorName?: string }) => {
+      if (!data.bookingId || data.bookingId !== id) return;
+      qc.invalidateQueries({ queryKey: ['booking', id] });
+      qc.invalidateQueries({ queryKey: ['bookings'] });
+      if (data.scheduledAt) {
+        const formatted = new Date(data.scheduledAt).toLocaleString('en-IN', {
+          weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+        });
+        setRescheduleNotice(`${data.counsellorName ?? 'Your counsellor'} rescheduled this session to ${formatted}.`);
+      }
+    };
+    socket.on('booking_rescheduled', onRescheduled);
+    return () => { socket.off('booking_rescheduled', onRescheduled); };
+  }, [socket, id, qc]);
 
   const handleCancel = async () => {
     setCancelling(true);
@@ -55,6 +77,15 @@ export default function BookingDetailPage() {
         <h1 className="text-2xl font-bold text-gray-900">Booking Details</h1>
         <Badge className={getStatusColor(booking.status)}>{booking.status}</Badge>
       </div>
+
+      {/* Reschedule notice banner */}
+      {rescheduleNotice && (
+        <div className="mb-4 flex items-start gap-3 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+          <RefreshCw className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
+          <div className="flex-1">{rescheduleNotice}</div>
+          <button onClick={() => setRescheduleNotice(null)} className="text-amber-400 hover:text-amber-600">✕</button>
+        </div>
+      )}
 
       <div className="space-y-4">
         {/* Counsellor info */}

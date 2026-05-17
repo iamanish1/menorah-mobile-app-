@@ -114,13 +114,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     };
 
     // Counsellor rescheduled
-    const onBookingRescheduled = (data: { bookingId?: string; scheduledAt?: string }) => {
+    const onBookingRescheduled = (data: { bookingId?: string; scheduledAt?: string; counsellorName?: string }) => {
+      const who = data.counsellorName ?? 'Your counsellor';
+      const when = data.scheduledAt
+        ? new Date(data.scheduledAt).toLocaleString('en-IN', {
+            weekday: 'short', day: 'numeric', month: 'short',
+            hour: '2-digit', minute: '2-digit',
+          })
+        : null;
       addNotification({
         type: 'booking_confirmed',
         title: 'Session Rescheduled',
-        body: data.scheduledAt
-          ? `Your session has been rescheduled to ${new Date(data.scheduledAt).toLocaleString()}.`
-          : 'Your session has been rescheduled.',
+        body: when
+          ? `${who} rescheduled your session to ${when}.`
+          : `${who} rescheduled your session.`,
         data: { bookingId: data.bookingId ?? '' },
       });
     };

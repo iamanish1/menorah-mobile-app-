@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Plus, Video, MessageCircle, Headphones, Clock } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Avatar, Badge, Button, Spinner } from '@/components/ui';
+import { Badge, Button, Spinner } from '@/components/ui';
 import { formatBookingDate, formatCurrency, getStatusColor } from '@/lib/utils';
-import type { BookingStatus } from '@/types';
+import { useSocket } from '@/context/SocketContext';
 
 const statusTabs: { label: string; value?: string }[] = [
   { label: 'All' },
@@ -21,11 +21,26 @@ const sessionIcons = { video: Video, chat: MessageCircle, audio: Headphones };
 
 export default function BookingsPage() {
   const [status, setStatus] = useState<string | undefined>(undefined);
+  const qc = useQueryClient();
+  const { socket } = useSocket();
 
   const { data, isLoading } = useQuery({
     queryKey: ['bookings', status],
     queryFn:  () => api.getBookings({ status, limit: 20 }),
   });
+
+  // Invalidate all booking list queries when any booking is rescheduled
+  useEffect(() => {
+    if (!socket) return;
+    const onRescheduled = (data: { bookingId?: string }) => {
+      qc.invalidateQueries({ queryKey: ['bookings'] });
+      if (data.bookingId) {
+        qc.invalidateQueries({ queryKey: ['booking', data.bookingId] });
+      }
+    };
+    socket.on('booking_rescheduled', onRescheduled);
+    return () => { socket.off('booking_rescheduled', onRescheduled); };
+  }, [socket, qc]);
 
   const bookings = data?.data?.bookings ?? [];
 

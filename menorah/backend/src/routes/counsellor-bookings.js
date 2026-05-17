@@ -609,40 +609,27 @@ router.put('/me/bookings/:id/schedule', [
       });
     }
 
-    // Check counsellor availability
+    // Check counsellor availability only if they have explicitly configured it
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const dayOfWeek = days[scheduledTime.getDay()];
     const timeString = scheduledTime.toTimeString().slice(0, 5);
-    
-    // Check if availability exists and has the day
-    if (!counsellor.availability || typeof counsellor.availability !== 'object') {
-      return res.status(400).json({
-        success: false,
-        message: 'Counsellor availability is not configured'
-      });
-    }
-    
-    const daySchedule = counsellor.availability[dayOfWeek];
 
-    if (!daySchedule || !daySchedule.isAvailable) {
-      return res.status(400).json({
-        success: false,
-        message: 'Counsellor is not available on this day'
-      });
-    }
-
-    if (!daySchedule.start || !daySchedule.end) {
-      return res.status(400).json({
-        success: false,
-        message: 'Counsellor working hours are not configured for this day'
-      });
-    }
-
-    if (timeString < daySchedule.start || timeString > daySchedule.end) {
-      return res.status(400).json({
-        success: false,
-        message: 'Scheduled time is outside counsellor\'s working hours'
-      });
+    if (counsellor.availability && typeof counsellor.availability === 'object') {
+      const daySchedule = counsellor.availability[dayOfWeek];
+      if (daySchedule && daySchedule.isAvailable === false) {
+        return res.status(400).json({
+          success: false,
+          message: `You are not available on ${dayOfWeek}s. Please choose another day.`
+        });
+      }
+      if (daySchedule && daySchedule.isAvailable && daySchedule.start && daySchedule.end) {
+        if (timeString < daySchedule.start || timeString > daySchedule.end) {
+          return res.status(400).json({
+            success: false,
+            message: `Your working hours on ${dayOfWeek} are ${daySchedule.start}–${daySchedule.end}. Please pick a time within that range.`
+          });
+        }
+      }
     }
 
     // Check for conflicting bookings
@@ -671,16 +658,23 @@ router.put('/me/bookings/:id/schedule', [
     // Emit Socket.IO event
     if (req.app.get('io') && booking.user) {
       const io = req.app.get('io');
+      const userId = booking.user._id || booking.user;
+
+      // Notify the counsellor's own room
       io.to(`counsellor_${counsellor._id}`).emit('booking_scheduled', {
         bookingId: booking._id,
         scheduledAt: booking.scheduledAt,
-        oldScheduledAt
+        oldScheduledAt,
       });
-      
-      // Notify user
-      io.to(`user_${booking.user._id}`).emit('booking_rescheduled', {
+
+      // Notify the user with full details so their UI can update
+      const counsellorUser = await require('../models/User').findById(counsellor.user).select('firstName lastName');
+      const counsellorName = counsellorUser ? `${counsellorUser.firstName} ${counsellorUser.lastName}` : 'Your counsellor';
+      io.to(`user_${userId}`).emit('booking_rescheduled', {
         bookingId: booking._id,
-        scheduledAt: booking.scheduledAt
+        scheduledAt: booking.scheduledAt,
+        oldScheduledAt,
+        counsellorName,
       });
     }
 
