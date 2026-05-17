@@ -276,6 +276,26 @@
   color: var(--color-text-base);
 }
 
+.successBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: 1px solid #6ee7b7;
+  background: #d1fae5;
+  border-radius: var(--radius-xl);
+  color: #065f46;
+}
+
+.successBanner .errorIcon {
+  color: #059669;
+}
+
+.successBanner .errorText {
+  color: #065f46;
+}
+
 .content {
   display: flex;
   flex-direction: column;
