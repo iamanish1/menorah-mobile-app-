@@ -227,6 +227,15 @@ io.on("connection", (socket) => {
 
   socket.join(`user_${socket.userId}`);
 
+  // Track online status and broadcast to everyone
+  chatRoutes.setUserOnline(socket.userId, socket.userName);
+  socket.broadcast.emit("user_status_changed", {
+    userId: socket.userId,
+    userName: socket.userName,
+    isOnline: true,
+    timestamp: new Date().toISOString(),
+  });
+
   if (socket.userRole === "counsellor" || socket.userRole === "admin") {
     const Counsellor = require("./models/Counsellor");
     Counsellor.findOne({ user: socket.userId })
@@ -302,6 +311,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.userId} (${socket.userName})`);
+    chatRoutes.setUserOffline(socket.userId);
     socket.broadcast.emit("user_status_changed", {
       userId: socket.userId,
       userName: socket.userName,

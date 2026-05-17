@@ -16,6 +16,14 @@ const router = express.Router();
 // Store online users for real-time status (can be moved to Redis in production)
 const onlineUsers = new Map();
 
+// Called from server.js on socket connect/disconnect
+const setUserOnline = (userId, userName) => {
+  onlineUsers.set(userId, { userName, onlineSince: new Date().toISOString() });
+};
+const setUserOffline = (userId) => {
+  onlineUsers.delete(userId);
+};
+
 // @route   GET /api/chat/rooms
 // @desc    Get user's chat rooms
 // @access  Private
@@ -831,3 +839,5 @@ const getOrCreateRoomForBooking = async (userId, counsellorId, bookingId) => {
 
 module.exports = router;
 module.exports.setSocketIO = setSocketIO;
+module.exports.setUserOnline = setUserOnline;
+module.exports.setUserOffline = setUserOffline;
