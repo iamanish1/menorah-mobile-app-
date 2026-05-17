@@ -34,7 +34,7 @@ export default function ChatThreadPage() {
   const router     = useRouter();
   const { user }   = useAuth();
   const qc         = useQueryClient();
-  const { socket, joinRoom, leaveRoom, sendMessage, startTyping, stopTyping, markRead } = useSocket();
+  const { socket, joinRoom, leaveRoom, startTyping, stopTyping, markRead } = useSocket();
 
   const [messages, setMessages]       = useState<ChatMessage[]>([]);
   const [input, setInput]             = useState('');
@@ -80,11 +80,32 @@ export default function ChatThreadPage() {
     };
   }, [roomId, socket, joinRoom, leaveRoom]);
 
+  // Initialise counsellor online status from REST data when room loads
+  useEffect(() => {
+    if (room?.isOnline !== undefined) {
+      setCounsellorOnline(room.isOnline);
+    }
+  }, [room?.isOnline]);
+
   useEffect(() => {
     if (!socket) return;
 
     const onNewMessage = (msg: ChatMessage) => {
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => {
+        if (msg.senderId === user?.id) {
+          // Replace optimistic placeholder with real message from server
+          const optIdx = prev.findIndex(
+            (m) => m.id.startsWith('opt_') && m.content === msg.content
+          );
+          if (optIdx !== -1) {
+            const next = [...prev];
+            next[optIdx] = msg;
+            return next;
+          }
+          return prev; // already added optimistically, skip duplicate
+        }
+        return [...prev, msg];
+      });
       if (msg.senderId !== user?.id) {
         markRead(roomId, msg.id);
       }
@@ -135,9 +156,9 @@ export default function ChatThreadPage() {
     };
     setMessages((prev) => [...prev, optimistic]);
 
-    sendMessage(roomId, content);
+    // Send via REST only — backend emits new_message via socket to all participants
     await api.sendMessage(roomId, content);
-  }, [input, roomId, user, sendMessage, stopTyping]);
+  }, [input, roomId, user, stopTyping]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
