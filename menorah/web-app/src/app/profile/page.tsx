@@ -86,6 +86,85 @@ function TagInput({ tags, onChange }: { tags: string[]; onChange: (tags: string[
   );
 }
 
+// ── RateEditor ────────────────────────────────────────────────────────────────
+function RateEditor({ currentRate, currency, onSave }: {
+  currentRate: number;
+  currency: string;
+  onSave: (rate: number) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [rate, setRate] = useState(currentRate);
+  const [saving, setSaving] = useState(false);
+
+  // Sync when parent data reloads
+  useEffect(() => { setRate(currentRate); }, [currentRate]);
+
+  const perSession = (mins: number) => ((rate / 60) * mins).toFixed(2);
+
+  const handleSave = async () => {
+    if (rate <= 0) return;
+    setSaving(true);
+    await onSave(rate);
+    setSaving(false);
+    setEditing(false);
+  };
+
+  return (
+    <>
+      {editing ? (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', flexWrap: 'wrap' }}>
+            <div className={styles.formGroup} style={{ flex: '0 0 180px' }}>
+              <label className={styles.infoLabel}>Per-Hour Rate ({currency})</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                className={styles.formInput}
+                value={rate}
+                onChange={(e) => setRate(Number(e.target.value))}
+                autoFocus
+              />
+            </div>
+            {rate > 0 && (
+              <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', lineHeight: 1.6, paddingTop: 18 }}>
+                <strong style={{ color: 'var(--color-text-base)' }}>Session cost preview:</strong><br />
+                30 min → {currency} {perSession(30)}<br />
+                45 min → {currency} {perSession(45)}<br />
+                60 min → {currency} {perSession(60)}
+              </div>
+            )}
+          </div>
+          <div className={styles.formActions}>
+            <Button variant="primary" size="sm" onClick={handleSave} disabled={saving || rate <= 0}>
+              {saving ? 'Saving…' : 'Save Rate'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => { setEditing(false); setRate(currentRate); }} disabled={saving}>
+              Cancel
+            </Button>
+          </div>
+        </>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--spacing-md)' }}>
+          <div>
+            <p className={styles.infoLabel}>Per-Hour Rate</p>
+            <p style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, color: 'var(--color-primary)', margin: '4px 0 2px' }}>
+              {currency} {currentRate}
+              <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 6 }}>/hr</span>
+            </p>
+            {currentRate > 0 && (
+              <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', margin: 0 }}>
+                45-min session → {currency} {perSession(45)} &nbsp;·&nbsp; 60-min → {currency} {perSession(60)}
+              </p>
+            )}
+          </div>
+          <button className={styles.editBtn} onClick={() => setEditing(true)}>Change Rate</button>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const router = useRouter();
@@ -611,6 +690,33 @@ export default function ProfilePage() {
                 )}
               </>
             )}
+          </Card>
+
+          {/* ── Rate Settings ── */}
+          <Card padding="lg" className={styles.infoCard}>
+            <div className={styles.cardHeaderRow}>
+              <div className={styles.cardHeaderLeft}>
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className={styles.cardIcon}>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h3 className={styles.cardTitle}>Rate Settings</h3>
+              </div>
+            </div>
+
+            <RateEditor
+              currentRate={cp?.hourlyRate ?? 0}
+              currency={cp?.currency ?? 'INR'}
+              onSave={async (rate) => {
+                setError(null);
+                const res = await api.updateCounsellorProfile({ hourlyRate: rate });
+                if (res.success) {
+                  await fetchProfile();
+                  showSuccess('Hourly rate updated.');
+                } else {
+                  setError(res.message || 'Failed to update rate');
+                }
+              }}
+            />
           </Card>
 
           {/* ── Account Security ── */}
