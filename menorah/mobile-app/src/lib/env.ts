@@ -1,8 +1,10 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-// Get base URL from app config (set via EXPO_PUBLIC_API_BASE_URL in eas.json)
-const configBaseURL = (Constants.expoConfig?.extra as any)?.API_BASE_URL as string | undefined;
+// Priority: process.env (bundled by Metro at OTA-update time) → app config extra (baked into binary)
+const configBaseURL: string | undefined =
+  (process.env.EXPO_PUBLIC_API_BASE_URL?.trim()) ||
+  ((Constants.expoConfig?.extra as any)?.API_BASE_URL as string | undefined);
 
 const normalizeBaseURL = (url?: string) => {
   const candidate = (url ?? 'http://localhost:3000/api').trim().replace(/\/+$/, '');
