@@ -45,7 +45,7 @@ export default function LoginPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
-        <p className="text-gray-500 mt-1">Sign in to your Menorah account</p>
+        <p className="text-gray-500 mt-1">Your well-being journey continues here</p>
       </div>
 
       {serverError && (

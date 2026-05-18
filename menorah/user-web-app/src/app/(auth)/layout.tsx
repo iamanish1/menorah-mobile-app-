@@ -19,19 +19,35 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
         <div className="relative z-10">
           <p className="text-primary-400 text-[11px] font-semibold uppercase tracking-[0.16em] mb-5">
-            Mental Wellness Platform
+            Men&apos;s Mental Wellness
           </p>
-          <h2 className="text-[2.4rem] font-bold text-white leading-[1.13] mb-9">
-            Support that fits<br />the way you live.
+          <h2 className="text-[2.4rem] font-bold text-white leading-[1.13] mb-8">
+            Strength begins<br />with asking for help.
           </h2>
+
+          {/* Stats grid */}
+          <div className="grid grid-cols-2 gap-3 mb-9">
+            {[
+              { value: '30+',   label: 'Expert Counsellors' },
+              { value: '500+',  label: 'Hours Completed' },
+              { value: '1000+', label: 'Positive Reviews' },
+              { value: '24/7',  label: 'Always Available' },
+            ].map(({ value, label }) => (
+              <div key={label} className="bg-white/[0.07] rounded-xl px-4 py-3 border border-white/10">
+                <p className="text-white text-xl font-bold leading-none mb-1">{value}</p>
+                <p className="text-primary-300 text-[12px] font-medium">{label}</p>
+              </div>
+            ))}
+          </div>
+
           <figure className="border-l-2 border-primary-500/60 pl-5">
             <blockquote>
               <p className="text-primary-100/80 text-[15px] leading-[1.7]">
-                &ldquo;My counsellor understood exactly what I needed. Three months later, my anxiety is manageable for the first time.&rdquo;
+                &ldquo;I carried that weight alone for years. Talking to my counsellor changed everything — I finally feel like myself again.&rdquo;
               </p>
             </blockquote>
             <figcaption className="mt-3 text-primary-400 text-sm font-medium">
-              — Priya M., Mumbai
+              — Arjun S., Mumbai
             </figcaption>
           </figure>
         </div>

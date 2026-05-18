@@ -58,7 +58,7 @@ export default function RegisterPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Create account</h1>
-        <p className="text-gray-500 mt-1">Start your mental well-being journey today</p>
+        <p className="text-gray-500 mt-1">Take the first step — it&apos;s a sign of strength</p>
       </div>
 
       {serverError && (
@@ -71,7 +71,7 @@ export default function RegisterPage() {
         <div className="grid grid-cols-2 gap-3">
           <Input
             label="First name"
-            placeholder="John"
+            placeholder="Arjun"
             leftIcon={<User className="w-4 h-4" />}
             error={errors.firstName?.message}
             {...register('firstName')}

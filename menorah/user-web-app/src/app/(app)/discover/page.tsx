@@ -52,7 +52,7 @@ export default function DiscoverPage() {
           Find your counsellor
         </h1>
         <p className="text-gray-500 mt-1">
-          Browse {pagination?.total ?? ''} certified mental health professionals
+          Browse {pagination?.total ?? ''} certified men&apos;s mental health counsellors
         </p>
       </div>
 
