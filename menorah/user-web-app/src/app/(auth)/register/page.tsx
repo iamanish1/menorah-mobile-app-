@@ -21,9 +21,7 @@ const schema = z.object({
   email:           z.string().email('Enter a valid email address'),
   phone:           z.string().regex(/^\+[1-9]\d{1,14}$/, 'Use E.164 format e.g. +971501234567'),
   dateOfBirth:     z.string().min(1, 'Date of birth is required'),
-  gender:          z.enum(['male', 'female', 'other', 'prefer-not-to-say'], {
-    errorMap: () => ({ message: 'Please select a gender' }),
-  }),
+  gender:          z.literal('male'),
   password:        z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
 }).refine((d) => d.password === d.confirmPassword, {
@@ -119,11 +117,7 @@ export default function RegisterPage() {
             Gender <span className="text-red-500">*</span>
           </label>
           <select className="input-field" {...register('gender')}>
-            <option value="">Select gender</option>
             <option value="male">Male</option>
-            <option value="female">Female</option>
-            <option value="other">Other</option>
-            <option value="prefer-not-to-say">Prefer not to say</option>
           </select>
           {errors.gender && <p className="text-sm text-red-500">{errors.gender.message}</p>}
         </div>

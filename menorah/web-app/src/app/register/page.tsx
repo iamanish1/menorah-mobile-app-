@@ -20,7 +20,8 @@ const registerSchema = z.object({
   confirmPassword: z.string(),
   dateOfBirth: z.string().refine((date) => !isNaN(Date.parse(date)), 'Invalid date'),
   gender: z.enum(['male', 'female', 'other', 'prefer-not-to-say']),
-  licenseNumber: z.string().min(1, 'License number is required'),
+  licenseNumber: z.string()
+    .regex(/^[a-zA-Z0-9]{10,14}$/, 'RCI License Number must be 10–14 alphanumeric characters'),
   specialization: z.string().min(1, 'Specialization is required'),
   experience: z.number().int().min(0, 'Experience must be non-negative'),
   bio: z.string().min(50, 'Bio must be at least 50 characters').max(1000, 'Bio cannot exceed 1000 characters'),
@@ -384,12 +385,15 @@ export default function RegisterPage() {
                 </div>
                 
                 <div className={styles.formGroup}>
-                  <label className={styles.label}>License Number</label>
+                  <label className={styles.label}>RCI License Number</label>
                   <input
                     {...register('licenseNumber')}
                     type="text"
+                    placeholder="e.g., RCI1234567890"
+                    maxLength={14}
                     className={`${styles.input} ${(fieldErrors.licenseNumber || errors.licenseNumber) ? styles.inputError : ''}`}
                   />
+                  <p className={styles.helpText}>10–14 alphanumeric characters (no spaces or symbols)</p>
                   {(errors.licenseNumber || fieldErrors.licenseNumber) && (
                     <p className={styles.errorMessage}>{errors.licenseNumber?.message || fieldErrors.licenseNumber}</p>
                   )}
