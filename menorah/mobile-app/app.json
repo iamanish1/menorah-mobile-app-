@@ -43,9 +43,9 @@
     "plugins": [],
     "extra": {
       "eas": {
-        "projectId": "d7fb6e65-3440-4a79-b4b2-6746d2582fa7"
+        "projectId": "d2eb3d97-6034-4f64-8c36-8479f5bb658d"
       }
     },
-    "owner": "menorahsoftware"
+    "owner": "iamanish"
   }
 }
