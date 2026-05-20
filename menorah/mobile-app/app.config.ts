@@ -47,18 +47,18 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const devApiHost = devApiUrl.hostname;
   const devApiProtocol = devApiUrl.protocol;
   
-  const EAS_PROJECT_ID = 'd2eb3d97-6034-4f64-8c36-8479f5bb658d';
+  const EAS_PROJECT_ID = 'd7fb6e65-3440-4a79-b4b2-6746d2582fa7';
 
   return {
     ...config,
     name: 'Menorah Health',
     slug: 'menorah-health-app',
+    owner: 'menorahsoftware',
     version: '2.1.0',
     orientation: 'portrait',
     // ─── OTA Updates via EAS Update ──────────────────────────────────────────
     updates: {
       url: `https://u.expo.dev/${EAS_PROJECT_ID}`,
-      // Check for updates every time app is foregrounded
       checkAutomatically: 'ON_LOAD',
       fallbackToCacheTimeout: 0,
     },
@@ -119,7 +119,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         'expo-updates',
         {
-          username: 'iamanish'
+          username: 'menorahsoftware'
         }
       ]
     ],
@@ -145,7 +145,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       
       // EAS project configuration
       eas: {
-        projectId: 'd2eb3d97-6034-4f64-8c36-8479f5bb658d'
+        projectId: EAS_PROJECT_ID
       }
     },
     experiments: {
