@@ -47,13 +47,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const devApiHost = devApiUrl.hostname;
   const devApiProtocol = devApiUrl.protocol;
   
-  const EAS_PROJECT_ID = 'd2eb3d97-6034-4f64-8c36-8479f5bb658d';
+  const EAS_PROJECT_ID = 'd7fb6e65-3440-4a79-b4b2-6746d2582fa7';
 
   return {
     ...config,
     name: 'Menorah Health',
     slug: 'menorah-health-app',
-    owner: 'iamanish',
+    owner: 'menorahsoftware',
     version: '2.1.0',
     orientation: 'portrait',
     // ─── OTA Updates via EAS Update ──────────────────────────────────────────
@@ -84,7 +84,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#f0f9f4'
       },
       package: 'com.menorah.healthmobile',
-      versionCode: 6,
+      versionCode: 7,
       permissions: [
         'android.permission.CAMERA',
         'android.permission.RECORD_AUDIO',
@@ -119,7 +119,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         'expo-updates',
         {
-          username: 'iamanish'
+          username: 'menorahsoftware'
         }
       ]
     ],
