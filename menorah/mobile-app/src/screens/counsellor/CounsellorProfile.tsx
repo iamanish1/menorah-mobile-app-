@@ -75,24 +75,40 @@ export default function CounsellorProfile({ navigation, route }: any) {
   };
 
   const formatAvailability = (availability: any[]) => {
-    // Format availability data into time slots for display
-    // This depends on your backend's availability format
-    const slots: any[] = [];
-    
-    availability.forEach((slot: any) => {
-      if (slot.startTime && slot.available) {
-        const date = new Date(slot.startTime);
-        slots.push({
-          id: slot.id || date.getTime().toString(),
-          time: date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-          date: date.toISOString(),
-          available: slot.available,
-          slot: slot
+    // Backend returns: [{ date: "2026-05-23", dayOfWeek: "saturday", slots: ["09:00", "10:00"] }]
+    const result: any[] = [];
+    const now = new Date();
+
+    availability.forEach((dayEntry: any) => {
+      if (!dayEntry.date || !Array.isArray(dayEntry.slots)) return;
+
+      const dateLabel = new Date(dayEntry.date + 'T00:00:00').toLocaleDateString('en-IN', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      });
+
+      dayEntry.slots.forEach((timeStr: string) => {
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        const slotDate = new Date(dayEntry.date + 'T' + timeStr + ':00');
+
+        if (slotDate <= now) return; // skip past slots
+
+        const hour12 = hours % 12 || 12;
+        const ampm = hours < 12 ? 'AM' : 'PM';
+        const timeLabel = `${hour12}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+
+        result.push({
+          id: `${dayEntry.date}-${timeStr}`,
+          time: timeLabel,
+          dateLabel,
+          date: slotDate.toISOString(),
+          available: true,
         });
-      }
+      });
     });
-    
-    return slots;
+
+    return result;
   };
 
   const handleBookSession = () => {
@@ -115,46 +131,35 @@ export default function CounsellorProfile({ navigation, route }: any) {
     });
   };
 
-  const renderTimeSlot = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      onPress={() => {
-        if (item.available) {
+  const renderTimeSlot = ({ item }: { item: any }) => {
+    const isSelected = selectedSlot === item.id;
+    return (
+      <TouchableOpacity
+        onPress={() => {
           setSelectedSlot(item.id);
           setSelectedDate(item.date);
-        }
-      }}
-      style={{
-        backgroundColor: item.available 
-          ? (selectedSlot === item.id ? colors.primary : colors.card)
-          : colors.surface,
-        borderWidth: 1,
-        borderColor: item.available ? colors.border : colors.border,
-        borderRadius: 12,
-        padding: 16,
-        marginRight: 12,
-        marginBottom: 12,
-        opacity: item.available ? 1 : 0.5,
-        minWidth: (width - 64) / 3,
-        alignItems: 'center',
-        shadowColor: colors.text,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 2
-      }}
-      disabled={!item.available}
-    >
-      <Text style={{
-        fontSize: 14,
-        fontWeight: '600',
-        color: item.available 
-          ? (selectedSlot === item.id ? 'white' : colors.cardText)
-          : colors.muted
-      }}>
-        {item.time}
-      </Text>
-    </TouchableOpacity>
-  );
+        }}
+        style={{
+          backgroundColor: isSelected ? colors.primary : colors.card,
+          borderWidth: 1.5,
+          borderColor: isSelected ? colors.primary : colors.border,
+          borderRadius: 10,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          marginRight: 10,
+          marginBottom: 10,
+          alignItems: 'center',
+        }}
+      >
+        <Text style={{ fontSize: 10, color: isSelected ? 'rgba(255,255,255,0.8)' : colors.muted, marginBottom: 2 }}>
+          {item.dateLabel}
+        </Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: isSelected ? 'white' : colors.text }}>
+          {item.time}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
   const renderSection = ({ item }: { item: any }) => {
     switch (item.type) {
@@ -367,33 +372,57 @@ export default function CounsellorProfile({ navigation, route }: any) {
       
       case 'timeSlots':
         return (
-          <View style={{ paddingHorizontal: 16, marginBottom: 20 }}>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 16 }}>
+          <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 14 }}>
               Available Time Slots
             </Text>
             {availabilityLoading ? (
               <View style={{ alignItems: 'center', paddingVertical: 20 }}>
                 <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>
-                  Loading availability...
-                </Text>
+                <Text style={{ fontSize: 13, color: colors.muted, marginTop: 8 }}>Loading availability...</Text>
               </View>
             ) : timeSlots.length > 0 ? (
-              <FlatList
-                data={timeSlots}
-                renderItem={renderTimeSlot}
-                keyExtractor={(item) => item.id.toString()}
-                horizontal={false}
-                numColumns={3}
-                showsHorizontalScrollIndicator={false}
-                scrollEnabled={false}
-                contentContainerStyle={{ paddingBottom: 20 }}
-              />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                {timeSlots.map((item) => renderTimeSlot({ item }))}
+              </View>
             ) : (
-              <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-                <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center' }}>
-                  No available time slots at the moment. Please check back later.
+              <View style={{
+                backgroundColor: colors.card,
+                borderRadius: 14,
+                padding: 20,
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}>
+                <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 22, marginBottom: 16 }}>
+                  No specific time slots configured.{'\n'}You can still book and the counsellor will confirm a time.
                 </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    // Book with default "next available" time (tomorrow 10am)
+                    const d = new Date();
+                    d.setDate(d.getDate() + 1);
+                    d.setHours(10, 0, 0, 0);
+                    setSelectedSlot('default');
+                    setSelectedDate(d.toISOString());
+                  }}
+                  style={{
+                    backgroundColor: selectedSlot === 'default' ? colors.primary : 'transparent',
+                    borderWidth: 1.5,
+                    borderColor: colors.primary,
+                    borderRadius: 10,
+                    paddingVertical: 10,
+                    paddingHorizontal: 20,
+                  }}
+                >
+                  <Text style={{
+                    color: selectedSlot === 'default' ? 'white' : colors.primary,
+                    fontWeight: '700',
+                    fontSize: 14,
+                  }}>
+                    {selectedSlot === 'default' ? '✓ Ready to Book' : 'Book Next Available'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -437,25 +466,29 @@ export default function CounsellorProfile({ navigation, route }: any) {
         <View style={{
           backgroundColor: colors.card,
           paddingHorizontal: 16,
-          paddingVertical: 16,
+          paddingVertical: 14,
           borderTopWidth: 1,
-          borderTopColor: colors.border
+          borderTopColor: colors.border,
         }}>
+          {!selectedSlot && (
+            <Text style={{ fontSize: 12, color: colors.muted, textAlign: 'center', marginBottom: 8 }}>
+              Select a time slot above or tap "Book Next Available"
+            </Text>
+          )}
           <TouchableOpacity
             onPress={handleBookSession}
             disabled={!selectedSlot}
             style={{
-              backgroundColor: selectedSlot ? colors.primary : colors.muted,
-              borderRadius: 12,
-              padding: 16,
-              alignItems: 'center'
+              backgroundColor: selectedSlot ? colors.primary : colors.border,
+              borderRadius: 14,
+              paddingVertical: 15,
+              alignItems: 'center',
             }}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
-              {selectedSlot 
-                ? `Book Session - ${counsellor.currency === 'INR' ? '₹' : '$'}${counsellor.hourlyRate || 0}`
-                : 'Select a time slot to book'
-              }
+            <Text style={{ color: selectedSlot ? 'white' : colors.muted, fontSize: 16, fontWeight: '700' }}>
+              {selectedSlot
+                ? `Confirm & Pay  ${counsellor.currency === 'INR' ? '₹' : '$'}${counsellor.hourlyRate || 0}`
+                : 'Select a Time Slot'}
             </Text>
           </TouchableOpacity>
         </View>
