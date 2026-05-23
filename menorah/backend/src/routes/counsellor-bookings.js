@@ -54,19 +54,29 @@ router.get('/me/bookings/pending', [
     const limitNum = parseInt(limit) || 10;
 
     // Get counsellor's gender from their User record for gender-based filtering
-    const counsellorGender = req.user.gender;
+    const counsellorGender = req.user.gender; // e.g. 'male', 'female', 'other'
 
-    // Find unassigned bookings — filter by gender preference:
-    // Show bookings that match counsellor's gender OR have no gender preference ('any')
+    // Build gender filter:
+    // - If counsellor has gender set: show bookings matching their gender + 'any' + no preference
+    // - If counsellor has NO gender set: show only 'any' + no preference (never show gender-specific bookings)
+    const genderOrClauses = counsellorGender
+      ? [
+          { 'preferences.gender': counsellorGender },
+          { 'preferences.gender': 'any' },
+          { 'preferences.gender': { $exists: false } },
+          { 'preferences.gender': null },
+        ]
+      : [
+          { 'preferences.gender': 'any' },
+          { 'preferences.gender': { $exists: false } },
+          { 'preferences.gender': null },
+        ];
+
     const query = {
       counsellor: null,
       status: { $in: ['pending', 'confirmed'] },
       scheduledAt: { $gte: new Date() },
-      $or: [
-        { 'preferences.gender': counsellorGender },
-        { 'preferences.gender': 'any' },
-        { 'preferences.gender': { $exists: false } }
-      ]
+      $or: genderOrClauses,
     };
 
     // Calculate pagination
