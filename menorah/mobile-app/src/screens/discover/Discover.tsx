@@ -282,7 +282,7 @@ export default function Discover({ navigation }: any) {
               title="Find counsellor"
               subtitle="Explore profiles"
               image="https://images.unsplash.com/photo-1525182008055-f88b95ff7980?q=80&w=1200&auto=format&fit=crop"
-              onPress={() => {}}
+              onPress={() => navigation.navigate('CounsellorList')}
               width={tileW}
               height={tileH}
             />

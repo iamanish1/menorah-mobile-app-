@@ -39,7 +39,7 @@ export default function BookingReview({ navigation, route }: any) {
   const [existingBooking, setExistingBooking] = useState<any>(null);
   const [sessionReady, setSessionReady] = useState(false);
 
-  const { categoryId, gender, price, bookingId } = route.params || {};
+  const { categoryId, gender, price, bookingId, counsellorId, counsellorName, sessionType: directSessionType, sessionDuration: directDuration, scheduledAt: directScheduledAt, hourlyRate } = route.params || {};
 
   // If bookingId is provided, fetch existing booking details
   useEffect(() => {
@@ -340,6 +340,130 @@ export default function BookingReview({ navigation, route }: any) {
     );
   }
   
+  // Direct counsellor booking flow (from CounsellorProfile)
+  if (counsellorId && !bookingId && !categoryId) {
+    const displayAmount = hourlyRate || 0;
+    const displayDuration = directDuration || 60;
+    const displayDate = directScheduledAt
+      ? new Date(directScheduledAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+      : 'To be confirmed';
+
+    const handleConfirmDirectBooking = () => {
+      Alert.alert(
+        'Confirm Booking',
+        `Book a ${displayDuration}-min session with ${counsellorName} for ₹${displayAmount}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Confirm',
+            onPress: async () => {
+              setIsCreatingBooking(true);
+              try {
+                const scheduledAt = directScheduledAt || (() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + 1);
+                  d.setHours(10, 0, 0, 0);
+                  return d.toISOString();
+                })();
+
+                const bookingResponse = await api.createBooking({
+                  counsellorId,
+                  sessionType: directSessionType || 'video',
+                  sessionDuration: displayDuration,
+                  scheduledAt,
+                  amount: displayAmount,
+                });
+
+                if (bookingResponse.success && bookingResponse.data?.booking?.id) {
+                  navigation.navigate('PaymentSheet', {
+                    bookingId: bookingResponse.data.booking.id,
+                    paymentMethod: 'razorpay',
+                  });
+                } else {
+                  Alert.alert('Error', bookingResponse.message || 'Failed to create booking. Please try again.');
+                }
+              } catch (error: any) {
+                console.error('Error creating direct booking:', error);
+                Alert.alert('Error', 'Failed to create booking. Please try again.');
+              } finally {
+                setIsCreatingBooking(false);
+              }
+            },
+          },
+        ]
+      );
+    };
+
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+        <View style={{ flex: 1 }}>
+          <View style={{ backgroundColor: '#314830', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20 }}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginBottom: 12 }}>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={{ color: 'white', fontSize: 22, fontWeight: '700' }}>Review Booking</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 14, marginTop: 4 }}>
+              Confirm your session details
+            </Text>
+          </View>
+
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 16 }}>
+            <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ fontSize: 12, color: colors.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 14 }}>
+                Counsellor
+              </Text>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>{counsellorName}</Text>
+            </View>
+
+            <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.border, gap: 14 }}>
+              <Text style={{ fontSize: 12, color: colors.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                Session Details
+              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ color: colors.muted, fontSize: 14 }}>Type</Text>
+                <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600', textTransform: 'capitalize' }}>
+                  {directSessionType || 'Video'}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ color: colors.muted, fontSize: 14 }}>Duration</Text>
+                <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>{displayDuration} minutes</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ color: colors.muted, fontSize: 14 }}>Scheduled</Text>
+                <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>{displayDate}</Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: colors.border }} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ color: colors.muted, fontSize: 16 }}>Total</Text>
+                <Text style={{ color: colors.primary, fontSize: 20, fontWeight: '700' }}>₹{displayAmount}</Text>
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={{ padding: 20, paddingBottom: 32 }}>
+            <TouchableOpacity
+              onPress={handleConfirmDirectBooking}
+              disabled={isCreatingBooking}
+              style={{
+                backgroundColor: isCreatingBooking ? colors.muted : colors.primary,
+                borderRadius: 14,
+                paddingVertical: 16,
+                alignItems: 'center',
+              }}
+            >
+              {isCreatingBooking ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={{ color: 'white', fontSize: 16, fontWeight: '700' }}>Confirm & Pay ₹{displayAmount}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   // Original booking creation flow
   if (!categoryId || !gender || !price) {
     return (

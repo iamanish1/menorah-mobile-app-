@@ -33,6 +33,8 @@ import SubscriptionDetails from '@/screens/subscription/SubscriptionDetails';
 import SubscriptionPayment from '@/screens/subscription/SubscriptionPayment';
 import SubscriptionSuccess from '@/screens/subscription/SubscriptionSuccess';
 import Notifications from '@/screens/profile/Notifications';
+import CounsellorList from '@/screens/counsellor/CounsellorList';
+import CounsellorProfile from '@/screens/counsellor/CounsellorProfile';
 
 const Stack = createNativeStackNavigator();
 
@@ -149,6 +151,8 @@ export default function RootNavigator() {
         <Stack.Screen name="SubscriptionDetails" component={SubscriptionDetails} />
         <Stack.Screen name="SubscriptionPayment" component={SubscriptionPayment} />
         <Stack.Screen name="SubscriptionSuccess" component={SubscriptionSuccess} />
+        <Stack.Screen name="CounsellorList" component={CounsellorList} />
+        <Stack.Screen name="CounsellorProfile" component={CounsellorProfile} />
       </Stack.Navigator>
     </NavigationContainer>
   );
