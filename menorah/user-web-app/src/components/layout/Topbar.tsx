@@ -16,8 +16,8 @@ export function Topbar() {
   return (
     <header className="lg:hidden bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between sticky top-0 z-20">
       <div className="flex items-center gap-2">
-        <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-          <span className="text-white text-sm font-bold">M</span>
+        <div className="w-8 h-8 rounded-lg overflow-hidden">
+          <img src="/logo.png" alt="Menorah" className="w-full h-full object-cover" />
         </div>
         <span className="font-semibold text-gray-900">Menorah</span>
       </div>

@@ -11,8 +11,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="absolute -bottom-20 -left-14 w-72 h-72 rounded-full bg-primary-700/25 pointer-events-none" />
 
         <Link href="/" className="relative z-10 flex items-center gap-3">
-          <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center">
-            <HeartPulse className="w-5 h-5 text-white" />
+          <div className="w-9 h-9 rounded-lg overflow-hidden">
+            <img src="/logo.png" alt="Menorah" className="w-full h-full object-cover" />
           </div>
           <span className="text-white font-semibold tracking-tight">Menorah Health</span>
         </Link>
@@ -62,8 +62,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         {/* Mobile logo — only visible below lg */}
         <div className="px-8 pt-7 lg:hidden">
           <Link href="/" className="inline-flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-              <HeartPulse className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 rounded-lg overflow-hidden">
+              <img src="/logo.png" alt="Menorah" className="w-full h-full object-cover" />
             </div>
             <span className="text-gray-900 font-semibold text-sm">Menorah Health</span>
           </Link>

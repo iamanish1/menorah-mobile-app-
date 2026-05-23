@@ -31,8 +31,8 @@ export function Sidebar() {
       {/* Logo */}
       <div className="px-6 py-5 border-b border-gray-100">
         <Link href="/discover" className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
-            <HeartPulse className="w-4 h-4 text-white" />
+          <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0">
+            <img src="/logo.png" alt="Menorah" className="w-full h-full object-cover" />
           </div>
           <div>
             <p className="text-gray-900 font-semibold text-sm leading-tight">Menorah</p>

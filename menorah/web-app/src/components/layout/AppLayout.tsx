@@ -66,7 +66,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         <div className={styles.sidebarBrand}>
           <Link href="/dashboard" className={styles.brandLink}>
             <div className={styles.brandLogo}>
-              <HeartPulse size={20} />
+              <img src="/logo.png" alt="Menorah" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
             </div>
             <div>
               <p className={styles.brandName}>Menorah</p>
