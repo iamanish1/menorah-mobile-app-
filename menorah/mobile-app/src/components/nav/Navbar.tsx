@@ -1,4 +1,3 @@
-import React from "react";
 import { View, Pressable, Image, Text, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Bell, LifeBuoy, Sun, Moon } from "lucide-react-native";
@@ -20,8 +19,7 @@ export default function Navbar({
   const colors = palettes[scheme];
   const isCompact = width < 390;
   const actionSize = isCompact ? 36 : 40;
-  const logoWidth = Math.min(180, Math.max(128, width - (isCompact ? 196 : 220)));
-  const helpHorizontalPadding = isCompact ? 8 : 10;
+const helpHorizontalPadding = isCompact ? 8 : 10;
   const helpLabelSize = isCompact ? 12 : 13;
   const actionIconSize = isCompact ? 16 : 17;
   const helpIconSize = isCompact ? 14 : 15;
@@ -41,20 +39,24 @@ export default function Navbar({
   // Both modes: plain container (inherits creamy background from parent)
   return (
     <View style={baseStyle}>
-      <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
-        <Image 
+      <View style={{ flex: 1, minWidth: 0, paddingRight: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Image
           source={require("../../../assets/brand/menorah_logo.png")}
-          resizeMode="contain" 
-          style={{ 
-            width: logoWidth,
-            height: isCompact ? 44 : 48,
-            alignSelf: 'flex-start',
-            flexShrink: 1
-          }}
-          onError={() => {
-            console.log('Logo image failed to load');
+          resizeMode="cover"
+          style={{
+            width: isCompact ? 38 : 42,
+            height: isCompact ? 38 : 42,
+            borderRadius: isCompact ? 19 : 21,
           }}
         />
+        <View>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: isCompact ? 15 : 16, letterSpacing: 0.3 }}>
+            Menorah
+          </Text>
+          <Text style={{ color: colors.muted, fontSize: isCompact ? 10 : 11, fontWeight: '500' }}>
+            Mind Over Matter
+          </Text>
+        </View>
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: isCompact ? 6 : 8, flexShrink: 0 }}>
