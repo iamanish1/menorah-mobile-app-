@@ -25,7 +25,7 @@ export default function PaymentSheet({ route, navigation }: any) {
       const response = await api.createCheckoutSession(bookingId);
 
       if (!response.success || !response.data) {
-        setError(response.message || 'Failed to create payment session. Please try again.');
+        setError(`Payment session failed: ${response.message || 'Unknown error'}`);
         setLoading(false);
         return;
       }
@@ -33,7 +33,7 @@ export default function PaymentSheet({ route, navigation }: any) {
       const { orderId, keyId, amount, currency = 'INR' } = response.data;
 
       if (!orderId || !keyId || !amount) {
-        setError('Payment details missing. Please try again.');
+        setError(`Payment details missing — orderId:${orderId} keyId:${keyId} amount:${amount}`);
         setLoading(false);
         return;
       }
@@ -82,7 +82,7 @@ export default function PaymentSheet({ route, navigation }: any) {
       if (verifyResponse.success) {
         navigation.replace('BookingSuccess', { bookingId });
       } else {
-        setError('Payment verification failed. Please contact support if amount was deducted.');
+        setError(`Verification failed: ${verifyResponse.message || 'Unknown error'}`);
       }
     } catch (err: any) {
       // Razorpay SDK sends code 0 or 'PayerCancelled' when user dismisses
