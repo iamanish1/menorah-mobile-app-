@@ -15,8 +15,8 @@ export default function TabNavigator() {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const insets = useSafeAreaInsets();
-  const tabBarBottomPadding = Math.max(insets.bottom, 10);
-  const tabBarHeight = 54 + tabBarBottomPadding;
+  const tabBarBottomPadding = Math.max(insets.bottom, 16);
+  const tabBarHeight = 60 + tabBarBottomPadding;
 
   return (
     <Tab.Navigator

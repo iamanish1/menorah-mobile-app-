@@ -1,5 +1,6 @@
 import { Modal, View, Text, Linking, TouchableOpacity } from "react-native";
 import { styles, colors } from "@/styles/theme";
+import { useNavigation } from "@react-navigation/native";
 
 export default function HelpSheet({
   visible,
@@ -8,6 +9,7 @@ export default function HelpSheet({
   visible: boolean;
   onClose: () => void;
 }) {
+  const navigation = useNavigation<any>();
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.3)', justifyContent: 'flex-end' }}>
@@ -25,7 +27,7 @@ export default function HelpSheet({
           </Text>
 
           <TouchableOpacity
-            onPress={() => Linking.openURL("https://manhoarhealth.vercel.app/helplines")}
+            onPress={() => { onClose(); navigation.navigate('CrisisHelp'); }}
             style={{
               backgroundColor: colors.brand.primary,
               borderRadius: 16,
