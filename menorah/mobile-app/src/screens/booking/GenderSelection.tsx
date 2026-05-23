@@ -26,6 +26,22 @@ const GENDER_OPTIONS = [
     color: '#3B82F6',
     bgColor: '#DBEAFE',
   },
+  {
+    id: 'female' as TherapistGender,
+    title: 'Female Therapist',
+    description: 'Experienced female counsellors',
+    icon: User,
+    color: '#EC4899',
+    bgColor: '#FCE7F3',
+  },
+  {
+    id: 'any' as TherapistGender,
+    title: 'No Preference',
+    description: 'Match with any available counsellor',
+    icon: User,
+    color: '#10B981',
+    bgColor: '#D1FAE5',
+  },
 ];
 
 const SESSION_DETAILS = {
@@ -145,21 +161,22 @@ export default function GenderSelection({ navigation, route }: GenderSelectionPr
             Choose Your Preference
           </Text>
 
-          <View style={{ alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
             {GENDER_OPTIONS.map((gender) => {
               const IconComponent = gender.icon;
               const isSelected = selectedGender === gender.id;
-              
+              const isFullWidth = GENDER_OPTIONS.indexOf(gender) === GENDER_OPTIONS.length - 1 && GENDER_OPTIONS.length % 2 !== 0;
+
               return (
                 <TouchableOpacity
                   key={gender.id}
                   onPress={() => handleGenderSelect(gender.id)}
                   style={{
-                    width: '100%',
-                    maxWidth: 400,
+                    flex: isFullWidth ? 1 : undefined,
+                    width: isFullWidth ? '100%' : '47%',
                     backgroundColor: colors.card,
                     borderRadius: 20,
-                    padding: 24,
+                    padding: 20,
                     borderWidth: isSelected ? 2 : 1,
                     borderColor: isSelected ? gender.color : colors.border,
                     shadowColor: isSelected ? gender.color : '#000',
@@ -167,36 +184,36 @@ export default function GenderSelection({ navigation, route }: GenderSelectionPr
                     shadowOpacity: isSelected ? 0.1 : 0.05,
                     shadowRadius: 4,
                     elevation: isSelected ? 3 : 1,
+                    alignItems: 'center',
                   }}
                 >
                   <View style={{
                     backgroundColor: gender.bgColor,
-                    width: 80,
-                    height: 80,
-                    borderRadius: 40,
+                    width: 64,
+                    height: 64,
+                    borderRadius: 32,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: 20,
-                    alignSelf: 'center'
+                    marginBottom: 14,
                   }}>
-                    <IconComponent size={40} color={gender.color} />
+                    <IconComponent size={32} color={gender.color} />
                   </View>
-                  
+
                   <Text style={{
-                    fontSize: 20,
+                    fontSize: 16,
                     fontWeight: '700',
                     color: '#151a16',
-                    marginBottom: 8,
+                    marginBottom: 6,
                     textAlign: 'center'
                   }}>
                     {gender.title}
                   </Text>
-                  
+
                   <Text style={{
-                    fontSize: 15,
+                    fontSize: 12,
                     color: '#6b7280',
                     textAlign: 'center',
-                    lineHeight: 22
+                    lineHeight: 18
                   }}>
                     {gender.description}
                   </Text>
