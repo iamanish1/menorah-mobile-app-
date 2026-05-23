@@ -488,12 +488,16 @@ export default function ProfilePage() {
                   <p className={styles.infoLabel}>Phone</p>
                   <p className={styles.infoValue}>{profile?.phone || '—'}</p>
                 </div>
-                {profile?.gender && (
-                  <div className={styles.infoItem}>
-                    <p className={styles.infoLabel}>Gender</p>
+                <div className={styles.infoItem}>
+                  <p className={styles.infoLabel}>Gender</p>
+                  {profile?.gender ? (
                     <p className={styles.infoValue} style={{ textTransform: 'capitalize' }}>{profile.gender}</p>
-                  </div>
-                )}
+                  ) : (
+                    <p style={{ color: '#DC2626', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                      ⚠ Not set — click Edit to add your gender. Female bookings will not reach you without this.
+                    </p>
+                  )}
+                </div>
                 {profile?.dateOfBirth && (
                   <div className={styles.infoItem}>
                     <p className={styles.infoLabel}>Date of Birth</p>
