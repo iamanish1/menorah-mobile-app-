@@ -14,7 +14,7 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api.menorah.me/api",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorahhealth.app/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
       }
     },
     "preview": {
@@ -26,7 +26,7 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api.menorah.me/api",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorahhealth.app/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
       }
     },
     "production": {
@@ -38,7 +38,7 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api.menorah.me/api",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorahhealth.app/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
       }
     }
   }
