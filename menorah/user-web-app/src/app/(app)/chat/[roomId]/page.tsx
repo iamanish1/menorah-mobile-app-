@@ -49,10 +49,12 @@ export default function ChatThreadPage() {
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
   const typingTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Get chat rooms to find counsellor info
+  // Get chat rooms to find counsellor info — always refetch so newly created rooms show up
   const { data: roomsData } = useQuery({
     queryKey: ['chatRooms'],
     queryFn:  () => api.getChatRooms(),
+    staleTime: 0,
+    refetchOnMount: true,
   });
   const room = roomsData?.data?.chatRooms?.find((r) => r.id === roomId);
 
@@ -200,7 +202,7 @@ export default function ChatThreadPage() {
         <button onClick={() => router.back()} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </button>
-        {room && (
+        {room ? (
           <>
             <Avatar src={room.counsellorImage} name={room.counsellorName} size="sm" online={counsellorOnline || room.isOnline} />
             <div className="flex-1 min-w-0">
@@ -210,6 +212,11 @@ export default function ChatThreadPage() {
               </p>
             </div>
           </>
+        ) : (
+          <div className="flex-1 min-w-0">
+            <div className="h-4 w-32 bg-gray-100 rounded animate-pulse" />
+            <div className="h-3 w-16 bg-gray-100 rounded animate-pulse mt-1" />
+          </div>
         )}
       </div>
 
