@@ -74,7 +74,7 @@ class AdminApiClient {
   }
 
   approveCounsellor(id: string) {
-    return this.request<{ counsellorId: string; status: string }>(
+    return this.request<{ counsellorId: string; status: string; username: string; password: string }>(
       () => this.client.put(`/admin/counsellors/${id}/approve`)
     );
   }
