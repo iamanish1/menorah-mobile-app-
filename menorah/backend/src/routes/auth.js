@@ -117,6 +117,13 @@ router.post('/login', [
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
+    if (!user.isActive) {
+      const msg = user.role === 'counsellor'
+        ? 'Your account is pending admin approval. You will receive login credentials once approved.'
+        : 'Account is deactivated. Please contact support.';
+      return res.status(401).json({ success: false, message: msg });
+    }
+
     if (user.isLocked()) {
       return res.status(401).json({
         success: false,

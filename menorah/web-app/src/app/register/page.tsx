@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -11,13 +11,13 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import styles from './page.module.css';
 
+const STORAGE_KEY = 'menorah_counsellor_application_email';
+
 const registerSchema = z.object({
   firstName: z.string().min(2, 'First name must be at least 2 characters').max(50),
   lastName: z.string().min(2, 'Last name must be at least 2 characters').max(50),
   email: z.string().email('Invalid email address'),
   phone: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Please provide a valid phone number with country code (e.g., +1234567890)'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  confirmPassword: z.string(),
   dateOfBirth: z.string().refine((date) => !isNaN(Date.parse(date)), 'Invalid date'),
   gender: z.enum(['male', 'female', 'other', 'prefer-not-to-say']),
   licenseNumber: z.string()
@@ -28,12 +28,11 @@ const registerSchema = z.object({
   languages: z.array(z.string()).min(1, 'At least one language is required'),
   hourlyRate: z.number().min(0, 'Hourly rate must be positive'),
   currency: z.string().optional(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ['confirmPassword'],
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;
+
+type AppStatus = 'idle' | 'checking' | 'pending' | 'approved' | 'rejected';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -43,7 +42,44 @@ export default function RegisterPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [languages, setLanguages] = useState<string[]>(['English']);
   const [bioLength, setBioLength] = useState(0);
-  const [passwordStrength, setPasswordStrength] = useState(0);
+  const [submitted, setSubmitted] = useState(false);
+  const [appStatus, setAppStatus] = useState<AppStatus>('idle');
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+
+  // On mount: if a pending application email is stored, check its status
+  useEffect(() => {
+    const savedEmail = localStorage.getItem(STORAGE_KEY);
+    if (!savedEmail) return;
+
+    setAppStatus('checking');
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/counsellors/application-status?email=${encodeURIComponent(savedEmail)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) {
+          // Email not found (maybe rejected and cleared) — let them re-register
+          localStorage.removeItem(STORAGE_KEY);
+          setAppStatus('idle');
+          return;
+        }
+        const { status, rejectionReason: reason } = data.data;
+        if (status === 'approved') {
+          setAppStatus('approved');
+        } else if (status === 'rejected') {
+          setAppStatus('rejected');
+          setRejectionReason(reason);
+          localStorage.removeItem(STORAGE_KEY);
+        } else {
+          // pending
+          setAppStatus('pending');
+          setSubmitted(true);
+        }
+      })
+      .catch(() => {
+        // Network error — show pending screen optimistically
+        setAppStatus('pending');
+        setSubmitted(true);
+      });
+  }, []);
 
   type DayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
   type DaySchedule = { start: string; end: string; isAvailable: boolean };
@@ -109,11 +145,9 @@ export default function RegisterPage() {
       if (result.success) {
         setError(null);
         setFieldErrors({});
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('registrationSuccess', 'true');
-          sessionStorage.setItem('registrationMessage', result.message || 'Registration successful! Please verify your email and phone. Your profile will be reviewed by admin.');
-        }
-        router.push('/dashboard');
+        localStorage.setItem(STORAGE_KEY, registrationData.email);
+        setSubmitted(true);
+        setAppStatus('pending');
       } else {
         if (result.errors && result.errors.length > 0) {
           const newFieldErrors: Record<string, string> = {};
@@ -142,6 +176,127 @@ export default function RegisterPage() {
       setIsSubmitting(false);
     }
   };
+
+  // Checking stored status…
+  if (appStatus === 'checking') {
+    return (
+      <div className={styles.container}>
+        <div className={styles.content}>
+          <div className={styles.header}>
+            <div className={styles.logoContainer}><span className={styles.logoText}>M</span></div>
+          </div>
+          <Card padding="lg">
+            <div style={{ textAlign: 'center', padding: '32px 0', color: '#6b7280' }}>
+              <div style={{ width: 40, height: 40, border: '3px solid #e5e7eb', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+              <p style={{ fontSize: '0.95rem' }}>Checking your application status…</p>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Approved — redirect to login
+  if (appStatus === 'approved') {
+    return (
+      <div className={styles.container}>
+        <div className={styles.content}>
+          <div className={styles.header}>
+            <div className={styles.logoContainer}><span className={styles.logoText}>M</span></div>
+            <h2 className={styles.title}>Application Approved!</h2>
+          </div>
+          <Card padding="lg">
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                <svg width="32" height="32" fill="none" stroke="#16a34a" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 12, color: '#15803d' }}>Your Application Was Approved</h3>
+              <p style={{ color: '#6b7280', lineHeight: 1.6, maxWidth: 380, margin: '0 auto 24px' }}>
+                Congratulations! Your profile has been approved by our admin team. Please use the login credentials that were shared with you to sign in.
+              </p>
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => { localStorage.removeItem(STORAGE_KEY); router.push('/login'); }}
+                style={{ width: '100%', maxWidth: 320 }}
+              >
+                Go to Login →
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Rejected
+  if (appStatus === 'rejected') {
+    return (
+      <div className={styles.container}>
+        <div className={styles.content}>
+          <div className={styles.header}>
+            <div className={styles.logoContainer}><span className={styles.logoText}>M</span></div>
+            <h2 className={styles.title}>Application Status</h2>
+          </div>
+          <Card padding="lg">
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                <svg width="32" height="32" fill="none" stroke="#dc2626" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 12, color: '#dc2626' }}>Application Not Approved</h3>
+              <p style={{ color: '#6b7280', lineHeight: 1.6, maxWidth: 380, margin: '0 auto' }}>
+                Unfortunately, your application was not approved by our admin team.
+              </p>
+              {rejectionReason && (
+                <div style={{ margin: '16px auto 0', maxWidth: 380, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', textAlign: 'left' }}>
+                  <p style={{ margin: 0, fontSize: '0.875rem', color: '#991b1b' }}>
+                    <strong>Reason:</strong> {rejectionReason}
+                  </p>
+                </div>
+              )}
+              <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: 20 }}>
+                If you believe this is a mistake, please contact <a href="mailto:support@menorahhealth.app" style={{ color: '#2563eb' }}>support@menorahhealth.app</a>
+              </p>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Pending (submitted and awaiting review)
+  if (submitted) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.content}>
+          <div className={styles.header}>
+            <div className={styles.logoContainer}><span className={styles.logoText}>M</span></div>
+            <h2 className={styles.title}>Application Submitted</h2>
+          </div>
+          <Card padding="lg">
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                <svg width="32" height="32" fill="none" stroke="#2563eb" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 12 }}>Registration Under Review</h3>
+              <p style={{ color: '#6b7280', lineHeight: 1.6, maxWidth: 380, margin: '0 auto' }}>
+                Your application has been submitted successfully. Our admin team will review your profile and credentials. Once approved, you will receive your login credentials.
+              </p>
+              <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: 16 }}>
+                This page will automatically show your approval or rejection status when you return.
+              </p>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.container}>
@@ -301,68 +456,10 @@ export default function RegisterPage() {
                   </div>
                 </div>
 
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Password</label>
-                    <input
-                      {...register('password')}
-                      type="password"
-                      className={styles.input}
-                      onChange={(e) => {
-                        const password = e.target.value;
-                        let strength = 0;
-                        if (password.length >= 8) strength++;
-                        if (password.length >= 12) strength++;
-                        if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength++;
-                        if (/\d/.test(password)) strength++;
-                        if (/[^a-zA-Z\d]/.test(password)) strength++;
-                        setPasswordStrength(strength);
-                        register('password').onChange(e);
-                      }}
-                    />
-                    {passwordStrength > 0 && (
-                      <div className={styles.passwordStrength}>
-                        <div className={styles.strengthBars}>
-                          {[1, 2, 3, 4, 5].map((level) => (
-                            <div
-                              key={level}
-                              className={`${styles.strengthBar} ${
-                                level <= passwordStrength
-                                  ? passwordStrength <= 2
-                                    ? styles.strengthBarWeak
-                                    : passwordStrength <= 3
-                                    ? styles.strengthBarMedium
-                                    : styles.strengthBarStrong
-                                  : styles.strengthBarEmpty
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <p className={styles.strengthText}>
-                          {passwordStrength <= 2
-                            ? 'Weak password'
-                            : passwordStrength <= 3
-                            ? 'Medium strength'
-                            : 'Strong password'}
-                        </p>
-                      </div>
-                    )}
-                    {errors.password && (
-                      <p className={styles.errorMessage}>{errors.password.message}</p>
-                    )}
-                  </div>
-
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Confirm Password</label>
-                    <input
-                      {...register('confirmPassword')}
-                      type="password"
-                      className={styles.input}
-                    />
-                    {errors.confirmPassword && (
-                      <p className={styles.errorMessage}>{errors.confirmPassword.message}</p>
-                    )}
-                  </div>
+                <div className={styles.formGroup} style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '12px 16px' }}>
+                  <p style={{ margin: 0, fontSize: '0.875rem', color: '#1d4ed8', lineHeight: 1.5 }}>
+                    <strong>Note:</strong> You do not need to set a password. Once your profile is approved by our admin team, your login credentials will be provided to you.
+                  </p>
                 </div>
 
                 <Button

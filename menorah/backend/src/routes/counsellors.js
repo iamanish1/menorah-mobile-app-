@@ -381,7 +381,6 @@ router.post('/register', [
   body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
   body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
   body('phone').matches(/^\+[1-9]\d{1,14}$/).withMessage('Please provide a valid phone number with country code'),
-  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters long'),
   body('dateOfBirth').isISO8601().withMessage('Please provide a valid date of birth'),
   body('gender').isIn(['male', 'female', 'other', 'prefer-not-to-say']).withMessage('Please provide a valid gender'),
   // Counsellor fields
@@ -448,7 +447,6 @@ router.post('/register', [
       lastName,
       email,
       phone,
-      password,
       dateOfBirth,
       gender,
       licenseNumber,
@@ -485,22 +483,21 @@ router.post('/register', [
       });
     }
 
-    // Generate verification codes
-    const emailVerificationToken = crypto.randomInt(100000, 999999).toString();
-    const phoneVerificationToken = crypto.randomInt(100000, 999999).toString();
+    // Generate a random temp password — counsellor cannot log in until admin approves and sets a real password
+    const tempPassword = crypto.randomBytes(32).toString('hex');
 
-    // Create user with counsellor role
+    // Create user with counsellor role; isActive=false blocks login until admin approves
     const user = new User({
       firstName,
       lastName,
       email,
       phone,
-      password,
+      password: tempPassword,
       dateOfBirth,
       gender,
       role: 'counsellor',
-      emailVerificationToken,
-      phoneVerificationToken
+      isActive: false,
+      isEmailVerified: false
     });
 
     await user.save();
@@ -516,7 +513,7 @@ router.post('/register', [
       sunday: { start: '09:00', end: '17:00', isAvailable: false }
     };
 
-    // Create counsellor profile
+    // Create counsellor profile with pending status — inactive until admin approves
     const counsellor = new Counsellor({
       user: user._id,
       licenseNumber,
@@ -530,32 +527,17 @@ router.post('/register', [
       education: education || [],
       certifications: certifications || [],
       availability: defaultAvailability,
-      isVerified: true,
-      isActive: true,
-      isAvailable: true
+      status: 'pending',
+      isVerified: false,
+      isActive: false,
+      isAvailable: false
     });
 
     await counsellor.save();
 
-    // Send verification emails/SMS
-    try {
-      await sendVerificationEmail(user.email, emailVerificationToken);
-    } catch (error) {
-      console.error('Error sending verification email:', error);
-    }
-
-    try {
-      await sendSMS(user.phone, `Your verification code is: ${phoneVerificationToken}`);
-    } catch (error) {
-      console.error('Error sending SMS:', error);
-    }
-
-    // Generate token
-    const token = generateToken(user._id, user.role, `${user.firstName} ${user.lastName}`);
-
     res.status(201).json({
       success: true,
-      message: 'Counsellor registered successfully. Please verify your email and phone. Your profile will be reviewed by admin.',
+      message: 'Registration submitted successfully. Your profile is under review by our admin team. You will receive your login credentials once approved.',
       data: {
         user: {
           id: user._id,
@@ -568,9 +550,9 @@ router.post('/register', [
         counsellor: {
           id: counsellor._id,
           licenseNumber: counsellor.licenseNumber,
-          specialization: counsellor.specialization
-        },
-        token
+          specialization: counsellor.specialization,
+          status: counsellor.status
+        }
       }
     });
 
@@ -596,5 +578,35 @@ const generateTimeSlots = (startTime, endTime, duration) => {
 
   return slots;
 };
+
+// @route   GET /api/counsellors/application-status?email=xxx
+// @desc    Check counsellor application status by email (public — used by registration page)
+// @access  Public
+router.get('/application-status', [
+  query('email').isEmail().normalizeEmail().withMessage('Valid email required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Valid email is required' });
+
+    const user = await User.findOne({ email: req.query.email, role: 'counsellor' }).select('_id isActive').lean();
+    if (!user) return res.status(404).json({ success: false, message: 'No application found for this email' });
+
+    const counsellor = await Counsellor.findOne({ user: user._id }).select('status rejectionReason').lean();
+    if (!counsellor) return res.status(404).json({ success: false, message: 'No application found' });
+
+    res.json({
+      success: true,
+      data: {
+        status: counsellor.status,
+        rejectionReason: counsellor.rejectionReason || null,
+        isActive: user.isActive
+      }
+    });
+  } catch (error) {
+    console.error('Application status check error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
 
 module.exports = router;

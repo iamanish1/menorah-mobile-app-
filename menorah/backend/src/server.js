@@ -48,6 +48,7 @@ const bookingRoutes = require("./routes/bookings");
 const paymentRoutes = require("./routes/payments");
 const chatRoutes = require("./routes/chat");
 const videoRoutes = require("./routes/video");
+const adminRoutes = require("./routes/admin");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -61,6 +62,10 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
 const corsOrigin = (origin, callback) => {
   // Allow requests with no origin (mobile apps, curl, server-to-server)
   if (!origin) return callback(null, true);
+  // In development, allow any localhost origin regardless of port
+  if (process.env.NODE_ENV !== "production" && /^https?:\/\/localhost(:\d+)?$/.test(origin)) {
+    return callback(null, true);
+  }
   if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
   callback(new Error(`CORS: origin ${origin} not allowed`));
 };
@@ -199,6 +204,7 @@ app.use("/api/bookings", bookingRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/video", videoRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Socket.IO Authentication Middleware
 io.use((socket, next) => {

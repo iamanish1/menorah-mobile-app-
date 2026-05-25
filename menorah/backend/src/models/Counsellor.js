@@ -165,6 +165,35 @@ const counsellorSchema = new mongoose.Schema({
     }
   }],
 
+  // Admin-controlled status
+  status: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending',
+    index: true
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  approvedAt: {
+    type: Date,
+    default: null
+  },
+  rejectionReason: {
+    type: String,
+    default: null
+  },
+  blockedAt: {
+    type: Date,
+    default: null
+  },
+  blockedReason: {
+    type: String,
+    default: null
+  },
+
   // Payment and commission
   commissionRate: {
     type: Number,
@@ -178,6 +207,13 @@ const counsellorSchema = new mongoose.Schema({
     accountHolderName: String,
     bankName: String
   },
+
+  // Razorpay payout tracking
+  razorpayContactId: { type: String, default: null },
+  razorpayFundAccountId: { type: String, default: null },
+  lastPayoutAt: { type: Date, default: null },
+  lastPayoutAmount: { type: Number, default: 0 },
+  totalPaidOut: { type: Number, default: 0 },
 
   // Statistics
   stats: {
