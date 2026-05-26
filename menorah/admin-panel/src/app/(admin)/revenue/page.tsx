@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
 } from 'recharts';
-import { IndianRupee, Send, ChevronDown, ExternalLink } from 'lucide-react';
+import { IndianRupee, Send, ChevronDown, ExternalLink, Building2, CheckCircle2, AlertCircle } from 'lucide-react';
 import StatCard from '@/components/ui/StatCard';
 import Modal from '@/components/ui/Modal';
 import { api } from '@/lib/api';
@@ -260,94 +260,162 @@ export default function RevenuePage() {
       {/* Payout Modal */}
       <Modal open={payoutModal.open} onClose={() => { setPayoutModal({ open: false, counsellor: null }); setPayoutResult(null); }} title="Initiate Payout" size="md">
         {payoutModal.counsellor && !payoutResult && (
-          <div className="space-y-5">
-            {/* Counsellor info */}
-            <div className="bg-gray-50 rounded-xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm">
+          <div className="space-y-4">
+
+            {/* Counsellor header */}
+            <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-sm">
                 {getInitials(payoutModal.counsellor.name)}
               </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{payoutModal.counsellor.name}</p>
-                <p className="text-xs text-gray-500">{payoutModal.counsellor.email}</p>
+              <div className="min-w-0">
+                <p className="text-base font-bold text-gray-900 truncate">{payoutModal.counsellor.name}</p>
+                <p className="text-xs text-gray-400 truncate">{payoutModal.counsellor.email}</p>
+              </div>
+              <div className="ml-auto text-right flex-shrink-0">
+                <p className="text-xs text-gray-400">Net Earnings</p>
+                <p className="text-lg font-black text-green-600">{formatCurrency(payoutModal.counsellor.counsellorEarnings)}</p>
               </div>
             </div>
 
             {/* Earnings breakdown */}
-            <div className="grid grid-cols-3 gap-3 text-center">
-              {[
-                { label: 'Gross Revenue', value: formatCurrency(payoutModal.counsellor.revenue) },
-                { label: 'Platform Fee', value: formatCurrency(payoutModal.counsellor.platformFee), sub: `${payoutModal.counsellor.commissionRate}%` },
-                { label: 'Net Earnings', value: formatCurrency(payoutModal.counsellor.counsellorEarnings), highlight: true }
-              ].map((item) => (
-                <div key={item.label} className={`rounded-xl p-3 border ${item.highlight ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
-                  <p className={`text-xs font-medium ${item.highlight ? 'text-green-700' : 'text-gray-500'}`}>{item.label}</p>
-                  <p className={`text-base font-bold mt-0.5 ${item.highlight ? 'text-green-700' : 'text-gray-900'}`}>{item.value}</p>
-                  {item.sub && <p className="text-xs text-gray-400">{item.sub}</p>}
-                </div>
-              ))}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl bg-gray-50 border border-gray-100 p-3 text-center">
+                <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Gross</p>
+                <p className="text-sm font-bold text-gray-800 mt-0.5">{formatCurrency(payoutModal.counsellor.revenue)}</p>
+              </div>
+              <div className="rounded-xl bg-orange-50 border border-orange-100 p-3 text-center">
+                <p className="text-[10px] font-medium text-orange-400 uppercase tracking-wide">Platform</p>
+                <p className="text-sm font-bold text-orange-700 mt-0.5">{formatCurrency(payoutModal.counsellor.platformFee)}</p>
+                <p className="text-[10px] text-orange-400">{payoutModal.counsellor.commissionRate}% fee</p>
+              </div>
+              <div className="rounded-xl bg-green-50 border border-green-200 p-3 text-center">
+                <p className="text-[10px] font-medium text-green-600 uppercase tracking-wide">Counsellor</p>
+                <p className="text-sm font-bold text-green-700 mt-0.5">{formatCurrency(payoutModal.counsellor.counsellorEarnings)}</p>
+              </div>
             </div>
 
-            {/* Bank details check */}
+            {/* Bank destination */}
             {payoutModal.counsellor.bankDetails?.accountNumber ? (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-700">
-                Paying to: <strong>{payoutModal.counsellor.bankDetails.bankName}</strong> · A/C ···{payoutModal.counsellor.bankDetails.accountNumber.slice(-4)} · IFSC {payoutModal.counsellor.bankDetails.ifscCode}
+              <div className="rounded-xl bg-gradient-to-r from-slate-800 to-slate-700 p-4 text-white">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Building2 size={15} className="text-slate-300" />
+                    <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Paying To</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-green-500/20 rounded-full px-2 py-0.5">
+                    <CheckCircle2 size={11} className="text-green-400" />
+                    <span className="text-[10px] font-semibold text-green-400">Verified</span>
+                  </div>
+                </div>
+                <p className="text-base font-bold tracking-wide">{payoutModal.counsellor.bankDetails.accountHolderName || payoutModal.counsellor.name}</p>
+                <div className="flex items-center justify-between mt-2">
+                  <div>
+                    <p className="text-xs text-slate-400">{payoutModal.counsellor.bankDetails.bankName}</p>
+                    <p className="text-sm font-mono font-semibold text-slate-200 tracking-widest mt-0.5">
+                      •••• •••• {payoutModal.counsellor.bankDetails.accountNumber.slice(-4)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-slate-400 uppercase">IFSC</p>
+                    <p className="text-xs font-mono font-semibold text-slate-200">{payoutModal.counsellor.bankDetails.ifscCode}</p>
+                  </div>
+                </div>
               </div>
             ) : (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
-                No bank details on file. Ask the counsellor to update their profile.
+              <div className="rounded-xl bg-red-50 border border-red-200 p-4 flex items-start gap-3">
+                <AlertCircle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-700">No Bank Account on File</p>
+                  <p className="text-xs text-red-500 mt-0.5">Ask the counsellor to add their bank details from their profile settings before initiating a payout.</p>
+                </div>
               </div>
             )}
 
             {payoutModal.counsellor.bankDetails?.accountNumber && (
               <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Payout Amount (₹)</label>
-                  <input
-                    type="number"
-                    value={payoutAmount}
-                    onChange={(e) => setPayoutAmount(e.target.value)}
-                    min="1"
-                    max={payoutModal.counsellor.counsellorEarnings}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter amount in rupees"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Max: {formatCurrency(payoutModal.counsellor.counsellorEarnings)}</p>
+                {/* Amount + Notes */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Payout Amount (₹)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold">₹</span>
+                      <input
+                        type="number"
+                        value={payoutAmount}
+                        onChange={(e) => setPayoutAmount(e.target.value)}
+                        min="1"
+                        max={payoutModal.counsellor.counsellorEarnings}
+                        className="w-full pl-7 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                        placeholder="0"
+                      />
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">Max {formatCurrency(payoutModal.counsellor.counsellorEarnings)}</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Reference Note</label>
+                    <input
+                      type="text"
+                      value={payoutNotes}
+                      onChange={(e) => setPayoutNotes(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                      placeholder="e.g. May 2026"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">Optional</p>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes (optional)</label>
-                  <input
-                    type="text"
-                    value={payoutNotes}
-                    onChange={(e) => setPayoutNotes(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g. April 2026 earnings"
-                  />
+
+                {/* Warning */}
+                <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3">
+                  <AlertCircle size={15} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    This initiates a <strong>real bank transfer</strong> via Razorpay X. Ensure Razorpay X (Payout API) is activated before proceeding.
+                  </p>
                 </div>
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
-                  This will initiate a real bank transfer via Razorpay X. Ensure Razorpay X (Payout API) is activated on your account before proceeding.
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setPayoutModal({ open: false, counsellor: null })} className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
-                  <button onClick={handlePayout} disabled={payoutLoading} className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
-                    {payoutLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Processing...</> : <><Send size={14} /> Initiate Payout</>}
+
+                {/* Actions */}
+                <div className="flex gap-2.5 pt-1">
+                  <button
+                    onClick={() => setPayoutModal({ open: false, counsellor: null })}
+                    className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handlePayout}
+                    disabled={payoutLoading}
+                    className="flex-[2] px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-sm font-bold disabled:opacity-60 transition-all shadow-sm flex items-center justify-center gap-2"
+                  >
+                    {payoutLoading
+                      ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing…</>
+                      : <><Send size={14} /> Send {payoutAmount ? formatCurrency(parseFloat(payoutAmount) || 0) : ''}</>
+                    }
                   </button>
                 </div>
               </>
             )}
           </div>
         )}
+
+        {/* Success state */}
         {payoutResult && (
-          <div className="text-center space-y-4 py-2">
-            <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto">
-              <Send size={24} className="text-green-600" />
+          <div className="text-center space-y-5 py-3">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center mx-auto shadow-lg">
+              <CheckCircle2 size={30} className="text-white" />
             </div>
             <div>
-              <p className="text-lg font-bold text-gray-900">Payout Initiated!</p>
-              <p className="text-sm text-gray-500 mt-1">{formatCurrency(payoutResult.amount)} sent</p>
-              <p className="text-xs text-gray-400 mt-1">Payout ID: {payoutResult.payoutId}</p>
-              <p className="text-xs font-medium mt-1 capitalize text-blue-600">Status: {payoutResult.status}</p>
+              <p className="text-xl font-black text-gray-900">Payout Initiated!</p>
+              <p className="text-2xl font-black text-green-600 mt-1">{formatCurrency(payoutResult.amount / 100)}</p>
+              <p className="text-xs text-gray-400 mt-2">Payout ID: <span className="font-mono font-semibold text-gray-600">{payoutResult.payoutId}</span></p>
+              <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-bold capitalize ${payoutResult.status === 'processed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                {payoutResult.status}
+              </span>
             </div>
-            <button onClick={() => { setPayoutModal({ open: false, counsellor: null }); setPayoutResult(null); }} className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold">Done</button>
+            <button
+              onClick={() => { setPayoutModal({ open: false, counsellor: null }); setPayoutResult(null); }}
+              className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-sm font-bold shadow-sm"
+            >
+              Done
+            </button>
           </div>
         )}
       </Modal>
