@@ -197,7 +197,46 @@ router.get('/counsellors', [
       });
     }
 
-    // All other tabs (approved, rejected, blocked, all) — served from Counsellor collection
+    // Rejected tab — served from PendingApplication collection (same as pending)
+    if (status === 'rejected') {
+      const searchQuery = search
+        ? { $or: [
+            { firstName: { $regex: search, $options: 'i' } },
+            { lastName: { $regex: search, $options: 'i' } },
+            { email: { $regex: search, $options: 'i' } }
+          ]}
+        : {};
+      searchQuery.status = 'rejected';
+
+      const [apps, total] = await Promise.all([
+        PendingApplication.find(searchQuery).sort({ reviewedAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+        PendingApplication.countDocuments(searchQuery)
+      ]);
+
+      const formatted = apps.map(a => ({
+        id: a._id,
+        isPendingApplication: true,
+        user: { firstName: a.firstName, lastName: a.lastName, email: a.email, phone: a.phone, isActive: false, createdAt: a.createdAt },
+        licenseNumber: a.licenseNumber,
+        specialization: a.specialization,
+        experience: a.experience,
+        hourlyRate: a.hourlyRate,
+        currency: a.currency,
+        status: 'rejected',
+        isActive: false,
+        isVerified: false,
+        rejectionReason: a.rejectionReason,
+        createdAt: a.createdAt,
+        bookingStats: { total: 0, completed: 0, cancelled: 0, confirmed: 0 }
+      }));
+
+      return res.json({
+        success: true,
+        data: { counsellors: formatted, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } }
+      });
+    }
+
+    // All other tabs (approved, blocked, all) — served from Counsellor collection
     const counsellorQuery = {};
     if (status === 'blocked') {
       counsellorQuery.isActive = false;

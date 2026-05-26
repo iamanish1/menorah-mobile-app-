@@ -183,11 +183,11 @@ function CounsellorsContent() {
                 {/* Avatar + basic info */}
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm flex-shrink-0">
-                    {getInitials(`${c.user.firstName} ${c.user.lastName}`)}
+                    {getInitials(`${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`)}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{c.user.firstName} {c.user.lastName}</p>
-                    <p className="text-xs text-gray-500 truncate">{c.user.email}</p>
+                    <p className="text-sm font-semibold text-gray-900 truncate">{c.user?.firstName} {c.user?.lastName}</p>
+                    <p className="text-xs text-gray-500 truncate">{c.user?.email}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{c.specialization} · {c.experience}y exp · {formatCurrency(c.hourlyRate)}/hr</p>
                   </div>
                 </div>
@@ -202,14 +202,14 @@ function CounsellorsContent() {
                     {c.status === 'pending' && (
                       <>
                         <button
-                          onClick={() => handleApprove(c.id, `${c.user.firstName} ${c.user.lastName}`)}
+                          onClick={() => handleApprove(c.id, `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`)}
                           disabled={actionLoading === c.id + '-approve'}
                           className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-60"
                         >
                           {actionLoading === c.id + '-approve' ? '...' : 'Approve'}
                         </button>
                         <button
-                          onClick={() => { setRejectModal({ open: true, id: c.id, name: `${c.user.firstName} ${c.user.lastName}` }); setReason(''); }}
+                          onClick={() => { setRejectModal({ open: true, id: c.id, name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}` }); setReason(''); }}
                           className="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold rounded-lg transition-colors"
                         >
                           Reject
@@ -219,14 +219,14 @@ function CounsellorsContent() {
                     {c.status === 'approved' && c.isActive && (
                       <>
                         <button
-                          onClick={() => handleGeneratePassword(c.id, `${c.user.firstName} ${c.user.lastName}`)}
+                          onClick={() => handleGeneratePassword(c.id, `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`)}
                           disabled={actionLoading === c.id + '-creds'}
                           className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg transition-colors disabled:opacity-60"
                         >
                           {actionLoading === c.id + '-creds' ? '...' : 'Reset Password'}
                         </button>
                         <button
-                          onClick={() => { setBlockModal({ open: true, id: c.id, name: `${c.user.firstName} ${c.user.lastName}`, isBlocked: false }); setReason(''); }}
+                          onClick={() => { setBlockModal({ open: true, id: c.id, name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`, isBlocked: false }); setReason(''); }}
                           className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-colors"
                         >
                           Block
