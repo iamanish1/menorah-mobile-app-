@@ -56,9 +56,9 @@ export default function RegisterPage() {
       .then(r => r.json())
       .then(data => {
         if (!data.success) {
-          // Email not found (maybe rejected and cleared) — let them re-register
-          localStorage.removeItem(STORAGE_KEY);
-          setAppStatus('idle');
+          // API may not be deployed yet or email not found — keep showing pending screen
+          setAppStatus('pending');
+          setSubmitted(true);
           return;
         }
         const { status, rejectionReason: reason } = data.data;
@@ -75,7 +75,7 @@ export default function RegisterPage() {
         }
       })
       .catch(() => {
-        // Network error — show pending screen optimistically
+        // Network error — keep showing pending screen, never clear localStorage
         setAppStatus('pending');
         setSubmitted(true);
       });
