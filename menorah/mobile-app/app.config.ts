@@ -84,7 +84,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#f0f9f4'
       },
       package: 'com.menorah.healthmobile',
-      versionCode: 8,
+      versionCode: 9,
       permissions: [
         'android.permission.CAMERA',
         'android.permission.RECORD_AUDIO',
