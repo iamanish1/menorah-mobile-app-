@@ -235,7 +235,7 @@ function CounsellorsContent() {
                     )}
                     {c.status === 'approved' && !c.isActive && (
                       <button
-                        onClick={() => { setBlockModal({ open: true, id: c.id, name: `${c.user.firstName} ${c.user.lastName}`, isBlocked: true }); setReason(''); }}
+                        onClick={() => { setBlockModal({ open: true, id: c.id, name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`, isBlocked: true }); setReason(''); }}
                         className="px-3 py-1 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-semibold rounded-lg transition-colors"
                       >
                         Unblock
