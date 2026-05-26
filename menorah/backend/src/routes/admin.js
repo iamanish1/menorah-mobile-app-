@@ -5,6 +5,7 @@ const axios = require('axios');
 const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
 const Booking = require('../models/Booking');
+const PendingApplication = require('../models/PendingApplication');
 const { adminAuth, auth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -66,7 +67,7 @@ router.get('/stats', async (req, res) => {
     ] = await Promise.all([
       User.countDocuments({ role: 'user' }),
       Counsellor.countDocuments(),
-      Counsellor.countDocuments({ status: 'pending' }),
+      PendingApplication.countDocuments({ status: 'pending' }),
       Counsellor.countDocuments({ status: 'approved' }),
       Counsellor.countDocuments({ isActive: false, status: 'approved' }),
       Booking.countDocuments(),
@@ -156,7 +157,47 @@ router.get('/counsellors', [
 ], async (req, res) => {
   try {
     const { status = 'all', page = 1, limit = 20, search } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
 
+    // Pending tab — served from PendingApplication collection
+    if (status === 'pending') {
+      const searchQuery = search
+        ? { $or: [
+            { firstName: { $regex: search, $options: 'i' } },
+            { lastName: { $regex: search, $options: 'i' } },
+            { email: { $regex: search, $options: 'i' } }
+          ]}
+        : {};
+      searchQuery.status = 'pending';
+
+      const [apps, total] = await Promise.all([
+        PendingApplication.find(searchQuery).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+        PendingApplication.countDocuments(searchQuery)
+      ]);
+
+      const formatted = apps.map(a => ({
+        id: a._id,
+        isPendingApplication: true,
+        user: { firstName: a.firstName, lastName: a.lastName, email: a.email, phone: a.phone, isActive: false, createdAt: a.createdAt },
+        licenseNumber: a.licenseNumber,
+        specialization: a.specialization,
+        experience: a.experience,
+        hourlyRate: a.hourlyRate,
+        currency: a.currency,
+        status: 'pending',
+        isActive: false,
+        isVerified: false,
+        createdAt: a.createdAt,
+        bookingStats: { total: 0, completed: 0, cancelled: 0, confirmed: 0 }
+      }));
+
+      return res.json({
+        success: true,
+        data: { counsellors: formatted, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } }
+      });
+    }
+
+    // All other tabs (approved, rejected, blocked, all) — served from Counsellor collection
     const counsellorQuery = {};
     if (status === 'blocked') {
       counsellorQuery.isActive = false;
@@ -165,7 +206,6 @@ router.get('/counsellors', [
       counsellorQuery.status = status;
     }
 
-    let userFilter = {};
     if (search) {
       const matchingUsers = await User.find({
         $or: [
@@ -177,7 +217,6 @@ router.get('/counsellors', [
       counsellorQuery.user = { $in: matchingUsers.map(u => u._id) };
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
     const [counsellors, total] = await Promise.all([
       Counsellor.find(counsellorQuery)
         .populate('user', 'firstName lastName email phone profileImage isActive createdAt')
@@ -189,22 +228,12 @@ router.get('/counsellors', [
       Counsellor.countDocuments(counsellorQuery)
     ]);
 
-    // Attach booking acceptance stats to each counsellor
     const counsellorIds = counsellors.map(c => c._id);
     const bookingStats = await Booking.aggregate([
       { $match: { counsellor: { $in: counsellorIds } } },
-      { $group: {
-        _id: '$counsellor',
-        total: { $sum: 1 },
-        completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
-        cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
-        confirmed: { $sum: { $cond: [{ $eq: ['$status', 'confirmed'] }, 1, 0] } }
-      }}
+      { $group: { _id: '$counsellor', total: { $sum: 1 }, completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } }, cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } }, confirmed: { $sum: { $cond: [{ $eq: ['$status', 'confirmed'] }, 1, 0] } } } }
     ]);
-    const statsMap = bookingStats.reduce((acc, s) => {
-      acc[s._id.toString()] = s;
-      return acc;
-    }, {});
+    const statsMap = bookingStats.reduce((acc, s) => { acc[s._id.toString()] = s; return acc; }, {});
 
     const formatted = counsellors.map(c => ({
       id: c._id,
@@ -232,10 +261,7 @@ router.get('/counsellors', [
 
     res.json({
       success: true,
-      data: {
-        counsellors: formatted,
-        pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) }
-      }
+      data: { counsellors: formatted, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } }
     });
   } catch (error) {
     console.error('Admin get counsellors error:', error);
@@ -298,45 +324,66 @@ router.get('/counsellors/:id', [
 });
 
 // PUT /api/admin/counsellors/:id/approve
-// Approves the counsellor AND auto-generates login credentials in one step.
+// Creates User + Counsellor from PendingApplication, generates credentials, deletes pending record.
 router.put('/counsellors/:id/approve', [
-  param('id').isMongoId().withMessage('Invalid counsellor ID')
+  param('id').isMongoId().withMessage('Invalid ID')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid ID' });
 
-    const counsellor = await Counsellor.findById(req.params.id).populate('user');
-    if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
-    if (counsellor.status === 'approved') return res.status(400).json({ success: false, message: 'Counsellor already approved' });
+    const application = await PendingApplication.findById(req.params.id);
+    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
+    if (application.status !== 'pending') return res.status(400).json({ success: false, message: 'Application is not pending' });
+
+    const existingUser = await User.findOne({ $or: [{ email: application.email }, { phone: application.phone }] });
+    if (existingUser) return res.status(400).json({ success: false, message: 'A user with this email or phone already exists' });
 
     const plainPassword = generateSecurePassword();
-    const user = await User.findById(counsellor.user._id);
-    user.password = plainPassword;
-    user.isActive = true;
 
-    user.isEmailVerified = true;
-    user.isPhoneVerified = true;
+    const user = new User({
+      firstName: application.firstName,
+      lastName: application.lastName,
+      email: application.email,
+      phone: application.phone,
+      password: plainPassword,
+      dateOfBirth: application.dateOfBirth,
+      gender: application.gender,
+      role: 'counsellor',
+      isActive: true,
+      isEmailVerified: true,
+      isPhoneVerified: true,
+    });
+    await user.save();
 
-    counsellor.status = 'approved';
-    counsellor.isVerified = true;
-    counsellor.isActive = true;
-    counsellor.isAvailable = true;
-    counsellor.approvedBy = req.user._id;
-    counsellor.approvedAt = new Date();
-    counsellor.rejectionReason = null;
+    const counsellor = new Counsellor({
+      user: user._id,
+      licenseNumber: application.licenseNumber,
+      specialization: application.specialization,
+      specializations: application.specializations?.length ? application.specializations : [application.specialization],
+      experience: application.experience,
+      bio: application.bio,
+      languages: application.languages,
+      hourlyRate: application.hourlyRate,
+      currency: application.currency || 'INR',
+      education: application.education || [],
+      certifications: application.certifications || [],
+      availability: application.availability,
+      status: 'approved',
+      isVerified: true,
+      isActive: true,
+      isAvailable: true,
+      approvedBy: req.user._id,
+      approvedAt: new Date(),
+    });
+    await counsellor.save();
 
-    await Promise.all([user.save(), counsellor.save()]);
+    await PendingApplication.findByIdAndDelete(application._id);
 
     res.json({
       success: true,
       message: 'Counsellor approved. Credentials generated — share them now, the password will not be shown again.',
-      data: {
-        counsellorId: counsellor._id,
-        status: counsellor.status,
-        username: user.email,
-        password: plainPassword
-      }
+      data: { counsellorId: counsellor._id, status: 'approved', username: user.email, password: plainPassword }
     });
   } catch (error) {
     console.error('Admin approve counsellor error:', error);
@@ -345,27 +392,28 @@ router.put('/counsellors/:id/approve', [
 });
 
 // PUT /api/admin/counsellors/:id/reject
+// Marks PendingApplication as rejected — no User/Counsellor records to clean up.
 router.put('/counsellors/:id/reject', [
-  param('id').isMongoId().withMessage('Invalid counsellor ID'),
+  param('id').isMongoId().withMessage('Invalid ID'),
   body('reason').trim().notEmpty().withMessage('Rejection reason is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
-    const counsellor = await Counsellor.findById(req.params.id).populate('user');
-    if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
+    const application = await PendingApplication.findById(req.params.id);
+    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
 
-    counsellor.status = 'rejected';
-    counsellor.isVerified = false;
-    counsellor.isActive = false;
-    counsellor.rejectionReason = req.body.reason;
-    await counsellor.save();
+    application.status = 'rejected';
+    application.rejectionReason = req.body.reason;
+    application.reviewedBy = req.user._id;
+    application.reviewedAt = new Date();
+    await application.save();
 
     res.json({
       success: true,
-      message: 'Counsellor application rejected.',
-      data: { counsellorId: counsellor._id, status: counsellor.status }
+      message: 'Application rejected.',
+      data: { applicationId: application._id, status: 'rejected' }
     });
   } catch (error) {
     console.error('Admin reject counsellor error:', error);

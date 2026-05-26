@@ -2,6 +2,7 @@ const express = require('express');
 const { query, param, body, validationResult } = require('express-validator');
 const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
+const PendingApplication = require('../models/PendingApplication');
 const { optionalAuth } = require('../middleware/auth');
 const jwt = require('jsonwebtoken');
 
@@ -245,19 +246,27 @@ router.get('/application-status', [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Valid email is required' });
 
-    const user = await User.findOne({ email: req.query.email, role: 'counsellor' }).select('_id isActive').lean();
+    const emailQuery = req.query.email;
+
+    // Check pending/rejected applications first
+    const pending = await PendingApplication.findOne({ email: emailQuery }).select('status rejectionReason').lean();
+    if (pending) {
+      return res.json({
+        success: true,
+        data: { status: pending.status, rejectionReason: pending.rejectionReason || null, isActive: false }
+      });
+    }
+
+    // Check approved counsellors (application was approved and User/Counsellor were created)
+    const user = await User.findOne({ email: emailQuery, role: 'counsellor' }).select('_id isActive').lean();
     if (!user) return res.status(404).json({ success: false, message: 'No application found for this email' });
 
-    const counsellor = await Counsellor.findOne({ user: user._id }).select('status rejectionReason').lean();
+    const counsellor = await Counsellor.findOne({ user: user._id }).select('status').lean();
     if (!counsellor) return res.status(404).json({ success: false, message: 'No application found' });
 
     res.json({
       success: true,
-      data: {
-        status: counsellor.status,
-        rejectionReason: counsellor.rejectionReason || null,
-        isActive: user.isActive
-      }
+      data: { status: counsellor.status, rejectionReason: null, isActive: user.isActive }
     });
   } catch (error) {
     console.error('Application status check error:', error);
@@ -492,98 +501,55 @@ router.post('/register', [
       availability
     } = req.body;
 
-    // Check if user already exists
-    const existingUser = await User.findOne({
-      $or: [{ email }, { phone }]
-    });
-
+    // Block if already an active/approved counsellor with this email
+    const existingUser = await User.findOne({ email, role: 'counsellor' });
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'User with this email or phone number already exists'
+        message: 'A counsellor account with this email already exists'
       });
     }
 
-    // Check if license number already exists
+    // Block duplicate license numbers already in the approved counsellors
     const existingCounsellor = await Counsellor.findOne({ licenseNumber });
     if (existingCounsellor) {
       return res.status(400).json({
         success: false,
-        message: 'Counsellor with this license number already exists'
+        message: 'A counsellor with this license number already exists'
       });
     }
 
-    // Generate a random temp password — counsellor cannot log in until admin approves and sets a real password
-    const tempPassword = crypto.randomBytes(32).toString('hex');
+    // If a previous application exists for this email, replace it (re-apply after rejection)
+    await PendingApplication.deleteOne({ email });
 
-    // Create user with counsellor role; isActive=false blocks login until admin approves
-    const user = new User({
-      firstName,
-      lastName,
-      email,
-      phone,
-      password: tempPassword,
-      dateOfBirth,
-      gender,
-      role: 'counsellor',
-      isActive: false,
-      isEmailVerified: false
-    });
-
-    await user.save();
-
-    // Set default availability if not provided
     const defaultAvailability = availability || {
-      monday: { start: '09:00', end: '17:00', isAvailable: true },
-      tuesday: { start: '09:00', end: '17:00', isAvailable: true },
+      monday:    { start: '09:00', end: '17:00', isAvailable: true },
+      tuesday:   { start: '09:00', end: '17:00', isAvailable: true },
       wednesday: { start: '09:00', end: '17:00', isAvailable: true },
-      thursday: { start: '09:00', end: '17:00', isAvailable: true },
-      friday: { start: '09:00', end: '17:00', isAvailable: true },
-      saturday: { start: '09:00', end: '17:00', isAvailable: false },
-      sunday: { start: '09:00', end: '17:00', isAvailable: false }
+      thursday:  { start: '09:00', end: '17:00', isAvailable: true },
+      friday:    { start: '09:00', end: '17:00', isAvailable: true },
+      saturday:  { start: '09:00', end: '17:00', isAvailable: false },
+      sunday:    { start: '09:00', end: '17:00', isAvailable: false }
     };
 
-    // Create counsellor profile with pending status — inactive until admin approves
-    const counsellor = new Counsellor({
-      user: user._id,
-      licenseNumber,
-      specialization,
+    const application = new PendingApplication({
+      firstName, lastName, email, phone, dateOfBirth, gender,
+      licenseNumber, specialization,
       specializations: specializations || [specialization],
-      experience,
-      bio,
-      languages,
-      hourlyRate,
-      currency,
+      experience, bio, languages, hourlyRate,
+      currency: currency || 'INR',
       education: education || [],
       certifications: certifications || [],
       availability: defaultAvailability,
-      status: 'pending',
-      isVerified: false,
-      isActive: false,
-      isAvailable: false
+      status: 'pending'
     });
 
-    await counsellor.save();
+    await application.save();
 
     res.status(201).json({
       success: true,
       message: 'Registration submitted successfully. Your profile is under review by our admin team. You will receive your login credentials once approved.',
-      data: {
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          phone: user.phone,
-          role: user.role
-        },
-        counsellor: {
-          id: counsellor._id,
-          licenseNumber: counsellor.licenseNumber,
-          specialization: counsellor.specialization,
-          status: counsellor.status
-        }
-      }
+      data: { applicationId: application._id, email: application.email }
     });
 
   } catch (error) {
