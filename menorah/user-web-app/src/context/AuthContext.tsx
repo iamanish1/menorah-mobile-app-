@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     await api.logout();
     setUser(null);
-    window.location.replace('/login');
+    window.location.replace('/');
   };
 
   const verifyEmail = async (code: string) => {

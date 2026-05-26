@@ -1,7 +1,47 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Adamina&family=Fjalla+One&family=Poppins:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  /* Landing page semantic tokens */
+  --background: 0 0% 100%;
+  --foreground: 210 14% 17%;
+  --primary-token: 210 14% 17%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 9%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 184 5% 55%;
+  --border: 0 0% 90%;
+  --ring: 239 84% 67%;
+  --success: 145 63% 35%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 210 14% 17%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  /* Menorah brand colors */
+  --menorah-green: 116 22% 23%;
+  --menorah-olive: 58 23% 32%;
+  --menorah-olive-light: 58 23% 48%;
+  --menorah-olive-muted: 64 9% 58%;
+  --menorah-cream: 44 65% 92%;
+  --menorah-page: 43 78% 94%;
+  /* Social colors */
+  --social-facebook: 221 89% 60%;
+  --social-instagram: 337 65% 52%;
+  --social-linkedin: 216 50% 48%;
+  --social-x: 0 0% 7%;
+  --social-youtube: 0 84% 50%;
+  /* Fonts */
+  --font-display: 'Adamina', serif;
+  --font-body: 'Poppins', sans-serif;
+  --font-brand: 'Fjalla One', sans-serif;
+  /* Shadows */
+  --shadow-dashboard: 0 25px 80px -12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
 
 @layer base {
   * { box-sizing: border-box; margin: 0; padding: 0; }
