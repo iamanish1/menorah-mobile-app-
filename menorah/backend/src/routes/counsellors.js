@@ -235,6 +235,36 @@ router.get('/languages', async (req, res) => {
   }
 });
 
+// @route   GET /api/counsellors/application-status?email=xxx
+// @desc    Check counsellor application status by email (public — used by registration page)
+// @access  Public
+router.get('/application-status', [
+  query('email').isEmail().normalizeEmail().withMessage('Valid email required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Valid email is required' });
+
+    const user = await User.findOne({ email: req.query.email, role: 'counsellor' }).select('_id isActive').lean();
+    if (!user) return res.status(404).json({ success: false, message: 'No application found for this email' });
+
+    const counsellor = await Counsellor.findOne({ user: user._id }).select('status rejectionReason').lean();
+    if (!counsellor) return res.status(404).json({ success: false, message: 'No application found' });
+
+    res.json({
+      success: true,
+      data: {
+        status: counsellor.status,
+        rejectionReason: counsellor.rejectionReason || null,
+        isActive: user.isActive
+      }
+    });
+  } catch (error) {
+    console.error('Application status check error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // @route   GET /api/counsellors/:id
 // @desc    Get counsellor by ID
 // @access  Public
@@ -578,35 +608,5 @@ const generateTimeSlots = (startTime, endTime, duration) => {
 
   return slots;
 };
-
-// @route   GET /api/counsellors/application-status?email=xxx
-// @desc    Check counsellor application status by email (public — used by registration page)
-// @access  Public
-router.get('/application-status', [
-  query('email').isEmail().normalizeEmail().withMessage('Valid email required')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Valid email is required' });
-
-    const user = await User.findOne({ email: req.query.email, role: 'counsellor' }).select('_id isActive').lean();
-    if (!user) return res.status(404).json({ success: false, message: 'No application found for this email' });
-
-    const counsellor = await Counsellor.findOne({ user: user._id }).select('status rejectionReason').lean();
-    if (!counsellor) return res.status(404).json({ success: false, message: 'No application found' });
-
-    res.json({
-      success: true,
-      data: {
-        status: counsellor.status,
-        rejectionReason: counsellor.rejectionReason || null,
-        isActive: user.isActive
-      }
-    });
-  } catch (error) {
-    console.error('Application status check error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
-  }
-});
 
 module.exports = router;
