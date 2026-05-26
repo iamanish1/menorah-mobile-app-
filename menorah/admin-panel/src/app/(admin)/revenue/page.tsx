@@ -63,7 +63,7 @@ export default function RevenuePage() {
 
   const openPayoutModal = (c: CounsellorRevenue) => {
     setPayoutModal({ open: true, counsellor: c });
-    setPayoutAmount(Math.floor(c.counsellorEarnings / 100).toString());
+    setPayoutAmount(String(Math.floor(c.counsellorEarnings)));
     setPayoutNotes('');
     setPayoutResult(null);
   };

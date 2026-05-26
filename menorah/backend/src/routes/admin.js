@@ -889,10 +889,17 @@ router.post('/payouts/:counsellorId', [
       return res.status(400).json({ success: false, message: 'Counsellor does not have bank details on file. Please update their profile first.' });
     }
 
-    const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
-    const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
-    const auth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64');
-    const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` };
+    // Razorpay X (Payout API) uses its own key pair if configured; falls back to regular keys
+    const RAZORPAY_KEY_ID = process.env.RAZORPAY_X_KEY_ID || process.env.RAZORPAY_KEY_ID;
+    const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_X_KEY_SECRET || process.env.RAZORPAY_KEY_SECRET;
+    if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+      return res.status(500).json({ success: false, message: 'Razorpay credentials not configured on the server.' });
+    }
+    if (!process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER) {
+      return res.status(500).json({ success: false, message: 'RAZORPAY_PAYOUT_ACCOUNT_NUMBER not configured on the server.' });
+    }
+    const rzpAuth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64');
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${rzpAuth}` };
 
     let contactId = counsellor.razorpayContactId;
     let fundAccountId = counsellor.razorpayFundAccountId;

@@ -20,6 +20,13 @@ interface AvailabilityDay {
   isAvailable: boolean;
 }
 
+interface BankDetails {
+  accountNumber?: string;
+  ifscCode?: string;
+  accountHolderName?: string;
+  bankName?: string;
+}
+
 interface ProfileData {
   firstName: string;
   lastName: string;
@@ -38,6 +45,7 @@ interface ProfileData {
     languages?: string[];
     licenseNumber?: string;
     availability?: Record<Day, AvailabilityDay>;
+    bankDetails?: BankDetails;
   };
 }
 
@@ -193,6 +201,11 @@ export default function ProfilePage() {
   });
   const [savingProf, setSavingProf] = useState(false);
 
+  // Bank details state
+  const [editingBank, setEditingBank] = useState(false);
+  const [bankForm, setBankForm] = useState({ accountNumber: '', ifscCode: '', accountHolderName: '', bankName: '' });
+  const [savingBank, setSavingBank] = useState(false);
+
   // Password state
   const [editingPassword, setEditingPassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -308,6 +321,36 @@ export default function ProfilePage() {
         [day]: { ...prev.availability[day], [field]: value },
       },
     }));
+  };
+
+  // ── Bank Details ───────────────────────────────────────────────────────────
+  const startEditBank = () => {
+    const bd = cp?.bankDetails;
+    setBankForm({
+      accountNumber: bd?.accountNumber ?? '',
+      ifscCode: bd?.ifscCode ?? '',
+      accountHolderName: bd?.accountHolderName ?? '',
+      bankName: bd?.bankName ?? '',
+    });
+    setEditingBank(true);
+  };
+
+  const saveBank = async () => {
+    if (!bankForm.accountNumber || !bankForm.ifscCode || !bankForm.accountHolderName || !bankForm.bankName) {
+      setError('All bank detail fields are required');
+      return;
+    }
+    setSavingBank(true);
+    setError(null);
+    const res = await api.updateBankDetails(bankForm);
+    setSavingBank(false);
+    if (res.success) {
+      await fetchProfile();
+      setEditingBank(false);
+      showSuccess('Bank details updated. They will be used for your next payout.');
+    } else {
+      setError(res.message || 'Failed to update bank details');
+    }
   };
 
   // ── Password ───────────────────────────────────────────────────────────────
@@ -721,6 +764,103 @@ export default function ProfilePage() {
                 }
               }}
             />
+          </Card>
+
+          {/* ── Bank Details ── */}
+          <Card padding="lg" className={styles.infoCard}>
+            <div className={styles.cardHeaderRow}>
+              <div className={styles.cardHeaderLeft}>
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className={styles.cardIcon}>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                <h3 className={styles.cardTitle}>Bank Details</h3>
+              </div>
+              {!editingBank && (
+                <button className={styles.editBtn} onClick={startEditBank}>
+                  {cp?.bankDetails?.accountNumber ? 'Edit' : 'Add Bank Account'}
+                </button>
+              )}
+            </div>
+
+            {editingBank ? (
+              <>
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 'var(--spacing-lg)', fontSize: 'var(--font-size-sm)', color: '#92400e' }}>
+                  Your bank details are used by the admin to process your earnings payout via Razorpay. Make sure the details are accurate.
+                </div>
+                <div className={styles.infoGrid}>
+                  <div className={styles.formGroup}>
+                    <label className={styles.infoLabel}>Account Holder Name</label>
+                    <input
+                      className={styles.formInput}
+                      value={bankForm.accountHolderName}
+                      onChange={(e) => setBankForm((p) => ({ ...p, accountHolderName: e.target.value }))}
+                      placeholder="Name as on bank account"
+                    />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.infoLabel}>Bank Name</label>
+                    <input
+                      className={styles.formInput}
+                      value={bankForm.bankName}
+                      onChange={(e) => setBankForm((p) => ({ ...p, bankName: e.target.value }))}
+                      placeholder="e.g. HDFC Bank, SBI"
+                    />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.infoLabel}>Account Number</label>
+                    <input
+                      className={styles.formInput}
+                      value={bankForm.accountNumber}
+                      onChange={(e) => setBankForm((p) => ({ ...p, accountNumber: e.target.value.replace(/\D/g, '') }))}
+                      placeholder="9–18 digit account number"
+                      maxLength={18}
+                    />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.infoLabel}>IFSC Code</label>
+                    <input
+                      className={styles.formInput}
+                      value={bankForm.ifscCode}
+                      onChange={(e) => setBankForm((p) => ({ ...p, ifscCode: e.target.value.toUpperCase() }))}
+                      placeholder="e.g. HDFC0001234"
+                      maxLength={11}
+                    />
+                  </div>
+                </div>
+                <div className={styles.formActions}>
+                  <Button variant="primary" size="sm" onClick={saveBank} disabled={savingBank}>
+                    {savingBank ? 'Saving…' : 'Save Bank Details'}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setEditingBank(false)} disabled={savingBank}>
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            ) : cp?.bankDetails?.accountNumber ? (
+              <div className={styles.infoGrid}>
+                <div className={styles.infoItem}>
+                  <p className={styles.infoLabel}>Account Holder</p>
+                  <p className={styles.infoValue}>{cp.bankDetails.accountHolderName || '—'}</p>
+                </div>
+                <div className={styles.infoItem}>
+                  <p className={styles.infoLabel}>Bank</p>
+                  <p className={styles.infoValue}>{cp.bankDetails.bankName || '—'}</p>
+                </div>
+                <div className={styles.infoItem}>
+                  <p className={styles.infoLabel}>Account Number</p>
+                  <p className={styles.infoValue}>···{cp.bankDetails.accountNumber.slice(-4)}</p>
+                </div>
+                <div className={styles.infoItem}>
+                  <p className={styles.infoLabel}>IFSC</p>
+                  <p className={styles.infoValue}>{cp.bankDetails.ifscCode || '—'}</p>
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: 'var(--spacing-lg) 0', color: 'var(--color-text-muted)', fontSize: 'var(--font-size-sm)' }}>
+                <p>No bank account added yet.</p>
+                <p style={{ marginTop: 4 }}>Add your bank details so the admin can process your earnings payout.</p>
+              </div>
+            )}
           </Card>
 
           {/* ── Account Security ── */}

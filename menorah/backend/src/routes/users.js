@@ -2,6 +2,7 @@ const express = require('express');
 const { body, param, validationResult } = require('express-validator');
 const multer = require('multer');
 const User = require('../models/User');
+const Counsellor = require('../models/Counsellor');
 const { auth } = require('../middleware/auth');
 const { uploadBuffer } = require('../utils/cloudinary');
 
@@ -20,15 +21,37 @@ const upload = multer({
 });
 
 // @route   GET /api/users/me
-// @desc    Get current user
+// @desc    Get current user (includes counsellor profile + bank details when role=counsellor)
 // @access  Private
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
-    
+    const user = await User.findById(req.user._id).select('-password').lean();
+
+    let counsellorProfile = null;
+    if (user.role === 'counsellor') {
+      const c = await Counsellor.findOne({ user: user._id }).lean();
+      if (c) {
+        counsellorProfile = {
+          specialization: c.specialization,
+          specializations: c.specializations,
+          yearsOfExperience: c.experience,
+          hourlyRate: c.hourlyRate,
+          currency: c.currency,
+          bio: c.bio,
+          languages: c.languages,
+          licenseNumber: c.licenseNumber,
+          availability: c.availability,
+          isVerified: c.isVerified,
+          isActive: c.isActive,
+          commissionRate: c.commissionRate,
+          bankDetails: c.bankDetails || null,
+        };
+      }
+    }
+
     res.json({
       success: true,
-      data: { user }
+      data: { user: { ...user, counsellorProfile } }
     });
 
   } catch (error) {

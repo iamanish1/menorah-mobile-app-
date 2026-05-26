@@ -976,5 +976,60 @@ router.put('/me/status', counsellorAuth, async (req, res) => {
   }
 });
 
+// @route   PUT /api/counsellors/me/bank-details
+// @desc    Update counsellor bank account details for payouts
+// @access  Private (Counsellor)
+router.put('/me/bank-details', [
+  body('accountNumber').trim().notEmpty().withMessage('Account number is required')
+    .isLength({ min: 9, max: 18 }).withMessage('Account number must be 9–18 digits'),
+  body('ifscCode').trim().notEmpty().withMessage('IFSC code is required')
+    .matches(/^[A-Z]{4}0[A-Z0-9]{6}$/i).withMessage('Invalid IFSC code (e.g. HDFC0001234)'),
+  body('accountHolderName').trim().notEmpty().withMessage('Account holder name is required')
+    .isLength({ min: 2, max: 100 }),
+  body('bankName').trim().notEmpty().withMessage('Bank name is required')
+    .isLength({ min: 2, max: 100 }),
+], counsellorAuth, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const counsellor = await getCounsellorFromUser(req.user._id);
+    if (!counsellor) {
+      return res.status(404).json({ success: false, message: 'Counsellor profile not found' });
+    }
+
+    const { accountNumber, ifscCode, accountHolderName, bankName } = req.body;
+
+    counsellor.bankDetails = {
+      accountNumber: accountNumber.trim(),
+      ifscCode: ifscCode.trim().toUpperCase(),
+      accountHolderName: accountHolderName.trim(),
+      bankName: bankName.trim(),
+    };
+    // Reset Razorpay fund account so a new one is created on the next payout
+    counsellor.razorpayFundAccountId = null;
+
+    await counsellor.save();
+
+    res.json({
+      success: true,
+      message: 'Bank details updated successfully.',
+      data: {
+        bankDetails: {
+          accountHolderName: counsellor.bankDetails.accountHolderName,
+          bankName: counsellor.bankDetails.bankName,
+          ifscCode: counsellor.bankDetails.ifscCode,
+          accountNumberMasked: '···' + accountNumber.slice(-4),
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Update bank details error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 module.exports = router;
 

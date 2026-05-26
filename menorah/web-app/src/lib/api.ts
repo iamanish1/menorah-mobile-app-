@@ -503,6 +503,24 @@ class ApiClient {
     }
   }
 
+  async updateBankDetails(data: {
+    accountNumber: string;
+    ifscCode: string;
+    accountHolderName: string;
+    bankName: string;
+  }): Promise<ApiResponse<{ bankDetails: { accountHolderName: string; bankName: string; ifscCode: string; accountNumberMasked: string } }>> {
+    try {
+      const response = await this.client.put('/counsellors/me/bank-details', data);
+      return response.data;
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to update bank details',
+        errors: error.response?.data?.errors || [],
+      };
+    }
+  }
+
   async changePassword(data: {
     currentPassword: string;
     newPassword: string;
