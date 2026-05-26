@@ -1,4 +1,3 @@
-'use client';
 import { View, Pressable, Text, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
