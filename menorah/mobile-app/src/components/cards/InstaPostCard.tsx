@@ -1,9 +1,11 @@
-import { Pressable, View, Text } from "react-native";
+import { Pressable, View, Text, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
 import * as Linking from "expo-linking";
-import { ArrowUpRight, Heart, MessageCircle } from "lucide-react-native";
+import { ArrowUpRight } from "lucide-react-native";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
+
+export type SocialPlatform = 'instagram' | 'youtube' | 'twitter';
 
 export type InstaPost = {
   id: string;
@@ -12,47 +14,89 @@ export type InstaPost = {
   caption?: string;
   likes?: string;
   comments?: string;
+  platform?: SocialPlatform;
 };
+
+function getPlatformMeta(url: string, platform?: SocialPlatform) {
+  const p = platform ?? (
+    url.includes('youtube') ? 'youtube' :
+    url.includes('twitter') || url.includes('x.com') ? 'twitter' :
+    'instagram'
+  );
+  if (p === 'youtube') return { label: 'YOUTUBE', color: '#ef4444', icon: '▶' };
+  if (p === 'twitter') return { label: 'X (TWITTER)', color: '#000000', icon: '𝕏' };
+  return { label: 'INSTAGRAM', color: '#e1306c', icon: '◉' };
+}
 
 export default function InstaPostCard({ item }: { item: InstaPost }) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const { width } = useWindowDimensions();
+  const cardW = Math.floor(width * 0.72);
+  const meta = getPlatformMeta(item.url, item.platform);
+  const cardBg = scheme === 'dark' ? colors.surface : colors.card;
 
   return (
-    <Pressable onPress={() => Linking.openURL(item.url)} style={{ width: 220, height: 250, marginRight: 16 }}>
-      <View style={{ 
-        borderRadius: 24, 
-        overflow: 'hidden', 
-        borderWidth: 1, 
-        borderColor: colors.border,
-        flex: 1,
-        backgroundColor: colors.card,
-      }}>
-        <Image source={{ uri: item.image }} style={{ width: "100%", height: 168 }} contentFit="cover" />
-        <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "800", letterSpacing: 0.4 }}>
-              INSTAGRAM
+    <Pressable
+      onPress={() => Linking.openURL(item.url)}
+      style={{ width: cardW, marginRight: 12 }}
+    >
+      <View
+        style={{
+          backgroundColor: cardBg,
+          borderRadius: 18,
+          borderWidth: 1,
+          borderColor: colors.border,
+          flexDirection: 'row',
+          overflow: 'hidden',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: scheme === 'dark' ? 0.16 : 0.05,
+          shadowRadius: 6,
+          elevation: 1,
+        }}
+      >
+        {/* Thumbnail */}
+        <Image
+          source={{ uri: item.image }}
+          style={{ width: 80, height: 96 }}
+          contentFit="cover"
+        />
+
+        {/* Content */}
+        <View style={{ flex: 1, padding: 12, justifyContent: 'space-between' }}>
+          {/* Platform row */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: meta.color, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 }}>
+              {meta.label}
             </Text>
-            <ArrowUpRight size={16} color={colors.primary} />
+            <View
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                backgroundColor: scheme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <ArrowUpRight size={13} color={colors.muted} />
+            </View>
           </View>
-          <Text style={{ color: colors.cardText, fontSize: 14, fontWeight: "600", lineHeight: 20 }} numberOfLines={3}>
-            {item.caption || "Follow the latest mental wellness updates on Instagram."}
+
+          {/* Caption */}
+          <Text
+            numberOfLines={3}
+            style={{
+              color: colors.cardText,
+              fontSize: 13,
+              fontWeight: '600',
+              lineHeight: 19,
+              marginTop: 6,
+            }}
+          >
+            {item.caption ?? 'Follow the latest mental wellness updates.'}
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", marginRight: 14 }}>
-              <Heart size={14} color={colors.muted} />
-              <Text style={{ color: colors.muted, fontSize: 12, marginLeft: 5, fontWeight: "600" }}>
-                {item.likes || "1.2k"}
-              </Text>
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <MessageCircle size={14} color={colors.muted} />
-              <Text style={{ color: colors.muted, fontSize: 12, marginLeft: 5, fontWeight: "600" }}>
-                {item.comments || "48"}
-              </Text>
-            </View>
-          </View>
         </View>
       </View>
     </Pressable>

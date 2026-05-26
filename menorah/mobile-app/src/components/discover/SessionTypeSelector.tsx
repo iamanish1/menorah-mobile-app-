@@ -1,177 +1,163 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
-import { User, Users, Crown } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { User, Users, Info } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 
 export type SessionType = 'basic' | 'premium' | 'pro';
 export type TherapistGender = 'male' | 'female';
 
-interface SessionTypeSelectorProps {
+interface Props {
   onSessionSelect?: (sessionType: SessionType) => void;
 }
 
-const SESSION_TYPES = [
+const SESSIONS = [
   {
     id: 'basic' as SessionType,
     title: 'Basic 45 min',
     description: 'Perfect for getting started',
-    price: '\u20B91000',
+    price: '₹1,000',
     icon: User,
-    color: '#10B981',
-    bgColor: '#D1FAE5',
+    iconColor: '#16a34a',
+    iconBg: '#dcfce7',
+    btnColor: '#16a34a',
   },
   {
     id: 'premium' as SessionType,
     title: 'Premium 60 min',
-    description: 'Enhanced therapeutic experience',
-    price: '\u20B92000',
+    description: 'Enhanced therapy experience',
+    price: '₹2,000',
     icon: Users,
-    color: '#3B82F6',
-    bgColor: '#DBEAFE',
-  },
-  {
-    id: 'pro' as SessionType,
-    title: 'Pro 90 min',
-    description: 'Comprehensive therapy session',
-    price: '\u20B93000',
-    icon: Crown,
-    color: '#8B5CF6',
-    bgColor: '#EDE9FE',
+    iconColor: '#2563eb',
+    iconBg: '#dbeafe',
+    btnColor: '#2563eb',
   },
 ];
 
-export default function SessionTypeSelector({ onSessionSelect }: SessionTypeSelectorProps) {
+export default function SessionTypeSelector({ onSessionSelect }: Props) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
-  const [selectedSession, setSelectedSession] = useState<SessionType | null>(null);
+  const { width } = useWindowDimensions();
+  const [selected, setSelected] = useState<SessionType | null>(null);
+
+  const GAP = 12;
+  const H_PAD = 32;
+  const cardW = Math.floor((width - H_PAD - GAP) / 2);
   const cardBg = scheme === 'dark' ? colors.surface : colors.card;
 
-  const handleSessionSelect = (sessionType: SessionType) => {
-    setSelectedSession(sessionType);
-    onSessionSelect?.(sessionType);
+  const handleSelect = (id: SessionType) => {
+    setSelected(id);
+    onSessionSelect?.(id);
   };
 
   return (
-    <View style={{ paddingHorizontal: 16, marginBottom: 0 }}>
-      <View style={{ marginBottom: 0 }}>
-        <Text
-          style={{
-            fontSize: 20,
-            fontWeight: '700',
-            color: colors.text,
-            marginBottom: 8,
-          }}
-        >
+    <View style={{ paddingHorizontal: 16, marginBottom: 4 }}>
+      {/* Section header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.2 }}>
           Choose Your Session Type
         </Text>
-        <Text
-          style={{
-            fontSize: 14,
-            color: colors.muted,
-            marginBottom: 16,
-            lineHeight: 20,
-          }}
-        >
-          Your therapist&apos;s identity will be revealed after payment for unbiased matching.
-        </Text>
+        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Info size={13} color={colors.primary} />
+          <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>How it works</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 14, lineHeight: 17 }}>
+        Your therapist's identity will be revealed after payment for unbiased matching.
+      </Text>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          {SESSION_TYPES.map((session) => {
-            const IconComponent = session.icon;
-            const isSelected = selectedSession === session.id;
+      {/* 2-column grid */}
+      <View style={{ flexDirection: 'row', gap: GAP }}>
+        {SESSIONS.map((s) => {
+          const Icon = s.icon;
+          const isSelected = selected === s.id;
 
-            return (
-              <TouchableOpacity
-                key={session.id}
-                onPress={() => handleSessionSelect(session.id)}
-                activeOpacity={0.92}
-                style={{
-                  backgroundColor: cardBg,
-                  borderRadius: 20,
-                  padding: 16,
-                  marginRight: 12,
-                  width: 200,
-                  borderWidth: isSelected ? 2 : 1,
-                  borderColor: isSelected ? session.color : colors.border,
-                  shadowColor: isSelected ? session.color : '#000000',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: scheme === 'dark' ? (isSelected ? 0.3 : 0.16) : (isSelected ? 0.1 : 0.05),
-                  shadowRadius: isSelected ? 12 : 5,
-                  elevation: isSelected ? 4 : 1,
-                }}
-              >
+          return (
+            <TouchableOpacity
+              key={s.id}
+              onPress={() => handleSelect(s.id)}
+              activeOpacity={0.88}
+              style={{
+                width: cardW,
+                backgroundColor: cardBg,
+                borderRadius: 18,
+                padding: 14,
+                borderWidth: isSelected ? 2 : 1,
+                borderColor: isSelected ? s.iconColor : colors.border,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: scheme === 'dark' ? 0.18 : 0.06,
+                shadowRadius: 8,
+                elevation: isSelected ? 3 : 1,
+              }}
+            >
+              {/* Icon + radio */}
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
                 <View
                   style={{
-                    backgroundColor: session.bgColor,
-                    width: 48,
-                    height: 48,
-                    borderRadius: 16,
+                    backgroundColor: s.iconBg,
+                    width: 44,
+                    height: 44,
+                    borderRadius: 13,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: 12,
                   }}
                 >
-                  <IconComponent size={24} color={session.color} />
+                  <Icon size={22} color={s.iconColor} />
                 </View>
-
-                <Text
+                {/* Radio circle */}
+                <View
                   style={{
-                    fontSize: 16,
-                    fontWeight: '700',
-                    color: colors.cardText,
-                    marginBottom: 4,
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    borderWidth: 2,
+                    borderColor: isSelected ? s.iconColor : colors.border,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginTop: 2,
                   }}
                 >
-                  {session.title}
-                </Text>
-
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: colors.muted,
-                    marginBottom: 8,
-                    lineHeight: 18,
-                  }}
-                >
-                  {session.description}
-                </Text>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text
-                    style={{
-                      fontSize: 18,
-                      fontWeight: '700',
-                      color: session.color,
-                    }}
-                  >
-                    {session.price}
-                  </Text>
-
-                  <TouchableOpacity
-                    onPress={() => handleSessionSelect(session.id)}
-                    style={{
-                      backgroundColor: session.color,
-                      paddingHorizontal: 16,
-                      paddingVertical: 8,
-                      borderRadius: 12,
-                    }}
-                  >
-                    <Text
+                  {isSelected && (
+                    <View
                       style={{
-                        color: 'white',
-                        fontSize: 14,
-                        fontWeight: '600',
+                        width: 10,
+                        height: 10,
+                        borderRadius: 5,
+                        backgroundColor: s.iconColor,
                       }}
-                    >
-                      Choose
-                    </Text>
-                  </TouchableOpacity>
+                    />
+                  )}
                 </View>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+              </View>
+
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.cardText, marginBottom: 3 }}>
+                {s.title}
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 14, lineHeight: 17 }}>
+                {s.description}
+              </Text>
+
+              {/* Price + button */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 17, fontWeight: '800', color: s.iconColor }}>
+                  {s.price}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => handleSelect(s.id)}
+                  style={{
+                    backgroundColor: s.btnColor,
+                    paddingHorizontal: 14,
+                    paddingVertical: 7,
+                    borderRadius: 10,
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>Choose</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
