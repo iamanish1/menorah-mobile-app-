@@ -4,22 +4,24 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Bell, LifeBuoy, Moon, Sun } from "lucide-react-native";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
-import { useAuth } from "@/state/useAuth";
 
 export default function Navbar({
   onHelp,
   onBell,
   unreadCount = 0,
+  userName,
+  userImage,
 }: {
   onHelp?: () => void;
   onBell?: () => void;
   unreadCount?: number;
+  userName?: string;
+  userImage?: string;
 }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { scheme, toggle } = useThemeMode();
   const colors = palettes[scheme];
-  const { user } = useAuth();
   const isCompact = width < 390;
 
   const actionBg = scheme === 'dark' ? 'rgba(246,242,232,0.08)' : 'rgba(0,0,0,0.06)';
@@ -102,9 +104,9 @@ export default function Navbar({
     >
       {/* Left: avatar + greeting */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, paddingRight: 8 }}>
-        {user?.profileImage ? (
+        {userImage ? (
           <Image
-            source={{ uri: user.profileImage }}
+            source={{ uri: userImage }}
             style={{ width: isCompact ? 44 : 48, height: isCompact ? 44 : 48, borderRadius: isCompact ? 22 : 24 }}
             contentFit="cover"
           />
@@ -120,7 +122,7 @@ export default function Navbar({
             }}
           >
             <Text style={{ color: 'white', fontSize: isCompact ? 16 : 18, fontWeight: '700' }}>
-              {user?.firstName?.[0]?.toUpperCase() ?? 'M'}
+              {userName?.[0]?.toUpperCase() ?? 'M'}
             </Text>
           </View>
         )}
@@ -138,7 +140,7 @@ export default function Navbar({
               lineHeight: isCompact ? 22 : 24,
             }}
           >
-            {user?.firstName ?? 'Menorah'}
+            {userName ?? 'Menorah'}
           </Text>
           <Text style={{ color: colors.muted, fontSize: isCompact ? 10 : 11, fontWeight: '500' }}>
             Mind Over Matter

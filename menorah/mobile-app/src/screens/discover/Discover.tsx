@@ -16,6 +16,7 @@ import { ARTICLES } from "@/mock/articles";
 import { mockCounsellors } from "@/mock/counsellors";
 import { INSTA } from "@/mock/instagram";
 import { useNotifications } from "@/state/useNotifications";
+import { useAuth } from "@/state/useAuth";
 import { palettes } from "@/theme/colors";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -55,6 +56,7 @@ export default function Discover({ navigation }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const { unreadCount } = useNotifications();
+  const { user } = useAuth();
 
   const normalizedQuery = q.trim().toLowerCase();
   const isSearching = normalizedQuery.length > 0;
@@ -95,6 +97,8 @@ export default function Discover({ navigation }: any) {
           onHelp={() => setHelp(true)}
           onBell={() => navigation.navigate('Notifications')}
           unreadCount={unreadCount}
+          userName={user?.firstName}
+          userImage={user?.profileImage}
         />
 
         {/* Search bar + filter button */}
