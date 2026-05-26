@@ -233,6 +233,13 @@ export default function RegisterPage() {
 
   // Rejected
   if (appStatus === 'rejected') {
+    const handleReapply = () => {
+      localStorage.removeItem(STORAGE_KEY);
+      setAppStatus('idle');
+      setRejectionReason(null);
+      setCurrentStep(1);
+    };
+
     return (
       <div className={styles.container}>
         <div className={styles.content}>
@@ -258,9 +265,20 @@ export default function RegisterPage() {
                   </p>
                 </div>
               )}
-              <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: 20 }}>
-                If you believe this is a mistake, please contact <a href="mailto:support@menorahhealth.app" style={{ color: '#2563eb' }}>support@menorahhealth.app</a>
-              </p>
+              <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={handleReapply}
+                  style={{ width: '100%', maxWidth: 320 }}
+                >
+                  Apply Again →
+                </Button>
+                <p style={{ color: '#9ca3af', fontSize: '0.8rem', margin: 0 }}>
+                  Questions? Contact{' '}
+                  <a href="mailto:support@menorah.me" style={{ color: '#2563eb' }}>support@menorah.me</a>
+                </p>
+              </div>
             </div>
           </Card>
         </div>
