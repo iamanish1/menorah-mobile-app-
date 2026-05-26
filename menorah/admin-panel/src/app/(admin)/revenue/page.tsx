@@ -260,7 +260,7 @@ export default function RevenuePage() {
       {/* Payout Modal */}
       <Modal open={payoutModal.open} onClose={() => { setPayoutModal({ open: false, counsellor: null }); setPayoutResult(null); }} title="Initiate Payout" size="md">
         {payoutModal.counsellor && !payoutResult && (
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
 
             {/* Counsellor header */}
             <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
@@ -372,24 +372,26 @@ export default function RevenuePage() {
                   </p>
                 </div>
 
-                {/* Actions */}
-                <div className="flex gap-2.5 pt-1">
-                  <button
-                    onClick={() => setPayoutModal({ open: false, counsellor: null })}
-                    className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handlePayout}
-                    disabled={payoutLoading}
-                    className="flex-[2] px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-sm font-bold disabled:opacity-60 transition-all shadow-sm flex items-center justify-center gap-2"
-                  >
-                    {payoutLoading
-                      ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing…</>
-                      : <><Send size={14} /> Send {payoutAmount ? formatCurrency(parseFloat(payoutAmount) || 0) : ''}</>
-                    }
-                  </button>
+                {/* Actions — sticky footer */}
+                <div className="sticky bottom-0 bg-white pt-2 pb-1 -mx-6 px-6 border-t border-gray-100 mt-2">
+                  <div className="flex gap-2.5">
+                    <button
+                      onClick={() => setPayoutModal({ open: false, counsellor: null })}
+                      className="flex-1 px-4 py-3 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handlePayout}
+                      disabled={payoutLoading}
+                      className="flex-[2] px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-sm font-bold disabled:opacity-60 transition-all shadow-md flex items-center justify-center gap-2"
+                    >
+                      {payoutLoading
+                        ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing…</>
+                        : <><Send size={14} /> Send {payoutAmount ? formatCurrency(parseFloat(payoutAmount) || 0) : 'Payout'}</>
+                      }
+                    </button>
+                  </div>
                 </div>
               </>
             )}
