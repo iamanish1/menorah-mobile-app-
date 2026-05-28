@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react-native';
 import Input from '@/components/ui/Input';
 import { useThemeMode } from "@/theme/ThemeProvider";
@@ -157,21 +158,27 @@ export default function Register({ navigation }: any) {
         {/* Header */}
         <View style={{ alignItems: 'center', marginBottom: 32 }}>
           <View style={{
-            width: 80,
-            height: 80,
-            backgroundColor: colors.primary,
-            borderRadius: 40,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 20
+            width: 100, height: 100, borderRadius: 50,
+            backgroundColor: 'white',
+            alignItems: 'center', justifyContent: 'center',
+            marginBottom: 20,
+            shadowColor: '#2d5c3e',
+            shadowOffset: { width: 0, height: 5 },
+            shadowOpacity: 0.15, shadowRadius: 14, elevation: 8,
+            padding: 4,
           }}>
-            <Text style={{
-              fontSize: 32,
-              fontWeight: 'bold',
-              color: 'white'
+            <View style={{
+              width: 92, height: 92, borderRadius: 46,
+              backgroundColor: '#2d5c3e',
+              alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden',
             }}>
-              🧠
-            </Text>
+              <Image
+                source={require('../../../assets/brand/menorah-logo-no-bg.png')}
+                style={{ width: 70, height: 70 }}
+                contentFit="contain"
+              />
+            </View>
           </View>
           <Text style={{ 
             fontSize: 28, 
