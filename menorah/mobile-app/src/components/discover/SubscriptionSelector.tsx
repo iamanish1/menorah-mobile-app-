@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
-import { CalendarDays, Clock, Percent, ChevronRight } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { CalendarDays, Clock, Crown, Percent, ChevronRight } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { useNavigation } from '@react-navigation/native';
@@ -13,9 +13,10 @@ interface Props {
 const PLANS = [
   {
     id: 'weekly' as SubscriptionType,
-    title: 'Weekly Plan',
+    title: 'Weekly',
     description: 'Perfect for trying out',
     price: '₹500',
+    badge: null,
     icon: CalendarDays,
     iconColor: '#16a34a',
     iconBg: '#dcfce7',
@@ -23,26 +24,35 @@ const PLANS = [
   },
   {
     id: 'monthly' as SubscriptionType,
-    title: 'Monthly Plan',
-    description: 'Most popular',
+    title: 'Monthly',
+    description: 'Most popular choice',
     price: '₹1,500',
+    badge: 'Popular',
     icon: Clock,
     iconColor: '#2563eb',
     iconBg: '#dbeafe',
     btnColor: '#2563eb',
   },
+  {
+    id: 'yearly' as SubscriptionType,
+    title: 'Yearly',
+    description: 'Best value, save 33%',
+    price: '₹12,000',
+    badge: 'Best Value',
+    icon: Crown,
+    iconColor: '#7c3aed',
+    iconBg: '#ede9fe',
+    btnColor: '#7c3aed',
+  },
 ];
+
+const CARD_WIDTH = 158;
 
 export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const navigation = useNavigation<any>();
-  const { width } = useWindowDimensions();
   const [selected, setSelected] = useState<SubscriptionType | null>(null);
-
-  const GAP = 12;
-  const H_PAD = 32;
-  const cardW = Math.floor((width - H_PAD - GAP) / 2);
   const cardBg = scheme === 'dark' ? colors.surface : colors.card;
 
   const handleSelect = (id: SubscriptionType) => {
@@ -52,17 +62,22 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
   };
 
   return (
-    <View style={{ paddingHorizontal: 16, marginBottom: 4 }}>
+    <View style={{ marginBottom: 4 }}>
       {/* Section header */}
-      <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 4, letterSpacing: -0.2 }}>
-        Buy Subscription
-      </Text>
-      <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 14, lineHeight: 17 }}>
-        Choose a subscription plan that works best for you.
-      </Text>
+      <View style={{ paddingHorizontal: 16, marginBottom: 4 }}>
+        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.2 }}>
+          Buy Subscription
+        </Text>
+        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4, marginBottom: 14, lineHeight: 17 }}>
+          Choose a subscription plan that works best for you.
+        </Text>
+      </View>
 
-      {/* 2-column grid */}
-      <View style={{ flexDirection: 'row', gap: GAP, marginBottom: 12 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+      >
         {PLANS.map((p) => {
           const Icon = p.icon;
           const isSelected = selected === p.id;
@@ -73,7 +88,7 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
               onPress={() => handleSelect(p.id)}
               activeOpacity={0.88}
               style={{
-                width: cardW,
+                width: CARD_WIDTH,
                 backgroundColor: cardBg,
                 borderRadius: 18,
                 padding: 14,
@@ -87,18 +102,18 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
               }}
             >
               {/* Icon + radio */}
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
                 <View
                   style={{
                     backgroundColor: p.iconBg,
-                    width: 44,
-                    height: 44,
+                    width: 42,
+                    height: 42,
                     borderRadius: 13,
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Icon size={22} color={p.iconColor} />
+                  <Icon size={20} color={p.iconColor} />
                 </View>
                 <View
                   style={{
@@ -118,16 +133,23 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
                 </View>
               </View>
 
-              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.cardText, marginBottom: 3 }}>
-                {p.title}
-              </Text>
-              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 14, lineHeight: 17 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.cardText }}>
+                  {p.title}
+                </Text>
+                {p.badge && (
+                  <View style={{ backgroundColor: p.iconBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '700', color: p.iconColor }}>{p.badge}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 14, lineHeight: 16 }}>
                 {p.description}
               </Text>
 
-              {/* Price + outlined button */}
+              {/* Price + button */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 17, fontWeight: '800', color: p.iconColor }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: p.iconColor }}>
                   {p.price}
                 </Text>
                 <TouchableOpacity
@@ -135,23 +157,25 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
                   style={{
                     borderWidth: 1.5,
                     borderColor: p.btnColor,
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
                     borderRadius: 10,
                   }}
                 >
-                  <Text style={{ color: p.btnColor, fontSize: 13, fontWeight: '700' }}>Choose</Text>
+                  <Text style={{ color: p.btnColor, fontSize: 12, fontWeight: '700' }}>Choose</Text>
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
 
       {/* Savings banner */}
       <TouchableOpacity
         activeOpacity={0.88}
         style={{
+          marginHorizontal: 16,
+          marginTop: 12,
           backgroundColor: colors.primary,
           borderRadius: 16,
           paddingHorizontal: 14,
@@ -169,7 +193,6 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
             backgroundColor: 'rgba(255,255,255,0.18)',
             alignItems: 'center',
             justifyContent: 'center',
-            flexShrink: 0,
           }}
         >
           <Percent size={18} color="white" />

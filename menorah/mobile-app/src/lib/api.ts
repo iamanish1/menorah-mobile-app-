@@ -19,6 +19,7 @@ export interface User {
     sms?: boolean;
     push?: boolean;
   };
+  createdAt?: string;
 }
 
 export interface Counsellor {
@@ -68,9 +69,11 @@ export interface ChatRoom {
   id: string;
   counsellorName: string;
   counsellorImage?: string;
-  counsellorUserId?: string; // Add counselor userId for presence tracking
+  counsellorUserId?: string;
+  specialization?: string;
   lastMessage: string;
   lastMessageTime: string;
+  lastMessageSenderId?: string;
   unreadCount: number;
   isOnline: boolean;
 }

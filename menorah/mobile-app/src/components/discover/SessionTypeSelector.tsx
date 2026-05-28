@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
-import { User, Users, Info } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { User, Users, Crown, Info } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 
@@ -14,7 +14,8 @@ interface Props {
 const SESSIONS = [
   {
     id: 'basic' as SessionType,
-    title: 'Basic 45 min',
+    title: 'Basic',
+    duration: '45 min',
     description: 'Perfect for getting started',
     price: '₹1,000',
     icon: User,
@@ -24,7 +25,8 @@ const SESSIONS = [
   },
   {
     id: 'premium' as SessionType,
-    title: 'Premium 60 min',
+    title: 'Premium',
+    duration: '60 min',
     description: 'Enhanced therapy experience',
     price: '₹2,000',
     icon: Users,
@@ -32,17 +34,25 @@ const SESSIONS = [
     iconBg: '#dbeafe',
     btnColor: '#2563eb',
   },
+  {
+    id: 'pro' as SessionType,
+    title: 'Pro',
+    duration: '90 min',
+    description: 'Deep dive therapy session',
+    price: '₹3,000',
+    icon: Crown,
+    iconColor: '#7c3aed',
+    iconBg: '#ede9fe',
+    btnColor: '#7c3aed',
+  },
 ];
+
+const CARD_WIDTH = 158;
 
 export default function SessionTypeSelector({ onSessionSelect }: Props) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
-  const { width } = useWindowDimensions();
   const [selected, setSelected] = useState<SessionType | null>(null);
-
-  const GAP = 12;
-  const H_PAD = 32;
-  const cardW = Math.floor((width - H_PAD - GAP) / 2);
   const cardBg = scheme === 'dark' ? colors.surface : colors.card;
 
   const handleSelect = (id: SessionType) => {
@@ -51,9 +61,9 @@ export default function SessionTypeSelector({ onSessionSelect }: Props) {
   };
 
   return (
-    <View style={{ paddingHorizontal: 16, marginBottom: 4 }}>
+    <View style={{ marginBottom: 4 }}>
       {/* Section header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+      <View style={{ paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
         <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.2 }}>
           Choose Your Session Type
         </Text>
@@ -62,12 +72,15 @@ export default function SessionTypeSelector({ onSessionSelect }: Props) {
           <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>How it works</Text>
         </TouchableOpacity>
       </View>
-      <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 14, lineHeight: 17 }}>
+      <Text style={{ paddingHorizontal: 16, fontSize: 12, color: colors.muted, marginBottom: 14, lineHeight: 17 }}>
         Your therapist's identity will be revealed after payment for unbiased matching.
       </Text>
 
-      {/* 2-column grid */}
-      <View style={{ flexDirection: 'row', gap: GAP }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+      >
         {SESSIONS.map((s) => {
           const Icon = s.icon;
           const isSelected = selected === s.id;
@@ -78,7 +91,7 @@ export default function SessionTypeSelector({ onSessionSelect }: Props) {
               onPress={() => handleSelect(s.id)}
               activeOpacity={0.88}
               style={{
-                width: cardW,
+                width: CARD_WIDTH,
                 backgroundColor: cardBg,
                 borderRadius: 18,
                 padding: 14,
@@ -92,20 +105,19 @@ export default function SessionTypeSelector({ onSessionSelect }: Props) {
               }}
             >
               {/* Icon + radio */}
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
                 <View
                   style={{
                     backgroundColor: s.iconBg,
-                    width: 44,
-                    height: 44,
+                    width: 42,
+                    height: 42,
                     borderRadius: 13,
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Icon size={22} color={s.iconColor} />
+                  <Icon size={20} color={s.iconColor} />
                 </View>
-                {/* Radio circle */}
                 <View
                   style={{
                     width: 20,
@@ -119,46 +131,42 @@ export default function SessionTypeSelector({ onSessionSelect }: Props) {
                   }}
                 >
                   {isSelected && (
-                    <View
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 5,
-                        backgroundColor: s.iconColor,
-                      }}
-                    />
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: s.iconColor }} />
                   )}
                 </View>
               </View>
 
-              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.cardText, marginBottom: 3 }}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.cardText, marginBottom: 1 }}>
                 {s.title}
               </Text>
-              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 14, lineHeight: 17 }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: s.iconColor, marginBottom: 4 }}>
+                {s.duration}
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 14, lineHeight: 16 }}>
                 {s.description}
               </Text>
 
               {/* Price + button */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 17, fontWeight: '800', color: s.iconColor }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: s.iconColor }}>
                   {s.price}
                 </Text>
                 <TouchableOpacity
                   onPress={() => handleSelect(s.id)}
                   style={{
                     backgroundColor: s.btnColor,
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
                     borderRadius: 10,
                   }}
                 >
-                  <Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>Choose</Text>
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: '700' }}>Choose</Text>
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 }

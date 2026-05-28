@@ -10,6 +10,7 @@ import HelpSheet from "@/components/help/HelpSheet";
 import SectionHeader from "@/components/ui/SectionHeader";
 import SessionTypeSelector from "@/components/discover/SessionTypeSelector";
 import SubscriptionSelector from "@/components/discover/SubscriptionSelector";
+import FindCounsellorHero from "@/components/discover/FindCounsellorHero";
 import ArticleCard from "@/components/cards/ArticleCard";
 import InstaPostCard from "@/components/cards/InstaPostCard";
 import { ARTICLES } from "@/mock/articles";
@@ -255,6 +256,9 @@ export default function Discover({ navigation }: any) {
         ) : (
           /* ── Home feed ── */
           <>
+            {/* Find Counsellor Hero */}
+            <FindCounsellorHero onPress={() => navigation.navigate('CounsellorList')} />
+
             {/* Session Type */}
             <SessionTypeSelector
               onSessionSelect={(sessionType) => {

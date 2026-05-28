@@ -1,37 +1,51 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Modal } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
+  RefreshControl, Alert, Modal, TextInput,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
-import { MessageCircle, Clock, Plus, X } from "lucide-react-native";
+import {
+  Plus, X, Search, SlidersHorizontal, ShieldCheck,
+  Mail, Users, Archive, Bell, ChevronRight, MessageSquare,
+  MessageCircle, Lock,
+} from "lucide-react-native";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useChat } from "@/state/useChat";
-import { api } from "@/lib/api";
-import { ChatRoom } from "@/lib/api";
+import { useAuth } from "@/state/useAuth";
+import { api, ChatRoom } from "@/lib/api";
+
+type FilterTab = 'all' | 'unread' | 'counsellors' | 'archived';
+
+const FILTER_TABS: { id: FilterTab; label: string; icon: any }[] = [
+  { id: 'all',         label: 'All',         icon: MessageSquare },
+  { id: 'unread',      label: 'Unread',      icon: Mail },
+  { id: 'counsellors', label: 'Counsellors', icon: Users },
+  { id: 'archived',    label: 'Archived',    icon: Archive },
+];
 
 export default function ChatList({ navigation }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const { chatRooms, fetchChatRooms, isConnected } = useChat();
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [showAvailableCounsellors, setShowAvailableCounsellors] = useState(false);
-  const [availableCounsellors, setAvailableCounsellors] = useState<any[]>([]);
-  const [loadingCounsellors, setLoadingCounsellors] = useState(false);
+  const { user } = useAuth();
 
-  useEffect(() => {
-    loadChatRooms();
-  }, []);
+  const [loading, setLoading]                           = useState(false);
+  const [refreshing, setRefreshing]                     = useState(false);
+  const [showModal, setShowModal]                       = useState(false);
+  const [availableCounsellors, setAvailableCounsellors] = useState<any[]>([]);
+  const [loadingCounsellors, setLoadingCounsellors]     = useState(false);
+  const [activeFilter, setActiveFilter]                 = useState<FilterTab>('all');
+  const [searchQ, setSearchQ]                           = useState('');
+  const [bannerVisible, setBannerVisible]               = useState(true);
+
+  useEffect(() => { loadChatRooms(); }, []);
 
   const loadChatRooms = async () => {
     setLoading(true);
-    try {
-      await fetchChatRooms();
-    } catch (error) {
-      console.error('Error loading chat rooms:', error);
-    } finally {
-      setLoading(false);
-    }
+    try { await fetchChatRooms(); } catch {}
+    finally { setLoading(false); }
   };
 
   const onRefresh = async () => {
@@ -42,384 +56,592 @@ export default function ChatList({ navigation }: any) {
 
   const loadAvailableCounsellors = async () => {
     setLoadingCounsellors(true);
+    setShowModal(true);
     try {
-      const response = await api.getAvailableCounsellors();
-      console.log('Available counselors response:', response);
-      if (response.success && response.data) {
-        const counsellors = response.data.counsellors || [];
-        console.log(`Found ${counsellors.length} available counselors`);
-        setAvailableCounsellors(counsellors);
-        setShowAvailableCounsellors(true);
-        
-        if (counsellors.length === 0) {
-          Alert.alert(
-            'No Counselors Available',
-            'There are no counselors available for chat at the moment. Please try again later.',
-            [{ text: 'OK' }]
-          );
-        }
+      const res = await api.getAvailableCounsellors();
+      if (res.success && res.data) {
+        setAvailableCounsellors(res.data.counsellors || []);
       } else {
-        console.error('Failed to load counselors:', response);
-        Alert.alert('Error', response.message || 'Failed to load available counselors');
+        Alert.alert('Error', res.message || 'Failed to load counsellors');
+        setShowModal(false);
       }
-    } catch (error: any) {
-      console.error('Error loading available counselors:', error);
-      Alert.alert('Error', error.message || 'Failed to load available counselors. Please try again.');
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to load counsellors');
+      setShowModal(false);
     } finally {
       setLoadingCounsellors(false);
     }
   };
 
-  const handleStartChat = async (counsellorId: string, counsellorName: string) => {
+  const handleStartChat = async (counsellorId: string, name: string) => {
     try {
-      const response = await api.startChat(counsellorId);
-      if (response.success && response.data) {
-        const room = response.data.room;
-        setShowAvailableCounsellors(false);
-        // Refresh chat rooms
+      const res = await api.startChat(counsellorId);
+      if (res.success && res.data) {
+        const room = res.data.room;
+        setShowModal(false);
         await fetchChatRooms();
-        // Navigate to the chat thread
         navigation.navigate('ChatThread', {
           roomId: room.roomId || room.id,
           counsellorUserId: room.counsellorUserId || room.counsellorId,
-          counsellorName: room.counsellorName || counsellorName,
-          counsellorImage: room.counsellorImage
+          counsellorName: room.counsellorName || name,
+          counsellorImage: room.counsellorImage,
         });
       } else {
-        Alert.alert('Error', response.message || 'Failed to start chat');
+        Alert.alert('Error', res.message || 'Failed to start chat');
       }
-    } catch (error: any) {
-      console.error('Error starting chat:', error);
+    } catch {
       Alert.alert('Error', 'Failed to start chat. Please try again.');
     }
   };
 
-  const formatTimestamp = (timestamp: string) => {
+  const formatTime = (ts: string) => {
     try {
-      const date = new Date(timestamp);
-      const now = new Date();
+      const date = new Date(ts);
+      const now  = new Date();
       const diff = now.getTime() - date.getTime();
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      
-      if (days === 0) {
-        return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      } else if (days === 1) {
-        return 'Yesterday';
-      } else if (days < 7) {
-        return `${days} days ago`;
-      } else {
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      }
-    } catch {
-      return timestamp;
-    }
+      const days = Math.floor(diff / 86400000);
+      if (days === 0) return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      if (days === 1) return 'Yesterday';
+      if (days < 7)   return date.toLocaleDateString('en-US', { weekday: 'short' });
+      return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    } catch { return ''; }
   };
 
+  const totalUnread = chatRooms.reduce((s: number, r: ChatRoom) => s + (r.unreadCount || 0), 0);
+
+  const filteredRooms = chatRooms.filter((r: ChatRoom) => {
+    const q = searchQ.trim().toLowerCase();
+    if (q && !(r.counsellorName || '').toLowerCase().includes(q) && !(r.lastMessage || '').toLowerCase().includes(q)) return false;
+    if (activeFilter === 'unread') return (r.unreadCount || 0) > 0;
+    return true;
+  });
+
+  const isDark   = scheme === 'dark';
+  const cardBg   = isDark ? colors.surface : '#ffffff';
+  const pageBg   = isDark ? colors.bg : '#f5f7f5';
+  const bannerBg = isDark ? '#1a2e22' : '#edf7f1';
+
+  const getInitial = (name: string) => (name || 'C').charAt(0).toUpperCase();
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Header */}
-      <View style={{
-        backgroundColor: colors.card,
-        paddingHorizontal: 16,
-        paddingVertical: 20,
-        borderBottomLeftRadius: 24,
-        borderBottomRightRadius: 24
-      }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: pageBg }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      >
+
+        {/* ── Header ── */}
+        <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 2, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <View>
-            <Text style={{ fontSize: 24, fontWeight: '700', color: colors.cardText }}>
+            <Text style={{ fontSize: 32, fontWeight: '900', color: colors.text, letterSpacing: -0.6 }}>
               Messages
             </Text>
-            <Text style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>
+            <Text style={{ fontSize: 14, color: colors.muted, marginTop: 3 }}>
               Chat with your counsellors
             </Text>
           </View>
           <TouchableOpacity
             onPress={loadAvailableCounsellors}
             style={{
+              width: 48, height: 48, borderRadius: 24,
               backgroundColor: colors.primary,
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              alignItems: 'center',
-              justifyContent: 'center'
+              alignItems: 'center', justifyContent: 'center',
+              shadowColor: colors.primary,
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.35, shadowRadius: 10, elevation: 5,
             }}
           >
-            <Plus size={24} color="white" />
+            <Plus size={24} color="white" strokeWidth={2.5} />
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Chat List */}
-      <ScrollView 
-        style={{ flex: 1 }} 
-        contentContainerStyle={{ padding: 16 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-        }
-      >
-        {loading ? (
-          <View style={{ alignItems: 'center', marginTop: 40 }}>
-            <ActivityIndicator size="large" color={colors.primary} />
+        {/* ── Search ── */}
+        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{
+            flex: 1, flexDirection: 'row', alignItems: 'center',
+            backgroundColor: cardBg, borderRadius: 50,
+            borderWidth: 1, borderColor: colors.border,
+            paddingHorizontal: 16, height: 48, gap: 10,
+          }}>
+            <Search size={16} color={colors.muted} />
+            <TextInput
+              value={searchQ}
+              onChangeText={setSearchQ}
+              placeholder="Search counsellor or messages"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={{ flex: 1, fontSize: 14, color: colors.text, paddingVertical: 0 }}
+            />
           </View>
-        ) : chatRooms.length > 0 ? (
-          chatRooms.map((chat: ChatRoom) => (
-            <TouchableOpacity
-              key={chat.id}
-              onPress={() => navigation.navigate("ChatThread", { 
-                roomId: chat.id,
-                counsellorUserId: chat.counsellorUserId,
-                counsellorName: chat.counsellorName,
-                counsellorImage: chat.counsellorImage
-              })}
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 20,
-                padding: 16,
-                marginBottom: 12,
-                borderWidth: 1,
-                borderColor: colors.border
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={{ position: 'relative' }}>
-                  {chat.counsellorImage ? (
-                    <Image
-                      source={{ uri: chat.counsellorImage }}
-                      style={{ width: 50, height: 50, borderRadius: 25 }}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    <View style={{
-                      width: 50,
-                      height: 50,
-                      borderRadius: 25,
-                      backgroundColor: colors.primary + '20',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      <MessageCircle size={24} color={colors.primary} />
-                    </View>
-                  )}
-                  {chat.isOnline && (
-                    <View style={{
-                      position: 'absolute',
-                      bottom: 2,
-                      right: 2,
-                      width: 12,
-                      height: 12,
-                      borderRadius: 6,
-                      backgroundColor: '#10B981',
-                      borderWidth: 2,
-                      borderColor: colors.card
-                    }} />
-                  )}
-                </View>
-                
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: colors.cardText }}>
-                      {chat.counsellorName && chat.counsellorName !== 'undefined undefined' ? chat.counsellorName : 'Counsellor'}
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Clock size={12} color={colors.muted} />
-                      <Text style={{ fontSize: 12, color: colors.muted, marginLeft: 4 }}>
-                        {formatTimestamp(chat.lastMessageTime)}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 4 }} numberOfLines={1}>
-                    {chat.lastMessage || 'No messages yet'}
-                  </Text>
-                </View>
-                
-                {chat.unreadCount > 0 && (
+          <TouchableOpacity style={{
+            width: 48, height: 48, borderRadius: 24,
+            backgroundColor: cardBg, borderWidth: 1, borderColor: colors.border,
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <SlidersHorizontal size={18} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Filter tabs ── */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 20, gap: 8, paddingBottom: 18 }}
+        >
+          {FILTER_TABS.map((tab) => {
+            const active = activeFilter === tab.id;
+            const Icon   = tab.icon;
+            const badge  = tab.id === 'unread' && totalUnread > 0 ? totalUnread : null;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                onPress={() => setActiveFilter(tab.id)}
+                activeOpacity={0.82}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 16, paddingVertical: 10, borderRadius: 50,
+                  backgroundColor: active ? colors.primary : cardBg,
+                  borderWidth: 1.5,
+                  borderColor: active ? colors.primary : colors.border,
+                }}
+              >
+                <Icon size={14} color={active ? 'white' : colors.muted} strokeWidth={2} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: active ? 'white' : colors.muted }}>
+                  {tab.label}
+                </Text>
+                {badge && (
                   <View style={{
-                    backgroundColor: colors.primary,
-                    borderRadius: 16,
-                    minWidth: 20,
-                    height: 20,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginLeft: 8,
-                    paddingHorizontal: 6
+                    minWidth: 20, height: 20, borderRadius: 10,
+                    backgroundColor: active ? 'rgba(255,255,255,0.28)' : colors.primary,
+                    alignItems: 'center', justifyContent: 'center',
+                    paddingHorizontal: 4,
                   }}>
-                    <Text style={{ color: 'white', fontSize: 12, fontWeight: '600' }}>
-                      {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
-                    </Text>
+                    <Text style={{ color: 'white', fontSize: 10, fontWeight: '900' }}>{badge}</Text>
                   </View>
                 )}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* ── Privacy banner ── */}
+        {bannerVisible && (
+          <View style={{
+            marginHorizontal: 20, marginBottom: 22,
+            backgroundColor: cardBg, borderRadius: 20,
+            borderWidth: 1, borderColor: colors.border,
+            overflow: 'hidden', flexDirection: 'row', alignItems: 'center',
+            minHeight: 90,
+          }}>
+            {/* Left content */}
+            <View style={{ flex: 1, padding: 16, paddingRight: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <View style={{
+                  width: 40, height: 40, borderRadius: 20,
+                  backgroundColor: colors.primary + '14',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <ShieldCheck size={20} color={colors.primary} />
+                </View>
               </View>
-            </TouchableOpacity>
-          ))
-        ) : (
-          <View style={{ alignItems: 'center', marginTop: 40 }}>
-            <MessageCircle size={48} color={colors.muted} />
-            <Text style={{ fontSize: 18, fontWeight: '600', color: colors.cardText, marginTop: 16 }}>
-              No messages yet
-            </Text>
-            <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginTop: 8 }}>
-              Start a conversation with your counsellor
-            </Text>
-            {!isConnected && (
-              <Text style={{ fontSize: 12, color: colors.muted, textAlign: 'center', marginTop: 8, fontStyle: 'italic' }}>
-                Connecting to chat service...
+              <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: 4 }}>
+                Safe. Private. Personal.
               </Text>
-            )}
+              <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 18 }}>
+                Your conversations are end-to-end encrypted and always confidential.
+              </Text>
+            </View>
+
+            {/* Right illustration — decorative lock */}
+            <View style={{
+              width: 90, alignItems: 'center', justifyContent: 'center',
+              paddingRight: 8,
+            }}>
+              <View style={{ position: 'relative', alignItems: 'center', justifyContent: 'center' }}>
+                {/* Leaf accents */}
+                <View style={{
+                  width: 72, height: 72, borderRadius: 36,
+                  backgroundColor: colors.primary + '10',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <View style={{
+                    width: 52, height: 52, borderRadius: 26,
+                    backgroundColor: colors.primary + '1C',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Lock size={26} color={colors.primary} strokeWidth={2} />
+                  </View>
+                </View>
+                {/* Sparkle dots */}
+                {[[-4, -28], [28, -10], [-26, 10]].map(([x, y], i) => (
+                  <View key={i} style={{
+                    position: 'absolute', left: 36 + x, top: 36 + y,
+                    width: 5, height: 5, borderRadius: 3,
+                    backgroundColor: colors.primary + '60',
+                  }} />
+                ))}
+              </View>
+            </View>
+
+            {/* X button */}
             <TouchableOpacity
-              onPress={loadAvailableCounsellors}
+              onPress={() => setBannerVisible(false)}
+              style={{ position: 'absolute', top: 10, right: 10, padding: 4 }}
+            >
+              <X size={15} color={colors.muted} strokeWidth={2.5} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Chat list / empty state ── */}
+        {loading ? (
+          <View style={{ alignItems: 'center', marginTop: 60 }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+
+        ) : filteredRooms.length > 0 ? (
+          <View style={{ paddingHorizontal: 20 }}>
+
+            {/* Section header */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Recent</Text>
+              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                <Text style={{ fontSize: 13, color: colors.muted }}>Sort by: </Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary }}>Recent</Text>
+                <ChevronRight size={14} color={colors.primary} strokeWidth={2.5} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Rooms card */}
+            <View style={{
+              backgroundColor: cardBg, borderRadius: 22,
+              borderWidth: 1, borderColor: colors.border,
+              overflow: 'hidden', marginBottom: 16,
+            }}>
+              {filteredRooms.map((chat: ChatRoom, idx: number) => {
+                const hasUnread    = (chat.unreadCount || 0) > 0;
+                const isOwnMessage = chat.lastMessageSenderId && user?.id && chat.lastMessageSenderId === user.id;
+                const preview      = chat.lastMessage || 'No messages yet';
+
+                return (
+                  <TouchableOpacity
+                    key={chat.id}
+                    onPress={() => navigation.navigate('ChatThread', {
+                      roomId: chat.id,
+                      counsellorUserId: chat.counsellorUserId,
+                      counsellorName: chat.counsellorName,
+                      counsellorImage: chat.counsellorImage,
+                    })}
+                    activeOpacity={0.82}
+                    style={{
+                      flexDirection: 'row',
+                      paddingHorizontal: 16,
+                      paddingVertical: 16,
+                      alignItems: 'center',
+                      borderTopWidth: idx === 0 ? 0 : 1,
+                      borderTopColor: colors.border,
+                    }}
+                  >
+                    {/* Avatar */}
+                    <View style={{ position: 'relative', flexShrink: 0, marginRight: 14 }}>
+                      {chat.counsellorImage ? (
+                        <Image
+                          source={{ uri: chat.counsellorImage }}
+                          style={{ width: 58, height: 58, borderRadius: 29 }}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <View style={{
+                          width: 58, height: 58, borderRadius: 29,
+                          backgroundColor: colors.primary + '18',
+                          alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <Text style={{ fontSize: 22, fontWeight: '800', color: colors.primary }}>
+                            {getInitial(chat.counsellorName)}
+                          </Text>
+                        </View>
+                      )}
+                      {chat.isOnline && (
+                        <View style={{
+                          position: 'absolute', bottom: 2, right: 2,
+                          width: 14, height: 14, borderRadius: 7,
+                          backgroundColor: '#22c55e',
+                          borderWidth: 2.5, borderColor: cardBg,
+                        }} />
+                      )}
+                    </View>
+
+                    {/* Text content */}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      {/* Row 1: name + timestamp */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 3 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, flex: 1, marginRight: 8 }} numberOfLines={1}>
+                          {chat.counsellorName && chat.counsellorName !== 'undefined undefined'
+                            ? chat.counsellorName : 'Counsellor'}
+                        </Text>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: hasUnread ? colors.primary : colors.muted, flexShrink: 0 }}>
+                          {formatTime(chat.lastMessageTime)}
+                        </Text>
+                      </View>
+
+                      {/* Row 2: specialization */}
+                      {chat.specialization ? (
+                        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }} numberOfLines={1}>
+                          {chat.specialization}
+                        </Text>
+                      ) : null}
+
+                      {/* Row 3: message preview + badge */}
+                      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+                        <Text
+                          style={{ fontSize: 13, color: colors.muted, flex: 1, lineHeight: 19, marginRight: 8 }}
+                          numberOfLines={2}
+                        >
+                          {isOwnMessage ? (
+                            <Text>
+                              <Text style={{ fontWeight: '600', color: colors.muted }}>You: </Text>
+                              {preview}
+                            </Text>
+                          ) : preview}
+                        </Text>
+
+                        {/* Unread badge */}
+                        {hasUnread && (
+                          <View style={{
+                            minWidth: 24, height: 24, borderRadius: 12,
+                            backgroundColor: colors.primary,
+                            alignItems: 'center', justifyContent: 'center',
+                            paddingHorizontal: 6, flexShrink: 0,
+                          }}>
+                            <Text style={{ color: 'white', fontSize: 11, fontWeight: '800' }}>
+                              {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Notification banner */}
+            <TouchableOpacity
+              activeOpacity={0.88}
               style={{
-                backgroundColor: colors.primary,
-                paddingHorizontal: 24,
-                paddingVertical: 12,
-                borderRadius: 20,
-                marginTop: 24
+                backgroundColor: bannerBg, borderRadius: 18,
+                padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12,
+                borderWidth: 1, borderColor: colors.primary + '28',
               }}
             >
-              <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
-                Find Available Counselors
+              <View style={{
+                width: 42, height: 42, borderRadius: 21,
+                backgroundColor: colors.primary + '18',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Bell size={19} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
+                  Turn on notifications
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.muted }}>
+                  Never miss a reply from your counsellor.
+                </Text>
+              </View>
+              <ChevronRight size={16} color={colors.muted} strokeWidth={2.5} />
+            </TouchableOpacity>
+          </View>
+
+        ) : (
+          /* ── Empty state ── */
+          <View style={{ paddingHorizontal: 20 }}>
+            <View style={{
+              backgroundColor: cardBg, borderRadius: 24,
+              paddingTop: 40, paddingBottom: 32, paddingHorizontal: 24,
+              alignItems: 'center', borderWidth: 1, borderColor: colors.border, marginBottom: 16,
+            }}>
+              <View style={{
+                width: 110, height: 110, borderRadius: 55,
+                backgroundColor: colors.primary + '10',
+                alignItems: 'center', justifyContent: 'center', marginBottom: 22,
+              }}>
+                <View style={{
+                  width: 74, height: 74, borderRadius: 37,
+                  backgroundColor: colors.primary + '1C',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <MessageCircle size={32} color={colors.primary} />
+                </View>
+              </View>
+              <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: 10 }}>
+                No messages yet
               </Text>
+              <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 22, marginBottom: 26 }}>
+                Start a conversation with a counsellor{'\n'}to begin your mental wellness journey.
+              </Text>
+              {!isConnected && (
+                <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 16, fontStyle: 'italic' }}>
+                  Connecting to chat service…
+                </Text>
+              )}
+              <TouchableOpacity
+                onPress={loadAvailableCounsellors}
+                activeOpacity={0.88}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 8,
+                  backgroundColor: colors.primary, borderRadius: 50,
+                  paddingVertical: 14, paddingHorizontal: 30,
+                  width: '100%', justifyContent: 'center',
+                }}
+              >
+                <Plus size={16} color="white" />
+                <Text style={{ color: 'white', fontSize: 15, fontWeight: '700' }}>Find a Counsellor</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.88}
+              style={{
+                backgroundColor: bannerBg, borderRadius: 18,
+                padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12,
+                borderWidth: 1, borderColor: colors.primary + '28',
+              }}
+            >
+              <View style={{
+                width: 42, height: 42, borderRadius: 21,
+                backgroundColor: colors.primary + '18',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Bell size={19} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
+                  Turn on notifications
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.muted }}>
+                  Never miss a reply from your counsellor.
+                </Text>
+              </View>
+              <ChevronRight size={16} color={colors.muted} strokeWidth={2.5} />
             </TouchableOpacity>
           </View>
         )}
       </ScrollView>
 
-      {/* Available Counselors Modal */}
-      <Modal
-        visible={showAvailableCounsellors}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowAvailableCounsellors(false)}
-      >
-        <View style={{
-          flex: 1,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          justifyContent: 'flex-end'
-        }}>
+      {/* ── New Chat Modal ── */}
+      <Modal visible={showModal} animationType="slide" transparent onRequestClose={() => setShowModal(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.52)', justifyContent: 'flex-end' }}>
           <View style={{
             backgroundColor: colors.card,
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            maxHeight: '80%',
-            paddingBottom: 20
+            borderTopLeftRadius: 28, borderTopRightRadius: 28,
+            maxHeight: '84%', paddingBottom: 28,
           }}>
+            {/* Modal header */}
             <View style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: 16,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border
+              flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+              paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16,
+              borderBottomWidth: 1, borderBottomColor: colors.border,
             }}>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.cardText }}>
-                Available Counselors
-              </Text>
-              <TouchableOpacity onPress={() => setShowAvailableCounsellors(false)}>
-                <X size={24} color={colors.cardText} />
+              <View>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>
+                  Available Counsellors
+                </Text>
+                <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>
+                  Tap to start a conversation
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowModal(false)}
+                style={{
+                  width: 36, height: 36, borderRadius: 18,
+                  backgroundColor: colors.border + '80',
+                  alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <X size={18} color={colors.text} strokeWidth={2.5} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ padding: 16 }}>
+            <ScrollView contentContainerStyle={{ padding: 16 }}>
               {loadingCounsellors ? (
                 <View style={{ alignItems: 'center', padding: 40 }}>
                   <ActivityIndicator size="large" color={colors.primary} />
                 </View>
               ) : availableCounsellors.length === 0 ? (
                 <View style={{ alignItems: 'center', padding: 40 }}>
-                  <Text style={{ fontSize: 16, color: colors.muted, textAlign: 'center' }}>
-                    No counselors are available at the moment.
+                  <View style={{
+                    width: 70, height: 70, borderRadius: 35,
+                    backgroundColor: colors.primary + '12',
+                    alignItems: 'center', justifyContent: 'center', marginBottom: 14,
+                  }}>
+                    <MessageCircle size={30} color={colors.primary} />
+                  </View>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' }}>
+                    No counsellors available
                   </Text>
-                  <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginTop: 8 }}>
+                  <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: 6 }}>
                     Please try again later.
                   </Text>
                 </View>
               ) : (
-                availableCounsellors.map((counsellor) => (
+                availableCounsellors.map((c) => (
                   <TouchableOpacity
-                    key={counsellor.id}
-                    onPress={() => handleStartChat(counsellor.counsellorId || counsellor.id, counsellor.name)}
+                    key={c.id}
+                    onPress={() => handleStartChat(c.counsellorId || c.id, c.name)}
+                    activeOpacity={0.88}
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      padding: 16,
-                      backgroundColor: colors.bg,
-                      borderRadius: 16,
-                      marginBottom: 12,
-                      borderWidth: 1,
-                      borderColor: colors.border
+                      flexDirection: 'row', alignItems: 'center',
+                      padding: 14, backgroundColor: colors.bg,
+                      borderRadius: 18, marginBottom: 10,
+                      borderWidth: 1, borderColor: colors.border,
                     }}
                   >
                     <View style={{ position: 'relative' }}>
-                      {counsellor.profileImage ? (
-                        <Image
-                          source={{ uri: counsellor.profileImage }}
-                          style={{ width: 56, height: 56, borderRadius: 28 }}
-                          contentFit="cover"
-                        />
+                      {c.profileImage ? (
+                        <Image source={{ uri: c.profileImage }} style={{ width: 52, height: 52, borderRadius: 26 }} contentFit="cover" />
                       ) : (
                         <View style={{
-                          width: 56,
-                          height: 56,
-                          borderRadius: 28,
-                          backgroundColor: colors.primary + '20',
-                          alignItems: 'center',
-                          justifyContent: 'center'
+                          width: 52, height: 52, borderRadius: 26,
+                          backgroundColor: colors.primary + '18',
+                          alignItems: 'center', justifyContent: 'center',
                         }}>
-                          <Text style={{ fontSize: 24, fontWeight: '700', color: colors.primary }}>
-                            {counsellor.firstName?.charAt(0) || counsellor.name?.charAt(0) || 'C'}
+                          <Text style={{ fontSize: 20, fontWeight: '800', color: colors.primary }}>
+                            {getInitial(c.firstName || c.name)}
                           </Text>
                         </View>
                       )}
-                      {counsellor.isOnline && (
+                      {c.isOnline && (
                         <View style={{
-                          position: 'absolute',
-                          bottom: 2,
-                          right: 2,
-                          width: 14,
-                          height: 14,
-                          borderRadius: 7,
-                          backgroundColor: '#10B981',
-                          borderWidth: 2,
-                          borderColor: colors.card
+                          position: 'absolute', bottom: 2, right: 2,
+                          width: 13, height: 13, borderRadius: 7,
+                          backgroundColor: '#22c55e', borderWidth: 2, borderColor: colors.card,
                         }} />
                       )}
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={{ fontSize: 16, fontWeight: '600', color: colors.cardText }}>
-                        {counsellor.name}
-                      </Text>
-                      {counsellor.specialization && Array.isArray(counsellor.specialization) && counsellor.specialization.length > 0 && (
-                        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
-                          {counsellor.specialization.join(', ')}
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{c.name}</Text>
+                      {c.specialization ? (
+                        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }} numberOfLines={1}>
+                          {Array.isArray(c.specialization) ? c.specialization.join(', ') : c.specialization}
                         </Text>
+                      ) : null}
+                      {c.rating > 0 && (
+                        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>⭐ {c.rating.toFixed(1)}</Text>
                       )}
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                        {counsellor.rating > 0 && (
-                          <Text style={{ fontSize: 12, color: colors.muted }}>
-                            ⭐ {counsellor.rating.toFixed(1)}
-                          </Text>
-                        )}
-                        {counsellor.isOnline && (
-                          <Text style={{ fontSize: 12, color: '#10B981', marginLeft: 8 }}>
-                            Online
-                          </Text>
-                        )}
-                      </View>
+                      {c.isOnline && (
+                        <Text style={{ fontSize: 11, color: '#22c55e', fontWeight: '700', marginTop: 2 }}>● Online now</Text>
+                      )}
                     </View>
-                    <TouchableOpacity
-                      onPress={() => handleStartChat(counsellor.counsellorId || counsellor.id, counsellor.name)}
-                      style={{
-                        backgroundColor: colors.primary,
-                        paddingHorizontal: 16,
-                        paddingVertical: 8,
-                        borderRadius: 16
-                      }}
-                    >
-                      <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
-                        Chat
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={{
+                      backgroundColor: colors.primary,
+                      paddingHorizontal: 18, paddingVertical: 9, borderRadius: 50,
+                    }}>
+                      <Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>Chat</Text>
+                    </View>
                   </TouchableOpacity>
                 ))
               )}
