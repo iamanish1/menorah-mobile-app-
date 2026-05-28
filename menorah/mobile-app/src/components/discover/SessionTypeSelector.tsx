@@ -5,7 +5,7 @@ import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 
 export type SessionType = 'basic' | 'premium' | 'pro';
-export type TherapistGender = 'male' | 'female';
+export type TherapistGender = 'male' | 'female' | 'any';
 
 interface Props {
   onSessionSelect?: (sessionType: SessionType) => void;
