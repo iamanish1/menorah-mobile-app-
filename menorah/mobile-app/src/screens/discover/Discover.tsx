@@ -283,7 +283,7 @@ export default function Discover({ navigation }: any) {
             {/* Read Articles */}
             <SectionHeader
               title="Read Articles"
-              onPress={() => Linking.openURL("https://menorahhealth.com/newsletter")}
+              onPress={() => Linking.openURL("https://menorah.me/newsletter")}
               style={{ marginTop: 20 }}
             />
             <FlatList

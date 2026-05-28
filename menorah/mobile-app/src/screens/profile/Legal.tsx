@@ -30,7 +30,7 @@ We implement appropriate security measures to protect your personal information 
 You have the right to access, correct, or delete your personal information. Contact us to exercise these rights.
 
 6. Contact Us
-If you have questions about this Privacy Policy, please contact us at privacy@menorahhealth.com.`;
+If you have questions about this Privacy Policy, please contact us at privacy@menorah.me.`;
 
   const termsOfService = `TERMS AND CONDITIONS - MENORAH HEALTH LLP
 

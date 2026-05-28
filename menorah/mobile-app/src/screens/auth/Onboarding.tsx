@@ -218,7 +218,7 @@ export default function Onboarding({ navigation }: any) {
 
             {/* ── Help & Helplines ── */}
             <TouchableOpacity
-              onPress={() => Linking.openURL("https://menorahhealth.com/")}
+              onPress={() => Linking.openURL("https://menorah.me/")}
               activeOpacity={0.88}
               style={{
                 backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'white',
@@ -251,14 +251,14 @@ export default function Onboarding({ navigation }: any) {
               <Text style={{ fontSize: 12, color: isDark ? colors.muted : '#7a8a7a', textAlign: 'center', lineHeight: 19, flex: 1 }}>
                 By continuing, you agree to our{' '}
                 <Text
-                  onPress={() => Linking.openURL("https://menorahhealth.com/terms-and-conditions")}
+                  onPress={() => Linking.openURL("https://menorah.me/terms-and-conditions")}
                   style={{ color: '#2d5c3e', fontWeight: '700' }}
                 >
                   Terms
                 </Text>
                 {' '}and{' '}
                 <Text
-                  onPress={() => Linking.openURL("https://menorahhealth.app/privacy-policy")}
+                  onPress={() => Linking.openURL("https://menorah.me/privacy-policy")}
                   style={{ color: '#2d5c3e', fontWeight: '700' }}
                 >
                   Privacy Policy
