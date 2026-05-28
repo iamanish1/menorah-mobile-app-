@@ -116,31 +116,31 @@ export default function SessionReview({ navigation, route }: any) {
 
         <View style={{
           flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-          paddingHorizontal: 16, paddingTop: 10, paddingBottom: 22,
+          paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16,
         }}>
           {/* Left: back + title */}
-          <View style={{ flex: 1, marginRight: 16 }}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginBottom: 12 }}>
-              <ArrowLeft size={24} color="white" />
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginBottom: 10 }}>
+              <ArrowLeft size={22} color="white" />
             </TouchableOpacity>
-            <Text style={{ fontSize: 26, fontWeight: '900', color: 'white', letterSpacing: -0.4, marginBottom: 5 }}>
+            <Text style={{ fontSize: 22, fontWeight: '900', color: 'white', letterSpacing: -0.3, marginBottom: 4 }}>
               Review & Pay
             </Text>
-            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 19 }}>
+            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 17 }}>
               Review your session details before{'\n'}proceeding to payment
             </Text>
           </View>
 
           {/* Right: Secure & Private badge */}
-          <View style={{ alignItems: 'center', marginTop: 36 }}>
+          <View style={{ alignItems: 'center', marginTop: 30 }}>
             <View style={{
-              width: 50, height: 50, borderRadius: 25,
+              width: 42, height: 42, borderRadius: 21,
               backgroundColor: 'rgba(255,255,255,0.15)',
-              alignItems: 'center', justifyContent: 'center', marginBottom: 6,
+              alignItems: 'center', justifyContent: 'center', marginBottom: 4,
             }}>
-              <ShieldCheck size={24} color="white" />
+              <ShieldCheck size={20} color="white" />
             </View>
-            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: '600', textAlign: 'center' }}>
+            <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.85)', fontWeight: '600', textAlign: 'center' }}>
               Secure &{'\n'}Private
             </Text>
           </View>
@@ -149,31 +149,31 @@ export default function SessionReview({ navigation, route }: any) {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 120 }}
+        contentContainerStyle={{ padding: 14, gap: 10, paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
 
         {/* ── Session info card ── */}
         <View style={{
-          backgroundColor: cardBg, borderRadius: 20,
-          padding: 18, borderWidth: 1, borderColor: isDark ? colors.border : '#e8ede8',
-          shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+          backgroundColor: cardBg, borderRadius: 16,
+          padding: 14, borderWidth: 1, borderColor: isDark ? colors.border : '#e8ede8',
+          shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
         }}>
           {/* Top: icon + title + subtitle */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
             <View style={{
-              width: 56, height: 56, borderRadius: 16,
+              width: 46, height: 46, borderRadius: 13,
               backgroundColor: meta.iconBg,
-              alignItems: 'center', justifyContent: 'center', marginRight: 14,
+              alignItems: 'center', justifyContent: 'center', marginRight: 12,
             }}>
-              <User size={28} color={meta.iconColor} />
+              <User size={22} color={meta.iconColor} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: 3 }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 2 }}>
                 {meta.title}
               </Text>
-              <Text style={{ fontSize: 13, color: colors.muted }}>
+              <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 17 }}>
                 {genderLabel}
                 {!hasActiveSubscription ? ' (Identity revealed after payment)' : ''}
               </Text>
@@ -181,44 +181,44 @@ export default function SessionReview({ navigation, route }: any) {
           </View>
 
           {/* Divider */}
-          <View style={{ height: 1, backgroundColor: isDark ? colors.border : '#f0f4f0', marginBottom: 16 }} />
+          <View style={{ height: 1, backgroundColor: isDark ? colors.border : '#f0f4f0', marginBottom: 12 }} />
 
           {/* Two-column info row */}
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             {/* Duration */}
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={{
-                width: 38, height: 38, borderRadius: 19,
+                width: 32, height: 32, borderRadius: 16,
                 backgroundColor: colors.primary + '14',
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                <Clock size={18} color={colors.primary} />
+                <Clock size={15} color={colors.primary} />
               </View>
               <View>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{duration} minutes</Text>
-                <Text style={{ fontSize: 12, color: colors.muted }}>Duration</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{duration} minutes</Text>
+                <Text style={{ fontSize: 11, color: colors.muted }}>Duration</Text>
               </View>
             </View>
 
             {/* Vertical divider */}
-            <View style={{ width: 1, height: 40, backgroundColor: isDark ? colors.border : '#e8ede8', marginHorizontal: 8 }} />
+            <View style={{ width: 1, height: 32, backgroundColor: isDark ? colors.border : '#e8ede8', marginHorizontal: 8 }} />
 
             {/* Identity / Subscription info */}
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 8 }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 4 }}>
               <View style={{
-                width: 38, height: 38, borderRadius: 19,
+                width: 32, height: 32, borderRadius: 16,
                 backgroundColor: hasActiveSubscription ? '#FEF3C7' : colors.primary + '14',
                 alignItems: 'center', justifyContent: 'center',
               }}>
                 {hasActiveSubscription
-                  ? <Crown size={18} color="#F59E0B" />
-                  : <ShieldCheck size={18} color={colors.primary} />}
+                  ? <Crown size={15} color="#F59E0B" />
+                  : <ShieldCheck size={15} color={colors.primary} />}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
                   {hasActiveSubscription ? 'Subscription' : 'Identity revealed'}
                 </Text>
-                <Text style={{ fontSize: 12, color: colors.muted }}>
+                <Text style={{ fontSize: 11, color: colors.muted }}>
                   {hasActiveSubscription ? `${subscriptionType || 'active'} plan` : 'after payment'}
                 </Text>
               </View>
@@ -228,27 +228,27 @@ export default function SessionReview({ navigation, route }: any) {
 
         {/* ── What's included card ── */}
         <View style={{
-          backgroundColor: cardBg, borderRadius: 20,
+          backgroundColor: cardBg, borderRadius: 16,
           borderWidth: 1, borderColor: isDark ? colors.border : '#e8ede8',
           overflow: 'hidden',
-          shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+          shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
         }}>
-          <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, padding: 18, paddingBottom: 14 }}>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text, padding: 14, paddingBottom: 10 }}>
             What's included:
           </Text>
           {(features as string[]).map((feature: string, i: number) => (
             <View key={i}>
               <View style={{ height: 1, backgroundColor: isDark ? colors.border : '#f0f4f0' }} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 14, gap: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11, gap: 12 }}>
                 <View style={{
-                  width: 28, height: 28, borderRadius: 14,
+                  width: 24, height: 24, borderRadius: 12,
                   backgroundColor: colors.primary,
                   alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Check size={15} color="white" strokeWidth={2.5} />
+                  <Check size={13} color="white" strokeWidth={2.5} />
                 </View>
-                <Text style={{ fontSize: 15, color: colors.text, fontWeight: '500' }}>{feature}</Text>
+                <Text style={{ fontSize: 13, color: colors.text, fontWeight: '500' }}>{feature}</Text>
               </View>
             </View>
           ))}
@@ -256,35 +256,35 @@ export default function SessionReview({ navigation, route }: any) {
 
         {/* ── Total amount card ── */}
         <View style={{
-          backgroundColor: cardBg, borderRadius: 20,
-          padding: 18, borderWidth: 1, borderColor: isDark ? colors.border : '#e8ede8',
+          backgroundColor: cardBg, borderRadius: 16,
+          padding: 14, borderWidth: 1, borderColor: isDark ? colors.border : '#e8ede8',
           flexDirection: 'row', alignItems: 'center',
-          shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+          shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
         }}>
           <View style={{ flex: 1 }}>
             {hasActiveSubscription ? (
               <>
-                <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 4 }}>Total Amount</Text>
-                <Text style={{ fontSize: 30, fontWeight: '900', color: '#10B981', letterSpacing: -0.5 }}>Free</Text>
-                <Text style={{ fontSize: 12, color: '#10B981', marginTop: 2 }}>Covered by subscription</Text>
+                <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 3 }}>Total Amount</Text>
+                <Text style={{ fontSize: 26, fontWeight: '900', color: '#10B981', letterSpacing: -0.4 }}>Free</Text>
+                <Text style={{ fontSize: 11, color: '#10B981', marginTop: 2 }}>Covered by subscription</Text>
               </>
             ) : (
               <>
-                <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 4 }}>Total Amount</Text>
-                <Text style={{ fontSize: 32, fontWeight: '900', color: colors.text, letterSpacing: -0.5 }}>
+                <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 3 }}>Total Amount</Text>
+                <Text style={{ fontSize: 28, fontWeight: '900', color: colors.text, letterSpacing: -0.4 }}>
                   ₹{price.toLocaleString('en-IN')}
                 </Text>
               </>
             )}
           </View>
-          <View style={{ alignItems: 'center', gap: 6 }}>
+          <View style={{ alignItems: 'center', gap: 4 }}>
             <View style={{
-              width: 44, height: 44, borderRadius: 22,
+              width: 38, height: 38, borderRadius: 19,
               backgroundColor: colors.primary + '12',
               alignItems: 'center', justifyContent: 'center',
             }}>
-              <Tag size={20} color={colors.primary} />
+              <Tag size={17} color={colors.primary} />
             </View>
             <Text style={{ fontSize: 11, color: colors.muted, textAlign: 'center' }}>Tax included</Text>
             <Text style={{ fontSize: 11, color: colors.muted, textAlign: 'center' }}>No hidden charges</Text>
@@ -295,16 +295,16 @@ export default function SessionReview({ navigation, route }: any) {
         {hasActiveSubscription ? (
           <View style={{
             backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#dcfce7',
-            borderRadius: 16, padding: 16,
-            flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+            borderRadius: 14, padding: 12,
+            flexDirection: 'row', alignItems: 'flex-start', gap: 10,
             borderWidth: 1, borderColor: '#10B981' + '44',
           }}>
-            <Check size={20} color="#10B981" />
+            <Check size={17} color="#10B981" />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#065F46', marginBottom: 3 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#065F46', marginBottom: 2 }}>
                 Subscription Active
               </Text>
-              <Text style={{ fontSize: 13, color: '#065F46', lineHeight: 19 }}>
+              <Text style={{ fontSize: 12, color: '#065F46', lineHeight: 17 }}>
                 You can book sessions with your {subscriptionType || 'subscription'} plan. Just confirm below.
               </Text>
             </View>
@@ -312,16 +312,16 @@ export default function SessionReview({ navigation, route }: any) {
         ) : (
           <View style={{
             backgroundColor: isDark ? 'rgba(245,158,11,0.12)' : '#fffbeb',
-            borderRadius: 16, padding: 16,
-            flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+            borderRadius: 14, padding: 12,
+            flexDirection: 'row', alignItems: 'flex-start', gap: 10,
             borderWidth: 1, borderColor: '#F59E0B' + '55',
           }}>
-            <AlertTriangle size={20} color="#F59E0B" />
+            <AlertTriangle size={17} color="#F59E0B" />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#92400E', marginBottom: 3 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#92400E', marginBottom: 2 }}>
                 Important Notice
               </Text>
-              <Text style={{ fontSize: 13, color: '#92400E', lineHeight: 19 }}>
+              <Text style={{ fontSize: 12, color: '#92400E', lineHeight: 17 }}>
                 Your therapist's identity will be revealed only after successful payment for unbiased matching.
               </Text>
             </View>
@@ -341,7 +341,7 @@ export default function SessionReview({ navigation, route }: any) {
         {checkingSubscription ? (
           <View style={{
             backgroundColor: HERO_GREEN + '80', borderRadius: 50,
-            paddingVertical: 18, alignItems: 'center',
+            paddingVertical: 15, alignItems: 'center',
           }}>
             <ActivityIndicator size="small" color="white" />
           </View>
@@ -352,41 +352,41 @@ export default function SessionReview({ navigation, route }: any) {
             activeOpacity={0.88}
             style={{
               backgroundColor: HERO_GREEN,
-              borderRadius: 50, paddingVertical: 18,
+              borderRadius: 50, paddingVertical: 15,
               flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-              paddingHorizontal: 24,
+              paddingHorizontal: 20,
               opacity: isCreatingBooking ? 0.7 : 1,
             }}
           >
             {isCreatingBooking ? (
               <>
-                <ActivityIndicator size="small" color="white" style={{ marginRight: 10 }} />
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: '800' }}>Processing...</Text>
+                <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />
+                <Text style={{ color: 'white', fontSize: 15, fontWeight: '800' }}>Processing...</Text>
               </>
             ) : hasActiveSubscription ? (
               <>
-                <Check size={18} color="white" style={{ marginRight: 10 }} />
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: '800', flex: 1, textAlign: 'center' }}>
+                <Check size={16} color="white" style={{ marginRight: 8 }} />
+                <Text style={{ color: 'white', fontSize: 15, fontWeight: '800', flex: 1, textAlign: 'center' }}>
                   Book Session — Free
                 </Text>
-                <ChevronRight size={20} color="white" />
+                <ChevronRight size={18} color="white" />
               </>
             ) : (
               <>
-                <Lock size={18} color="white" style={{ marginRight: 10 }} />
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: '800', flex: 1, textAlign: 'center' }}>
+                <Lock size={16} color="white" style={{ marginRight: 8 }} />
+                <Text style={{ color: 'white', fontSize: 15, fontWeight: '800', flex: 1, textAlign: 'center' }}>
                   Proceed to Payment · ₹{price.toLocaleString('en-IN')}
                 </Text>
-                <ChevronRight size={20} color="white" />
+                <ChevronRight size={18} color="white" />
               </>
             )}
           </TouchableOpacity>
         )}
 
         {/* Footer */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 10 }}>
-          <ShieldCheck size={13} color={colors.muted} />
-          <Text style={{ fontSize: 12, color: colors.muted }}>100% Secure Payments</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 8 }}>
+          <ShieldCheck size={12} color={colors.muted} />
+          <Text style={{ fontSize: 11, color: colors.muted }}>100% Secure Payments</Text>
         </View>
       </View>
 
