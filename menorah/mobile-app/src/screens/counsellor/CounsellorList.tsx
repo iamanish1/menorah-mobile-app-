@@ -99,6 +99,8 @@ export default function CounsellorList({ navigation }: any) {
     const shown = tags.slice(0, 2);
     const extra = tags.length - shown.length;
     const isFav = favorites.has(item.id);
+    const AVATAR = 72;
+    const INDENT = AVATAR + 12;
 
     return (
       <View style={{
@@ -115,23 +117,37 @@ export default function CounsellorList({ navigation }: any) {
         shadowRadius: 8,
         elevation: 2,
       }}>
-        {/* Top row: avatar + info */}
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-          {/* Avatar with online dot */}
-          <View style={{ position: 'relative', marginRight: 14 }}>
+
+        {/* ── View Profile — absolute top-right so it never competes with name ── */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('CounsellorProfile', { counsellorId: item.id })}
+          style={{
+            position: 'absolute', top: 16, right: 16, zIndex: 1,
+            paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
+            borderWidth: 1.5, borderColor: isDark ? colors.border : '#d1d5db',
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>View Profile</Text>
+        </TouchableOpacity>
+
+        {/* ── Avatar + name/badge row ── */}
+        {/* paddingRight reserves space for the absolute View Profile button */}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingRight: 108 }}>
+          {/* Avatar */}
+          <View style={{ position: 'relative', marginRight: 12, flexShrink: 0 }}>
             {item.profileImage ? (
               <Image
                 source={{ uri: item.profileImage }}
-                style={{ width: 76, height: 76, borderRadius: 38 }}
+                style={{ width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2 }}
                 contentFit="cover"
               />
             ) : (
               <View style={{
-                width: 76, height: 76, borderRadius: 38,
+                width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2,
                 backgroundColor: colors.primary + '18',
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                <Text style={{ fontSize: 26, fontWeight: '800', color: colors.primary }}>
+                <Text style={{ fontSize: 24, fontWeight: '800', color: colors.primary }}>
                   {item.name?.charAt(0)?.toUpperCase() || 'C'}
                 </Text>
               </View>
@@ -139,108 +155,117 @@ export default function CounsellorList({ navigation }: any) {
             {item.isAvailable && (
               <View style={{
                 position: 'absolute', bottom: 2, right: 2,
-                width: 16, height: 16, borderRadius: 8,
+                width: 15, height: 15, borderRadius: 8,
                 backgroundColor: '#22c55e',
                 borderWidth: 2.5, borderColor: cardBg,
               }} />
             )}
           </View>
 
-          {/* Info block */}
-          <View style={{ flex: 1, minWidth: 0 }}>
-            {/* Name row + View Profile button */}
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 2 }}>
-              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 8 }}>
-                <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                {item.isAvailable && (
-                  <View style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 4,
-                    backgroundColor: '#dcfce7',
-                    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20,
-                  }}>
-                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#16a34a' }} />
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#16a34a' }}>Available</Text>
-                  </View>
-                )}
-              </View>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('CounsellorProfile', { counsellorId: item.id })}
-                style={{
-                  paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-                  borderWidth: 1.5, borderColor: isDark ? colors.border : '#d1d5db',
-                  backgroundColor: 'transparent',
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>View Profile</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Specialization */}
-            <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 10 }} numberOfLines={1}>
-              {item.specialization || 'Counsellor'}
+          {/* Name + Available badge */}
+          <View style={{ flex: 1, justifyContent: 'center', paddingTop: 4 }}>
+            <Text
+              style={{ fontSize: 17, fontWeight: '800', color: colors.text, marginBottom: 5 }}
+              numberOfLines={1}
+            >
+              {item.name}
             </Text>
-
-            {/* Stats row */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0, marginBottom: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                <Star size={13} color="#F59E0B" fill="#F59E0B" />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
-                  {item.rating?.toFixed(1) ?? '—'}
-                </Text>
-                {item.reviewCount > 0 && (
-                  <Text style={{ fontSize: 12, color: colors.muted }}> ({item.reviewCount})</Text>
-                )}
+            {item.isAvailable && (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 4,
+                backgroundColor: '#dcfce7',
+                paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20,
+                alignSelf: 'flex-start',
+              }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#16a34a' }} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#16a34a' }}>Available</Text>
               </View>
-              <Text style={{ fontSize: 13, color: colors.border, marginHorizontal: 8 }}>|</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                <BadgeCheck size={13} color={colors.muted} />
-                <Text style={{ fontSize: 12, color: colors.muted }}>
-                  {item.experience ?? 0} yrs exp
-                </Text>
-              </View>
-              <Text style={{ fontSize: 13, color: colors.border, marginHorizontal: 8 }}>|</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                <IndianRupee size={12} color={colors.text} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
-                  {item.hourlyRate?.toLocaleString('en-IN') ?? '—'} /hr
-                </Text>
-              </View>
-            </View>
-
-            {/* Tags + heart */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-                {shown.map((s, i) => (
-                  <View key={i} style={{
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f1f5f1',
-                    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
-                  }}>
-                    <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '500' }} numberOfLines={1}>
-                      {s}
-                    </Text>
-                  </View>
-                ))}
-                {extra > 0 && (
-                  <View style={{
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f1f5f1',
-                    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
-                  }}>
-                    <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '600' }}>+{extra}</Text>
-                  </View>
-                )}
-              </View>
-              <TouchableOpacity onPress={() => toggleFav(item.id)} style={{ paddingLeft: 10 }}>
-                <Heart
-                  size={20}
-                  color={isFav ? '#ef4444' : colors.muted}
-                  fill={isFav ? '#ef4444' : 'transparent'}
-                />
-              </TouchableOpacity>
-            </View>
+            )}
           </View>
         </View>
+
+        {/* ── Specialization ── */}
+        <Text
+          style={{ fontSize: 13, color: colors.muted, marginTop: 8, paddingLeft: INDENT }}
+          numberOfLines={1}
+        >
+          {item.specialization || 'Counsellor'}
+        </Text>
+
+        {/* ── Stats row — uses flexShrink so price never clips ── */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', marginTop: 9,
+          paddingLeft: INDENT, flexWrap: 'wrap', rowGap: 4,
+        }}>
+          {/* Rating */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Star size={13} color="#F59E0B" fill="#F59E0B" />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+              {item.rating?.toFixed(1) ?? '0.0'}
+            </Text>
+            {item.reviewCount > 0 && (
+              <Text style={{ fontSize: 12, color: colors.muted }}>({item.reviewCount})</Text>
+            )}
+          </View>
+
+          <Text style={{ fontSize: 12, color: isDark ? colors.border : '#c8d0c8', marginHorizontal: 6 }}>|</Text>
+
+          {/* Experience */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <BadgeCheck size={13} color={colors.muted} />
+            <Text style={{ fontSize: 12, color: colors.muted }}>
+              {item.experience ?? 0} yrs exp
+            </Text>
+          </View>
+
+          <Text style={{ fontSize: 12, color: isDark ? colors.border : '#c8d0c8', marginHorizontal: 6 }}>|</Text>
+
+          {/* Price */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 1 }}>
+            <IndianRupee size={12} color={colors.text} />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }} numberOfLines={1}>
+              {item.hourlyRate != null
+                ? `${item.hourlyRate.toLocaleString('en-IN')} /hr`
+                : '—'}
+            </Text>
+          </View>
+        </View>
+
+        {/* ── Specialty tags + heart ── */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center',
+          justifyContent: 'space-between', marginTop: 10,
+          paddingLeft: INDENT,
+        }}>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+            {shown.map((s, i) => (
+              <View key={i} style={{
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f0f4f0',
+                borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
+              }}>
+                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '500' }} numberOfLines={1}>
+                  {s}
+                </Text>
+              </View>
+            ))}
+            {extra > 0 && (
+              <View style={{
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f0f4f0',
+                borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
+              }}>
+                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '600' }}>+{extra}</Text>
+              </View>
+            )}
+          </View>
+          <TouchableOpacity onPress={() => toggleFav(item.id)} style={{ paddingLeft: 12 }}>
+            <Heart
+              size={20}
+              color={isFav ? '#ef4444' : colors.muted}
+              fill={isFav ? '#ef4444' : 'transparent'}
+            />
+          </TouchableOpacity>
+        </View>
+
       </View>
     );
   };

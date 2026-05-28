@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
-import { CalendarDays, Clock, Crown, Percent, ChevronRight } from 'lucide-react-native';
+import { CalendarDays, Clock, Crown, Percent } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { useNavigation } from '@react-navigation/native';
@@ -205,7 +205,6 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
             Flexible plans · Cancel anytime · Pause anytime
           </Text>
         </View>
-        <ChevronRight size={18} color="rgba(255,255,255,0.7)" />
       </TouchableOpacity>
     </View>
   );
