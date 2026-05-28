@@ -107,102 +107,101 @@ export default function CounsellorProfile({ navigation, route }: any) {
       >
 
         {/* ─────────────── HERO ─────────────── */}
-        <View style={{ backgroundColor: HERO_GREEN, paddingBottom: 24, paddingTop: insets.top }}>
+        <View style={{ backgroundColor: HERO_GREEN, paddingBottom: 18, paddingTop: insets.top }}>
 
-          {/* Decorative circles top-right */}
-          <View style={{ position: 'absolute', top: -20, right: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.04)' }} />
-          <View style={{ position: 'absolute', top: 20, right: 20, width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,0.05)' }} />
+          {/* Decorative circles */}
+          <View style={{ position: 'absolute', top: -20, right: -20, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.04)' }} />
+          <View style={{ position: 'absolute', top: 20, right: 20, width: 75, height: 75, borderRadius: 38, backgroundColor: 'rgba(255,255,255,0.05)' }} />
 
           {/* Top bar */}
           <View style={{
             flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-            paddingHorizontal: 16, paddingTop: 10, paddingBottom: 16,
+            paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12,
           }}>
             <TouchableOpacity
               onPress={() => navigation.goBack()}
-              style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}
+              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}
             >
-              <ArrowLeft size={20} color="white" />
+              <ArrowLeft size={18} color="white" />
             </TouchableOpacity>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity
                 onPress={() => setIsFav(!isFav)}
-                style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}
               >
-                <Heart size={19} color={isFav ? '#ef4444' : 'white'} fill={isFav ? '#ef4444' : 'transparent'} />
+                <Heart size={17} color={isFav ? '#ef4444' : 'white'} fill={isFav ? '#ef4444' : 'transparent'} />
               </TouchableOpacity>
               <TouchableOpacity
-                style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}
               >
-                <Share2 size={19} color="white" />
+                <Share2 size={17} color="white" />
               </TouchableOpacity>
             </View>
           </View>
 
           {loading ? (
-            <View style={{ paddingVertical: 48, alignItems: 'center' }}>
+            <View style={{ paddingVertical: 36, alignItems: 'center' }}>
               <ActivityIndicator size="large" color="white" />
             </View>
           ) : counsellor ? (
             <View style={{ paddingHorizontal: 16 }}>
 
               {/* Avatar + info */}
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 18 }}>
-                {/* Avatar */}
-                <View style={{ position: 'relative', marginRight: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 }}>
+                <View style={{ position: 'relative', marginRight: 14 }}>
                   {counsellor.profileImage ? (
                     <Image
                       source={{ uri: counsellor.profileImage }}
-                      style={{ width: 90, height: 90, borderRadius: 45, borderWidth: 3, borderColor: 'rgba(255,255,255,0.7)' }}
+                      style={{ width: 76, height: 76, borderRadius: 38, borderWidth: 2.5, borderColor: 'rgba(255,255,255,0.7)' }}
                       contentFit="cover"
                     />
                   ) : (
                     <View style={{
-                      width: 90, height: 90, borderRadius: 45,
-                      borderWidth: 3, borderColor: 'rgba(255,255,255,0.7)',
+                      width: 76, height: 76, borderRadius: 38,
+                      borderWidth: 2.5, borderColor: 'rgba(255,255,255,0.7)',
                       backgroundColor: 'rgba(255,255,255,0.15)',
                       alignItems: 'center', justifyContent: 'center',
                     }}>
-                      <Text style={{ fontSize: 32, fontWeight: '800', color: 'white' }}>
+                      <Text style={{ fontSize: 26, fontWeight: '800', color: 'white' }}>
                         {counsellor.name?.charAt(0)?.toUpperCase() || 'C'}
                       </Text>
                     </View>
                   )}
                   {counsellor.isAvailable && (
                     <View style={{
-                      position: 'absolute', bottom: 4, right: 4,
-                      width: 18, height: 18, borderRadius: 9,
-                      backgroundColor: '#22c55e', borderWidth: 3, borderColor: HERO_GREEN,
+                      position: 'absolute', bottom: 3, right: 3,
+                      width: 15, height: 15, borderRadius: 8,
+                      backgroundColor: '#22c55e', borderWidth: 2.5, borderColor: HERO_GREEN,
                     }} />
                   )}
                 </View>
 
                 {/* Name / specialty / rating */}
-                <View style={{ flex: 1, paddingTop: 4 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
-                    <Text style={{ fontSize: 22, fontWeight: '800', color: 'white', letterSpacing: -0.3 }} numberOfLines={1}>
+                <View style={{ flex: 1, paddingTop: 2 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 3 }}>
+                    <Text style={{ fontSize: 18, fontWeight: '800', color: 'white', letterSpacing: -0.2 }} numberOfLines={1}>
                       {counsellor.name}
                     </Text>
                     {counsellor.isAvailable && (
                       <View style={{
                         flexDirection: 'row', alignItems: 'center', gap: 4,
                         backgroundColor: 'rgba(255,255,255,0.18)',
-                        paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20,
+                        paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20,
                       }}>
-                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#4ade80' }} />
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: 'white' }}>Available</Text>
+                        <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#4ade80' }} />
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: 'white' }}>Available</Text>
                       </View>
                     )}
                   </View>
-                  <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.80)', marginBottom: 8 }} numberOfLines={1}>
+                  <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.80)', marginBottom: 6 }} numberOfLines={1}>
                     {counsellor.specialization || 'Counsellor'}
                   </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                    <Star size={15} color="#FFD700" fill="#FFD700" />
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: 'white' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Star size={13} color="#FFD700" fill="#FFD700" />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>
                       {counsellor.rating?.toFixed(1) ?? '0.0'}
                     </Text>
-                    <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)' }}>
+                    <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)' }}>
                       ({counsellor.reviewCount || 0} reviews)
                     </Text>
                   </View>
@@ -213,54 +212,54 @@ export default function CounsellorProfile({ navigation, route }: any) {
               <View style={{
                 flexDirection: 'row', alignItems: 'center',
                 backgroundColor: 'rgba(0,0,0,0.20)',
-                borderRadius: 16, paddingVertical: 14, paddingHorizontal: 8,
-                marginBottom: 18,
+                borderRadius: 14, paddingVertical: 10, paddingHorizontal: 6,
+                marginBottom: 14,
               }}>
                 {[
                   { Icon: IndianRupee, value: `₹${(counsellor.hourlyRate || 0).toLocaleString('en-IN')}`, label: 'per session' },
-                  { Icon: CalendarDays, value: `${counsellor.totalSessions || 0}+`,                         label: 'sessions'    },
-                  { Icon: BadgeCheck,  value: `${counsellor.experience || 0}+`,                             label: 'years exp'   },
+                  { Icon: CalendarDays, value: `${counsellor.totalSessions || 0}+`, label: 'sessions' },
+                  { Icon: BadgeCheck,  value: `${counsellor.experience || 0}+`,     label: 'years exp' },
                 ].map((s, i) => (
-                  <View key={i} style={{ flex: 1, alignItems: 'center', flexDirection: 'column' }}>
+                  <View key={i} style={{ flex: 1, alignItems: 'center' }}>
                     {i > 0 && (
                       <View style={{ position: 'absolute', left: 0, top: 4, bottom: 4, width: 1, backgroundColor: 'rgba(255,255,255,0.2)' }} />
                     )}
                     <View style={{
-                      width: 32, height: 32, borderRadius: 16,
+                      width: 28, height: 28, borderRadius: 14,
                       backgroundColor: 'rgba(255,255,255,0.12)',
-                      alignItems: 'center', justifyContent: 'center', marginBottom: 6,
+                      alignItems: 'center', justifyContent: 'center', marginBottom: 4,
                     }}>
-                      <s.Icon size={15} color="rgba(255,255,255,0.85)" />
+                      <s.Icon size={13} color="rgba(255,255,255,0.85)" />
                     </View>
-                    <Text style={{ fontSize: 16, fontWeight: '800', color: 'white', marginBottom: 2 }}>{s.value}</Text>
-                    <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.70)' }}>{s.label}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: 'white', marginBottom: 1 }}>{s.value}</Text>
+                    <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.70)' }}>{s.label}</Text>
                   </View>
                 ))}
               </View>
 
               {/* Action buttons */}
-              <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
                 <TouchableOpacity
                   onPress={handleMessage}
                   style={{
-                    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    paddingVertical: 13, borderRadius: 50,
-                    borderWidth: 2, borderColor: 'rgba(255,255,255,0.6)',
+                    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    paddingVertical: 11, borderRadius: 50,
+                    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.6)',
                   }}
                 >
-                  <MessageCircle size={17} color="white" />
-                  <Text style={{ color: 'white', fontSize: 15, fontWeight: '700' }}>Message</Text>
+                  <MessageCircle size={15} color="white" />
+                  <Text style={{ color: 'white', fontSize: 14, fontWeight: '700' }}>Message</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleBook}
                   style={{
-                    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    paddingVertical: 13, borderRadius: 50,
+                    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    paddingVertical: 11, borderRadius: 50,
                     backgroundColor: 'white',
                   }}
                 >
-                  <CalendarDays size={17} color={HERO_GREEN} />
-                  <Text style={{ color: HERO_GREEN, fontSize: 15, fontWeight: '700' }}>Book Session</Text>
+                  <CalendarDays size={15} color={HERO_GREEN} />
+                  <Text style={{ color: HERO_GREEN, fontSize: 14, fontWeight: '700' }}>Book Session</Text>
                 </TouchableOpacity>
               </View>
 
@@ -272,65 +271,65 @@ export default function CounsellorProfile({ navigation, route }: any) {
         <View style={{ backgroundColor: isDark ? colors.bg : '#ffffff' }}>
 
           {/* About */}
-          <View style={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 20 }}>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 10 }}>About</Text>
-            <Text style={{ fontSize: 14, color: colors.muted, lineHeight: 22 }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: 16 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 8 }}>About</Text>
+            <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 20 }}>
               {counsellor?.bio || 'No bio available.'}
             </Text>
           </View>
-          <View style={{ height: 1, backgroundColor: isDark ? colors.border : '#f0f4f0', marginHorizontal: 20 }} />
+          <View style={{ height: 1, backgroundColor: isDark ? colors.border : '#f0f4f0', marginHorizontal: 16 }} />
 
           {/* Specializations */}
           {(counsellor?.specializations?.length ?? 0) > 0 && (
             <>
-              <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 20 }}>
-                <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 12 }}>Specializations</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 10 }}>Specializations</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {counsellor!.specializations.map((spec, i) => (
                     <View key={i} style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
                       backgroundColor: colors.primary + '12',
-                      paddingHorizontal: 14, paddingVertical: 8,
+                      paddingHorizontal: 11, paddingVertical: 6,
                       borderRadius: 20,
                     }}>
-                      <Brain size={14} color={colors.primary} />
-                      <Text style={{ fontSize: 13, color: colors.primary, fontWeight: '600' }}>{spec}</Text>
+                      <Brain size={12} color={colors.primary} />
+                      <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600' }}>{spec}</Text>
                     </View>
                   ))}
                 </View>
               </View>
-              <View style={{ height: 1, backgroundColor: isDark ? colors.border : '#f0f4f0', marginHorizontal: 20 }} />
+              <View style={{ height: 1, backgroundColor: isDark ? colors.border : '#f0f4f0', marginHorizontal: 16 }} />
             </>
           )}
 
           {/* Why choose me */}
-          <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 20 }}>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 18 }}>Why choose me?</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 14 }}>Why choose me?</Text>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
               {WHY_ITEMS.map(({ Icon, title, sub }, i) => (
                 <View key={i} style={{ flex: 1, alignItems: 'center' }}>
                   <View style={{
-                    width: 52, height: 52, borderRadius: 26,
+                    width: 44, height: 44, borderRadius: 22,
                     backgroundColor: colors.primary + '12',
-                    alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+                    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
                   }}>
-                    <Icon size={22} color={colors.primary} />
+                    <Icon size={18} color={colors.primary} />
                   </View>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 4, lineHeight: 16 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 3, lineHeight: 15 }}>
                     {title}
                   </Text>
-                  <Text style={{ fontSize: 11, color: colors.muted, textAlign: 'center', lineHeight: 15 }}>
+                  <Text style={{ fontSize: 10, color: colors.muted, textAlign: 'center', lineHeight: 14 }}>
                     {sub}
                   </Text>
                 </View>
               ))}
             </View>
           </View>
-          <View style={{ height: 1, backgroundColor: isDark ? colors.border : '#f0f4f0', marginHorizontal: 20 }} />
+          <View style={{ height: 1, backgroundColor: isDark ? colors.border : '#f0f4f0', marginHorizontal: 16 }} />
 
           {/* Pick a Date & Time */}
-          <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24 }}>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 16 }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 12 }}>
               Pick a Date & Time
             </Text>
 
@@ -338,8 +337,8 @@ export default function CounsellorProfile({ navigation, route }: any) {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
-              style={{ marginBottom: 16 }}
+              contentContainerStyle={{ gap: 6, paddingBottom: 2 }}
+              style={{ marginBottom: 12 }}
             >
               {dates.slice(0, 7).map((date, i) => {
                 const isSel = dateIdx === i;
@@ -352,36 +351,35 @@ export default function CounsellorProfile({ navigation, route }: any) {
                     key={i}
                     onPress={() => setDateIdx(i)}
                     style={{
-                      alignItems: 'center', minWidth: 62,
+                      alignItems: 'center', minWidth: 54,
                       backgroundColor: isSel ? colors.primary : (isDark ? colors.surface : '#ffffff'),
-                      borderRadius: 14, paddingVertical: 12, paddingHorizontal: 10,
+                      borderRadius: 12, paddingVertical: 9, paddingHorizontal: 8,
                       borderWidth: 1.5, borderColor: isSel ? colors.primary : (isDark ? colors.border : '#e2e8e2'),
                     }}
                   >
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: isSel ? 'rgba(255,255,255,0.85)' : colors.muted, marginBottom: 4 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '600', color: isSel ? 'rgba(255,255,255,0.85)' : colors.muted, marginBottom: 3 }}>
                       {isToday ? 'Today' : day}
                     </Text>
-                    <Text style={{ fontSize: 19, fontWeight: '800', color: isSel ? 'white' : colors.text }}>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: isSel ? 'white' : colors.text }}>
                       {num}
                     </Text>
-                    <Text style={{ fontSize: 11, color: isSel ? 'rgba(255,255,255,0.80)' : colors.muted, marginTop: 2 }}>
+                    <Text style={{ fontSize: 10, color: isSel ? 'rgba(255,255,255,0.80)' : colors.muted, marginTop: 2 }}>
                       {mon}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
-              {/* Calendar icon chip */}
               <TouchableOpacity style={{
-                width: 62, alignItems: 'center', justifyContent: 'center',
+                width: 54, alignItems: 'center', justifyContent: 'center',
                 backgroundColor: isDark ? colors.surface : '#ffffff',
-                borderRadius: 14, borderWidth: 1.5, borderColor: isDark ? colors.border : '#e2e8e2',
+                borderRadius: 12, borderWidth: 1.5, borderColor: isDark ? colors.border : '#e2e8e2',
               }}>
-                <CalendarDays size={20} color={colors.muted} />
+                <CalendarDays size={16} color={colors.muted} />
               </TouchableOpacity>
             </ScrollView>
 
             {/* Time slots */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
               {visibleSlots.map((t) => {
                 const past = isPast(selectedDate, t);
                 const isSel = selectedTime === t;
@@ -391,8 +389,8 @@ export default function CounsellorProfile({ navigation, route }: any) {
                     onPress={() => { if (!past) setTime(t); }}
                     disabled={past}
                     style={{
-                      paddingHorizontal: 14, paddingVertical: 11,
-                      borderRadius: 12,
+                      paddingHorizontal: 12, paddingVertical: 9,
+                      borderRadius: 10,
                       backgroundColor: isSel ? colors.primary : (isDark ? colors.surface : '#ffffff'),
                       borderWidth: 1.5,
                       borderColor: isSel ? colors.primary : (isDark ? colors.border : '#e2e8e2'),
@@ -400,7 +398,7 @@ export default function CounsellorProfile({ navigation, route }: any) {
                     }}
                   >
                     <Text style={{
-                      fontSize: 13, fontWeight: '700',
+                      fontSize: 12, fontWeight: '700',
                       color: isSel ? 'white' : (past ? colors.muted : colors.text),
                     }}>
                       {fmt(t)}
@@ -412,15 +410,15 @@ export default function CounsellorProfile({ navigation, route }: any) {
                 <TouchableOpacity
                   onPress={() => setShowAll(true)}
                   style={{
-                    paddingHorizontal: 14, paddingVertical: 11,
-                    borderRadius: 12, borderWidth: 1.5,
+                    paddingHorizontal: 12, paddingVertical: 9,
+                    borderRadius: 10, borderWidth: 1.5,
                     borderColor: isDark ? colors.border : '#e2e8e2',
                     backgroundColor: isDark ? colors.surface : '#ffffff',
-                    flexDirection: 'row', alignItems: 'center', gap: 4,
+                    flexDirection: 'row', alignItems: 'center', gap: 3,
                   }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.muted }}>More</Text>
-                  <Text style={{ fontSize: 13, color: colors.muted }}>›</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted }}>More</Text>
+                  <Text style={{ fontSize: 12, color: colors.muted }}>›</Text>
                 </TouchableOpacity>
               )}
             </View>
