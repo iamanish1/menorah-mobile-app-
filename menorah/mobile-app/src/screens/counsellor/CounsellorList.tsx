@@ -99,42 +99,41 @@ export default function CounsellorList({ navigation }: any) {
     const shown = tags.slice(0, 2);
     const extra = tags.length - shown.length;
     const isFav = favorites.has(item.id);
-    const AVATAR = 72;
-    const INDENT = AVATAR + 12;
+    const AVATAR = 56;
+    const INDENT = AVATAR + 10;
 
     return (
       <View style={{
         backgroundColor: cardBg,
-        borderRadius: 20,
+        borderRadius: 18,
         marginHorizontal: 16,
-        marginBottom: 12,
-        padding: 16,
+        marginBottom: 10,
+        padding: 14,
         borderWidth: 1,
         borderColor: isDark ? colors.border : '#e8ede8',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: isDark ? 0.12 : 0.06,
-        shadowRadius: 8,
+        shadowOpacity: isDark ? 0.10 : 0.05,
+        shadowRadius: 6,
         elevation: 2,
       }}>
 
-        {/* ── View Profile — absolute top-right so it never competes with name ── */}
+        {/* View Profile — absolute top-right */}
         <TouchableOpacity
           onPress={() => navigation.navigate('CounsellorProfile', { counsellorId: item.id })}
           style={{
-            position: 'absolute', top: 16, right: 16, zIndex: 1,
-            paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
+            position: 'absolute', top: 14, right: 14, zIndex: 1,
+            paddingHorizontal: 11, paddingVertical: 6, borderRadius: 20,
             borderWidth: 1.5, borderColor: isDark ? colors.border : '#d1d5db',
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>View Profile</Text>
+          <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text }}>View Profile</Text>
         </TouchableOpacity>
 
-        {/* ── Avatar + name/badge row ── */}
-        {/* paddingRight reserves space for the absolute View Profile button */}
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingRight: 108 }}>
+        {/* Avatar + name/badge row — paddingRight reserves space for View Profile button */}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingRight: 96 }}>
           {/* Avatar */}
-          <View style={{ position: 'relative', marginRight: 12, flexShrink: 0 }}>
+          <View style={{ position: 'relative', marginRight: 10, flexShrink: 0 }}>
             {item.profileImage ? (
               <Image
                 source={{ uri: item.profileImage }}
@@ -147,25 +146,25 @@ export default function CounsellorList({ navigation }: any) {
                 backgroundColor: colors.primary + '18',
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                <Text style={{ fontSize: 24, fontWeight: '800', color: colors.primary }}>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.primary }}>
                   {item.name?.charAt(0)?.toUpperCase() || 'C'}
                 </Text>
               </View>
             )}
             {item.isAvailable && (
               <View style={{
-                position: 'absolute', bottom: 2, right: 2,
-                width: 15, height: 15, borderRadius: 8,
+                position: 'absolute', bottom: 1, right: 1,
+                width: 13, height: 13, borderRadius: 7,
                 backgroundColor: '#22c55e',
-                borderWidth: 2.5, borderColor: cardBg,
+                borderWidth: 2, borderColor: cardBg,
               }} />
             )}
           </View>
 
           {/* Name + Available badge */}
-          <View style={{ flex: 1, justifyContent: 'center', paddingTop: 4 }}>
+          <View style={{ flex: 1, justifyContent: 'center', paddingTop: 3 }}>
             <Text
-              style={{ fontSize: 17, fontWeight: '800', color: colors.text, marginBottom: 5 }}
+              style={{ fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: 4 }}
               numberOfLines={1}
             >
               {item.name}
@@ -174,56 +173,56 @@ export default function CounsellorList({ navigation }: any) {
               <View style={{
                 flexDirection: 'row', alignItems: 'center', gap: 4,
                 backgroundColor: '#dcfce7',
-                paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20,
+                paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20,
                 alignSelf: 'flex-start',
               }}>
-                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#16a34a' }} />
-                <Text style={{ fontSize: 11, fontWeight: '700', color: '#16a34a' }}>Available</Text>
+                <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#16a34a' }} />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#16a34a' }}>Available</Text>
               </View>
             )}
           </View>
         </View>
 
-        {/* ── Specialization ── */}
+        {/* Specialization */}
         <Text
-          style={{ fontSize: 13, color: colors.muted, marginTop: 8, paddingLeft: INDENT }}
+          style={{ fontSize: 12, color: colors.muted, marginTop: 7, paddingLeft: INDENT }}
           numberOfLines={1}
         >
           {item.specialization || 'Counsellor'}
         </Text>
 
-        {/* ── Stats row — uses flexShrink so price never clips ── */}
+        {/* Stats row */}
         <View style={{
-          flexDirection: 'row', alignItems: 'center', marginTop: 9,
-          paddingLeft: INDENT, flexWrap: 'wrap', rowGap: 4,
+          flexDirection: 'row', alignItems: 'center', marginTop: 7,
+          paddingLeft: INDENT, flexWrap: 'wrap', rowGap: 3,
         }}>
           {/* Rating */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-            <Star size={13} color="#F59E0B" fill="#F59E0B" />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+            <Star size={12} color="#F59E0B" fill="#F59E0B" />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>
               {item.rating?.toFixed(1) ?? '0.0'}
             </Text>
             {item.reviewCount > 0 && (
-              <Text style={{ fontSize: 12, color: colors.muted }}>({item.reviewCount})</Text>
+              <Text style={{ fontSize: 11, color: colors.muted }}>({item.reviewCount})</Text>
             )}
           </View>
 
-          <Text style={{ fontSize: 12, color: isDark ? colors.border : '#c8d0c8', marginHorizontal: 6 }}>|</Text>
+          <Text style={{ fontSize: 11, color: isDark ? colors.border : '#c8d0c8', marginHorizontal: 5 }}>|</Text>
 
           {/* Experience */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-            <BadgeCheck size={13} color={colors.muted} />
-            <Text style={{ fontSize: 12, color: colors.muted }}>
+            <BadgeCheck size={12} color={colors.muted} />
+            <Text style={{ fontSize: 11, color: colors.muted }}>
               {item.experience ?? 0} yrs exp
             </Text>
           </View>
 
-          <Text style={{ fontSize: 12, color: isDark ? colors.border : '#c8d0c8', marginHorizontal: 6 }}>|</Text>
+          <Text style={{ fontSize: 11, color: isDark ? colors.border : '#c8d0c8', marginHorizontal: 5 }}>|</Text>
 
           {/* Price */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 1 }}>
-            <IndianRupee size={12} color={colors.text} />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }} numberOfLines={1}>
+            <IndianRupee size={11} color={colors.text} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }} numberOfLines={1}>
               {item.hourlyRate != null
                 ? `${item.hourlyRate.toLocaleString('en-IN')} /hr`
                 : '—'}
@@ -231,19 +230,19 @@ export default function CounsellorList({ navigation }: any) {
           </View>
         </View>
 
-        {/* ── Specialty tags + heart ── */}
+        {/* Specialty tags + heart */}
         <View style={{
           flexDirection: 'row', alignItems: 'center',
-          justifyContent: 'space-between', marginTop: 10,
+          justifyContent: 'space-between', marginTop: 9,
           paddingLeft: INDENT,
         }}>
-          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+          <View style={{ flexDirection: 'row', gap: 5, flexWrap: 'wrap', flex: 1 }}>
             {shown.map((s, i) => (
               <View key={i} style={{
                 backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f0f4f0',
-                borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
+                borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
               }}>
-                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '500' }} numberOfLines={1}>
+                <Text style={{ fontSize: 10, color: colors.muted, fontWeight: '500' }} numberOfLines={1}>
                   {s}
                 </Text>
               </View>
@@ -251,15 +250,15 @@ export default function CounsellorList({ navigation }: any) {
             {extra > 0 && (
               <View style={{
                 backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f0f4f0',
-                borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
+                borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
               }}>
-                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '600' }}>+{extra}</Text>
+                <Text style={{ fontSize: 10, color: colors.muted, fontWeight: '600' }}>+{extra}</Text>
               </View>
             )}
           </View>
-          <TouchableOpacity onPress={() => toggleFav(item.id)} style={{ paddingLeft: 12 }}>
+          <TouchableOpacity onPress={() => toggleFav(item.id)} style={{ paddingLeft: 10 }}>
             <Heart
-              size={20}
+              size={18}
               color={isFav ? '#ef4444' : colors.muted}
               fill={isFav ? '#ef4444' : 'transparent'}
             />
@@ -274,21 +273,21 @@ export default function CounsellorList({ navigation }: any) {
     <View>
       {/* Search bar */}
       <View style={{
-        marginHorizontal: 16, marginTop: 16, marginBottom: 14,
+        marginHorizontal: 16, marginTop: 12, marginBottom: 12,
         flexDirection: 'row', alignItems: 'center',
         backgroundColor: cardBg,
         borderRadius: 50, borderWidth: 1, borderColor: isDark ? colors.border : '#e2e8e2',
-        paddingHorizontal: 16, paddingVertical: 13,
+        paddingHorizontal: 14, paddingVertical: 10,
         shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
       }}>
-        <Search size={18} color={colors.muted} />
+        <Search size={16} color={colors.muted} />
         <TextInput
           value={search}
           onChangeText={handleSearch}
           placeholder="Search by name, issue or specialization..."
           placeholderTextColor={colors.muted}
-          style={{ flex: 1, marginLeft: 10, color: colors.text, fontSize: 14 }}
+          style={{ flex: 1, marginLeft: 8, color: colors.text, fontSize: 13 }}
           returnKeyType="search"
           autoCorrect={false}
         />
@@ -298,8 +297,8 @@ export default function CounsellorList({ navigation }: any) {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 2, gap: 8 }}
-        style={{ marginBottom: 16 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 2, gap: 7 }}
+        style={{ marginBottom: 12 }}
       >
         {CATEGORIES.map((cat) => {
           const active = activeCategory === cat.id;
@@ -309,16 +308,16 @@ export default function CounsellorList({ navigation }: any) {
               key={cat.id}
               onPress={() => setCategory(cat.id)}
               style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: 16, paddingVertical: 10, borderRadius: 50,
+                flexDirection: 'row', alignItems: 'center', gap: 5,
+                paddingHorizontal: 13, paddingVertical: 8, borderRadius: 50,
                 backgroundColor: active ? colors.primary : cardBg,
                 borderWidth: 1.5,
                 borderColor: active ? colors.primary : (isDark ? colors.border : '#d1d9d1'),
               }}
             >
-              <CatIcon size={15} color={active ? 'white' : colors.muted} />
+              <CatIcon size={13} color={active ? 'white' : colors.muted} />
               <Text style={{
-                fontSize: 14, fontWeight: '700',
+                fontSize: 13, fontWeight: '700',
                 color: active ? 'white' : colors.text,
               }}>
                 {cat.label}
@@ -328,12 +327,12 @@ export default function CounsellorList({ navigation }: any) {
         })}
         {/* More */}
         <TouchableOpacity style={{
-          width: 40, height: 40, borderRadius: 20,
+          width: 36, height: 36, borderRadius: 18,
           backgroundColor: cardBg,
           borderWidth: 1.5, borderColor: isDark ? colors.border : '#d1d9d1',
           alignItems: 'center', justifyContent: 'center',
         }}>
-          <ChevronDown size={16} color={colors.muted} />
+          <ChevronDown size={14} color={colors.muted} />
         </TouchableOpacity>
       </ScrollView>
 
@@ -373,21 +372,21 @@ export default function CounsellorList({ navigation }: any) {
       }}
     >
       <View style={{
-        width: 48, height: 48, borderRadius: 24,
+        width: 42, height: 42, borderRadius: 21,
         backgroundColor: colors.primary + '18',
         alignItems: 'center', justifyContent: 'center',
       }}>
-        <ShieldCheck size={22} color={colors.primary} />
+        <ShieldCheck size={19} color={colors.primary} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.primary, marginBottom: 2 }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary, marginBottom: 2 }}>
           Verified & Trusted Professionals
         </Text>
-        <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 17 }}>
+        <Text style={{ fontSize: 11, color: colors.muted, lineHeight: 16 }}>
           All counsellors are verified and committed to your well-being.
         </Text>
       </View>
-      <ChevronRight size={18} color={colors.muted} />
+      <ChevronRight size={16} color={colors.muted} />
     </TouchableOpacity>
   );
 
@@ -396,33 +395,33 @@ export default function CounsellorList({ navigation }: any) {
       {/* Header */}
       <View style={{
         flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12,
+        paddingHorizontal: 16, paddingTop: 6, paddingBottom: 10,
       }}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={{
-            width: 42, height: 42, borderRadius: 21,
+            width: 38, height: 38, borderRadius: 19,
             backgroundColor: cardBg,
             borderWidth: 1, borderColor: isDark ? colors.border : '#e2e8e2',
             alignItems: 'center', justifyContent: 'center',
-            marginRight: 12,
+            marginRight: 10,
             shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
             shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
           }}
         >
-          <ArrowLeft size={20} color={colors.text} />
+          <ArrowLeft size={18} color={colors.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 24, fontWeight: '900', color: colors.text, letterSpacing: -0.4 }}>
+          <Text style={{ fontSize: 20, fontWeight: '900', color: colors.text, letterSpacing: -0.3 }}>
             Find a Counsellor
           </Text>
-          <Text style={{ fontSize: 13, color: colors.muted, marginTop: 1 }}>
+          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>
             Book a session with a qualified professional
           </Text>
         </View>
         <TouchableOpacity
           style={{
-            width: 42, height: 42, borderRadius: 21,
+            width: 38, height: 38, borderRadius: 19,
             backgroundColor: cardBg,
             borderWidth: 1, borderColor: isDark ? colors.border : '#e2e8e2',
             alignItems: 'center', justifyContent: 'center',
@@ -430,7 +429,7 @@ export default function CounsellorList({ navigation }: any) {
             shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
           }}
         >
-          <SlidersHorizontal size={18} color={colors.text} />
+          <SlidersHorizontal size={16} color={colors.text} />
         </TouchableOpacity>
       </View>
 
@@ -454,16 +453,16 @@ export default function CounsellorList({ navigation }: any) {
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 }}>
               <View style={{
-                width: 80, height: 80, borderRadius: 40,
+                width: 68, height: 68, borderRadius: 34,
                 backgroundColor: colors.primary + '14',
-                alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+                alignItems: 'center', justifyContent: 'center', marginBottom: 14,
               }}>
-                <Search size={32} color={colors.primary} />
+                <Search size={26} color={colors.primary} />
               </View>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 8, textAlign: 'center' }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 8, textAlign: 'center' }}>
                 No counsellors found
               </Text>
-              <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 22 }}>
+              <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center', lineHeight: 20 }}>
                 {search.trim()
                   ? `No results for "${search}". Try a different search term.`
                   : 'No counsellors available right now. Pull down to refresh.'}
