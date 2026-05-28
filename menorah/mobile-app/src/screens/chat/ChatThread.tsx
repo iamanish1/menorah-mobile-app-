@@ -224,11 +224,25 @@ export default function ChatThread({ navigation, route }: any) {
           </View>
           
           <View style={{ flexDirection: 'row', gap: 12 }}>
-            <TouchableOpacity onPress={() => Alert.alert('Audio Call', 'Audio call feature coming soon')}>
-              <Phone size={20} color={colors.cardText} />
+            <TouchableOpacity
+              onPress={() => navigation.navigate('GenderSelection', { sessionType: 'audio' })}
+              style={{
+                width: 38, height: 38, borderRadius: 19,
+                backgroundColor: colors.primary + '14',
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <Phone size={18} color={colors.primary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => Alert.alert('Video Call', 'Video call feature coming soon')}>
-              <Video size={20} color={colors.cardText} />
+            <TouchableOpacity
+              onPress={() => navigation.navigate('GenderSelection', { sessionType: 'video' })}
+              style={{
+                width: 38, height: 38, borderRadius: 19,
+                backgroundColor: colors.primary + '14',
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <Video size={18} color={colors.primary} />
             </TouchableOpacity>
           </View>
         </View>
