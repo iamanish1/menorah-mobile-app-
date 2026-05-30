@@ -430,6 +430,7 @@ export default function ChatList({ navigation }: any) {
 
             {/* Notification banner */}
             <TouchableOpacity
+              onPress={() => navigation.navigate('Notifications')}
               activeOpacity={0.88}
               style={{
                 backgroundColor: bannerBg, borderRadius: 18,
@@ -504,6 +505,7 @@ export default function ChatList({ navigation }: any) {
             </View>
 
             <TouchableOpacity
+              onPress={() => navigation.navigate('Notifications')}
               activeOpacity={0.88}
               style={{
                 backgroundColor: bannerBg, borderRadius: 18,
