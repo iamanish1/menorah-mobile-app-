@@ -38,7 +38,6 @@ export default function ChatList({ navigation }: any) {
   const [loadingCounsellors, setLoadingCounsellors]     = useState(false);
   const [activeFilter, setActiveFilter]                 = useState<FilterTab>('all');
   const [searchQ, setSearchQ]                           = useState('');
-  const [bannerVisible, setBannerVisible]               = useState(true);
 
   useEffect(() => { loadChatRooms(); }, []);
 
@@ -228,8 +227,7 @@ export default function ChatList({ navigation }: any) {
         </ScrollView>
 
         {/* ── Privacy banner ── */}
-        {bannerVisible && (
-          <View style={{
+        <View style={{
             marginHorizontal: 20, marginBottom: 22,
             backgroundColor: cardBg, borderRadius: 20,
             borderWidth: 1, borderColor: colors.border,
@@ -286,15 +284,7 @@ export default function ChatList({ navigation }: any) {
               </View>
             </View>
 
-            {/* X button */}
-            <TouchableOpacity
-              onPress={() => setBannerVisible(false)}
-              style={{ position: 'absolute', top: 10, right: 10, padding: 4 }}
-            >
-              <X size={15} color={colors.muted} strokeWidth={2.5} />
-            </TouchableOpacity>
-          </View>
-        )}
+        </View>
 
         {/* ── Chat list / empty state ── */}
         {loading ? (
