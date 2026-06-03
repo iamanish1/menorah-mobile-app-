@@ -2,6 +2,7 @@ package com.menorah.healthmobile
 
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -17,6 +18,9 @@ class MainActivity : ReactActivity() {
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
     super.onCreate(null)
+    // Allow screenshots — Razorpay SDK sets FLAG_SECURE on its payment activity
+    // which can bleed into the main activity. Explicitly clear it here.
+    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
   }
 
   /**
