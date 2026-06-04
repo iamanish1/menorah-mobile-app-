@@ -24,16 +24,14 @@ class SocketClient {
     }
 
     this.socket = io(this.socketURL, {
-      auth: {
-        token,
-      },
-      transports: ['polling', 'websocket'], // Try polling first, then websocket
+      auth: { token },
+      // WebSocket first — polling is fallback only (matches server config)
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
       timeout: 20000,
-      forceNew: true,
     });
 
     this.socket.on('connect', () => {

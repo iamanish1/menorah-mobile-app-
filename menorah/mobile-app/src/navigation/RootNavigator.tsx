@@ -1,7 +1,28 @@
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';    
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, ActivityIndicator } from 'react-native';
 import { useEffect, useRef } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // 5 min stale time — most data is valid for a few minutes on mobile
+      staleTime:             5 * 60 * 1000,
+      // Keep unused data in cache for 10 min (survives screen unmounts)
+      gcTime:                10 * 60 * 1000,
+      // Retry failed requests twice with exponential back-off
+      retry:                 2,
+      retryDelay:            (attempt) => Math.min(1000 * 2 ** attempt, 15_000),
+      // Don't refetch when app comes to foreground — too aggressive on mobile
+      refetchOnWindowFocus:  false,
+      refetchOnReconnect:    true,
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
 import * as Linking from 'expo-linking';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
@@ -123,6 +144,7 @@ export default function RootNavigator() {
   const initialRouteName = isAuthed ? 'Tabs' : 'Onboarding';
 
   return (
+    <QueryClientProvider client={queryClient}>
     <NavigationContainer ref={navigationRef} linking={linking}>
       <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRouteName}>
         <Stack.Screen name="Tabs" component={TabNavigator} />
@@ -155,5 +177,6 @@ export default function RootNavigator() {
         <Stack.Screen name="CounsellorProfile" component={CounsellorProfile} />
       </Stack.Navigator>
     </NavigationContainer>
+    </QueryClientProvider>
   );
 }

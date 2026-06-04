@@ -33,6 +33,9 @@ function BookingsContent() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
   const { on, off } = useSocket(token);
 
+  // Helper that invalidates both booking queries at once
+  const invalidateAll = () => { refetchAllBookings(); refetchPendingBookings(); };
+
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.push('/login');
@@ -42,19 +45,13 @@ function BookingsContent() {
   // Refresh bookings list on real-time events
   useEffect(() => {
     if (!token || !isAuthenticated) return;
-    let debounceTimer: NodeJS.Timeout;
-    const refresh = () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => { refetchAllBookings(); refetchPendingBookings(); }, 800);
-    };
-    on('new_booking_available', refresh);
-    on('booking_assigned', refresh);
-    on('booking_status_changed', refresh);
+    on('new_booking_available',  invalidateAll);
+    on('booking_assigned',       invalidateAll);
+    on('booking_status_changed', invalidateAll);
     return () => {
-      clearTimeout(debounceTimer);
-      off('new_booking_available', refresh);
-      off('booking_assigned', refresh);
-      off('booking_status_changed', refresh);
+      off('new_booking_available',  invalidateAll);
+      off('booking_assigned',       invalidateAll);
+      off('booking_status_changed', invalidateAll);
     };
   }, [token, isAuthenticated, on, off]);
 

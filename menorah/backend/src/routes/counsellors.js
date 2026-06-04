@@ -5,6 +5,31 @@ const User = require('../models/User');
 const PendingApplication = require('../models/PendingApplication');
 const { optionalAuth } = require('../middleware/auth');
 const jwt = require('jsonwebtoken');
+const { getRedisClient } = require('../config/redis');
+
+// ── Regex safety helper ────────────────────────────────────────────────────
+// Escapes regex metacharacters to prevent ReDoS via user-supplied search strings
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// ── Redis cache helper ─────────────────────────────────────────────────────
+// Falls back to direct DB query transparently if Redis is unavailable.
+const withCache = async (key, ttlSeconds, fetchFn) => {
+  try {
+    const redis = getRedisClient();
+    const cached = await redis.get(key);
+    if (cached) return JSON.parse(cached);
+    const data = await fetchFn();
+    await redis.setEx(key, ttlSeconds, JSON.stringify(data));
+    return data;
+  } catch {
+    return fetchFn();
+  }
+};
+
+const CACHE_TTL = {
+  LIST:           5 * 60,   // 5 min  — counsellor list
+  STATIC_LOOKUPS: 30 * 60,  // 30 min — specializations + languages (rarely change)
+};
 
 // Generate JWT Token (same as in auth.js)
 const generateToken = (userId, role = 'user', fullName = '') => {
@@ -64,31 +89,33 @@ router.get('/', [
     // Collect top-level $or conditions to combine later
     const orConditions = [];
 
-    // Search — name lookup requires pre-querying User since 'user' is a ref (ObjectId at query time)
+    // Search — escape metacharacters before using in $regex to prevent ReDoS
     if (search) {
+      const safeSearch = escapeRegex(search.slice(0, 100)); // cap length
       const matchingUsers = await User.find({
         $or: [
-          { firstName: { $regex: search, $options: 'i' } },
-          { lastName:  { $regex: search, $options: 'i' } },
+          { firstName: { $regex: safeSearch, $options: 'i' } },
+          { lastName:  { $regex: safeSearch, $options: 'i' } },
         ]
       }).select('_id').lean();
       const userIds = matchingUsers.map(u => u._id);
 
       orConditions.push({
         $or: [
-          { specialization:  { $regex: search, $options: 'i' } },
-          { specializations: { $in: [new RegExp(search, 'i')] } },
+          { specialization:  { $regex: safeSearch, $options: 'i' } },
+          { specializations: { $in: [new RegExp(safeSearch, 'i')] } },
           ...(userIds.length ? [{ user: { $in: userIds } }] : []),
         ]
       });
     }
 
-    // Filter by specialization (separate from free-text search)
+    // Filter by specialization — escape metacharacters
     if (specialization) {
+      const safeSpec = escapeRegex(specialization.slice(0, 100));
       orConditions.push({
         $or: [
-          { specialization:  { $regex: specialization, $options: 'i' } },
-          { specializations: { $in: [new RegExp(specialization, 'i')] } },
+          { specialization:  { $regex: safeSpec, $options: 'i' } },
+          { specializations: { $in: [new RegExp(safeSpec, 'i')] } },
         ]
       });
     }
@@ -100,9 +127,9 @@ router.get('/', [
       query.$and = orConditions;
     }
 
-    // Filter by language
+    // Filter by language — escape metacharacters
     if (language) {
-      query.languages = { $in: [new RegExp(language, 'i')] };
+      query.languages = { $in: [new RegExp(escapeRegex(language.slice(0, 50)), 'i')] };
     }
 
     // Filter by rating
@@ -131,47 +158,56 @@ router.get('/', [
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Execute query
-    const counsellors = await Counsellor.find(query)
-      .populate('user', 'firstName lastName email phone profileImage')
-      .sort(sort)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
+    // Build a deterministic cache key from the query params.
+    // Skip cache for free-text searches (too many unique keys, low reuse value).
+    const cacheKey = !search
+      ? `counsellors:list:${JSON.stringify({ specialization, language, minRating, minPrice, maxPrice, page, limit, sortBy, sortOrder })}`
+      : null;
 
-    // Get total count for pagination
-    const total = await Counsellor.countDocuments(query);
+    const fetchFromDB = async () => {
+      const [counsellors, total] = await Promise.all([
+        Counsellor.find(query)
+          .populate('user', 'firstName lastName profileImage')
+          .sort(sort)
+          .skip(skip)
+          .limit(parseInt(limit))
+          .lean(),
+        Counsellor.countDocuments(query),
+      ]);
 
-    // Format response
-    const formattedCounsellors = counsellors.map(counsellor => ({
-      id: counsellor._id,
-      name: `${counsellor.user.firstName} ${counsellor.user.lastName}`,
-      specialization: counsellor.specialization,
-      specializations: counsellor.specializations,
-      rating: counsellor.rating,
-      reviewCount: counsellor.reviewCount,
-      experience: counsellor.experience,
-      languages: counsellor.languages,
-      hourlyRate: counsellor.hourlyRate,
-      currency: counsellor.currency,
-      profileImage: counsellor.profileImage || counsellor.user.profileImage,
-      bio: counsellor.bio,
-      isAvailable: counsellor.isAvailable,
-      totalSessions: counsellor.totalSessions
-    }));
+      const formatted = counsellors.map(counsellor => ({
+        id: counsellor._id,
+        name: `${counsellor.user.firstName} ${counsellor.user.lastName}`,
+        specialization: counsellor.specialization,
+        specializations: counsellor.specializations,
+        rating: counsellor.rating,
+        reviewCount: counsellor.reviewCount,
+        experience: counsellor.experience,
+        languages: counsellor.languages,
+        hourlyRate: counsellor.hourlyRate,
+        currency: counsellor.currency,
+        profileImage: counsellor.profileImage || counsellor.user.profileImage,
+        bio: counsellor.bio,
+        isAvailable: counsellor.isAvailable,
+        totalSessions: counsellor.totalSessions,
+      }));
 
-    res.json({
-      success: true,
-      data: {
-        counsellors: formattedCounsellors,
+      return {
+        counsellors: formatted,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
           total,
-          pages: Math.ceil(total / parseInt(limit))
-        }
-      }
-    });
+          pages: Math.ceil(total / parseInt(limit)),
+        },
+      };
+    };
+
+    const data = cacheKey
+      ? await withCache(cacheKey, CACHE_TTL.LIST, fetchFromDB)
+      : await fetchFromDB();
+
+    res.json({ success: true, data });
 
   } catch (error) {
     console.error('Get counsellors error:', error);
@@ -187,24 +223,25 @@ router.get('/', [
 // @access  Public
 router.get('/specializations', async (req, res) => {
   try {
-    // Query both singular and plural fields to handle any DB inconsistency
-    const [singular, plural] = await Promise.all([
-      Counsellor.distinct('specialization'),
-      Counsellor.distinct('specializations'),
-    ]);
-    const seen = new Set();
-    const uniqueSpecializations = [...singular, ...plural.flat()]
-      .map(s => s.trim())
-      .filter(s => {
-        if (!s) return false;
-        const key = s.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .sort();
+    const specializations = await withCache('counsellors:specializations', CACHE_TTL.STATIC_LOOKUPS, async () => {
+      const [singular, plural] = await Promise.all([
+        Counsellor.distinct('specialization'),
+        Counsellor.distinct('specializations'),
+      ]);
+      const seen = new Set();
+      return [...singular, ...plural.flat()]
+        .map(s => s.trim())
+        .filter(s => {
+          if (!s) return false;
+          const key = s.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .sort();
+    });
 
-    res.json({ success: true, data: { specializations: uniqueSpecializations } });
+    res.json({ success: true, data: { specializations } });
   } catch (error) {
     console.error('Get specializations error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -216,20 +253,22 @@ router.get('/specializations', async (req, res) => {
 // @access  Public
 router.get('/languages', async (req, res) => {
   try {
-    const raw = await Counsellor.distinct('languages');
-    const seen = new Set();
-    const uniqueLanguages = raw.flat()
-      .map(l => l.trim())
-      .filter(l => {
-        if (!l) return false;
-        const key = l.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .sort();
+    const languages = await withCache('counsellors:languages', CACHE_TTL.STATIC_LOOKUPS, async () => {
+      const raw = await Counsellor.distinct('languages');
+      const seen = new Set();
+      return raw.flat()
+        .map(l => l.trim())
+        .filter(l => {
+          if (!l) return false;
+          const key = l.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .sort();
+    });
 
-    res.json({ success: true, data: { languages: uniqueLanguages } });
+    res.json({ success: true, data: { languages } });
   } catch (error) {
     console.error('Get languages error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -293,7 +332,7 @@ router.get('/:id', [
     const { id } = req.params;
 
     const counsellor = await Counsellor.findById(id)
-      .populate('user', 'firstName lastName email phone profileImage')
+      .populate('user', 'firstName lastName profileImage')
       .lean();
 
     if (!counsellor) {
@@ -331,7 +370,12 @@ router.get('/:id', [
       timezone: counsellor.timezone,
       isAvailable: counsellor.isAvailable,
       totalSessions: counsellor.totalSessions,
-      stats: counsellor.stats,
+      // Only expose non-financial stats — totalEarnings/monthlyEarnings are internal
+      stats: counsellor.stats ? {
+        completedSessions:    counsellor.stats.completedSessions,
+        cancelledSessions:    counsellor.stats.cancelledSessions,
+        averageSessionRating: counsellor.stats.averageSessionRating,
+      } : undefined,
       gallery: counsellor.gallery
     };
 
@@ -456,14 +500,6 @@ router.post('/register', [
   body('availability').optional().isObject()
 ], async (req, res) => {
   try {
-    console.log('Registration request received:', {
-      email: req.body.email,
-      phone: req.body.phone,
-      experience: req.body.experience,
-      hourlyRate: req.body.hourlyRate,
-      languages: req.body.languages
-    });
-    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       console.log('Validation errors:', errors.array());

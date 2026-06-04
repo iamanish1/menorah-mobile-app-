@@ -108,33 +108,19 @@ export default function BookingDetailPage() {
     try {
       setActionLoading('start');
       setError(null);
-      
-      // Start the session first
-      const startResponse = await api.startSession(booking.id);
-      if (!startResponse.success) {
-        setError(startResponse.message || 'Failed to start session');
-        return;
-      }
-      
-      // For video sessions, join the room to get the proper URL with token
+
       if (booking.sessionType === 'video') {
-        const joinResponse = await api.joinVideoRoom(booking.id);
-        if (joinResponse.success && joinResponse.data?.roomUrl) {
-          // Open the video room in a new window
-          window.open(joinResponse.data.roomUrl, '_blank');
-          // Refresh booking to show updated status
-          await fetchBooking();
-        } else {
-          // Fallback to roomUrl from start response if join fails
-          if (startResponse.data?.roomUrl) {
-            window.open(startResponse.data.roomUrl, '_blank');
-            await fetchBooking();
-          } else {
-            setError(joinResponse.message || 'Failed to join video room');
-          }
-        }
+        // For video sessions, navigate directly to the call page.
+        // POST /api/video/room/:id/join handles starting the session AND
+        // creating the LiveKit room in one atomic step — no separate startSession needed.
+        router.push(`/call/${booking.id}`);
       } else {
-        // For non-video sessions, just refresh
+        // For audio/chat sessions, start explicitly then refresh
+        const startResponse = await api.startSession(booking.id);
+        if (!startResponse.success) {
+          setError(startResponse.message || 'Failed to start session');
+          return;
+        }
         await fetchBooking();
       }
     } catch (error: any) {

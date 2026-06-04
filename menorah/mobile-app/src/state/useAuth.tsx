@@ -43,57 +43,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkAuthStatus = async () => {
     try {
       const token = await AsyncStorage.getItem('auth_token');
-      console.log('[Auth] Checking auth status, token exists:', !!token);
-      
+      if (__DEV__) console.log('[Auth] Checking auth status, token exists:', !!token);
+
       if (token) {
         const response = await api.getCurrentUser();
-        console.log('[Auth] getCurrentUser response:', { 
-          success: response.success, 
-          hasUser: !!response.data?.user,
-          message: response.message 
-        });
-        
         if (response.success && response.data?.user) {
-          console.log('[Auth] User authenticated:', response.data.user.email);
           setUser(response.data.user);
         } else {
-          // Check if it's a network error - if so, keep the token (user might still be valid)
-          const isNetworkError = response.message?.includes('Network error') || 
+          const isNetworkError = response.message?.includes('Network error') ||
                                  response.message?.includes('Unable to connect to server');
-          
-          if (isNetworkError) {
-            console.warn('[Auth] Network error during auth check - keeping token for retry');
-            // On network error, keep the token but set user to null so app shows Onboarding
-            // User can retry login when network is available
-            setUser(null);
-          } else {
-            // Token is invalid or expired - clear it
-            console.log('[Auth] Auth failed (not network error), clearing token. Response:', response);
+          if (!isNetworkError) {
             await api.clearToken();
-            setUser(null);
           }
+          setUser(null);
         }
       } else {
-        // No token, ensure user is null
-        console.log('[Auth] No token found, setting user to null');
         setUser(null);
       }
     } catch (error: any) {
-      console.error('[Auth] Error checking auth status:', error);
-      
-      // Don't clear token on network errors, just log them
-      // Axios uses 'ERR_NETWORK' for network errors, not 'NETWORK_ERROR'
-      if (error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error')) {
-        console.warn('[Auth] Network error during auth check - keeping existing token');
-        // Keep token, set user to null so app shows Onboarding
-        setUser(null);
-      } else {
-        // Clear token for other types of errors
+      const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' ||
+                             error.message?.includes('Network Error');
+      if (!isNetworkError) {
         await api.clearToken();
-        setUser(null);
       }
+      setUser(null);
     } finally {
-      console.log('[Auth] Auth check complete, setting isLoading to false');
       setIsLoading(false);
     }
   };
@@ -101,22 +75,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      console.log('[Auth] Attempting login for:', email);
       const response = await api.login({ email, password });
-      console.log('[Auth] Login response:', { 
-        success: response.success, 
-        hasData: !!response.data,
-        message: response.message 
-      });
-      
+
       if (response.success && response.data) {
-        console.log('[Auth] Login successful, setting token and user');
         api.setToken(response.data.token);
         setUser(response.data.user);
-        console.log('[Auth] User authenticated:', response.data.user.email);
         return { success: true };
       } else {
-        console.log('[Auth] Login failed:', response.message);
         // Check if it's a network error
         const isNetworkError = response.message?.includes('Network error') || 
                                response.message?.includes('Unable to connect to server');

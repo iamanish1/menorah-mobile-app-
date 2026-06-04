@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
@@ -30,7 +30,7 @@ export default function ChatListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-  const { on, off } = useSocket(token);
+  const { on, off, isConnected } = useSocket(token);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -44,29 +44,7 @@ export default function ChatListPage() {
     }
   }, [isAuthenticated]);
 
-  useEffect(() => {
-    if (!token || !isAuthenticated) return;
-
-    const pollingInterval = setInterval(() => { fetchChatRooms(); }, 10000);
-
-    const handleNewMessage = (data: any) => { if (data.roomId) fetchChatRooms(); };
-    const handleNewChat = () => { fetchChatRooms(); };
-
-    try {
-      on('new_message', handleNewMessage);
-      on('new_chat_started', handleNewChat);
-    } catch { }
-
-    return () => {
-      clearInterval(pollingInterval);
-      try {
-        off('new_message', handleNewMessage);
-        off('new_chat_started', handleNewChat);
-      } catch { }
-    };
-  }, [token, on, off, isAuthenticated]);
-
-  const fetchChatRooms = async () => {
+  const fetchChatRooms = useCallback(async () => {
     try {
       setError(null);
       const response = await api.getCounsellorChatRooms();
@@ -80,7 +58,63 @@ export default function ChatListPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // ── Socket-driven updates — no polling ────────────────────────────────────
+  useEffect(() => {
+    if (!token || !isAuthenticated) return;
+
+    // New message in any room → update that room's preview + unread count
+    const handleNewMessage = (data: any) => {
+      if (!data?.roomId) return;
+      setChatRooms((prev) =>
+        prev.map((room) =>
+          room.roomId === data.roomId || room.id === data.roomId
+            ? {
+                ...room,
+                lastMessage: data.content ?? room.lastMessage,
+                lastMessageTime: data.timestamp ?? room.lastMessageTime,
+                unreadCount: room.unreadCount + 1,
+              }
+            : room
+        )
+      );
+    };
+
+    // A new user started a chat — need a full refresh to get the new room
+    const handleNewChat = () => { fetchChatRooms(); };
+
+    // Presence change — update online dot without a full API call
+    const handleStatusChange = (data: any) => {
+      if (!data?.userId) return;
+      setChatRooms((prev) =>
+        prev.map((room) =>
+          room.userId === data.userId
+            ? { ...room, isOnline: data.isOnline ?? false }
+            : room
+        )
+      );
+    };
+
+    // Socket reconnected after a drop — re-sync state we may have missed
+    const handleReconnect = () => { fetchChatRooms(); };
+
+    try {
+      on('new_message',       handleNewMessage);
+      on('new_chat_started',  handleNewChat);
+      on('user_status_changed', handleStatusChange);
+      on('reconnect',         handleReconnect);
+    } catch { /* socket not ready yet — listeners registered once it connects */ }
+
+    return () => {
+      try {
+        off('new_message',        handleNewMessage);
+        off('new_chat_started',   handleNewChat);
+        off('user_status_changed', handleStatusChange);
+        off('reconnect',          handleReconnect);
+      } catch { }
+    };
+  }, [token, on, off, isAuthenticated, fetchChatRooms]);
 
   const formatTime = (timestamp: string) => {
     try {
@@ -114,6 +148,9 @@ export default function ChatListPage() {
           <p className={styles.pageSubtitle}>Connect with your clients in real-time</p>
         </div>
         <div className={styles.headerBadge}>
+          {!isConnected && (
+            <span className={styles.offlineBadge}>Reconnecting…</span>
+          )}
           {chatRooms.filter(r => r.unreadCount > 0).length > 0 && (
             <span className={styles.unreadTotal}>
               {chatRooms.reduce((sum, r) => sum + r.unreadCount, 0)} unread

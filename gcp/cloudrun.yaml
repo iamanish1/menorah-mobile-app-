@@ -1,0 +1,223 @@
+# =============================================================================
+# Menorah Health — Cloud Run Service Definition
+# =============================================================================
+# This file is applied by the CI/CD pipeline using:
+#   envsubst < gcp/cloudrun.yaml | gcloud run services replace - --region=$GCP_REGION
+#
+# Template variables substituted by CI/CD:
+#   GCP_PROJECT_ID  — your GCP project ID
+#   GCP_REGION      — deployment region (asia-south1 for India)
+#   GCP_AR_REGION   — Artifact Registry region (same as GCP_REGION usually)
+#   IMAGE_TAG       — short git SHA of the build (e.g. sha-abc1234)
+# =============================================================================
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+
+metadata:
+  name: menorah-api
+  namespace: ${GCP_PROJECT_ID}
+  labels:
+    app: menorah-api
+    env: production
+    team: menorah
+  annotations:
+    # Allow unauthenticated requests (Cloudflare Worker proxies to here)
+    run.googleapis.com/ingress: all
+    run.googleapis.com/description: "Menorah Health API — Cloud Run burst layer"
+
+spec:
+  template:
+    metadata:
+      annotations:
+        # ── Autoscaling ───────────────────────────────────────────────────
+        # Scale to ZERO when no traffic → $0 cost when VPS handles everything
+        autoscaling.knative.dev/minScale: "0"
+        # 1000 instances × 100 concurrency = 100,000 concurrent requests
+        autoscaling.knative.dev/maxScale: "1000"
+        # Spin up a new instance when existing ones reach 80% concurrency
+        autoscaling.knative.dev/target: "80"
+        # ── CPU ───────────────────────────────────────────────────────────
+        # Always allocate full CPU (not throttled between requests)
+        # Needed for Node.js background work (crypto, bcrypt, mongoose)
+        run.googleapis.com/cpu-throttling: "false"
+        # ── Startup ───────────────────────────────────────────────────────
+        # Allow 30s for Node.js + DB + Redis to connect before first request
+        run.googleapis.com/startup-cpu-boost: "true"
+
+    spec:
+      # Cloud Run runtime service account (has Secret Manager read access)
+      serviceAccountName: menorah-cloudrun@${GCP_PROJECT_ID}.iam.gserviceaccount.com
+
+      # 100 concurrent requests per container instance
+      containerConcurrency: 100
+
+      # Max 5 minutes for a single request (long-running bookings/payments)
+      timeoutSeconds: 300
+
+      containers:
+        - image: ${GCP_AR_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/menorah/menorah-api:${IMAGE_TAG}
+
+          ports:
+            - name: http1
+              containerPort: 8080
+
+          resources:
+            limits:
+              cpu: "2"        # 2 vCPU per instance
+              memory: "1Gi"   # 1 GB RAM per instance
+
+          # ── Non-secret env vars (safe to be in this file) ──────────────
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "8080"
+            - name: API_BASE_URL
+              value: https://api.menorahhealth.app
+            - name: JWT_EXPIRES_IN
+              value: 7d
+            - name: JWT_REFRESH_EXPIRES_IN
+              value: 30d
+            - name: EMAIL_FROM
+              value: noreply@menorah.me
+            - name: MOBILE_APP_SCHEME
+              value: menorah-health://reset-password
+            - name: CHECKOUT_RETURN_URL
+              value: https://menorahhealth.app/checkout/return
+            - name: JITSI_BASE_URL
+              value: https://meet.jit.si
+            - name: SERVER_TZ
+              value: Asia/Kolkata
+            - name: BCRYPT_ROUNDS
+              value: "12"
+            - name: MAX_FILE_SIZE
+              value: "5242880"
+            # Disable Socket.IO Redis adapter on Cloud Run:
+            # Cloudflare Worker routes all /socket.io/ traffic to VPS only,
+            # so Cloud Run never handles WebSocket connections.
+            - name: ENABLE_SOCKET_ADAPTER
+              value: "false"
+
+          # ── Secrets from GCP Secret Manager ───────────────────────────
+          # Each secret is injected as an environment variable at container startup.
+          # Values are set by running: bash scripts/secrets-sync.sh
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-uri
+                  key: latest
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: redis-url        # points to Upstash TLS URL
+                  key: latest
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: latest
+            - name: JWT_REFRESH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-refresh-secret
+                  key: latest
+            - name: ALLOWED_ORIGINS
+              valueFrom:
+                secretKeyRef:
+                  name: allowed-origins
+                  key: latest
+            - name: MSG91_AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: msg91-auth-key
+                  key: latest
+            - name: MSG91_OTP_TEMPLATE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: msg91-otp-template-id
+                  key: latest
+            - name: MSG91_SMS_TEMPLATE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: msg91-sms-template-id
+                  key: latest
+            - name: MSG91_EMAIL_DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: msg91-email-domain
+                  key: latest
+            - name: MSG91_EMAIL_TEMPLATE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: msg91-email-template-id
+                  key: latest
+            - name: RAZORPAY_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: razorpay-key-id
+                  key: latest
+            - name: RAZORPAY_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: razorpay-key-secret
+                  key: latest
+            - name: RAZORPAY_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: razorpay-webhook-secret
+                  key: latest
+            - name: CLOUDINARY_CLOUD_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: cloudinary-cloud-name
+                  key: latest
+            - name: CLOUDINARY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cloudinary-api-key
+                  key: latest
+            - name: CLOUDINARY_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cloudinary-api-secret
+                  key: latest
+            # LiveKit — video call infrastructure
+            - name: LIVEKIT_URL
+              value: wss://livekit.menorahhealth.app
+            - name: LIVEKIT_API_URL
+              value: https://livekit.menorahhealth.app
+            - name: LIVEKIT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: livekit-api-key
+                  key: latest
+            - name: LIVEKIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: livekit-api-secret
+                  key: latest
+
+          # ── Startup probe — wait for DB+Redis to connect ───────────────
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 6    # 6 × 5s = 30s max startup time
+            timeoutSeconds: 3
+
+          # ── Liveness probe — restart unresponsive containers ───────────
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+  # ── Traffic — 100% to latest revision always ──────────────────────────
+  traffic:
+    - percent: 100
+      latestRevision: true

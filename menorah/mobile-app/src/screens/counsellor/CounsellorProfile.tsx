@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   ActivityIndicator, Alert, Dimensions,
@@ -11,7 +11,8 @@ import {
 } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
-import { api, Counsellor } from '@/lib/api';
+import { Counsellor } from '@/lib/api';
+import { useCounsellor } from '@/hooks/useQueries';
 
 const { width } = Dimensions.get('window');
 const HERO_GREEN = '#2d5c3e';
@@ -51,28 +52,24 @@ export default function CounsellorProfile({ navigation, route }: any) {
   const isDark = scheme === 'dark';
   const insets = useSafeAreaInsets();
 
-  const [counsellor, setCounsellor]   = useState<Counsellor | null>(null);
-  const [loading, setLoading]         = useState(true);
-  const [isFav, setIsFav]             = useState(false);
-  const [dateIdx, setDateIdx]         = useState(0);
-  const [selectedTime, setTime]       = useState<string | null>(null);
-  const [showAllSlots, setShowAll]    = useState(false);
+  const [isFav,        setIsFav]   = useState(false);
+  const [dateIdx,      setDateIdx] = useState(0);
+  const [selectedTime, setTime]    = useState<string | null>(null);
+  const [showAllSlots, setShowAll] = useState(false);
 
   const dates = useMemo(() => generateDates(30), []);
   const selectedDate = dates[dateIdx];
 
-  useEffect(() => { if (counsellorId) load(); }, [counsellorId]);
-  useEffect(() => { setTime(null); setShowAll(false); }, [dateIdx]);
+  // React Query — cached for 5 min, shared with other screens that show this counsellor
+  const { data: counsellor, isLoading: loading, isError } = useCounsellor(counsellorId);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getCounsellor(counsellorId);
-      if (res.success && res.data) setCounsellor(res.data.counsellor);
-      else { Alert.alert('Error', 'Failed to load profile.'); navigation.goBack(); }
-    } catch { Alert.alert('Error', 'Failed to load profile.'); navigation.goBack(); }
-    finally { setLoading(false); }
-  };
+  // Navigate back if the profile fails to load
+  useMemo(() => {
+    if (isError) {
+      Alert.alert('Error', 'Failed to load profile.');
+      navigation.goBack();
+    }
+  }, [isError]);
 
   const handleBook = () => {
     if (!selectedTime) { Alert.alert('Select Time', 'Please pick a time slot first.'); return; }

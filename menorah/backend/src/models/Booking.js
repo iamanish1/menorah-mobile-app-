@@ -246,9 +246,12 @@ bookingSchema.virtual('canBeRescheduled').get(function() {
 
 // Indexes
 bookingSchema.index({ user: 1, scheduledAt: -1 });
+bookingSchema.index({ user: 1, status: 1, scheduledAt: -1 });         // user booking list filtered by status
 bookingSchema.index({ counsellor: 1, scheduledAt: -1 });
+bookingSchema.index({ counsellor: 1, status: 1, scheduledAt: -1 });   // counsellor booking list filtered by status
 bookingSchema.index({ status: 1, scheduledAt: 1 });
 bookingSchema.index({ paymentStatus: 1 });
+bookingSchema.index({ razorpayOrderId: 1 });                          // payment verification lookup
 bookingSchema.index({ 'videoCall.roomId': 1 });
 
 // Pre-save middleware to update status history
@@ -267,23 +270,20 @@ bookingSchema.statics.findUpcoming = function(userId, limit = 10) {
   return this.find({
     user: userId,
     scheduledAt: { $gt: new Date() },
-    status: { $in: ['confirmed', 'pending'] }
+    status: { $in: ['confirmed', 'pending'] },
   })
-  .populate('counsellor', 'user specialization hourlyRate')
-  .populate('counsellor.user', 'firstName lastName profileImage')
+  .populate({ path: 'counsellor', select: 'specialization hourlyRate', populate: { path: 'user', select: 'firstName lastName profileImage' } })
   .sort({ scheduledAt: 1 })
   .limit(limit);
 };
 
-// Static method to find past bookings
 bookingSchema.statics.findPast = function(userId, limit = 10) {
   return this.find({
     user: userId,
     scheduledAt: { $lt: new Date() },
-    status: { $in: ['completed', 'cancelled', 'no-show'] }
+    status: { $in: ['completed', 'cancelled', 'no-show'] },
   })
-  .populate('counsellor', 'user specialization rating')
-  .populate('counsellor.user', 'firstName lastName profileImage')
+  .populate({ path: 'counsellor', select: 'specialization rating', populate: { path: 'user', select: 'firstName lastName profileImage' } })
   .sort({ scheduledAt: -1 })
   .limit(limit);
 };

@@ -377,7 +377,17 @@ class ApiClient {
     }
   }
 
-  async joinVideoRoom(bookingId: string): Promise<ApiResponse<{ roomId: string; roomUrl: string; jitsiToken: string; sessionType: string; counsellorName: string; userName: string; scheduledAt: string; duration: number; status: string }>> {
+  async joinVideoRoom(bookingId: string): Promise<ApiResponse<{
+    roomId:         string;
+    livekitUrl:     string;   // wss://livekit.menorahhealth.app
+    livekitToken:   string;   // LiveKit participant JWT
+    sessionType:    string;
+    counsellorName: string;
+    userName:       string;
+    scheduledAt:    string;
+    duration:       number;
+    status:         string;
+  }>> {
     try {
       const response = await this.client.post(`/video/room/${bookingId}/join`);
       return response.data;

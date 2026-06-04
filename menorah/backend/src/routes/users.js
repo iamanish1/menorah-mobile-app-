@@ -31,20 +31,30 @@ router.get('/me', auth, async (req, res) => {
     if (user.role === 'counsellor') {
       const c = await Counsellor.findOne({ user: user._id }).lean();
       if (c) {
+        // Mask bank account number — only show last 4 digits
+        const maskedBank = c.bankDetails ? {
+          accountHolderName: c.bankDetails.accountHolderName,
+          bankName:          c.bankDetails.bankName,
+          ifscCode:          c.bankDetails.ifscCode,
+          accountNumberMasked: c.bankDetails.accountNumber
+            ? `****${String(c.bankDetails.accountNumber).slice(-4)}`
+            : null,
+        } : null;
+
         counsellorProfile = {
-          specialization: c.specialization,
-          specializations: c.specializations,
+          specialization:    c.specialization,
+          specializations:   c.specializations,
           yearsOfExperience: c.experience,
-          hourlyRate: c.hourlyRate,
-          currency: c.currency,
-          bio: c.bio,
-          languages: c.languages,
-          licenseNumber: c.licenseNumber,
-          availability: c.availability,
-          isVerified: c.isVerified,
-          isActive: c.isActive,
-          commissionRate: c.commissionRate,
-          bankDetails: c.bankDetails || null,
+          hourlyRate:        c.hourlyRate,
+          currency:          c.currency,
+          bio:               c.bio,
+          languages:         c.languages,
+          licenseNumber:     c.licenseNumber,
+          availability:      c.availability,
+          isVerified:        c.isVerified,
+          isActive:          c.isActive,
+          // commissionRate omitted — internal business metric
+          bankDetails:       maskedBank,
         };
       }
     }
@@ -68,8 +78,11 @@ router.get('/me', auth, async (req, res) => {
 // @access  Private
 router.get('/profile', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
-    
+    // Exclude internal/sensitive fields from profile response
+    const user = await User.findById(req.user._id).select(
+      '-password -emailVerificationToken -passwordResetToken -passwordResetExpires -loginAttempts -lockUntil'
+    );
+
     res.json({
       success: true,
       data: { user }

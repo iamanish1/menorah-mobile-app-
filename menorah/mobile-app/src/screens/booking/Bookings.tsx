@@ -13,6 +13,7 @@ import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { api, Booking } from "@/lib/api";
 import { socketService } from "@/lib/socket";
+import { useBookings, useInvalidateBookings } from "@/hooks/useQueries";
 
 const TRUST_ITEMS = [
   { icon: ShieldCheck, label: "Trusted & Secure",     sub: "Your privacy is our priority" },
@@ -22,38 +23,24 @@ const TRUST_ITEMS = [
 ];
 
 export default function Bookings({ navigation }: any) {
-  const [activeTab, setActiveTab]   = useState<'upcoming' | 'completed'>('upcoming');
-  const [bookings, setBookings]     = useState<Booking[]>([]);
-  const [loading, setLoading]       = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'completed'>('upcoming');
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
 
-  useEffect(() => { fetchBookings(); }, [activeTab]);
+  const status = activeTab === 'upcoming' ? 'pending,confirmed' : 'completed';
+  const { data, isLoading, isFetching, refetch } = useBookings({ status });
+  const bookings: Booking[] = data?.bookings ?? [];
+  const invalidateBookings = useInvalidateBookings();
 
+  // Socket events → invalidate the cache so React Query refetches automatically
   useEffect(() => {
-    const refresh = () => fetchBookings();
-    const u1 = socketService.onBookingConfirmed(refresh);
-    const u2 = socketService.onBookingRescheduled(refresh);
-    const u3 = socketService.onBookingStatusChanged(refresh);
+    const u1 = socketService.onBookingConfirmed(invalidateBookings);
+    const u2 = socketService.onBookingRescheduled(invalidateBookings);
+    const u3 = socketService.onBookingStatusChanged(invalidateBookings);
     return () => { u1(); u2(); u3(); };
-  }, [activeTab]);
+  }, []);
 
-  const fetchBookings = async () => {
-    setLoading(true);
-    try {
-      const status = activeTab === 'upcoming' ? 'pending,confirmed' : 'completed';
-      const res = await api.getBookings({ status, page: 1, limit: 50 });
-      setBookings(res.success && res.data ? res.data.bookings || [] : []);
-    } catch {
-      Alert.alert('Error', 'Failed to load bookings. Please try again.');
-      setBookings([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onRefresh = async () => { setRefreshing(true); await fetchBookings(); setRefreshing(false); };
+  const onRefresh = () => { refetch(); };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -104,7 +91,7 @@ export default function Bookings({ navigation }: any) {
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={isFetching && !isLoading} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         {/* ── Header ── */}
         <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -163,7 +150,7 @@ export default function Bookings({ navigation }: any) {
         </View>
 
         {/* ── Content ── */}
-        {loading ? (
+        {isLoading ? (
           <View style={{ alignItems: 'center', marginTop: 60 }}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>

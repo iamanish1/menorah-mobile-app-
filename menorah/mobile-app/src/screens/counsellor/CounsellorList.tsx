@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, TextInput,
   ActivityIndicator, RefreshControl, ScrollView,
@@ -12,7 +12,8 @@ import {
 import { Image } from 'expo-image';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
-import { api, Counsellor } from '@/lib/api';
+import { Counsellor } from '@/lib/api';
+import { useCounsellors } from '@/hooks/useQueries';
 
 const CATEGORIES = [
   { id: 'all',        label: 'All',        Icon: LayoutGrid },
@@ -28,60 +29,44 @@ export default function CounsellorList({ navigation }: any) {
   const colors = palettes[scheme];
   const isDark = scheme === 'dark';
 
-  const [counsellors, setCounsellors]   = useState<Counsellor[]>([]);
-  const [filtered, setFiltered]         = useState<Counsellor[]>([]);
-  const [loading, setLoading]           = useState(true);
-  const [refreshing, setRefreshing]     = useState(false);
-  const [search, setSearch]             = useState('');
-  const [activeCategory, setCategory]   = useState('all');
-  const [sortIdx, setSortIdx]           = useState(0);
-  const [favorites, setFavorites]       = useState<Set<string>>(new Set());
+  const [search,          setSearch]       = useState('');
+  const [debouncedSearch, setDebounced]    = useState('');
+  const [activeCategory,  setCategory]     = useState('all');
+  const [sortIdx,         setSortIdx]      = useState(0);
+  const [favorites,       setFavorites]    = useState<Set<string>>(new Set());
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const pageBg  = isDark ? colors.bg      : '#f8faf8';
-  const cardBg  = isDark ? colors.surface : '#ffffff';
+  const pageBg = isDark ? colors.bg      : '#f8faf8';
+  const cardBg = isDark ? colors.surface : '#ffffff';
 
-  const loadCounsellors = useCallback(async (q?: string) => {
-    try {
-      const res = await api.getCounsellors({ search: q?.trim() || undefined, limit: 50 });
-      if (res.success && res.data) {
-        setCounsellors(res.data.counsellors);
-      }
-    } catch {
-      // silent
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  // ── React Query — replaces manual useState + useEffect + api call ─────────
+  const { data, isLoading, isFetching, refetch } = useCounsellors(
+    debouncedSearch ? { search: debouncedSearch } : undefined
+  );
+  const counsellors = data?.counsellors ?? [];
 
-  useEffect(() => { loadCounsellors(); }, []);
-
-  useEffect(() => {
+  // ── Client-side filter + sort (no extra API calls needed) ─────────────────
+  const filtered = useMemo(() => {
     let list = [...counsellors];
-
     if (activeCategory !== 'all') {
       list = list.filter(c =>
         [c.specialization, ...(c.specializations || [])]
-          .join(' ')
-          .toLowerCase()
-          .includes(activeCategory)
+          .join(' ').toLowerCase().includes(activeCategory)
       );
     }
-
     switch (SORT_OPTIONS[sortIdx]) {
-      case 'Rating':     list.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)); break;
+      case 'Rating':     list.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));     break;
       case 'Experience': list.sort((a, b) => (b.experience ?? 0) - (a.experience ?? 0)); break;
       case 'Price':      list.sort((a, b) => (a.hourlyRate ?? 0) - (b.hourlyRate ?? 0)); break;
     }
-
-    setFiltered(list);
+    return list;
   }, [counsellors, activeCategory, sortIdx]);
 
   const handleSearch = (text: string) => {
     setSearch(text);
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => loadCounsellors(text), 500);
+    // Debounce: update the query key after 500ms so React Query fires one request
+    searchTimer.current = setTimeout(() => setDebounced(text.trim()), 500);
   };
 
   const toggleFav = (id: string) => {
@@ -92,7 +77,7 @@ export default function CounsellorList({ navigation }: any) {
     });
   };
 
-  const onRefresh = () => { setRefreshing(true); loadCounsellors(search); };
+  const onRefresh = () => { refetch(); };
 
   const renderCard = ({ item }: { item: Counsellor }) => {
     const tags = item.specializations?.length > 0 ? item.specializations : [];
@@ -433,7 +418,7 @@ export default function CounsellorList({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {loading ? (
+      {isLoading ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={{ color: colors.muted, marginTop: 12, fontSize: 14 }}>Loading counsellors...</Text>
@@ -446,7 +431,7 @@ export default function CounsellorList({ navigation }: any) {
           contentContainerStyle={{ paddingTop: 0 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+            <RefreshControl refreshing={isFetching && !isLoading} onRefresh={onRefresh} tintColor={colors.primary} />
           }
           ListHeaderComponent={<ListHeader />}
           ListFooterComponent={filtered.length > 0 ? <ListFooter /> : null}

@@ -161,10 +161,15 @@ userSchema.index({ email: 1, phone: 1 });
 userSchema.index({ firstName: 1, lastName: 1 });
 userSchema.index({ role: 1 });
 
+// Sparse indexes on token fields — speeds up password-reset and email-verify lookups
+userSchema.index({ passwordResetToken:     1 }, { sparse: true });
+userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
+
 // Pre-save middleware to hash password
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
-  
+  // Skip re-hashing if the password was already hashed externally (e.g. from Redis pending-reg flow)
+  if (this.password.startsWith('$2b$') || this.password.startsWith('$2a$')) return next();
   try {
     const salt = await bcrypt.genSalt(parseInt(process.env.BCRYPT_ROUNDS) || 12);
     this.password = await bcrypt.hash(this.password, salt);

@@ -143,17 +143,28 @@ router.post('/razorpay-webhook', async (req, res) => {
       return res.status(400).json({ error: 'Missing signature' });
     }
 
+    // req.body here is a raw Buffer — server.js registers express.raw() for this route
+    // before express.json() so the signature is computed over the original bytes.
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
     const expectedSignature = crypto
       .createHmac('sha256', webhookSecret)
-      .update(JSON.stringify(req.body))
+      .update(rawBody)
       .digest('hex');
 
-    if (signature !== expectedSignature) {
+    // Timing-safe comparison — prevents side-channel timing oracle
+    const signaturesMatch = (() => {
+      try {
+        return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expectedSignature, 'hex'));
+      } catch { return false; }
+    })();
+
+    if (!signaturesMatch) {
       console.error('Razorpay webhook signature verification failed');
       return res.status(400).json({ error: 'Invalid signature' });
     }
 
-    const event = req.body;
+    // Parse the body now that the signature is verified
+    const event = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
 
     const io = req.app.get('io');
     switch (event.event) {
@@ -199,8 +210,19 @@ router.post('/verify-razorpay', [
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
 
-    if (booking.paymentStatus === 'paid' && booking.paymentId === razorpay_payment_id) {
+    // Ownership check — only the booking's user can verify payment
+    if (booking.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    // Idempotency — already paid, nothing to do
+    if (booking.paymentStatus === 'paid') {
       return res.json({ success: true, message: 'Payment already verified' });
+    }
+
+    // Order ID validation — prevent payment-replay across different bookings
+    if (booking.razorpayOrderId && booking.razorpayOrderId !== razorpay_order_id) {
+      return res.status(400).json({ success: false, message: 'Order ID does not match booking' });
     }
 
     const text = `${razorpay_order_id}|${razorpay_payment_id}`;
@@ -209,7 +231,14 @@ router.post('/verify-razorpay', [
       .update(text)
       .digest('hex');
 
-    if (expectedSignature !== razorpay_signature) {
+    // Timing-safe signature comparison
+    const signaturesMatch = (() => {
+      try {
+        return crypto.timingSafeEqual(Buffer.from(expectedSignature, 'hex'), Buffer.from(razorpay_signature, 'hex'));
+      } catch { return false; }
+    })();
+
+    if (!signaturesMatch) {
       return res.status(400).json({ success: false, message: 'Invalid payment signature' });
     }
 
@@ -227,13 +256,13 @@ router.post('/verify-razorpay', [
           return res.status(400).json({ success: false, message: 'Payment amount mismatch' });
         }
 
-        // Accept both captured (live) and authorized (test mode)
         if (payment.status !== 'captured' && payment.status !== 'authorized') {
           return res.status(400).json({ success: false, message: `Payment not completed (status: ${payment.status})` });
         }
       } catch (err) {
         console.error('Error fetching Razorpay order/payment:', err);
-        // Don't fail — signature verification already passed
+        // Return 503 — don't silently skip amount verification
+        return res.status(503).json({ success: false, message: 'Unable to verify payment with Razorpay. Please try again.' });
       }
     }
 
@@ -302,16 +331,16 @@ router.get('/order/:orderId/status', [
 
     const booking = await Booking.findOne({ razorpayOrderId: orderId });
 
-    if (booking && booking.user.toString() !== req.user._id.toString()) {
+    // No booking found — don't reveal order data to arbitrary callers
+    if (!booking) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    if (order.status === 'paid' && booking) {
-      booking.paymentStatus = 'paid';
-      booking.orderStatus = 'paid';
-      booking.status = 'confirmed';
-      await booking.save();
+    if (booking.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
     }
+
+    // GET endpoints must not mutate state — confirmation is handled by webhook/verify-razorpay
 
     res.json({
       success: true,
@@ -554,17 +583,19 @@ router.get('/subscription/status', auth, async (req, res) => {
   }
 });
 
-// Webhook helpers
+// ── Webhook helpers — all idempotent ──────────────────────────────────────
 const handleRazorpayPaymentSuccess = async (payment, io) => {
   const bookingId = payment.notes?.bookingId;
   if (!bookingId) return;
   const booking = await Booking.findById(bookingId);
   if (!booking) return;
-  booking.paymentStatus = 'paid';
-  booking.paymentId = payment.id;
-  booking.transactionId = payment.order_id;
-  booking.orderStatus = 'paid';
-  booking.status = 'confirmed';
+  if (booking.paymentStatus === 'paid') return; // idempotency guard
+
+  booking.paymentStatus  = 'paid';
+  booking.paymentId      = payment.id;
+  booking.transactionId  = payment.order_id;
+  booking.orderStatus    = 'paid';
+  booking.status         = 'confirmed';
   await booking.save();
 
   if (!booking.counsellor && io) {
@@ -573,7 +604,7 @@ const handleRazorpayPaymentSuccess = async (payment, io) => {
     const notification = {
       bookingId: booking._id, sessionType: booking.sessionType,
       sessionDuration: booking.sessionDuration, scheduledAt: booking.scheduledAt,
-      amount: booking.amount, preferences: booking.preferences, createdAt: booking.createdAt
+      amount: booking.amount, preferences: booking.preferences, createdAt: booking.createdAt,
     };
     available.forEach(c => io.to(`counsellor_${c._id}`).emit('new_booking_available', notification));
   }
@@ -583,9 +614,9 @@ const handleRazorpayPaymentFailure = async (payment) => {
   const bookingId = payment.notes?.bookingId;
   if (!bookingId) return;
   const booking = await Booking.findById(bookingId);
-  if (!booking) return;
-  booking.paymentStatus = 'failed';
-  booking.orderStatus = 'failed';
+  if (!booking || booking.paymentStatus === 'paid') return; // don't overwrite a successful payment
+  booking.paymentStatus      = 'failed';
+  booking.orderStatus        = 'failed';
   booking.paymentAttemptedAt = new Date();
   await booking.save();
 };
@@ -593,9 +624,12 @@ const handleRazorpayPaymentFailure = async (payment) => {
 const handleRazorpayOrderPaid = async (order) => {
   const booking = await Booking.findOne({ razorpayOrderId: order.id });
   if (!booking) return;
+  if (booking.paymentStatus === 'paid') return; // idempotency guard
   booking.paymentStatus = 'paid';
-  booking.orderStatus = 'paid';
-  booking.status = 'confirmed';
+  booking.orderStatus   = 'paid';
+  booking.status        = 'confirmed';
+  // Record payment ID from the order.paid event if available
+  if (order.payment_id) booking.paymentId = order.payment_id;
   await booking.save();
 };
 
