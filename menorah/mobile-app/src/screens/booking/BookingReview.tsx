@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar, Clock, User, Shield, CheckCircle, Video, MessageCircle, ArrowLeft, ShieldCheck, CalendarCheck, ChevronRight, Wallet } from 'lucide-react-native';
@@ -32,8 +32,8 @@ const PRICE_CATEGORIES = {
 export default function BookingReview({ navigation, route }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
-  const [selectedDate, setSelectedDate] = useState<string>('tomorrow');
-  const [selectedTime, setSelectedTime] = useState<string>('10:00 AM');
+  const selectedDate = 'tomorrow';
+  const selectedTime = '10:00 AM';
   const [isCreatingBooking, setIsCreatingBooking] = useState(false);
   const [loadingBooking, setLoadingBooking] = useState(false);
   const [existingBooking, setExistingBooking] = useState<any>(null);
@@ -46,7 +46,7 @@ export default function BookingReview({ navigation, route }: any) {
     if (bookingId && !categoryId) {
       fetchBookingDetails();
     }
-  }, [bookingId]);
+  }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Real-time updates: refresh when counsellor assigns, reschedules, or starts session
   useEffect(() => {
@@ -68,7 +68,7 @@ export default function BookingReview({ navigation, route }: any) {
       }
     });
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
-  }, [bookingId, categoryId]);
+  }, [bookingId, categoryId]); // eslint-disable-line react-hooks/exhaustive-deps
   
   const fetchBookingDetails = async () => {
     if (!bookingId) return;
@@ -152,7 +152,7 @@ export default function BookingReview({ navigation, route }: any) {
       } else if (existingBooking.sessionType === 'chat') {
         navigation.navigate('ChatThread', { roomId: bookingId });
       } else {
-        Alert.alert('Audio Call', 'Audio call feature coming soon.');
+        navigation.navigate('PreCallCheck', { bookingId });
       }
     };
 
@@ -210,7 +210,7 @@ export default function BookingReview({ navigation, route }: any) {
               Booking Details
             </Text>
             <Text style={{ fontSize: 13, color: colors.muted, marginTop: 3 }}>
-              Here's everything about your session
+              Here is everything about your session
             </Text>
           </View>
         </SafeAreaView>
@@ -402,7 +402,7 @@ export default function BookingReview({ navigation, route }: any) {
                   Waiting for assignment...
                 </Text>
                 <Text style={{ fontSize: 12, color: '#92400E', lineHeight: 17 }}>
-                  You'll be notified when a counsellor accepts
+                  You will be notified when a counsellor accepts
                 </Text>
               </View>
             </View>
@@ -720,7 +720,7 @@ export default function BookingReview({ navigation, route }: any) {
           {/* Features */}
           <View style={{ marginBottom: 20 }}>
             <Text style={{ fontSize: 16, fontWeight: '600', color: colors.cardText, marginBottom: 12 }}>
-              What's included:
+              What is included:
             </Text>
             {category.features.map((feature, index) => (
               <View key={index} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
@@ -761,7 +761,7 @@ export default function BookingReview({ navigation, route }: any) {
             ⚠️ Important Notice
           </Text>
           <Text style={{ fontSize: 14, color: '#92400E', lineHeight: 20 }}>
-            Your therapist's identity will be revealed only after successful payment. This ensures unbiased matching based on your preferences.
+            Your support provider identity will be revealed only after successful payment. This supports unbiased matching based on your preferences.
           </Text>
         </View>
 

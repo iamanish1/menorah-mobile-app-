@@ -1,14 +1,21 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { api, User } from '@/lib/api';
+import { ApiValidationError, api, User } from '@/lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { socketService } from '@/lib/socket';
 import { ENV } from '@/lib/env';
+
+interface AuthResult {
+  success: boolean;
+  message?: string;
+  errors?: ApiValidationError[];
+  needsVerification?: boolean;
+}
 
 interface AuthContextType {
   user: User | null;
   isAuthed: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  login: (email: string, password: string) => Promise<AuthResult>;
   register: (userData: {
     firstName: string;
     lastName: string;
@@ -17,7 +24,7 @@ interface AuthContextType {
     password: string;
     dateOfBirth: string;
     gender: string;
-  }) => Promise<{ success: boolean; message?: string }>;
+  }) => Promise<AuthResult>;
   logout: () => Promise<void>;
   verifyEmail: (code: string) => Promise<{ success: boolean; message?: string }>;
   resendEmailVerification: (email: string) => Promise<{ success: boolean; message?: string }>;
@@ -28,6 +35,15 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const validationErrorsToMessage = (errors?: ApiValidationError[]) => {
+  if (!errors?.length) return undefined;
+
+  return errors
+    .map(error => error.msg || error.message)
+    .filter((message): message is string => Boolean(message))
+    .join('\n');
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -101,22 +117,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      console.log('[Auth] Attempting login for:', email);
-      const response = await api.login({ email, password });
-      console.log('[Auth] Login response:', { 
-        success: response.success, 
-        hasData: !!response.data,
-        message: response.message 
-      });
+      const payload = {
+        email: email.trim().toLowerCase(),
+        password,
+      };
+
+      if (__DEV__) {
+        console.log('[Auth] Login request payload:', JSON.stringify({
+          email: payload.email,
+          password: `[redacted; length=${payload.password.length}]`,
+        }, null, 2));
+      }
+
+      const response = await api.login(payload);
+
+      if (__DEV__) {
+        console.log('[Auth] Login response:', JSON.stringify({
+          success: response.success,
+          hasUser: !!response.data?.user,
+          hasToken: !!response.data?.token,
+          message: response.message,
+          errors: response.errors,
+        }, null, 2));
+      }
       
-      if (response.success && response.data) {
-        console.log('[Auth] Login successful, setting token and user');
-        api.setToken(response.data.token);
+      if (response.success && response.data?.user && response.data?.token) {
+        await api.setToken(response.data.token);
         setUser(response.data.user);
-        console.log('[Auth] User authenticated:', response.data.user.email);
+
+        if (__DEV__) {
+          console.log('[Auth] User authenticated:', response.data.user.email);
+        }
+
+        if (!response.data.user.isEmailVerified) {
+          return {
+            success: true,
+            needsVerification: true,
+            message: 'Please verify your email address.',
+          };
+        }
+
         return { success: true };
       } else {
-        console.log('[Auth] Login failed:', response.message);
         // Check if it's a network error
         const isNetworkError = response.message?.includes('Network error') || 
                                response.message?.includes('Unable to connect to server');
@@ -130,11 +172,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         return { 
           success: false, 
-          message: response.message || 'Login failed' 
+          message: validationErrorsToMessage(response.errors) || response.message || 'Login failed',
+          errors: response.errors,
         };
       }
     } catch (error: any) {
-      console.error('[Auth] Login error:', error);
+      if (__DEV__) {
+        console.error('[Auth] Login error:', error);
+        console.error('[Auth] LOGIN ERROR FULL:', JSON.stringify(error?.response?.data, null, 2));
+      }
       
       // Handle network errors specifically
       // Axios uses 'ERR_NETWORK' for network errors
@@ -147,7 +193,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       return { 
         success: false, 
-        message: error.response?.data?.message || error.message || 'Login failed' 
+        message: validationErrorsToMessage(error.response?.data?.errors) || error.response?.data?.message || error.message || 'Login failed',
+        errors: error.response?.data?.errors,
       };
     } finally {
       setIsLoading(false);
@@ -165,23 +212,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }) => {
     try {
       setIsLoading(true);
+      if (__DEV__) {
+        console.log('[Auth] Register request payload:', JSON.stringify({
+          ...userData,
+          password: `[redacted; length=${userData.password.length}]`,
+        }, null, 2));
+      }
+
       const response = await api.register(userData);
+      if (__DEV__) {
+        console.log('[Auth] Register response:', JSON.stringify(response, null, 2));
+      }
       
-      if (response.success && response.data) {
-        api.setToken(response.data.token);
-        setUser(response.data.user);
-        return { success: true };
+      if (response.success) {
+        if (response.data?.token && response.data?.user) {
+          await api.setToken(response.data.token);
+          setUser(response.data.user);
+        }
+
+        return { success: true, message: response.message };
       } else {
         return { 
           success: false, 
-          message: response.message || 'Registration failed' 
+          message: validationErrorsToMessage(response.errors) || response.message || 'Registration failed',
+          errors: response.errors,
         };
       }
     } catch (error: any) {
-      console.error('Registration error:', error);
+      if (__DEV__) {
+        console.error('Registration error:', error);
+        console.error('[Auth] REGISTER ERROR FULL:', JSON.stringify(error?.response?.data, null, 2));
+      }
+
       return { 
         success: false, 
-        message: error.response?.data?.message || 'Registration failed' 
+        message: validationErrorsToMessage(error.response?.data?.errors) || error.response?.data?.message || 'Registration failed',
+        errors: error.response?.data?.errors,
       };
     } finally {
       setIsLoading(false);
@@ -198,7 +264,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Logout error:', error);
     } finally {
       // Always clear token and user state, even if API call fails
-      api.clearToken();
+      await api.clearToken();
       setUser(null);
     }
   };

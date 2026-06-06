@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, Alert, Platform, PermissionsAndroid } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-import { X, PhoneOff } from 'lucide-react-native';
+import { PhoneOff } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { ENV } from '@/lib/env';
 import { api } from '@/lib/api';
 
 export default function CallJoin({ navigation, route }: any) {
-  const { roomId, roomUrl, jitsiToken, bookingId, sessionType, counsellorName, userName } = route.params || {};
+  const { roomId, roomUrl, jitsiToken, bookingId, sessionType, counsellorName } = route.params || {};
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
@@ -17,17 +17,7 @@ export default function CallJoin({ navigation, route }: any) {
   const colors = palettes[scheme];
   const webViewRef = useRef<WebView>(null);
 
-  useEffect(() => {
-    if (!roomId) {
-      setError('Missing video room information');
-      setLoading(false);
-    } else {
-      // Request permissions before loading WebView
-      requestPermissions();
-    }
-  }, [roomId]);
-
-  const requestPermissions = async () => {
+  const requestPermissions = useCallback(async () => {
     if (Platform.OS === 'android') {
       try {
         // Check if permissions are already granted
@@ -92,7 +82,16 @@ export default function CallJoin({ navigation, route }: any) {
       // iOS - permissions are handled automatically
       setPermissionsGranted(true);
     }
-  };
+  }, [navigation]);
+
+  useEffect(() => {
+    if (!roomId) {
+      setError('Missing video room information');
+      setLoading(false);
+    } else {
+      requestPermissions();
+    }
+  }, [requestPermissions, roomId]);
 
   const handleLeave = async () => {
     Alert.alert(
@@ -218,6 +217,26 @@ export default function CallJoin({ navigation, route }: any) {
     true; // Required for injected JavaScript
   `;
 
+  const androidPermissionProps = Platform.OS === 'android'
+    ? {
+        onPermissionRequest: (request: any) => {
+          const { nativeEvent } = request;
+          console.log('WebView permission request:', nativeEvent.permission);
+
+          if (
+            nativeEvent.permission === 'android.webkit.resource.AUDIO_CAPTURE' ||
+            nativeEvent.permission === 'android.webkit.resource.VIDEO_CAPTURE'
+          ) {
+            console.log('Granting permission:', nativeEvent.permission);
+            nativeEvent.request.grant(nativeEvent.resources);
+          } else {
+            console.log('Denying permission:', nativeEvent.permission);
+            nativeEvent.request.deny();
+          }
+        },
+      } as any
+    : {};
+
   // Don't render WebView until permissions are granted
   if (!permissionsGranted && Platform.OS === 'android') {
     return (
@@ -308,25 +327,10 @@ export default function CallJoin({ navigation, route }: any) {
           javaScriptEnabled={true}
           domStorageEnabled={true}
           startInLoadingState={true}
-          androidHardwareAccelerationDisabled={false}
           androidLayerType="hardware"
           ref={webViewRef}
           injectedJavaScript={injectedJavaScript}
-          onPermissionRequest={(request) => {
-            // Grant microphone and camera permissions for WebView
-            const { nativeEvent } = request;
-            console.log('WebView permission request:', nativeEvent.permission);
-            
-            // Grant all audio and video capture permissions
-            if (nativeEvent.permission === 'android.webkit.resource.AUDIO_CAPTURE' ||
-                nativeEvent.permission === 'android.webkit.resource.VIDEO_CAPTURE') {
-              console.log('Granting permission:', nativeEvent.permission);
-              nativeEvent.request.grant(nativeEvent.resources);
-            } else {
-              console.log('Denying permission:', nativeEvent.permission);
-              nativeEvent.request.deny();
-            }
-          }}
+          {...androidPermissionProps}
           onHttpError={(syntheticEvent) => {
             const { nativeEvent } = syntheticEvent;
             console.error('WebView HTTP error:', nativeEvent);
@@ -342,7 +346,7 @@ export default function CallJoin({ navigation, route }: any) {
               console.log('WebView message:', event.nativeEvent.data);
             }
           }}
-          onShouldStartLoadWithRequest={(request) => {
+          onShouldStartLoadWithRequest={(_request: any) => {
             // Allow all navigation
             return true;
           }}

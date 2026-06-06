@@ -1,11 +1,38 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, TouchableOpacity, NativeModules } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import RazorpayCheckout from 'react-native-razorpay';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { api } from '@/lib/api';
 import { useAuth } from '@/state/useAuth';
+
+const RAZORPAY_UNAVAILABLE_MESSAGE =
+  'Payments require a development build. Expo Go preview does not support native Razorpay.';
+
+type RazorpayCheckoutModule = {
+  open: (options: Record<string, unknown>) => Promise<any>;
+};
+
+type RazorpayRequireResult = {
+  default?: RazorpayCheckoutModule;
+  open?: RazorpayCheckoutModule['open'];
+};
+
+const hasNativeRazorpay = () =>
+  Boolean(NativeModules.RNRazorpayCheckout && NativeModules.RazorpayEventEmitter);
+
+const loadRazorpayCheckout = (): RazorpayCheckoutModule | null => {
+  if (!hasNativeRazorpay()) {
+    return null;
+  }
+
+  const razorpayModule = require('react-native-razorpay') as RazorpayRequireResult;
+  const checkout =
+    razorpayModule.default ??
+    (razorpayModule.open ? (razorpayModule as RazorpayCheckoutModule) : null);
+
+  return checkout && typeof checkout.open === 'function' ? checkout : null;
+};
 
 export default function PaymentSheet({ route, navigation }: any) {
   const { bookingId } = route.params || {};
@@ -21,6 +48,15 @@ export default function PaymentSheet({ route, navigation }: any) {
     setError(null);
 
     try {
+      const RazorpayCheckout = loadRazorpayCheckout();
+
+      if (!RazorpayCheckout) {
+        Alert.alert('Development build required', RAZORPAY_UNAVAILABLE_MESSAGE);
+        setError(RAZORPAY_UNAVAILABLE_MESSAGE);
+        setLoading(false);
+        return;
+      }
+
       // Step 1: Create Razorpay order on backend
       const response = await api.createCheckoutSession(bookingId);
 
@@ -39,14 +75,6 @@ export default function PaymentSheet({ route, navigation }: any) {
       }
 
       setLoading(false);
-
-      // Step 2: Guard — native module must be available
-      if (!RazorpayCheckout || typeof RazorpayCheckout.open !== 'function') {
-        setError(
-          'Razorpay SDK is not available in Expo Go.\n\nRun "npx expo run:android" to build a development APK with native payment support.'
-        );
-        return;
-      }
 
       // Step 3: Open Razorpay SDK
       const userName = user
@@ -87,7 +115,11 @@ export default function PaymentSheet({ route, navigation }: any) {
     } catch (err: any) {
       // Razorpay SDK sends code 0 or 'PayerCancelled' when user dismisses
       if (err.code === 0 || err.code === 'PayerCancelled' || err.code === 'NativePaymentCancelled') {
-        try { await api.cancelBooking(bookingId, 'Payment cancelled by user'); } catch (_) {}
+        try {
+          await api.cancelBooking(bookingId, 'Payment cancelled by user');
+        } catch (cancelError) {
+          console.warn('Failed to cancel booking after payment cancellation:', cancelError);
+        }
         navigation.goBack();
         return;
       }
@@ -104,7 +136,7 @@ export default function PaymentSheet({ route, navigation }: any) {
       return;
     }
     openRazorpay();
-  }, []);
+  }, [bookingId, openRazorpay]);
 
   const handleCancel = () => {
     Alert.alert(
@@ -116,7 +148,11 @@ export default function PaymentSheet({ route, navigation }: any) {
           text: 'Yes, Cancel',
           style: 'destructive',
           onPress: async () => {
-            try { await api.cancelBooking(bookingId, 'Payment not completed'); } catch (_) {}
+            try {
+              await api.cancelBooking(bookingId, 'Payment not completed');
+            } catch (cancelError) {
+              console.warn('Failed to cancel booking after incomplete payment:', cancelError);
+            }
             navigation.goBack();
           },
         },

@@ -57,16 +57,47 @@ export default function Login({ navigation }: any) {
   const { login } = useAuth();
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail && !password) {
+      Alert.alert('Missing Details', 'Please enter your email and password.');
       return;
     }
+
+    if (!normalizedEmail) {
+      Alert.alert('Missing Email', 'Please enter your email address.');
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
+
+    if (!password) {
+      Alert.alert('Missing Password', 'Please enter your password.');
+      return;
+    }
+
     setLoading(true);
     setShowNetworkError(false);
+
     try {
-      const result = await login(email, password);
+      if (__DEV__) {
+        console.log('[Login] POST /auth/login payload:', JSON.stringify({
+          email: normalizedEmail,
+          password: `[redacted; length=${password.length}]`,
+        }, null, 2));
+      }
+
+      const result = await login(normalizedEmail, password);
+
       if (result.success) {
-        navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
+        if (result.needsVerification) {
+          navigation.navigate('Verify', { email: normalizedEmail });
+        } else {
+          navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
+        }
       } else {
         if (result.message?.includes('Network error')) {
           setShowNetworkError(true);
@@ -258,7 +289,7 @@ export default function Login({ navigation }: any) {
             {/* ── Sign Up link ── */}
             <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
               <Text style={{ color: isDark ? colors.muted : '#6a7e6a', fontSize: 14 }}>
-                Don't have an account?{' '}
+                Do not have an account?{' '}
               </Text>
               <TouchableOpacity onPress={() => navigation.navigate('Register')}>
                 <Text style={{ color: '#2d5c3e', fontSize: 14, fontWeight: '700' }}>

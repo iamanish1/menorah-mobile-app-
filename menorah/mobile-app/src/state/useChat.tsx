@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { socketService, ChatMessage, TypingIndicator, UserStatus, MessageReadReceipt, SessionStartedData, BookingStatusData, BookingConfirmedData, BookingRescheduledData } from '@/lib/socket';
-import { api, ChatRoom, Message } from '@/lib/api';
+import { api, ChatRoom } from '@/lib/api';
 import { useAuth } from './useAuth';
 
 interface ChatContextType {
@@ -66,7 +66,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [loadingMessages, setLoadingMessages] = useState(false);
 
   // Typing timeout refs
-  const typingTimeouts = React.useRef<{ [roomId: string]: NodeJS.Timeout }>({});
+  const typingTimeouts = React.useRef<{ [roomId: string]: ReturnType<typeof setTimeout> }>({});
   // Ref so connection callbacks always see the latest currentRoom without re-registering
   const currentRoomRef = React.useRef<string | null>(null);
 
@@ -84,6 +84,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     return () => {
       socketService.disconnect();
     };
+  // initializeSocket registers socket listeners once for the current authenticated user.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const initializeSocket = async () => {
@@ -135,16 +137,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       console.warn('Received message without roomId:', message);
       return;
     }
+    const roomId = message.roomId;
     
     setMessages(prev => {
-      const roomMessages = prev[message.roomId] || [];
+      const roomMessages = prev[roomId] || [];
       // Check if message already exists to prevent duplicates
       const exists = roomMessages.find(m => m.id === message.id);
       if (exists) {
         // Update existing message instead of adding duplicate
         return {
           ...prev,
-          [message.roomId]: roomMessages.map(m => m.id === message.id ? message : m)
+          [roomId]: roomMessages.map(m => m.id === message.id ? message : m)
         };
       }
       // Add new message and sort by timestamp
@@ -153,7 +156,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       );
       return {
         ...prev,
-        [message.roomId]: updatedMessages
+        [roomId]: updatedMessages
       };
     });
   }, []);
@@ -163,26 +166,27 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       console.warn('Received typing indicator without roomId:', typing);
       return;
     }
+    const roomId = typing.roomId;
     // Ignore own typing events
     if (user && typing.userId === user.id) return;
 
     setTypingUsers(prev => {
-      const roomTyping = prev[typing.roomId] || [];
+      const roomTyping = prev[roomId] || [];
       const filtered = roomTyping.filter(t => t.userId !== typing.userId);
       
       if (typing.isTyping) {
         return {
           ...prev,
-          [typing.roomId]: [...filtered, typing]
+          [roomId]: [...filtered, typing]
         };
       } else {
         return {
           ...prev,
-          [typing.roomId]: filtered
+          [roomId]: filtered
         };
       }
     });
-  }, []);
+  }, [user]);
 
   const handleStatusChange = useCallback((status: UserStatus) => {
     setOnlineUsers(prev => ({
@@ -192,10 +196,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     
     // Update room presence if roomId is provided
     if (status.roomId) {
+      const roomId = status.roomId;
       setRoomPresence(prev => ({
         ...prev,
-        [status.roomId]: {
-          ...(prev[status.roomId] || {}),
+        [roomId]: {
+          ...(prev[roomId] || {}),
           [status.userId]: status.isOnline
         }
       }));
@@ -203,11 +208,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   }, []);
 
   const handleReadReceipt = useCallback((receipt: MessageReadReceipt) => {
+    if (!receipt.roomId) {
+      console.warn('Received read receipt without roomId:', receipt);
+      return;
+    }
+    const roomId = receipt.roomId;
+
     setMessages(prev => {
-      const roomMessages = prev[receipt.roomId] || [];
+      const roomMessages = prev[roomId] || [];
       return {
         ...prev,
-        [receipt.roomId]: roomMessages.map(msg => 
+        [roomId]: roomMessages.map(msg => 
           msg.id === receipt.messageId 
             ? { ...msg, status: 'read' as const }
             : msg
@@ -280,7 +291,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     try {
       const response = await api.getMessages(roomId);
       if (response.success && response.data) {
-        const msgs = response.data.messages || [];
+        const msgs = response.data.data || [];
         // Map API messages to ChatMessage format
         const mappedMessages: ChatMessage[] = msgs.map((msg: any) => ({
           id: msg.id || msg._id,
@@ -324,7 +335,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       const response = await api.sendMessage(roomId, content);
       
       if (response.success && response.data) {
-        const msg = response.data.message;
+        const msg = response.data.message as any;
         // Map API message to ChatMessage format
         const newMessage: ChatMessage = {
           id: msg.id || msg._id,
@@ -358,7 +369,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       console.error('Failed to send message:', error);
       throw error;
     }
-  }, [user, isConnected]);
+  }, [user]);
 
   const deleteMessage = useCallback(async (roomId: string, messageId: string) => {
     if (!user) return;

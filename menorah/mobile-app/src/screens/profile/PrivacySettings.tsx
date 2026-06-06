@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Switch, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Eye, EyeOff, User, Lock } from 'lucide-react-native';
+import { ArrowLeft } from 'lucide-react-native';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from "@/state/useAuth";
 import { api } from "@/lib/api";
 
 export default function PrivacySettings({ navigation }: any) {
-  const [profileVisibility, setProfileVisibility] = useState('public');
+  const [profileVisibility, setProfileVisibility] = useState<'public' | 'counsellors' | 'private'>('public');
   const [showEmail, setShowEmail] = useState(true);
   const [showPhone, setShowPhone] = useState(false);
   const [allowMessages, setAllowMessages] = useState(true);
@@ -19,29 +19,58 @@ export default function PrivacySettings({ navigation }: any) {
   const colors = palettes[scheme];
 
   useEffect(() => {
-    // Load user privacy preferences if available
-    // This would come from user settings in a real implementation
+    // Privacy preferences are currently initialized from local defaults until the backend exposes saved values.
   }, [user]);
 
-  const handleProfileVisibilityChange = (value: string) => {
+  const savePrivacyPreferences = async (
+    preferences: Parameters<typeof api.updatePrivacyPreferences>[0],
+    rollback: () => void
+  ) => {
+    setLoading(true);
+    try {
+      const response = await api.updatePrivacyPreferences(preferences);
+      if (!response.success) {
+        rollback();
+        Alert.alert(
+          'Preference Not Saved',
+          response.message ||
+            'Privacy preferences are not fully connected yet. Please contact support if you need this changed now.'
+        );
+      }
+    } catch (error) {
+      console.error('Privacy preference update error:', error);
+      rollback();
+      Alert.alert(
+        'Preference Not Saved',
+        'Privacy preferences are not fully connected yet. Please contact support if you need this changed now.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProfileVisibilityChange = (value: 'public' | 'counsellors' | 'private') => {
+    const previous = profileVisibility;
     setProfileVisibility(value);
-    // TODO: Save to backend
-    Alert.alert('Success', 'Profile visibility updated successfully.');
+    savePrivacyPreferences({ profileVisibility: value }, () => setProfileVisibility(previous));
   };
 
   const handleShowEmailToggle = (value: boolean) => {
+    const previous = showEmail;
     setShowEmail(value);
-    // TODO: Save to backend
+    savePrivacyPreferences({ showEmail: value }, () => setShowEmail(previous));
   };
 
   const handleShowPhoneToggle = (value: boolean) => {
+    const previous = showPhone;
     setShowPhone(value);
-    // TODO: Save to backend
+    savePrivacyPreferences({ showPhone: value }, () => setShowPhone(previous));
   };
 
   const handleAllowMessagesToggle = (value: boolean) => {
+    const previous = allowMessages;
     setAllowMessages(value);
-    // TODO: Save to backend
+    savePrivacyPreferences({ allowMessages: value }, () => setAllowMessages(previous));
   };
 
   return (
@@ -67,6 +96,7 @@ export default function PrivacySettings({ navigation }: any) {
         }}>
           Privacy Settings
         </Text>
+        {loading && <ActivityIndicator size="small" color="white" style={{ marginLeft: 12 }} />}
       </View>
 
       <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 24 }} showsVerticalScrollIndicator={false}>
@@ -198,6 +228,7 @@ export default function PrivacySettings({ navigation }: any) {
                 value={showEmail}
                 onValueChange={handleShowEmailToggle}
                 trackColor={{ false: colors.border, true: colors.primary }}
+                disabled={loading}
               />
             </View>
             <View style={{ 
@@ -218,6 +249,7 @@ export default function PrivacySettings({ navigation }: any) {
                 value={showPhone}
                 onValueChange={handleShowPhoneToggle}
                 trackColor={{ false: colors.border, true: colors.primary }}
+                disabled={loading}
               />
             </View>
           </View>
@@ -248,6 +280,7 @@ export default function PrivacySettings({ navigation }: any) {
                 value={allowMessages}
                 onValueChange={handleAllowMessagesToggle}
                 trackColor={{ false: colors.border, true: colors.primary }}
+                disabled={loading}
               />
             </View>
           </View>
@@ -256,4 +289,3 @@ export default function PrivacySettings({ navigation }: any) {
     </SafeAreaView>
   );
 }
-

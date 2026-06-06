@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Shield, Smartphone } from 'lucide-react-native';
@@ -7,7 +7,7 @@ import { palettes } from "@/theme/colors";
 import { useAuth } from "@/state/useAuth";
 
 export default function TwoFactorAuth({ navigation }: any) {
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const twoFactorEnabled = false;
   const { user } = useAuth();
 
   const { scheme } = useThemeMode();
@@ -25,11 +25,9 @@ export default function TwoFactorAuth({ navigation }: any) {
           text: value ? 'Enable' : 'Disable',
           style: value ? 'default' : 'destructive',
           onPress: () => {
-            setTwoFactorEnabled(value);
-            // TODO: Implement actual 2FA API call
             Alert.alert(
-              'Coming Soon',
-              'Two-factor authentication feature is coming soon. This will be implemented in a future update.',
+              'Not Available',
+              'Two-factor authentication is not available in this build. Use a strong password and contact support if you need account security help.',
               [{ text: 'OK' }]
             );
           }
@@ -152,7 +150,7 @@ export default function TwoFactorAuth({ navigation }: any) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, color: colors.cardText, lineHeight: 20 }}>
-                  When you enable 2FA, you'll receive a verification code on your registered phone number
+                  When 2FA is available, you will receive a verification code on your registered phone number
                 </Text>
               </View>
             </View>
@@ -170,7 +168,7 @@ export default function TwoFactorAuth({ navigation }: any) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, color: colors.cardText, lineHeight: 20 }}>
-                  Each time you log in, you'll need to enter this code along with your password
+                  Each time you log in, you will need to enter this code along with your password
                 </Text>
               </View>
             </View>
@@ -223,4 +221,3 @@ export default function TwoFactorAuth({ navigation }: any) {
     </SafeAreaView>
   );
 }
-

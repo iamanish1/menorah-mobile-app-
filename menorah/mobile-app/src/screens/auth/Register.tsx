@@ -8,6 +8,34 @@ import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from '@/state/useAuth';
 
+type RegisterPayload = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  password: string;
+  dateOfBirth: string;
+  gender: string;
+};
+
+type BackendValidationError = {
+  path?: string;
+  param?: string;
+  msg?: string;
+  message?: string;
+};
+
+const validGenders = ['male', 'female', 'other', 'prefer-not-to-say'];
+
+const normalizePhone = (value: string) => value.trim().replace(/[\s()-]/g, '');
+
+const sanitizeRegisterPayload = (payload: RegisterPayload) => ({
+  ...payload,
+  password: `[redacted; length=${payload.password.length}]`,
+});
+
+const getBackendErrorMessage = (error: BackendValidationError) => error.msg || error.message;
+
 export default function Register({ navigation }: any) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -16,7 +44,7 @@ export default function Register({ navigation }: any) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
-  const [gender, setGender] = useState('male');
+  const [gender] = useState('male');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -33,14 +61,14 @@ export default function Register({ navigation }: any) {
   };
 
   const validatePhone = (phone: string) => {
-    return phone.startsWith('+') && phone.length >= 10;
+    return /^\+[1-9]\d{1,14}$/.test(normalizePhone(phone));
   };
 
   const validateDate = (date: string) => {
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(date)) return false;
     const dateObj = new Date(date);
-    return dateObj instanceof Date && !isNaN(dateObj.getTime());
+    return dateObj instanceof Date && !isNaN(dateObj.getTime()) && dateObj <= new Date();
   };
 
   const getPasswordStrength = (password: string) => {
@@ -58,14 +86,24 @@ export default function Register({ navigation }: any) {
     delete newErrors[field];
 
     switch (field) {
+      case 'firstName':
+        if (value && (value.trim().length < 2 || value.trim().length > 50)) {
+          newErrors.firstName = 'First name must be between 2 and 50 characters';
+        }
+        break;
+      case 'lastName':
+        if (value && (value.trim().length < 2 || value.trim().length > 50)) {
+          newErrors.lastName = 'Last name must be between 2 and 50 characters';
+        }
+        break;
       case 'email':
-        if (value && !validateEmail(value)) {
+        if (value && !validateEmail(value.trim())) {
           newErrors.email = 'Please enter a valid email address';
         }
         break;
       case 'phone':
         if (value && !validatePhone(value)) {
-          newErrors.phone = 'Phone must include country code (e.g., +1234567890)';
+          newErrors.phone = 'Phone must include country code and digits only (e.g., +971501234567)';
         }
         break;
       case 'dateOfBirth':
@@ -88,29 +126,75 @@ export default function Register({ navigation }: any) {
     setErrors(newErrors);
   };
 
+  const buildPayload = (): RegisterPayload => ({
+    firstName: firstName.trim(),
+    lastName: lastName.trim(),
+    email: email.trim().toLowerCase(),
+    phone: normalizePhone(phone),
+    password,
+    dateOfBirth: dateOfBirth.trim(),
+    gender,
+  });
+
+  const validationErrorsToFieldMap = (backendErrors?: BackendValidationError[]) => {
+    const fieldErrors: Record<string, string> = {};
+
+    backendErrors?.forEach((error) => {
+      const field = error.path || error.param;
+      const message = getBackendErrorMessage(error);
+
+      if (field && message) {
+        fieldErrors[field] = message;
+      }
+    });
+
+    return fieldErrors;
+  };
+
+  const validationErrorsToFriendlyMessage = (backendErrors?: BackendValidationError[]) => {
+    const messages = backendErrors
+      ?.map(getBackendErrorMessage)
+      .filter((message): message is string => Boolean(message));
+
+    return messages?.length ? messages.join('\n') : undefined;
+  };
+
   const handleRegister = async () => {
     // Reset errors
     setErrors({});
+    const payload = buildPayload();
 
     // Validate all fields
     const newErrors: Record<string, string> = {};
 
-    if (!firstName.trim()) newErrors.firstName = 'First name is required';
-    if (!lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!email.trim()) newErrors.email = 'Email is required';
-    else if (!validateEmail(email)) newErrors.email = 'Please enter a valid email';
+    if (!payload.firstName) newErrors.firstName = 'First name is required';
+    else if (payload.firstName.length < 2 || payload.firstName.length > 50) {
+      newErrors.firstName = 'First name must be between 2 and 50 characters';
+    }
+
+    if (!payload.lastName) newErrors.lastName = 'Last name is required';
+    else if (payload.lastName.length < 2 || payload.lastName.length > 50) {
+      newErrors.lastName = 'Last name must be between 2 and 50 characters';
+    }
+
+    if (!payload.email) newErrors.email = 'Email is required';
+    else if (!validateEmail(payload.email)) newErrors.email = 'Please enter a valid email';
     
-    if (!phone.trim()) newErrors.phone = 'Phone is required';
-    else if (!validatePhone(phone)) newErrors.phone = 'Phone must include country code (e.g., +1234567890)';
+    if (!payload.phone) newErrors.phone = 'Phone is required';
+    else if (!validatePhone(payload.phone)) {
+      newErrors.phone = 'Phone must include country code and digits only (e.g., +971501234567)';
+    }
     
-    if (!dateOfBirth.trim()) newErrors.dateOfBirth = 'Date of birth is required';
-    else if (!validateDate(dateOfBirth)) newErrors.dateOfBirth = 'Please enter date in YYYY-MM-DD format';
+    if (!payload.dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
+    else if (!validateDate(payload.dateOfBirth)) newErrors.dateOfBirth = 'Please enter a valid past date in YYYY-MM-DD format';
+
+    if (!validGenders.includes(payload.gender)) newErrors.gender = 'Please select a valid gender';
     
-    if (!password) newErrors.password = 'Password is required';
-    else if (password.length < 8) newErrors.password = 'Password must be at least 8 characters';
+    if (!payload.password) newErrors.password = 'Password is required';
+    else if (payload.password.length < 8) newErrors.password = 'Password must be at least 8 characters';
     
     if (!confirmPassword) newErrors.confirmPassword = 'Please confirm your password';
-    else if (password !== confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+    else if (payload.password !== confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -120,22 +204,30 @@ export default function Register({ navigation }: any) {
 
     setLoading(true);
     try {
-      console.log('📱 Registering user with email:', email);
-      const result = await register({
-        firstName,
-        lastName,
-        email,
-        phone,
-        password,
-        dateOfBirth,
-        gender
-      });
+      if (__DEV__) {
+        console.log('[Register] POST /auth/register payload:', JSON.stringify(sanitizeRegisterPayload(payload), null, 2));
+      }
+
+      if (phone !== payload.phone) setPhone(payload.phone);
+
+      const result = await register(payload);
 
       if (result.success) {
-        console.log('✅ Registration successful');
-        navigation.navigate('Verify', { email });
+        if (__DEV__) {
+          console.log('[Register] Registration successful:', result.message);
+        }
+
+        navigation.navigate('Verify', { email: payload.email });
       } else {
-        Alert.alert('Registration Failed', result.message || 'Failed to create account. Please try again.');
+        const backendFieldErrors = validationErrorsToFieldMap(result.errors);
+        if (Object.keys(backendFieldErrors).length > 0) {
+          setErrors(backendFieldErrors);
+        }
+
+        Alert.alert(
+          'Registration Failed',
+          validationErrorsToFriendlyMessage(result.errors) || result.message || 'Failed to create account. Please try again.'
+        );
       }
     } catch (error: any) {
       console.error('Registration error:', error);

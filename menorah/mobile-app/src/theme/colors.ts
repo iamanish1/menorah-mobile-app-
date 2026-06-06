@@ -14,6 +14,7 @@ export const palettes = {
     cardText: '#111827',
     accent: '#ff7d10',       // accent-500 — orange
     accentLight: '#fff8ed',  // accent-50
+    error: '#ef4444',
     primaryDark: '#25624a',  // primary-700
     primaryLight: '#5fb08e', // primary-400
   },
@@ -30,6 +31,7 @@ export const palettes = {
     cardText: '#f9fafb',
     accent: '#ff9b37',       // accent-400
     accentLight: '#7f300f',
+    error: '#f87171',
     primaryDark: '#2d7a5c',  // primary-600
     primaryLight: '#8fcdb0', // primary-300
   },

@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Phone, MessageCircle, Heart, AlertTriangle, Clock } from 'lucide-react-native';
+import { ArrowLeft, Phone, MessageCircle, AlertTriangle } from 'lucide-react-native';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 
@@ -11,27 +11,22 @@ export default function CrisisHelp({ navigation }: any) {
 
   const emergencyNumbers = [
     {
-      name: 'National Crisis Helpline',
-      number: '1800-123-4567',
-      description: '24/7 crisis support and suicide prevention'
-    },
-    {
-      name: 'Mental Health Helpline',
-      number: '1800-987-6543',
-      description: 'Professional mental health support'
+      name: 'Emergency Services',
+      number: '112',
+      description: 'For immediate danger or urgent medical help'
     }
   ];
 
   const resources = [
     {
-      title: 'Crisis Text Line',
-      description: 'Text HOME to 741741 to connect with a crisis counselor',
+      title: 'Use your local crisis helpline',
+      description: 'If you are outside this region, contact your local emergency number or an official crisis helpline.',
       color: '#FEF3C7',
       textColor: '#92400E'
     },
     {
-      title: 'Emergency Services',
-      description: 'Call 112 for immediate emergency assistance',
+      title: 'Tell someone nearby',
+      description: 'If you may harm yourself or someone else, reach out to a trusted person nearby while contacting emergency services.',
       color: '#FEE2E2',
       textColor: '#991B1B'
     }
@@ -91,7 +86,7 @@ export default function CrisisHelp({ navigation }: any) {
                 color: '#EF4444',
                 lineHeight: 20
               }}>
-                If you're in crisis or having thoughts of self-harm, please call emergency services immediately.
+                If you are in crisis or having thoughts of self-harm, please call emergency services immediately.
               </Text>
             </View>
           </View>
@@ -230,8 +225,8 @@ export default function CrisisHelp({ navigation }: any) {
             textAlign: 'center',
             lineHeight: 20
           }}>
-            These resources are provided for emergency situations. For ongoing mental health support, 
-            please book a session with one of our licensed counsellors.
+            Menorah Health is not an emergency service and does not diagnose, treat, cure, or replace
+            professional medical care. For ongoing wellness support, you can book a support session in the app.
           </Text>
         </View>
       </ScrollView>

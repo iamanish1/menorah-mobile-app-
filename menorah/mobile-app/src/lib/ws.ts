@@ -1,8 +1,12 @@
 import { Client } from '@stomp/stompjs';
+import { ENV } from './env';
 
 export function createWS(token: string) {
+  const apiOrigin = ENV.API_ORIGIN || ENV.API_BASE_URL.replace(/\/api\/?$/, '');
+  const brokerURL = apiOrigin.replace(/^http/, 'ws').replace(/\/+$/, '') + '/ws';
+
   const client = new Client({ 
-    brokerURL: 'wss://api.example.com/ws', 
+    brokerURL,
     connectHeaders: { Authorization: `Bearer ${token}` } 
   });
   

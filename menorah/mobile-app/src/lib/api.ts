@@ -11,7 +11,7 @@ export interface User {
   phone: string;
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
-  profileImage?: string;
+  profileImage?: string | null;
   dateOfBirth?: string;
   gender?: string;
   notificationPreferences?: {
@@ -68,7 +68,7 @@ export interface Booking {
 export interface ChatRoom {
   id: string;
   counsellorName: string;
-  counsellorImage?: string;
+  counsellorImage?: string | null;
   counsellorUserId?: string;
   specialization?: string;
   lastMessage: string;
@@ -82,7 +82,7 @@ export interface Message {
   id: string;
   senderId: string;
   senderName: string;
-  senderImage?: string;
+  senderImage?: string | null;
   content: string;
   timestamp: string;
   type: 'text' | 'image' | 'file';
@@ -90,11 +90,37 @@ export interface Message {
   roomId?: string;
 }
 
+export interface ReportUserPayload {
+  userId: string;
+  roomId?: string;
+  reason: string;
+  details?: string;
+}
+
+export interface ReportContentPayload {
+  contentType: 'message' | 'post' | 'chat';
+  contentId: string;
+  roomId?: string;
+  reportedUserId?: string;
+  reason: string;
+  details?: string;
+}
+
+export interface ApiValidationError {
+  type?: string;
+  value?: unknown;
+  msg?: string;
+  message?: string;
+  path?: string;
+  param?: string;
+  location?: string;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   message?: string;
   data?: T;
-  errors?: any[];
+  errors?: ApiValidationError[];
 }
 
 export interface PaginationResponse<T> {
@@ -119,7 +145,9 @@ class ApiClient {
   private token: string | null = null;
 
   constructor() {
-    console.log('Initializing API Client with baseURL:', ENV.API_BASE_URL);
+    if (__DEV__) {
+      console.log('Initializing API Client with baseURL:', ENV.API_BASE_URL);
+    }
     
     this.client = axios.create({
       baseURL: ENV.API_BASE_URL,
@@ -137,9 +165,16 @@ class ApiClient {
         }
         if (this.token) {
           config.headers.Authorization = `Bearer ${this.token}`;
-          console.log('[API] Request with token:', config.method, config.url);
+          this.logDebug('[API] Request with token:', {
+            method: config.method,
+            url: config.url,
+            hasBearerToken: true,
+          });
         } else {
-          console.log('[API] Request without token:', config.method, config.url);
+          this.logDebug('[API] Request without token:', {
+            method: config.method,
+            url: config.url,
+          });
         }
         return config;
       },
@@ -161,16 +196,40 @@ class ApiClient {
     );
   }
 
+  private stringifyForLog(value: unknown) {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+
+  private logDebug(label: string, value?: unknown) {
+    if (!__DEV__) return;
+
+    if (value === undefined) {
+      console.log(label);
+      return;
+    }
+
+    console.log(label, typeof value === 'string' ? value : this.stringifyForLog(value));
+  }
+
+  private buildUrl(path: string) {
+    const baseURL = this.client.defaults.baseURL?.replace(/\/+$/, '') || '';
+    return `${baseURL}${path.startsWith('/') ? path : `/${path}`}`;
+  }
+
   // Set auth token
-  setToken(token: string) {
+  async setToken(token: string) {
     this.token = token;
-    AsyncStorage.setItem('auth_token', token);
+    await AsyncStorage.setItem('auth_token', token);
   }
 
   // Clear auth token
-  clearToken() {
+  async clearToken() {
     this.token = null;
-    AsyncStorage.removeItem('auth_token');
+    await AsyncStorage.removeItem('auth_token');
   }
 
   // Helper method to remove undefined values from request data
@@ -208,7 +267,7 @@ class ApiClient {
       
       if (isNetworkError) {
         // Log network errors as warnings since they're expected when server is unreachable
-        console.warn('API Network Error (server unreachable):', {
+        this.logDebug('API Network Error (server unreachable):', {
           url: config.url,
           method: config.method,
         });
@@ -218,17 +277,21 @@ class ApiClient {
         };
       }
       
-      // Log actual errors (non-network errors)
-      console.error('API Request Error:', {
-        url: config.url,
-        method: config.method,
-        error: error.message,
-        code: error.code,
-        response: error.response?.data
-      });
+      // Log actual errors (non-network errors). Stringify keeps nested validation errors visible.
+      const responseData = error.response?.data;
+      if (__DEV__) {
+        console.error('API Request Error:', this.stringifyForLog({
+          url: config.url,
+          method: config.method,
+          error: error.message,
+          code: error.code,
+          status: error.response?.status,
+          response: responseData
+        }));
+      }
       
-      if (error.response?.data) {
-        return error.response.data;
+      if (responseData) {
+        return responseData;
       }
       
       throw error;
@@ -244,7 +307,15 @@ class ApiClient {
     password: string;
     dateOfBirth: string;
     gender: string;
-  }): Promise<ApiResponse<{ user: User; token: string }>> {
+  }): Promise<ApiResponse<{ user?: User; token?: string; email?: string }>> {
+    this.logDebug('[API] API BASE URL:', this.client.defaults.baseURL);
+    this.logDebug('[API] POST /auth/register endpoint URL:', this.buildUrl('/auth/register'));
+    this.logDebug('[API] REGISTER PAYLOAD KEYS:', Object.keys(userData));
+    this.logDebug('[API] POST /auth/register payload:', {
+      ...userData,
+      password: `[redacted; length=${userData.password.length}]`,
+    });
+
     return this.request({
       method: 'POST',
       url: '/auth/register',
@@ -253,10 +324,23 @@ class ApiClient {
   }
 
   async login(credentials: { email: string; password: string }): Promise<ApiResponse<{ user: User; token: string }>> {
+    const payload = {
+      email: credentials.email.trim().toLowerCase(),
+      password: credentials.password,
+    };
+
+    this.logDebug('[API] API BASE URL:', this.client.defaults.baseURL);
+    this.logDebug('[API] POST /auth/login endpoint URL:', this.buildUrl('/auth/login'));
+    this.logDebug('[API] LOGIN PAYLOAD KEYS:', Object.keys(payload));
+    this.logDebug('[API] POST /auth/login payload:', {
+      email: payload.email,
+      password: `[redacted; length=${payload.password.length}]`,
+    });
+
     return this.request({
       method: 'POST',
       url: '/auth/login',
-      data: credentials,
+      data: payload,
     });
   }
 
@@ -301,10 +385,14 @@ class ApiClient {
   }
 
   async getCurrentUser(): Promise<ApiResponse<{ user: User }>> {
-    console.log('[API] getCurrentUser called, baseURL:', this.client.defaults.baseURL);
+    this.logDebug('[API] getCurrentUser called:', {
+      baseURL: this.client.defaults.baseURL,
+      endpoint: this.buildUrl('/users/me'),
+    });
+
     return this.request({
       method: 'GET',
-      url: '/auth/me',
+      url: '/users/me',
     });
   }
 
@@ -547,6 +635,60 @@ class ApiClient {
     });
   }
 
+  async reportUser(payload: ReportUserPayload): Promise<ApiResponse<void>> {
+    // TODO: Confirm the production moderation endpoint path with the backend team.
+    const response = await this.request<void>({
+      method: 'POST',
+      url: '/moderation/report-user',
+      data: payload,
+    });
+
+    return response.message
+      ? response
+      : {
+          ...response,
+          message: response.success
+            ? 'Report submitted.'
+            : 'Report user endpoint is not connected yet. Please contact support so the team can review this manually.',
+        };
+  }
+
+  async reportContent(payload: ReportContentPayload): Promise<ApiResponse<void>> {
+    // TODO: Confirm the production moderation endpoint path with the backend team.
+    const response = await this.request<void>({
+      method: 'POST',
+      url: '/moderation/report-content',
+      data: payload,
+    });
+
+    return response.message
+      ? response
+      : {
+          ...response,
+          message: response.success
+            ? 'Report submitted.'
+            : 'Report content endpoint is not connected yet. Please contact support so the team can review this manually.',
+        };
+  }
+
+  async blockUser(userId: string, roomId?: string): Promise<ApiResponse<void>> {
+    // TODO: Confirm the production blocking endpoint path with the backend team.
+    const response = await this.request<void>({
+      method: 'POST',
+      url: '/moderation/block-user',
+      data: { userId, roomId },
+    });
+
+    return response.message
+      ? response
+      : {
+          ...response,
+          message: response.success
+            ? 'User blocked.'
+            : 'Block user endpoint is not connected yet. Please contact support so the team can review this manually.',
+        };
+  }
+
   // Get available counselors for chat
   async getAvailableCounsellors(): Promise<ApiResponse<{ counsellors: any[] }>> {
     return this.request({
@@ -627,7 +769,7 @@ class ApiClient {
         if (!value || key === 'profileImage') {
           return;
         }
-        formData.append(key, value);
+        formData.append(key, String(value));
       });
 
       if (profileData.profileImage?.uri) {
@@ -710,6 +852,49 @@ class ApiClient {
       url: '/users/notification-preferences',
       data: preferences,
     });
+  }
+
+  async updatePrivacyPreferences(preferences: {
+    profileVisibility?: 'public' | 'counsellors' | 'private';
+    showEmail?: boolean;
+    showPhone?: boolean;
+    allowMessages?: boolean;
+  }): Promise<ApiResponse<void>> {
+    // TODO: Confirm the production privacy-preferences endpoint path with the backend team.
+    const response = await this.request<void>({
+      method: 'PUT',
+      url: '/users/privacy-preferences',
+      data: preferences,
+    });
+
+    return response.message
+      ? response
+      : {
+          ...response,
+          message: response.success
+            ? 'Privacy preferences saved.'
+            : 'Privacy preferences endpoint is not connected yet. Please contact support if you need this changed now.',
+        };
+  }
+
+  async requestAccountDeletion(reason?: string): Promise<ApiResponse<void>> {
+    // TODO: Confirm the production account-deletion endpoint path with the backend team.
+    const response = await this.request<void>({
+      method: 'POST',
+      url: '/users/account-deletion-request',
+      data: {
+        reason: reason || 'User requested account deletion from the mobile app.',
+      },
+    });
+
+    return response.message
+      ? response
+      : {
+          ...response,
+          message: response.success
+            ? 'Account deletion request submitted.'
+            : 'Account deletion endpoint is not connected yet. Please contact support so the team can process this manually.',
+        };
   }
 
   // Health check

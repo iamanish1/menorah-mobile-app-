@@ -7,7 +7,12 @@ const configBaseURL: string | undefined =
   ((Constants.expoConfig?.extra as any)?.API_BASE_URL as string | undefined);
 
 const normalizeBaseURL = (url?: string) => {
-  const candidate = (url ?? 'http://localhost:3000/api').trim().replace(/\/+$/, '');
+  const fallbackUrl = __DEV__ ? 'http://localhost:3000/api' : undefined;
+  const candidate = (url ?? fallbackUrl)?.trim().replace(/\/+$/, '');
+
+  if (!candidate) {
+    throw new Error('EXPO_PUBLIC_API_BASE_URL is required for production builds.');
+  }
 
   // Only remap localhost for Android emulator (emulator can't reach host via localhost)
   if (Platform.OS === 'android' && candidate.includes('localhost')) {

@@ -76,7 +76,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.menorah.health.app'
+      bundleIdentifier: 'com.menorah.health.app',
+      infoPlist: {
+        NSCameraUsageDescription: 'Menorah Health uses camera access when you join video support sessions.',
+        NSMicrophoneUsageDescription: 'Menorah Health uses microphone access when you join audio or video support sessions.',
+        NSPhotoLibraryUsageDescription: 'Menorah Health uses photo library access only when you update your profile picture.',
+      },
     },
     android: ({
       adaptiveIcon: {
@@ -93,17 +98,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         'android.permission.ACCESS_NETWORK_STATE',
         'android.permission.READ_EXTERNAL_STORAGE',
         'android.permission.WRITE_EXTERNAL_STORAGE'
-      ],
-      statusBar: {
-        barStyle: 'light-content',
-        backgroundColor: '#2d7a5c',
-        translucent: false
-      },
-      navigationBar: {
-        visible: 'leanback',
-        backgroundColor: '#ffffff',
-        barStyle: 'dark-content'
-      }
+      ]
     } as any),
     web: {
       favicon: './assets/favicon.png',

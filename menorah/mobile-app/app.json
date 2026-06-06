@@ -24,17 +24,7 @@
         "backgroundColor": "#f0f9f4"
       },
       "package": "com.menorah.healthmobile",
-      "versionCode": 9,
-      "statusBar": {
-        "barStyle": "light-content",
-        "backgroundColor": "#314830",
-        "translucent": false
-      },
-      "navigationBar": {
-        "visible": "leanback",
-        "backgroundColor": "#ffffff",
-        "barStyle": "dark-content"
-      }
+      "versionCode": 9
     },
     "web": {
       "favicon": "./assets/favicon.png",

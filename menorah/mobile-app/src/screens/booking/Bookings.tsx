@@ -29,7 +29,7 @@ export default function Bookings({ navigation }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
 
-  useEffect(() => { fetchBookings(); }, [activeTab]);
+  useEffect(() => { fetchBookings(); }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const refresh = () => fetchBookings();
@@ -37,7 +37,7 @@ export default function Bookings({ navigation }: any) {
     const u2 = socketService.onBookingRescheduled(refresh);
     const u3 = socketService.onBookingStatusChanged(refresh);
     return () => { u1(); u2(); u3(); };
-  }, [activeTab]);
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchBookings = async () => {
     setLoading(true);
@@ -81,7 +81,7 @@ export default function Bookings({ navigation }: any) {
       if (booking.sessionType === 'video') {
         navigation.navigate('PreCallCheck', { bookingId: booking.id });
       } else if (booking.sessionType === 'audio') {
-        Alert.alert('Audio Call', 'Audio call feature coming soon');
+        navigation.navigate('PreCallCheck', { bookingId: booking.id });
       } else {
         navigation.navigate('ChatThread', { roomId: booking.id });
       }

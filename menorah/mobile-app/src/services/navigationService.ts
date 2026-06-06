@@ -1,10 +1,10 @@
-import { createNavigationContainerRef } from '@react-navigation/native';
+import { createNavigationContainerRef, ParamListBase } from '@react-navigation/native';
 
-export const navigationRef = createNavigationContainerRef();
+export const navigationRef = createNavigationContainerRef<ParamListBase>();
 
 export function navigate(name: string, params?: any) {
   if (navigationRef.isReady()) {
-    navigationRef.navigate(name as never, params as never);
+    navigationRef.navigate(name, params);
   } else {
     console.warn('Navigation not ready yet');
   }
@@ -21,4 +21,3 @@ export function reset(state: any) {
     navigationRef.reset(state);
   }
 }
-

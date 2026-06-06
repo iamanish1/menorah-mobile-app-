@@ -39,7 +39,7 @@ export default function PreCallCheck({ navigation, route }: any) {
       attemptJoin();
     });
     return () => unsub();
-  }, [bookingId]);
+  }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const requestPermissions = async () => {
     if (Platform.OS === 'android') {
@@ -79,7 +79,7 @@ export default function PreCallCheck({ navigation, route }: any) {
   const checkNetwork = async () => {
     try {
       const state = await NetInfo.fetch();
-      setNetworkOk(state.isConnected && (state.type === 'wifi' || state.type === 'cellular'));
+      setNetworkOk(Boolean(state.isConnected && (state.type === 'wifi' || state.type === 'cellular')));
     } catch (error) {
       console.error('Network check error:', error);
       setNetworkOk(false);
@@ -157,7 +157,7 @@ export default function PreCallCheck({ navigation, route }: any) {
             Waiting for Counsellor
           </Text>
           <Text style={{ fontSize: 15, color: colors.muted, textAlign: 'center', marginBottom: 32 }}>
-            Your counsellor hasn't started the session yet. You'll be connected automatically once they begin.
+            Your counsellor has not started the session yet. You will be connected automatically once they begin.
           </Text>
           <ActivityIndicator size="large" color={colors.primary} />
           <Button

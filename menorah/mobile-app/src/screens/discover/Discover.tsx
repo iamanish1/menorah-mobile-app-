@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   View, ScrollView, FlatList, Linking, Text, TouchableOpacity,
-  useWindowDimensions, TextInput,
+  TextInput,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SlidersHorizontal, Search } from "lucide-react-native";
@@ -36,7 +36,9 @@ export default function Discover({ navigation }: any) {
         if (seen) return;
         const hasPremium = await subscriptionService.hasPremiumSubscription();
         if (!hasPremium) setShowFreeSessionModal(true);
-      } catch {}
+      } catch (error) {
+        console.warn('Unable to check subscription modal state:', error);
+      }
     };
     const t = setTimeout(checkModal, 800);
     return () => clearTimeout(t);
@@ -99,7 +101,7 @@ export default function Discover({ navigation }: any) {
           onBell={() => navigation.navigate('Notifications')}
           unreadCount={unreadCount}
           userName={user?.firstName}
-          userImage={user?.profileImage}
+          userImage={user?.profileImage || undefined}
         />
 
         {/* Search bar + filter button */}
