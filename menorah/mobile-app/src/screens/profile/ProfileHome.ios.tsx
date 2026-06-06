@@ -125,7 +125,7 @@ export default function ProfileHome({ navigation }: any) {
         rightIcon={Pencil}
       />
 
-      <IOSScreen contentContainerStyle={{ paddingTop: iosTheme.spacing.sm }}>
+      <IOSScreen edges={['right', 'bottom', 'left']} contentContainerStyle={{ paddingTop: iosTheme.spacing.sm }}>
         <IOSCard contentStyle={{ padding: 0 }}>
           <View
             style={{
@@ -168,10 +168,16 @@ export default function ProfileHome({ navigation }: any) {
               )}
 
               <View style={{ flex: 1 }}>
-                <Text style={{ color: iosTheme.colors.white, fontSize: 24, lineHeight: 30, fontWeight: '900' }}>
+                <Text
+                  style={{ color: iosTheme.colors.white, fontSize: 24, lineHeight: 30, fontWeight: '900' }}
+                  numberOfLines={2}
+                >
                   {user ? `${user.firstName} ${user.lastName}` : 'User'}
                 </Text>
-                <Text style={{ color: 'rgba(255,255,255,0.78)', fontSize: 13, lineHeight: 19, marginTop: 3 }}>
+                <Text
+                  style={{ color: 'rgba(255,255,255,0.78)', fontSize: 13, lineHeight: 19, marginTop: 3 }}
+                  numberOfLines={1}
+                >
                   {user?.email || ''}
                 </Text>
                 <View

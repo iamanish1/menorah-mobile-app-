@@ -44,7 +44,7 @@ export default function IOSButton({
       accessibilityRole="button"
       style={[
         {
-          minHeight: 56,
+          minHeight: 58,
           borderRadius: iosTheme.radius.lg,
           backgroundColor,
           borderWidth: isGhost ? 0 : 1,

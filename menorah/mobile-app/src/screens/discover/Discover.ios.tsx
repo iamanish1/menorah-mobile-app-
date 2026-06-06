@@ -130,7 +130,7 @@ export default function Discover({ navigation }: any) {
         badgeCount={unreadCount}
       />
 
-      <IOSScreen contentContainerStyle={{ paddingTop: iosTheme.spacing.sm }}>
+      <IOSScreen edges={['right', 'bottom', 'left']} contentContainerStyle={{ paddingTop: iosTheme.spacing.sm }}>
         <View
           style={{
             flexDirection: 'row',
@@ -277,6 +277,7 @@ export default function Discover({ navigation }: any) {
               eyebrow="Menorah"
               title="Mind Over Matter, Redefined"
               subtitle="A calmer place to begin the conversation."
+              height={248}
               onPress={() => navigation.navigate('CounsellorList')}
             />
 
@@ -288,6 +289,22 @@ export default function Discover({ navigation }: any) {
               actionLabel="Open chat"
               onPress={() => navigation.navigate('Chat')}
               style={{ marginTop: iosTheme.spacing.xl }}
+            />
+
+            <IOSSectionHeader
+              title="Read Articles"
+              actionLabel="View all"
+              onPress={() => Linking.openURL('https://menorah.me/newsletter')}
+            />
+            <FlatList
+              data={ARTICLES}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ paddingRight: iosTheme.layout.screenPadding }}
+              renderItem={({ item }) => (
+                <IOSArticleCard item={item} onPress={() => Linking.openURL(item.url)} />
+              )}
             />
 
             <View style={{ flexDirection: 'row', gap: iosTheme.spacing.md, marginTop: iosTheme.spacing.md }}>
@@ -338,22 +355,6 @@ export default function Discover({ navigation }: any) {
                 </IOSCard>
               ))}
             </View>
-
-            <IOSSectionHeader
-              title="Read Articles"
-              actionLabel="View all"
-              onPress={() => Linking.openURL('https://menorah.me/newsletter')}
-            />
-            <FlatList
-              data={ARTICLES}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{ paddingRight: iosTheme.layout.screenPadding }}
-              renderItem={({ item }) => (
-                <IOSArticleCard item={item} onPress={() => Linking.openURL(item.url)} />
-              )}
-            />
 
             <IOSSectionHeader
               title="Community updates"

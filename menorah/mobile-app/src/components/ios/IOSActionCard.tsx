@@ -47,9 +47,10 @@ export default function IOSActionCard({
           borderWidth: 1,
           borderColor: dark ? 'rgba(255,255,255,0.10)' : iosTheme.colors.border,
           padding: compact ? iosTheme.spacing.lg : iosTheme.spacing.xl,
+          minHeight: compact ? 82 : 118,
           flexDirection: 'row',
           alignItems: 'center',
-          gap: iosTheme.spacing.lg,
+          gap: compact ? iosTheme.spacing.md : iosTheme.spacing.lg,
           overflow: 'hidden',
         },
         iosTheme.shadows.card,
@@ -59,24 +60,24 @@ export default function IOSActionCard({
       {Icon ? (
         <View
           style={{
-            width: compact ? 44 : 52,
-            height: compact ? 44 : 52,
+            width: compact ? 46 : 54,
+            height: compact ? 46 : 54,
             borderRadius: compact ? 17 : 20,
             backgroundColor: dark ? 'rgba(255,255,255,0.13)' : iosTheme.colors.surfaceAlt,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Icon size={compact ? 21 : 24} color={dark ? iosTheme.colors.white : iosTheme.colors.primary} strokeWidth={2.2} />
+          <Icon size={compact ? 21 : 24} color={dark ? iosTheme.colors.white : iosTheme.colors.primary} strokeWidth={2.25} />
         </View>
       ) : null}
 
       <View style={{ flex: 1 }}>
-        <Text style={{ color: foreground, fontSize: compact ? 16 : 19, lineHeight: compact ? 22 : 25, fontWeight: '900' }}>
+        <Text style={{ color: foreground, fontSize: compact ? 16 : 20, lineHeight: compact ? 22 : 26, fontWeight: '900' }}>
           {title}
         </Text>
         {subtitle ? (
-          <Text style={{ color: secondary, fontSize: 14, lineHeight: 21, marginTop: iosTheme.spacing.xs }}>
+          <Text style={{ color: secondary, fontSize: compact ? 13 : 14, lineHeight: compact ? 18 : 21, marginTop: iosTheme.spacing.xs }}>
             {subtitle}
           </Text>
         ) : null}

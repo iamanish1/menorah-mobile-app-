@@ -36,7 +36,8 @@ export default function IOSListItem({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: iosTheme.spacing.lg,
+        minHeight: 68,
+        paddingVertical: iosTheme.spacing.md,
         borderBottomWidth: showDivider ? 1 : 0,
         borderBottomColor: iosTheme.colors.hairline,
       }}

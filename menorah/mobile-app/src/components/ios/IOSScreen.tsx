@@ -8,7 +8,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import type { ReactNode } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import { iosTheme } from './iosTheme';
 
 type IOSScreenProps = {
@@ -18,6 +18,7 @@ type IOSScreenProps = {
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   keyboardShouldPersistTaps?: ScrollViewProps['keyboardShouldPersistTaps'];
+  edges?: Edge[];
 };
 
 export default function IOSScreen({
@@ -27,6 +28,7 @@ export default function IOSScreen({
   style,
   contentContainerStyle,
   keyboardShouldPersistTaps,
+  edges = ['top', 'right', 'bottom', 'left'],
 }: IOSScreenProps) {
   const body = scroll ? (
     <ScrollView
@@ -34,7 +36,7 @@ export default function IOSScreen({
       contentContainerStyle={[
         {
           paddingHorizontal: iosTheme.layout.screenPadding,
-          paddingBottom: iosTheme.spacing.xxxl,
+          paddingBottom: iosTheme.spacing.xxxl + iosTheme.spacing.md,
         },
         contentContainerStyle,
       ]}
@@ -50,7 +52,7 @@ export default function IOSScreen({
   );
 
   return (
-    <SafeAreaView style={[{ flex: 1, backgroundColor: iosTheme.colors.background }, style]}>
+    <SafeAreaView edges={edges} style={[{ flex: 1, backgroundColor: iosTheme.colors.background }, style]}>
       {keyboardAvoiding ? (
         <KeyboardAvoidingView
           style={{ flex: 1 }}

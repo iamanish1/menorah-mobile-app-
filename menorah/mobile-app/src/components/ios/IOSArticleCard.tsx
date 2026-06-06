@@ -16,8 +16,8 @@ export default function IOSArticleCard({ item, onPress }: IOSArticleCardProps) {
       activeOpacity={0.88}
       style={[
         {
-          width: 246,
-          minHeight: 250,
+          width: 238,
+          height: 264,
           borderRadius: iosTheme.radius.xl,
           backgroundColor: iosTheme.colors.surface,
           overflow: 'hidden',
@@ -28,7 +28,7 @@ export default function IOSArticleCard({ item, onPress }: IOSArticleCardProps) {
         iosTheme.shadows.card,
       ]}
     >
-      <Image source={{ uri: item.image }} style={{ width: '100%', height: 132 }} contentFit="cover" />
+      <Image source={{ uri: item.image }} style={{ width: '100%', height: 126 }} contentFit="cover" />
       <View style={{ padding: iosTheme.spacing.lg, flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: iosTheme.spacing.sm }}>
           <Text style={{ color: iosTheme.colors.primaryMuted, fontSize: 11, lineHeight: 14, fontWeight: '900' }}>
@@ -36,13 +36,13 @@ export default function IOSArticleCard({ item, onPress }: IOSArticleCardProps) {
           </Text>
           <ArrowUpRight size={16} color={iosTheme.colors.primaryMuted} strokeWidth={2.4} />
         </View>
-        <Text style={{ color: iosTheme.colors.text, fontSize: 17, lineHeight: 22, fontWeight: '900', marginBottom: iosTheme.spacing.sm }} numberOfLines={2}>
+        <Text style={{ color: iosTheme.colors.text, fontSize: 16, lineHeight: 21, fontWeight: '900', marginBottom: iosTheme.spacing.sm }} numberOfLines={2}>
           {item.title}
         </Text>
         <Text style={{ color: iosTheme.colors.textSecondary, fontSize: 13, lineHeight: 19 }} numberOfLines={3}>
           {item.excerpt || item.readTime || 'Read the latest from Menorah.'}
         </Text>
-        <Text style={{ color: iosTheme.colors.textMuted, fontSize: 12, lineHeight: 16, fontWeight: '700', marginTop: iosTheme.spacing.md }}>
+        <Text style={{ color: iosTheme.colors.textMuted, fontSize: 12, lineHeight: 16, fontWeight: '800', marginTop: 'auto', paddingTop: iosTheme.spacing.sm }}>
           {item.readTime || 'Read now'}
         </Text>
       </View>

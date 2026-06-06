@@ -2,9 +2,9 @@ import { Platform, type TextStyle, type ViewStyle } from 'react-native';
 
 export const iosTheme = {
   colors: {
-    background: '#F8FAF7',
+    background: '#F7FAF6',
     surface: '#FFFFFF',
-    surfaceAlt: '#EDF3EC',
+    surfaceAlt: '#EEF4ED',
     primary: '#243F2E',
     primaryDeep: '#183021',
     primaryMuted: '#5D6F5E',
@@ -35,26 +35,26 @@ export const iosTheme = {
     pill: 999,
   },
   layout: {
-    screenPadding: 22,
+    screenPadding: 20,
     maxContentWidth: 430,
   },
   typography: {
     title: {
-      fontSize: 30,
-      lineHeight: 36,
-      fontWeight: '800',
+      fontSize: 31,
+      lineHeight: 37,
+      fontWeight: '900',
       color: '#1C241D',
     } satisfies TextStyle,
     sectionTitle: {
-      fontSize: 20,
-      lineHeight: 26,
-      fontWeight: '800',
+      fontSize: 21,
+      lineHeight: 27,
+      fontWeight: '900',
       color: '#1C241D',
     } satisfies TextStyle,
     cardTitle: {
       fontSize: 17,
       lineHeight: 23,
-      fontWeight: '800',
+      fontWeight: '900',
       color: '#1C241D',
     } satisfies TextStyle,
     body: {
@@ -74,9 +74,9 @@ export const iosTheme = {
     card: Platform.select<ViewStyle>({
       ios: {
         shadowColor: '#183021',
-        shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.08,
-        shadowRadius: 22,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.07,
+        shadowRadius: 18,
       },
       default: {
         elevation: 2,
@@ -85,9 +85,9 @@ export const iosTheme = {
     button: Platform.select<ViewStyle>({
       ios: {
         shadowColor: '#183021',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.14,
-        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.13,
+        shadowRadius: 16,
       },
       default: {
         elevation: 3,

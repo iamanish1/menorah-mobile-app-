@@ -77,7 +77,12 @@ export default function Login({ navigation }: any) {
     <IOSScreen
       keyboardAvoiding
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingTop: iosTheme.spacing.xl }}
+      contentContainerStyle={{
+        flexGrow: 1,
+        justifyContent: 'center',
+        paddingTop: iosTheme.spacing.xl,
+        paddingBottom: iosTheme.spacing.xxxl,
+      }}
     >
       <View style={{ alignItems: 'center', marginBottom: iosTheme.spacing.xxl }}>
         <View
@@ -107,7 +112,7 @@ export default function Login({ navigation }: any) {
           style={{ width: 176, height: 42, marginBottom: iosTheme.spacing.sm }}
           contentFit="contain"
         />
-        <Text style={{ color: iosTheme.colors.textSecondary, fontSize: 15, lineHeight: 22, textAlign: 'center' }}>
+        <Text style={{ color: iosTheme.colors.textSecondary, fontSize: 15, lineHeight: 22, textAlign: 'center', maxWidth: 280 }}>
           Sign in to continue your mental health journey.
         </Text>
       </View>
@@ -125,7 +130,7 @@ export default function Login({ navigation }: any) {
         </Text>
         <View
           style={{
-            minHeight: 54,
+            minHeight: 56,
             borderRadius: iosTheme.radius.lg,
             borderWidth: 1.5,
             borderColor: fieldBorder(emailFocus),
@@ -157,7 +162,7 @@ export default function Login({ navigation }: any) {
         </Text>
         <View
           style={{
-            minHeight: 54,
+            minHeight: 56,
             borderRadius: iosTheme.radius.lg,
             borderWidth: 1.5,
             borderColor: fieldBorder(passFocus),

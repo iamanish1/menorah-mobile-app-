@@ -18,7 +18,7 @@ export default function IOSHeroCard({
   title,
   subtitle,
   eyebrow,
-  height = 270,
+  height = 250,
   onPress,
   style,
 }: IOSHeroCardProps) {
@@ -30,7 +30,7 @@ export default function IOSHeroCard({
       style={[
         {
           height,
-          borderRadius: iosTheme.radius.xxl,
+          borderRadius: 30,
           overflow: 'hidden',
           backgroundColor: iosTheme.colors.primaryDeep,
         },
@@ -46,8 +46,8 @@ export default function IOSHeroCard({
       <View
         style={{
           position: 'absolute',
-          left: iosTheme.spacing.xl,
-          right: iosTheme.spacing.xl,
+          left: iosTheme.spacing.lg,
+          right: iosTheme.spacing.lg,
           bottom: iosTheme.spacing.xl,
           alignItems: 'center',
         }}
@@ -69,11 +69,12 @@ export default function IOSHeroCard({
         <Text
           style={{
             color: iosTheme.colors.white,
-            fontSize: 31,
-            lineHeight: 37,
+            fontSize: 29,
+            lineHeight: 35,
             fontWeight: '900',
             textAlign: 'center',
           }}
+          numberOfLines={2}
         >
           {title}
         </Text>

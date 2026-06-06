@@ -38,9 +38,9 @@ export default function IOSIconButton({
       accessibilityLabel={accessibilityLabel}
       style={[
         {
-          width: 44,
-          height: 44,
-          borderRadius: 22,
+          width: 46,
+          height: 46,
+          borderRadius: 23,
           backgroundColor,
           borderWidth: 1,
           borderColor: iosTheme.colors.border,
@@ -52,7 +52,7 @@ export default function IOSIconButton({
         style,
       ]}
     >
-      <Icon size={20} color={color} strokeWidth={2.2} />
+      <Icon size={20} color={color} strokeWidth={2.25} />
       {badge ? (
         <IOSBadge
           label={badgeLabel}

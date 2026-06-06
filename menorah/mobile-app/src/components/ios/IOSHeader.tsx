@@ -2,6 +2,7 @@ import { Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Bell, Menu } from 'lucide-react-native';
 import type { ComponentType } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import IOSIconButton from './IOSIconButton';
 import { iosTheme } from './iosTheme';
 
@@ -30,31 +31,34 @@ export default function IOSHeader({
   rightIcon: RightIcon = Bell,
   badgeCount = 0,
 }: IOSHeaderProps) {
+  const insets = useSafeAreaInsets();
+
   return (
     <View
       style={{
         paddingHorizontal: iosTheme.layout.screenPadding,
-        paddingTop: iosTheme.spacing.sm,
-        paddingBottom: iosTheme.spacing.lg,
+        paddingTop: insets.top + iosTheme.spacing.sm,
+        paddingBottom: iosTheme.spacing.md,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        backgroundColor: iosTheme.colors.background,
       }}
     >
       <IOSIconButton icon={Menu} onPress={onMenuPress} accessibilityLabel="Open menu" />
 
-      <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: iosTheme.spacing.lg }}>
+      <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: iosTheme.spacing.md }}>
         {showWordmark ? (
           <Image
             source={require('../../../assets/brand/wordmark-dark.png')}
-            style={{ width: 144, height: 34, marginBottom: subtitle ? 2 : 0 }}
+            style={{ width: 168, height: 40, marginBottom: subtitle ? 2 : 0 }}
             contentFit="contain"
           />
         ) : (
           <Text
             style={{
-              fontSize: 24,
-              lineHeight: 30,
+              fontSize: 28,
+              lineHeight: 34,
               fontWeight: '900',
               color: iosTheme.colors.primary,
             }}
@@ -68,8 +72,9 @@ export default function IOSHeader({
               fontSize: 12,
               lineHeight: 16,
               color: iosTheme.colors.textSecondary,
-              fontWeight: '700',
+              fontWeight: '800',
             }}
+            numberOfLines={1}
           >
             {subtitle}
           </Text>
