@@ -20,7 +20,9 @@ interface AuthContextType {
   }) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
   verifyEmail: (code: string) => Promise<{ success: boolean; message?: string }>;
+  verifyEmailOtp: (email: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   resendEmailVerification: (email: string) => Promise<{ success: boolean; message?: string }>;
+  resendEmailOtp: (email: string) => Promise<{ success: boolean; message?: string }>;
   verifyPhone: (phone: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   forgotPassword: (email: string) => Promise<{ success: boolean; message?: string }>;
   resetPassword: (token: string, password: string) => Promise<{ success: boolean; message?: string }>;
@@ -166,22 +168,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
       const response = await api.register(userData);
-      
-      if (response.success && response.data) {
-        api.setToken(response.data.token);
-        setUser(response.data.user);
-        return { success: true };
+
+      if (response.success) {
+        // Registration sends an OTP email — user is not created yet.
+        // Token and user will be set after OTP verification via verifyEmailOtp().
+        return { success: true, message: response.message };
       } else {
-        return { 
-          success: false, 
-          message: response.message || 'Registration failed' 
+        return {
+          success: false,
+          message: response.message || 'Registration failed'
         };
       }
     } catch (error: any) {
       console.error('Registration error:', error);
-      return { 
-        success: false, 
-        message: error.response?.data?.message || 'Registration failed' 
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Registration failed'
       };
     } finally {
       setIsLoading(false);
@@ -224,6 +226,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { 
         success: false, 
         message: error.response?.data?.message || 'Email verification failed' 
+      };
+    }
+  };
+
+  const verifyEmailOtp = async (email: string, otp: string) => {
+    try {
+      const response = await api.verifyEmailOtp(email, otp);
+
+      if (response.success && response.data) {
+        api.setToken(response.data.token);
+        setUser(response.data.user);
+        return { success: true };
+      } else {
+        return {
+          success: false,
+          message: response.message || 'Email verification failed'
+        };
+      }
+    } catch (error: any) {
+      console.error('Email OTP verification error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Email verification failed'
+      };
+    }
+  };
+
+  const resendEmailOtp = async (email: string) => {
+    try {
+      const response = await api.resendEmailOtp(email);
+
+      if (response.success) {
+        return { success: true };
+      } else {
+        return {
+          success: false,
+          message: response.message || 'Failed to resend code'
+        };
+      }
+    } catch (error: any) {
+      console.error('Resend email OTP error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to resend code'
       };
     }
   };
@@ -328,10 +374,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     register,
     logout,
     verifyEmail,
+    verifyEmailOtp,
     verifyPhone,
     forgotPassword,
     resetPassword,
     resendEmailVerification,
+    resendEmailOtp,
     updateUser,
   };
 

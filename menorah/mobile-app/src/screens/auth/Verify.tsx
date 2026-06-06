@@ -12,7 +12,7 @@ export default function Verify({ navigation, route }: any) {
   const [resending, setResending] = useState(false);
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
-  const { verifyEmail, resendEmailVerification, user } = useAuth();
+  const { verifyEmailOtp, resendEmailOtp, user } = useAuth();
   
   // Get email from route params or user object
   const email = route?.params?.email || user?.email;
@@ -30,7 +30,7 @@ export default function Verify({ navigation, route }: any) {
 
     setLoading(true);
     try {
-      const result = await verifyEmail(code);
+      const result = await verifyEmailOtp(email, code);
       if (result.success) {
         Alert.alert('Success', 'Email verified successfully!', [
           {
@@ -62,7 +62,7 @@ export default function Verify({ navigation, route }: any) {
 
     setResending(true);
     try {
-      const result = await resendEmailVerification(email);
+      const result = await resendEmailOtp(email);
       if (result.success) {
         Alert.alert('Success', 'Verification code sent successfully!');
       } else {

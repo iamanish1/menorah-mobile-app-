@@ -268,10 +268,26 @@ class ApiClient {
     });
   }
 
+  async verifyEmailOtp(email: string, otp: string): Promise<ApiResponse<{ user: User; token: string }>> {
+    return this.request({
+      method: 'POST',
+      url: '/auth/verify-email-otp',
+      data: { email, otp },
+    });
+  }
+
   async resendEmailVerification(email: string): Promise<ApiResponse<void>> {
     return this.request({
       method: 'POST',
       url: '/auth/resend-email-verification',
+      data: { email },
+    });
+  }
+
+  async resendEmailOtp(email: string): Promise<ApiResponse<void>> {
+    return this.request({
+      method: 'POST',
+      url: '/auth/resend-email-otp',
       data: { email },
     });
   }
