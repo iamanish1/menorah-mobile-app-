@@ -482,6 +482,8 @@ export default function BookingReview({ navigation, route }: any) {
                 });
 
                 if (bookingResponse.success && bookingResponse.data?.booking?.id) {
+                  // TODO(App Store): This Razorpay flow should remain limited to real-world one-to-one service booking.
+                  // It must not unlock digital subscriptions, premium content, or app-only features.
                   navigation.navigate('PaymentSheet', {
                     bookingId: bookingResponse.data.booking.id,
                     paymentMethod: 'razorpay',
@@ -636,6 +638,8 @@ export default function BookingReview({ navigation, route }: any) {
 
               if (bookingResponse.success && bookingResponse.data?.booking?.id) {
                 // Navigate to payment screen with bookingId
+                // TODO(App Store): Keep this Razorpay payment classified as real-world one-to-one service booking only.
+                // It still needs business/legal review before iOS App Store submission.
                 navigation.navigate("PaymentSheet", {
                   bookingId: bookingResponse.data.booking.id,
                   paymentMethod: 'razorpay'

@@ -57,6 +57,9 @@ export default function PaymentSheet({ route, navigation }: any) {
         return;
       }
 
+      // TODO(App Store): If Razorpay booking payments stay enabled on iOS,
+      // confirm with business/legal that these are allowed real-world one-to-one service payments.
+      // Booking payment must not unlock digital subscriptions, premium content, or app-only features.
       // Step 1: Create Razorpay order on backend
       const response = await api.createCheckoutSession(bookingId);
 

@@ -80,7 +80,12 @@ Use this checklist on a real iPhone after installing a development build or Test
 
 ## Payments
 - [ ] Confirm the iOS payment strategy before testing paid flows.
+- [ ] On iOS, confirm subscription purchase cards/buttons do not open Razorpay checkout.
+- [ ] On iOS, confirm subscription screens show: "Subscriptions are currently unavailable on iOS. You can continue using the free features."
+- [ ] On iOS, confirm there is no "pay on website", "subscribe on web", "continue in browser", WebView checkout, or auto-login payment workaround for digital subscriptions.
 - [ ] If Razorpay remains enabled for booking, test only allowed real-world one-to-one service booking payments.
+- [ ] Test booking payment behavior separately from subscription behavior.
+- [ ] Confirm booking payment does not unlock digital subscriptions, premium content, or app-only features.
 - [ ] Do not submit digital subscriptions or premium content paid through Razorpay unless App Store policy review approves it.
 - [ ] Confirm subscription payment behavior is disabled, converted to Apple IAP, or documented before App Store submission.
 - [ ] Confirm payment failure and cancellation states do not leave broken bookings.

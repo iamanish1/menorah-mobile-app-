@@ -96,6 +96,8 @@ export default function SessionReview({ navigation, route }: any) {
         if (isSubBooking) {
           navigation.replace('BookingSuccess', { bookingId: booking.id, isSubscriptionBooking: true });
         } else {
+          // TODO(App Store): This Razorpay flow is for real-world one-to-one service booking only.
+          // It must not unlock digital subscriptions, premium content, or app-only features.
           navigation.navigate('PaymentSheet', { bookingId: booking.id, paymentMethod: 'razorpay' });
         }
       } else {

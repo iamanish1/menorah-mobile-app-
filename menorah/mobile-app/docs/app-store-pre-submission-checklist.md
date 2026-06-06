@@ -67,6 +67,11 @@
 - [ ] Confirm iOS App Store payment policy for every paid flow before submission.
 - [ ] Move digital subscriptions or premium in-app content to Apple In-App Purchase where required.
 - [ ] Keep Razorpay on iOS only for allowed real-world or one-to-one services, not digital subscriptions/premium content.
+- [ ] Confirm iOS digital subscription Razorpay flow remains disabled for first submission.
+- [ ] Implement Apple In-App Purchase before enabling digital subscriptions or premium content on iOS.
+- [ ] Confirm iOS digital subscriptions do not offer web checkout, browser redirects, or auto-login payment workarounds.
+- [ ] Complete business/legal policy review before keeping booking payments on iOS.
+- [ ] Confirm booking payment does not unlock digital subscriptions, premium content, or app-only features.
 
 ## App Store Connect
 - [ ] App name, subtitle, description, keywords, category, support URL, and privacy URL are complete.

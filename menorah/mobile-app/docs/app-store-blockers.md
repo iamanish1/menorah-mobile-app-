@@ -3,7 +3,10 @@
 This file tracks launch blockers and policy risks that must be resolved before iOS App Store submission.
 
 ## Required Before Submission
-- [ ] Decide the Razorpay/iOS payment strategy.
+- [x] Disable iOS digital subscription Razorpay flow for first submission.
+- [ ] Implement Apple In-App Purchase before enabling digital subscriptions or premium content on iOS.
+- [ ] Confirm no web redirect, browser checkout, or auto-login workaround is offered for iOS digital subscriptions.
+- [ ] Decide whether booking Razorpay payments remain enabled on iOS after policy review.
 - [ ] Create a production reviewer demo account.
 - [ ] Verify fresh web incognito login works for the demo account.
 - [ ] Verify iPhone dev/TestFlight login works for the demo account.
@@ -36,7 +39,10 @@ This file tracks launch blockers and policy risks that must be resolved before i
   - `api.verifyRazorpayPayment`
   - `api.getRazorpayOrderStatus`
 - Classification: real-world one-to-one service booking.
+- Current iOS behavior: unchanged for now.
 - App Store risk: medium. Razorpay may be acceptable only if this is clearly payment for real-world services, not digital app content.
+- Required before submission: complete business/legal review if this flow remains enabled on iOS.
+- Guardrail: booking payment must not unlock digital subscriptions, premium content, or app-only features.
 
 ### Subscription Payment
 - Location: `src/screens/subscription/SubscriptionPayment.tsx`
@@ -48,7 +54,9 @@ This file tracks launch blockers and policy risks that must be resolved before i
   - `api.verifySubscriptionPayment`
   - `api.getSubscriptionStatus`
 - Classification: digital subscription or premium app feature access.
-- App Store risk: high. This likely needs Apple In-App Purchase if it unlocks digital features, premium app access, or subscription content.
+- Current iOS behavior: disabled for first submission with a user-facing unavailable message.
+- App Store risk: high. Apple In-App Purchase is required before enabling this flow on iOS if it unlocks digital features, premium app access, or subscription content.
+- Guardrail: do not add a "pay on website", browser checkout, WebView checkout, or web auto-login workaround for iOS digital subscriptions.
 
 ## Razorpay Technical Risk
 - Expo Doctor reports `react-native-razorpay` as unsupported on New Architecture.
@@ -58,7 +66,8 @@ This file tracks launch blockers and policy risks that must be resolved before i
 
 ## Recommended First Submission Strategy
 - Launch iOS free first if possible.
-- Disable or hide subscription/payment flows that are not App Store policy-cleared.
+- Keep iOS digital subscription Razorpay disabled until Apple IAP is implemented.
+- Do not use external web payment redirects or auto-login payment workarounds for iOS digital subscriptions.
 - Keep only payment flows that are clearly for allowed real-world one-to-one services.
 - Add paid digital subscriptions later with Apple In-App Purchase if needed.
 
