@@ -78,7 +78,7 @@ export const auth = {
     } catch (error) {
       authStore.setState({ user: null, isLoading: false });
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('auth_token');
+        sessionStorage.removeItem('auth_token');
       }
     }
   },
