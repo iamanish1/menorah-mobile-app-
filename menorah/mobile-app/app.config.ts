@@ -54,7 +54,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: 'Menorah Health',
     slug: 'menorah-health-app',
     owner: 'menorahsoftware',
-    version: '2.1.0',
+    version: '2.2.0',
     orientation: 'portrait',
     // ─── OTA Updates via EAS Update ──────────────────────────────────────────
     updates: {
