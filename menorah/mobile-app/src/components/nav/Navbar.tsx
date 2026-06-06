@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { View, Pressable, Text, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -35,7 +36,7 @@ export default function Navbar({
     onPress,
     badge,
   }: {
-    icon: React.ReactNode;
+    icon: ReactNode;
     label: string;
     onPress?: () => void;
     badge?: boolean;

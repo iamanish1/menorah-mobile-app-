@@ -73,7 +73,7 @@ export default function SessionTypeSelector({ onSessionSelect }: Props) {
         </TouchableOpacity>
       </View>
       <Text style={{ paddingHorizontal: 16, fontSize: 12, color: colors.muted, marginBottom: 14, lineHeight: 17 }}>
-        Your therapist's identity will be revealed after payment for unbiased matching.
+        Your therapist{"'"}s identity will be revealed after payment for unbiased matching.
       </Text>
 
       <ScrollView

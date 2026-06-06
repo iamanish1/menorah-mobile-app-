@@ -20,7 +20,7 @@ export default function HelpSheet({
           padding: 24
         }}>
           <Text style={[styles.textH3, { marginBottom: 12 }]}>
-            If you're in crisis
+            If you{"'"}re in crisis
           </Text>
           <Text style={[styles.textMuted, { marginBottom: 16 }]}>
             This app is not for emergencies. Please use your local helplines below or contact emergency services.

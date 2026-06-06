@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { Search, Star, ArrowRight, ShieldCheck } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
@@ -14,8 +14,6 @@ const AVATAR_COLORS = ['#16a34a', '#2563eb', '#7c3aed', '#ea580c'];
 export default function FindCounsellorHero({ onPress }: Props) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
-  const { width } = useWindowDimensions();
-  const cardBg = scheme === 'dark' ? colors.surface : colors.card;
 
   return (
     <TouchableOpacity

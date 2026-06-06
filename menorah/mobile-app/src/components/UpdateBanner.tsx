@@ -21,7 +21,7 @@ export default function UpdateBanner() {
       useNativeDriver: true,
       bounciness: 4,
     }).start();
-  }, [visible]);
+  }, [translateY, visible]);
 
   if (updateState === 'idle' || updateState === 'checking') return null;
 

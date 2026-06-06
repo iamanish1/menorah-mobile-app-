@@ -12,7 +12,6 @@ import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { api } from '@/lib/api';
 import subscriptionService from '@/services/subscriptionService';
-import type { SessionType, TherapistGender } from '@/components/discover/SessionTypeSelector';
 
 const SESSION_META: Record<string, { title: string; iconColor: string; iconBg: string }> = {
   basic:   { title: 'Basic Session',   iconColor: '#3B82F6', iconBg: '#DBEAFE' },
@@ -52,7 +51,9 @@ export default function SessionReview({ navigation, route }: any) {
             setSubType(info.subscriptionType);
             return;
           }
-        } catch {}
+        } catch (error) {
+          console.warn('[SessionReview] Failed to read cached subscription info:', error);
+        }
         try {
           const res = await api.getSubscriptionStatus();
           if (res.success && res.data?.isActive) {
@@ -62,7 +63,9 @@ export default function SessionReview({ navigation, route }: any) {
               await subscriptionService.setPremiumSubscription(res.data.subscriptionType);
             }
           }
-        } catch {}
+        } catch (error) {
+          console.warn('[SessionReview] Failed to fetch subscription status:', error);
+        }
       } finally {
         setCheckingSub(false);
       }
@@ -235,7 +238,7 @@ export default function SessionReview({ navigation, route }: any) {
           shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
         }}>
           <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text, padding: 14, paddingBottom: 10 }}>
-            What's included:
+            What{"'"}s included:
           </Text>
           {(features as string[]).map((feature: string, i: number) => (
             <View key={i}>
@@ -322,7 +325,7 @@ export default function SessionReview({ navigation, route }: any) {
                 Important Notice
               </Text>
               <Text style={{ fontSize: 12, color: '#92400E', lineHeight: 17 }}>
-                Your therapist's identity will be revealed only after successful payment for unbiased matching.
+                Your therapist{"'"}s identity will be revealed only after successful payment for unbiased matching.
               </Text>
             </View>
           </View>

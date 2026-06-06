@@ -1,19 +1,18 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  ActivityIndicator, Alert, Dimensions,
+  ActivityIndicator, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import {
   ArrowLeft, Star, MessageCircle, CalendarDays, Heart, Share2,
-  IndianRupee, BadgeCheck, ShieldCheck, Brain, Users, Lock,
+  IndianRupee, BadgeCheck, ShieldCheck, Brain, Users,
 } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { api, Counsellor } from '@/lib/api';
 
-const { width } = Dimensions.get('window');
 const HERO_GREEN = '#2d5c3e';
 
 function generateDates(n = 30): Date[] {
@@ -61,18 +60,28 @@ export default function CounsellorProfile({ navigation, route }: any) {
   const dates = useMemo(() => generateDates(30), []);
   const selectedDate = dates[dateIdx];
 
-  useEffect(() => { if (counsellorId) load(); }, [counsellorId]);
-  useEffect(() => { setTime(null); setShowAll(false); }, [dateIdx]);
+  const load = useCallback(async () => {
+    if (!counsellorId) {
+      setLoading(false);
+      return;
+    }
 
-  const load = async () => {
     setLoading(true);
     try {
       const res = await api.getCounsellor(counsellorId);
       if (res.success && res.data) setCounsellor(res.data.counsellor);
       else { Alert.alert('Error', 'Failed to load profile.'); navigation.goBack(); }
-    } catch { Alert.alert('Error', 'Failed to load profile.'); navigation.goBack(); }
-    finally { setLoading(false); }
-  };
+    } catch (error) {
+      console.warn('[CounsellorProfile] Failed to load counsellor:', error);
+      Alert.alert('Error', 'Failed to load profile.');
+      navigation.goBack();
+    } finally {
+      setLoading(false);
+    }
+  }, [counsellorId, navigation]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setTime(null); setShowAll(false); }, [dateIdx]);
 
   const handleBook = () => {
     if (!selectedTime) { Alert.alert('Select Time', 'Please pick a time slot first.'); return; }

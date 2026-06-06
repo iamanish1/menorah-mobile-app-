@@ -1,5 +1,5 @@
 import { Pressable, Text, ActivityIndicator, PressableProps, StyleProp, ViewStyle } from "react-native";
-import { styles, colors } from "@/styles/theme";
+import { colors } from "@/styles/theme";
 
 type Props = PressableProps & {
   title: string;

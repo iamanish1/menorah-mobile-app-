@@ -25,7 +25,9 @@ async function trySave(s: Scheme) {
   try {
     const mod = await import('@react-native-async-storage/async-storage');
     await mod.default.setItem('MENORAH_THEME', s);
-  } catch {}
+  } catch (error) {
+    console.warn('[ThemeProvider] Failed to save theme preference:', error);
+  }
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {

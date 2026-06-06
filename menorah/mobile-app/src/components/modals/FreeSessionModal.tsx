@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, Modal, Animated,
-  Dimensions, Platform,
 } from 'react-native';
 import { X, Sparkles, ShieldCheck, Clock, Heart } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
@@ -12,8 +11,6 @@ interface FreeSessionModalProps {
   onClose: () => void;
   onBookSession: () => void;
 }
-
-const { width } = Dimensions.get('window');
 
 const FEATURES = [
   { icon: Clock,       label: '45-minute session',      sub: 'A full session, completely free' },
@@ -40,7 +37,7 @@ export default function FreeSessionModal({ visible, onClose, onBookSession }: Fr
         Animated.timing(opacityAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
       ]).start();
     }
-  }, [visible]);
+  }, [opacityAnim, scaleAnim, visible]);
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>

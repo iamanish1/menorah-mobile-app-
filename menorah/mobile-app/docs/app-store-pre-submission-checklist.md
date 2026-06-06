@@ -63,6 +63,10 @@
 - [ ] Use Apple In-App Purchase for digital subscriptions or premium in-app content where required.
 - [ ] Provide sandbox/test payment instructions for App Review.
 - [ ] Verify refund/cancellation wording is accurate.
+- [ ] Review `react-native-razorpay` before iOS submission because `expo-doctor` reports it as unsupported on New Architecture.
+- [ ] Confirm iOS App Store payment policy for every paid flow before submission.
+- [ ] Move digital subscriptions or premium in-app content to Apple In-App Purchase where required.
+- [ ] Keep Razorpay on iOS only for allowed real-world or one-to-one services, not digital subscriptions/premium content.
 
 ## App Store Connect
 - [ ] App name, subtitle, description, keywords, category, support URL, and privacy URL are complete.
@@ -77,3 +81,7 @@
 - [ ] iOS camera, microphone, and photo permission descriptions are present.
 - [ ] No secrets are hardcoded in the app bundle.
 - [ ] Final build is tested via TestFlight before submission.
+
+## Native Project Sync
+- [ ] This repo currently includes `ios/` and `android/`, so it is being treated as a native/prebuild project rather than a pure CNG project.
+- [ ] After changing native config fields in `app.config.ts`, run `npx expo prebuild --clean` intentionally and review the native diffs before building.

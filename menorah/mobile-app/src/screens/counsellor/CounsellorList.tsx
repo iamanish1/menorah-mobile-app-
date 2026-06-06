@@ -55,7 +55,7 @@ export default function CounsellorList({ navigation }: any) {
     }
   }, []);
 
-  useEffect(() => { loadCounsellors(); }, []);
+  useEffect(() => { loadCounsellors(); }, [loadCounsellors]);
 
   useEffect(() => {
     let list = [...counsellors];

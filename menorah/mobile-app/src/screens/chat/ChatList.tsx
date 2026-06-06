@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   RefreshControl, Alert, Modal, TextInput,
@@ -39,13 +39,18 @@ export default function ChatList({ navigation }: any) {
   const [activeFilter, setActiveFilter]                 = useState<FilterTab>('all');
   const [searchQ, setSearchQ]                           = useState('');
 
-  useEffect(() => { loadChatRooms(); }, []);
-
-  const loadChatRooms = async () => {
+  const loadChatRooms = useCallback(async () => {
     setLoading(true);
-    try { await fetchChatRooms(); } catch {}
-    finally { setLoading(false); }
-  };
+    try {
+      await fetchChatRooms();
+    } catch (error) {
+      console.warn('[ChatList] Failed to load chat rooms:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchChatRooms]);
+
+  useEffect(() => { loadChatRooms(); }, [loadChatRooms]);
 
   const onRefresh = async () => {
     setRefreshing(true);

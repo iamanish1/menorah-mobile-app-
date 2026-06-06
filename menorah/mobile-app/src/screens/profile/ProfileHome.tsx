@@ -70,11 +70,15 @@ export default function ProfileHome({ navigation }: any) {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Sign Out', style: 'destructive',
-          onPress: async () => {
-            try { await logout(); } catch {}
-            setTimeout(() => {
+            onPress: async () => {
               try {
-                const rootNav = navigation.getParent()?.getParent();
+                await logout();
+              } catch (error) {
+                console.warn('[ProfileHome] Logout failed before local reset:', error);
+              }
+              setTimeout(() => {
+                try {
+                  const rootNav = navigation.getParent()?.getParent();
                 if (rootNav?.reset) {
                   rootNav.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
                 } else {
@@ -82,7 +86,9 @@ export default function ProfileHome({ navigation }: any) {
                     CommonActions.reset({ index: 0, routes: [{ name: 'Onboarding' }] })
                   );
                 }
-              } catch {}
+              } catch (error) {
+                console.warn('[ProfileHome] Failed to reset navigation after logout:', error);
+              }
             }, 250);
           },
         },
@@ -374,7 +380,7 @@ export default function ProfileHome({ navigation }: any) {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
-                We'd love your feedback!
+                We{"'"}d love your feedback!
               </Text>
               <Text style={{ fontSize: 12, color: colors.muted }}>
                 Help us improve your experience

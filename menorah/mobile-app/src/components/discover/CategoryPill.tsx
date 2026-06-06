@@ -1,5 +1,5 @@
 import { TouchableOpacity, Text } from "react-native";
-import { styles, colors } from "@/styles/theme";
+import { colors } from "@/styles/theme";
 
 export default function CategoryPill({
   label,

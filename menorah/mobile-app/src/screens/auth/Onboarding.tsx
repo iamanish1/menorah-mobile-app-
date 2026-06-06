@@ -259,7 +259,7 @@ export default function Onboarding({ navigation }: any) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? colors.text : '#1a2e1e', marginBottom: 2 }}>
-                  You're in safe hands
+                  You{"'"}re in safe hands
                 </Text>
                 <Text style={{ fontSize: 12, color: isDark ? colors.muted : '#6a7e6a', lineHeight: 18 }}>
                   Your conversations are 100% private and confidential.

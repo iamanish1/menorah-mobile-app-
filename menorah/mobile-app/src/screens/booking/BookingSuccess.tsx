@@ -90,9 +90,9 @@ export default function BookingSuccess({ navigation, route }: any) {
             color: '#0C4A6E',
             lineHeight: 20
           }}>
-            • You'll receive a confirmation email with session details{'\n'}
+            • You{"'"}ll receive a confirmation email with session details{'\n'}
             • Your therapist will be assigned within 24 hours{'\n'}
-            • You'll get a notification when your therapist is ready{'\n'}
+            • You{"'"}ll get a notification when your therapist is ready{'\n'}
             • Session details will be shared via email and app
           </Text>
         </View>

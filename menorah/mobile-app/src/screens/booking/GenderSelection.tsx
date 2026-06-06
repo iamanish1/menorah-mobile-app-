@@ -281,7 +281,7 @@ export default function GenderSelection({ navigation, route }: GenderSelectionPr
               Your preference is respected
             </Text>
             <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 17 }}>
-              We'll match you with the best available counsellor.
+              We{"'"}ll match you with the best available counsellor.
             </Text>
           </View>
         </View>
