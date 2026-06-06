@@ -64,7 +64,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     runtimeVersion: '1.0.0',
     // ─────────────────────────────────────────────────────────────────────────
-    icon: './assets/icon.png',
+    icon: './assets/brand/menorah_logo.png',
     userInterfaceStyle: 'light',
     splash: {
       image: './assets/splash.png',
@@ -80,11 +80,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     android: ({
       adaptiveIcon: {
-        foregroundImage: './assets/adaptive-icon.png',
+        foregroundImage: './assets/brand/menorah-logo-no-bg.png',
         backgroundColor: '#f0f9f4'
       },
       package: 'com.menorah.healthmobile',
-      versionCode: 9,
+      versionCode: 10,
       permissions: [
         'android.permission.CAMERA',
         'android.permission.RECORD_AUDIO',
