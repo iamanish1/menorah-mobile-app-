@@ -131,6 +131,15 @@ router.post('/', [
     } else {
       // No counsellor provided - use provided amount or default calculation
       if (providedAmount) {
+        // Validate amount is within sane bounds — prevents ₹0 or absurdly large bookings
+        const MIN_AMOUNT = 100;    // ₹100 minimum
+        const MAX_AMOUNT = 500000; // ₹5,00,000 maximum per session
+        if (providedAmount < MIN_AMOUNT || providedAmount > MAX_AMOUNT) {
+          return res.status(400).json({
+            success: false,
+            message: `Amount must be between ₹${MIN_AMOUNT} and ₹${MAX_AMOUNT}`,
+          });
+        }
         amount = providedAmount;
       } else {
         // Default rate calculation: ₹1000 per hour

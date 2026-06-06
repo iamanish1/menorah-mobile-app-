@@ -28,12 +28,20 @@ export default {
    * Reads the cached health state (written by the cron) and routes accordingly.
    */
   async fetch(request, env, ctx) {
-    // Socket.IO long-polling and WebSocket upgrades must always go to the same
-    // backend instance during a session — we always route them to VPS.
-    // GCP Cloud Run supports WebSockets but requires sticky sessions config.
     const url = new URL(request.url);
+
+    // Socket.IO: WebSocket upgrades and long-polling must stay on VPS for the
+    // entire session — Cloud Run has no sticky sessions for WebSockets.
     if (url.pathname.startsWith('/socket.io/')) {
       return proxyTo(request, env.VPS_URL, 'vps-socket');
+    }
+
+    // LiveKit webhook: signed payload from LiveKit SFU — must always hit VPS.
+    // Routing to GCP during failover would cause the webhook to fail signature
+    // verification if GCP is a different instance with a different process, and
+    // could create duplicate booking-completion events.
+    if (url.pathname === '/api/video/livekit-webhook') {
+      return proxyTo(request, env.VPS_URL, 'vps-livekit-webhook');
     }
 
     // Read latest health state written by the cron trigger

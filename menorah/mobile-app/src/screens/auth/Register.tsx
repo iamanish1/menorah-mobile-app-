@@ -120,7 +120,7 @@ export default function Register({ navigation }: any) {
 
     setLoading(true);
     try {
-      console.log('📱 Registering user with email:', email);
+      if (__DEV__) { console.log('📱 Registering user'); }
       const result = await register({
         firstName,
         lastName,

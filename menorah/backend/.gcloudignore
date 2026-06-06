@@ -1,0 +1,33 @@
+# ── GCP Cloud Build — files NOT sent to the build context ───────────────────
+# Keeps the upload fast and avoids leaking secrets to Cloud Build.
+
+# Secrets — never upload
+.env
+.env.*
+!.env.example
+
+# Local dev / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Node modules — Docker installs them from package.json inside the image
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# PM2 / VPS-only files (not needed for Cloud Run)
+ecosystem.config.js
+
+# Test artifacts
+coverage/
+.nyc_output/
+
+# Git
+.git/
+.gitignore

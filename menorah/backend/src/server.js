@@ -123,12 +123,19 @@ app.get('/api/welcome', (_req, res) =>
 );
 
 // ─── Socket.IO auth middleware ─────────────────────────────────────────────
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('Authentication error: Token required'));
   try {
     // Algorithm pinned — prevents alg:none and algorithm-confusion attacks
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+
+    // Check logout blocklist — prevents logged-out users from holding open sockets
+    const { isTokenBlocked } = require('./middleware/auth');
+    if (await isTokenBlocked(token)) {
+      return next(new Error('Authentication error: Token revoked'));
+    }
+
     socket.userId   = decoded.userId;
     socket.userRole = decoded.role || 'user';
     // Do not store userName from token — fetch from DB or derive from userId for display
@@ -202,10 +209,11 @@ io.on('connection', async (socket) => {
       if (!socket.rooms.has(`chat_${roomId}`)) return;
 
       // Persist to MongoDB so message survives server restart
+      const safeContent = String(content).slice(0, 5000).replace(/<[^>]*>/g, '');
       const msg = await Message.create({
         room:    roomId,
         sender:  socket.userId,
-        content: String(content).slice(0, 5000),
+        content: safeContent,
         type:    ['text', 'image', 'file'].includes(type) ? type : 'text',
         status:  'sent',
       });
@@ -405,7 +413,7 @@ async function startServer() {
     console.log(`🔌 Socket.IO:    ready (websocket-first)`);
     console.log(`🗄️  Redis:        ${redisReady ? '✅ connected' : '⚠️  not connected (memory fallback)'}`);
     console.log(`📧 MSG91:        ${process.env.MSG91_AUTH_KEY ? '✅' : '⚠️  MSG91_AUTH_KEY missing'}`);
-    console.log(`🌐 CORS origins: ${ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS.join(', ') : '⚠️  none set'}\n`);
+    console.log(`🌐 CORS origins: ${ALLOWED_ORIGINS.length > 0 ? `${ALLOWED_ORIGINS.length} configured` : '⚠️  none set'}\n`);
   });
 }
 

@@ -297,11 +297,14 @@ router.post('/rooms/:roomId/messages', [
       });
     }
 
+    // Strip HTML tags (defense-in-depth against stored XSS if content is ever rendered as HTML)
+    const safeContent = content.trim().replace(/<[^>]*>/g, '');
+
     // Create message
     const message = new Message({
       room: roomId,
       sender: userId,
-      content: content.trim(),
+      content: safeContent,
       type,
       status: 'sent'
     });
@@ -312,7 +315,7 @@ router.post('/rooms/:roomId/messages', [
     await message.populate('sender', 'firstName lastName profileImage');
 
     // Update room's last message
-    await room.updateLastMessage(content, userId);
+    await room.updateLastMessage(safeContent, userId);
 
     // Increment unread count for the other participant
     if (isUser) {

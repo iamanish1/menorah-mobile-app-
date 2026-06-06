@@ -20,7 +20,7 @@ export default function DashboardPage() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [statusToggling, setStatusToggling] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
   const { on, off } = useSocket(token);
   const queryClient = useQueryClient();
 

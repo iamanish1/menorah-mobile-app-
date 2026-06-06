@@ -5,13 +5,21 @@ const { getRedisClient } = require('../config/redis');
 
 // ── Token blocklist helper ─────────────────────────────────────────────────
 // Called by logout route; checked on every authenticated request.
+// Fails CLOSED in production — if Redis is down, logged-out tokens are rejected
+// rather than accepted, preventing session hijack after an admin-initiated logout.
 const isTokenBlocked = async (token) => {
   try {
     const hash = crypto.createHash('sha256').update(token).digest('hex');
     const redis = getRedisClient();
     return !!(await redis.get(`blocked:token:${hash}`));
   } catch {
-    return false; // Redis unavailable — fail open (token accepted)
+    if (process.env.NODE_ENV === 'production') {
+      // Fail closed — reject the token so an attacker cannot bypass logout
+      // by taking Redis offline. Authenticated users will get a 401 and need
+      // to log in again once Redis recovers (typically seconds).
+      return true;
+    }
+    return false; // Dev: allow through so local dev works without Redis
   }
 };
 

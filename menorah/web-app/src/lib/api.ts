@@ -49,18 +49,22 @@ class ApiClient {
 
   private getToken(): string | null {
     if (typeof window === 'undefined') return null;
-    return localStorage.getItem('auth_token');
+    return sessionStorage.getItem('auth_token');
   }
 
   private setToken(token: string): void {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('auth_token', token);
+      sessionStorage.setItem('auth_token', token);
+      // Mirror to cookie so Next.js middleware can verify server-side
+      const maxAge = 7 * 24 * 60 * 60;
+      document.cookie = `mn_counsellor_auth=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Strict; Secure`;
     }
   }
 
   public clearToken(): void {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('auth_token');
+      sessionStorage.removeItem('auth_token');
+      document.cookie = 'mn_counsellor_auth=; path=/; max-age=0; SameSite=Strict; Secure';
     }
   }
 
@@ -75,7 +79,7 @@ class ApiClient {
     } catch (error: any) {
       const errorResponse = error.response?.data;
       if (errorResponse) {
-        console.error('Login API error:', errorResponse);
+        if (process.env.NODE_ENV === "development") console.error('Login API error:', errorResponse);
       }
       return {
         success: false,
@@ -92,7 +96,7 @@ class ApiClient {
     } catch (error: any) {
       const errorResponse = error.response?.data;
       if (errorResponse) {
-        console.error('Get current user API error:', errorResponse);
+        if (process.env.NODE_ENV === "development") console.error('Get current user API error:', errorResponse);
       }
       return {
         success: false,
@@ -144,7 +148,7 @@ class ApiClient {
     } catch (error: any) {
       const errorResponse = error.response?.data;
       if (errorResponse) {
-        console.error('My bookings API error:', errorResponse);
+        if (process.env.NODE_ENV === "development") console.error('My bookings API error:', errorResponse);
       }
       return {
         success: false,
@@ -190,11 +194,11 @@ class ApiClient {
           params: error.config?.params,
         }
       };
-      console.error('Pending bookings API error details:', errorDetails);
+      if (process.env.NODE_ENV === "development") console.error('Pending bookings API error details:', errorDetails);
       
       // Also log validation errors separately if they exist
       if (errorResponse?.errors && Array.isArray(errorResponse.errors)) {
-        console.error('Validation errors:', errorResponse.errors);
+        if (process.env.NODE_ENV === "development") console.error('Validation errors:', errorResponse.errors);
       }
       
       // Extract error message with better user-friendly messages
@@ -229,7 +233,7 @@ class ApiClient {
     } catch (error: any) {
       const errorResponse = error.response?.data;
       if (errorResponse) {
-        console.error('Get booking by ID API error:', errorResponse);
+        if (process.env.NODE_ENV === "development") console.error('Get booking by ID API error:', errorResponse);
       }
       return {
         success: false,
@@ -253,7 +257,7 @@ class ApiClient {
       // Log error details safely (only in development)
       if (process.env.NODE_ENV === 'development') {
         try {
-          console.error('Accept booking API error:', errorMessage, {
+          if (process.env.NODE_ENV === "development") console.error('Accept booking API error:', errorMessage, {
             status: errorStatus,
             errorData: errorResponse,
           });
@@ -296,7 +300,7 @@ class ApiClient {
     } catch (error: any) {
       const errorResponse = error.response?.data;
       if (errorResponse) {
-        console.error('Schedule booking API error:', errorResponse);
+        if (process.env.NODE_ENV === "development") console.error('Schedule booking API error:', errorResponse);
       }
       return {
         success: false,
@@ -318,7 +322,7 @@ class ApiClient {
     } catch (error: any) {
       const errorResponse = error.response?.data;
       if (errorResponse) {
-        console.error('Dashboard API error:', errorResponse);
+        if (process.env.NODE_ENV === "development") console.error('Dashboard API error:', errorResponse);
       }
       return {
         success: false,
@@ -350,7 +354,7 @@ class ApiClient {
     } catch (error: any) {
       const errorResponse = error.response?.data;
       if (errorResponse) {
-        console.error('Start session API error:', errorResponse);
+        if (process.env.NODE_ENV === "development") console.error('Start session API error:', errorResponse);
       }
       return {
         success: false,
@@ -367,7 +371,7 @@ class ApiClient {
     } catch (error: any) {
       const errorResponse = error.response?.data;
       if (errorResponse) {
-        console.error('Complete session API error:', errorResponse);
+        if (process.env.NODE_ENV === "development") console.error('Complete session API error:', errorResponse);
       }
       return {
         success: false,

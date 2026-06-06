@@ -36,7 +36,7 @@ export default function ChatThreadPage() {
   const [userImage, setUserImage] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
   const { on, off, emit } = useSocket(token);
 
   useEffect(() => {

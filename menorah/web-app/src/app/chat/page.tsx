@@ -29,7 +29,7 @@ export default function ChatListPage() {
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
   const { on, off, isConnected } = useSocket(token);
 
   useEffect(() => {

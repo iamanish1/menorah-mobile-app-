@@ -257,7 +257,7 @@ router.post('/verify-razorpay', [
         }
 
         if (payment.status !== 'captured' && payment.status !== 'authorized') {
-          return res.status(400).json({ success: false, message: `Payment not completed (status: ${payment.status})` });
+          return res.status(400).json({ success: false, message: 'Payment verification failed' });
         }
       } catch (err) {
         console.error('Error fetching Razorpay order/payment:', err);
@@ -490,7 +490,16 @@ router.post('/verify-subscription-payment', [
       .update(text)
       .digest('hex');
 
-    if (expectedSignature !== razorpay_signature) {
+    // Timing-safe comparison — prevents signature brute-force via timing side-channel
+    const signaturesMatch = (() => {
+      try {
+        return crypto.timingSafeEqual(
+          Buffer.from(expectedSignature, 'hex'),
+          Buffer.from(razorpay_signature, 'hex')
+        );
+      } catch { return false; }
+    })();
+    if (!signaturesMatch) {
       return res.status(400).json({ success: false, message: 'Invalid payment signature' });
     }
 

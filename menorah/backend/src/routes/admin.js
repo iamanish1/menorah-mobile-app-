@@ -15,6 +15,10 @@ router.use(auth, adminAuth);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Escapes all special regex metacharacters so user-supplied search strings
+// cannot be used to craft catastrophic backtracking (ReDoS) patterns.
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const generateSecurePassword = () => {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   const lower = 'abcdefghjkmnpqrstuvwxyz';
@@ -163,9 +167,9 @@ router.get('/counsellors', [
     if (status === 'pending') {
       const searchQuery = search
         ? { $or: [
-            { firstName: { $regex: search, $options: 'i' } },
-            { lastName: { $regex: search, $options: 'i' } },
-            { email: { $regex: search, $options: 'i' } }
+            { firstName: { $regex: escapeRegex(search), $options: 'i' } },
+            { lastName: { $regex: escapeRegex(search), $options: 'i' } },
+            { email: { $regex: escapeRegex(search), $options: 'i' } }
           ]}
         : {};
       searchQuery.status = 'pending';
@@ -201,9 +205,9 @@ router.get('/counsellors', [
     if (status === 'rejected') {
       const searchQuery = search
         ? { $or: [
-            { firstName: { $regex: search, $options: 'i' } },
-            { lastName: { $regex: search, $options: 'i' } },
-            { email: { $regex: search, $options: 'i' } }
+            { firstName: { $regex: escapeRegex(search), $options: 'i' } },
+            { lastName: { $regex: escapeRegex(search), $options: 'i' } },
+            { email: { $regex: escapeRegex(search), $options: 'i' } }
           ]}
         : {};
       searchQuery.status = 'rejected';
@@ -248,9 +252,9 @@ router.get('/counsellors', [
     if (search) {
       const matchingUsers = await User.find({
         $or: [
-          { firstName: { $regex: search, $options: 'i' } },
-          { lastName: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } }
+          { firstName: { $regex: escapeRegex(search), $options: 'i' } },
+          { lastName: { $regex: escapeRegex(search), $options: 'i' } },
+          { email: { $regex: escapeRegex(search), $options: 'i' } }
         ]
       }).select('_id').lean();
       counsellorQuery.user = { $in: matchingUsers.map(u => u._id) };
@@ -624,10 +628,10 @@ router.get('/users', [
 
     if (search) {
       userQuery.$or = [
-        { firstName: { $regex: search, $options: 'i' } },
-        { lastName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } }
+        { firstName: { $regex: escapeRegex(search), $options: 'i' } },
+        { lastName: { $regex: escapeRegex(search), $options: 'i' } },
+        { email: { $regex: escapeRegex(search), $options: 'i' } },
+        { phone: { $regex: escapeRegex(search), $options: 'i' } }
       ];
     }
 

@@ -235,19 +235,16 @@ router.post('/login', [
     const { email, password } = req.body;
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
-    if (!user) {
+    // Use same generic message for missing user AND inactive account —
+    // different messages allow attackers to enumerate valid email addresses.
+    if (!user || !user.isActive) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    if (!user.isActive) {
-      const msg = user.role === 'counsellor'
-        ? 'Your account is pending admin approval.'
-        : 'Account is deactivated. Please contact support.';
-      return res.status(401).json({ success: false, message: msg });
-    }
-
     if (user.isLocked()) {
-      return res.status(401).json({ success: false, message: 'Account is temporarily locked due to multiple failed login attempts' });
+      // Locked message is acceptable — user already proved they know the email exists
+      // by successfully registering; revealing lockout doesn't add enumeration risk.
+      return res.status(401).json({ success: false, message: 'Account is temporarily locked due to multiple failed login attempts. Please try again later.' });
     }
 
     const isPasswordValid = await user.comparePassword(password);
@@ -403,9 +400,26 @@ router.post('/forgot-password', [
 // @desc    Redirect password reset links to mobile app or web app
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
+// Allowed redirect destination hostnames — prevents open redirect if env var is misconfigured
+const ALLOWED_REDIRECT_HOSTS = new Set(['menorah.me', 'menorahhealth.app', 'www.menorah.me', 'www.menorahhealth.app', 'localhost:3002']);
+
+const safeWebAppUrl = () => {
+  const raw = (process.env.WEB_APP_URL || 'https://menorah.me').trim();
+  try {
+    const { hostname, port } = new URL(raw);
+    const host = port ? `${hostname}:${port}` : hostname;
+    if (!ALLOWED_REDIRECT_HOSTS.has(host)) {
+      return 'https://menorah.me';
+    }
+    return raw.replace(/\/$/, '');
+  } catch {
+    return 'https://menorah.me';
+  }
+};
+
 router.get('/reset-password', (req, res) => {
   const token      = req.query.token;
-  const webAppUrl  = (process.env.WEB_APP_URL || 'https://menorah.me').trim();
+  const webAppUrl  = safeWebAppUrl();
 
   if (!token) {
     return res.redirect(`${webAppUrl}/reset-password?error=missing-token`);

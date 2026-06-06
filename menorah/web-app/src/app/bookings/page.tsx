@@ -30,7 +30,7 @@ function BookingsContent() {
     activeTab === 'all' ? { status: statusFilter || undefined } : undefined
   );
   const { bookings: pendingBookings, loading: pendingLoading, error: pendingError, refetch: refetchPendingBookings } = usePendingBookings();
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
   const { on, off } = useSocket(token);
 
   // Helper that invalidates both booking queries at once

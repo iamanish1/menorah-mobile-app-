@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from './secureStorage';
 import { ENV } from './env';
 
 export interface ChatMessage {
@@ -83,19 +83,19 @@ class SocketService {
   // Initialize socket connection
   async connect(): Promise<void> {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
-      
+      const token = await secureStorage.getToken();
+
+      // Token is required — do not allow unauthenticated socket connections
       if (!token) {
-        console.warn('No authentication token found, attempting connection without auth');
+        throw new Error('Authentication token required for socket connection');
       }
 
       // Socket.IO connects to the origin (no /api prefix).
       // URL is always derived from ENV — no domain is hardcoded here.
       const socketUrl = ENV.API_ORIGIN || ENV.API_BASE_URL?.replace(/\/api\/?$/, '') || 'http://localhost:3000';
-      console.log('Connecting to Socket.IO at:', socketUrl);
-      
+
       this.socket = io(socketUrl, {
-        auth: token ? { token } : {},
+        auth: { token },
         // polling first — React Native WebSocket upgrade is unreliable in Expo
         transports: ['polling', 'websocket'],
         timeout: 20000,
@@ -111,7 +111,6 @@ class SocketService {
       return new Promise((resolve, reject) => {
         if (this.socket) {
           this.socket.on('connect', () => {
-            console.log('Socket.IO connected successfully');
             this.isConnected = true;
             this.reconnectAttempts = 0;
             this.notifyConnectionListeners(true);

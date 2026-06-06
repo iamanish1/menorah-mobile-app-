@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from './secureStorage';
 import { ENV } from './env';
 
 // Types
@@ -133,13 +133,10 @@ class ApiClient {
     this.client.interceptors.request.use(
       async (config) => {
         if (!this.token) {
-          this.token = await AsyncStorage.getItem('auth_token');
+          this.token = await secureStorage.getToken();
         }
         if (this.token) {
           config.headers.Authorization = `Bearer ${this.token}`;
-          console.log('[API] Request with token:', config.method, config.url);
-        } else {
-          console.log('[API] Request without token:', config.method, config.url);
         }
         return config;
       },
@@ -151,26 +148,24 @@ class ApiClient {
       (response) => response,
       async (error) => {
         if (error.response?.status === 401) {
-          // Token expired or invalid
-          await AsyncStorage.removeItem('auth_token');
+          await secureStorage.clearToken();
           this.token = null;
-          // You might want to redirect to login here
         }
         return Promise.reject(error);
       }
     );
   }
 
-  // Set auth token
+  // Set auth token — stored in device secure enclave (Keychain/Keystore)
   setToken(token: string) {
     this.token = token;
-    AsyncStorage.setItem('auth_token', token);
+    secureStorage.setToken(token);
   }
 
   // Clear auth token
   clearToken() {
     this.token = null;
-    AsyncStorage.removeItem('auth_token');
+    secureStorage.clearToken();
   }
 
   // Helper method to remove undefined values from request data

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { api, User } from '@/lib/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from '@/lib/secureStorage';
 import { socketService } from '@/lib/socket';
 import { ENV } from '@/lib/env';
 
@@ -42,8 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuthStatus = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
-      if (__DEV__) console.log('[Auth] Checking auth status, token exists:', !!token);
+      const token = await secureStorage.getToken();
 
       if (token) {
         const response = await api.getCurrentUser();
