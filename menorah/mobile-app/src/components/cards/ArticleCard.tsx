@@ -1,39 +1,50 @@
 import { TouchableOpacity, View, Text } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Linking from "expo-linking";
-import { ArrowUpRight } from "lucide-react-native";
+import { ChevronRight } from "lucide-react-native";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
+import type { Article } from "@/types/article";
 
-export type Article = {
-  id: string;
-  title: string;
-  excerpt?: string;
-  image: string;
-  url: string;
-  category?: string;
-  readTime?: string;
+type ArticleCardProps = {
+  item: Article;
+  onPress: () => void;
 };
 
-export default function ArticleCard({ item }: { item: Article }) {
+export default function ArticleCard({ item, onPress }: ArticleCardProps) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
 
   return (
-    <TouchableOpacity onPress={() => Linking.openURL(item.url)} style={{ width: 260, height: 224, marginRight: 16 }}>
-      <View style={{ 
-        borderRadius: 24, 
-        overflow: 'hidden', 
-        borderWidth: 1, 
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.88}
+      accessibilityRole="button"
+      accessibilityLabel={`Open article ${item.title}`}
+      style={{ width: 260, height: 224, marginRight: 16 }}
+    >
+      <View style={{
+        borderRadius: 24,
+        overflow: 'hidden',
+        borderWidth: 1,
         borderColor: colors.border,
         flex: 1,
         backgroundColor: colors.card,
       }}>
-        <Image source={{ uri: item.image }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
-        <LinearGradient 
-          colors={["rgba(17,24,39,0.04)", "rgba(17,24,39,0.28)", "rgba(17,24,39,0.88)"]} 
-          style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }} 
+        {item.coverImageUrl ? (
+          <Image source={{ uri: item.coverImageUrl }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+        ) : (
+          <View style={{ width: "100%", height: "100%", backgroundColor: colors.primary }}>
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+              <Text style={{ color: "white", fontSize: 44, fontWeight: "900" }}>
+                {item.title.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          </View>
+        )}
+        <LinearGradient
+          colors={["rgba(17,24,39,0.04)", "rgba(17,24,39,0.28)", "rgba(17,24,39,0.88)"]}
+          style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }}
         />
         <View style={{ position: "absolute", top: 14, left: 14, right: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <View style={{
@@ -42,7 +53,7 @@ export default function ArticleCard({ item }: { item: Article }) {
             paddingHorizontal: 10,
             paddingVertical: 6,
           }}>
-            <Text style={{ color: "white", fontSize: 11, fontWeight: "700", letterSpacing: 0.4 }}>
+            <Text style={{ color: "white", fontSize: 11, fontWeight: "700" }} numberOfLines={1}>
               {item.category || "ARTICLE"}
             </Text>
           </View>
@@ -54,17 +65,17 @@ export default function ArticleCard({ item }: { item: Article }) {
             alignItems: "center",
             justifyContent: "center",
           }}>
-            <ArrowUpRight size={16} color="white" />
+            <ChevronRight size={16} color="white" />
           </View>
         </View>
         <View style={{ position: "absolute", left: 16, right: 16, bottom: 16 }}>
-          <Text style={{ 
-            color: 'white', 
+          <Text style={{
+            color: 'white',
             fontSize: 22,
             fontWeight: '700',
             lineHeight: 28,
             marginBottom: 8,
-          }}>
+          }} numberOfLines={2}>
             {item.title}
           </Text>
           {item.excerpt ? (
@@ -77,13 +88,13 @@ export default function ArticleCard({ item }: { item: Article }) {
               {item.excerpt}
             </Text>
           ) : null}
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ 
-              color: 'rgba(255,255,255,0.78)', 
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <Text style={{
+              color: 'rgba(255,255,255,0.78)',
               fontSize: 12,
               fontWeight: "600",
-              letterSpacing: 0.2,
-            }}>
+              flex: 1,
+            }} numberOfLines={1}>
               {item.readTime || "Read now"}
             </Text>
             <Text style={{

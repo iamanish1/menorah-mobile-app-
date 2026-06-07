@@ -8,6 +8,8 @@ import { palettes } from '@/theme/colors';
 import { ENV } from '@/lib/env';
 import { api } from '@/lib/api';
 
+const WebViewWithPermissions = WebView as any;
+
 export default function CallJoin({ navigation, route }: any) {
   const { roomId, roomUrl, jitsiToken, bookingId, sessionType, counsellorName, userName } = route.params || {};
   const [loading, setLoading] = useState(true);
@@ -297,7 +299,7 @@ export default function CallJoin({ navigation, route }: any) {
           </View>
         )}
         
-        <WebView
+        <WebViewWithPermissions
           source={{ uri: jitsiUrl }}
           allowsInlineMediaPlayback={true}
           mediaPlaybackRequiresUserAction={false}
@@ -308,11 +310,10 @@ export default function CallJoin({ navigation, route }: any) {
           javaScriptEnabled={true}
           domStorageEnabled={true}
           startInLoadingState={true}
-          androidHardwareAccelerationDisabled={false}
           androidLayerType="hardware"
           ref={webViewRef}
           injectedJavaScript={injectedJavaScript}
-          onPermissionRequest={(request) => {
+          onPermissionRequest={(request: any) => {
             // Grant microphone and camera permissions for WebView
             const { nativeEvent } = request;
             console.log('WebView permission request:', nativeEvent.permission);
@@ -327,11 +328,11 @@ export default function CallJoin({ navigation, route }: any) {
               nativeEvent.request.deny();
             }
           }}
-          onHttpError={(syntheticEvent) => {
+          onHttpError={(syntheticEvent: any) => {
             const { nativeEvent } = syntheticEvent;
             console.error('WebView HTTP error:', nativeEvent);
           }}
-          onMessage={(event) => {
+          onMessage={(event: any) => {
             // Handle messages from Jitsi if needed
             try {
               const data = JSON.parse(event.nativeEvent.data);
@@ -342,7 +343,7 @@ export default function CallJoin({ navigation, route }: any) {
               console.log('WebView message:', event.nativeEvent.data);
             }
           }}
-          onShouldStartLoadWithRequest={(request) => {
+          onShouldStartLoadWithRequest={(request: any) => {
             // Allow all navigation
             return true;
           }}

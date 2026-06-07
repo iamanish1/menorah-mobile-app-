@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ENV } from './env';
+import type { Article } from '@/types/article';
 
 // Types
 export interface User {
@@ -68,7 +69,7 @@ export interface Booking {
 export interface ChatRoom {
   id: string;
   counsellorName: string;
-  counsellorImage?: string;
+  counsellorImage?: string | null;
   counsellorUserId?: string;
   specialization?: string;
   lastMessage: string;
@@ -79,12 +80,20 @@ export interface ChatRoom {
 }
 
 export interface Message {
+  _id?: string;
   id: string;
   senderId: string;
   senderName: string;
-  senderImage?: string;
+  sender?: string | {
+    _id?: string;
+    firstName?: string;
+    lastName?: string;
+    profileImage?: string | null;
+  };
+  senderImage?: string | null;
   content: string;
   timestamp: string;
+  createdAt?: string;
   type: 'text' | 'image' | 'file';
   status?: 'sent' | 'delivered' | 'read';
   roomId?: string;
@@ -370,6 +379,27 @@ class ApiClient {
     });
   }
 
+  // Articles API Methods
+  async getArticles(params?: {
+    page?: number;
+    limit?: number;
+    category?: string;
+    q?: string;
+  }): Promise<ApiResponse<{ articles: Article[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {
+    return this.request({
+      method: 'GET',
+      url: '/articles',
+      params,
+    });
+  }
+
+  async getArticle(slug: string): Promise<ApiResponse<{ article: Article }>> {
+    return this.request({
+      method: 'GET',
+      url: `/articles/${slug}`,
+    });
+  }
+
   async getSpecializations(): Promise<ApiResponse<{ specializations: string[] }>> {
     return this.request({
       method: 'GET',
@@ -525,7 +555,7 @@ class ApiClient {
     });
   }
 
-  async getMessages(roomId: string, params?: { page?: number; limit?: number }): Promise<ApiResponse<PaginationResponse<Message>>> {
+  async getMessages(roomId: string, params?: { page?: number; limit?: number }): Promise<ApiResponse<{ messages: Message[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {
     return this.request({
       method: 'GET',
       url: `/chat/rooms/${roomId}/messages`,
@@ -643,7 +673,7 @@ class ApiClient {
         if (!value || key === 'profileImage') {
           return;
         }
-        formData.append(key, value);
+        formData.append(key, String(value));
       });
 
       if (profileData.profileImage?.uri) {

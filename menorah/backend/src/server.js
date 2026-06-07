@@ -49,6 +49,7 @@ const paymentRoutes = require("./routes/payments");
 const chatRoutes = require("./routes/chat");
 const videoRoutes = require("./routes/video");
 const adminRoutes = require("./routes/admin");
+const articleRoutes = require("./routes/articles");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -191,6 +192,7 @@ app.get("/api/welcome", (req, res) => {
       bookings: "/api/bookings",
       chat: "/api/chat",
       video: "/api/video",
+      articles: "/api/articles",
     },
   });
 });
@@ -205,6 +207,7 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/video", videoRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/articles", articleRoutes);
 
 // Socket.IO Authentication Middleware
 io.use((socket, next) => {

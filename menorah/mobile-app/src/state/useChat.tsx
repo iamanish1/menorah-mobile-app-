@@ -131,20 +131,21 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Event handlers
   const handleNewMessage = useCallback((message: ChatMessage) => {
-    if (!message.roomId) {
+    const roomId = message.roomId;
+    if (!roomId) {
       console.warn('Received message without roomId:', message);
       return;
     }
     
     setMessages(prev => {
-      const roomMessages = prev[message.roomId] || [];
+      const roomMessages = prev[roomId] || [];
       // Check if message already exists to prevent duplicates
-      const exists = roomMessages.find(m => m.id === message.id);
+      const exists = roomMessages.find((m: ChatMessage) => m.id === message.id);
       if (exists) {
         // Update existing message instead of adding duplicate
         return {
           ...prev,
-          [message.roomId]: roomMessages.map(m => m.id === message.id ? message : m)
+          [roomId]: roomMessages.map((m: ChatMessage) => m.id === message.id ? message : m)
         };
       }
       // Add new message and sort by timestamp
@@ -153,13 +154,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       );
       return {
         ...prev,
-        [message.roomId]: updatedMessages
+        [roomId]: updatedMessages
       };
     });
   }, []);
 
   const handleTyping = useCallback((typing: TypingIndicator) => {
-    if (!typing.roomId) {
+    const roomId = typing.roomId;
+    if (!roomId) {
       console.warn('Received typing indicator without roomId:', typing);
       return;
     }
@@ -167,18 +169,18 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     if (user && typing.userId === user.id) return;
 
     setTypingUsers(prev => {
-      const roomTyping = prev[typing.roomId] || [];
-      const filtered = roomTyping.filter(t => t.userId !== typing.userId);
+      const roomTyping = prev[roomId] || [];
+      const filtered = roomTyping.filter((t: TypingIndicator) => t.userId !== typing.userId);
       
       if (typing.isTyping) {
         return {
           ...prev,
-          [typing.roomId]: [...filtered, typing]
+          [roomId]: [...filtered, typing]
         };
       } else {
         return {
           ...prev,
-          [typing.roomId]: filtered
+          [roomId]: filtered
         };
       }
     });
@@ -191,11 +193,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     }));
     
     // Update room presence if roomId is provided
-    if (status.roomId) {
+    const roomId = status.roomId;
+    if (roomId) {
       setRoomPresence(prev => ({
         ...prev,
-        [status.roomId]: {
-          ...(prev[status.roomId] || {}),
+        [roomId]: {
+          ...(prev[roomId] || {}),
           [status.userId]: status.isOnline
         }
       }));
@@ -203,11 +206,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   }, []);
 
   const handleReadReceipt = useCallback((receipt: MessageReadReceipt) => {
+    const roomId = receipt.roomId;
+    if (!roomId) {
+      console.warn('Received read receipt without roomId:', receipt);
+      return;
+    }
+
     setMessages(prev => {
-      const roomMessages = prev[receipt.roomId] || [];
+      const roomMessages = prev[roomId] || [];
       return {
         ...prev,
-        [receipt.roomId]: roomMessages.map(msg => 
+        [roomId]: roomMessages.map((msg: ChatMessage) =>
           msg.id === receipt.messageId 
             ? { ...msg, status: 'read' as const }
             : msg
@@ -325,12 +334,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       
       if (response.success && response.data) {
         const msg = response.data.message;
+        const sender = typeof msg.sender === 'object' && msg.sender !== null ? msg.sender : undefined;
+        const senderId = msg.senderId || sender?._id || (typeof msg.sender === 'string' ? msg.sender : undefined) || user.id;
         // Map API message to ChatMessage format
         const newMessage: ChatMessage = {
-          id: msg.id || msg._id,
-          senderId: msg.senderId || msg.sender?._id || msg.sender,
-          senderName: msg.senderName || `${msg.sender?.firstName || ''} ${msg.sender?.lastName || ''}`.trim() || 'User',
-          senderImage: msg.senderImage || msg.sender?.profileImage || null,
+          id: msg.id || msg._id || `${roomId}-${Date.now()}`,
+          senderId,
+          senderName: msg.senderName || `${sender?.firstName || ''} ${sender?.lastName || ''}`.trim() || 'User',
+          senderImage: msg.senderImage || sender?.profileImage || null,
           content: msg.content || '',
           timestamp: msg.timestamp || msg.createdAt || new Date().toISOString(),
           type: msg.type || 'text',
