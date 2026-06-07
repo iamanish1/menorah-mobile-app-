@@ -1,5 +1,5 @@
 import { Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { iosTheme } from './iosTheme';
+import { useIOSTheme } from './iosTheme';
 
 type IOSBadgeProps = {
   label?: string | number;
@@ -7,6 +7,8 @@ type IOSBadgeProps = {
 };
 
 export default function IOSBadge({ label, style }: IOSBadgeProps) {
+  const iosTheme = useIOSTheme();
+
   return (
     <View
       style={[
@@ -19,13 +21,13 @@ export default function IOSBadge({ label, style }: IOSBadgeProps) {
           justifyContent: 'center',
           paddingHorizontal: label ? 5 : 0,
           borderWidth: 2,
-          borderColor: iosTheme.colors.white,
+          borderColor: iosTheme.colors.badgeBorder,
         },
         style,
       ]}
     >
       {label ? (
-        <Text style={{ color: iosTheme.colors.white, fontSize: 10, fontWeight: '800' }}>
+        <Text style={{ color: iosTheme.colors.inverseText, fontSize: 10, fontWeight: '800' }}>
           {label}
         </Text>
       ) : null}

@@ -1,7 +1,7 @@
 import { Text, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import type { ComponentType } from 'react';
 import { ArrowRight } from 'lucide-react-native';
-import { iosTheme } from './iosTheme';
+import { useIOSTheme } from './iosTheme';
 
 type IconProps = {
   color?: string;
@@ -30,9 +30,10 @@ export default function IOSActionCard({
   compact = false,
   style,
 }: IOSActionCardProps) {
+  const iosTheme = useIOSTheme();
   const backgroundColor = dark ? iosTheme.colors.primaryDeep : iosTheme.colors.surface;
-  const foreground = dark ? iosTheme.colors.white : iosTheme.colors.text;
-  const secondary = dark ? 'rgba(255,255,255,0.78)' : iosTheme.colors.textSecondary;
+  const foreground = dark ? iosTheme.colors.inverseText : iosTheme.colors.text;
+  const secondary = dark ? iosTheme.colors.inverseTextSecondary : iosTheme.colors.textSecondary;
 
   return (
     <TouchableOpacity
@@ -45,7 +46,7 @@ export default function IOSActionCard({
           backgroundColor,
           borderRadius: iosTheme.radius.xl,
           borderWidth: 1,
-          borderColor: dark ? 'rgba(255,255,255,0.10)' : iosTheme.colors.border,
+          borderColor: dark ? iosTheme.colors.inverseSurfaceBorder : iosTheme.colors.border,
           padding: compact ? iosTheme.spacing.lg : iosTheme.spacing.xl,
           minHeight: compact ? 82 : 118,
           flexDirection: 'row',
@@ -63,12 +64,12 @@ export default function IOSActionCard({
             width: compact ? 46 : 54,
             height: compact ? 46 : 54,
             borderRadius: compact ? 17 : 20,
-            backgroundColor: dark ? 'rgba(255,255,255,0.13)' : iosTheme.colors.surfaceAlt,
+            backgroundColor: dark ? iosTheme.colors.inverseSurface : iosTheme.colors.surfaceAlt,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Icon size={compact ? 21 : 24} color={dark ? iosTheme.colors.white : iosTheme.colors.primary} strokeWidth={2.25} />
+          <Icon size={compact ? 21 : 24} color={dark ? iosTheme.colors.inverseText : iosTheme.colors.primary} strokeWidth={2.25} />
         </View>
       ) : null}
 

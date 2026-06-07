@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Linking, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, FlatList, Linking, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  Bell,
   BookOpen,
   CalendarDays,
-  MessageCircleMore,
   Search,
   ShieldCheck,
   SlidersHorizontal,
@@ -17,18 +15,20 @@ import {
   IOSActionCard,
   IOSArticleCard,
   IOSCard,
-  IOSHeader,
+  IOSChatBanner,
+  IOSDiscoverHeader,
   IOSHeroCard,
   IOSScreen,
   IOSSectionHeader,
-  iosTheme,
+  useIOSTheme,
 } from '@/components/ios';
+import { discoverScrollY } from '@/components/ios/iosScrollSignals';
 import { ARTICLES } from '@/mock/articles';
 import { INSTA } from '@/mock/instagram';
 import { mockCounsellors } from '@/mock/counsellors';
 import subscriptionService from '@/services/subscriptionService';
-import { useAuth } from '@/state/useAuth';
 import { useNotifications } from '@/state/useNotifications';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SESSION_DETAILS: Record<string, { duration: number; price: number; label: string }> = {
   basic: { duration: 45, price: 1000, label: '45 min' },
@@ -41,7 +41,8 @@ export default function Discover({ navigation }: any) {
   const [q, setQ] = useState('');
   const [showFreeSessionModal, setShowFreeSessionModal] = useState(false);
   const { unreadCount } = useNotifications();
-  const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const iosTheme = useIOSTheme();
 
   useEffect(() => {
     const checkModal = async () => {
@@ -119,18 +120,50 @@ export default function Discover({ navigation }: any) {
   );
 
   const totalResults = matchedCounsellors.length + matchedArticles.length + matchedSocialPosts.length;
+  const headerFullHeight = insets.top + iosTheme.spacing.xl + 68 + iosTheme.spacing.lg;
+  const headerOpacity = discoverScrollY.interpolate({
+    inputRange: [0, 54, 104],
+    outputRange: [1, 0.5, 0],
+    extrapolate: 'clamp',
+  });
+  const headerTranslateY = discoverScrollY.interpolate({
+    inputRange: [0, 104],
+    outputRange: [0, -24],
+    extrapolate: 'clamp',
+  });
+  const headerHeight = discoverScrollY.interpolate({
+    inputRange: [0, 104],
+    outputRange: [headerFullHeight, 0],
+    extrapolate: 'clamp',
+  });
 
   return (
     <View style={{ flex: 1, backgroundColor: iosTheme.colors.background }}>
-      <IOSHeader
-        subtitle={user?.firstName ? `Welcome, ${user.firstName}` : 'Your private wellness space'}
-        onMenuPress={() => setHelp(true)}
-        onRightPress={() => navigation.navigate('Notifications')}
-        rightIcon={Bell}
-        badgeCount={unreadCount}
-      />
+      <Animated.View
+        style={{
+          height: headerHeight,
+          opacity: headerOpacity,
+          transform: [{ translateY: headerTranslateY }],
+          backgroundColor: iosTheme.colors.background,
+          overflow: 'hidden',
+        }}
+      >
+        <IOSDiscoverHeader
+          onMenuPress={() => setHelp(true)}
+          onNotificationsPress={() => navigation.navigate('Notifications')}
+          onChatPress={() => navigation.navigate('Chat')}
+          unreadCount={unreadCount}
+        />
+      </Animated.View>
 
-      <IOSScreen edges={['right', 'bottom', 'left']} contentContainerStyle={{ paddingTop: iosTheme.spacing.sm }}>
+      <IOSScreen
+        edges={['right', 'bottom', 'left']}
+        contentContainerStyle={{ paddingTop: iosTheme.spacing.sm }}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: discoverScrollY } } }], {
+          useNativeDriver: false,
+        })}
+        scrollEventThrottle={16}
+      >
         <View
           style={{
             flexDirection: 'row',
@@ -273,7 +306,7 @@ export default function Discover({ navigation }: any) {
         ) : (
           <View>
             <IOSHeroCard
-              source={require('../../../assets/brand/photo_2025-11-03_17-32-07.jpg')}
+              source={require('../../../assets/brand/team-hero.jpeg')}
               eyebrow="Menorah"
               title="Mind Over Matter, Redefined"
               subtitle="A calmer place to begin the conversation."
@@ -281,12 +314,9 @@ export default function Discover({ navigation }: any) {
               onPress={() => navigation.navigate('CounsellorList')}
             />
 
-            <IOSActionCard
-              dark
-              icon={MessageCircleMore}
+            <IOSChatBanner
               title="Chat with us"
               subtitle="Speak with a trained clinical psychology student or another man just like you in a safe space."
-              actionLabel="Open chat"
               onPress={() => navigation.navigate('Chat')}
               style={{ marginTop: iosTheme.spacing.xl }}
             />

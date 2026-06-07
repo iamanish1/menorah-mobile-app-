@@ -28,6 +28,8 @@ export default function Bookings({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
 
   useEffect(() => { fetchBookings(); }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -94,9 +96,9 @@ export default function Bookings({ navigation }: any) {
   const completedBookings = bookings.filter(b => b.status === 'completed');
   const displayBookings   = activeTab === 'upcoming' ? upcomingBookings : completedBookings;
 
-  const cardBg = scheme === 'dark' ? colors.surface : colors.card;
-  const trustBg = scheme === 'dark' ? colors.surface : '#f8fdf9';
-  const bannerBg = scheme === 'dark' ? '#1a2e22' : '#edf7f1';
+  const cardBg = isDark ? colors.card : colors.card;
+  const trustBg = isDark ? colors.card : '#f8fdf9';
+  const bannerBg = isDark ? colors.primaryDark : '#edf7f1';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -120,7 +122,7 @@ export default function Bookings({ navigation }: any) {
             onPress={() => navigation.navigate('GenderSelection')}
             style={{
               width: 46, height: 46, borderRadius: 23,
-              backgroundColor: scheme === 'dark' ? colors.surface : '#edf7f1',
+              backgroundColor: isDark ? colors.surface : '#edf7f1',
               alignItems: 'center', justifyContent: 'center',
               borderWidth: 1, borderColor: colors.border,
             }}
@@ -133,7 +135,7 @@ export default function Bookings({ navigation }: any) {
         <View style={{
           marginHorizontal: 20, marginBottom: 20,
           flexDirection: 'row',
-          backgroundColor: scheme === 'dark' ? colors.surface : '#f1f5f9',
+          backgroundColor: isDark ? colors.surface : '#f1f5f9',
           borderRadius: 50, padding: 4,
           borderWidth: 1, borderColor: colors.border,
         }}>
@@ -150,10 +152,10 @@ export default function Bookings({ navigation }: any) {
                   backgroundColor: active ? colors.primary : 'transparent',
                 }}
               >
-                <Icon size={16} color={active ? 'white' : colors.muted} />
+                <Icon size={16} color={active ? primaryActionText : colors.muted} />
                 <Text style={{
                   fontSize: 15, fontWeight: '700',
-                  color: active ? 'white' : colors.muted,
+                  color: active ? primaryActionText : colors.muted,
                 }}>
                   {tab.charAt(0).toUpperCase() + tab.slice(1)}
                 </Text>
@@ -178,7 +180,7 @@ export default function Bookings({ navigation }: any) {
                   backgroundColor: cardBg, borderRadius: 20, padding: 16,
                   marginBottom: 14, borderWidth: 1, borderColor: colors.border,
                   shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: scheme === 'dark' ? 0.15 : 0.05, shadowRadius: 8, elevation: 2,
+                  shadowOpacity: isDark ? 0.15 : 0.05, shadowRadius: 8, elevation: 2,
                 }}
               >
                 {/* Counsellor row */}
@@ -236,7 +238,7 @@ export default function Bookings({ navigation }: any) {
                       paddingVertical: 11, borderRadius: 14, alignItems: 'center',
                     }}
                   >
-                    <Text style={{ color: 'white', fontSize: 14, fontWeight: '700' }}>
+                    <Text style={{ color: booking.status === 'in-progress' ? primaryActionText : 'white', fontSize: 14, fontWeight: '700' }}>
                       {booking.status === 'in-progress' ? 'Join Now' : 'Ready to Join'}
                     </Text>
                   </TouchableOpacity>
@@ -272,7 +274,7 @@ export default function Bookings({ navigation }: any) {
                 <View style={{
                   position: 'absolute', bottom: 6, right: 6,
                   width: 36, height: 36, borderRadius: 18,
-                  backgroundColor: scheme === 'dark' ? colors.surface : 'white',
+                  backgroundColor: isDark ? colors.surface : 'white',
                   borderWidth: 2, borderColor: colors.primary + '28',
                   alignItems: 'center', justifyContent: 'center',
                   shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
@@ -302,8 +304,8 @@ export default function Bookings({ navigation }: any) {
                     borderRadius: 50, width: '100%', justifyContent: 'center',
                   }}
                 >
-                  <Calendar size={18} color="white" />
-                  <Text style={{ color: 'white', fontSize: 16, fontWeight: '700' }}>Book a Session</Text>
+                  <Calendar size={18} color={primaryActionText} />
+                  <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '700' }}>Book a Session</Text>
                 </TouchableOpacity>
               )}
             </View>

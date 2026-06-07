@@ -1,6 +1,6 @@
 import { ActivityIndicator, Text, TouchableOpacity, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import type { ComponentType } from 'react';
-import { iosTheme } from './iosTheme';
+import { useIOSTheme } from './iosTheme';
 
 type IconProps = {
   color?: string;
@@ -27,6 +27,7 @@ export default function IOSButton({
   iconEnd: IconEnd,
   style,
 }: IOSButtonProps) {
+  const iosTheme = useIOSTheme();
   const isPrimary = variant === 'primary';
   const isGhost = variant === 'ghost';
   const backgroundColor = isPrimary
@@ -34,7 +35,7 @@ export default function IOSButton({
     : isGhost
       ? 'transparent'
       : iosTheme.colors.surfaceAlt;
-  const textColor = isPrimary ? iosTheme.colors.white : iosTheme.colors.primary;
+  const textColor = isPrimary ? iosTheme.colors.onPrimary : iosTheme.colors.primary;
 
   return (
     <TouchableOpacity

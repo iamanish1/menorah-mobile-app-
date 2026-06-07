@@ -28,6 +28,7 @@ export default function Navbar({
   const actionBg = scheme === 'dark' ? 'rgba(246,242,232,0.08)' : 'rgba(0,0,0,0.06)';
   const actionBorder = scheme === 'dark' ? 'rgba(255,255,255,0.08)' : colors.border;
   const actionIcon = scheme === 'dark' ? colors.text : '#1a2e22';
+  const primaryActionText = scheme === 'dark' ? colors.primaryDark : 'white';
   const iconSize = isCompact ? 17 : 18;
 
   const ActionButton = ({
@@ -122,7 +123,7 @@ export default function Navbar({
               justifyContent: 'center',
             }}
           >
-            <Text style={{ color: 'white', fontSize: isCompact ? 16 : 18, fontWeight: '700' }}>
+            <Text style={{ color: primaryActionText, fontSize: isCompact ? 16 : 18, fontWeight: '700' }}>
               {userName?.[0]?.toUpperCase() ?? 'M'}
             </Text>
           </View>

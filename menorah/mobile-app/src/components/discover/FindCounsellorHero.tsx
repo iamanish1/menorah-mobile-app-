@@ -14,6 +14,10 @@ const AVATAR_COLORS = ['#16a34a', '#2563eb', '#7c3aed', '#ea580c'];
 export default function FindCounsellorHero({ onPress }: Props) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const heroBg = isDark ? colors.primaryDark : colors.primary;
+  const ctaBg = isDark ? colors.primary + '18' : 'white';
+  const ctaColor = isDark ? colors.primary : colors.primaryDark;
 
   return (
     <TouchableOpacity
@@ -24,8 +28,8 @@ export default function FindCounsellorHero({ onPress }: Props) {
         marginBottom: 20,
         borderRadius: 22,
         overflow: 'hidden',
-        backgroundColor: colors.primary,
-        shadowColor: colors.primary,
+        backgroundColor: heroBg,
+        shadowColor: isDark ? '#000' : colors.primary,
         shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.28,
         shadowRadius: 14,
@@ -69,16 +73,16 @@ export default function FindCounsellorHero({ onPress }: Props) {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 8,
-            backgroundColor: 'white',
+            backgroundColor: ctaBg,
             alignSelf: 'flex-start',
             paddingHorizontal: 18,
             paddingVertical: 11,
             borderRadius: 14,
           }}
         >
-          <Search size={15} color={colors.primary} />
-          <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '800' }}>Browse Counsellors</Text>
-          <ArrowRight size={14} color={colors.primary} />
+          <Search size={15} color={ctaColor} />
+          <Text style={{ color: ctaColor, fontSize: 14, fontWeight: '800' }}>Browse Counsellors</Text>
+          <ArrowRight size={14} color={ctaColor} />
         </TouchableOpacity>
       </View>
 
@@ -104,7 +108,7 @@ export default function FindCounsellorHero({ onPress }: Props) {
                 borderRadius: 14,
                 backgroundColor: AVATAR_COLORS[i],
                 borderWidth: 2,
-                borderColor: colors.primary,
+                borderColor: heroBg,
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginLeft: i === 0 ? 0 : -8,

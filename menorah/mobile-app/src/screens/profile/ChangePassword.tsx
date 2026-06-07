@@ -19,6 +19,9 @@ export default function ChangePassword({ navigation }: any) {
 
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const headerBg = isDark ? colors.primaryDark : colors.primary;
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -82,7 +85,7 @@ export default function ChangePassword({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
       <View style={{
-        backgroundColor: colors.primary,
+        backgroundColor: headerBg,
         paddingHorizontal: 16,
         paddingVertical: 20,
         flexDirection: 'row',
@@ -126,7 +129,7 @@ export default function ChangePassword({ navigation }: any) {
           <View style={{
             backgroundColor: colors.card,
             borderWidth: 1,
-            borderColor: errors.currentPassword ? '#EF4444' : colors.border,
+            borderColor: errors.currentPassword ? colors.error : colors.border,
             borderRadius: 12,
             paddingHorizontal: 16,
             flexDirection: 'row',
@@ -161,7 +164,7 @@ export default function ChangePassword({ navigation }: any) {
             </TouchableOpacity>
           </View>
           {errors.currentPassword && (
-            <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 4 }}>
+            <Text style={{ fontSize: 12, color: colors.error, marginTop: 4, marginLeft: 4 }}>
               {errors.currentPassword}
             </Text>
           )}
@@ -180,7 +183,7 @@ export default function ChangePassword({ navigation }: any) {
           <View style={{
             backgroundColor: colors.card,
             borderWidth: 1,
-            borderColor: errors.newPassword ? '#EF4444' : colors.border,
+            borderColor: errors.newPassword ? colors.error : colors.border,
             borderRadius: 12,
             paddingHorizontal: 16,
             flexDirection: 'row',
@@ -222,7 +225,7 @@ export default function ChangePassword({ navigation }: any) {
             </TouchableOpacity>
           </View>
           {errors.newPassword && (
-            <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 4 }}>
+            <Text style={{ fontSize: 12, color: colors.error, marginTop: 4, marginLeft: 4 }}>
               {errors.newPassword}
             </Text>
           )}
@@ -241,7 +244,7 @@ export default function ChangePassword({ navigation }: any) {
           <View style={{
             backgroundColor: colors.card,
             borderWidth: 1,
-            borderColor: errors.confirmPassword ? '#EF4444' : 
+            borderColor: errors.confirmPassword ? colors.error : 
                         (confirmPassword && newPassword === confirmPassword ? '#10B981' : colors.border),
             borderRadius: 12,
             paddingHorizontal: 16,
@@ -281,7 +284,7 @@ export default function ChangePassword({ navigation }: any) {
             </TouchableOpacity>
           </View>
           {errors.confirmPassword && (
-            <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 4 }}>
+            <Text style={{ fontSize: 12, color: colors.error, marginTop: 4, marginLeft: 4 }}>
               {errors.confirmPassword}
             </Text>
           )}
@@ -301,9 +304,9 @@ export default function ChangePassword({ navigation }: any) {
           }}
         >
           {loading ? (
-            <ActivityIndicator size="small" color="white" />
+            <ActivityIndicator size="small" color={primaryActionText} />
           ) : (
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
               Change Password
             </Text>
           )}
@@ -312,4 +315,3 @@ export default function ChangePassword({ navigation }: any) {
     </SafeAreaView>
   );
 }
-

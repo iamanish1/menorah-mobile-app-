@@ -1,7 +1,7 @@
 import {
+  Animated,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   View,
   type ScrollViewProps,
   type StyleProp,
@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import type { ReactNode } from 'react';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
-import { iosTheme } from './iosTheme';
+import { useIOSTheme } from './iosTheme';
 
 type IOSScreenProps = {
   children: ReactNode;
@@ -18,6 +18,8 @@ type IOSScreenProps = {
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   keyboardShouldPersistTaps?: ScrollViewProps['keyboardShouldPersistTaps'];
+  onScroll?: ScrollViewProps['onScroll'];
+  scrollEventThrottle?: ScrollViewProps['scrollEventThrottle'];
   edges?: Edge[];
 };
 
@@ -28,23 +30,29 @@ export default function IOSScreen({
   style,
   contentContainerStyle,
   keyboardShouldPersistTaps,
+  onScroll,
+  scrollEventThrottle,
   edges = ['top', 'right', 'bottom', 'left'],
 }: IOSScreenProps) {
+  const iosTheme = useIOSTheme();
+
   const body = scroll ? (
-    <ScrollView
+    <Animated.ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={[
         {
           paddingHorizontal: iosTheme.layout.screenPadding,
-          paddingBottom: iosTheme.spacing.xxxl + iosTheme.spacing.md,
+          paddingBottom: 132,
         },
         contentContainerStyle,
       ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      onScroll={onScroll}
+      scrollEventThrottle={scrollEventThrottle}
     >
       {children}
-    </ScrollView>
+    </Animated.ScrollView>
   ) : (
     <View style={[{ flex: 1, paddingHorizontal: iosTheme.layout.screenPadding }, contentContainerStyle]}>
       {children}

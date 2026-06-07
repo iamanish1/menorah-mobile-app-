@@ -1,7 +1,7 @@
 import { Text, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { Image, type ImageProps } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { iosTheme } from './iosTheme';
+import { useIOSTheme } from './iosTheme';
 
 type IOSHeroCardProps = {
   source: ImageProps['source'];
@@ -22,6 +22,8 @@ export default function IOSHeroCard({
   onPress,
   style,
 }: IOSHeroCardProps) {
+  const iosTheme = useIOSTheme();
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -40,7 +42,11 @@ export default function IOSHeroCard({
     >
       <Image source={source} style={{ width: '100%', height: '100%' }} contentFit="cover" />
       <LinearGradient
-        colors={['rgba(24,48,33,0.06)', 'rgba(24,48,33,0.32)', 'rgba(24,48,33,0.82)']}
+        colors={[
+          iosTheme.colors.heroOverlayStart,
+          iosTheme.colors.heroOverlayMiddle,
+          iosTheme.colors.heroOverlayEnd,
+        ]}
         style={{ position: 'absolute', inset: 0 }}
       />
       <View
@@ -55,7 +61,7 @@ export default function IOSHeroCard({
         {eyebrow ? (
           <Text
             style={{
-              color: 'rgba(255,255,255,0.76)',
+              color: iosTheme.colors.inverseTextMuted,
               fontSize: 12,
               lineHeight: 16,
               fontWeight: '800',
@@ -68,7 +74,7 @@ export default function IOSHeroCard({
         ) : null}
         <Text
           style={{
-            color: iosTheme.colors.white,
+            color: iosTheme.colors.inverseText,
             fontSize: 29,
             lineHeight: 35,
             fontWeight: '900',
@@ -81,7 +87,7 @@ export default function IOSHeroCard({
         {subtitle ? (
           <Text
             style={{
-              color: 'rgba(255,255,255,0.84)',
+              color: iosTheme.colors.inverseTextSecondary,
               fontSize: 14,
               lineHeight: 21,
               textAlign: 'center',

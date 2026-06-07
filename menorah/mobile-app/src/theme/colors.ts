@@ -7,6 +7,7 @@ export const palettes = {
     sand: '#f0f9f4',         // primary-50 — light green tint
     bg: '#f9fafb',           // surface-50 — page background
     surface: '#ffffff',      // cards/tiles
+    surfaceAlt: '#f3f7f4',    // soft elevated/background tint
     text: '#111827',         // gray-900
     muted: '#6b7280',        // gray-500
     border: '#e5e7eb',       // gray-200
@@ -19,27 +20,28 @@ export const palettes = {
     primaryLight: '#5fb08e', // primary-400
   },
   dark: {
-    primary: '#3d9470',      // primary-500
-    secondary: '#5fb08e',    // primary-400
-    sand: '#0e241c',         // primary-950
-    bg: '#0e241c',
-    surface: '#1c4133',      // primary-900
-    text: '#f9fafb',
-    muted: '#9ca3af',        // gray-400
-    border: '#25624a',       // primary-700
-    card: '#1c4133',
-    cardText: '#f9fafb',
-    accent: '#ff9b37',       // accent-400
-    accentLight: '#7f300f',
-    error: '#f87171',
-    primaryDark: '#2d7a5c',  // primary-600
-    primaryLight: '#8fcdb0', // primary-300
+    primary: '#A8F0C2',
+    secondary: '#7DDBA4',
+    sand: '#101813',
+    bg: '#050806',
+    surface: '#0D120F',
+    surfaceAlt: '#151D17',
+    text: '#F4F8F2',
+    muted: '#8C9A91',
+    border: '#263529',
+    card: '#0D120F',
+    cardText: '#F4F8F2',
+    accent: '#F4BE6A',
+    accentLight: '#2A1E0B',
+    error: '#FF6B66',
+    primaryDark: '#0B1710',
+    primaryLight: '#B8F4CC',
   },
 } as const;
 
 export const headerGradient = (scheme: Scheme) =>
   scheme === 'dark'
-    ? ['#1c4133', '#2d7a5c']
+    ? ['#050806', '#0B1710']
     : ['#2d7a5c', '#3d9470'];
 
 // Legacy exports for backward compatibility

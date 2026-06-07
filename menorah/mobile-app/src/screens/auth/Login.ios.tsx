@@ -3,7 +3,7 @@ import { Alert, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react-native';
 import NetworkError from '@/components/ui/NetworkError';
-import { IOSButton, IOSCard, IOSScreen, iosTheme } from '@/components/ios';
+import { IOSButton, IOSCard, IOSScreen, useIOSTheme } from '@/components/ios';
 import { useAuth } from '@/state/useAuth';
 
 export default function Login({ navigation }: any) {
@@ -15,6 +15,7 @@ export default function Login({ navigation }: any) {
   const [emailFocus, setEmailFocus] = useState(false);
   const [passFocus, setPassFocus] = useState(false);
   const { login } = useAuth();
+  const iosTheme = useIOSTheme();
 
   const handleLogin = async () => {
     const normalizedEmail = email.trim().toLowerCase();

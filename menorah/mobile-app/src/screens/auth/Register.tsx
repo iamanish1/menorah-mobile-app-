@@ -52,6 +52,10 @@ export default function Register({ navigation }: any) {
 
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const brandSurface = isDark ? colors.primaryDark : '#2d5c3e';
+  const brandAccent = isDark ? colors.primary : '#2d5c3e';
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
   const { register } = useAuth();
 
   // Validation functions
@@ -251,17 +255,17 @@ export default function Register({ navigation }: any) {
         <View style={{ alignItems: 'center', marginBottom: 32 }}>
           <View style={{
             width: 100, height: 100, borderRadius: 50,
-            backgroundColor: 'white',
+            backgroundColor: colors.card,
             alignItems: 'center', justifyContent: 'center',
             marginBottom: 20,
-            shadowColor: '#2d5c3e',
+            shadowColor: brandAccent,
             shadowOffset: { width: 0, height: 5 },
             shadowOpacity: 0.15, shadowRadius: 14, elevation: 8,
             padding: 4,
           }}>
             <View style={{
               width: 92, height: 92, borderRadius: 46,
-              backgroundColor: '#2d5c3e',
+              backgroundColor: brandSurface,
               alignItems: 'center', justifyContent: 'center',
               overflow: 'hidden',
             }}>
@@ -407,7 +411,7 @@ export default function Register({ navigation }: any) {
             }}>
               <Text style={{
                 fontSize: 14,
-                color: 'white',
+                color: primaryActionText,
                 fontWeight: '600'
               }}>
                 Male
@@ -428,7 +432,7 @@ export default function Register({ navigation }: any) {
             <View style={{
               backgroundColor: colors.card,
               borderWidth: 1,
-              borderColor: errors.password ? '#EF4444' : colors.border,
+              borderColor: errors.password ? colors.error : colors.border,
               borderRadius: 12,
               paddingHorizontal: 16,
               flexDirection: 'row',
@@ -494,7 +498,7 @@ export default function Register({ navigation }: any) {
             {errors.password && (
               <Text style={{ 
                 fontSize: 12, 
-                color: '#EF4444', 
+                color: colors.error, 
                 marginTop: 4,
                 marginLeft: 4
               }}>
@@ -516,7 +520,7 @@ export default function Register({ navigation }: any) {
             <View style={{
               backgroundColor: colors.card,
               borderWidth: 1,
-              borderColor: errors.confirmPassword ? '#EF4444' : 
+              borderColor: errors.confirmPassword ? colors.error : 
                           (confirmPassword && password === confirmPassword ? '#10B981' : colors.border),
               borderRadius: 12,
               paddingHorizontal: 16,
@@ -549,7 +553,7 @@ export default function Register({ navigation }: any) {
                 )}
                 {confirmPassword && password !== confirmPassword && (
                   <View style={{ marginRight: 8 }}>
-                    <XCircle size={18} color="#EF4444" />
+                  <XCircle size={18} color={colors.error} />
                   </View>
                 )}
                 <TouchableOpacity 
@@ -567,7 +571,7 @@ export default function Register({ navigation }: any) {
             {errors.confirmPassword && (
               <Text style={{ 
                 fontSize: 12, 
-                color: '#EF4444', 
+                color: colors.error, 
                 marginTop: 4,
                 marginLeft: 4
               }}>
@@ -596,13 +600,13 @@ export default function Register({ navigation }: any) {
           >
             {loading ? (
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+                <ActivityIndicator size="small" color={primaryActionText} style={{ marginRight: 8 }} />
+                <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
                   Creating Account...
                 </Text>
               </View>
             ) : (
-              <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+              <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
                 Create Account
               </Text>
             )}

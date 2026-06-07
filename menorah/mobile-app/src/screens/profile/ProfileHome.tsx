@@ -97,9 +97,11 @@ export default function ProfileHome({ navigation }: any) {
     );
   };
 
-  const cardBg   = isDark ? colors.surface : '#ffffff';
+  const cardBg   = isDark ? colors.card : '#ffffff';
   const pageBg   = isDark ? colors.bg : '#f5f7f5';
-  const bannerBg = isDark ? '#1a2e22' : '#edf7f1';
+  const bannerBg = isDark ? colors.primaryDark : '#edf7f1';
+  const heroBg = isDark ? colors.primaryDark : colors.primary;
+  const dangerBg = isDark ? colors.error + '18' : '#fef2f2';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: pageBg }}>
@@ -111,7 +113,7 @@ export default function ProfileHome({ navigation }: any) {
 
         {/* ── Hero Header ── */}
         <View style={{
-          backgroundColor: colors.primary,
+          backgroundColor: heroBg,
           paddingTop: 20, paddingBottom: 28, paddingHorizontal: 20,
           borderBottomLeftRadius: 28, borderBottomRightRadius: 28,
           overflow: 'hidden', position: 'relative',
@@ -336,16 +338,16 @@ export default function ProfileHome({ navigation }: any) {
                 >
                   <View style={{
                     width: 40, height: 40, borderRadius: 12,
-                    backgroundColor: item.danger ? '#fef2f2' : colors.primary + '12',
+                    backgroundColor: item.danger ? dangerBg : colors.primary + '12',
                     alignItems: 'center', justifyContent: 'center',
                     marginRight: 14,
                   }}>
-                    <Icon size={19} color={item.danger ? '#ef4444' : colors.primary} />
+                    <Icon size={19} color={item.danger ? colors.error : colors.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{
                       fontSize: 15, fontWeight: '700',
-                      color: item.danger ? '#ef4444' : colors.text,
+                      color: item.danger ? colors.error : colors.text,
                       marginBottom: 2,
                     }}>
                       {item.label}
@@ -354,7 +356,7 @@ export default function ProfileHome({ navigation }: any) {
                       {item.sub}
                     </Text>
                   </View>
-                  <ChevronRight size={17} color={item.danger ? '#ef4444' : colors.muted} strokeWidth={2.5} />
+                  <ChevronRight size={17} color={item.danger ? colors.error : colors.muted} strokeWidth={2.5} />
                 </TouchableOpacity>
               );
             })}

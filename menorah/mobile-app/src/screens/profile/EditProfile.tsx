@@ -30,6 +30,9 @@ export default function EditProfile({ navigation }: any) {
 
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const headerBg = isDark ? colors.primaryDark : colors.primary;
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
 
   useEffect(() => {
     if (user) {
@@ -181,7 +184,7 @@ export default function EditProfile({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
       <View style={{
-        backgroundColor: colors.primary,
+        backgroundColor: headerBg,
         paddingHorizontal: 16,
         paddingVertical: 20,
         flexDirection: 'row',
@@ -253,7 +256,7 @@ export default function EditProfile({ navigation }: any) {
                 padding: 8
               }}
             >
-              <Camera size={20} color="white" />
+              <Camera size={20} color={primaryActionText} />
             </TouchableOpacity>
           </View>
           <Text style={{ 
@@ -358,7 +361,7 @@ export default function EditProfile({ navigation }: any) {
               alignItems: 'center'
             }}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
               Save Changes
             </Text>
           </TouchableOpacity>
@@ -374,14 +377,14 @@ export default function EditProfile({ navigation }: any) {
           <TouchableOpacity
             onPress={handleDeleteAccount}
             style={{
-              backgroundColor: '#EF4444' + '0A',
+              backgroundColor: colors.error + (isDark ? '18' : '0A'),
               borderRadius: 16,
               padding: 16,
               alignItems: 'center',
               marginBottom: 32
             }}
           >
-            <Text style={{ color: '#EF4444', fontWeight: '600' }}>Delete Account</Text>
+            <Text style={{ color: colors.error, fontWeight: '600' }}>Delete Account</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

@@ -24,6 +24,11 @@ export default function ChatThread({ navigation, route }: any) {
   
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const crisisBg = isDark ? colors.accentLight : '#FEF3C7';
+  const crisisBorder = isDark ? '#5A3E12' : '#FDE68A';
+  const crisisText = isDark ? colors.accent : '#92400E';
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
   const { user } = useAuth();
   const { 
     messages, 
@@ -413,17 +418,17 @@ export default function ChatThread({ navigation, route }: any) {
         )}
 
         <View style={{
-          backgroundColor: '#FEF3C7',
+          backgroundColor: crisisBg,
           borderTopWidth: 1,
-          borderTopColor: '#FDE68A',
+          borderTopColor: crisisBorder,
           paddingHorizontal: 16,
           paddingVertical: 10
         }}>
-          <Text style={{ color: '#92400E', fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: crisisText, fontSize: 12, lineHeight: 18 }}>
             This app is not an emergency service. If you are in immediate danger, contact local emergency services now.
           </Text>
           <TouchableOpacity onPress={() => navigation.navigate('CrisisHelp')} style={{ marginTop: 6 }}>
-            <Text style={{ color: '#92400E', fontSize: 12, fontWeight: '700' }}>View crisis guidance</Text>
+            <Text style={{ color: crisisText, fontSize: 12, fontWeight: '700' }}>View crisis guidance</Text>
           </TouchableOpacity>
         </View>
 
@@ -469,9 +474,9 @@ export default function ChatThread({ navigation, route }: any) {
               }}
             >
               {sending ? (
-                <ActivityIndicator size="small" color="white" />
+                <ActivityIndicator size="small" color={primaryActionText} />
               ) : (
-                <Send size={16} color="white" />
+                <Send size={16} color={primaryActionText} />
               )}
             </TouchableOpacity>
           </View>

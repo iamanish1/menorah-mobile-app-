@@ -121,9 +121,10 @@ export default function ChatList({ navigation }: any) {
   });
 
   const isDark   = scheme === 'dark';
-  const cardBg   = isDark ? colors.surface : '#ffffff';
+  const cardBg   = isDark ? colors.card : '#ffffff';
   const pageBg   = isDark ? colors.bg : '#f5f7f5';
-  const bannerBg = isDark ? '#1a2e22' : '#edf7f1';
+  const bannerBg = isDark ? colors.primaryDark : '#edf7f1';
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
 
   const getInitial = (name: string) => (name || 'C').charAt(0).toUpperCase();
 
@@ -157,7 +158,7 @@ export default function ChatList({ navigation }: any) {
               shadowOpacity: 0.35, shadowRadius: 10, elevation: 5,
             }}
           >
-            <Plus size={24} color="white" strokeWidth={2.5} />
+            <Plus size={24} color={primaryActionText} strokeWidth={2.5} />
           </TouchableOpacity>
         </View>
 
@@ -212,8 +213,8 @@ export default function ChatList({ navigation }: any) {
                   borderColor: active ? colors.primary : colors.border,
                 }}
               >
-                <Icon size={14} color={active ? 'white' : colors.muted} strokeWidth={2} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: active ? 'white' : colors.muted }}>
+                <Icon size={14} color={active ? primaryActionText : colors.muted} strokeWidth={2} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: active ? primaryActionText : colors.muted }}>
                   {tab.label}
                 </Text>
                 {badge && (
@@ -223,7 +224,7 @@ export default function ChatList({ navigation }: any) {
                     alignItems: 'center', justifyContent: 'center',
                     paddingHorizontal: 4,
                   }}>
-                    <Text style={{ color: 'white', fontSize: 10, fontWeight: '900' }}>{badge}</Text>
+                    <Text style={{ color: active ? primaryActionText : primaryActionText, fontSize: 10, fontWeight: '900' }}>{badge}</Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -411,7 +412,7 @@ export default function ChatList({ navigation }: any) {
                             alignItems: 'center', justifyContent: 'center',
                             paddingHorizontal: 6, flexShrink: 0,
                           }}>
-                            <Text style={{ color: 'white', fontSize: 11, fontWeight: '800' }}>
+                            <Text style={{ color: primaryActionText, fontSize: 11, fontWeight: '800' }}>
                               {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
                             </Text>
                           </View>
@@ -494,8 +495,8 @@ export default function ChatList({ navigation }: any) {
                   width: '100%', justifyContent: 'center',
                 }}
               >
-                <Plus size={16} color="white" />
-                <Text style={{ color: 'white', fontSize: 15, fontWeight: '700' }}>Find a Counsellor</Text>
+                <Plus size={16} color={primaryActionText} />
+                <Text style={{ color: primaryActionText, fontSize: 15, fontWeight: '700' }}>Find a Counsellor</Text>
               </TouchableOpacity>
             </View>
 
@@ -637,7 +638,7 @@ export default function ChatList({ navigation }: any) {
                       backgroundColor: colors.primary,
                       paddingHorizontal: 18, paddingVertical: 9, borderRadius: 50,
                     }}>
-                      <Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>Chat</Text>
+                      <Text style={{ color: primaryActionText, fontSize: 13, fontWeight: '700' }}>Chat</Text>
                     </View>
                   </TouchableOpacity>
                 ))

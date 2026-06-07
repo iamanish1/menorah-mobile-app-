@@ -19,8 +19,6 @@ const SESSION_META: Record<string, { title: string; iconColor: string; iconBg: s
   pro:     { title: 'Pro Session',     iconColor: '#F59E0B', iconBg: '#FEF3C7' },
 };
 
-const HERO_GREEN = '#2d5c3e';
-
 export default function SessionReview({ navigation, route }: any) {
   const { sessionType, gender, duration, price, features } = route.params;
   const { scheme } = useThemeMode();
@@ -34,12 +32,17 @@ export default function SessionReview({ navigation, route }: any) {
   const [checkingSubscription, setCheckingSub]          = useState(true);
 
   const meta = SESSION_META[sessionType] ?? SESSION_META.basic;
+  const heroColor = colors.primaryDark;
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
+  const warningBg = isDark ? colors.accentLight : '#fffbeb';
+  const warningText = isDark ? colors.accent : '#92400E';
+  const successText = isDark ? colors.primary : '#065F46';
   const genderLabel =
     gender === 'male'   ? 'Male Therapist'   :
     gender === 'female' ? 'Female Therapist' :
     'Any Therapist';
 
-  const cardBg = isDark ? colors.surface : '#ffffff';
+  const cardBg = isDark ? colors.card : '#ffffff';
 
   useEffect(() => {
     (async () => {
@@ -114,7 +117,7 @@ export default function SessionReview({ navigation, route }: any) {
     <View style={{ flex: 1, backgroundColor: isDark ? colors.bg : '#f5f7f5' }}>
 
       {/* ── Dark green header ── */}
-      <SafeAreaView style={{ backgroundColor: HERO_GREEN }} edges={['top']}>
+      <SafeAreaView style={{ backgroundColor: heroColor }} edges={['top']}>
         {/* Decorative circles */}
         <View style={{ position: 'absolute', top: -10, right: -10, width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.04)' }} />
         <View style={{ position: 'absolute', top: 20, right: 20, width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.05)' }} />
@@ -169,7 +172,7 @@ export default function SessionReview({ navigation, route }: any) {
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
             <View style={{
               width: 46, height: 46, borderRadius: 13,
-              backgroundColor: meta.iconBg,
+              backgroundColor: isDark ? meta.iconColor + '22' : meta.iconBg,
               alignItems: 'center', justifyContent: 'center', marginRight: 12,
             }}>
               <User size={22} color={meta.iconColor} />
@@ -212,7 +215,7 @@ export default function SessionReview({ navigation, route }: any) {
             <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 4 }}>
               <View style={{
                 width: 32, height: 32, borderRadius: 16,
-                backgroundColor: hasActiveSubscription ? '#FEF3C7' : colors.primary + '14',
+                backgroundColor: hasActiveSubscription ? (isDark ? colors.accentLight : '#FEF3C7') : colors.primary + '14',
                 alignItems: 'center', justifyContent: 'center',
               }}>
                 {hasActiveSubscription
@@ -251,7 +254,7 @@ export default function SessionReview({ navigation, route }: any) {
                   backgroundColor: colors.primary,
                   alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Check size={13} color="white" strokeWidth={2.5} />
+                  <Check size={13} color={primaryActionText} strokeWidth={2.5} />
                 </View>
                 <Text style={{ fontSize: 13, color: colors.text, fontWeight: '500' }}>{feature}</Text>
               </View>
@@ -306,27 +309,27 @@ export default function SessionReview({ navigation, route }: any) {
           }}>
             <Check size={17} color="#10B981" />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#065F46', marginBottom: 2 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: successText, marginBottom: 2 }}>
                 Subscription Active
               </Text>
-              <Text style={{ fontSize: 12, color: '#065F46', lineHeight: 17 }}>
+              <Text style={{ fontSize: 12, color: successText, lineHeight: 17 }}>
                 You can book sessions with your {subscriptionType || 'subscription'} plan. Just confirm below.
               </Text>
             </View>
           </View>
         ) : (
           <View style={{
-            backgroundColor: isDark ? 'rgba(245,158,11,0.12)' : '#fffbeb',
+            backgroundColor: warningBg,
             borderRadius: 14, padding: 12,
             flexDirection: 'row', alignItems: 'flex-start', gap: 10,
             borderWidth: 1, borderColor: '#F59E0B' + '55',
           }}>
             <AlertTriangle size={17} color="#F59E0B" />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#92400E', marginBottom: 2 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: warningText, marginBottom: 2 }}>
                 Important Notice
               </Text>
-              <Text style={{ fontSize: 12, color: '#92400E', lineHeight: 17 }}>
+              <Text style={{ fontSize: 12, color: warningText, lineHeight: 17 }}>
                 Your therapist{"'"}s identity will be revealed only after successful payment for unbiased matching.
               </Text>
             </View>
@@ -345,7 +348,7 @@ export default function SessionReview({ navigation, route }: any) {
       }}>
         {checkingSubscription ? (
           <View style={{
-            backgroundColor: HERO_GREEN + '80', borderRadius: 50,
+            backgroundColor: heroColor + '80', borderRadius: 50,
             paddingVertical: 15, alignItems: 'center',
           }}>
             <ActivityIndicator size="small" color="white" />
@@ -356,7 +359,7 @@ export default function SessionReview({ navigation, route }: any) {
             disabled={isCreatingBooking}
             activeOpacity={0.88}
             style={{
-              backgroundColor: HERO_GREEN,
+              backgroundColor: heroColor,
               borderRadius: 50, paddingVertical: 15,
               flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
               paddingHorizontal: 20,

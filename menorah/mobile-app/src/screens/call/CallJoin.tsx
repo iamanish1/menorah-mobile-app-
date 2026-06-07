@@ -15,6 +15,7 @@ export default function CallJoin({ navigation, route }: any) {
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const primaryActionText = scheme === 'dark' ? colors.primaryDark : 'white';
   const webViewRef = useRef<WebView>(null);
 
   const requestPermissions = useCallback(async () => {
@@ -148,7 +149,7 @@ export default function CallJoin({ navigation, route }: any) {
               borderRadius: 12
             }}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
               Go Back
             </Text>
           </TouchableOpacity>

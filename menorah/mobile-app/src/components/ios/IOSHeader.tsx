@@ -4,7 +4,7 @@ import { Bell, Menu } from 'lucide-react-native';
 import type { ComponentType } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import IOSIconButton from './IOSIconButton';
-import { iosTheme } from './iosTheme';
+import { useIOSTheme } from './iosTheme';
 
 type IconProps = {
   color?: string;
@@ -32,6 +32,7 @@ export default function IOSHeader({
   badgeCount = 0,
 }: IOSHeaderProps) {
   const insets = useSafeAreaInsets();
+  const iosTheme = useIOSTheme();
 
   return (
     <View

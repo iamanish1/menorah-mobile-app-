@@ -29,9 +29,10 @@ function LeafSprig({ width = 90, height = 120, opacity = 1, flip = false }: {
 }
 
 /* ─── Main hero illustration ─── */
-function HeroIllustration({ width }: { width: number }) {
+function HeroIllustration({ width, isDark }: { width: number; isDark: boolean }) {
   const h = Math.round(width * 0.82);
   const cx = width / 2;
+  const archFill = isDark ? '#101813' : '#edf7f0';
 
   return (
     <View style={{ width, height: h, position: 'relative' }}>
@@ -40,7 +41,7 @@ function HeroIllustration({ width }: { width: number }) {
         {/* ── Arch background ── */}
         <Path
           d={`M0,${h} Q0,${h * 0.28} ${cx},${h * 0.08} Q${width},${h * 0.28} ${width},${h} Z`}
-          fill="#edf7f0"
+          fill={archFill}
         />
 
         {/* ── Left side leaves ── */}
@@ -124,10 +125,10 @@ function HeroIllustration({ width }: { width: number }) {
         height: cx * 0.22,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(237,247,240,0.9)',
+        backgroundColor: isDark ? 'rgba(168,240,194,0.16)' : 'rgba(237,247,240,0.9)',
         borderRadius: cx * 0.11,
       }}>
-        <Brain size={cx * 0.14} color="#4a7c5f" />
+        <Brain size={cx * 0.14} color={isDark ? '#A8F0C2' : '#4a7c5f'} />
       </View>
 
       {/* Heart icon on right palm */}
@@ -139,10 +140,10 @@ function HeroIllustration({ width }: { width: number }) {
         height: cx * 0.22,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(237,247,240,0.9)',
+        backgroundColor: isDark ? 'rgba(168,240,194,0.16)' : 'rgba(237,247,240,0.9)',
         borderRadius: cx * 0.11,
       }}>
-        <Heart size={cx * 0.14} color="#2d5c3e" fill="#2d5c3e" />
+        <Heart size={cx * 0.14} color={isDark ? '#A8F0C2' : '#2d5c3e'} fill={isDark ? '#A8F0C2' : '#2d5c3e'} />
       </View>
     </View>
   );
@@ -153,10 +154,13 @@ export default function Onboarding({ navigation }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const isDark = scheme === 'dark';
+  const brandSurface = isDark ? colors.primaryDark : '#2d5c3e';
+  const brandAccent = isDark ? colors.primary : '#2d5c3e';
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
   const { width } = useWindowDimensions();
 
   return (
-    <View style={{ flex: 1, backgroundColor: isDark ? '#0d1b14' : 'white' }}>
+    <View style={{ flex: 1, backgroundColor: isDark ? colors.bg : 'white' }}>
 
       {/* Small leaf — bottom right decorative */}
       <View style={{ position: 'absolute', bottom: 60, right: -12, zIndex: 0, opacity: isDark ? 0.15 : 0.5 }}>
@@ -178,10 +182,10 @@ export default function Onboarding({ navigation }: any) {
             <View style={{
               position: 'absolute', top: 14, left: 16, zIndex: 10,
               width: 46, height: 46, borderRadius: 23,
-              backgroundColor: '#2d5c3e',
+              backgroundColor: brandSurface,
               alignItems: 'center', justifyContent: 'center',
               overflow: 'hidden',
-              shadowColor: '#2d5c3e',
+              shadowColor: brandAccent,
               shadowOffset: { width: 0, height: 3 },
               shadowOpacity: 0.3, shadowRadius: 6, elevation: 5,
             }}>
@@ -197,7 +201,7 @@ export default function Onboarding({ navigation }: any) {
               <LeafSprig width={80} height={105} flip />
             </View>
 
-            <HeroIllustration width={width} />
+            <HeroIllustration width={width} isDark={isDark} />
           </View>
 
           {/* ── Text content ── */}
@@ -206,7 +210,7 @@ export default function Onboarding({ navigation }: any) {
             {/* Welcome to */}
             <Text style={{
               fontSize: 18, fontWeight: '500',
-              color: isDark ? '#9ab8a4' : '#3d4a3d',
+              color: isDark ? colors.text : '#3d4a3d',
               textAlign: 'center', marginBottom: 4,
             }}>
               Welcome to
@@ -215,7 +219,7 @@ export default function Onboarding({ navigation }: any) {
             {/* Menorah Health */}
             <Text style={{
               fontSize: 36, fontWeight: '900',
-              color: isDark ? '#7ab894' : '#2d5c3e',
+              color: isDark ? colors.primary : '#2d5c3e',
               textAlign: 'center', letterSpacing: -0.5,
               marginBottom: 14,
             }}>
@@ -227,14 +231,14 @@ export default function Onboarding({ navigation }: any) {
               flexDirection: 'row', alignItems: 'center',
               justifyContent: 'center', marginBottom: 14,
             }}>
-              <View style={{ width: 36, height: 1.5, backgroundColor: '#4a7c5f', borderRadius: 2, marginRight: 10 }} />
-              <Heart size={13} color="#4a7c5f" fill="#4a7c5f" />
-              <View style={{ width: 36, height: 1.5, backgroundColor: '#4a7c5f', borderRadius: 2, marginLeft: 10 }} />
+              <View style={{ width: 36, height: 1.5, backgroundColor: brandAccent, borderRadius: 2, marginRight: 10 }} />
+              <Heart size={13} color={brandAccent} fill={brandAccent} />
+              <View style={{ width: 36, height: 1.5, backgroundColor: brandAccent, borderRadius: 2, marginLeft: 10 }} />
             </View>
 
             {/* Description */}
             <Text style={{
-              fontSize: 15, color: isDark ? '#7a9a84' : '#5a6e5a',
+              fontSize: 15, color: isDark ? colors.muted : '#5a6e5a',
               textAlign: 'center', lineHeight: 24,
               paddingHorizontal: 8, marginBottom: 20,
             }}>
@@ -251,11 +255,11 @@ export default function Onboarding({ navigation }: any) {
             }}>
               <View style={{
                 width: 46, height: 46, borderRadius: 23,
-                backgroundColor: isDark ? '#1a3328' : '#d8ecdf',
+                backgroundColor: isDark ? colors.primary + '18' : '#d8ecdf',
                 alignItems: 'center', justifyContent: 'center',
                 marginRight: 14, flexShrink: 0,
               }}>
-                <ShieldCheck size={22} color="#2d5c3e" />
+                <ShieldCheck size={22} color={brandAccent} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? colors.text : '#1a2e1e', marginBottom: 2 }}>
@@ -272,11 +276,11 @@ export default function Onboarding({ navigation }: any) {
               onPress={() => navigation.navigate("Login")}
               activeOpacity={0.88}
               style={{
-                backgroundColor: '#2d5c3e',
+                backgroundColor: brandAccent,
                 borderRadius: 16, height: 58,
                 flexDirection: 'row', alignItems: 'center',
                 paddingHorizontal: 20, marginBottom: 12,
-                shadowColor: '#2d5c3e',
+                shadowColor: brandAccent,
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.28, shadowRadius: 10, elevation: 5,
               }}
@@ -286,15 +290,15 @@ export default function Onboarding({ navigation }: any) {
                 backgroundColor: 'rgba(255,255,255,0.15)',
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                <Sprout size={18} color="white" />
+                <Sprout size={18} color={primaryActionText} />
               </View>
               <Text style={{
                 flex: 1, fontSize: 17, fontWeight: '800',
-                color: 'white', textAlign: 'center', marginLeft: -34,
+                color: primaryActionText, textAlign: 'center', marginLeft: -34,
               }}>
                 Get Started
               </Text>
-              <ArrowRight size={19} color="rgba(255,255,255,0.8)" />
+              <ArrowRight size={19} color={isDark ? colors.primaryDark : 'rgba(255,255,255,0.8)'} />
             </TouchableOpacity>
 
             {/* Help & Helplines */}
@@ -302,7 +306,7 @@ export default function Onboarding({ navigation }: any) {
               onPress={() => Linking.openURL("https://menorah.me/")}
               activeOpacity={0.88}
               style={{
-                backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'white',
+                backgroundColor: isDark ? colors.card : 'white',
                 borderRadius: 16, height: 58,
                 flexDirection: 'row', alignItems: 'center',
                 paddingHorizontal: 20, marginBottom: 18,
@@ -311,18 +315,18 @@ export default function Onboarding({ navigation }: any) {
             >
               <View style={{
                 width: 34, height: 34, borderRadius: 17,
-                backgroundColor: isDark ? '#1a3328' : '#eef5f0',
+                backgroundColor: isDark ? colors.primary + '18' : '#eef5f0',
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                <LifeBuoy size={18} color="#2d5c3e" />
+                <LifeBuoy size={18} color={brandAccent} />
               </View>
               <Text style={{
                 flex: 1, fontSize: 17, fontWeight: '700',
-                color: '#2d5c3e', textAlign: 'center', marginLeft: -34,
+                color: brandAccent, textAlign: 'center', marginLeft: -34,
               }}>
                 Help & Helplines
               </Text>
-              <ArrowRight size={19} color="#2d5c3e" />
+              <ArrowRight size={19} color={brandAccent} />
             </TouchableOpacity>
 
             {/* Footer */}
@@ -332,14 +336,14 @@ export default function Onboarding({ navigation }: any) {
                 By continuing, you agree to our{' '}
                 <Text
                   onPress={() => Linking.openURL("https://menorah.me/terms-and-conditions")}
-                  style={{ color: '#2d5c3e', fontWeight: '700' }}
+                  style={{ color: brandAccent, fontWeight: '700' }}
                 >
                   Terms
                 </Text>
                 {' '}and{' '}
                 <Text
                   onPress={() => Linking.openURL("https://menorah.me/privacy-policy")}
-                  style={{ color: '#2d5c3e', fontWeight: '700' }}
+                  style={{ color: brandAccent, fontWeight: '700' }}
                 >
                   Privacy Policy
                 </Text>

@@ -1,6 +1,6 @@
 import { TouchableOpacity, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import type { ComponentType } from 'react';
-import { iosTheme } from './iosTheme';
+import { useIOSTheme } from './iosTheme';
 import IOSBadge from './IOSBadge';
 
 type IconProps = {
@@ -26,10 +26,14 @@ export default function IOSIconButton({
   accessibilityLabel,
   badge = false,
   badgeLabel,
-  color = iosTheme.colors.primary,
-  backgroundColor = iosTheme.colors.surface,
+  color,
+  backgroundColor,
   style,
 }: IOSIconButtonProps) {
+  const iosTheme = useIOSTheme();
+  const iconColor = color ?? iosTheme.colors.primary;
+  const buttonBackground = backgroundColor ?? iosTheme.colors.surface;
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -41,7 +45,7 @@ export default function IOSIconButton({
           width: 46,
           height: 46,
           borderRadius: 23,
-          backgroundColor,
+          backgroundColor: buttonBackground,
           borderWidth: 1,
           borderColor: iosTheme.colors.border,
           alignItems: 'center',
@@ -52,7 +56,7 @@ export default function IOSIconButton({
         style,
       ]}
     >
-      <Icon size={20} color={color} strokeWidth={2.25} />
+      <Icon size={20} color={iconColor} strokeWidth={2.25} />
       {badge ? (
         <IOSBadge
           label={badgeLabel}

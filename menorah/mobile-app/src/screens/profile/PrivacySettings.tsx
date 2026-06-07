@@ -17,6 +17,8 @@ export default function PrivacySettings({ navigation }: any) {
   const { user } = useAuth();
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const headerBg = isDark ? colors.primaryDark : colors.primary;
 
   useEffect(() => {
     // Privacy preferences are currently initialized from local defaults until the backend exposes saved values.
@@ -77,7 +79,7 @@ export default function PrivacySettings({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
       <View style={{
-        backgroundColor: colors.primary,
+        backgroundColor: headerBg,
         paddingHorizontal: 16,
         paddingVertical: 20,
         flexDirection: 'row',

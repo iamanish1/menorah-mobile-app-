@@ -42,6 +42,7 @@ export default function PaymentSheet({ route, navigation }: any) {
   const { scheme } = useThemeMode();
   const { user } = useAuth();
   const colors = palettes[scheme];
+  const primaryActionText = scheme === 'dark' ? colors.primaryDark : 'white';
 
   const openRazorpay = useCallback(async () => {
     setLoading(true);
@@ -96,7 +97,7 @@ export default function PaymentSheet({ route, navigation }: any) {
           contact: user?.phone || '',
           name: userName,
         },
-        theme: { color: '#314830' },
+        theme: { color: colors.primary },
       };
 
       const paymentData = await RazorpayCheckout.open(options);
@@ -130,7 +131,7 @@ export default function PaymentSheet({ route, navigation }: any) {
     } finally {
       setVerifying(false);
     }
-  }, [bookingId, user, navigation]);
+  }, [bookingId, user, navigation, colors.primary]);
 
   useEffect(() => {
     if (!bookingId) {
@@ -209,7 +210,7 @@ export default function PaymentSheet({ route, navigation }: any) {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Try Again</Text>
+            <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>Try Again</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleCancel}>
             <Text style={{ color: colors.muted, fontSize: 14 }}>Cancel Booking</Text>

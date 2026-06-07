@@ -32,6 +32,8 @@ const PRICE_CATEGORIES = {
 export default function BookingReview({ navigation, route }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDarkRoot = scheme === 'dark';
+  const primaryActionText = isDarkRoot ? colors.primaryDark : 'white';
   const selectedDate = 'tomorrow';
   const selectedTime = '10:00 AM';
   const [isCreatingBooking, setIsCreatingBooking] = useState(false);
@@ -123,7 +125,7 @@ export default function BookingReview({ navigation, route }: any) {
                 marginTop: 16
               }}
             >
-              <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+              <Text style={{ color: primaryActionText, fontSize: 14, fontWeight: '600' }}>
                 Go Back
               </Text>
             </TouchableOpacity>
@@ -157,8 +159,12 @@ export default function BookingReview({ navigation, route }: any) {
     };
 
     const isDark = scheme === 'dark';
-    const cardBg = isDark ? colors.surface : 'white';
+    const cardBg = isDark ? colors.card : 'white';
     const pageBg = isDark ? colors.bg : '#f5f7f5';
+    const warningBg = isDark ? colors.accentLight : '#fff7ed';
+    const warningBorder = isDark ? '#5A3E12' : '#fde68a';
+    const warningText = isDark ? colors.accent : '#92400E';
+    const warningIconBg = isDark ? '#35260D' : '#FEF3C7';
 
     const statusLabel = existingBooking.status === 'in-progress' ? 'In Progress'
       : existingBooking.status.charAt(0).toUpperCase() + existingBooking.status.slice(1);
@@ -223,13 +229,13 @@ export default function BookingReview({ navigation, route }: any) {
 
           {/* Status Card */}
           <View style={{
-            backgroundColor: isDark ? colors.surface : '#f0faf4',
+            backgroundColor: isDark ? colors.surfaceAlt : '#f0faf4',
             borderRadius: 20, padding: 18, marginBottom: 14,
             borderWidth: 1, borderColor: isDark ? colors.border : '#d1eedd',
             overflow: 'hidden',
           }}>
-            <Text style={{ position: 'absolute', top: 14, right: 46, color: '#b8ddc8', fontSize: 22, fontWeight: '300' }}>+</Text>
-            <Text style={{ position: 'absolute', top: 30, right: 22, color: '#b8ddc8', fontSize: 16, fontWeight: '300' }}>+</Text>
+            <Text style={{ position: 'absolute', top: 14, right: 46, color: colors.primary + '55', fontSize: 22, fontWeight: '300' }}>+</Text>
+            <Text style={{ position: 'absolute', top: 30, right: 22, color: colors.primary + '55', fontSize: 16, fontWeight: '300' }}>+</Text>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
@@ -367,41 +373,41 @@ export default function BookingReview({ navigation, route }: any) {
               onPress={handleJoinSession}
               activeOpacity={0.88}
               style={{
-                backgroundColor: isDark ? '#1c1500' : '#fff7ed',
+                backgroundColor: warningBg,
                 borderRadius: 18, padding: 16, marginBottom: 14,
                 flexDirection: 'row', alignItems: 'center',
-                borderWidth: 1, borderColor: '#fde68a',
+                borderWidth: 1, borderColor: warningBorder,
               }}
             >
-              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
-                <Video size={22} color="#D97706" />
+              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: warningIconBg, alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                <Video size={22} color={colors.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: '#D97706', marginBottom: 2 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.accent, marginBottom: 2 }}>
                   {canJoin ? 'Join Now' : 'Ready to Join'}
                 </Text>
-                <Text style={{ fontSize: 12, color: '#92400E', lineHeight: 17 }}>
+                <Text style={{ fontSize: 12, color: warningText, lineHeight: 17 }}>
                   {canJoin ? 'Your session is in progress.' : 'Waiting for counsellor to join.'}
                 </Text>
               </View>
-              <ChevronRight size={18} color="#D97706" />
+              <ChevronRight size={18} color={colors.accent} />
             </TouchableOpacity>
           )}
 
           {/* Pending Banner */}
           {isPending && existingBooking.status === 'pending' && (
             <View style={{
-              backgroundColor: isDark ? '#1c1500' : '#fffbeb',
+              backgroundColor: warningBg,
               borderRadius: 18, padding: 14, marginBottom: 14,
-              borderWidth: 1, borderColor: '#fde68a',
+              borderWidth: 1, borderColor: warningBorder,
               flexDirection: 'row', alignItems: 'center',
             }}>
-              <ActivityIndicator size="small" color="#D97706" style={{ marginRight: 12 }} />
+              <ActivityIndicator size="small" color={colors.accent} style={{ marginRight: 12 }} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#D97706', marginBottom: 2 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.accent, marginBottom: 2 }}>
                   Waiting for assignment...
                 </Text>
-                <Text style={{ fontSize: 12, color: '#92400E', lineHeight: 17 }}>
+                <Text style={{ fontSize: 12, color: warningText, lineHeight: 17 }}>
                   You will be notified when a counsellor accepts
                 </Text>
               </View>
@@ -435,8 +441,8 @@ export default function BookingReview({ navigation, route }: any) {
                 flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
               }}
             >
-              <Video size={20} color="white" style={{ marginRight: 10 }} />
-              <Text style={{ color: 'white', fontSize: 17, fontWeight: '800', letterSpacing: 0.2 }}>
+              <Video size={20} color={primaryActionText} style={{ marginRight: 10 }} />
+              <Text style={{ color: primaryActionText, fontSize: 17, fontWeight: '800', letterSpacing: 0.2 }}>
                 Join Session
               </Text>
             </TouchableOpacity>
@@ -506,7 +512,7 @@ export default function BookingReview({ navigation, route }: any) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ flex: 1 }}>
-          <View style={{ backgroundColor: '#314830', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20 }}>
+          <View style={{ backgroundColor: colors.primaryDark, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20 }}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginBottom: 12 }}>
               <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>← Back</Text>
             </TouchableOpacity>
@@ -562,9 +568,9 @@ export default function BookingReview({ navigation, route }: any) {
               }}
             >
               {isCreatingBooking ? (
-                <ActivityIndicator color="white" />
+                <ActivityIndicator color={primaryActionText} />
               ) : (
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: '700' }}>Confirm & Pay ₹{displayAmount}</Text>
+                <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '700' }}>Confirm & Pay ₹{displayAmount}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -591,7 +597,7 @@ export default function BookingReview({ navigation, route }: any) {
               marginTop: 16
             }}
           >
-            <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+            <Text style={{ color: primaryActionText, fontSize: 14, fontWeight: '600' }}>
               Go Back
             </Text>
           </TouchableOpacity>
@@ -602,6 +608,10 @@ export default function BookingReview({ navigation, route }: any) {
 
   const category = PRICE_CATEGORIES[categoryId as keyof typeof PRICE_CATEGORIES];
   const genderText = gender === 'male' ? 'Male' : 'Female';
+  const isDarkMode = scheme === 'dark';
+  const noticeBg = isDarkMode ? colors.accentLight : '#FEF3C7';
+  const noticeBorder = isDarkMode ? '#5A3E12' : '#F59E0B';
+  const noticeText = isDarkMode ? colors.accent : '#92400E';
 
   const handleConfirmBooking = () => {
     Alert.alert(
@@ -754,17 +764,17 @@ export default function BookingReview({ navigation, route }: any) {
 
         {/* Important Notice */}
         <View style={{
-          backgroundColor: '#FEF3C7',
+          backgroundColor: noticeBg,
           borderRadius: 12,
           padding: 16,
           marginBottom: 24,
           borderWidth: 1,
-          borderColor: '#F59E0B'
+          borderColor: noticeBorder
         }}>
-          <Text style={{ fontSize: 14, color: '#92400E', fontWeight: '600', marginBottom: 8 }}>
+          <Text style={{ fontSize: 14, color: noticeText, fontWeight: '600', marginBottom: 8 }}>
             ⚠️ Important Notice
           </Text>
-          <Text style={{ fontSize: 14, color: '#92400E', lineHeight: 20 }}>
+          <Text style={{ fontSize: 14, color: noticeText, lineHeight: 20 }}>
             Your support provider identity will be revealed only after successful payment. This supports unbiased matching based on your preferences.
           </Text>
         </View>
@@ -784,13 +794,13 @@ export default function BookingReview({ navigation, route }: any) {
           >
             {isCreatingBooking ? (
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+                <ActivityIndicator size="small" color={primaryActionText} style={{ marginRight: 8 }} />
+                <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
                   Creating Booking...
                 </Text>
               </View>
             ) : (
-              <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+              <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
                 Confirm & Proceed to Payment
               </Text>
             )}

@@ -38,17 +38,17 @@ const SettingItem = ({ title, subtitle, icon: Icon, onPress, disabled, colors, d
     <View style={{
       width: 40,
       height: 40,
-      backgroundColor: danger ? '#EF44441A' : colors.border,
+      backgroundColor: danger ? colors.error + '18' : colors.border,
       borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: 16,
       flexShrink: 0
     }}>
-      <Icon size={20} color={danger ? '#EF4444' : colors.muted} />
+      <Icon size={20} color={danger ? colors.error : colors.muted} />
     </View>
     <View style={{ flex: 1, paddingRight: 4 }}>
-      <Text style={{ fontSize: 16, color: danger ? '#EF4444' : colors.cardText }}>{title}</Text>
+      <Text style={{ fontSize: 16, color: danger ? colors.error : colors.cardText }}>{title}</Text>
       {subtitle && <Text style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>{subtitle}</Text>}
     </View>
   </TouchableOpacity>
@@ -62,6 +62,10 @@ export default function Settings({ navigation }: any) {
 
   const { scheme, toggle } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const headerBg = isDark ? colors.primaryDark : colors.primary;
+  const dangerBg = colors.error + (isDark ? '18' : '0A');
+  const dangerBorder = colors.error + (isDark ? '35' : '20');
   const { logout, user } = useAuth();
 
   useEffect(() => {
@@ -201,7 +205,7 @@ export default function Settings({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
       <View style={{
-        backgroundColor: colors.primary,
+        backgroundColor: headerBg,
         paddingHorizontal: 16,
         paddingVertical: 20,
         flexDirection: 'row',
@@ -428,18 +432,18 @@ export default function Settings({ navigation }: any) {
           <TouchableOpacity
             onPress={handleLogout}
             style={{
-              backgroundColor: '#EF4444' + '0A',
+              backgroundColor: dangerBg,
               borderRadius: 20,
               padding: 16,
               alignItems: 'center',
               justifyContent: 'center',
               flexDirection: 'row',
               borderWidth: 1,
-              borderColor: '#EF4444' + '20'
+              borderColor: dangerBorder
             }}
           >
-            <LogOut size={20} color="#EF4444" />
-            <Text style={{ color: '#EF4444', fontWeight: '600', fontSize: 16 }}>Logout</Text>
+            <LogOut size={20} color={colors.error} />
+            <Text style={{ color: colors.error, fontWeight: '600', fontSize: 16 }}>Logout</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

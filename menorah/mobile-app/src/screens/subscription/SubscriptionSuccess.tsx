@@ -9,6 +9,7 @@ import { getSubscriptionPlan, type SubscriptionType } from './subscriptionPlans'
 export default function SubscriptionSuccess({ navigation, route }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
   const { subscriptionType } = route.params || {};
   const planLabel = getSubscriptionPlan(subscriptionType as SubscriptionType)?.shortLabel || 'Premium';
 
@@ -48,25 +49,25 @@ export default function SubscriptionSuccess({ navigation, route }: any) {
 
         {/* Benefits */}
         <View style={{
-          backgroundColor: '#F0F9FF',
+          backgroundColor: isDark ? colors.surfaceAlt : '#F0F9FF',
           borderRadius: 12,
           padding: 16,
           marginBottom: 32,
           borderWidth: 1,
-          borderColor: '#0EA5E9',
+          borderColor: isDark ? colors.border : '#0EA5E9',
           width: '100%'
         }}>
           <Text style={{
             fontSize: 16,
             fontWeight: '600',
-            color: '#0C4A6E',
+            color: isDark ? colors.text : '#0C4A6E',
             marginBottom: 8
           }}>
             Premium Features Unlocked:
           </Text>
           <Text style={{
             fontSize: 14,
-            color: '#0C4A6E',
+            color: isDark ? colors.text : '#0C4A6E',
             lineHeight: 20
           }}>
             • Unlimited access to premium content{'\n'}
@@ -95,4 +96,3 @@ export default function SubscriptionSuccess({ navigation, route }: any) {
     </SafeAreaView>
   );
 }
-

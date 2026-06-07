@@ -8,76 +8,217 @@ import { palettes } from "@/theme/colors";
 export default function Legal({ route, navigation }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const headerBg = isDark ? colors.primaryDark : colors.primary;
 
   const privacyPolicy = `Privacy Policy
+Menorah Health | Effective: November 11, 2025 | v1.0
 
-Last updated: December 2024
+1. About This Policy
+Menorah Health ('Company', 'we', 'us', or 'our') operates a digital men's mental health platform accessible via mobile application and website (collectively, the 'Platform'). This Privacy Policy explains how we collect, use, store, share, and protect your personal data. It also sets out your rights as a user.
 
-1. Information We Collect
-We collect information you provide directly to us, such as account details, profile details, booking details, chat content, support requests, and preferences needed to operate the service.
+By creating an account or using the Platform, you consent to the data practices described in this Policy. If you do not agree, please discontinue use of the Platform immediately.
 
-2. How We Use Your Information
-We use this information to provide mental wellness support, peer support features, self-help and educational resources, booking workflows, account security, customer support, and service improvements.
+2. Definitions
+Personal Data: Any information relating to an identified or identifiable natural person, including name, email, health data, and device identifiers.
 
-3. Information Sharing
-We do not sell your personal information. We may share information with service providers only when needed to operate the app, process support requests, maintain safety, process payments, or comply with legal obligations.
+Sensitive Personal Data (SPD): Health records, mental health history, session notes, biometric data, and financial data — as defined under SPDI Rules 2011 and DPDP Act 2023.
 
-4. Chat and Community Data
-Messages, reports, and support requests may be reviewed by authorized support or moderation team members when needed for safety, abuse prevention, troubleshooting, or legal compliance.
+Data Fiduciary: Menorah Health, as the entity that determines the purposes and means of processing your data (equivalent to 'data controller' under GDPR).
 
-5. Data Security
-We use reasonable safeguards to protect personal information against unauthorized access, alteration, disclosure, or destruction. No app or network service can guarantee absolute security.
+Data Principal: You, the individual user whose personal data is being processed.
 
-6. Your Rights and Account Deletion
-You can request access, correction, or deletion of your personal information. Account deletion can be requested from Settings > Account > Delete Account. Some records may be retained if required for legal, safety, dispute, tax, or payment obligations.
+Processing: Any operation on personal data including collection, storage, use, disclosure, or deletion.
 
-7. Contact Us
-If you have questions about this Privacy Policy, please contact us at privacy@menorah.me.`;
+3. Data We Collect
 
-  const termsOfService = `TERMS AND CONDITIONS - MENORAH HEALTH LLP
+3.1 Data You Provide Directly
+• Registration data: name, date of birth, email address, phone number, gender identity
+• Health and wellness data: mood logs, journal entries, symptom check-ins, mental health assessments
+• Session data: audio/video recordings of therapy sessions (only with explicit consent), session notes
+• Payment data: billing details processed via PCI-DSS compliant payment gateways; we do not store card numbers
+• Communications: messages, feedback, support queries
 
-These Terms and Conditions govern your use of the Menorah Health mobile application ("App"), provided by Menorah Health LLP ("Menorah," "we," "us," or "our"). By using the App, you agree to these terms. If you do not agree, please do not use the App.
+3.2 Data Collected Automatically
+• Device data: device type, OS, app version, unique device identifiers (UDID/IDFA/GAID)
+• Usage data: features accessed, session duration, clickstream data
+• Log data: IP address, timestamps, crash reports
+• Location data: approximate location derived from IP (not GPS), unless you grant location permission
 
-1. App Usage and Eligibility
-You must be old enough to use this app under the laws that apply to you. If you are under the age of majority, use the app only with consent and supervision from a parent or legal guardian.
+3.3 Data From Third Parties
+• Therapist-provided clinical notes and assessments
+• Payment gateway transaction references
+• App store analytics (anonymised, aggregated only)
 
-2. Purpose of the App
-Menorah Health provides mental wellness support, peer support, self-help tools, educational resources, and access to trained supporters or counsellors. The app does not diagnose, treat, cure, or replace professional medical care.
+4. Purposes of Processing & Legal Basis
+Providing therapy and wellness services: Consent + Contract under India law; Art. 6(1)(b) – Contract under EU/GDPR.
 
-3. Not an Emergency Service
-The app is not an emergency service. If you are in immediate danger, may harm yourself or someone else, or need urgent medical help, contact local emergency services immediately.
+Processing mental health data: Explicit Consent under DPDP/MHCA; Art. 9(2)(a) – Explicit Consent under EU/GDPR.
 
-4. User Conduct
-Use the app responsibly. Do not harass, threaten, impersonate others, share illegal content, share another person's private information, or use the app to cause harm.
+Payment processing: Contract performance under India law; Art. 6(1)(b) – Contract under EU/GDPR.
 
-5. Content Usage
-Content, exercises, articles, and resources are for general wellness and educational support only. You may not copy, sell, or redistribute app content without permission.
+Platform safety and crisis intervention: Legitimate interest / vital interests under India law; Art. 6(1)(d) – Vital Interests under EU/GDPR.
 
-6. Safety and Moderation
-Users can report unsafe content or behavior, block users where available, and contact support. Menorah may restrict or remove accounts that violate these terms or create safety risks.
+Product improvement (anonymised): Legitimate interest under India law; Art. 6(1)(f) – Legitimate Interest under EU/GDPR.
 
-7. Feedback and Suggestions
-We appreciate your feedback and suggestions regarding the App. By submitting feedback, you grant Menorah the right to use and implement your suggestions without any obligation to compensate you.
+Legal compliance and audit: Legal obligation under India law; Art. 6(1)(c) – Legal Obligation under EU/GDPR.
 
-8. Intellectual Property
-The Menorah logo, name, and any related content are protected by intellectual property laws. You may not use these materials without obtaining explicit permission from Menorah.
+Marketing (opt-in only): Consent under India law; Art. 6(1)(a) – Consent under EU/GDPR.
 
-9. Disclaimers and Limitation of Liability
-The App is provided "as is." Menorah does not guarantee specific mental health outcomes, recovery, diagnosis, treatment, or uninterrupted service.
+5. Data Sharing & Disclosure
 
-10. Changes to the Agreement
-Menorah reserves the right to modify this Agreement at any time. Any changes will be communicated through the App or other means. Continued use of the App after such changes indicates your acceptance of the modified Agreement.
+5.1 With Therapists
+Your session data and health records are shared with the therapist assigned to you on the Platform, strictly for the purpose of providing therapeutic services.
 
-11. Termination
-Menorah may suspend or terminate your access to the App at our discretion if you violate this Agreement or engage in any harmful conduct. You may also terminate your use of the App at any time.
+5.2 With Service Providers
+We engage third-party processors (cloud storage, payment gateways, analytics providers) under Data Processing Agreements that restrict them to processing your data only on our instructions.
 
-12. Governing Law
-This Agreement is governed by and construed in accordance with the laws of India. Any disputes arising from or relating to this Agreement will be subject to the exclusive jurisdiction of the courts in India.
+5.3 Legal Disclosure
+We may disclose data where required by Indian law, court order, or a competent authority. We will notify you where legally permissible before complying with such requests.
 
-Contact Us:
-If you have any questions or concerns about these Terms and Conditions, please contact us at menorahenquries@gmail.com
+5.4 Crisis Situations
+If we reasonably believe a user is at imminent risk of self-harm or harm to others, we may share necessary information with emergency services without prior consent, consistent with our obligations under the MHCA 2017 and Telemedicine Practice Guidelines 2020.
 
-By using the Menorah App, you acknowledge that you have read, understood, and agreed to the terms outlined in this Agreement.`;
+5.5 We Never Sell Your Data
+Menorah Health does not sell, rent, or trade your personal data to advertisers or any third party for commercial purposes.
+
+6. Data Retention
+• Therapy session notes and clinical records: 7 years from last session (minimum), as recommended under MHCA 2017 guidelines
+• Account data: for the duration of your account, plus 3 years after deletion for legal compliance
+• Payment records: 8 years (as required under Indian tax laws)
+• Marketing data: until you withdraw consent
+• Anonymised analytics data: indefinitely
+
+7. Data Security
+We implement the following safeguards:
+• AES-256 encryption for data at rest; TLS 1.3 for data in transit
+• Role-based access control — therapists can only access their own clients' data
+• Multi-factor authentication for all practitioner accounts
+• Regular third-party penetration testing and vulnerability assessments
+• Data localisation: all personal data of Indian users is stored on servers physically located in India
+• Data breach notification: we will notify affected users and the Data Protection Board of India within 72 hours of becoming aware of a breach, as required under DPDP Rules 2025
+
+8. Your Rights
+
+8.1 Rights Under DPDP Act 2023 (Indian Users)
+• Right to access: obtain a summary of personal data held and how it is being processed
+• Right to correction: correct inaccurate or incomplete personal data
+• Right to erasure: request deletion of your data (subject to legal retention requirements)
+• Right to grievance redressal: raise complaints with our Grievance Officer
+• Right to nominate: nominate a person to exercise rights on your behalf in case of incapacity or death
+
+8.2 Additional Rights Under GDPR (EU/EEA Users)
+• Right to data portability: receive your data in a structured, machine-readable format
+• Right to object: object to processing based on legitimate interests
+• Right to restrict processing: request we limit how your data is used
+• Right to lodge a complaint with your national supervisory authority
+
+8.3 Additional Rights Under CCPA (California Users)
+• Right to know what personal information is collected and how it is used
+• Right to opt-out of any sale of personal information (we do not sell)
+• Right to non-discrimination for exercising your rights
+
+9. Cookies & Tracking
+Our web platform uses cookies and similar technologies for authentication, security, and analytics. You may control cookie preferences through your browser settings. We do not use third-party advertising cookies.
+
+10. Children's Privacy
+The Platform is strictly intended for users aged 18 and above. We do not knowingly collect data from minors. If we discover that a minor has provided data without parental consent, we will delete it immediately.
+
+11. International Data Transfers
+If your data is transferred outside India (e.g., for global analytics tools), we ensure equivalent protections via Standard Contractual Clauses (SCCs) under GDPR and comply with data localisation obligations under DPDP Rules 2025 for Indian users' sensitive personal data.
+
+12. Changes to This Policy
+We may update this Policy. Material changes will be notified via email and in-app notification at least 15 days before they take effect. Continued use of the Platform after the effective date constitutes acceptance of the revised Policy.`;
+
+  const termsOfService = `Terms and Conditions
+Menorah Health | Effective: November 11, 2025 | v1.0
+
+1. Agreement to Terms
+These Terms and Conditions ('Terms') constitute a legally binding agreement between you ('User') and Menorah Health ('Company') governing your use of the Menorah Health mobile application, website, and all associated services (the 'Platform'). By registering or using the Platform, you confirm you have read, understood, and agree to be bound by these Terms.
+
+If you do not agree to these Terms, you must not access or use the Platform.
+
+2. Eligibility
+• You must be at least 18 years of age to use the Platform.
+• You must be legally capable of entering into binding contracts under the Indian Contract Act, 1872.
+• If you are accessing the Platform on behalf of an institution (e.g., employer wellness programme), you represent that you have authority to bind that institution.
+• Users residing outside India may be subject to additional local laws. By using the Platform, you confirm compliance with laws applicable in your jurisdiction.
+
+3. Nature of Services
+
+3.1 What We Provide
+Menorah Health provides a digital men's mental health platform offering:
+• Individual therapy sessions with licensed mental health professionals via audio/video
+• Wellness tools including mood tracking, journaling, and psychoeducational content
+• Community and peer support features (where available)
+• Crisis resource information and referrals
+
+3.2 What We Do Not Provide
+The Platform is NOT a substitute for emergency mental health services. We do not provide:
+• Psychiatric emergency intervention
+• Inpatient or residential mental health treatment
+• Prescription of medications (unless through a separately licensed psychiatrist on platform, if applicable)
+• Medical diagnosis of any condition
+
+4. Practitioner Standards
+All therapists and mental health professionals on the Platform:
+• Are registered with the Rehabilitation Council of India (RCI) or the relevant State Medical Council
+• Have been verified by Menorah Health prior to onboarding
+• Are bound by a separate Therapist/Contractor Agreement incorporating professional ethics obligations
+• Are independent professionals; Menorah Health does not control the clinical content of therapeutic advice
+
+Menorah Health is responsible for platform operations and practitioner verification, but is not liable for the specific clinical advice or decisions of individual practitioners.
+
+5. User Obligations
+By using the Platform, you agree to:
+• Provide accurate, truthful information during registration and sessions
+• Use the Platform only for lawful purposes
+• Not record sessions without the prior written consent of the therapist
+• Not share your account credentials with any other person
+• Not engage in harassment, abuse, or threatening behaviour toward practitioners or other users
+• Not attempt to circumvent platform security or access data of other users
+• Notify us immediately at support@menorahhealth.com if you believe your account has been compromised
+
+6. Intellectual Property
+All content on the Platform — including text, graphics, logos, psychoeducational materials, software, and UX design — is the exclusive intellectual property of Menorah Health or its licensors, protected under the Copyright Act, 1957, and applicable international treaties.
+
+You are granted a limited, non-exclusive, non-transferable, revocable licence to access and use the Platform for personal, non-commercial purposes only. You may not reproduce, distribute, modify, or create derivative works from any Platform content without our prior written consent.
+
+7. Fees, Billing & Auto-Renewal
+• Session fees and subscription prices are displayed on the Platform at the time of purchase and are inclusive of applicable GST.
+• Subscription plans auto-renew at the end of each billing cycle. You may cancel auto-renewal at any time from your account settings.
+• We reserve the right to modify pricing. You will be notified of price changes at least 15 days before they take effect.
+• All payments are processed by PCI-DSS compliant third-party gateways. Menorah Health does not store card details.
+
+8. Limitation of Liability
+To the maximum extent permitted under applicable law:
+• Menorah Health's total aggregate liability for any claim arising from use of the Platform shall not exceed the amount paid by you for services in the 3 months preceding the claim.
+• We are not liable for indirect, incidental, special, punitive, or consequential damages, including loss of data or loss of opportunity.
+• We are not liable for the clinical outcomes of therapy sessions conducted by independent practitioners on the Platform.
+
+Nothing in these Terms limits liability for death or personal injury caused by negligence, fraud, or any other liability that cannot be excluded under applicable law.
+
+9. Indemnification
+You agree to indemnify and hold harmless Menorah Health, its officers, directors, employees, and agents from any claims, losses, damages, or expenses (including legal fees) arising out of: (a) your breach of these Terms; (b) your misuse of the Platform; or (c) any content you submit through the Platform that infringes the rights of a third party.
+
+10. Termination
+Menorah Health may suspend or terminate your account without notice if you breach these Terms or if we are required to do so by law. You may delete your account at any time from account settings.
+
+Upon termination, your right to use the Platform ceases, but provisions relating to IP, liability, indemnification, and dispute resolution survive.
+
+11. Dispute Resolution
+
+11.1 Grievance (Consumer Protection Act, 2019)
+Users may first raise a complaint with our Grievance Officer at grievance@menorahhealth.com. We will respond within 30 days.
+
+11.2 Arbitration
+Unresolved disputes shall be referred to binding arbitration under the Arbitration and Conciliation Act, 1996, with a sole arbitrator appointed by mutual agreement. The seat of arbitration shall be [City], India. The language of arbitration shall be English.
+
+11.3 Governing Law & Jurisdiction
+These Terms shall be governed by the laws of India. Subject to the arbitration clause, courts in [City], India shall have exclusive jurisdiction. International users retain the protection of mandatory consumer laws in their home jurisdiction.
+
+12. Changes to Terms
+We reserve the right to amend these Terms. Material changes will be communicated via email and in-app notification at least 15 days in advance. Continued use after the effective date constitutes acceptance of the revised Terms.`;
 
   const communityGuidelines = `Community Guidelines
 
@@ -170,7 +311,7 @@ For urgent danger, self-harm risk, medical emergencies, or threats to another pe
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
       <View style={{
-        backgroundColor: colors.primary,
+        backgroundColor: headerBg,
         paddingHorizontal: 16,
         paddingVertical: 20,
         flexDirection: 'row',

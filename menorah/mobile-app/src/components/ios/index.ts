@@ -1,9 +1,12 @@
-export { iosTheme } from './iosTheme';
+export { iosDarkTheme, iosLightTheme, iosTheme, useIOSTheme } from './iosTheme';
 export { default as IOSActionCard } from './IOSActionCard';
 export { default as IOSArticleCard } from './IOSArticleCard';
 export { default as IOSBadge } from './IOSBadge';
 export { default as IOSButton } from './IOSButton';
 export { default as IOSCard } from './IOSCard';
+export { default as IOSChatBanner } from './IOSChatBanner';
+export { default as IOSDiscoverHeader } from './IOSDiscoverHeader';
+export { default as IOSFloatingTabBar } from './IOSFloatingTabBar';
 export { default as IOSHeader } from './IOSHeader';
 export { default as IOSHeroCard } from './IOSHeroCard';
 export { default as IOSIconButton } from './IOSIconButton';

@@ -4,7 +4,6 @@ import { CommonActions, useNavigation } from '@react-navigation/native';
 import {
   BookOpen,
   CalendarDays,
-  FileText,
   Heart,
   LogOut,
   MessageCircleMore,
@@ -21,7 +20,7 @@ import {
   IOSListItem,
   IOSScreen,
   IOSSectionHeader,
-  iosTheme,
+  useIOSTheme,
 } from '@/components/ios';
 import { useAuth } from '@/state/useAuth';
 
@@ -58,13 +57,13 @@ const QUICK_ACTIONS = [
 const ACCOUNT_ITEMS = [
   { icon: User, label: 'Edit Profile', sub: 'Update your personal information', route: 'EditProfile', danger: false },
   { icon: Settings, label: 'Settings & Privacy', sub: 'Manage preferences and account deletion', route: 'Settings', danger: false },
-  { icon: FileText, label: 'Terms & Privacy', sub: 'Read our policies', route: 'Legal', danger: false },
   { icon: LogOut, label: 'Sign Out', sub: 'Logout from your account', route: null, danger: true },
 ];
 
 export default function ProfileHome({ navigation }: any) {
   const { logout, user } = useAuth();
   const rootNavigation = useNavigation();
+  const iosTheme = useIOSTheme();
 
   const memberSince = (() => {
     try {
@@ -144,7 +143,7 @@ export default function ProfileHome({ navigation }: any) {
                     height: 84,
                     borderRadius: 42,
                     borderWidth: 3,
-                    borderColor: 'rgba(255,255,255,0.76)',
+                    borderColor: iosTheme.colors.inverseTextMuted,
                   }}
                   contentFit="cover"
                 />
@@ -155,13 +154,13 @@ export default function ProfileHome({ navigation }: any) {
                     height: 84,
                     borderRadius: 42,
                     borderWidth: 3,
-                    borderColor: 'rgba(255,255,255,0.76)',
-                    backgroundColor: 'rgba(255,255,255,0.16)',
+                    borderColor: iosTheme.colors.inverseTextMuted,
+                    backgroundColor: iosTheme.colors.inverseSurface,
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ color: iosTheme.colors.white, fontSize: 34, lineHeight: 40, fontWeight: '900' }}>
+                  <Text style={{ color: iosTheme.colors.inverseText, fontSize: 34, lineHeight: 40, fontWeight: '900' }}>
                     {initials}
                   </Text>
                 </View>
@@ -169,13 +168,13 @@ export default function ProfileHome({ navigation }: any) {
 
               <View style={{ flex: 1 }}>
                 <Text
-                  style={{ color: iosTheme.colors.white, fontSize: 24, lineHeight: 30, fontWeight: '900' }}
+                  style={{ color: iosTheme.colors.inverseText, fontSize: 24, lineHeight: 30, fontWeight: '900' }}
                   numberOfLines={2}
                 >
                   {user ? `${user.firstName} ${user.lastName}` : 'User'}
                 </Text>
                 <Text
-                  style={{ color: 'rgba(255,255,255,0.78)', fontSize: 13, lineHeight: 19, marginTop: 3 }}
+                  style={{ color: iosTheme.colors.inverseTextMuted, fontSize: 13, lineHeight: 19, marginTop: 3 }}
                   numberOfLines={1}
                 >
                   {user?.email || ''}
@@ -186,15 +185,15 @@ export default function ProfileHome({ navigation }: any) {
                     alignItems: 'center',
                     alignSelf: 'flex-start',
                     gap: iosTheme.spacing.xs,
-                    backgroundColor: 'rgba(255,255,255,0.14)',
+                    backgroundColor: iosTheme.colors.inverseSurface,
                     paddingHorizontal: iosTheme.spacing.md,
                     paddingVertical: 7,
                     borderRadius: iosTheme.radius.pill,
                     marginTop: iosTheme.spacing.md,
                   }}
                 >
-                  <ShieldCheck size={13} color={iosTheme.colors.white} strokeWidth={2.2} />
-                  <Text style={{ color: iosTheme.colors.white, fontSize: 11, lineHeight: 14, fontWeight: '800' }}>
+                  <ShieldCheck size={13} color={iosTheme.colors.inverseText} strokeWidth={2.2} />
+                  <Text style={{ color: iosTheme.colors.inverseText, fontSize: 11, lineHeight: 14, fontWeight: '800' }}>
                     {memberSince ? `Member since ${memberSince}` : 'Verified Member'}
                   </Text>
                 </View>
@@ -204,9 +203,9 @@ export default function ProfileHome({ navigation }: any) {
                 icon={Pencil}
                 onPress={() => navigation.navigate('EditProfile')}
                 accessibilityLabel="Edit profile"
-                color={iosTheme.colors.white}
-                backgroundColor="rgba(255,255,255,0.14)"
-                style={{ borderColor: 'rgba(255,255,255,0.20)', shadowOpacity: 0 }}
+                color={iosTheme.colors.inverseText}
+                backgroundColor={iosTheme.colors.inverseSurface}
+                style={{ borderColor: iosTheme.colors.inverseSurfaceBorder, shadowOpacity: 0 }}
               />
             </View>
           </View>

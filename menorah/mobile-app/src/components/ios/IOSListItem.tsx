@@ -1,7 +1,7 @@
 import { Text, TouchableOpacity, View } from 'react-native';
 import type { ComponentType } from 'react';
 import { ChevronRight } from 'lucide-react-native';
-import { iosTheme } from './iosTheme';
+import { useIOSTheme } from './iosTheme';
 
 type IconProps = {
   color?: string;
@@ -26,6 +26,7 @@ export default function IOSListItem({
   danger = false,
   showDivider = true,
 }: IOSListItemProps) {
+  const iosTheme = useIOSTheme();
   const accent = danger ? iosTheme.colors.danger : iosTheme.colors.primary;
 
   return (
@@ -48,7 +49,7 @@ export default function IOSListItem({
             width: 42,
             height: 42,
             borderRadius: iosTheme.radius.md,
-            backgroundColor: danger ? '#FCECEB' : iosTheme.colors.surfaceAlt,
+            backgroundColor: danger ? iosTheme.colors.dangerSoft : iosTheme.colors.surfaceAlt,
             alignItems: 'center',
             justifyContent: 'center',
             marginRight: iosTheme.spacing.md,

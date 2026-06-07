@@ -58,6 +58,7 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
   const navigation = useNavigation<any>();
   const [selected, setSelected] = useState<SubscriptionType | null>(null);
   const cardBg = scheme === 'dark' ? colors.surface : colors.card;
+  const primaryActionText = scheme === 'dark' ? colors.primaryDark : 'white';
   const isIOSSubscriptionDisabled = shouldDisableIOSSubscriptionPurchase();
 
   const handleSelect = (id: SubscriptionType) => {
@@ -223,13 +224,13 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
                 justifyContent: 'center',
               }}
             >
-              <Percent size={18} color="white" />
+              <Percent size={18} color={primaryActionText} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: 'white', fontSize: 13, fontWeight: '700', marginBottom: 2 }}>
+              <Text style={{ color: primaryActionText, fontSize: 13, fontWeight: '700', marginBottom: 2 }}>
                 Save more with subscriptions!
               </Text>
-              <Text style={{ color: 'rgba(255,255,255,0.78)', fontSize: 11, lineHeight: 16 }}>
+              <Text style={{ color: scheme === 'dark' ? colors.primaryDark : 'rgba(255,255,255,0.78)', fontSize: 11, lineHeight: 16 }}>
                 Flexible plans · Cancel anytime · Pause anytime
               </Text>
             </View>

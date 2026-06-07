@@ -14,6 +14,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
   const { subscriptionType } = route.params || {};
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
   const plan = getSubscriptionPlan(subscriptionType as SubscriptionType);
 
   if (!plan) {
@@ -71,7 +72,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
               width: 56,
               height: 56,
               borderRadius: 18,
-              backgroundColor: plan.bgColor,
+              backgroundColor: isDark ? plan.color + '22' : plan.bgColor,
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: 16,
@@ -89,7 +90,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
 
           <View
             style={{
-              backgroundColor: scheme === 'dark' ? colors.surface : '#F8FAF8',
+              backgroundColor: isDark ? colors.surface : '#F8FAF8',
               borderRadius: 18,
               padding: 16,
             }}
@@ -124,7 +125,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
                   width: 22,
                   height: 22,
                   borderRadius: 11,
-                  backgroundColor: plan.bgColor,
+                  backgroundColor: isDark ? plan.color + '22' : plan.bgColor,
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginRight: 10,
@@ -143,7 +144,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
         {isIOSSubscriptionDisabled ? (
           <View
             style={{
-              backgroundColor: scheme === 'dark' ? colors.surface : '#F8FAF8',
+              backgroundColor: isDark ? colors.surface : '#F8FAF8',
               borderRadius: 20,
               padding: 16,
               marginBottom: 24,
@@ -161,7 +162,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
         ) : (
           <View
             style={{
-              backgroundColor: scheme === 'dark' ? colors.surface : '#F8FAF8',
+              backgroundColor: isDark ? colors.surface : '#F8FAF8',
               borderRadius: 20,
               padding: 16,
               marginBottom: 24,

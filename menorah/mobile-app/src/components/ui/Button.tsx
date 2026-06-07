@@ -1,5 +1,6 @@
 import { Pressable, Text, ActivityIndicator, PressableProps, StyleProp, ViewStyle } from "react-native";
-import { colors } from "@/styles/theme";
+import { useThemeMode } from "@/theme/ThemeProvider";
+import { palettes } from "@/theme/colors";
 
 type Props = PressableProps & {
   title: string;
@@ -17,6 +18,10 @@ export default function Button({
   style,
   ...rest
 }: Props) {
+  const { scheme } = useThemeMode();
+  const colors = palettes[scheme];
+  const primaryTextColor = scheme === 'dark' ? colors.primaryDark : 'white';
+
   const getButtonStyle = () => {
     const baseStyle = {
       borderRadius: 20,
@@ -33,7 +38,7 @@ export default function Button({
         return {
           ...baseStyle,
           ...sizeStyle,
-          backgroundColor: colors.bg.base,
+          backgroundColor: colors.card,
           borderWidth: 1,
           borderColor: colors.border,
         };
@@ -47,7 +52,7 @@ export default function Button({
         return {
           ...baseStyle,
           ...sizeStyle,
-          backgroundColor: colors.brand.primary,
+          backgroundColor: colors.primary,
         };
     }
   };
@@ -62,17 +67,17 @@ export default function Button({
       case "outline":
         return {
           ...baseStyle,
-          color: colors.text.base,
+          color: colors.text,
         };
       case "ghost":
         return {
           ...baseStyle,
-          color: colors.brand.primary,
+          color: colors.primary,
         };
       default:
         return {
           ...baseStyle,
-          color: colors.text.invert,
+          color: primaryTextColor,
         };
     }
   };
@@ -87,7 +92,7 @@ export default function Button({
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator color={variant === "outline" ? colors.text.base : colors.text.invert} />
+        <ActivityIndicator color={variant === "outline" ? colors.text : primaryTextColor} />
       ) : (
         <Text style={getTextStyle()}>
           {title}

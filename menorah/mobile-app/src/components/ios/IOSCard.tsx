@@ -1,6 +1,6 @@
 import { TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import type { ReactNode } from 'react';
-import { iosTheme } from './iosTheme';
+import { useIOSTheme } from './iosTheme';
 
 type IOSCardProps = {
   children: ReactNode;
@@ -10,6 +10,7 @@ type IOSCardProps = {
 };
 
 export default function IOSCard({ children, onPress, style, contentStyle }: IOSCardProps) {
+  const iosTheme = useIOSTheme();
   const Container = onPress ? TouchableOpacity : View;
 
   return (

@@ -13,8 +13,6 @@ import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { api, Counsellor } from '@/lib/api';
 
-const HERO_GREEN = '#2d5c3e';
-
 function generateDates(n = 30): Date[] {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   return Array.from({ length: n }, (_, i) => {
@@ -106,6 +104,7 @@ export default function CounsellorProfile({ navigation, route }: any) {
   const hasMore = !showAllSlots && ALL_SLOTS.filter(t => !isPast(selectedDate, t)).length > 4;
 
   const price = counsellor ? `₹${(counsellor.hourlyRate || 0).toLocaleString('en-IN')}` : '₹0';
+  const heroColor = colors.primaryDark;
 
   return (
     <View style={{ flex: 1, backgroundColor: isDark ? colors.bg : '#f5f7f5' }}>
@@ -116,7 +115,7 @@ export default function CounsellorProfile({ navigation, route }: any) {
       >
 
         {/* ─────────────── HERO ─────────────── */}
-        <View style={{ backgroundColor: HERO_GREEN, paddingBottom: 18, paddingTop: insets.top }}>
+        <View style={{ backgroundColor: heroColor, paddingBottom: 18, paddingTop: insets.top }}>
 
           {/* Decorative circles */}
           <View style={{ position: 'absolute', top: -20, right: -20, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.04)' }} />
@@ -180,7 +179,7 @@ export default function CounsellorProfile({ navigation, route }: any) {
                     <View style={{
                       position: 'absolute', bottom: 3, right: 3,
                       width: 15, height: 15, borderRadius: 8,
-                      backgroundColor: '#22c55e', borderWidth: 2.5, borderColor: HERO_GREEN,
+                      backgroundColor: '#22c55e', borderWidth: 2.5, borderColor: heroColor,
                     }} />
                   )}
                 </View>
@@ -264,11 +263,11 @@ export default function CounsellorProfile({ navigation, route }: any) {
                   style={{
                     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
                     paddingVertical: 11, borderRadius: 50,
-                    backgroundColor: 'white',
+                    backgroundColor: isDark ? colors.surfaceAlt : 'white',
                   }}
                 >
-                  <CalendarDays size={15} color={HERO_GREEN} />
-                  <Text style={{ color: HERO_GREEN, fontSize: 14, fontWeight: '700' }}>Book Session</Text>
+                  <CalendarDays size={15} color={isDark ? colors.primary : heroColor} />
+                  <Text style={{ color: isDark ? colors.primary : heroColor, fontSize: 14, fontWeight: '700' }}>Book Session</Text>
                 </TouchableOpacity>
               </View>
 
@@ -451,7 +450,7 @@ export default function CounsellorProfile({ navigation, route }: any) {
             onPress={handleBook}
             activeOpacity={0.88}
             style={{
-              backgroundColor: selectedTime ? HERO_GREEN : (isDark ? colors.surface : '#e2e8e2'),
+              backgroundColor: selectedTime ? heroColor : (isDark ? colors.surface : '#e2e8e2'),
               paddingVertical: 17, borderRadius: 50,
               alignItems: 'center', justifyContent: 'center',
             }}

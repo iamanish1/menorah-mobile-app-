@@ -1,5 +1,5 @@
 import { Text, TouchableOpacity, View } from 'react-native';
-import { iosTheme } from './iosTheme';
+import { useIOSTheme } from './iosTheme';
 
 type IOSSectionHeaderProps = {
   title: string;
@@ -8,6 +8,8 @@ type IOSSectionHeaderProps = {
 };
 
 export default function IOSSectionHeader({ title, actionLabel, onPress }: IOSSectionHeaderProps) {
+  const iosTheme = useIOSTheme();
+
   return (
     <View
       style={{

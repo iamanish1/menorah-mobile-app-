@@ -58,6 +58,8 @@ export default function SubscriptionPayment({ route, navigation }: any) {
   const { scheme } = useThemeMode();
   const { user } = useAuth();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const actionTextColor = isDark ? colors.primaryDark : 'white';
   const returnUrl = ENV.CHECKOUT_RETURN_URL || 'menorah://payments/subscription/return';
   const USE_RAZORPAY_SDK = ENV.USE_RAZORPAY_SDK ?? true;
   const canUseRazorpaySdk = USE_RAZORPAY_SDK && hasNativeRazorpay();
@@ -233,7 +235,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
           name: userName || 'User'
         },
         theme: {
-          color: '#314830'
+          color: colors.primary
         }
       };
 
@@ -286,7 +288,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         [{ text: 'OK' }]
       );
     }
-  }, [isIOSSubscriptionDisabled, canUseRazorpaySdk, keyId, orderId, amount, currency, user, subscriptionType, navigation, pollOrderStatus]);
+  }, [isIOSSubscriptionDisabled, canUseRazorpaySdk, keyId, orderId, amount, currency, user, subscriptionType, navigation, pollOrderStatus, colors.primary]);
 
   useEffect(() => {
     if (subscriptionType) {
@@ -359,7 +361,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
               borderRadius: 12,
             }}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: actionTextColor, fontSize: 16, fontWeight: '600' }}>
               Go Back
             </Text>
           </TouchableOpacity>
@@ -400,7 +402,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
               borderRadius: 12
             }}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: actionTextColor, fontSize: 16, fontWeight: '600' }}>
               Go Back
             </Text>
           </TouchableOpacity>
@@ -428,7 +430,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
               borderRadius: 12
             }}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: actionTextColor, fontSize: 16, fontWeight: '600' }}>
               Go Back
             </Text>
           </TouchableOpacity>

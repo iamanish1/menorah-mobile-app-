@@ -2,7 +2,7 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
 import { ArrowUpRight } from 'lucide-react-native';
 import type { Article } from '@/components/cards/ArticleCard';
-import { iosTheme } from './iosTheme';
+import { useIOSTheme } from './iosTheme';
 
 type IOSArticleCardProps = {
   item: Article;
@@ -10,6 +10,8 @@ type IOSArticleCardProps = {
 };
 
 export default function IOSArticleCard({ item, onPress }: IOSArticleCardProps) {
+  const iosTheme = useIOSTheme();
+
   return (
     <TouchableOpacity
       onPress={onPress}

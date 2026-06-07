@@ -54,6 +54,9 @@ export default function Login({ navigation }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const isDark = scheme === 'dark';
+  const brandSurface = isDark ? colors.primaryDark : '#2d5c3e';
+  const brandAccent = isDark ? colors.primary : '#2d5c3e';
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
   const { login } = useAuth();
 
   const handleLogin = async () => {
@@ -113,12 +116,12 @@ export default function Login({ navigation }: any) {
   };
 
   const bgColors: readonly [string, string, string] = isDark
-    ? ['#0d1b14', '#0f2018', '#111f16']
+    ? [colors.bg, colors.primaryDark, colors.surface]
     : ['#eef8f1', '#f2faf5', '#fafffe'];
 
-  const fieldBg   = isDark ? 'rgba(255,255,255,0.06)' : 'white';
+  const fieldBg   = isDark ? colors.card : 'white';
   const fieldBorder = (focused: boolean) =>
-    focused ? '#2d5c3e' : (isDark ? colors.border : '#dde6dd');
+    focused ? brandAccent : (isDark ? colors.border : '#dde6dd');
 
   return (
     <View style={{ flex: 1 }}>
@@ -145,16 +148,16 @@ export default function Login({ navigation }: any) {
             <View style={{ alignItems: 'center', marginBottom: 22 }}>
               <View style={{
                 width: 100, height: 100, borderRadius: 50,
-                backgroundColor: 'white',
+                backgroundColor: isDark ? colors.surface : 'white',
                 alignItems: 'center', justifyContent: 'center',
-                shadowColor: '#2d5c3e',
+                shadowColor: brandAccent,
                 shadowOffset: { width: 0, height: 5 },
                 shadowOpacity: 0.15, shadowRadius: 14, elevation: 8,
                 padding: 4,
               }}>
                 <View style={{
                   width: 92, height: 92, borderRadius: 46,
-                  backgroundColor: '#2d5c3e',
+                  backgroundColor: brandSurface,
                   alignItems: 'center', justifyContent: 'center',
                   overflow: 'hidden',
                 }}>
@@ -170,7 +173,7 @@ export default function Login({ navigation }: any) {
             {/* ── Heading ── */}
             <Text style={{
               fontSize: 30, fontWeight: '900',
-              color: isDark ? '#7ab894' : '#1a2e1e',
+              color: isDark ? colors.primary : '#1a2e1e',
               textAlign: 'center', letterSpacing: -0.4,
               marginBottom: 6,
             }}>
@@ -203,7 +206,7 @@ export default function Login({ navigation }: any) {
                 paddingHorizontal: 14, paddingVertical: 13,
                 marginBottom: 16,
               }}>
-                <Mail size={17} color={emailFocus ? '#2d5c3e' : colors.muted} style={{ marginRight: 10 }} />
+                <Mail size={17} color={emailFocus ? brandAccent : colors.muted} style={{ marginRight: 10 }} />
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
@@ -230,7 +233,7 @@ export default function Login({ navigation }: any) {
                 paddingHorizontal: 14, paddingVertical: 13,
                 marginBottom: 12,
               }}>
-                <Lock size={17} color={passFocus ? '#2d5c3e' : colors.muted} style={{ marginRight: 10 }} />
+                <Lock size={17} color={passFocus ? brandAccent : colors.muted} style={{ marginRight: 10 }} />
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
@@ -253,7 +256,7 @@ export default function Login({ navigation }: any) {
                 onPress={() => navigation.navigate('Forgot')}
                 style={{ alignSelf: 'flex-end' }}
               >
-                <Text style={{ color: '#2d5c3e', fontSize: 13, fontWeight: '700' }}>
+                <Text style={{ color: brandAccent, fontSize: 13, fontWeight: '700' }}>
                   Forgot Password?
                 </Text>
               </TouchableOpacity>
@@ -265,23 +268,23 @@ export default function Login({ navigation }: any) {
               disabled={loading}
               activeOpacity={0.88}
               style={{
-                backgroundColor: loading ? '#5a8c6f' : '#2d5c3e',
+                backgroundColor: loading ? colors.muted : brandAccent,
                 borderRadius: 16, height: 58,
                 flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
                 marginBottom: 16,
-                shadowColor: '#2d5c3e',
+                shadowColor: brandAccent,
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.3, shadowRadius: 10, elevation: 5,
               }}
             >
               {loading ? (
-                <ActivityIndicator color="white" size="small" />
+                <ActivityIndicator color={primaryActionText} size="small" />
               ) : (
                 <>
-                  <Text style={{ fontSize: 17, fontWeight: '800', color: 'white', marginRight: 6 }}>
+                  <Text style={{ fontSize: 17, fontWeight: '800', color: primaryActionText, marginRight: 6 }}>
                     Sign In
                   </Text>
-                  <ArrowRight size={18} color="rgba(255,255,255,0.8)" />
+                  <ArrowRight size={18} color={isDark ? colors.primaryDark : 'rgba(255,255,255,0.8)'} />
                 </>
               )}
             </TouchableOpacity>
@@ -292,7 +295,7 @@ export default function Login({ navigation }: any) {
                 Do not have an account?{' '}
               </Text>
               <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-                <Text style={{ color: '#2d5c3e', fontSize: 14, fontWeight: '700' }}>
+                <Text style={{ color: brandAccent, fontSize: 14, fontWeight: '700' }}>
                   Sign Up
                 </Text>
               </TouchableOpacity>

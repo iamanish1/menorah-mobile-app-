@@ -8,6 +8,10 @@ import { palettes } from "@/theme/colors";
 export default function CrisisHelp({ navigation }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const headerBg = isDark ? colors.primaryDark : colors.primary;
+  const dangerBg = colors.error + (isDark ? '18' : '0A');
+  const dangerBorder = colors.error + (isDark ? '35' : '20');
 
   const emergencyNumbers = [
     {
@@ -21,14 +25,14 @@ export default function CrisisHelp({ navigation }: any) {
     {
       title: 'Use your local crisis helpline',
       description: 'If you are outside this region, contact your local emergency number or an official crisis helpline.',
-      color: '#FEF3C7',
-      textColor: '#92400E'
+      color: isDark ? colors.accentLight : '#FEF3C7',
+      textColor: isDark ? colors.accent : '#92400E'
     },
     {
       title: 'Tell someone nearby',
       description: 'If you may harm yourself or someone else, reach out to a trusted person nearby while contacting emergency services.',
-      color: '#FEE2E2',
-      textColor: '#991B1B'
+      color: colors.error + (isDark ? '18' : '14'),
+      textColor: colors.error
     }
   ];
 
@@ -40,7 +44,7 @@ export default function CrisisHelp({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
       <View style={{
-        backgroundColor: colors.primary,
+        backgroundColor: headerBg,
         paddingHorizontal: 16,
         paddingVertical: 20,
         flexDirection: 'row',
@@ -64,18 +68,18 @@ export default function CrisisHelp({ navigation }: any) {
       <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 24 }} showsVerticalScrollIndicator={false}>
         {/* Emergency Alert */}
         <View style={{
-          backgroundColor: '#EF4444' + '0A',
+          backgroundColor: dangerBg,
           borderWidth: 1,
-          borderColor: '#EF4444' + '20',
+          borderColor: dangerBorder,
           borderRadius: 20,
           padding: 16,
           marginBottom: 24
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <AlertTriangle size={24} color="#EF4444" style={{ marginRight: 12 }} />
+            <AlertTriangle size={24} color={colors.error} style={{ marginRight: 12 }} />
             <View style={{ flex: 1 }}>
               <Text style={{
-                color: '#EF4444',
+                color: colors.error,
                 fontWeight: '600',
                 fontSize: 18,
                 marginBottom: 8
@@ -83,7 +87,7 @@ export default function CrisisHelp({ navigation }: any) {
                 Need Immediate Help?
               </Text>
               <Text style={{
-                color: '#EF4444',
+                color: colors.error,
                 lineHeight: 20
               }}>
                 If you are in crisis or having thoughts of self-harm, please call emergency services immediately.
@@ -119,13 +123,13 @@ export default function CrisisHelp({ navigation }: any) {
                 <View style={{
                   width: 48,
                   height: 48,
-                  backgroundColor: '#EF4444' + '1A',
+                  backgroundColor: colors.error + (isDark ? '20' : '1A'),
                   borderRadius: 24,
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginRight: 16
                 }}>
-                  <Phone size={24} color="#EF4444" />
+                  <Phone size={24} color={colors.error} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{
@@ -146,7 +150,7 @@ export default function CrisisHelp({ navigation }: any) {
                   <Text style={{
                     fontSize: 16,
                     fontWeight: '700',
-                    color: '#EF4444'
+                    color: colors.error
                   }}>
                     {item.number}
                   </Text>
