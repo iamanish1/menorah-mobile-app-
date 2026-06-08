@@ -3,7 +3,10 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { KeyFeaturesJourneySection } from '@/components/landing/KeyFeaturesJourneySection';
 import { MenorahHomeHero } from '@/components/landing/MenorahHomeHero';
+import { SupportDirectoryPreviewSection } from '@/components/landing/SupportDirectoryPreviewSection';
+import { SupportPathwaySection } from '@/components/landing/SupportPathwaySection';
 import { WhatWeDoSection } from '@/components/landing/WhatWeDoSection';
 
 export default function HomePage() {
@@ -27,9 +30,12 @@ export default function HomePage() {
   if (isAuthed) return null;
 
   return (
-    <>
+    <div data-menorah-landing-theme="source">
       <MenorahHomeHero />
+      <KeyFeaturesJourneySection />
+      <SupportDirectoryPreviewSection />
+      <SupportPathwaySection />
       <WhatWeDoSection />
-    </>
+    </div>
   );
 }

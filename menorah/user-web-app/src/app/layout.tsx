@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import './landing-effects.css';
 import { Providers } from './providers';
+import { SiteLoadingScreen } from '@/components/site/SiteLoadingScreen';
 
 export const metadata: Metadata = {
   title: 'Menorah Health – Mental Well-being',
@@ -12,6 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
+        <SiteLoadingScreen />
         <script
           dangerouslySetInnerHTML={{
             __html: `

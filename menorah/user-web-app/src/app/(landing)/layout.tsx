@@ -1,3 +1,3 @@
 export default function LandingLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <div data-menorah-landing-theme="source">{children}</div>;
 }
