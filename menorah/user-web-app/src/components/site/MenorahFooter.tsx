@@ -1,11 +1,11 @@
-import Link from 'next/link';
+import Link from "next/link";
 
 const footerLinks = [
-  { label: 'Home', href: '/' },
-  { label: 'About Us', href: '/about-us' },
-  { label: "FAQ's", href: '/faq' },
-  { label: 'Contact Us', href: '/contact-us' },
-  { label: "Founder's Note", href: '/founders-note' },
+  { label: "Home", href: "/" },
+  { label: "About Us", href: "/about-us" },
+  { label: "FAQ's", href: "/faq" },
+  { label: "Contact Us", href: "/contact-us" },
+  { label: "Founder's Note", href: "/founders-note" }
 ];
 
 export function MenorahFooter() {
