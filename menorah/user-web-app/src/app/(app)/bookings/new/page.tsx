@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Video, MessageCircle, Headphones, ChevronRight, ArrowLeft, Calendar, Clock, User, CreditCard, ShieldCheck, CheckCircle } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Avatar, Button, Spinner } from '@/components/ui';
+import { Avatar, Button, SegmentedControl, Spinner } from '@/components/ui';
 import { formatCurrency } from '@/lib/utils';
 import type { SessionType } from '@/types';
 
@@ -37,6 +37,12 @@ interface BookingDraft {
   concerns?: string;
   goals?: string;
 }
+
+const genderPreferenceOptions: { value: NonNullable<BookingDraft['genderPreference']>; label: string }[] = [
+  { value: 'any', label: 'No preference' },
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+];
 
 const sessionTypes = [
   { type: 'video' as SessionType, label: 'Video Call', icon: Video, desc: 'Face-to-face video session' },
@@ -280,20 +286,12 @@ function NewBookingForm() {
 
           <div className="card p-5 space-y-3">
             <h2 className="font-semibold text-gray-900">Session duration</h2>
-            <div className="grid grid-cols-4 gap-2">
-              {durations.map((d) => (
-                <button
-                  key={d}
-                  onClick={() => set('sessionDuration', d)}
-                  className={`py-3 rounded-xl text-sm font-medium border-2 transition-colors
-                    ${draft.sessionDuration === d
-                      ? 'border-primary-500 bg-primary-50 text-primary-700'
-                      : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-                >
-                  {d} min
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              ariaLabel="Session duration"
+              value={String(draft.sessionDuration)}
+              options={durations.map((duration) => ({ value: String(duration), label: `${duration} min` }))}
+              onChange={(value) => set('sessionDuration', Number(value))}
+            />
           </div>
 
           {/* Counsellor availability summary */}
@@ -361,20 +359,12 @@ function NewBookingForm() {
             {!counsellorId && (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">Counsellor gender preference</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['any', 'male', 'female'] as const).map((g) => (
-                    <button
-                      key={g}
-                      onClick={() => set('genderPreference', g)}
-                      className={`py-2.5 rounded-xl text-sm font-medium border-2 capitalize transition-colors
-                        ${draft.genderPreference === g
-                          ? 'border-primary-500 bg-primary-50 text-primary-700'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-                    >
-                      {g === 'any' ? 'No preference' : g}
-                    </button>
-                  ))}
-                </div>
+                <SegmentedControl
+                  ariaLabel="Counsellor gender preference"
+                  value={draft.genderPreference ?? 'any'}
+                  options={genderPreferenceOptions}
+                  onChange={(value) => set('genderPreference', value as NonNullable<BookingDraft['genderPreference']>)}
+                />
               </div>
             )}
 

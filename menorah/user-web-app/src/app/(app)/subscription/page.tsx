@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle, Crown, Zap, Star, CreditCard, Shield } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Button, Badge } from '@/components/ui';
+import { Button, Badge, SegmentedControl } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency } from '@/lib/utils';
 
@@ -197,6 +197,14 @@ export default function SubscriptionPage() {
           <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">{error}</div>
         </div>
       )}
+
+      <SegmentedControl
+        ariaLabel="Subscription plan"
+        className="mx-auto mb-6 max-w-xl"
+        value={selected}
+        options={plans.map(({ name, type, icon }) => ({ label: name, value: type, icon }))}
+        onChange={(value) => setSelected(value as Plan['type'])}
+      />
 
       {/* Plan cards */}
       <div className="grid md:grid-cols-3 gap-4 max-w-4xl mx-auto mb-8">

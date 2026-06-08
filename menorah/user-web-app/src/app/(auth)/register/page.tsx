@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Eye, EyeOff, Mail, Lock, User, Phone, Calendar } from 'lucide-react';
-import { Button, Input } from '@/components/ui';
+import { Button, Input, Select } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
 // Backend validation rules:
@@ -115,12 +115,9 @@ export default function RegisterPage() {
         />
 
         <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-gray-700">
-            Gender <span className="text-red-500">*</span>
-          </label>
-          <select className="input-field" {...register('gender')}>
+          <Select label="Gender" required {...register('gender')}>
             <option value="male">Male</option>
-          </select>
+          </Select>
           {errors.gender && <p className="text-sm text-red-500">{errors.gender.message}</p>}
         </div>
 

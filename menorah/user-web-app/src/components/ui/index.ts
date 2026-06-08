@@ -4,3 +4,6 @@ export { Badge }    from './Badge';
 export { Avatar }   from './Avatar';
 export { Modal }    from './Modal';
 export { Spinner }  from './Spinner';
+export { Select }   from './Select';
+export { SegmentedControl } from './SegmentedControl';
+export { ToggleSwitch } from './ToggleSwitch';

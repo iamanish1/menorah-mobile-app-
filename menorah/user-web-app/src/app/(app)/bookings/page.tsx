@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Plus, Video, MessageCircle, Headphones, Clock } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Badge, Button, Spinner } from '@/components/ui';
+import { Badge, Button, SegmentedControl, Spinner } from '@/components/ui';
 import { formatBookingDate, formatCurrency, getStatusColor } from '@/lib/utils';
 import { useSocket } from '@/context/SocketContext';
 
@@ -59,18 +59,13 @@ export default function BookingsPage() {
       </div>
 
       {/* Status tabs */}
-      <div className="flex gap-1.5 overflow-x-auto scrollbar-hide mb-6 pb-1">
-        {statusTabs.map(({ label, value }) => (
-          <button
-            key={label}
-            onClick={() => setStatus(value)}
-            className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap shrink-0 transition-colors
-              ${status === value ? 'bg-primary-600 text-white dark:bg-primary-500' : 'bg-white text-gray-600 border border-primary-100 hover:border-primary-300 dark:bg-primary-900 dark:text-primary-100 dark:border-primary-800'}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        ariaLabel="Booking status"
+        className="mb-6"
+        value={status ?? ''}
+        options={statusTabs.map(({ label, value }) => ({ label, value: value ?? '' }))}
+        onChange={(value) => setStatus(value || undefined)}
+      />
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20">

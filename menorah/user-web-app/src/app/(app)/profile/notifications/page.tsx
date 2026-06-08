@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { Button } from '@/components/ui';
+import { Button, ToggleSwitch } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
 interface Prefs { email: boolean; sms: boolean; push: boolean; }
@@ -61,14 +61,12 @@ export default function NotificationPrefsPage() {
               <p className="font-medium text-gray-900 text-sm">{label}</p>
               <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
             </div>
-            <button
-              onClick={() => toggle(key)}
-              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-4
-                ${prefs[key] ? 'bg-primary-600' : 'bg-gray-200'}`}
-            >
-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform
-                ${prefs[key] ? 'translate-x-5' : 'translate-x-0.5'}`} />
-            </button>
+            <ToggleSwitch
+              checked={prefs[key]}
+              label={`${label} toggle`}
+              className="ml-4"
+              onCheckedChange={() => toggle(key)}
+            />
           </div>
         ))}
       </div>

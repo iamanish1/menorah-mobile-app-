@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { X, SlidersHorizontal } from 'lucide-react';
-import { Button } from '@/components/ui';
+import { Button, Select } from '@/components/ui';
 import type { CounsellorFilters } from '@/types';
 
 interface FilterPanelProps {
@@ -84,10 +84,9 @@ export function FilterPanel({ filters, specializations, languages, onChange }: F
       {/* Specialization */}
       <div className="space-y-1.5">
         <label className="text-sm font-semibold text-gray-700 dark:text-primary-100">Specialization</label>
-        <select
+        <Select
           value={local.specialization || ''}
           onChange={(e) => set('specialization', e.target.value || undefined)}
-          className="input-field text-sm"
         >
           <option value="">All specializations</option>
           {specializations.length === 0 && (
@@ -96,16 +95,15 @@ export function FilterPanel({ filters, specializations, languages, onChange }: F
           {specializations.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Language */}
       <div className="space-y-1.5">
         <label className="text-sm font-semibold text-gray-700 dark:text-primary-100">Language</label>
-        <select
+        <Select
           value={local.language || ''}
           onChange={(e) => set('language', e.target.value || undefined)}
-          className="input-field text-sm"
         >
           <option value="">Any language</option>
           {languages.length === 0 && (
@@ -114,29 +112,28 @@ export function FilterPanel({ filters, specializations, languages, onChange }: F
           {languages.map((l) => (
             <option key={l} value={l}>{l}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Min Rating */}
       <div className="space-y-1.5">
         <label className="text-sm font-semibold text-gray-700 dark:text-primary-100">Minimum Rating</label>
-        <select
+        <Select
           value={local.minRating ?? 0}
           onChange={(e) => {
             const v = parseFloat(e.target.value);
             set('minRating', v > 0 ? v : undefined);
           }}
-          className="input-field text-sm"
         >
           {RATING_OPTIONS.map(({ value, label }) => (
             <option key={value} value={value}>{label}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Price Range */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-gray-700">Price Range (₹/hr)</label>
+        <label className="text-sm font-semibold text-gray-700 dark:text-primary-100">Price Range (₹/hr)</label>
         <div className="flex items-center gap-2">
           <input
             type="number"
@@ -161,15 +158,14 @@ export function FilterPanel({ filters, specializations, languages, onChange }: F
       {/* Sort By */}
       <div className="space-y-1.5">
         <label className="text-sm font-semibold text-gray-700 dark:text-primary-100">Sort by</label>
-        <select
+        <Select
           value={currentSort}
           onChange={(e) => handleSortChange(e.target.value)}
-          className="input-field text-sm"
         >
           {SORT_OPTIONS.map(({ value, label }) => (
             <option key={value} value={value}>{label}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <Button fullWidth onClick={apply}>Apply Filters</Button>

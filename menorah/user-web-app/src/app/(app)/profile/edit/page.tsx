@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ArrowLeft, Camera } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Avatar, Button, Input } from '@/components/ui';
+import { Avatar, Button, Input, Select } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
 const schema = z.object({
@@ -140,16 +140,13 @@ export default function EditProfilePage() {
             <Input label="Last name"  error={errors.lastName?.message}  {...register('lastName')} />
           </div>
           <Input label="Date of birth" type="date" {...register('dateOfBirth')} />
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-gray-700">Gender</label>
-            <select className="input-field" {...register('gender')}>
-              <option value="">Select gender</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="other">Other</option>
-              <option value="prefer-not-to-say">Prefer not to say</option>
-            </select>
-          </div>
+          <Select label="Gender" {...register('gender')}>
+            <option value="">Select gender</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+            <option value="other">Other</option>
+            <option value="prefer-not-to-say">Prefer not to say</option>
+          </Select>
           <Input label="Preferred language" placeholder="English" {...register('preferredLanguage')} />
         </div>
 
