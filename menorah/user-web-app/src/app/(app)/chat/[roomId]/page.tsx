@@ -240,7 +240,8 @@ export default function ChatThreadPage() {
             )}
 
             {messages.map((msg) => {
-              const isMe = msg.senderId === user?.id;
+              const myId = user?.id ?? (user as any)?._id?.toString();
+              const isMe = !!myId && msg.senderId === myId;
               return (
                 <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} gap-2`}>
                   {!isMe && (

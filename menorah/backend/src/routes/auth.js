@@ -552,8 +552,29 @@ router.post('/reset-password', [
 // @access  Private
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
-    res.json({ success: true, data: { user } });
+    const user = await User.findById(req.user._id).select('-password').lean();
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    // Return same shape as login/register so user.id is always a string everywhere
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user._id.toString(),
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone,
+          isEmailVerified: user.isEmailVerified,
+          isPhoneVerified: user.isPhoneVerified,
+          role: user.role,
+          profileImage: user.profileImage || null,
+          dateOfBirth: user.dateOfBirth,
+          gender: user.gender,
+          subscription: user.subscription,
+          notificationPreferences: user.notificationPreferences,
+        }
+      }
+    });
   } catch (error) {
     console.error('Get current user error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
