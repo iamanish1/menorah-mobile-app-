@@ -50,5 +50,6 @@ export default function App() {
         </ThemeProvider>
       </SafeAreaProvider>
     </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
