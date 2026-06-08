@@ -28,7 +28,20 @@ export function Sidebar() {
   const { unreadCount } = useNotifications();
 
   return (
-    <aside className="hidden lg:flex flex-col w-72 min-h-screen bg-white/90 border-r border-primary-100 fixed left-0 top-0 bottom-0 z-30 backdrop-blur dark:bg-primary-950/95 dark:border-primary-800">
+    <aside
+      aria-label="Primary navigation"
+      className={cn(
+        'group/sidebar hidden lg:flex fixed left-0 top-0 bottom-0 z-40 min-h-screen w-72 flex-col',
+        'border-r border-primary-100 bg-white/95 shadow-[0_22px_60px_-34px_rgba(17,24,39,0.55)] backdrop-blur-xl',
+        'transition-transform duration-300 ease-out will-change-transform',
+        '-translate-x-[calc(100%_-_1.15rem)] hover:translate-x-0 focus-within:translate-x-0 motion-reduce:transition-none',
+        'dark:border-primary-800 dark:bg-primary-950/95'
+      )}
+    >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute bottom-6 right-0 top-6 w-[1.15rem] rounded-r-2xl border-y border-r border-primary-100 bg-gradient-to-b from-primary-600 via-primary-500 to-primary-700 shadow-[10px_0_30px_-20px_rgba(45,122,92,0.85)] transition-opacity duration-200 group-hover/sidebar:opacity-0 group-focus-within/sidebar:opacity-0 dark:border-primary-700"
+      />
       {/* Logo */}
       <div className="px-6 py-5 border-b border-primary-100 dark:border-primary-800">
         <Link href="/discover" className="flex items-center gap-3">
