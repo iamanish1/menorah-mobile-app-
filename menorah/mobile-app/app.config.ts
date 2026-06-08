@@ -54,7 +54,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: 'Menorah Health',
     slug: 'menorah-health-app',
     owner: 'menorahsoftware',
-    version: '2.2.0',
+    version: '2.3.0',
     orientation: 'portrait',
     // ─── OTA Updates via EAS Update ──────────────────────────────────────────
     updates: {
@@ -84,7 +84,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#f0f9f4'
       },
       package: 'com.menorah.healthmobile',
-      versionCode: 10,
+      versionCode: 11,
       permissions: [
         'android.permission.CAMERA',
         'android.permission.RECORD_AUDIO',
