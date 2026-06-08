@@ -54,7 +54,8 @@ jobs:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: 'projects/873291355021/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'github-actions@menorah-health.iam.gserviceaccount.com'
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ secrets.GCP_AR_REGION }}-docker.pkg.dev --quiet
@@ -147,6 +148,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout (for cloudrun.yaml)
@@ -155,7 +159,8 @@ jobs:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: 'projects/873291355021/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'github-actions@menorah-health.iam.gserviceaccount.com'
 
       - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
