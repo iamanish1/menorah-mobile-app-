@@ -24,7 +24,17 @@ function clearCookie() {
 export const authStorage = {
   getToken(): string | null {
     if (typeof window === 'undefined') return null;
-    return sessionStorage.getItem(TOKEN_KEY);
+    const sessionToken = sessionStorage.getItem(TOKEN_KEY);
+    if (sessionToken) return sessionToken;
+    // Fall back to cookie so the session survives new tabs / browser restarts.
+    // The cookie carries the same token with a 7-day max-age.
+    const match = document.cookie.match(/(?:^|;\s*)mn_auth=([^;]+)/);
+    if (match) {
+      const token = decodeURIComponent(match[1]);
+      sessionStorage.setItem(TOKEN_KEY, token); // restore for fast subsequent reads
+      return token;
+    }
+    return null;
   },
 
   setToken(token: string): void {
