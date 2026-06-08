@@ -1,10 +1,11 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Search, CalendarDays, MessageCircle, User,
-  Bell, CreditCard, HeartPulse, LogOut,
+  Bell, CreditCard, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/Avatar';
@@ -44,14 +45,19 @@ export function Sidebar() {
       />
       {/* Logo */}
       <div className="px-6 py-5 border-b border-primary-100 dark:border-primary-800">
-        <Link href="/discover" className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl overflow-hidden shrink-0 shadow-sm">
-            <img src="/logo.png" alt="Menorah" className="w-full h-full object-cover" />
-          </div>
-          <div>
-            <p className="text-gray-950 dark:text-primary-50 font-black text-sm leading-tight">Menorah</p>
-            <p className="text-primary-700/70 dark:text-primary-100/60 text-[11px] font-semibold">Mind Over Matter</p>
-          </div>
+        <Link
+          href="/discover"
+          className="flex min-h-12 items-center gap-3 text-2xl font-semibold tracking-tight text-gray-950 transition-colors hover:text-primary-700 dark:text-primary-50 dark:hover:text-primary-100"
+        >
+          <Image
+            src="/menorah-logo.png"
+            alt="Menorah logo"
+            width={48}
+            height={48}
+            priority
+            className="h-12 w-12 shrink-0 rounded-full object-cover"
+          />
+          <span>Menorah</span>
         </Link>
       </div>
 
