@@ -50,10 +50,10 @@ export function MenorahNavbar({
         "flex items-center justify-between font-body transition-all duration-500 ease-out motion-reduce:transition-none",
         morphOnScroll
           ? cn(
-              "fixed left-1/2 z-[60] -translate-x-1/2 overflow-hidden border px-4 md:px-12 lg:px-20",
+              "fixed left-1/2 z-[60] -translate-x-1/2 overflow-hidden border",
               isFloating
-                ? "top-4 w-[calc(100%-1rem)] max-w-6xl rounded-full border-white/55 bg-background/45 py-3 shadow-[0_24px_90px_rgba(31,41,55,0.20)] backdrop-blur-[28px] backdrop-saturate-150 sm:top-5 sm:w-[calc(100%-3rem)] sm:px-5"
-                : "top-0 w-full max-w-[100vw] rounded-none border-transparent bg-transparent py-5"
+                ? "top-4 w-[calc(100%-1rem)] max-w-6xl rounded-full border-white/55 bg-background/45 px-2.5 py-3 shadow-[0_24px_90px_rgba(31,41,55,0.20)] backdrop-blur-[28px] backdrop-saturate-150 sm:top-5 sm:w-[calc(100%-3rem)] sm:px-3 md:px-3 lg:px-3 xl:px-4"
+                : "top-0 w-full max-w-[100vw] rounded-none border-transparent bg-transparent px-6 py-5 md:px-12 lg:px-20"
             )
           : cn(
               "relative z-10 px-6 py-5 md:px-12 lg:px-20",
