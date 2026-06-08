@@ -258,6 +258,163 @@ html.dark {
   }
 }
 
+html.dark .menorah-app-shell {
+  color-scheme: dark;
+  --app-primary: #a6f4c3;
+  --app-secondary: #6fb98d;
+  --app-accent: #a6f4c3;
+  --app-bg: #020604;
+  --app-sand: #0b1510;
+  --app-card: #07110b;
+  --app-text: #f7faf6;
+  --app-muted: #9aa39d;
+  --app-border: #213a2c;
+  --app-shadow: 0 24px 70px -48px rgba(166, 244, 195, 0.34);
+  background:
+    radial-gradient(circle at 92% 0%, rgba(166, 244, 195, 0.1) 0, transparent 23rem),
+    #020604;
+}
+
+html.dark .menorah-app-shell .card,
+html.dark .menorah-app-shell [class~="bg-white"],
+html.dark .menorah-app-shell [class~="bg-gray-50"],
+html.dark .menorah-app-shell [class~="bg-surface-50"],
+html.dark .menorah-app-shell [class~="bg-primary-50"],
+html.dark .menorah-app-shell [class~="dark:bg-primary-900"],
+html.dark .menorah-app-shell [class~="dark:bg-primary-900/70"],
+html.dark .menorah-app-shell [class~="dark:bg-primary-900/80"] {
+  background-color: #07110b;
+}
+
+html.dark .menorah-app-shell [class~="dark:bg-primary-950"],
+html.dark .menorah-app-shell [class~="dark:bg-primary-950/95"] {
+  background-color: rgba(2, 6, 4, 0.95);
+}
+
+html.dark .menorah-app-shell [class~="dark:bg-primary-800"],
+html.dark .menorah-app-shell [class~="dark:hover:bg-primary-800"]:hover,
+html.dark .menorah-app-shell [class~="hover:bg-primary-50"]:hover,
+html.dark .menorah-app-shell [class~="hover:bg-gray-50"]:hover {
+  background-color: #102016;
+}
+
+html.dark .menorah-app-shell [class~="bg-primary-600"],
+html.dark .menorah-app-shell [class~="bg-primary-500"],
+html.dark .menorah-app-shell [class~="dark:bg-primary-500"] {
+  background-color: #a6f4c3;
+  color: #06110b;
+}
+
+html.dark .menorah-app-shell [class~="bg-primary-600"] *,
+html.dark .menorah-app-shell [class~="bg-primary-500"] *,
+html.dark .menorah-app-shell [class~="dark:bg-primary-500"] * {
+  color: #06110b;
+}
+
+html.dark .menorah-app-shell [class~="hover:bg-primary-700"]:hover,
+html.dark .menorah-app-shell [class~="dark:hover:bg-primary-400"]:hover {
+  background-color: #bdf8d3;
+  color: #06110b;
+}
+
+html.dark .menorah-app-shell [class~="border-primary-100"],
+html.dark .menorah-app-shell [class~="border-primary-800"],
+html.dark .menorah-app-shell [class~="border-gray-50"],
+html.dark .menorah-app-shell [class~="border-gray-100"],
+html.dark .menorah-app-shell [class~="border-gray-200"],
+html.dark .menorah-app-shell [class~="dark:border-primary-800"],
+html.dark .menorah-app-shell [class~="dark:border-primary-700"] {
+  border-color: #213a2c;
+}
+
+html.dark .menorah-app-shell [class~="divide-primary-50"] > :not([hidden]) ~ :not([hidden]),
+html.dark .menorah-app-shell [class~="dark:divide-primary-800"] > :not([hidden]) ~ :not([hidden]),
+html.dark .menorah-app-shell [class~="divide-gray-50"] > :not([hidden]) ~ :not([hidden]),
+html.dark .menorah-app-shell [class~="divide-gray-100"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #213a2c;
+}
+
+html.dark .menorah-app-shell [class~="text-gray-950"],
+html.dark .menorah-app-shell [class~="text-gray-900"],
+html.dark .menorah-app-shell [class~="text-gray-800"],
+html.dark .menorah-app-shell [class~="text-primary-50"],
+html.dark .menorah-app-shell [class~="dark:text-primary-50"] {
+  color: #f7faf6;
+}
+
+html.dark .menorah-app-shell [class~="text-gray-700"],
+html.dark .menorah-app-shell [class~="text-gray-600"],
+html.dark .menorah-app-shell [class~="text-primary-100"],
+html.dark .menorah-app-shell [class~="dark:text-primary-100"] {
+  color: #c8d0ca;
+}
+
+html.dark .menorah-app-shell [class~="text-gray-500"],
+html.dark .menorah-app-shell [class~="text-gray-400"],
+html.dark .menorah-app-shell [class~="dark:text-primary-100/70"],
+html.dark .menorah-app-shell [class~="dark:text-primary-100/65"],
+html.dark .menorah-app-shell [class~="dark:text-primary-100/60"],
+html.dark .menorah-app-shell [class~="dark:text-primary-100/55"],
+html.dark .menorah-app-shell [class~="dark:text-primary-100/50"],
+html.dark .menorah-app-shell [class~="dark:text-primary-100/45"] {
+  color: #9aa39d;
+}
+
+html.dark .menorah-app-shell [class~="text-primary-600"],
+html.dark .menorah-app-shell [class~="text-primary-700"],
+html.dark .menorah-app-shell [class~="dark:text-primary-300"],
+html.dark .menorah-app-shell [class~="dark:text-primary-200/65"] {
+  color: #a6f4c3;
+}
+
+html.dark .menorah-app-shell .input-field {
+  background-color: #07110b;
+  border-color: #213a2c;
+  color: #f7faf6;
+}
+
+html.dark .menorah-app-shell .input-field::placeholder {
+  color: #6f7b72;
+}
+
+html.dark .menorah-app-shell .app-pill {
+  background-color: #07110b;
+  border-color: #213a2c;
+  color: #c8d0ca;
+}
+
+html.dark .menorah-app-shell .app-pill-active {
+  background-color: #a6f4c3;
+  border-color: #a6f4c3;
+  color: #06110b;
+}
+
+html.dark .menorah-app-shell .counsellor-profile-card {
+  background-color: #07110b;
+  border-color: #213a2c;
+  box-shadow: 0 24px 70px -48px rgba(166, 244, 195, 0.34);
+}
+
+html.dark .menorah-app-shell .counsellor-profile-card__body,
+html.dark .menorah-app-shell .counsellor-profile-card__stat,
+html.dark .menorah-app-shell .counsellor-profile-card__tag,
+html.dark .menorah-app-shell .counsellor-profile-card__waveform {
+  background-color: #07110b;
+  border-color: #213a2c;
+}
+
+html.dark .menorah-app-shell .counsellor-profile-card__outline-button {
+  background-color: #020604;
+  border-color: #a6f4c3;
+  color: #f7faf6;
+}
+
+html.dark .menorah-app-shell .counsellor-profile-card__outline-button:hover,
+html.dark .menorah-app-shell .counsellor-profile-card__book-button {
+  background-color: #a6f4c3;
+  color: #06110b;
+}
+
 @keyframes counsellor-card-enter {
   from {
     opacity: 0;

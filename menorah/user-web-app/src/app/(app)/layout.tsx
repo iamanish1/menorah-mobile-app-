@@ -6,7 +6,7 @@ import { BottomNav } from '@/components/layout/BottomNav';
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-[var(--app-bg)] text-gray-950 transition-colors dark:text-primary-50">
+      <div className="menorah-app-shell min-h-screen bg-[var(--app-bg)] text-gray-950 transition-colors dark:text-primary-50">
         <Sidebar />
         <Topbar />
 

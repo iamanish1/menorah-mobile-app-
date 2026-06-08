@@ -20,7 +20,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-50">
+      <div className="menorah-app-shell min-h-screen flex items-center justify-center bg-[var(--app-bg)] dark:text-primary-50">
         <div className="text-center space-y-3">
           <Spinner size="lg" />
           <p className="text-gray-500 text-sm">Loading…</p>
