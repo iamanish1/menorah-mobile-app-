@@ -101,82 +101,87 @@ spec:
             - name: MONGODB_URI
               valueFrom:
                 secretKeyRef:
-                  name: mongodb-uri
+                  name: MONGODB_URI
                   key: latest
             - name: REDIS_URL
               valueFrom:
                 secretKeyRef:
-                  name: redis-url        # points to Upstash TLS URL
+                  name: REDIS_URL
                   key: latest
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: jwt-secret
+                  name: JWT_SECRET
                   key: latest
             - name: JWT_REFRESH_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: jwt-refresh-secret
+                  name: JWT_REFRESH_SECRET
                   key: latest
             - name: ALLOWED_ORIGINS
               valueFrom:
                 secretKeyRef:
-                  name: allowed-origins
+                  name: ALLOWED_ORIGINS
                   key: latest
             - name: MSG91_AUTH_KEY
               valueFrom:
                 secretKeyRef:
-                  name: msg91-auth-key
+                  name: MSG91_AUTH_KEY
                   key: latest
             - name: MSG91_OTP_TEMPLATE_ID
               valueFrom:
                 secretKeyRef:
-                  name: msg91-otp-template-id
+                  name: MSG91_OTP_TEMPLATE_ID
                   key: latest
             - name: MSG91_SMS_TEMPLATE_ID
               valueFrom:
                 secretKeyRef:
-                  name: msg91-sms-template-id
+                  name: MSG91_SMS_TEMPLATE_ID
                   key: latest
             - name: MSG91_EMAIL_DOMAIN
               valueFrom:
                 secretKeyRef:
-                  name: msg91-email-domain
+                  name: MSG91_EMAIL_DOMAIN
                   key: latest
             - name: MSG91_EMAIL_TEMPLATE_ID
               valueFrom:
                 secretKeyRef:
-                  name: msg91-email-template-id
+                  name: MSG91_EMAIL_TEMPLATE_ID
                   key: latest
             - name: RAZORPAY_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: razorpay-key-id
+                  name: RAZORPAY_KEY_ID
                   key: latest
             - name: RAZORPAY_KEY_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: razorpay-key-secret
+                  name: RAZORPAY_KEY_SECRET
                   key: latest
             - name: RAZORPAY_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: razorpay-webhook-secret
+                  name: RAZORPAY_WEBHOOK_SECRET
                   key: latest
             - name: CLOUDINARY_CLOUD_NAME
               valueFrom:
                 secretKeyRef:
-                  name: cloudinary-cloud-name
+                  name: CLOUDINARY_CLOUD_NAME
                   key: latest
             - name: CLOUDINARY_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: cloudinary-api-key
+                  name: CLOUDINARY_API_KEY
                   key: latest
             - name: CLOUDINARY_API_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: cloudinary-api-secret
+                  name: CLOUDINARY_API_SECRET
+                  key: latest
+            - name: SENDGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: SENDGRID_API_KEY
                   key: latest
             # LiveKit — video call infrastructure
             - name: LIVEKIT_URL
@@ -186,12 +191,12 @@ spec:
             - name: LIVEKIT_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: livekit-api-key
+                  name: LIVEKIT_API_KEY
                   key: latest
             - name: LIVEKIT_API_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: livekit-api-secret
+                  name: LIVEKIT_API_SECRET
                   key: latest
 
           # ── Startup probe — wait for DB+Redis to connect ───────────────
