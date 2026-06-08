@@ -32,8 +32,8 @@ export default function ForgotPasswordPage() {
           <CheckCircle className="w-8 h-8 text-green-600" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Email sent!</h1>
-          <p className="text-gray-500 mt-2">
+          <h1 className="text-2xl font-black text-gray-950 dark:text-primary-50">Email sent!</h1>
+          <p className="text-gray-500 dark:text-primary-100/70 mt-2">
             We&apos;ve sent password reset instructions to<br />
             <span className="font-medium text-gray-700">{getValues('email')}</span>
           </p>
@@ -47,13 +47,13 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="space-y-6">
-      <Link href="/login" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
+      <Link href="/login" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 dark:text-primary-100/70 dark:hover:text-primary-50">
         <ArrowLeft className="w-4 h-4" /> Back to sign in
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Forgot password?</h1>
-        <p className="text-gray-500 mt-1">Enter your email and we&apos;ll send reset instructions.</p>
+        <h1 className="text-2xl font-black text-gray-950 dark:text-primary-50">Forgot password?</h1>
+        <p className="text-gray-500 dark:text-primary-100/70 mt-1">Enter your email and we&apos;ll send reset instructions.</p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

@@ -64,9 +64,9 @@ export default function ChatListPage() {
 
   return (
     <div className="page-container max-w-2xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
-        <p className="text-gray-500 mt-0.5">Chat with a counsellor</p>
+      <div className="mb-6 rounded-[1.75rem] border border-primary-100 bg-primary-50 px-5 py-5 dark:border-primary-800 dark:bg-primary-900/70">
+        <h1 className="app-page-heading">Messages</h1>
+        <p className="app-page-subtitle mt-0.5">Chat with a counsellor</p>
       </div>
 
       {isLoading ? (
@@ -78,11 +78,11 @@ export default function ChatListPage() {
 
           {/* ── Available Counsellors ── */}
           <section>
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            <h2 className="text-sm font-black text-gray-500 dark:text-primary-100/70 uppercase tracking-wide mb-3">
               Available Counsellors
             </h2>
             {availableCounsellors.length === 0 ? (
-              <div className="text-center py-10 text-gray-400">
+              <div className="card text-center py-10 text-gray-400 dark:text-primary-100/60">
                 <p className="text-sm">No counsellors available right now</p>
               </div>
             ) : (
@@ -92,7 +92,7 @@ export default function ChatListPage() {
                     key={c.id}
                     onClick={() => handleStartChat(c.counsellorId)}
                     disabled={startingChat === c.counsellorId}
-                    className="w-full flex items-center gap-3 p-4 rounded-2xl border border-gray-100 bg-white hover:bg-gray-50 transition-colors text-left disabled:opacity-60"
+                    className="w-full flex items-center gap-3 p-4 rounded-[1.4rem] border border-primary-100 bg-white hover:bg-primary-50 transition-colors text-left disabled:opacity-60 dark:border-primary-800 dark:bg-primary-900 dark:hover:bg-primary-800"
                   >
                     <Avatar
                       src={c.profileImage ?? undefined}
@@ -101,8 +101,8 @@ export default function ChatListPage() {
                       online={c.isOnline}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900">{c.name}</p>
-                      <p className="text-sm text-gray-500 truncate">
+                      <p className="font-bold text-gray-950 dark:text-primary-50">{c.name}</p>
+                      <p className="text-sm text-gray-500 dark:text-primary-100/65 truncate">
                         {c.specialization.length > 0 ? c.specialization.join(', ') : 'Counsellor'}
                       </p>
                     </div>
@@ -125,7 +125,7 @@ export default function ChatListPage() {
           {/* ── Existing Conversations ── */}
           {rooms.length > 0 && (
             <section>
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            <h2 className="text-sm font-black text-gray-500 dark:text-primary-100/70 uppercase tracking-wide mb-3">
                 Recent Conversations
               </h2>
               <div className="space-y-1">
@@ -133,7 +133,7 @@ export default function ChatListPage() {
                   <button
                     key={room.id}
                     onClick={() => router.push(`/chat/${room.id}`)}
-                    className="w-full flex items-center gap-3 p-4 rounded-2xl hover:bg-gray-50 transition-colors text-left"
+                    className="w-full flex items-center gap-3 p-4 rounded-[1.4rem] hover:bg-primary-50 transition-colors text-left dark:hover:bg-primary-900"
                   >
                     <Avatar
                       src={room.counsellorImage}
@@ -143,17 +143,17 @@ export default function ChatListPage() {
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <p className={`font-medium text-gray-900 ${room.unreadCount > 0 ? 'font-semibold' : ''}`}>
+                        <p className={`font-bold text-gray-950 dark:text-primary-50 ${room.unreadCount > 0 ? 'font-black' : ''}`}>
                           {room.counsellorName}
                         </p>
                         {room.lastMessageTime && (
-                          <span className="text-xs text-gray-400 shrink-0">
+                          <span className="text-xs text-gray-400 dark:text-primary-100/50 shrink-0">
                             {formatChatTime(room.lastMessageTime)}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center justify-between mt-0.5">
-                        <p className={`text-sm truncate ${room.unreadCount > 0 ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>
+                        <p className={`text-sm truncate ${room.unreadCount > 0 ? 'text-gray-900 dark:text-primary-50 font-medium' : 'text-gray-400 dark:text-primary-100/50'}`}>
                           {room.lastMessage ? truncate(room.lastMessage, 40) : 'No messages yet'}
                         </p>
                         {room.unreadCount > 0 && (

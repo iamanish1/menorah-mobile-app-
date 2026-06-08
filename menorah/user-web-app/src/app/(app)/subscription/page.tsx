@@ -159,8 +159,8 @@ export default function SubscriptionPage() {
           <Crown className="w-10 h-10 text-primary-600" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">You&apos;re subscribed!</h1>
-          <p className="text-gray-500 mt-2">Welcome to Menorah {selectedPlan.name} plan. Start booking sessions now.</p>
+          <h1 className="app-page-heading">You&apos;re subscribed!</h1>
+          <p className="app-page-subtitle mt-2">Welcome to Menorah {selectedPlan.name} plan. Start booking sessions now.</p>
         </div>
         <Button fullWidth onClick={() => window.location.href = '/bookings/new'}>
           Book a Session
@@ -171,18 +171,18 @@ export default function SubscriptionPage() {
 
   return (
     <div className="page-container">
-      <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Choose your plan</h1>
-        <p className="text-gray-500 mt-2">Unlimited access to certified mental health counsellors</p>
+      <div className="text-center mb-8 rounded-[1.75rem] border border-primary-100 bg-primary-50 px-5 py-6 dark:border-primary-800 dark:bg-primary-900/70">
+        <h1 className="app-page-heading">Choose your plan</h1>
+        <p className="app-page-subtitle mt-2">Unlimited access to certified mental health counsellors</p>
       </div>
 
       {/* Current subscription status */}
       {isActive && subscription && (
         <div className="max-w-2xl mx-auto mb-6">
-          <div className="card p-4 bg-primary-50 border-primary-200 flex items-center gap-3">
+          <div className="card p-4 bg-primary-50 border-primary-200 flex items-center gap-3 dark:bg-primary-900 dark:border-primary-700">
             <Crown className="w-5 h-5 text-primary-600 shrink-0" />
             <div className="flex-1">
-              <p className="font-medium text-primary-800 text-sm">
+              <p className="font-bold text-primary-800 dark:text-primary-100 text-sm">
                 Active {subscription.plan} plan
                 {subscription.endDate && ` • Renews ${new Date(subscription.endDate).toLocaleDateString()}`}
               </p>
@@ -194,7 +194,7 @@ export default function SubscriptionPage() {
 
       {error && (
         <div className="max-w-2xl mx-auto mb-4">
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div>
+          <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">{error}</div>
         </div>
       )}
 
@@ -208,7 +208,7 @@ export default function SubscriptionPage() {
               key={plan.id}
               onClick={() => setSelected(plan.type)}
               className={`card p-6 cursor-pointer transition-all relative
-                ${isSelected ? 'border-2 border-primary-500 shadow-md' : 'border-2 border-transparent hover:border-gray-200'}`}
+                ${isSelected ? 'border-2 border-primary-500 shadow-md' : 'border-2 border-transparent hover:border-primary-200 dark:hover:border-primary-700'}`}
             >
               {plan.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -219,20 +219,20 @@ export default function SubscriptionPage() {
               )}
 
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4
-                ${isSelected ? 'bg-primary-600 text-white' : 'bg-primary-50 text-primary-600'}`}>
+                ${isSelected ? 'bg-primary-600 text-white dark:bg-primary-500' : 'bg-primary-50 text-primary-600 dark:bg-primary-800 dark:text-primary-100'}`}>
                 <Icon className="w-6 h-6" />
               </div>
 
-              <h3 className="text-lg font-bold text-gray-900">{plan.name}</h3>
+              <h3 className="text-lg font-black text-gray-950 dark:text-primary-50">{plan.name}</h3>
               <div className="mt-1 mb-4">
-                <span className="text-3xl font-bold text-gray-900">{formatCurrency(plan.price, plan.currency)}</span>
-                <span className="text-gray-500 text-sm ml-1">/{plan.type === 'yearly' ? 'year' : plan.type === 'monthly' ? 'mo' : 'wk'}</span>
+                <span className="text-3xl font-black text-gray-950 dark:text-primary-50">{formatCurrency(plan.price, plan.currency)}</span>
+                <span className="text-gray-500 dark:text-primary-100/65 text-sm ml-1">/{plan.type === 'yearly' ? 'year' : plan.type === 'monthly' ? 'mo' : 'wk'}</span>
               </div>
-              <p className="text-sm text-primary-600 font-medium mb-4">{plan.sessionsIncluded} sessions included</p>
+              <p className="text-sm text-primary-600 dark:text-primary-300 font-bold mb-4">{plan.sessionsIncluded} sessions included</p>
 
               <ul className="space-y-2">
                 {plan.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-gray-600">
+                  <li key={f} className="flex items-start gap-2 text-sm text-gray-600 dark:text-primary-100/70">
                     <CheckCircle className="w-4 h-4 text-primary-500 shrink-0 mt-0.5" />
                     {f}
                   </li>
@@ -240,7 +240,7 @@ export default function SubscriptionPage() {
               </ul>
 
               {isSelected && (
-                <div className="mt-4 w-full py-2 bg-primary-600 text-white text-sm font-medium rounded-xl text-center">
+                <div className="mt-4 w-full py-2 bg-primary-600 text-white text-sm font-bold rounded-full text-center dark:bg-primary-500">
                   Selected
                 </div>
               )}
@@ -259,7 +259,7 @@ export default function SubscriptionPage() {
           Subscribe · {formatCurrency(selectedPlan.price, selectedPlan.currency)}
         </Button>
 
-        <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
+        <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400 dark:text-primary-100/50">
           <Shield className="w-3.5 h-3.5" />
           Secure payment · Cancel anytime
         </div>

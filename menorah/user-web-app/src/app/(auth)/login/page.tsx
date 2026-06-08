@@ -46,12 +46,12 @@ export default function LoginPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
-        <p className="text-gray-500 mt-1">Your well-being journey continues here</p>
+        <h1 className="text-2xl font-black text-gray-950 dark:text-primary-50">Welcome back</h1>
+        <p className="text-gray-500 dark:text-primary-100/70 mt-1">Your well-being journey continues here</p>
       </div>
 
       {serverError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+        <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">
           {serverError}
         </div>
       )}
@@ -74,7 +74,7 @@ export default function LoginPage() {
           autoComplete="current-password"
           leftIcon={<Lock className="w-4 h-4" />}
           rightIcon={
-            <button type="button" onClick={() => setShowPwd((p) => !p)} className="hover:text-gray-600">
+            <button type="button" onClick={() => setShowPwd((p) => !p)} className="hover:text-gray-600 dark:hover:text-primary-50">
               {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           }
@@ -93,7 +93,7 @@ export default function LoginPage() {
         </Button>
       </form>
 
-      <p className="text-center text-sm text-gray-500">
+      <p className="text-center text-sm text-gray-500 dark:text-primary-100/70">
         Don&apos;t have an account?{' '}
         <Link href="/register" className="text-primary-600 hover:text-primary-700 font-medium">
           Create account

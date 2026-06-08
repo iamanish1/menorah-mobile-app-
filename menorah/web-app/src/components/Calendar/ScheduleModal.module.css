@@ -27,7 +27,7 @@
   max-width: 600px;
   max-height: 90vh;
   overflow-y: auto;
-  background: #ffffff;
+  background: var(--color-bg-base);
   border-radius: var(--radius-lg);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18), 0 4px 16px rgba(0, 0, 0, 0.08);
   animation: slideUp 0.2s ease-out;
@@ -102,7 +102,7 @@
   gap: 8px;
   margin: 16px 24px 0;
   padding: 10px 14px;
-  background: #fef2f2;
+  background: var(--color-danger-light);
   border: 1px solid #fecaca;
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
@@ -199,7 +199,7 @@
 }
 
 .dateButtonActive .todayDot {
-  background: rgba(255, 255, 255, 0.7);
+  background: color-mix(in srgb, var(--color-bg-base) 72%, transparent);
 }
 
 /* No slots */

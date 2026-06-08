@@ -3,7 +3,7 @@
   align-items: center;
   justify-content: center;
   font-weight: var(--font-weight-semibold);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   transition: background-color var(--transition-base), color var(--transition-base), border-color var(--transition-base);
   cursor: pointer;
   border: none;
@@ -24,15 +24,15 @@
 
 /* Sizes */
 .sizeSm {
-  padding: 7px 14px;
+  padding: 8px 16px;
   font-size: var(--font-size-sm);
-  min-height: 34px;
+  min-height: 38px;
 }
 
 .sizeMd {
-  padding: 10px 20px;
+  padding: 11px 22px;
   font-size: var(--font-size-sm);
-  min-height: 40px;
+  min-height: 44px;
 }
 
 .sizeLg {
@@ -45,6 +45,7 @@
 .variantPrimary {
   background: var(--color-primary);
   color: var(--color-text-invert);
+  box-shadow: var(--shadow-md);
 }
 
 .variantPrimary:hover:not(:disabled) {
@@ -61,7 +62,7 @@
 }
 
 .variantOutline {
-  background: transparent;
+  background: var(--color-bg-base);
   color: var(--color-primary);
   border: 1.5px solid var(--color-primary);
 }

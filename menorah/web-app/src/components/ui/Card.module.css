@@ -8,7 +8,7 @@
 
 .cardHover:hover {
   box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   border-color: var(--color-primary);
 }
 

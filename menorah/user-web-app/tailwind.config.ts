@@ -2,6 +2,7 @@ import type { Config } from 'tailwindcss';
 import animate from 'tailwindcss-animate';
 
 const config: Config = {
+  darkMode: 'class',
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -45,6 +46,7 @@ const config: Config = {
           200: '#e5e7eb',
           card:  '#ffffff',
           muted: '#f9fafb',
+          dark: '#1c4133',
         },
         // Landing page semantic tokens
         background: 'hsl(var(--background))',

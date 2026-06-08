@@ -217,6 +217,10 @@
 .header {
   margin-bottom: var(--spacing-2xl);
   animation: fadeIn 0.3s ease-out;
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-2xl);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
 }
 
 .headerTitle {

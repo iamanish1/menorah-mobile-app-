@@ -116,15 +116,15 @@ function VerifyOtpForm() {
       </div>
 
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Verify your email</h1>
-        <p className="text-gray-500 mt-2 text-sm leading-relaxed">
+        <h1 className="text-2xl font-black text-gray-950 dark:text-primary-50">Verify your email</h1>
+        <p className="text-gray-500 dark:text-primary-100/70 mt-2 text-sm leading-relaxed">
           We sent a 6-digit code to<br />
           <span className="font-semibold text-gray-800">{displayEmail}</span>
         </p>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+        <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">
           {error}
         </div>
       )}
@@ -156,7 +156,7 @@ function VerifyOtpForm() {
         <button
           onClick={handleResend}
           disabled={countdown > 0 || resending || !user?.email}
-          className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-primary-600
+          className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-primary-600 dark:text-primary-100/70 dark:hover:text-primary-50
                      disabled:opacity-50 disabled:cursor-not-allowed mx-auto transition-colors"
         >
           <RefreshCw className={`w-4 h-4 ${resending ? 'animate-spin' : ''}`} />
