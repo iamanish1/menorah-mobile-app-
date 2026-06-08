@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { Booking, DashboardStats, TodaySchedule, ApiResponse, CounsellorStatus } from '@/types';
+import { Article, ArticlePagination, Booking, DashboardStats, TodaySchedule, ApiResponse, CounsellorStatus } from '@/types';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -327,6 +327,39 @@ class ApiClient {
       return {
         success: false,
         message: errorResponse?.message || error.message || 'Failed to get dashboard',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async getArticles(params?: {
+    page?: number;
+    limit?: number;
+    category?: string;
+    q?: string;
+  }): Promise<ApiResponse<{ articles: Article[]; pagination: ArticlePagination }>> {
+    try {
+      const response = await this.client.get('/articles', { params });
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        message: errorResponse?.message || error.message || 'Failed to load articles',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async getArticle(slug: string): Promise<ApiResponse<{ article: Article }>> {
+    try {
+      const response = await this.client.get(`/articles/${encodeURIComponent(slug)}`);
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        message: errorResponse?.message || error.message || 'Failed to load article',
         errors: errorResponse?.errors || [],
       };
     }

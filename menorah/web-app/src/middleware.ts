@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // All dashboard routes require counsellor authentication
-const PROTECTED_PREFIXES = ['/dashboard', '/bookings', '/chat', '/profile', '/settings'];
+const PROTECTED_PREFIXES = ['/dashboard', '/bookings', '/chat', '/articles', '/profile', '/settings'];
 const AUTH_ROUTES = ['/login', '/register'];
 
 export function middleware(request: NextRequest) {
@@ -29,6 +29,7 @@ export const config = {
     '/dashboard/:path*',
     '/bookings/:path*',
     '/chat/:path*',
+    '/articles/:path*',
     '/profile/:path*',
     '/settings/:path*',
     '/login',

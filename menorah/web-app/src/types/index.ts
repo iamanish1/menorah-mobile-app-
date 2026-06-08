@@ -74,3 +74,51 @@ export interface ApiResponse<T> {
   errors?: any[];
 }
 
+export type ArticleContentBlockType =
+  | 'heading'
+  | 'paragraph'
+  | 'quote'
+  | 'bullet_list'
+  | 'image'
+  | 'callout';
+
+export interface ArticleContentBlock {
+  type: ArticleContentBlockType | string;
+  text?: string | null;
+  level?: number | null;
+  items?: string[];
+  url?: string | null;
+  alt?: string | null;
+  caption?: string | null;
+}
+
+export interface Article {
+  id?: string;
+  _id?: string;
+  title: string;
+  slug: string;
+  excerpt?: string;
+  category?: string;
+  tags?: string[];
+  coverImageUrl?: string | null;
+  coverImagePublicId?: string | null;
+  imagePrompt?: string;
+  contentBlocks?: ArticleContentBlock[];
+  seoTitle?: string;
+  seoDescription?: string;
+  canonicalUrl?: string;
+  status?: string;
+  generatedByAi?: boolean;
+  reviewedByHuman?: boolean;
+  publishedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ArticlePagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
+

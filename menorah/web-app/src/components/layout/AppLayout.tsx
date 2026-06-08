@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, CalendarDays, MessageSquare, User2,
-  LogOut, Menu,
+  LogOut, Menu, Newspaper,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import NotificationCenter from '@/components/Notifications/NotificationCenter';
@@ -20,6 +20,7 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/bookings',  label: 'Bookings',  icon: CalendarDays },
   { href: '/chat',      label: 'Chat',      icon: MessageSquare },
+  { href: '/articles',  label: 'Articles',  icon: Newspaper },
   { href: '/profile',   label: 'Profile',   icon: User2 },
 ];
 

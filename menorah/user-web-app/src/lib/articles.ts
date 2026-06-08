@@ -159,7 +159,10 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
 }
 
 function getApiBaseUrl() {
-  const baseUrl = process.env.MENORAH_API_BASE_URL?.trim();
+  const baseUrl =
+    process.env.MENORAH_API_BASE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_API_URL?.trim() ||
+    process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 
   if (!baseUrl) {
     return null;
@@ -176,7 +179,8 @@ function buildApiUrl(path: string, params?: Record<string, string | undefined>) 
   }
 
   try {
-    const url = new URL(`${baseUrl}${path}`);
+    const apiPath = baseUrl.endsWith("/api") && path.startsWith("/api/") ? path.slice(4) : path;
+    const url = new URL(`${baseUrl}${apiPath}`);
 
     Object.entries(params ?? {}).forEach(([key, value]) => {
       if (value) {
