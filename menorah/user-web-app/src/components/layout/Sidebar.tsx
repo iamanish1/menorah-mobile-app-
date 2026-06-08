@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useCallback, useRef } from 'react';
 import {
   Search, CalendarDays, MessageCircle, User,
-  Bell, CreditCard, LogOut,
+  Bell, CreditCard, LogOut, Newspaper,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/Avatar';
@@ -21,6 +21,7 @@ const navItems = [
   { href: '/chat',          label: 'Chat',           icon: MessageCircle },
   { href: '/subscription',  label: 'Subscription',   icon: CreditCard },
   { href: '/notifications', label: 'Notifications',  icon: Bell },
+  { href: '/articles',      label: 'Articles',       icon: Newspaper },
   { href: '/profile',       label: 'Profile',        icon: User },
 ];
 
