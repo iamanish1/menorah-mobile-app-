@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Video, MessageCircle, Headphones, ChevronRight, ArrowLeft, Calendar, Clock, User, CreditCard, ShieldCheck, CheckCircle } from 'lucide-react';
@@ -51,16 +51,78 @@ const sessionTypes = [
 const durations = [30, 45, 60, 90];
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+type AvailabilitySchedule = Record<string, { start: string; end: string; isAvailable: boolean }>;
+const pad = (n: number) => String(n).padStart(2, '0');
 
 /** Return a datetime-local string that is at least `minMinutes` from now */
 function minDateTime(minMinutes = 60): string {
   const d = new Date(Date.now() + minMinutes * 60 * 1000);
-  const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function toDateValue(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function parseTimeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+
+function minutesToTime(minutes: number): string {
+  return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+}
+
+function formatTimeLabel(time: string): string {
+  return new Date(`2000-01-01T${time}`).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function buildDateOptions() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + index);
+
+    return {
+      value: toDateValue(date),
+      eyebrow: index === 0 ? 'Today' : index === 1 ? 'Tomorrow' : date.toLocaleDateString(undefined, { weekday: 'short' }),
+      label: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      day: date.toLocaleDateString(undefined, { weekday: 'long' }),
+    };
+  });
+}
+
+function getScheduleForDate(dateValue: string, availability?: AvailabilitySchedule) {
+  if (!availability) return undefined;
+  const date = new Date(`${dateValue}T00:00`);
+  return availability[DAYS[date.getDay()]];
+}
+
+function buildTimeOptions(dateValue: string, availability?: AvailabilitySchedule) {
+  const schedule = getScheduleForDate(dateValue, availability);
+  if (availability && (!schedule || !schedule.isAvailable)) return [];
+
+  const start = parseTimeToMinutes(schedule?.start ?? '09:00');
+  const end = parseTimeToMinutes(schedule?.end ?? '20:00');
+  const earliest = Date.now() + 60 * 60 * 1000;
+
+  return Array.from({ length: Math.max(0, Math.floor((end - start) / 30) + 1) }, (_, index) => {
+    const value = minutesToTime(start + index * 30);
+    return {
+      value,
+      label: formatTimeLabel(value),
+      disabled: new Date(`${dateValue}T${value}`).getTime() < earliest,
+    };
+  });
+}
+
 /** Validate a datetime-local value against the counsellor's availability schedule */
-function checkSlotAvailability(scheduledAt: string, availability: Record<string, { start: string; end: string; isAvailable: boolean }> | undefined): string | null {
+function checkSlotAvailability(scheduledAt: string, availability: AvailabilitySchedule | undefined): string | null {
   if (!scheduledAt || !availability) return null;
   const date = new Date(scheduledAt);
   const day = DAYS[date.getDay()];
@@ -85,6 +147,7 @@ function NewBookingForm() {
   const router        = useRouter();
 
   const [step, setStep]   = useState<Step>('session');
+  const [selectedDate, setSelectedDate] = useState(() => minDateTime(60).slice(0, 10));
   const [draft, setDraft] = useState<BookingDraft>({
     counsellorId,
     sessionType:      'video',
@@ -105,6 +168,29 @@ function NewBookingForm() {
 
   const set = <K extends keyof BookingDraft>(key: K, value: BookingDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
+
+  const dateOptions = useMemo(() => buildDateOptions(), []);
+  const timeOptions = useMemo(
+    () => buildTimeOptions(selectedDate, counsellor?.availability),
+    [selectedDate, counsellor?.availability]
+  );
+  const selectedTime = draft.scheduledAt.startsWith(`${selectedDate}T`) ? draft.scheduledAt.slice(11, 16) : '';
+  const selectedDateOption = dateOptions.find((option) => option.value === selectedDate);
+  const selectedDateTimeLabel = draft.scheduledAt
+    ? new Date(draft.scheduledAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+    : null;
+
+  const selectDate = (dateValue: string) => {
+    setSelectedDate(dateValue);
+    const currentTime = draft.scheduledAt.slice(11, 16);
+    const nextTimeOptions = buildTimeOptions(dateValue, counsellor?.availability);
+    const canKeepTime = nextTimeOptions.some((option) => option.value === currentTime && !option.disabled);
+    set('scheduledAt', canKeepTime ? `${dateValue}T${currentTime}` : '');
+  };
+
+  const selectTime = (timeValue: string) => {
+    set('scheduledAt', `${selectedDate}T${timeValue}`);
+  };
 
   const handleBook = async () => {
     if (!draft.scheduledAt) {
@@ -325,13 +411,82 @@ function NewBookingForm() {
               Date &amp; Time <span className="text-red-500 text-sm font-normal">*required</span>
             </h2>
             <p className="text-xs text-gray-500">Select when you'd like your session (minimum 1 hour from now)</p>
-            <input
-              type="datetime-local"
-              min={minDateTime(60)}
-              value={draft.scheduledAt}
-              onChange={(e) => set('scheduledAt', e.target.value)}
-              className="input-field"
-            />
+            <div className="space-y-4">
+              <div>
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-400 dark:text-primary-100/55">Choose day</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {dateOptions.map((option) => {
+                    const optionTimes = buildTimeOptions(option.value, counsellor?.availability);
+                    const disabled = optionTimes.every((time) => time.disabled);
+                    const active = selectedDate === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={disabled}
+                        aria-pressed={active}
+                        onClick={() => selectDate(option.value)}
+                        className={`min-h-[4.75rem] rounded-2xl border px-3 py-3 text-left transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-45
+                          ${active
+                            ? 'border-primary-500 bg-primary-50 text-primary-800 shadow-sm dark:border-primary-300 dark:bg-primary-300 dark:text-[#06110b]'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300 hover:bg-primary-50/50 dark:border-primary-800 dark:bg-[#07110b] dark:text-primary-100 dark:hover:border-primary-500 dark:hover:bg-[#102016]'}`}
+                      >
+                        <span className="block text-[11px] font-black uppercase tracking-wide opacity-70">{option.eyebrow}</span>
+                        <span className="mt-1 block text-base font-black">{option.label}</span>
+                        <span className="mt-0.5 block text-xs font-semibold opacity-65">{option.day}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-400 dark:text-primary-100/55">Choose time</p>
+                  {selectedDateOption && (
+                    <span className="text-xs font-semibold text-gray-500 dark:text-primary-100/65">{selectedDateOption.label}</span>
+                  )}
+                </div>
+                {timeOptions.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {timeOptions.map((option) => {
+                      const active = selectedTime === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          disabled={option.disabled}
+                          aria-pressed={active}
+                          onClick={() => selectTime(option.value)}
+                          className={`min-h-12 rounded-2xl border px-3 text-sm font-black transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-35
+                            ${active
+                              ? 'border-primary-500 bg-primary-600 text-white shadow-sm dark:border-primary-300 dark:bg-primary-300 dark:text-[#06110b]'
+                              : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300 hover:bg-primary-50/50 dark:border-primary-800 dark:bg-[#07110b] dark:text-primary-100 dark:hover:border-primary-500 dark:hover:bg-[#102016]'}`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-4 text-sm font-semibold text-gray-500 dark:border-primary-800 dark:bg-[#07110b] dark:text-primary-100/65">
+                    No available times for this day. Choose another day.
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3 dark:border-primary-800 dark:bg-[#102016]">
+                <Clock className="h-4 w-4 shrink-0 text-primary-600 dark:text-primary-200" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-primary-100/65">Selected session time</p>
+                  <p className="truncate text-sm font-black text-gray-950 dark:text-primary-50">
+                    {selectedDateTimeLabel ?? 'Pick a day and time'}
+                  </p>
+                </div>
+              </div>
+            </div>
             {!draft.scheduledAt && (
               <p className="text-xs text-amber-600">Please choose a date and time to continue.</p>
             )}
