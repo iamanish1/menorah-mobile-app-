@@ -94,18 +94,17 @@ export default function ChatThreadPage() {
 
     const onNewMessage = (msg: ChatMessage) => {
       setMessages((prev) => {
-        if (msg.senderId === user?.id) {
-          // Replace optimistic placeholder with real message from server
-          const optIdx = prev.findIndex(
-            (m) => m.id.startsWith('opt_') && m.content === msg.content
-          );
-          if (optIdx !== -1) {
-            const next = [...prev];
-            next[optIdx] = msg;
-            return next;
-          }
-          return prev; // already added optimistically, skip duplicate
+        // Replace optimistic placeholder if content matches (own sent messages)
+        const optIdx = prev.findIndex(
+          (m) => m.id.startsWith('opt_') && m.content === msg.content
+        );
+        if (optIdx !== -1) {
+          const next = [...prev];
+          next[optIdx] = msg;
+          return next;
         }
+        // Deduplicate by real message ID
+        if (prev.some((m) => m.id === msg.id)) return prev;
         return [...prev, msg];
       });
       if (msg.senderId !== user?.id) {
