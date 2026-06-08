@@ -53,6 +53,9 @@ const adminRoutes = require("./routes/admin");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust nginx/Cloudflare proxy so rate-limit reads real client IP from X-Forwarded-For.
+app.set('trust proxy', 1);
+
 // ─── CORS configuration ────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
