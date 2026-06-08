@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Play } from "lucide-react";
-import { Button } from "@/components/landing-ui/button";
+import { Button } from "@/components/ui/button";
 import { MenorahNavbar } from "@/components/site/MenorahNavbar";
 
 const videoUrl =
