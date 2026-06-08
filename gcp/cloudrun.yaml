@@ -183,6 +183,11 @@ spec:
                 secretKeyRef:
                   name: SENDGRID_API_KEY
                   key: latest
+            - name: WEB_APP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: WEB_APP_URL
+                  key: latest
             # LiveKit — video call infrastructure
             - name: LIVEKIT_URL
               value: wss://livekit.menorahhealth.app
