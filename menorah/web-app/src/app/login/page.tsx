@@ -8,6 +8,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import Button from '@/components/ui/Button';
+import ThemeToggle from '@/components/theme/ThemeToggle';
 import styles from './page.module.css';
 
 const loginSchema = z.object({
@@ -100,6 +101,9 @@ export default function LoginPage() {
 
       {/* Right form panel */}
       <div className={styles.formPanel}>
+        <div style={{ position: 'absolute', top: 20, right: 20, zIndex: 2 }}>
+          <ThemeToggle />
+        </div>
         <Link href="/" className={styles.mobileLogo}>
           <span className={styles.mobileLogoIcon}>M</span>
           <span className={styles.mobileLogoName}>Menorah Health</span>

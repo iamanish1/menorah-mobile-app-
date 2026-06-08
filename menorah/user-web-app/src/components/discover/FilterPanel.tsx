@@ -67,14 +67,14 @@ export function FilterPanel({ filters, specializations, languages, onChange }: F
     <div className="card p-5 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 font-semibold text-gray-900">
+        <div className="flex items-center gap-2 font-black text-gray-950 dark:text-primary-50">
           <SlidersHorizontal className="w-4 h-4" />
           Filters
         </div>
         {hasFilters && (
           <button
             onClick={reset}
-            className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
+            className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 dark:text-red-300"
           >
             <X className="w-3 h-3" /> Clear all
           </button>
@@ -83,7 +83,7 @@ export function FilterPanel({ filters, specializations, languages, onChange }: F
 
       {/* Specialization */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-gray-700">Specialization</label>
+        <label className="text-sm font-semibold text-gray-700 dark:text-primary-100">Specialization</label>
         <select
           value={local.specialization || ''}
           onChange={(e) => set('specialization', e.target.value || undefined)}
@@ -101,7 +101,7 @@ export function FilterPanel({ filters, specializations, languages, onChange }: F
 
       {/* Language */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-gray-700">Language</label>
+        <label className="text-sm font-semibold text-gray-700 dark:text-primary-100">Language</label>
         <select
           value={local.language || ''}
           onChange={(e) => set('language', e.target.value || undefined)}
@@ -119,7 +119,7 @@ export function FilterPanel({ filters, specializations, languages, onChange }: F
 
       {/* Min Rating */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-gray-700">Minimum Rating</label>
+        <label className="text-sm font-semibold text-gray-700 dark:text-primary-100">Minimum Rating</label>
         <select
           value={local.minRating ?? 0}
           onChange={(e) => {
@@ -146,7 +146,7 @@ export function FilterPanel({ filters, specializations, languages, onChange }: F
             onChange={(e) => set('minPrice', e.target.value ? parseInt(e.target.value) : undefined)}
             className="input-field text-sm"
           />
-          <span className="text-gray-400 text-sm shrink-0">to</span>
+          <span className="text-gray-400 dark:text-primary-100/50 text-sm shrink-0">to</span>
           <input
             type="number"
             placeholder="Max"
@@ -160,7 +160,7 @@ export function FilterPanel({ filters, specializations, languages, onChange }: F
 
       {/* Sort By */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-gray-700">Sort by</label>
+        <label className="text-sm font-semibold text-gray-700 dark:text-primary-100">Sort by</label>
         <select
           value={currentSort}
           onChange={(e) => handleSortChange(e.target.value)}

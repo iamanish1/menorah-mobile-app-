@@ -44,12 +44,12 @@ function ResetPasswordForm() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Set new password</h1>
-        <p className="text-gray-500 mt-1">Choose a strong password for your account.</p>
+        <h1 className="text-2xl font-black text-gray-950 dark:text-primary-50">Set new password</h1>
+        <p className="text-gray-500 dark:text-primary-100/70 mt-1">Choose a strong password for your account.</p>
       </div>
 
       {serverError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+        <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">
           {serverError}
         </div>
       )}
@@ -61,7 +61,7 @@ function ResetPasswordForm() {
           placeholder="Min 8 characters"
           leftIcon={<Lock className="w-4 h-4" />}
           rightIcon={
-            <button type="button" onClick={() => setShowPwd((p) => !p)} className="hover:text-gray-600">
+            <button type="button" onClick={() => setShowPwd((p) => !p)} className="hover:text-gray-600 dark:hover:text-primary-50">
               {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           }

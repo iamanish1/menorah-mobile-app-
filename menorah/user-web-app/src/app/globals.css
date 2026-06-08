@@ -5,6 +5,17 @@
 @tailwind utilities;
 
 :root {
+  --app-primary: #2d7a5c;
+  --app-secondary: #3d9470;
+  --app-accent: #ff7d10;
+  --app-bg: #f9fafb;
+  --app-sand: #f0f9f4;
+  --app-card: #ffffff;
+  --app-text: #111827;
+  --app-muted: #6b7280;
+  --app-border: #e5e7eb;
+  --app-shadow: 0 10px 30px -18px rgba(45, 122, 92, 0.35);
+
   /* Landing page semantic tokens */
   --background: 0 0% 100%;
   --foreground: 210 14% 17%;
@@ -43,12 +54,27 @@
   --shadow-dashboard: 0 25px 80px -12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
+html.dark {
+  --app-primary: #3d9470;
+  --app-secondary: #5fb08e;
+  --app-accent: #ff9b37;
+  --app-bg: #0e241c;
+  --app-sand: #143326;
+  --app-card: #1c4133;
+  --app-text: #f9fafb;
+  --app-muted: #9ca3af;
+  --app-border: #25624a;
+  --app-shadow: 0 18px 38px -24px rgba(0, 0, 0, 0.85);
+}
+
 @layer base {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
   body {
     font-family: 'Inter', system-ui, sans-serif;
-    @apply bg-surface-50 text-gray-900 antialiased;
+    background: var(--app-bg);
+    color: var(--app-text);
+    @apply antialiased;
   }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { @apply bg-transparent; }
@@ -58,26 +84,49 @@
 
 @layer components {
   .card {
-    @apply bg-white rounded-xl shadow-card border border-gray-100;
+    background: var(--app-card);
+    border-color: color-mix(in srgb, var(--app-border) 86%, transparent);
+    box-shadow: var(--app-shadow);
+    @apply rounded-3xl border;
   }
   .btn-primary {
-    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg
-           px-4 py-2.5 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-full
+           px-5 py-3 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-secondary {
-    @apply bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-lg
-           px-4 py-2.5 border border-gray-200 transition-colors duration-150;
+    background: var(--app-card);
+    color: var(--app-text);
+    border-color: var(--app-border);
+    @apply hover:bg-primary-50/70 dark:hover:bg-primary-900/70 font-semibold rounded-full
+           px-5 py-3 border transition-colors duration-150;
   }
   .input-field {
-    @apply w-full px-4 py-3 rounded-lg border border-gray-200 bg-white
-           text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2
+    background: var(--app-card);
+    color: var(--app-text);
+    border-color: var(--app-border);
+    @apply w-full px-4 py-3 rounded-2xl border
+           placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2
            focus:ring-primary-500 focus:border-transparent transition-all duration-150;
   }
   .section-title {
-    @apply text-xl font-semibold text-gray-900;
+    color: var(--app-text);
+    @apply text-xl font-bold;
   }
   .page-container {
     @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6;
+  }
+  .app-page-heading {
+    @apply text-2xl sm:text-3xl font-black tracking-tight text-gray-950 dark:text-primary-50;
+  }
+  .app-page-subtitle {
+    @apply text-sm sm:text-base text-gray-500 dark:text-primary-100/70;
+  }
+  .app-pill {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-primary-100 bg-white px-4 text-sm font-bold text-gray-700 shadow-sm transition-colors
+           hover:bg-primary-50 dark:border-primary-800 dark:bg-primary-900 dark:text-primary-100 dark:hover:bg-primary-800;
+  }
+  .app-pill-active {
+    @apply border-primary-600 bg-primary-600 text-white hover:bg-primary-700 dark:border-primary-500 dark:bg-primary-500 dark:text-white;
   }
 }
 
@@ -88,4 +137,20 @@
     scrollbar-width: none;
   }
   .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+  html.dark .bg-white { background-color: var(--app-card); }
+  html.dark .bg-gray-50,
+  html.dark .bg-surface-50 { background-color: var(--app-sand); }
+  html.dark .border-gray-50,
+  html.dark .border-gray-100,
+  html.dark .border-gray-200 { border-color: var(--app-border); }
+  html.dark .divide-gray-50 > :not([hidden]) ~ :not([hidden]),
+  html.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--app-border); }
+  html.dark .text-gray-950,
+  html.dark .text-gray-900,
+  html.dark .text-gray-800 { color: var(--app-text); }
+  html.dark .text-gray-700,
+  html.dark .text-gray-600 { color: rgba(249, 250, 251, 0.82); }
+  html.dark .text-gray-500,
+  html.dark .text-gray-400 { color: var(--app-muted); }
 }

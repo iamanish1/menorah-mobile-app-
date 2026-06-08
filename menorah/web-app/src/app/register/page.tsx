@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import ThemeToggle from '@/components/theme/ThemeToggle';
 import styles from './page.module.css';
 
 const STORAGE_KEY = 'menorah_counsellor_application_email';
@@ -259,7 +260,7 @@ export default function RegisterPage() {
                 Unfortunately, your application was not approved by our admin team.
               </p>
               {rejectionReason && (
-                <div style={{ margin: '16px auto 0', maxWidth: 380, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', textAlign: 'left' }}>
+                <div style={{ margin: '16px auto 0', maxWidth: 380, background: 'var(--color-danger-light)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 14, padding: '12px 16px', textAlign: 'left' }}>
                   <p style={{ margin: 0, fontSize: '0.875rem', color: '#991b1b' }}>
                     <strong>Reason:</strong> {rejectionReason}
                   </p>
@@ -318,6 +319,9 @@ export default function RegisterPage() {
 
   return (
     <div className={styles.container}>
+      <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 20 }}>
+        <ThemeToggle />
+      </div>
       <div className={styles.content}>
         <div className={styles.header}>
           <div className={styles.logoContainer}>
@@ -474,7 +478,7 @@ export default function RegisterPage() {
                   </div>
                 </div>
 
-                <div className={styles.formGroup} style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '12px 16px' }}>
+                <div className={styles.formGroup} style={{ background: 'var(--color-info-light)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: 14, padding: '12px 16px' }}>
                   <p style={{ margin: 0, fontSize: '0.875rem', color: '#1d4ed8', lineHeight: 1.5 }}>
                     <strong>Note:</strong> You do not need to set a password. Once your profile is approved by our admin team, your login credentials will be provided to you.
                   </p>

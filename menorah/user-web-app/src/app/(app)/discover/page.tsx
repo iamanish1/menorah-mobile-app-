@@ -47,11 +47,11 @@ export default function DiscoverPage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">
+      <div className="mb-6 rounded-[1.75rem] border border-primary-100 bg-primary-50 px-5 py-5 shadow-[0_14px_32px_-26px_rgba(45,122,92,0.5)] dark:border-primary-800 dark:bg-primary-900/70">
+        <h1 className="app-page-heading">
           Find your counsellor
         </h1>
-        <p className="text-gray-500 mt-1">
+        <p className="app-page-subtitle mt-1">
           Browse {pagination?.total ?? ''} certified men&apos;s mental health counsellors
         </p>
       </div>
@@ -59,16 +59,16 @@ export default function DiscoverPage() {
       {/* Search bar */}
       <div className="flex gap-3 mb-6">
         <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-primary-100/55" />
           <input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="Search by name or specialization…"
-            className="input-field pl-10 pr-10"
+            className="input-field pl-10 pr-10 rounded-full"
           />
           {searchInput && (
-            <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-primary-100/55 dark:hover:text-primary-50">
               <X className="w-4 h-4" />
             </button>
           )}
@@ -106,7 +106,7 @@ export default function DiscoverPage() {
               <Spinner size="lg" />
             </div>
           ) : counsellors.length === 0 ? (
-            <div className="text-center py-20 text-gray-500">
+            <div className="card text-center py-20 text-gray-500 dark:text-primary-100/70">
               <Search className="w-12 h-12 mx-auto mb-3 text-gray-300" />
               <p className="font-medium">No counsellors found</p>
               <p className="text-sm mt-1">Try adjusting your filters or search terms</p>
@@ -117,7 +117,7 @@ export default function DiscoverPage() {
           ) : (
             <>
               <div className="flex items-center justify-between mb-4">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-500 dark:text-primary-100/70">
                   {isFetching ? 'Updating…' : `Showing ${counsellors.length} of ${pagination?.total ?? counsellors.length} counsellors`}
                 </p>
               </div>

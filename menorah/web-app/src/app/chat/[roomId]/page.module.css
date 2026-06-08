@@ -23,7 +23,7 @@
   align-items: center;
   gap: var(--spacing-md);
   padding: var(--spacing-md) var(--spacing-lg);
-  background: #ffffff;
+  background: var(--color-bg-base);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
@@ -230,7 +230,7 @@
 .messageBubble {
   padding: 10px 14px;
   border-radius: var(--radius-lg);
-  background: #ffffff;
+  background: var(--color-bg-base);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-sm);
 }
@@ -266,7 +266,7 @@
   display: flex;
   gap: var(--spacing-sm);
   padding: var(--spacing-md) var(--spacing-lg);
-  background: #ffffff;
+  background: var(--color-bg-base);
   border-top: 1px solid var(--color-border);
   flex-shrink: 0;
   align-items: flex-end;
@@ -291,7 +291,7 @@
 .messageInput:focus {
   outline: none;
   border-color: var(--color-primary);
-  background: #ffffff;
+  background: var(--color-bg-base);
   box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 

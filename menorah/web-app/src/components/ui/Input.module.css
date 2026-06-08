@@ -5,7 +5,7 @@
   line-height: var(--line-height-normal);
   color: var(--color-text-base);
   background-color: var(--color-bg-base);
-  border: 2px solid var(--color-border);
+  border: 1.5px solid var(--color-border);
   border-radius: var(--radius-xl);
   transition: all var(--transition-base);
   outline: none;
@@ -13,12 +13,11 @@
 
 .input:hover {
   border-color: var(--color-primary);
-  border-color: rgba(49, 72, 48, 0.3);
 }
 
 .input:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(49, 72, 48, 0.1);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 
 .input::placeholder {

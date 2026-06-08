@@ -46,10 +46,10 @@ export default function BookingsPage() {
 
   return (
     <div className="page-container">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between gap-4 mb-6 rounded-[1.75rem] border border-primary-100 bg-primary-50 px-5 py-5 dark:border-primary-800 dark:bg-primary-900/70">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Bookings</h1>
-          <p className="text-gray-500 mt-0.5">Track and manage your sessions</p>
+          <h1 className="app-page-heading">My Bookings</h1>
+          <p className="app-page-subtitle mt-0.5">Track and manage your sessions</p>
         </div>
         <Link href="/bookings/new">
           <Button size="sm">
@@ -64,8 +64,8 @@ export default function BookingsPage() {
           <button
             key={label}
             onClick={() => setStatus(value)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 transition-colors
-              ${status === value ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300'}`}
+            className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap shrink-0 transition-colors
+              ${status === value ? 'bg-primary-600 text-white dark:bg-primary-500' : 'bg-white text-gray-600 border border-primary-100 hover:border-primary-300 dark:bg-primary-900 dark:text-primary-100 dark:border-primary-800'}`}
           >
             {label}
           </button>
@@ -77,7 +77,7 @@ export default function BookingsPage() {
           <Spinner size="lg" />
         </div>
       ) : bookings.length === 0 ? (
-        <div className="text-center py-20 text-gray-500">
+          <div className="card text-center py-20 text-gray-500 dark:text-primary-100/70">
           <CalendarDays className="w-12 h-12 mx-auto mb-3 text-gray-300" />
           <p className="font-medium">No bookings yet</p>
           <p className="text-sm mt-1">Book your first session with a counsellor</p>
@@ -92,23 +92,23 @@ export default function BookingsPage() {
             return (
               <Link key={booking.id} href={`/bookings/${booking.id}`}>
                 <div className="card p-4 hover:shadow-md transition-shadow flex gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-2xl bg-primary-50 dark:bg-primary-800 flex items-center justify-center shrink-0">
                     <Icon className="w-5 h-5 text-primary-600" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="font-medium text-gray-900 truncate">
+                      <p className="font-bold text-gray-950 dark:text-primary-50 truncate">
                         {booking.counsellorName ?? 'Counsellor to be assigned'}
                       </p>
                       <Badge className={getStatusColor(booking.status)}>
                         {booking.status}
                       </Badge>
                     </div>
-                    <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1">
+                    <p className="text-sm text-gray-500 dark:text-primary-100/65 mt-0.5 flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {booking.scheduledAt ? formatBookingDate(booking.scheduledAt) : 'Schedule pending'}
                     </p>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 dark:text-primary-100/50">
                       <span className="capitalize">{booking.sessionType} • {booking.sessionDuration} min</span>
                       {booking.amount && <span>{formatCurrency(booking.amount, booking.currency)}</span>}
                     </div>

@@ -14,14 +14,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="w-full space-y-1.5">
         {label && (
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-semibold text-gray-700 dark:text-primary-100">
             {label}
             {props.required && <span className="text-red-500 ml-0.5">*</span>}
           </label>
         )}
         <div className="relative">
           {leftIcon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-primary-200/70">
               {leftIcon}
             </div>
           )}
@@ -29,23 +29,23 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             {...props}
             className={cn(
-              'w-full px-4 py-3 rounded-lg border bg-white text-gray-900',
-              'placeholder-gray-400 transition-all duration-150',
+              'w-full px-4 py-3 rounded-2xl border bg-white text-gray-900 dark:bg-primary-900 dark:text-primary-50',
+              'placeholder-gray-400 dark:placeholder-primary-100/45 transition-all duration-150',
               'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent',
-              error ? 'border-red-400 focus:ring-red-400' : 'border-gray-200',
+              error ? 'border-red-400 focus:ring-red-400' : 'border-gray-200 dark:border-primary-800',
               leftIcon && 'pl-10',
               rightIcon && 'pr-10',
               className
             )}
           />
           {rightIcon && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-primary-200/70">
               {rightIcon}
             </div>
           )}
         </div>
         {error && <p className="text-sm text-red-500 flex items-center gap-1">{error}</p>}
-        {hint && !error && <p className="text-sm text-gray-500">{hint}</p>}
+        {hint && !error && <p className="text-sm text-gray-500 dark:text-primary-100/65">{hint}</p>}
       </div>
     );
   }

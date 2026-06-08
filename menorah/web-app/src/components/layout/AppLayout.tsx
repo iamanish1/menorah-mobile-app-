@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, CalendarDays, MessageSquare, User2,
-  LogOut, Menu, HeartPulse,
+  LogOut, Menu,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import NotificationCenter from '@/components/Notifications/NotificationCenter';
+import ThemeToggle from '@/components/theme/ThemeToggle';
 import styles from './AppLayout.module.css';
 
 interface AppLayoutProps {
@@ -129,6 +130,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           </div>
 
           <div className={styles.topbarRight}>
+            <ThemeToggle />
             <div className={styles.topbarUser}>
               <div className={styles.topbarAvatar}>
                 <span>{initials}</span>

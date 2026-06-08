@@ -784,7 +784,7 @@ export default function ProfilePage() {
 
             {editingBank ? (
               <>
-                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 'var(--spacing-lg)', fontSize: 'var(--font-size-sm)', color: '#92400e' }}>
+                <div style={{ background: 'var(--color-warning-light)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: 14, padding: '10px 14px', marginBottom: 'var(--spacing-lg)', fontSize: 'var(--font-size-sm)', color: 'var(--color-warning)' }}>
                   Your bank details are used by the admin to process your earnings payout via Razorpay. Make sure the details are accurate.
                 </div>
                 <div className={styles.infoGrid}>

@@ -396,7 +396,7 @@
 .currencySelect {
   padding: 12px 16px;
   border-right: 2px solid var(--color-border);
-  background: linear-gradient(to bottom right, var(--color-sand), #f9f1d8);
+  background: linear-gradient(to bottom right, var(--color-sand), var(--color-bg-subtle));
   color: var(--color-text-base);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);

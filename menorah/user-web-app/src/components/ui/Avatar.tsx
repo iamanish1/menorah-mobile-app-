@@ -37,13 +37,13 @@ export function Avatar({ src, name, size = 'md', className, online }: AvatarProp
           sizes="80px"
         />
       ) : (
-        <div className={cn('rounded-full bg-primary-600 text-white flex items-center justify-center font-semibold w-full h-full')}>
+        <div className={cn('rounded-full bg-primary-600 text-white flex items-center justify-center font-bold w-full h-full shadow-sm dark:bg-primary-500')}>
           {getInitials(name)}
         </div>
       )}
       {online !== undefined && (
         <span className={cn(
-          'absolute bottom-0 right-0 rounded-full border-white',
+          'absolute bottom-0 right-0 rounded-full border-white dark:border-primary-900',
           online ? 'bg-green-500' : 'bg-gray-400',
           dotSizes[size]
         )} />

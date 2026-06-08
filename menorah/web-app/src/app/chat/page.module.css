@@ -27,6 +27,10 @@
   margin-bottom: var(--spacing-xl);
   flex-wrap: wrap;
   gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-2xl);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
 }
 
 .pageTitle {
@@ -78,7 +82,7 @@
 
 .skeletonItem {
   height: 84px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, var(--color-bg-subtle) 25%, var(--color-border-light) 50%, var(--color-bg-subtle) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: var(--radius-xl);
@@ -133,7 +137,7 @@
   align-items: center;
   gap: var(--spacing-md);
   padding: var(--spacing-md) var(--spacing-lg);
-  background: #ffffff;
+  background: var(--color-bg-base);
   border-radius: var(--radius-xl);
   border: 1px solid var(--color-border);
   text-decoration: none;
@@ -182,7 +186,7 @@
   width: 13px;
   height: 13px;
   background: #10b981;
-  border: 2px solid white;
+  border: 2px solid var(--color-bg-base);
   border-radius: 50%;
 }
 

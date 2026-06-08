@@ -19,8 +19,8 @@ export function BottomNav() {
   const { unreadCount } = useNotifications();
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-100 safe-area-pb">
-      <div className="flex items-stretch">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 border-t border-primary-100 bg-white/95 safe-area-pb backdrop-blur dark:border-primary-800 dark:bg-primary-950/95">
+      <div className="flex items-stretch px-1">
         {tabs.map(({ href, label, icon: Icon }) => {
           const active  = pathname.startsWith(href);
           const isNotif = href === '/notifications';
@@ -28,13 +28,13 @@ export function BottomNav() {
             <Link
               key={href}
               href={href}
-              className="flex flex-col items-center flex-1 min-w-0 pb-2 relative"
+              className="flex flex-col items-center flex-1 min-w-0 pb-2 pt-1 relative"
             >
               {/* Active bar at the very top of the nav */}
               <span
                 className={cn(
                   'absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-b-full transition-all duration-200',
-                  active ? 'bg-primary-600' : 'bg-transparent'
+                  active ? 'bg-primary-600 dark:bg-primary-400' : 'bg-transparent'
                 )}
               />
 
@@ -42,7 +42,7 @@ export function BottomNav() {
                 <Icon
                   className={cn(
                     'w-[22px] h-[22px] transition-colors',
-                    active ? 'text-primary-600' : 'text-gray-400'
+                    active ? 'text-primary-600 dark:text-primary-300' : 'text-gray-400 dark:text-primary-100/45'
                   )}
                 />
                 {isNotif && unreadCount > 0 && (
@@ -55,7 +55,7 @@ export function BottomNav() {
               <span
                 className={cn(
                   'text-[10px] font-medium mt-0.5 truncate transition-colors',
-                  active ? 'text-primary-600' : 'text-gray-400'
+                  active ? 'text-primary-600 dark:text-primary-300' : 'text-gray-400 dark:text-primary-100/45'
                 )}
               >
                 {label}
