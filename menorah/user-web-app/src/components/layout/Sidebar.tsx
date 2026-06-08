@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useCallback, useRef } from 'react';
 import {
   Search, CalendarDays, MessageCircle, User,
   Bell, CreditCard, LogOut,
@@ -27,10 +28,21 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { unreadCount } = useNotifications();
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  const handleMouseLeave = useCallback(() => {
+    const activeElement = document.activeElement;
+
+    if (activeElement instanceof HTMLElement && sidebarRef.current?.contains(activeElement)) {
+      activeElement.blur();
+    }
+  }, []);
 
   return (
     <aside
+      ref={sidebarRef}
       aria-label="Primary navigation"
+      onMouseLeave={handleMouseLeave}
       className={cn(
         'group/sidebar hidden lg:flex fixed left-0 top-0 bottom-0 z-40 min-h-screen w-72 flex-col',
         'border-r border-primary-100 bg-white/95 shadow-[0_22px_60px_-34px_rgba(17,24,39,0.55)] backdrop-blur-xl',
