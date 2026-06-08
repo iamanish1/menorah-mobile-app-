@@ -2,10 +2,8 @@
 
 import { useRef } from "react";
 import Link from "next/link";
-import { Play } from "lucide-react";
 import { AnimatedProductMockupSection } from "@/components/landing/AnimatedProductMockupSection";
 import { Button } from "@/components/landing-ui/button";
-import { MenorahNavbar } from "@/components/site/MenorahNavbar";
 
 const videoUrl =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260319_015952_e1deeb12-8fb7-4071-a42a-60779fc64ab6.mp4";
@@ -25,7 +23,6 @@ export function MenorahHomeHero() {
           playsInline
           aria-hidden="true"
         />
-        <MenorahNavbar className="z-30" />
         <HeroSection />
         <AnimatedProductMockupSection scrollRootRef={heroRef} />
       </div>
@@ -48,16 +45,7 @@ function HeroSection() {
 
         <div className="mt-5 flex items-center gap-3">
           <Button asChild className="rounded-full px-6 py-5 font-body text-sm font-medium">
-            <Link href="/contact-us">Book a demo</Link>
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Play product video"
-            className="h-11 w-11 rounded-full border-0 bg-background shadow-play hover:bg-background/80"
-          >
-            <Play className="h-4 w-4 fill-foreground text-foreground" aria-hidden="true" />
+            <Link href="/register">Book a demo</Link>
           </Button>
         </div>
       </section>

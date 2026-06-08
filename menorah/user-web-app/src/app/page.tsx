@@ -4,10 +4,13 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { KeyFeaturesJourneySection } from '@/components/landing/KeyFeaturesJourneySection';
+import { FaqSection } from '@/components/landing/FaqSection';
 import { MenorahHomeHero } from '@/components/landing/MenorahHomeHero';
 import { SupportDirectoryPreviewSection } from '@/components/landing/SupportDirectoryPreviewSection';
 import { SupportPathwaySection } from '@/components/landing/SupportPathwaySection';
 import { WhatWeDoSection } from '@/components/landing/WhatWeDoSection';
+import { MenorahFooter } from '@/components/site/MenorahFooter';
+import { MenorahNavbar } from '@/components/site/MenorahNavbar';
 
 export default function HomePage() {
   const { isAuthed, isLoading } = useAuth();
@@ -31,11 +34,14 @@ export default function HomePage() {
 
   return (
     <div data-menorah-landing-theme="source">
+      <MenorahNavbar morphOnScroll />
       <MenorahHomeHero />
       <KeyFeaturesJourneySection />
       <SupportDirectoryPreviewSection />
       <SupportPathwaySection />
       <WhatWeDoSection />
+      <FaqSection />
+      <MenorahFooter />
     </div>
   );
 }

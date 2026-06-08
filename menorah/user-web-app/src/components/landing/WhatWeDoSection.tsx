@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Building2, Eye, Flag, MessageSquare, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MenorahFooter } from "@/components/site/MenorahFooter";
 
 const sections = [
   {
@@ -80,9 +79,7 @@ const sections = [
 
 export function WhatWeDoSection() {
   const headerRef = useRef<HTMLDivElement>(null);
-  const footerRef = useRef<HTMLDivElement>(null);
   const headerVisible = useInView(headerRef);
-  const footerVisible = useInView(footerRef);
   const reducedMotion = usePrefersReducedMotion();
 
   return (
@@ -113,16 +110,6 @@ export function WhatWeDoSection() {
           ))}
         </div>
 
-        <div
-          ref={footerRef}
-          className="transition duration-700 ease-out"
-          style={{
-            opacity: reducedMotion || footerVisible ? 1 : 0,
-            transform: reducedMotion || footerVisible ? "translate3d(0, 0, 0)" : "translate3d(0, 28px, 0)"
-          }}
-        >
-          <MenorahFooter />
-        </div>
       </div>
 
       <button
