@@ -117,6 +117,34 @@ jobs:
             echo "==> Pulling image ${IMAGE}"
             docker pull "${IMAGE}"
 
+            echo "==> Ensuring local Redis is running"
+            docker pull redis:7-alpine
+            if docker inspect menorah-redis >/dev/null 2>&1; then
+              docker start menorah-redis >/dev/null 2>&1 || true
+            else
+              docker run -d \
+                --name menorah-redis \
+                --restart unless-stopped \
+                -p 127.0.0.1:6379:6379 \
+                -v menorah-redis-data:/data \
+                redis:7-alpine \
+                redis-server --appendonly yes
+            fi
+
+            echo "==> Waiting for Redis"
+            for i in $(seq 1 20); do
+              if docker exec menorah-redis redis-cli ping | grep -q PONG; then
+                echo "==> Redis is ready"
+                break
+              fi
+              if [ "$i" -eq 20 ]; then
+                echo "::error::Redis did not become ready"
+                docker logs menorah-redis || true
+                exit 1
+              fi
+              sleep 2
+            done
+
             echo "==> Stopping old container"
             docker stop menorah-api 2>/dev/null || true
             docker rm   menorah-api 2>/dev/null || true
