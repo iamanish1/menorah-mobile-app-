@@ -50,13 +50,133 @@ const ARTICLE_SCHEMA = {
   ]
 };
 
-const normalizeInput = (input = {}) => ({
-  topic: String(input.topic || '').trim(),
-  category: String(input.category || 'Mental Health').trim(),
-  audience: String(input.audience || 'People looking for accessible mental health education').trim(),
-  tone: String(input.tone || 'warm, grounded, practical, and non-clinical').trim(),
-  length: String(input.length || 'medium').trim()
+const TOPICS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    topics: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          topic: { type: 'string' },
+          category: { type: 'string' },
+          audience: { type: 'string' },
+          tone: { type: 'string' },
+          imagePrompt: { type: 'string' },
+          imageStyle: { type: 'string' },
+          imageMood: { type: 'string' },
+          imageColors: { type: 'string' },
+          imageAvoid: { type: 'string' }
+        },
+        required: [
+          'topic',
+          'category',
+          'audience',
+          'tone',
+          'imagePrompt',
+          'imageStyle',
+          'imageMood',
+          'imageColors',
+          'imageAvoid'
+        ]
+      }
+    }
+  },
+  required: ['topics']
+};
+
+const DEFAULT_TOPICS = [
+  'How men can name anxiety before it turns into shutdown',
+  'Building a simple morning routine for steadier mental health',
+  'What emotional burnout can look like in men',
+  'How to ask a friend for support without overexplaining',
+  'Practical ways to handle work stress after hours',
+  'Understanding anger as a signal instead of a personality flaw',
+  'How sleep, food, and movement affect mood regulation',
+  'Small grounding habits for men who feel constantly on edge',
+  'How to rebuild confidence after a difficult season',
+  'Why regular check-ins matter for men who seem fine',
+  'How to manage loneliness without pretending it is not there',
+  'Healthy boundaries for men balancing family and work pressure',
+  'How journaling can help men organize heavy thoughts',
+  'Recognizing when stress needs professional support',
+  'How to support another man without trying to fix everything'
+];
+
+const isProduction = () => process.env.NODE_ENV === 'production';
+
+const isPlaceholderValue = (value) => /REPLACE_WITH|placeholder|your-|your_/i.test(value || '');
+
+const getOpenAiApiKey = () => {
+  const value = String(process.env.OPENAI_API_KEY || '').trim();
+  return value && !isPlaceholderValue(value) ? value : '';
+};
+
+const getNumber = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const getWordTarget = () => getNumber(process.env.ARTICLE_TARGET_WORD_COUNT, 700);
+
+const getWordRange = (target = getWordTarget()) => ({
+  target,
+  min: getNumber(process.env.ARTICLE_MIN_WORD_COUNT, Math.max(1, target - 50)),
+  max: getNumber(process.env.ARTICLE_MAX_WORD_COUNT, target + 100)
 });
+
+const normalizeInput = (input = {}) => {
+  const targetWordCount = getNumber(input.targetWordCount, getWordTarget());
+  const range = getWordRange(targetWordCount);
+
+  return {
+    topic: String(input.topic || '').trim(),
+    category: String(input.category || 'Mental Health').trim(),
+    audience: String(input.audience || 'Men looking for accessible mental health education').trim(),
+    tone: String(input.tone || 'warm, direct, practical, and non-clinical').trim(),
+    length: String(input.length || 'long').trim(),
+    targetWordCount,
+    minWordCount: getNumber(input.minWordCount, range.min),
+    maxWordCount: getNumber(input.maxWordCount, range.max),
+    strictWordCount: Boolean(input.strictWordCount),
+    wordCountFeedback: String(input.wordCountFeedback || '').trim()
+  };
+};
+
+const countWordsInText = (text) => {
+  const matches = String(text || '').match(/[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)?/g);
+  return matches ? matches.length : 0;
+};
+
+const countArticleWords = (article = {}) => {
+  if (!Array.isArray(article.contentBlocks)) {
+    return 0;
+  }
+
+  return article.contentBlocks.reduce((total, block) => {
+    const textWords = countWordsInText(block?.text);
+    const itemWords = Array.isArray(block?.items)
+      ? block.items.reduce((sum, item) => sum + countWordsInText(item), 0)
+      : 0;
+    return total + textWords + itemWords;
+  }, 0);
+};
+
+const buildMockParagraphs = (topic) => [
+  `Many men learn to keep pressure private, especially when the pressure feels difficult to explain. ${topic} is worth talking about because mental health often changes through ordinary moments: how a man sleeps, how he responds to stress, how much space he has to be honest, and whether he feels allowed to ask for support before things become overwhelming.`,
+  'A practical starting point is to notice patterns without turning them into self-criticism. Pay attention to what happens before a difficult mood, a short temper, a long silence, or the urge to withdraw. These patterns are not proof that something is wrong with you. They are information that can help you respond earlier and more clearly.',
+  'Small routines can make this easier. A short walk, a glass of water, a five-minute journal note, a calmer bedtime, or one honest message to someone trusted can create enough space to think. The goal is not to become perfectly disciplined. The goal is to create repeatable actions that make emotional pressure less confusing.',
+  'It also helps to separate strength from silence. Strength can include naming what is happening, asking direct questions, and choosing support before a situation becomes a crisis. Men do not need to share everything with everyone, but having one or two safe people can reduce the feeling that every problem has to be handled alone.',
+  'When stress shows up as anger, numbness, overworking, or avoidance, it can be useful to pause before reacting. Ask what the feeling is trying to protect, what boundary may have been crossed, and what action would help without causing more damage. This pause is simple, but it can change the direction of a difficult day.',
+  'A useful check-in is to ask three direct questions: what am I feeling, what do I need, and what is one responsible next step. The answer does not have to be dramatic. It might be rest, a conversation, a boundary, a meal, a walk, or an appointment. Naming the next step makes the situation less abstract.',
+  'Connection matters too. Many men wait until they have the perfect words before they reach out, but support can start with something simple. A message like "I have had a rough week and could use a normal conversation" can be enough. Honest contact does not require a full explanation of everything that is happening.',
+  'Progress is usually easier to maintain when it is measured honestly. Instead of asking whether life feels fixed, ask whether today included one healthier response than yesterday. That might mean taking a breath before replying, sleeping earlier, stepping away from an argument, or admitting that something has been heavy. These small shifts count.',
+  'It is also worth reducing the pressure to solve everything at once. A man can take care of his mental health in layers: one layer for physical basics, one for honest conversation, one for boundaries, and one for professional help when needed. Working in layers keeps the process realistic and makes change easier to repeat.',
+  'Professional support can also be part of a healthy plan. A counsellor, therapist, doctor, or crisis service can offer structure when personal coping tools are not enough. Seeking help is not a failure of character. It is a practical step when the load has become too heavy to carry without support.',
+  'If thoughts of self-harm, danger, or losing control appear, urgent support matters. Contact local emergency services, a crisis helpline, or a trusted person who can stay with you. Mental health education can help with reflection, but immediate safety should always come first when risk is present.'
+];
 
 const buildMockDraft = (input = {}) => {
   const normalized = normalizeInput(input);
@@ -64,36 +184,36 @@ const buildMockDraft = (input = {}) => {
 
   return {
     title: topic,
-    excerpt: 'A practical, supportive guide with gentle mental health education and clear reminders to seek professional or emergency support when needed.',
+    excerpt: 'A practical, supportive guide for men with grounded mental health education and clear reminders to seek professional or emergency support when needed.',
     category: normalized.category,
-    tags: ['mental health', 'wellbeing', 'self care'],
+    tags: ['mental health', 'men', 'wellbeing', 'self care'],
     contentBlocks: [
       {
         type: 'heading',
-        text: 'A gentle place to begin',
+        text: 'A practical place to begin',
         level: 2,
         items: [],
         url: null,
         alt: null,
         caption: null
       },
-      {
+      ...buildMockParagraphs(topic).map((paragraph) => ({
         type: 'paragraph',
-        text: 'Mental health can change from day to day. This article offers general education and reflection prompts, not a diagnosis or a substitute for care from a qualified professional.',
+        text: paragraph,
         level: null,
         items: [],
         url: null,
         alt: null,
         caption: null
-      },
+      })),
       {
         type: 'bullet_list',
         text: null,
         level: null,
         items: [
-          'Notice what feels manageable today.',
-          'Choose one small supportive action, such as drinking water, resting, journaling, or contacting someone you trust.',
-          'If your feelings become overwhelming or you may be in danger, contact local emergency services or a crisis support line right away.'
+          'Notice the pattern before judging yourself for it.',
+          'Choose one small action that makes the next hour easier.',
+          'Ask for professional or urgent support when safety feels uncertain.'
         ],
         url: null,
         alt: null,
@@ -101,7 +221,7 @@ const buildMockDraft = (input = {}) => {
       },
       {
         type: 'callout',
-        text: 'If you are worried about your safety or someone else\'s safety, seek urgent help now through local emergency services or a trusted crisis helpline.',
+        text: 'If you are worried about your safety or someone else\'s safety, contact local emergency services or a trusted crisis helpline now.',
         level: null,
         items: [],
         url: null,
@@ -110,8 +230,8 @@ const buildMockDraft = (input = {}) => {
       }
     ],
     seoTitle: `${topic} | Menorah Health`,
-    seoDescription: 'A safe, supportive mental health article for education and reflection.',
-    imagePrompt: `A calm, inclusive wellness illustration for an article about ${topic}, soft natural light, peaceful and hopeful, no medical imagery.`
+    seoDescription: 'A safe, supportive mental health article for men, built for education and reflection.',
+    imagePrompt: `A calm editorial wellness cover image for an article about ${topic}, no readable text, no medical imagery.`
   };
 };
 
@@ -156,82 +276,240 @@ const sanitizeDraft = (draft, input) => {
   };
 };
 
+const callOpenAiResponses = async ({ schema, name, input, timeout = 45000 }) => {
+  const apiKey = getOpenAiApiKey();
+
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is required for AI article generation');
+  }
+
+  const response = await axios.post(
+    'https://api.openai.com/v1/responses',
+    {
+      model: process.env.OPENAI_ARTICLE_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      input,
+      text: {
+        format: {
+          type: 'json_schema',
+          name,
+          strict: true,
+          schema
+        }
+      }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout
+    }
+  );
+
+  const outputText = extractOutputText(response.data);
+  if (!outputText) {
+    throw new Error('OpenAI response did not include structured output text');
+  }
+
+  return JSON.parse(outputText);
+};
+
 const generateArticleDraft = async (input = {}) => {
   const normalized = normalizeInput(input);
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!getOpenAiApiKey()) {
+    if (isProduction()) {
+      throw new Error('OPENAI_API_KEY is required for production article generation');
+    }
     return buildMockDraft(normalized);
   }
 
   try {
-    const response = await axios.post(
-      'https://api.openai.com/v1/responses',
-      {
-        model: process.env.OPENAI_ARTICLE_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini',
-        input: [
-          {
-            role: 'system',
-            content: [
-              {
-                type: 'input_text',
-                text: [
-                  'You create safe mental-health education articles for Menorah Health.',
-                  'Return structured JSON only.',
-                  'Do not diagnose, do not promise medical outcomes, and do not give harmful advice.',
-                  'Use supportive, non-alarmist wording.',
-                  'Mention professional support when appropriate.',
-                  'Include crisis-safe wording when the topic could involve overwhelming distress, self-harm, or urgent safety concerns.'
-                ].join(' ')
-              }
-            ]
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_text',
-                text: JSON.stringify({
-                  task: 'Generate an article draft',
-                  constraints: {
-                    contentBlockTypes: ['heading', 'paragraph', 'quote', 'bullet_list', 'image', 'callout'],
-                    noDiagnosis: true,
-                    noMedicalPromises: true,
-                    noHarmfulAdvice: true,
-                    structuredJsonOnly: true
-                  },
-                  input: normalized
-                })
-              }
-            ]
-          }
-        ],
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'article_draft',
-            strict: true,
-            schema: ARTICLE_SCHEMA
-          }
-        }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json'
+    const draft = await callOpenAiResponses({
+      schema: ARTICLE_SCHEMA,
+      name: 'article_draft',
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: [
+                'You create safe mental-health education articles for Menorah Health.',
+                'Return structured JSON only.',
+                'Write for men without stereotypes or shame.',
+                'Do not diagnose, do not promise medical outcomes, and do not give harmful advice.',
+                'Use supportive, non-alarmist wording.',
+                'Mention professional support when appropriate.',
+                'Include crisis-safe wording when the topic could involve overwhelming distress, self-harm, or urgent safety concerns.'
+              ].join(' ')
+            }
+          ]
         },
-        timeout: 30000
-      }
-    );
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: JSON.stringify({
+                task: 'Generate an article draft',
+                constraints: {
+                  targetWordCount: normalized.targetWordCount,
+                  acceptableWordCountRange: [normalized.minWordCount, normalized.maxWordCount],
+                  strictWordCount: normalized.strictWordCount,
+                  wordCountFeedback: normalized.wordCountFeedback,
+                  contentBlockTypes: ['heading', 'paragraph', 'quote', 'bullet_list', 'image', 'callout'],
+                  noDiagnosis: true,
+                  noMedicalPromises: true,
+                  noHarmfulAdvice: true,
+                  structuredJsonOnly: true
+                },
+                input: normalized
+              })
+            }
+          ]
+        }
+      ]
+    });
 
-    const outputText = extractOutputText(response.data);
-    const draft = outputText ? JSON.parse(outputText) : null;
     return sanitizeDraft(draft, normalized);
   } catch (error) {
+    if (isProduction()) {
+      throw new Error(`AI article generation failed: ${error.response?.data?.error?.message || error.message}`);
+    }
     console.warn('AI article generation failed, returning local safe draft:', error.response?.data || error.message);
     return buildMockDraft(normalized);
   }
 };
 
+const buildFallbackTopics = (count, recentArticles = []) => {
+  const recentTitles = new Set(
+    recentArticles.map((article) => String(article.title || '').trim().toLowerCase()).filter(Boolean)
+  );
+
+  return DEFAULT_TOPICS
+    .filter((topic) => !recentTitles.has(topic.toLowerCase()))
+    .slice(0, count)
+    .map((topic) => ({
+      topic,
+      category: 'Mental Health',
+      audience: 'Men looking for practical mental health support',
+      tone: 'warm, direct, practical, and non-clinical',
+      imagePrompt: `A calm editorial article cover about ${topic}, no readable text, hopeful and grounded.`,
+      imageStyle: 'premium editorial mental health illustration',
+      imageMood: 'calm, grounded, masculine but inclusive, hopeful',
+      imageColors: 'earthy green, cream, soft shadows',
+      imageAvoid: 'no text, no hospital, no doctors, no distressing stereotypes'
+    }));
+};
+
+const sanitizeTopics = (topics, count, recentArticles = []) => {
+  const recent = new Set(
+    recentArticles.flatMap((article) => [article.title, article.slug])
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const seen = new Set();
+
+  return (Array.isArray(topics) ? topics : [])
+    .map((topic) => ({
+      topic: String(topic?.topic || '').trim(),
+      category: String(topic?.category || 'Mental Health').trim(),
+      audience: String(topic?.audience || 'Men looking for practical mental health support').trim(),
+      tone: String(topic?.tone || 'warm, direct, practical, and non-clinical').trim(),
+      imagePrompt: String(topic?.imagePrompt || '').trim(),
+      imageStyle: String(topic?.imageStyle || 'premium editorial mental health illustration').trim(),
+      imageMood: String(topic?.imageMood || 'calm, grounded, masculine but inclusive, hopeful').trim(),
+      imageColors: String(topic?.imageColors || 'earthy green, cream, soft shadows').trim(),
+      imageAvoid: String(topic?.imageAvoid || 'no text, no hospital, no doctors, no distressing stereotypes').trim()
+    }))
+    .filter((topic) => topic.topic.length >= 3)
+    .filter((topic) => {
+      const key = topic.topic.toLowerCase();
+      if (seen.has(key) || recent.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, count);
+};
+
+const generateArticleTopics = async ({ count, recentArticles = [] } = {}) => {
+  const requestedCount = Math.max(1, Number.parseInt(count, 10) || 1);
+
+  if (!getOpenAiApiKey()) {
+    if (isProduction()) {
+      throw new Error('OPENAI_API_KEY is required for production topic generation');
+    }
+    return buildFallbackTopics(requestedCount, recentArticles);
+  }
+
+  try {
+    const result = await callOpenAiResponses({
+      schema: TOPICS_SCHEMA,
+      name: 'article_topics',
+      timeout: 30000,
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: [
+                'You plan safe, varied article topics for Menorah Health.',
+                'All topics must relate to men\'s mental health, wellbeing, emotional awareness, stress, relationships, confidence, help-seeking, or practical self-care.',
+                'Avoid duplicates and avoid topics that sound too similar to recent articles.',
+                'Return structured JSON only.'
+              ].join(' ')
+            }
+          ]
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: JSON.stringify({
+                task: `Create ${requestedCount} distinct article topics`,
+                recentArticles: recentArticles.map((article) => ({
+                  title: article.title,
+                  slug: article.slug,
+                  category: article.category
+                })),
+                requirements: {
+                  articleWordCount: getWordTarget(),
+                  includeImageDirection: true,
+                  noDiagnosis: true,
+                  noMedicalPromises: true
+                }
+              })
+            }
+          ]
+        }
+      ]
+    });
+
+    const topics = sanitizeTopics(result.topics, requestedCount, recentArticles);
+    if (topics.length < requestedCount && isProduction()) {
+      throw new Error(`OpenAI returned ${topics.length} usable topics, expected ${requestedCount}`);
+    }
+
+    return topics.length >= requestedCount
+      ? topics
+      : [...topics, ...buildFallbackTopics(requestedCount - topics.length, recentArticles)];
+  } catch (error) {
+    if (isProduction()) {
+      throw new Error(`AI topic generation failed: ${error.response?.data?.error?.message || error.message}`);
+    }
+    console.warn('AI topic generation failed, returning local topics:', error.response?.data || error.message);
+    return buildFallbackTopics(requestedCount, recentArticles);
+  }
+};
+
 module.exports = {
-  generateArticleDraft
+  countArticleWords,
+  generateArticleDraft,
+  generateArticleTopics,
+  getWordRange
 };

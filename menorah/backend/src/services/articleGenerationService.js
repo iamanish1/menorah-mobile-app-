@@ -1,0 +1,305 @@
+const Article = require('../models/Article');
+const ArticleGenerationRun = require('../models/ArticleGenerationRun');
+const slugify = require('../utils/slugify');
+const {
+  countArticleWords,
+  generateArticleDraft,
+  generateArticleTopics,
+  getWordRange
+} = require('./articleAiService');
+const { resolveCoverImage } = require('./articleImageService');
+
+const DEFAULT_TIMEZONE = 'Asia/Dubai';
+
+const getNumber = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const getManualMaxCount = () => getNumber(process.env.ARTICLE_MANUAL_MAX_COUNT, 20);
+
+const getDailyCount = () => getNumber(process.env.ARTICLE_DAILY_GENERATION_COUNT, 10);
+
+const getTimezone = () => process.env.ARTICLE_GENERATION_TIMEZONE || DEFAULT_TIMEZONE;
+
+const normalizeTags = (tags) => {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+
+  return tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 12);
+};
+
+const buildCanonicalUrl = (slug) => {
+  const baseUrl = (process.env.PUBLIC_WEB_BASE_URL || '').replace(/\/+$/, '');
+  return baseUrl ? `${baseUrl}/articles/${slug}` : '';
+};
+
+const buildUniqueSlug = async (title) => {
+  const baseSlug = slugify(title);
+  let candidate = baseSlug;
+  let suffix = 2;
+
+  while (await Article.exists({ slug: candidate })) {
+    candidate = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+};
+
+const getDateKey = (date = new Date(), timezone = getTimezone()) => {
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+
+  return `${year}-${month}-${day}`;
+};
+
+const formatRun = (run) => {
+  if (!run) {
+    return null;
+  }
+
+  const plain = typeof run.toObject === 'function' ? run.toObject() : run;
+
+  return {
+    ...plain,
+    id: plain._id?.toString(),
+    _id: plain._id?.toString()
+  };
+};
+
+const getRecentArticles = async () => {
+  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  return Article.find({ createdAt: { $gte: since } })
+    .select('title slug category')
+    .sort({ createdAt: -1 })
+    .limit(200)
+    .lean();
+};
+
+const buildArticleDraftWithWordTarget = async (input) => {
+  const range = getWordRange();
+  let draft = await generateArticleDraft({
+    ...input,
+    targetWordCount: range.target,
+    minWordCount: range.min,
+    maxWordCount: range.max
+  });
+  let wordCount = countArticleWords(draft);
+
+  if (wordCount >= range.min && wordCount <= range.max) {
+    return { draft, wordCount };
+  }
+
+  draft = await generateArticleDraft({
+    ...input,
+    targetWordCount: range.target,
+    minWordCount: range.min,
+    maxWordCount: range.max,
+    strictWordCount: true,
+    wordCountFeedback: `The previous draft was ${wordCount} words. Rewrite the article body to be between ${range.min} and ${range.max} words.`
+  });
+  wordCount = countArticleWords(draft);
+
+  if (wordCount < range.min || wordCount > range.max) {
+    throw new Error(`Generated article word count ${wordCount} is outside ${range.min}-${range.max}`);
+  }
+
+  return { draft, wordCount };
+};
+
+const createReviewArticle = async ({ input, run }) => {
+  const { draft, wordCount } = await buildArticleDraftWithWordTarget(input);
+  const articleDraft = {
+    ...draft,
+    imagePrompt: String(input.imagePrompt || draft.imagePrompt || '').trim()
+  };
+  const slug = await buildUniqueSlug(articleDraft.title);
+  const image = await resolveCoverImage({
+    ...input,
+    article: {
+      ...articleDraft,
+      slug
+    }
+  });
+
+  const article = await Article.create({
+    ...articleDraft,
+    slug,
+    tags: normalizeTags(articleDraft.tags),
+    coverImageUrl: image.url,
+    coverImagePublicId: image.publicId,
+    canonicalUrl: buildCanonicalUrl(slug),
+    status: 'review',
+    generationRun: run?._id || null,
+    wordCount,
+    generatedByAi: true,
+    reviewedByHuman: false,
+    reviewedBy: null,
+    reviewedAt: null,
+    publishedAt: null
+  });
+
+  return article.toObject();
+};
+
+const createManualGenerationRun = async ({ count, requestedBy }) => {
+  const max = getManualMaxCount();
+  const requestedCount = Number.parseInt(count, 10);
+
+  if (!Number.isFinite(requestedCount) || requestedCount < 1 || requestedCount > max) {
+    throw new Error(`Count must be between 1 and ${max}`);
+  }
+
+  return ArticleGenerationRun.create({
+    source: 'manual',
+    status: 'queued',
+    requestedCount,
+    timezone: getTimezone(),
+    requestedBy
+  });
+};
+
+const createScheduledGenerationRun = async () => {
+  const timezone = getTimezone();
+  const dateKey = getDateKey(new Date(), timezone);
+
+  try {
+    return await ArticleGenerationRun.create({
+      source: 'scheduled',
+      status: 'queued',
+      requestedCount: getDailyCount(),
+      timezone,
+      dateKey
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return ArticleGenerationRun.findOne({ source: 'scheduled', dateKey });
+    }
+    throw error;
+  }
+};
+
+const updateRunError = async ({ runId, topic, stage, message }) => {
+  return ArticleGenerationRun.findByIdAndUpdate(runId, {
+    $inc: { failedCount: 1 },
+    $push: {
+      errors: {
+        topic: String(topic || ''),
+        stage,
+        message: String(message || 'Generation failed'),
+        at: new Date()
+      }
+    }
+  }, { new: true });
+};
+
+const executeGenerationRun = async (runId) => {
+  const run = await ArticleGenerationRun.findOneAndUpdate({
+    _id: runId,
+    status: { $in: ['queued', 'failed'] }
+  }, {
+    status: 'running',
+    startedAt: new Date(),
+    finishedAt: null,
+    completedCount: 0,
+    failedCount: 0,
+    articleIds: [],
+    errors: []
+  }, {
+    new: true
+  });
+
+  if (!run) {
+    return run;
+  }
+
+  try {
+    const recentArticles = await getRecentArticles();
+    const topics = await generateArticleTopics({
+      count: run.requestedCount,
+      recentArticles
+    });
+
+    for (const topicInput of topics.slice(0, run.requestedCount)) {
+      try {
+        const article = await createReviewArticle({
+          input: topicInput,
+          run
+        });
+
+        await ArticleGenerationRun.findByIdAndUpdate(run._id, {
+          $inc: { completedCount: 1 },
+          $push: { articleIds: article._id }
+        });
+      } catch (error) {
+        await updateRunError({
+          runId: run._id,
+          topic: topicInput.topic,
+          stage: 'article',
+          message: error.message
+        });
+      }
+    }
+
+    const fresh = await ArticleGenerationRun.findById(run._id);
+    const status = fresh.completedCount === fresh.requestedCount
+      ? 'completed'
+      : fresh.completedCount > 0
+        ? 'partial'
+        : 'failed';
+
+    fresh.status = status;
+    fresh.finishedAt = new Date();
+    await fresh.save();
+    return fresh;
+  } catch (error) {
+    const failed = await ArticleGenerationRun.findByIdAndUpdate(run._id, {
+      status: 'failed',
+      finishedAt: new Date(),
+      $push: {
+        errors: {
+          stage: 'run',
+          message: error.message,
+          at: new Date()
+        }
+      }
+    }, { new: true });
+
+    return failed;
+  }
+};
+
+const startGenerationRun = (runId) => {
+  setImmediate(() => {
+    executeGenerationRun(runId).catch((error) => {
+      console.error('Article generation run failed:', error);
+    });
+  });
+};
+
+module.exports = {
+  buildCanonicalUrl,
+  buildUniqueSlug,
+  countArticleWords,
+  createManualGenerationRun,
+  createReviewArticle,
+  createScheduledGenerationRun,
+  executeGenerationRun,
+  formatRun,
+  getDateKey,
+  getDailyCount,
+  getManualMaxCount,
+  getTimezone,
+  normalizeTags,
+  startGenerationRun
+};

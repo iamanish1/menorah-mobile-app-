@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, Users, UserCheck, Wallet, Send, LogOut, Menu, X
+  LayoutDashboard, Users, UserCheck, Wallet, Send, Newspaper, LogOut, Menu, X
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -15,6 +15,7 @@ const navItems = [
   { href: '/users',       label: 'Users',             icon: Users           },
   { href: '/revenue',     label: 'Revenue & Payouts', icon: Wallet          },
   { href: '/payouts',     label: 'Payout History',    icon: Send            },
+  { href: '/articles',    label: 'Articles',          icon: Newspaper       },
 ];
 
 export default function Sidebar() {

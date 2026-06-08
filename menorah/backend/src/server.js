@@ -42,6 +42,7 @@ const connectDB = require('./config/database');
 const { connectRedis, getRedisClient, getPubClient, getSubClient } = require('./config/redis');
 const errorHandler = require('./middleware/errorHandler');
 const notFound = require('./middleware/notFound');
+const { startArticleScheduler } = require('./services/articleScheduler');
 
 const Counsellor = require('./models/Counsellor');
 const Message    = require('./models/Message');
@@ -330,6 +331,7 @@ const isLocalhost = () => false;
 async function startServer() {
   // 1. Connect database
   await connectDB();
+  startArticleScheduler();
 
   // 2. Connect Redis — graceful degradation if unavailable in dev
   // ENABLE_SOCKET_ADAPTER=false on Cloud Run: REST-only, no WebSocket traffic,

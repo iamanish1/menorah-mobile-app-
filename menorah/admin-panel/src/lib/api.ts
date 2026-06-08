@@ -2,7 +2,8 @@ import axios, { AxiosInstance } from 'axios';
 import { getToken, clearToken } from './auth';
 import type {
   ApiResponse, PlatformStats, Counsellor, CounsellorRevenue,
-  RevenueData, User, Pagination, PayoutRecord, PayoutSummary, PayoutStatus
+  RevenueData, User, Pagination, PayoutRecord, PayoutSummary, PayoutStatus,
+  Article, ArticleGenerationRun, ArticleStatus
 } from '@/types';
 
 class AdminApiClient {
@@ -147,6 +148,49 @@ class AdminApiClient {
   getCounsellorPayouts(counsellorId: string) {
     return this.request<{ payouts: PayoutRecord[]; summary: PayoutSummary }>(
       () => this.client.get(`/admin/payouts/counsellor/${counsellorId}`)
+    );
+  }
+
+  // Articles
+  getArticles(params?: { status?: ArticleStatus | 'all'; page?: number; limit?: number; q?: string; runId?: string }) {
+    return this.request<{ articles: Article[]; pagination: Pagination }>(
+      () => this.client.get('/articles/admin', { params })
+    );
+  }
+
+  getArticle(id: string) {
+    return this.request<{ article: Article }>(
+      () => this.client.get(`/articles/admin/${id}`)
+    );
+  }
+
+  updateArticle(id: string, payload: Partial<Article>) {
+    return this.request<{ article: Article }>(
+      () => this.client.patch(`/articles/admin/${id}`, payload)
+    );
+  }
+
+  publishArticle(id: string) {
+    return this.request<{ article: Article }>(
+      () => this.client.post(`/articles/admin/${id}/publish`)
+    );
+  }
+
+  rejectArticle(id: string, reason?: string) {
+    return this.request<{ article: Article }>(
+      () => this.client.post(`/articles/admin/${id}/reject`, { reason })
+    );
+  }
+
+  startArticleGenerationRun(count: number) {
+    return this.request<{ run: ArticleGenerationRun }>(
+      () => this.client.post('/articles/admin/generation-runs', { count })
+    );
+  }
+
+  getArticleGenerationRun(id: string) {
+    return this.request<{ run: ArticleGenerationRun }>(
+      () => this.client.get(`/articles/admin/generation-runs/${id}`)
     );
   }
 }
