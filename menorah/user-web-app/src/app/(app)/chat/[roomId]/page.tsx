@@ -232,8 +232,9 @@ export default function ChatThreadPage() {
                 <button
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="text-xs text-primary-600 hover:text-primary-700 py-1"
+                  className="inline-flex min-h-8 items-center justify-center gap-2 py-1 text-xs text-primary-600 hover:text-primary-700 disabled:opacity-70"
                 >
+                  {loadingMore && <Spinner size="sm" />}
                   {loadingMore ? 'Loading…' : 'Load older messages'}
                 </button>
               </div>

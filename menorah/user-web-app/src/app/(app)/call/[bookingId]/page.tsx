@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Mic, MicOff, Video, VideoOff, PhoneOff, Clock, Loader2 } from 'lucide-react';
+import { ArrowLeft, Mic, MicOff, Video, VideoOff, PhoneOff, Clock } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button, Spinner } from '@/components/ui';
 import { getSocket, connectSocket } from '@/lib/socket';
@@ -318,7 +318,7 @@ export default function VideoCallPage() {
         {topBar('Loading session…')}
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4">
-            <Spinner size="lg" className="mx-auto border-white border-t-primary-400" />
+            <Spinner size="lg" className="mx-auto" />
             <p className="text-gray-400">Checking session status…</p>
           </div>
         </div>
@@ -350,7 +350,7 @@ export default function VideoCallPage() {
           </div>
 
           <div className="bg-gray-800 rounded-2xl p-6 text-center max-w-sm w-full space-y-3">
-            <Loader2 className="w-8 h-8 animate-spin text-primary-400 mx-auto" />
+            <Spinner size="md" className="mx-auto" />
             <p className="text-gray-300 font-medium">Waiting for counsellor to start…</p>
             <p className="text-gray-500 text-sm">
               You will be admitted automatically once your counsellor begins the session.
@@ -373,7 +373,7 @@ export default function VideoCallPage() {
         {topBar()}
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4">
-            <Spinner size="lg" className="mx-auto border-white border-t-primary-400" />
+            <Spinner size="lg" className="mx-auto" />
             <p className="text-gray-400">Connecting to session…</p>
           </div>
         </div>

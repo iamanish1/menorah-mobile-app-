@@ -159,7 +159,7 @@ function VerifyOtpForm() {
           className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-primary-600 dark:text-primary-100/70 dark:hover:text-primary-50
                      disabled:opacity-50 disabled:cursor-not-allowed mx-auto transition-colors"
         >
-          <RefreshCw className={`w-4 h-4 ${resending ? 'animate-spin' : ''}`} />
+          {resending ? <Spinner size="sm" /> : <RefreshCw className="w-4 h-4" />}
           {countdown > 0 ? `Resend code in ${countdown}s` : 'Resend code'}
         </button>
         <p className="text-xs text-gray-400">
