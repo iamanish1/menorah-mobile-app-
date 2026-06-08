@@ -280,9 +280,6 @@ io.on('connection', async (socket) => {
   });
 });
 
-app.use(notFound);
-app.use(errorHandler);
-
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`\nFATAL: Port ${PORT} is already in use.`);
@@ -405,6 +402,10 @@ async function startServer() {
   app.use('/api/payments', paymentRoutes);
   app.use('/api/chat', chatRoutes);
   app.use('/api/video', videoRoutes);
+
+  // notFound and errorHandler MUST be registered after all routes
+  app.use(notFound);
+  app.use(errorHandler);
 
   chatRoutes.setSocketIO(io);
   app.set('io', io);
