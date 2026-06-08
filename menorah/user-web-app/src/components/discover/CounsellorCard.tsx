@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { BadgeCheck, Play } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import type { Counsellor } from '@/types';
 
@@ -23,12 +23,9 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
       className="counsellor-profile-card group"
       style={{ animationDelay: `${Math.min(index, 8) * 70}ms`, animationFillMode: 'both' }}
     >
-      <div className="counsellor-profile-card__hero">
+      <div className="counsellor-profile-card__hero directory-wave-header">
         <div className="relative z-10 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <h3 className="truncate font-body text-lg font-bold leading-tight text-white">{c.name}</h3>
-            {c.isVerified && <BadgeCheck className="h-4 w-4 shrink-0 text-white/85" aria-label="Verified counsellor" />}
-          </div>
+          <h3 className="truncate font-body text-lg font-bold leading-tight text-white">{c.name}</h3>
           <p className="mt-0.5 truncate text-xs font-semibold text-primary-950/85">{c.specialization}</p>
         </div>
 
@@ -37,7 +34,7 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
         </div>
       </div>
 
-      <div className="px-3.5 py-3">
+      <div className="counsellor-profile-card__body">
         <div className="flex flex-wrap gap-2">
           {tags.map((tag) => (
             <span key={tag} className="counsellor-profile-card__tag">
@@ -46,16 +43,16 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
           ))}
         </div>
 
-        <div className="my-3 h-px bg-primary-100" />
+        <div className="counsellor-profile-card__rule" />
 
         <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition-transform duration-200 group-hover:scale-105">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition-transform duration-200 group-hover:scale-105">
             <Play className="h-4 w-4 fill-current" aria-hidden="true" />
           </span>
 
           <div className="counsellor-profile-card__waveform" aria-hidden="true">
             {WAVEFORM_BARS.map((height, barIndex) => (
-              <span key={`${height}-${barIndex}`} style={{ height }} />
+              <span key={`${height}-${barIndex}`} style={{ height, animationDelay: `${barIndex * 45}ms` }} />
             ))}
           </div>
 
@@ -64,7 +61,7 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
           </Link>
         </div>
 
-        <div className="my-3 h-px bg-primary-100" />
+        <div className="counsellor-profile-card__rule" />
 
         <div className="grid grid-cols-3 gap-1.5">
           <StatTile value={therapyHours} label="Therapy hrs" />
@@ -72,7 +69,7 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
           <StatTile value={price} label={c.hourlyRate > 0 ? 'Per hour' : 'Per session'} />
         </div>
 
-        <div className="mt-3 flex items-center justify-between gap-3 border-t border-primary-100 pt-3">
+        <div className="mt-3 flex items-center justify-between gap-3 border-t border-primary-100 pt-4">
           <div className="min-w-0">
             <p className="text-[11px] font-medium text-slate-400">Next available in</p>
             <p className="mt-0.5 truncate text-sm font-bold text-slate-950">{availability}</p>
