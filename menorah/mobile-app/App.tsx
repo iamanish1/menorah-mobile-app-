@@ -8,8 +8,23 @@ import { ChatProvider } from '@/state/useChat';
 import { NotificationProvider } from '@/state/useNotifications';
 import SessionNotificationHandler from '@/components/SessionNotificationHandler';
 import UpdateBanner from '@/components/UpdateBanner';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      retry: 2,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 15_000),
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
 
 function ThemeStatusBar() {
   const { scheme } = useThemeMode();
@@ -18,6 +33,7 @@ function ThemeStatusBar() {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <ThemeProvider>

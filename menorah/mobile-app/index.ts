@@ -45,5 +45,14 @@ if (__DEV__) {
   LogBox.ignoreAllLogs();
 }
 
+// Catch unhandled JS errors before React renders so we can surface them
+if (global.ErrorUtils) {
+  const prevHandler = global.ErrorUtils.getGlobalHandler();
+  global.ErrorUtils.setGlobalHandler((error: Error, isFatal: boolean) => {
+    console.error('[GlobalError]', isFatal ? 'FATAL' : 'non-fatal', error?.message, error?.stack);
+    prevHandler(error, isFatal);
+  });
+}
+
 // Register the root component for Expo Go & dev builds
 registerRootComponent(App);
