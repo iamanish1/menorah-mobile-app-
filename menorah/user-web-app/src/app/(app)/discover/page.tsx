@@ -151,7 +151,7 @@ export default function DiscoverPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
                 {visibleCounsellors.map((c, index) => (
                   <CounsellorCard key={c.id} c={c} index={index} />
                 ))}

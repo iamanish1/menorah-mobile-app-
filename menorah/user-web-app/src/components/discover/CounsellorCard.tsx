@@ -3,7 +3,7 @@ import { Play } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import type { Counsellor } from '@/types';
 
-const WAVEFORM_BARS = [18, 28, 15, 31, 22, 36, 18, 33, 26, 39, 20, 35, 29, 41, 23, 34, 17, 31, 25, 38, 19, 30, 24, 34];
+const WAVEFORM_BARS = [14, 24, 32, 18, 28, 38, 22, 34, 26, 42, 30, 20, 36, 44, 24, 34, 28, 40, 22, 32, 38, 26, 30, 18];
 const DAY_ORDER = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
 interface CounsellorCardProps {
@@ -24,9 +24,9 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
       style={{ animationDelay: `${Math.min(index, 8) * 70}ms`, animationFillMode: 'both' }}
     >
       <div className="counsellor-profile-card__hero directory-wave-header">
-        <div className="relative z-10 min-w-0">
-          <h3 className="truncate font-body text-lg font-bold leading-tight text-white">{c.name}</h3>
-          <p className="mt-0.5 truncate text-xs font-semibold text-primary-950/85">{c.specialization}</p>
+        <div className="relative z-10 max-w-[68%]">
+          <h3 className="truncate text-lg font-semibold leading-tight text-white">{c.name}</h3>
+          <p className="mt-1 truncate text-xs font-medium text-white/85">{c.specialization}</p>
         </div>
 
         <div className="counsellor-profile-card__avatar" aria-hidden="true">
@@ -35,7 +35,7 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
       </div>
 
       <div className="counsellor-profile-card__body">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 overflow-hidden border-b border-[#e3e7e0] pb-4">
           {tags.map((tag) => (
             <span key={tag} className="counsellor-profile-card__tag">
               {tag}
@@ -43,11 +43,9 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
           ))}
         </div>
 
-        <div className="counsellor-profile-card__rule" />
-
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition-transform duration-200 group-hover:scale-105">
-            <Play className="h-4 w-4 fill-current" aria-hidden="true" />
+        <div className="mt-4 flex items-center gap-3 border-b border-[#e3e7e0] pb-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1f2933] text-white shadow-sm transition-transform duration-200 group-hover:scale-105">
+            <Play className="h-5 w-5 fill-current" aria-hidden="true" />
           </span>
 
           <div className="counsellor-profile-card__waveform" aria-hidden="true">
@@ -61,18 +59,16 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
           </Link>
         </div>
 
-        <div className="counsellor-profile-card__rule" />
-
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="mt-4 grid grid-cols-3 gap-1.5">
           <StatTile value={therapyHours} label="Therapy hrs" />
           <StatTile value={primaryLanguage} label="Languages" />
           <StatTile value={price} label={c.hourlyRate > 0 ? 'Per hour' : 'Per session'} />
         </div>
 
-        <div className="mt-3 flex items-center justify-between gap-3 border-t border-primary-100 pt-4">
+        <div className="mt-4 flex items-end justify-between gap-4 border-t border-[#e3e7e0] pt-4">
           <div className="min-w-0">
-            <p className="text-[11px] font-medium text-slate-400">Next available in</p>
-            <p className="mt-0.5 truncate text-sm font-bold text-slate-950">{availability}</p>
+            <p className="counsellor-profile-card__availability-label">Next available in</p>
+            <p className="counsellor-profile-card__availability-value">{availability}</p>
           </div>
           <Link href={`/bookings/new?counsellorId=${c.id}`} className="counsellor-profile-card__book-button">
             Book Now
@@ -85,9 +81,9 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
 
 function StatTile({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-lg bg-slate-50 px-2.5 py-3">
-      <p className="truncate text-sm font-black leading-tight text-slate-950">{value}</p>
-      <p className="mt-1 truncate text-[10px] font-medium text-slate-600">{label}</p>
+    <div className="counsellor-profile-card__stat">
+      <p className="counsellor-profile-card__stat-value">{value}</p>
+      <p className="counsellor-profile-card__stat-label">{label}</p>
     </div>
   );
 }
