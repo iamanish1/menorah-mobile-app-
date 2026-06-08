@@ -75,7 +75,7 @@ export default function DiscoverPage() {
   };
 
   return (
-    <div className="page-container">
+    <div className="page-container max-w-[1540px]">
       <div className="mb-6 rounded-[1.75rem] border border-primary-100 bg-primary-50 px-5 py-5 shadow-[0_14px_32px_-26px_rgba(45,122,92,0.5)] dark:border-primary-800 dark:bg-primary-900/70">
         <h1 className="app-page-heading">Find your counsellor</h1>
         <p className="app-page-subtitle mt-1">
@@ -151,7 +151,7 @@ export default function DiscoverPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="counsellor-profile-grid grid gap-5">
                 {visibleCounsellors.map((c, index) => (
                   <CounsellorCard key={c.id} c={c} index={index} />
                 ))}

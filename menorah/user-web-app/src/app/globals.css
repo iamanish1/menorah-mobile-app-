@@ -128,6 +128,9 @@ html.dark {
   .app-pill-active {
     @apply border-primary-600 bg-primary-600 text-white hover:bg-primary-700 dark:border-primary-500 dark:bg-primary-500 dark:text-white;
   }
+  .counsellor-profile-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 21.5rem), 1fr));
+  }
   .counsellor-profile-card {
     @apply overflow-hidden rounded-2xl border border-[#dfe3dd] bg-white font-body shadow-[0_14px_45px_rgba(35,45,36,0.08)] transition duration-300;
     animation: counsellor-card-enter 0.42s ease-out;
