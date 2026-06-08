@@ -33,9 +33,7 @@ spec:
         # ── Autoscaling ───────────────────────────────────────────────────
         # Scale to ZERO when no traffic → $0 cost when VPS handles everything
         autoscaling.knative.dev/minScale: "0"
-        # 1000 instances × 100 concurrency = 100,000 concurrent requests
-        autoscaling.knative.dev/maxScale: "1000"
-        # Spin up a new instance when existing ones reach 80% concurrency
+        autoscaling.knative.dev/maxScale: "10"
         autoscaling.knative.dev/target: "80"
         # ── CPU ───────────────────────────────────────────────────────────
         # Always allocate full CPU (not throttled between requests)
@@ -64,8 +62,8 @@ spec:
 
           resources:
             limits:
-              cpu: "2"        # 2 vCPU per instance
-              memory: "1Gi"   # 1 GB RAM per instance
+              cpu: "1"
+              memory: "512Mi"
 
           # ── Non-secret env vars (safe to be in this file) ──────────────
           env:
