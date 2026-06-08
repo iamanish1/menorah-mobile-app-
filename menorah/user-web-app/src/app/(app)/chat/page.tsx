@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { ChevronRight, MessageCircle, Star } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Avatar, Spinner } from '@/components/ui';
 import { formatChatTime, truncate } from '@/lib/utils';
@@ -86,38 +87,88 @@ export default function ChatListPage() {
                 <p className="text-sm">No counsellors available right now</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {availableCounsellors.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => handleStartChat(c.counsellorId)}
-                    disabled={startingChat === c.counsellorId}
-                    className="w-full flex items-center gap-3 p-4 rounded-[1.4rem] border border-primary-100 bg-white hover:bg-primary-50 transition-colors text-left disabled:opacity-60 dark:border-primary-800 dark:bg-primary-900 dark:hover:bg-primary-800"
-                  >
-                    <Avatar
-                      src={c.profileImage ?? undefined}
-                      name={c.name}
-                      size="md"
-                      online={c.isOnline}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-950 dark:text-primary-50">{c.name}</p>
-                      <p className="text-sm text-gray-500 dark:text-primary-100/65 truncate">
-                        {c.specialization.length > 0 ? c.specialization.join(', ') : 'Counsellor'}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      {c.isOnline && (
-                        <span className="text-xs text-green-600 font-medium">Online</span>
-                      )}
-                      {startingChat === c.counsellorId ? (
-                        <Spinner size="sm" />
-                      ) : (
-                        <span className="text-xs text-primary-600 font-medium">Chat</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
+              <div className="space-y-3">
+                {availableCounsellors.map((c) => {
+                  const isStarting = startingChat === c.counsellorId;
+                  const specializationTags = c.specialization.length > 0 ? c.specialization : ['Counsellor'];
+
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => handleStartChat(c.counsellorId)}
+                      disabled={isStarting}
+                      aria-pressed={isStarting}
+                      className={`group w-full rounded-[1.65rem] border p-4 text-left shadow-sm transition-all duration-150 disabled:cursor-wait
+                        ${isStarting
+                          ? 'border-primary-500 bg-primary-50 ring-4 ring-primary-100 dark:border-primary-300 dark:bg-[#102016] dark:ring-primary-300/15'
+                          : 'border-primary-100 bg-white hover:-translate-y-0.5 hover:border-primary-300 hover:bg-primary-50/60 hover:shadow-md dark:border-primary-800 dark:bg-[#07110b] dark:hover:border-primary-500 dark:hover:bg-[#102016]'}`}
+                    >
+                      <div className="flex items-start gap-4">
+                        <Avatar
+                          src={c.profileImage ?? undefined}
+                          name={c.name}
+                          size="lg"
+                          online={c.isOnline}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-base font-black text-gray-950 dark:text-primary-50">{c.name}</p>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {specializationTags.slice(0, 3).map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="rounded-full border border-primary-100 bg-primary-50 px-2.5 py-1 text-[11px] font-black text-primary-800 dark:border-primary-700 dark:bg-[#102016] dark:text-primary-100"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                                {specializationTags.length > 3 && (
+                                  <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-black text-gray-500 dark:border-primary-800 dark:bg-[#07110b] dark:text-primary-100/65">
+                                    +{specializationTags.length - 3}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-primary-100 bg-white px-2.5 py-1 text-xs font-black text-primary-700 dark:border-primary-800 dark:bg-[#102016] dark:text-primary-100">
+                              {c.rating > 0 ? (
+                                <>
+                                  <Star className="h-3.5 w-3.5 fill-current" />
+                                  {c.rating.toFixed(1)}
+                                </>
+                              ) : (
+                                c.isOnline ? 'Online' : 'Available'
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-primary-100/65">
+                              <span className={`h-2 w-2 rounded-full ${c.isOnline ? 'bg-green-500' : 'bg-gray-300 dark:bg-primary-800'}`} />
+                              {c.isOnline ? 'Ready to chat now' : 'Start a conversation'}
+                            </div>
+                            <span className={`inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-full px-4 text-sm font-black transition-colors
+                              ${isStarting
+                                ? 'bg-primary-600 text-white dark:bg-primary-300 dark:text-[#06110b]'
+                                : 'bg-primary-700 text-white group-hover:bg-primary-800 dark:bg-primary-300 dark:text-[#06110b]'}`}
+                            >
+                              {isStarting ? (
+                                <Spinner size="sm" />
+                              ) : (
+                                <>
+                                  <MessageCircle className="h-4 w-4" />
+                                  Chat
+                                  <ChevronRight className="h-4 w-4" />
+                                </>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </section>
