@@ -54,7 +54,9 @@ const counsellorBookingsRoutes = require('./routes/counsellor-bookings');
 const bookingRoutes            = require('./routes/bookings');
 const paymentRoutes            = require('./routes/payments');
 const chatRoutes               = require('./routes/chat');
-const videoRoutes           = require('./routes/video');
+const videoRoutes            = require('./routes/video');
+const adminRoutes            = require('./routes/admin');
+const articleRoutes          = require('./routes/articles');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -402,6 +404,8 @@ async function startServer() {
   app.use('/api/payments', paymentRoutes);
   app.use('/api/chat', chatRoutes);
   app.use('/api/video', videoRoutes);
+  app.use('/api/admin', adminRoutes);
+  app.use('/api/articles', articleRoutes);
 
   // notFound and errorHandler MUST be registered after all routes
   app.use(notFound);

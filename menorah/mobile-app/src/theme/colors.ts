@@ -16,6 +16,7 @@ export const palettes = {
     accentLight: '#fff8ed',  // accent-50
     primaryDark: '#25624a',  // primary-700
     primaryLight: '#5fb08e', // primary-400
+    error: '#dc2626',
   },
   dark: {
     primary: '#3d9470',      // primary-500
@@ -32,6 +33,7 @@ export const palettes = {
     accentLight: '#7f300f',
     primaryDark: '#2d7a5c',  // primary-600
     primaryLight: '#8fcdb0', // primary-300
+    error: '#f87171',
   },
 } as const;
 

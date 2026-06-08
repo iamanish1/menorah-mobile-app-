@@ -79,7 +79,7 @@ export default function PreCallCheck({ navigation, route }: any) {
   const checkNetwork = async () => {
     try {
       const state = await NetInfo.fetch();
-      setNetworkOk(state.isConnected && (state.type === 'wifi' || state.type === 'cellular'));
+      setNetworkOk(Boolean(state.isConnected && (state.type === 'wifi' || state.type === 'cellular')));
     } catch (error) {
       console.error('Network check error:', error);
       setNetworkOk(false);

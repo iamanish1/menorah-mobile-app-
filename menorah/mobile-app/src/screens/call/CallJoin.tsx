@@ -11,6 +11,8 @@ import { palettes } from '@/theme/colors';
 import { ENV } from '@/lib/env';
 import { api } from '@/lib/api';
 
+const WebViewWithPermissions = WebView as any;
+
 interface RouteParams {
   bookingId:     string;
   roomId:        string;
@@ -223,7 +225,7 @@ export default function CallJoin({ navigation, route }: any) {
           </View>
         )}
 
-        <WebView
+        <WebViewWithPermissions
           ref={webViewRef}
           source={{ uri: meetUrl }}
           onLoad={() => setLoading(false)}
@@ -234,12 +236,11 @@ export default function CallJoin({ navigation, route }: any) {
           mediaPlaybackRequiresUserAction={false}
           allowsProtectedMedia={true}
           // Performance
-          androidHardwareAccelerationDisabled={false}
           androidLayerType="hardware"
           javaScriptEnabled={true}
           domStorageEnabled={true}
           style={{ flex: 1 }}
-          onPermissionRequest={(request) => {
+          onPermissionRequest={(request: any) => {
             const { nativeEvent } = request;
             // Grant mic and camera for WebRTC
             if (

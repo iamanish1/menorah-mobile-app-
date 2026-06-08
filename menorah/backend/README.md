@@ -101,6 +101,11 @@ CLOUDINARY_CLOUD_NAME=your-cloud-name
 CLOUDINARY_API_KEY=your-api-key
 CLOUDINARY_API_SECRET=your-api-secret
 
+# AI Article Pipeline
+OPENAI_API_KEY=
+AI_IMAGE_API_KEY=
+PUBLIC_WEB_BASE_URL=http://localhost:3000
+
 # Video Call Configuration
 JITSI_BASE_URL=https://meet.jit.si
 JITSI_APP_ID=your-jitsi-app-id

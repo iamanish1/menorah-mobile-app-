@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import {
   View, ScrollView, FlatList, Linking, Text, TouchableOpacity,
-  useWindowDimensions, TextInput,
+  TextInput,
+  ActivityIndicator,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SlidersHorizontal, Search } from "lucide-react-native";
@@ -13,13 +14,11 @@ import SubscriptionSelector from "@/components/discover/SubscriptionSelector";
 import FindCounsellorHero from "@/components/discover/FindCounsellorHero";
 import ArticleCard from "@/components/cards/ArticleCard";
 import InstaPostCard from "@/components/cards/InstaPostCard";
-// Mock data removed from production builds — use empty arrays as fallback until
-// real Article/Instagram API endpoints are implemented.
-const ARTICLES: any[]        = [];
-const mockCounsellors: any[] = [];
-const INSTA: any[]           = [];
+import { mockCounsellors } from "@/mock/counsellors";
+import { INSTA } from "@/mock/instagram";
 import { useNotifications } from "@/state/useNotifications";
 import { useAuth } from "@/state/useAuth";
+import { useArticles } from "@/hooks/useArticles";
 import { palettes } from "@/theme/colors";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -60,6 +59,12 @@ export default function Discover({ navigation }: any) {
   const colors = palettes[scheme];
   const { unreadCount } = useNotifications();
   const { user } = useAuth();
+  const {
+    data: articlesData,
+    isLoading: articlesLoading,
+    isError: articlesError,
+  } = useArticles({ page: 1, limit: 8 });
+  const articles = articlesData?.articles || [];
 
   const normalizedQuery = q.trim().toLowerCase();
   const isSearching = normalizedQuery.length > 0;
@@ -72,8 +77,8 @@ export default function Discover({ navigation }: any) {
     : [];
 
   const matchedArticles = isSearching
-    ? ARTICLES.filter((a) =>
-        [a.title, a.excerpt, a.category].filter(Boolean).join(" ").toLowerCase().includes(normalizedQuery)
+    ? articles.filter((a) =>
+        [a.title, a.excerpt, a.category, ...(a.tags || [])].filter(Boolean).join(" ").toLowerCase().includes(normalizedQuery)
       )
     : [];
 
@@ -207,8 +212,8 @@ export default function Discover({ navigation }: any) {
                 <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 12 }}>Articles</Text>
                 {matchedArticles.slice(0, 4).map((a) => (
                   <TouchableOpacity
-                    key={a.id}
-                    onPress={() => Linking.openURL(a.url)}
+                    key={a.id || a._id || a.slug}
+                    onPress={() => navigation.navigate('ArticleDetail', { slug: a.slug })}
                     activeOpacity={0.9}
                     style={{
                       backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
@@ -285,17 +290,61 @@ export default function Discover({ navigation }: any) {
             {/* Read Articles */}
             <SectionHeader
               title="Read Articles"
-              onPress={() => Linking.openURL("https://menorah.me/newsletter")}
+              onPress={() => navigation.navigate('ArticleList')}
               style={{ marginTop: 20 }}
             />
-            <FlatList
-              data={ARTICLES}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(i) => i.id}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 4 }}
-              renderItem={({ item }) => <ArticleCard item={item} />}
-            />
+            {articlesLoading ? (
+              <View
+                style={{
+                  height: 120,
+                  marginHorizontal: 16,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={{ color: colors.muted, fontSize: 13, marginTop: 8 }}>Loading articles...</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={articles}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(i) => i.id || i._id || i.slug}
+                contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 4 }}
+                renderItem={({ item }) => (
+                  <ArticleCard
+                    item={item}
+                    onPress={() => navigation.navigate('ArticleDetail', { slug: item.slug })}
+                  />
+                )}
+                ListEmptyComponent={
+                  <View
+                    style={{
+                      width: 260,
+                      height: 120,
+                      borderRadius: 18,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.card,
+                      padding: 16,
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontSize: 15, fontWeight: '700', marginBottom: 6 }}>
+                      {articlesError ? 'Articles unavailable' : 'No articles yet'}
+                    </Text>
+                    <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18 }}>
+                      {articlesError ? 'Please try again later.' : 'Published articles will appear here.'}
+                    </Text>
+                  </View>
+                }
+              />
+            )}
 
             {/* Social Media */}
             <SectionHeader

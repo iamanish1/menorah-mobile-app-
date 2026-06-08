@@ -35,6 +35,8 @@ import SubscriptionSuccess from '@/screens/subscription/SubscriptionSuccess';
 import Notifications from '@/screens/profile/Notifications';
 import CounsellorList from '@/screens/counsellor/CounsellorList';
 import CounsellorProfile from '@/screens/counsellor/CounsellorProfile';
+import ArticleList from '@/screens/articles/ArticleList';
+import ArticleDetail from '@/screens/articles/ArticleDetail';
 
 const Stack = createNativeStackNavigator();
 
@@ -50,6 +52,8 @@ export default function RootNavigator() {
     config: {
       screens: {
         ResetPassword: 'reset-password',
+        ArticleList: 'articles',
+        ArticleDetail: 'articles/:slug',
       },
     },
   };
@@ -148,6 +152,8 @@ export default function RootNavigator() {
         <Stack.Screen name="TwoFactorAuth" component={TwoFactorAuth} />
         <Stack.Screen name="PrivacySettings" component={PrivacySettings} />
         <Stack.Screen name="Notifications" component={Notifications} />
+        <Stack.Screen name="ArticleList" component={ArticleList} />
+        <Stack.Screen name="ArticleDetail" component={ArticleDetail} />
         <Stack.Screen name="SubscriptionDetails" component={SubscriptionDetails} />
         <Stack.Screen name="SubscriptionPayment" component={SubscriptionPayment} />
         <Stack.Screen name="SubscriptionSuccess" component={SubscriptionSuccess} />
