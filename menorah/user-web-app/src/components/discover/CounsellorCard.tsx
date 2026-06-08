@@ -1,79 +1,153 @@
 import Link from 'next/link';
-import { Star, Clock, Globe, Video, MessageCircle, Headphones, BadgeCheck } from 'lucide-react';
-import { Avatar } from '@/components/ui/Avatar';
-import { cn } from '@/lib/utils';
+import { BadgeCheck, Play } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import type { Counsellor } from '@/types';
 
-export function CounsellorCard({ c }: { c: Counsellor }) {
+const WAVEFORM_BARS = [18, 28, 15, 31, 22, 36, 18, 33, 26, 39, 20, 35, 29, 41, 23, 34, 17, 31, 25, 38, 19, 30, 24, 34];
+const DAY_ORDER = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+interface CounsellorCardProps {
+  c: Counsellor;
+  index?: number;
+}
+
+export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
+  const tags = getSpecializationTags(c);
+  const availability = getNextAvailability(c);
+  const therapyHours = getTherapyHours(c);
+  const primaryLanguage = c.languages[0] ?? 'English';
+  const price = c.hourlyRate > 0 ? formatCurrency(c.hourlyRate, c.currency) : 'Free';
+
   return (
-    <Link href={`/counsellor/${c.id}`} className="block group">
-      <div className={cn(
-        'bg-white border border-primary-100 rounded-[1.4rem] p-5 shadow-[0_12px_32px_-26px_rgba(45,122,92,0.42)] dark:bg-primary-900 dark:border-primary-800',
-        'hover:border-primary-200 hover:shadow-[0_16px_34px_-22px_rgba(45,122,92,0.35)] dark:hover:border-primary-600',
-        'transition-all duration-200'
-      )}>
-        <div className="flex gap-4">
-          <Avatar
-            src={c.profileImage}
-            name={c.name}
-            size="lg"
-            online={c.isAvailable}
-            className="shrink-0"
-          />
-
-          <div className="flex-1 min-w-0">
-            {/* Name + verified */}
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="font-bold text-gray-950 group-hover:text-primary-700 transition-colors leading-tight dark:text-primary-50 dark:group-hover:text-primary-200">
-                  {c.name}
-                </h3>
-                <p className="text-[13px] text-primary-600 dark:text-primary-300 font-semibold mt-0.5">{c.specialization}</p>
-              </div>
-              {c.isVerified && (
-                <BadgeCheck className="w-[18px] h-[18px] text-primary-500 shrink-0 mt-0.5" />
-              )}
-            </div>
-
-            {/* Meta row */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2.5 text-[13px] text-gray-500 dark:text-primary-100/65">
-              <span className="flex items-center gap-1">
-                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                <span className="font-semibold text-gray-800 dark:text-primary-50">{c.rating.toFixed(1)}</span>
-                <span className="text-gray-400 dark:text-primary-100/45">({c.reviewCount})</span>
-              </span>
-              <span className="text-gray-200 select-none">·</span>
-              <span className="flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-gray-400" />
-                {c.experience}yr exp
-              </span>
-              <span className="text-gray-200 select-none">·</span>
-              <span className="flex items-center gap-1">
-                <Globe className="w-3.5 h-3.5 text-gray-400" />
-                {c.languages.slice(0, 2).join(', ')}
-              </span>
-            </div>
-
-            {c.bio && (
-              <p className="text-[13px] text-gray-400 dark:text-primary-100/55 mt-2 line-clamp-2 leading-relaxed">{c.bio}</p>
-            )}
-
-            {/* Session types + price */}
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-primary-50 dark:border-primary-800">
-              <div className="flex items-center gap-1.5 text-gray-350">
-                <Video className="w-3.5 h-3.5 text-gray-300" />
-                <Headphones className="w-3.5 h-3.5 text-gray-300" />
-                <MessageCircle className="w-3.5 h-3.5 text-gray-300" />
-              </div>
-              <span className="text-[15px] font-black text-gray-950 dark:text-primary-50">
-                {formatCurrency(c.hourlyRate, c.currency)}
-                <span className="text-xs font-normal text-gray-400 dark:text-primary-100/50 ml-0.5">/hr</span>
-              </span>
-            </div>
+    <article
+      className="counsellor-profile-card group"
+      style={{ animationDelay: `${Math.min(index, 8) * 70}ms`, animationFillMode: 'both' }}
+    >
+      <div className="counsellor-profile-card__hero">
+        <div className="relative z-10 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <h3 className="truncate font-body text-lg font-bold leading-tight text-white">{c.name}</h3>
+            {c.isVerified && <BadgeCheck className="h-4 w-4 shrink-0 text-white/85" aria-label="Verified counsellor" />}
           </div>
+          <p className="mt-0.5 truncate text-xs font-semibold text-primary-950/85">{c.specialization}</p>
+        </div>
+
+        <div className="counsellor-profile-card__avatar" aria-hidden="true">
+          {getInitial(c.name)}
         </div>
       </div>
-    </Link>
+
+      <div className="px-3.5 py-3">
+        <div className="flex flex-wrap gap-2">
+          {tags.map((tag) => (
+            <span key={tag} className="counsellor-profile-card__tag">
+              {tag}
+            </span>
+          ))}
+        </div>
+
+        <div className="my-3 h-px bg-primary-100" />
+
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition-transform duration-200 group-hover:scale-105">
+            <Play className="h-4 w-4 fill-current" aria-hidden="true" />
+          </span>
+
+          <div className="counsellor-profile-card__waveform" aria-hidden="true">
+            {WAVEFORM_BARS.map((height, barIndex) => (
+              <span key={`${height}-${barIndex}`} style={{ height }} />
+            ))}
+          </div>
+
+          <Link href={`/counsellor/${c.id}`} className="counsellor-profile-card__outline-button">
+            View Profile
+          </Link>
+        </div>
+
+        <div className="my-3 h-px bg-primary-100" />
+
+        <div className="grid grid-cols-3 gap-1.5">
+          <StatTile value={therapyHours} label="Therapy hrs" />
+          <StatTile value={primaryLanguage} label="Languages" />
+          <StatTile value={price} label={c.hourlyRate > 0 ? 'Per hour' : 'Per session'} />
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3 border-t border-primary-100 pt-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium text-slate-400">Next available in</p>
+            <p className="mt-0.5 truncate text-sm font-bold text-slate-950">{availability}</p>
+          </div>
+          <Link href={`/bookings/new?counsellorId=${c.id}`} className="counsellor-profile-card__book-button">
+            Book Now
+          </Link>
+        </div>
+      </div>
+    </article>
   );
+}
+
+function StatTile({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="rounded-lg bg-slate-50 px-2.5 py-3">
+      <p className="truncate text-sm font-black leading-tight text-slate-950">{value}</p>
+      <p className="mt-1 truncate text-[10px] font-medium text-slate-600">{label}</p>
+    </div>
+  );
+}
+
+function getInitial(name: string) {
+  return name.trim().charAt(0).toUpperCase() || 'M';
+}
+
+function getSpecializationTags(c: Counsellor) {
+  const tags = (c.specializations?.length ? c.specializations : c.specialization.split(/[,/|]+/))
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+  return (tags.length ? tags : ['Mental wellness']).slice(0, 3);
+}
+
+function getTherapyHours(c: Counsellor) {
+  const source = c.totalSessions ?? c.experience * 120;
+  const rounded = Math.max(50, Math.round(source / 10) * 10);
+  return `${rounded}+`;
+}
+
+function getNextAvailability(c: Counsellor) {
+  if (!c.availability) {
+    return c.isAvailable ? 'Today at 7:30 PM' : 'On request';
+  }
+
+  const now = new Date();
+  const today = now.getDay();
+
+  for (let offset = 0; offset < DAY_ORDER.length; offset += 1) {
+    const key = DAY_ORDER[(today + offset) % DAY_ORDER.length];
+    const slot = c.availability[key];
+
+    if (slot?.isAvailable && slot.start) {
+      const dayLabel = offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' : toTitleCase(key);
+      return `${dayLabel} at ${formatAvailabilityTime(slot.start)}`;
+    }
+  }
+
+  return 'On request';
+}
+
+function formatAvailabilityTime(value: string) {
+  const [rawHours, rawMinutes = '0'] = value.split(':');
+  const hours = Number(rawHours);
+  const minutes = Number(rawMinutes);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return value;
+  }
+
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours % 12 || 12;
+  return `${hour12}:${minutes.toString().padStart(2, '0')} ${period}`;
+}
+
+function toTitleCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

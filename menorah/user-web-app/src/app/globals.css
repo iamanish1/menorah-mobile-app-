@@ -128,6 +128,54 @@ html.dark {
   .app-pill-active {
     @apply border-primary-600 bg-primary-600 text-white hover:bg-primary-700 dark:border-primary-500 dark:bg-primary-500 dark:text-white;
   }
+  .counsellor-profile-card {
+    @apply overflow-hidden rounded-lg border border-primary-100 bg-white shadow-[0_18px_48px_-34px_rgba(17,24,39,0.36)] transition-all duration-300;
+    animation: slideUp 0.32s ease-out;
+  }
+  .counsellor-profile-card:hover {
+    @apply -translate-y-1 border-primary-200 shadow-[0_24px_58px_-34px_rgba(45,122,92,0.42)];
+  }
+  .counsellor-profile-card__hero {
+    @apply relative flex min-h-[102px] items-start justify-between gap-3 overflow-hidden px-3.5 py-4;
+    background:
+      radial-gradient(ellipse at 42% 38%, rgba(255, 255, 255, 0.24) 0 12%, transparent 13% 100%),
+      radial-gradient(ellipse at 42% 38%, transparent 0 18%, rgba(255, 255, 255, 0.16) 19% 20%, transparent 21% 100%),
+      radial-gradient(ellipse at 42% 38%, transparent 0 28%, rgba(255, 255, 255, 0.12) 29% 30%, transparent 31% 100%),
+      radial-gradient(ellipse at 42% 38%, transparent 0 38%, rgba(255, 255, 255, 0.1) 39% 40%, transparent 41% 100%),
+      linear-gradient(120deg, #9debb9 0%, #7d9860 100%);
+  }
+  .counsellor-profile-card__hero::after {
+    content: '';
+    @apply absolute inset-0;
+    background:
+      radial-gradient(circle at 88% 30%, rgba(255, 255, 255, 0.22) 0 0, transparent 31%),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.18), transparent 58%);
+    pointer-events: none;
+  }
+  .counsellor-profile-card__avatar {
+    @apply relative z-10 flex h-[78px] w-[78px] shrink-0 items-center justify-center rounded-full border border-white/45 bg-white/20 text-2xl font-bold text-primary-950/80 backdrop-blur-sm transition-transform duration-300;
+  }
+  .counsellor-profile-card:hover .counsellor-profile-card__avatar {
+    @apply scale-105;
+  }
+  .counsellor-profile-card__tag {
+    @apply inline-flex min-h-7 items-center rounded-md border border-primary-100 bg-white px-3 text-[11px] font-semibold text-slate-950 shadow-sm;
+  }
+  .counsellor-profile-card__waveform {
+    @apply flex h-10 min-w-0 flex-1 items-center justify-center gap-[3px] rounded-lg border border-primary-100 bg-white px-2;
+  }
+  .counsellor-profile-card__waveform span {
+    @apply w-[2px] rounded-full bg-slate-300 transition-colors duration-200;
+  }
+  .counsellor-profile-card:hover .counsellor-profile-card__waveform span {
+    @apply bg-primary-300;
+  }
+  .counsellor-profile-card__outline-button {
+    @apply inline-flex min-h-10 shrink-0 items-center justify-center rounded-full border border-slate-900 px-4 text-[11px] font-bold text-slate-950 transition-colors hover:bg-slate-900 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2;
+  }
+  .counsellor-profile-card__book-button {
+    @apply inline-flex min-h-10 shrink-0 items-center justify-center rounded-full bg-[#294f2f] px-6 text-[11px] font-black uppercase text-white transition-colors hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2;
+  }
 }
 
 @layer utilities {
@@ -153,4 +201,41 @@ html.dark {
   html.dark .text-gray-600 { color: rgba(249, 250, 251, 0.82); }
   html.dark .text-gray-500,
   html.dark .text-gray-400 { color: var(--app-muted); }
+
+  html.dark .counsellor-profile-card {
+    @apply border-primary-800 bg-primary-900 shadow-[0_20px_56px_-36px_rgba(0,0,0,0.9)];
+  }
+  html.dark .counsellor-profile-card:hover {
+    @apply border-primary-600 shadow-[0_26px_60px_-36px_rgba(0,0,0,0.95)];
+  }
+  html.dark .counsellor-profile-card__hero {
+    background:
+      radial-gradient(ellipse at 42% 38%, rgba(255, 255, 255, 0.16) 0 12%, transparent 13% 100%),
+      radial-gradient(ellipse at 42% 38%, transparent 0 18%, rgba(255, 255, 255, 0.1) 19% 20%, transparent 21% 100%),
+      radial-gradient(ellipse at 42% 38%, transparent 0 30%, rgba(255, 255, 255, 0.08) 31% 32%, transparent 33% 100%),
+      linear-gradient(120deg, #3d9470 0%, #204f3c 100%);
+  }
+  html.dark .counsellor-profile-card__avatar {
+    @apply border-white/25 bg-white/10 text-primary-50;
+  }
+  html.dark .counsellor-profile-card__tag,
+  html.dark .counsellor-profile-card__waveform {
+    @apply border-primary-800 bg-primary-950 text-primary-50;
+  }
+  html.dark .counsellor-profile-card__outline-button {
+    @apply border-primary-100 text-primary-50 hover:bg-primary-100 hover:text-primary-950;
+  }
+  html.dark .counsellor-profile-card__book-button {
+    @apply bg-primary-500 hover:bg-primary-400;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .counsellor-profile-card,
+    .counsellor-profile-card *,
+    .counsellor-profile-card::before,
+    .counsellor-profile-card::after {
+      animation: none !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
