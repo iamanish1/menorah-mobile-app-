@@ -252,21 +252,27 @@ counsellorSchema.virtual('availabilityStatus').get(function() {
   return 'Available';
 });
 
-// Indexes for search and filtering
-counsellorSchema.index({ specialization: 1, isActive: 1, isAvailable: 1 });
-counsellorSchema.index({ languages: 1 });
-counsellorSchema.index({ specializations: 1 });
-counsellorSchema.index({ rating: -1 });
-counsellorSchema.index({ hourlyRate: 1 });
-counsellorSchema.index({ location: '2dsphere' });
+// Unique index on the user ref — one User can only be one Counsellor
+// Also speeds up Counsellor.findOne({ user: socket.userId }) on every socket connect
+counsellorSchema.index({ user: 1 }, { unique: true });
 
-// Pre-save middleware to update rating
-counsellorSchema.pre('save', function(next) {
-  if (this.reviewCount > 0) {
-    this.rating = Math.round((this.rating * 10) / this.reviewCount) / 10;
-  }
-  next();
-});
+// Indexes for search and filtering
+// Primary discover query: isActive filter + rating sort
+counsellorSchema.index({ isActive: 1, isAvailable: 1, rating: -1 });
+// Price filter
+counsellorSchema.index({ isActive: 1, hourlyRate: 1 });
+// Language filter
+counsellorSchema.index({ languages: 1, isActive: 1 });
+// Specialization filters (both fields)
+counsellorSchema.index({ specialization: 1, isActive: 1 });
+counsellorSchema.index({ specializations: 1, isActive: 1 });
+// Full-text search on specialization fields (used by the search query)
+counsellorSchema.index({ specialization: 'text', specializations: 'text' });
+
+// The updateRating() method correctly maintains the running average.
+// The pre-save hook that recalculated rating has been removed — it used
+// a broken formula: (current_rating * 10 / reviewCount) which corrupts
+// the stored value on every unrelated save (e.g. toggling isAvailable).
 
 // Static method to find available counsellors
 counsellorSchema.statics.findAvailable = function(criteria = {}) {

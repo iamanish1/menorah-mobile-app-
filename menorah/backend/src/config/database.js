@@ -2,30 +2,26 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI);
-
-    console.log(`📦 MongoDB Connected: ${conn.connection.host}`);
-
-    // Handle connection events
-    mongoose.connection.on('error', (err) => {
-      console.error('MongoDB connection error:', err);
+    await mongoose.connect(process.env.MONGODB_URI, {
+      maxPoolSize:               20,   // tune based on Atlas tier (M10 = 500 connections max)
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS:          45000,
     });
 
-    mongoose.connection.on('disconnected', () => {
-      console.log('MongoDB disconnected');
-    });
+    // Omit hostname from log — avoid leaking Atlas cluster address to log aggregators
+    console.log('📦 MongoDB connected');
 
-    // Graceful shutdown
-    process.on('SIGINT', async () => {
-      await mongoose.connection.close();
-      console.log('MongoDB connection closed through app termination');
-      process.exit(0);
-    });
+    mongoose.connection.on('error',        (err) => console.error('MongoDB error:', err));
+    mongoose.connection.on('disconnected', ()    => console.log('MongoDB disconnected'));
 
   } catch (error) {
     console.error('Error connecting to MongoDB:', error.message);
     process.exit(1);
   }
 };
+
+// SIGINT handler is registered once in server.js alongside the SIGTERM handler.
+// Defining it here caused duplicate listeners whenever connectDB() was called more
+// than once (e.g. in tests), triggering MaxListenersExceededWarning.
 
 module.exports = connectDB;

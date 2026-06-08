@@ -3,17 +3,18 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, Users, UserCheck, BarChart3, Wallet, LogOut, Menu, X
+  LayoutDashboard, Users, UserCheck, Wallet, Send, LogOut, Menu, X
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/counsellors', label: 'Counsellors', icon: UserCheck },
-  { href: '/users', label: 'Users', icon: Users },
-  { href: '/revenue', label: 'Revenue & Payouts', icon: Wallet },
+  { href: '/dashboard',   label: 'Dashboard',        icon: LayoutDashboard },
+  { href: '/counsellors', label: 'Counsellors',       icon: UserCheck       },
+  { href: '/users',       label: 'Users',             icon: Users           },
+  { href: '/revenue',     label: 'Revenue & Payouts', icon: Wallet          },
+  { href: '/payouts',     label: 'Payout History',    icon: Send            },
 ];
 
 export default function Sidebar() {

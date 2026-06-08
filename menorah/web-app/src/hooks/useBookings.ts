@@ -1,9 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Booking } from '@/types';
 
+// ── Query keys ────────────────────────────────────────────────────────────────
+export const bookingKeys = {
+  all:     ['bookings']                   as const,
+  list:    (p?: object) => ['bookings', p ?? {}] as const,
+  pending: (p?: object) => ['bookings', 'pending', p ?? {}] as const,
+};
+
+// ── useBookings ───────────────────────────────────────────────────────────────
+// Drop-in replacement for the old manual useState/useEffect hook.
+// Returns the same shape so bookings/page.tsx needs no changes.
 export function useBookings(params?: {
   status?: string;
   startDate?: string;
@@ -11,76 +21,51 @@ export function useBookings(params?: {
   page?: number;
   limit?: number;
 }) {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [pagination, setPagination] = useState<any>(null);
-
-  useEffect(() => {
-    fetchBookings();
-  }, [params?.status, params?.startDate, params?.endDate, params?.page]);
-
-  const fetchBookings = async () => {
-    try {
-      setLoading(true);
-      const response = await api.getMyBookings(params);
-      if (response.success && response.data) {
-        setBookings(response.data.bookings);
-        setPagination(response.data.pagination);
-        setError(null);
-      } else {
-        setError(response.message || 'Failed to fetch bookings');
-      }
-    } catch (err: any) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey:  bookingKeys.list(params),
+    queryFn:   () => api.getMyBookings(params),
+    staleTime: 0,   // booking state changes frequently — always re-validate
+    select: (res) => ({
+      bookings:   res.success ? (res.data?.bookings ?? []) as Booking[] : [],
+      pagination: res.data?.pagination ?? null,
+    }),
+  });
 
   return {
-    bookings,
-    loading,
-    error,
-    pagination,
-    refetch: fetchBookings,
+    bookings:   data?.bookings   ?? [],
+    pagination: data?.pagination ?? null,
+    loading:    isLoading,
+    error:      error?.message ?? null,
+    refetch,
+    isFetching,
   };
 }
 
+// ── usePendingBookings ────────────────────────────────────────────────────────
 export function usePendingBookings(params?: { page?: number; limit?: number }) {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [pagination, setPagination] = useState<any>(null);
-
-  useEffect(() => {
-    fetchPendingBookings();
-  }, [params?.page]);
-
-  const fetchPendingBookings = async () => {
-    try {
-      setLoading(true);
-      const response = await api.getPendingBookings(params);
-      if (response.success && response.data) {
-        setBookings(response.data.bookings);
-        setPagination(response.data.pagination);
-        setError(null);
-      } else {
-        setError(response.message || 'Failed to fetch pending bookings');
-      }
-    } catch (err: any) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey:  bookingKeys.pending(params),
+    queryFn:   () => api.getPendingBookings(params),
+    staleTime: 0,
+    select: (res) => ({
+      bookings:   res.success ? (res.data?.bookings ?? []) as Booking[] : [],
+      pagination: res.data?.pagination ?? null,
+    }),
+  });
 
   return {
-    bookings,
-    loading,
-    error,
-    pagination,
-    refetch: fetchPendingBookings,
+    bookings:   data?.bookings   ?? [],
+    pagination: data?.pagination ?? null,
+    loading:    isLoading,
+    error:      error?.message ?? null,
+    refetch,
+    isFetching,
   };
 }
 
+// ── Invalidation helper ───────────────────────────────────────────────────────
+// Call from socket event handlers so both booking lists re-fetch.
+export function useInvalidateAllBookings() {
+  const qc = useQueryClient();
+  return () => qc.invalidateQueries({ queryKey: bookingKeys.all });
+}

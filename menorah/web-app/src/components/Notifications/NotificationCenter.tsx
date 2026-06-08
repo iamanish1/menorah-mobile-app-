@@ -14,7 +14,7 @@ interface Notification {
 
 export default function NotificationCenter() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
   const { on, off } = useSocket(token);
 
   useEffect(() => {

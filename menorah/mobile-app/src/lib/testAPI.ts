@@ -1,10 +1,11 @@
 import axios from 'axios';
 import { ENV } from './env';
 
-/**
- * Test API connectivity and endpoints
- */
 export async function testAPI() {
+  if (!__DEV__) {
+    return { baseURL: ENV.API_BASE_URL, healthCheck: false, loginEndpoint: false, errors: [] };
+  }
+
   console.log('\n🔍 ===== TESTING API CONNECTION =====');
   console.log('API Base URL:', ENV.API_BASE_URL);
   console.log('');
@@ -60,9 +61,8 @@ export async function testAPI() {
       );
       console.log('   ✅ Login endpoint is reachable');
       console.log('   Response status:', loginResponse.status);
-      console.log('   Response data:', loginResponse.data);
       results.loginEndpoint = true;
-      
+
       if (loginResponse.status === 401) {
         console.log('   ✅ Expected 401 response for invalid credentials');
       }
@@ -72,10 +72,8 @@ export async function testAPI() {
         console.log('   ❌', errorMsg);
         results.errors.push(errorMsg);
       } else if (error.response) {
-        // Server responded but with an error status
         console.log('   ✅ Login endpoint is reachable (server responded)');
         console.log('   Response status:', error.response.status);
-        console.log('   Response data:', error.response.data);
         results.loginEndpoint = true;
       } else {
         const errorMsg = `Login endpoint test failed: ${error.message}`;
@@ -104,4 +102,3 @@ export async function testAPI() {
 
   return results;
 }
-

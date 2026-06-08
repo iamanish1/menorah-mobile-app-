@@ -1,134 +1,250 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const jwt = require('jsonwebtoken');
+const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
-const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const User   = require('../models/User');
 const { auth } = require('../middleware/auth');
-const { sendOTPEmail, sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
-const { sendOTP, resendOTP } = require('../utils/sms');
+const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
+const { getRedisClient } = require('../config/redis');
 
 const router = express.Router();
 
-// Temporary in-memory store for pending registrations (not yet OTP-verified)
-// Entry expires after 10 minutes, matching MSG91 OTP expiry
-const pendingRegistrations = new Map();
-setInterval(() => {
-  const now = Date.now();
-  for (const [email, entry] of pendingRegistrations) {
-    if (entry.expiresAt < now) pendingRegistrations.delete(email);
-  }
-}, 5 * 60 * 1000);
-
-// Generate JWT Token
-const generateToken = (userId, role = 'user', fullName = '') => {
-  return jwt.sign({ userId, role, fullName }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
-  });
+// ── JWT token generation ───────────────────────────────────────────────────
+// Algorithm pinned to HS256.  fullName removed from payload — PII should not
+// live in a base64-decoded token visible to anyone who holds it.
+const generateToken = (userId, role = 'user') => {
+  return jwt.sign(
+    { userId, role },
+    process.env.JWT_SECRET,
+    { algorithm: 'HS256', expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+  );
 };
 
+// ── Pending registration helpers (Redis-backed) ────────────────────────────
+// Registration data is stored in Redis instead of process memory so the
+// flow works correctly across multiple PM2 workers and Cloud Run instances.
+const PENDING_TTL   = 10 * 60;          // 10 min — matches MSG91 OTP expiry
+const MAX_OTP_TRIES = 5;
+
+const storePendingReg = async (email, data) => {
+  const redis   = getRedisClient();
+  const otpHash = crypto.createHash('sha256').update(data.otp).digest('hex');
+  // Hash the password now so plaintext never touches Redis
+  const passwordHash = await bcrypt.hash(data.password, parseInt(process.env.BCRYPT_ROUNDS) || 12);
+  const entry = { ...data, otp: otpHash, password: passwordHash, attempts: 0 };
+  await redis.setEx(`pending:reg:${email}`, PENDING_TTL, JSON.stringify(entry));
+};
+
+const getPendingReg = async (email) => {
+  try {
+    const redis = getRedisClient();
+    const raw = await redis.get(`pending:reg:${email}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+};
+
+const updatePendingReg = async (email, updates) => {
+  try {
+    const redis   = getRedisClient();
+    const pending = await getPendingReg(email);
+    if (!pending) return;
+    const ttl = await redis.ttl(`pending:reg:${email}`);
+    await redis.setEx(`pending:reg:${email}`, Math.max(ttl, 1), JSON.stringify({ ...pending, ...updates }));
+  } catch {}
+};
+
+const deletePendingReg = async (email) => {
+  try { await getRedisClient().del(`pending:reg:${email}`); } catch {}
+};
+
+// Timing-safe OTP check — SHA-256(input) vs stored hash
+const checkOTP = (storedHash, inputOtp) => {
+  const inputHash = crypto.createHash('sha256').update(inputOtp).digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(storedHash, 'hex'), Buffer.from(inputHash, 'hex'));
+  } catch { return false; }
+};
+
+// ── Logout blocklist helper ────────────────────────────────────────────────
+const blockToken = async (token) => {
+  try {
+    const decoded = jwt.decode(token);
+    if (!decoded?.exp) return;
+    const ttl = decoded.exp - Math.floor(Date.now() / 1000);
+    if (ttl <= 0) return;
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    await getRedisClient().setEx(`blocked:token:${hash}`, ttl, '1');
+  } catch {}
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/register
-// @desc    Register a new user
 // @access  Public
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/register', [
-  body('firstName').trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
-  body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
-  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
-  body('phone').matches(/^\+[1-9]\d{1,14}$/).withMessage('Please provide a valid phone number with country code (e.g., +1234567890)'),
-  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters long'),
-  body('dateOfBirth').isISO8601().withMessage('Please provide a valid date of birth'),
-  body('gender').isIn(['male', 'female', 'other', 'prefer-not-to-say']).withMessage('Please provide a valid gender')
+  body('firstName').trim().isLength({ min: 2, max: 50 }),
+  body('lastName').trim().isLength({ min: 2, max: 50 }),
+  body('email').isEmail().normalizeEmail(),
+  body('phone').matches(/^\+[1-9]\d{1,14}$/),
+  body('password').isStrongPassword({ minLength: 8, minLowercase: 1, minUppercase: 1, minNumbers: 1, minSymbols: 0 })
+    .withMessage('Password must be at least 8 characters and include uppercase, lowercase, and a number'),
+  body('dateOfBirth').isISO8601(),
+  body('gender').isIn(['male', 'female', 'other', 'prefer-not-to-say']),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
     }
 
     const { firstName, lastName, email, phone, password, dateOfBirth, gender } = req.body;
 
-    // Check if a verified user already exists
     const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
     if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'User with this email or phone number already exists'
-      });
+      return res.status(400).json({ success: false, message: 'User with this email or phone number already exists' });
     }
 
-    // Generate OTP and store registration data — do NOT create user yet
     const otp = crypto.randomInt(100000, 999999).toString();
-    pendingRegistrations.set(email, {
-      firstName, lastName, email, phone, password, dateOfBirth, gender,
-      otp,
-      expiresAt: Date.now() + 10 * 60 * 1000,
-    });
+    await storePendingReg(email, { firstName, lastName, email, phone, password, dateOfBirth, gender, otp });
 
-    // Send OTP via dedicated OTP email template
     const emailSent = await sendOTPEmail(email, otp, `${firstName} ${lastName}`);
     if (!emailSent) {
-      pendingRegistrations.delete(email);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send verification email. Please try again.'
-      });
+      await deletePendingReg(email);
+      return res.status(500).json({ success: false, message: 'Failed to send verification email. Please try again.' });
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'OTP sent to your email. Please verify to complete registration.',
-      data: { email }
-    });
-
+    res.status(200).json({ success: true, message: 'OTP sent to your email. Please verify to complete registration.', data: { email } });
   } catch (error) {
     console.error('Registration error:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
-// @route   POST /api/auth/login
-// @desc    Login user
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/auth/verify-email-otp
 // @access  Public
-router.post('/login', [
-  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
-  body('password').notEmpty().withMessage('Password is required')
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/verify-email-otp', [
+  body('email').isEmail().normalizeEmail(),
+  body('otp').matches(/^\d{4,6}$/),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const { email, otp } = req.body;
+    const pending = await getPendingReg(email);
+
+    if (!pending) {
+      return res.status(400).json({ success: false, message: 'Registration session expired. Please register again.' });
+    }
+
+    // OTP attempt limiting — max 5 failed tries
+    if (pending.attempts >= MAX_OTP_TRIES) {
+      await deletePendingReg(email);
+      return res.status(400).json({ success: false, message: 'Too many failed attempts. Please register again.' });
+    }
+
+    if (!checkOTP(pending.otp, otp)) {
+      await updatePendingReg(email, { attempts: pending.attempts + 1 });
+      const remaining = MAX_OTP_TRIES - pending.attempts - 1;
       return res.status(400).json({
         success: false,
-        message: 'Validation failed',
-        errors: errors.array()
+        message: remaining > 0 ? `Invalid OTP. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.` : 'Invalid OTP.',
       });
+    }
+
+    // Create user — password is already bcrypt-hashed in Redis
+    const user = new User({
+      firstName: pending.firstName,
+      lastName:  pending.lastName,
+      email:     pending.email,
+      phone:     pending.phone,
+      password:  pending.password,  // already hashed; pre-save hook detects and skips re-hashing
+      dateOfBirth: pending.dateOfBirth,
+      gender:    pending.gender,
+      isEmailVerified: true,
+    });
+    await user.save();
+    await deletePendingReg(email);
+
+    const token = generateToken(user._id, user.role || 'user');
+    res.json({
+      success: true,
+      message: 'Email verified. Registration complete.',
+      data: {
+        user: { id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone, isEmailVerified: true, isPhoneVerified: user.isPhoneVerified },
+        token,
+      },
+    });
+  } catch (error) {
+    console.error('Email OTP verification error:', error.message);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/auth/resend-email-otp
+// @access  Public
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/resend-email-otp', [
+  body('email').isEmail().normalizeEmail(),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const { email } = req.body;
+    const pending = await getPendingReg(email);
+
+    if (!pending) {
+      return res.status(400).json({ success: false, message: 'Registration session expired. Please register again.' });
+    }
+
+    const newOtp    = crypto.randomInt(100000, 999999).toString();
+    const newOtpHash = crypto.createHash('sha256').update(newOtp).digest('hex');
+    await updatePendingReg(email, { otp: newOtpHash, attempts: 0 });
+
+    const emailSent = await sendOTPEmail(email, newOtp);
+    res.json({ success: emailSent, message: emailSent ? 'OTP resent successfully' : 'Failed to resend OTP' });
+  } catch (error) {
+    console.error('Resend email OTP error:', error.message);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/auth/login
+// @access  Public
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/login', [
+  body('email').isEmail().normalizeEmail(),
+  body('password').notEmpty(),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
     }
 
     const { email, password } = req.body;
-    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
 
-    const user = await User.findOne({ email: normalizedEmail });
-    if (!user) {
+    // Use same generic message for missing user AND inactive account —
+    // different messages allow attackers to enumerate valid email addresses.
+    if (!user || !user.isActive) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    if (!user.isActive) {
-      const msg = user.role === 'counsellor'
-        ? 'Your account is pending admin approval. You will receive login credentials once approved.'
-        : 'Account is deactivated. Please contact support.';
-      return res.status(401).json({ success: false, message: msg });
-    }
-
     if (user.isLocked()) {
-      return res.status(401).json({
-        success: false,
-        message: 'Account is temporarily locked due to multiple failed login attempts'
-      });
+      // Locked message is acceptable — user already proved they know the email exists
+      // by successfully registering; revealing lockout doesn't add enumeration risk.
+      return res.status(401).json({ success: false, message: 'Account is temporarily locked due to multiple failed login attempts. Please try again later.' });
     }
 
     const isPasswordValid = await user.comparePassword(password);
@@ -138,38 +254,34 @@ router.post('/login', [
     }
 
     await user.resetLoginAttempts();
-    const token = generateToken(user._id, user.role || 'user', `${user.firstName} ${user.lastName}`);
+    const token = generateToken(user._id, user.role || 'user');
 
     res.json({
       success: true,
       message: 'Login successful',
       data: {
         user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          phone: user.phone,
-          isEmailVerified: user.isEmailVerified,
-          isPhoneVerified: user.isPhoneVerified,
-          profileImage: user.profileImage,
-          role: user.role || 'user'
+          id: user._id, firstName: user.firstName, lastName: user.lastName,
+          email: user.email, phone: user.phone,
+          isEmailVerified: user.isEmailVerified, isPhoneVerified: user.isPhoneVerified,
+          profileImage: user.profileImage, role: user.role || 'user',
         },
-        token
-      }
+        token,
+      },
     });
-
   } catch (error) {
     console.error('Login error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/verify-email
-// @desc    Verify email address via 6-digit code
+// @desc    Verify email with a 6-digit code (stored on User document)
 // @access  Public
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/verify-email', [
-  body('code').matches(/^\d{6}$/).withMessage('Verification code must be a 6-digit number')
+  body('code').matches(/^\d{6}$/),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -180,106 +292,28 @@ router.post('/verify-email', [
     const { code } = req.body;
     const user = await User.findOne({ emailVerificationToken: code });
     if (!user) {
-      return res.status(400).json({ success: false, message: 'Invalid verification code' });
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
     }
 
     user.isEmailVerified = true;
     user.emailVerificationToken = undefined;
     await user.save();
 
-    res.json({ success: true, message: 'Email verified successfully' });
-
+    const token = generateToken(user._id, user.role || 'user');
+    res.json({ success: true, message: 'Email verified successfully', data: { token } });
   } catch (error) {
     console.error('Email verification error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
-// @route   POST /api/auth/resend-email-verification
-// @desc    Resend email verification code
-// @access  Public
-router.post('/resend-email-verification', [
-  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
-    }
-
-    const { email } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    if (user.isEmailVerified) {
-      return res.status(400).json({ success: false, message: 'Email is already verified' });
-    }
-
-    const emailVerificationToken = crypto.randomInt(100000, 999999).toString();
-    user.emailVerificationToken = emailVerificationToken;
-    await user.save();
-
-    try {
-      const emailSent = await sendVerificationEmail(user.email, emailVerificationToken);
-      if (emailSent) {
-        res.json({ success: true, message: 'Verification code sent successfully' });
-      } else {
-        res.status(500).json({ success: false, message: 'Failed to send verification email.' });
-      }
-    } catch (error) {
-      console.error('Error sending verification email:', error.message);
-      res.status(500).json({ success: false, message: 'Failed to send verification email.' });
-    }
-
-  } catch (error) {
-    console.error('Resend email verification error:', error.message);
-    res.status(500).json({ success: false, message: 'Internal server error' });
-  }
-});
-
-// @route   POST /api/auth/resend-otp
-// @desc    Resend SMS OTP for phone verification
-// @access  Public
-router.post('/resend-otp', [
-  body('phone').notEmpty().withMessage('Phone number is required')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
-    }
-
-    const { phone } = req.body;
-    const user = await User.findOne({ phone });
-    if (!user) {
-      // Return success to avoid user enumeration
-      return res.json({ success: true, message: 'If an account exists, a new OTP has been sent.' });
-    }
-
-    if (user.isPhoneVerified) {
-      return res.status(400).json({ success: false, message: 'Phone number is already verified' });
-    }
-
-    const result = await resendOTP(phone);
-    if (!result.success) {
-      return res.status(500).json({ success: false, message: 'Failed to send OTP. Please try again.' });
-    }
-
-    res.json({ success: true, message: 'OTP sent successfully' });
-  } catch (error) {
-    console.error('Resend OTP error:', error.message);
-    res.status(500).json({ success: false, message: 'Internal server error' });
-  }
-});
-
+// ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/verify-phone
-// @desc    Verify phone number via MSG91 OTP
 // @access  Public
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/verify-phone', [
-  body('phone').notEmpty().withMessage('Phone number is required'),
-  body('otp').matches(/^\d{4,6}$/).withMessage('OTP must be 4-6 digits')
+  body('phone').matches(/^\+[1-9]\d{1,14}$/),
+  body('otp').notEmpty(),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -288,12 +322,11 @@ router.post('/verify-phone', [
     }
 
     const { phone, otp } = req.body;
-
-    // Verify with MSG91 — they manage OTP state and expiry
     const { verifyOTP } = require('../utils/sms');
     const result = await verifyOTP(phone, otp);
+
     if (!result.success) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
+      return res.status(400).json({ success: false, message: result.message || 'Invalid or expired OTP' });
     }
 
     const user = await User.findOneAndUpdate(
@@ -306,214 +339,136 @@ router.post('/verify-phone', [
     }
 
     res.json({ success: true, message: 'Phone number verified successfully' });
-
   } catch (error) {
     console.error('Phone verification error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
-// @route   POST /api/auth/verify-email-otp
-// @desc    Verify email address via MSG91 Email OTP
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/auth/resend-email-verification
 // @access  Public
-router.post('/verify-email-otp', [
-  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-  body('otp').matches(/^\d{4,6}$/).withMessage('OTP must be 4-6 digits')
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/resend-email-verification', [
+  body('email').isEmail().normalizeEmail(),
 ], async (req, res) => {
+  // Always return 200 — prevents email-existence enumeration
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
-    }
-
-    const { email, otp } = req.body;
-
-    // Get pending registration data and verify OTP locally
-    const pending = pendingRegistrations.get(email);
-    if (!pending || pending.expiresAt < Date.now()) {
-      pendingRegistrations.delete(email);
-      return res.status(400).json({
-        success: false,
-        message: 'Registration session expired. Please register again.'
-      });
-    }
-
-    if (pending.otp !== otp) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
-    }
-
-    // Create the user now that OTP is verified
-    const user = new User({
-      firstName: pending.firstName,
-      lastName: pending.lastName,
-      email: pending.email,
-      phone: pending.phone,
-      password: pending.password,
-      dateOfBirth: pending.dateOfBirth,
-      gender: pending.gender,
-      isEmailVerified: true,
-    });
-    await user.save();
-    pendingRegistrations.delete(email);
-
-    const token = generateToken(user._id, user.role || 'user', `${user.firstName} ${user.lastName}`);
-
-    res.json({
-      success: true,
-      message: 'Email verified. Registration complete.',
-      data: {
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          phone: user.phone,
-          isEmailVerified: user.isEmailVerified,
-          isPhoneVerified: user.isPhoneVerified,
-        },
-        token,
-      }
-    });
-  } catch (error) {
-    console.error('Email OTP verification error:', error.message);
-    res.status(500).json({ success: false, message: 'Internal server error' });
-  }
-});
-
-// @route   POST /api/auth/resend-email-otp
-// @desc    Resend Email OTP via MSG91
-// @access  Public
-router.post('/resend-email-otp', [
-  body('email').isEmail().normalizeEmail().withMessage('Valid email is required')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
-    }
-
     const { email } = req.body;
-
-    const pending = pendingRegistrations.get(email);
-    if (!pending || pending.expiresAt < Date.now()) {
-      pendingRegistrations.delete(email);
-      return res.status(400).json({ success: false, message: 'Registration session expired. Please register again.' });
+    const user = await User.findOne({ email, isEmailVerified: false });
+    if (user) {
+      const code = crypto.randomInt(100000, 999999).toString();
+      user.emailVerificationToken = code;
+      await user.save();
+      const { sendVerificationEmail } = require('../utils/email');
+      await sendVerificationEmail(email, code).catch(() => {});
     }
-
-    // Generate new OTP and extend expiry
-    const newOtp = crypto.randomInt(100000, 999999).toString();
-    pending.otp = newOtp;
-    pending.expiresAt = Date.now() + 10 * 60 * 1000;
-
-    const emailSent = await sendOTPEmail(email, newOtp);
-    res.json({ success: emailSent, message: emailSent ? 'OTP resent successfully' : 'Failed to resend OTP' });
   } catch (error) {
-    console.error('Resend email OTP error:', error.message);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    console.error('Resend email verification error:', error.message);
   }
+  res.json({ success: true, message: 'If an unverified account exists for that email, a new code has been sent.' });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/forgot-password
-// @desc    Send password reset email
 // @access  Public
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/forgot-password', [
-  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email')
+  body('email').isEmail().normalizeEmail(),
 ], async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
-    }
-
     const { email } = req.body;
     const user = await User.findOne({ email });
-    if (!user) {
-      // Always return success to avoid user enumeration
-      return res.json({ success: true, message: 'If an account exists for that email, a password reset link has been sent' });
+    if (user) {
+      const resetToken  = crypto.randomBytes(32).toString('hex');
+      const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+      user.passwordResetToken   = hashedToken;
+      user.passwordResetExpires = Date.now() + 10 * 60 * 1000;
+      await user.save();
+      await sendPasswordResetEmail(user.email, resetToken).catch(() => {});
     }
-
-    // Generate plain token for the email link
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    // Store SHA-256 hash in DB — plain token never touches the database
-    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    user.passwordResetToken = hashedToken;
-    user.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-    await user.save();
-
-    const emailSent = await sendPasswordResetEmail(user.email, resetToken);
-    if (!emailSent) {
-      console.error(`Failed to send password reset email to ${user.email}`);
-    }
-
+    // Always return the same message regardless — prevents email-existence enumeration
     res.json({ success: true, message: 'If an account exists for that email, a password reset link has been sent' });
-
   } catch (error) {
     console.error('Forgot password error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
 // @route   GET /api/auth/reset-password
-// @desc    Redirect password reset links — web browsers go to web app, mobile deep-links to app
+// @desc    Redirect password reset links to mobile app or web app
 // @access  Public
-router.get('/reset-password', async (req, res) => {
-  const token = req.query.token;
-  const webAppUrl = process.env.WEB_APP_URL?.trim() || 'https://menorah.me';
+// ─────────────────────────────────────────────────────────────────────────────
+// Allowed redirect destination hostnames — prevents open redirect if env var is misconfigured
+const ALLOWED_REDIRECT_HOSTS = new Set(['menorah.me', 'menorahhealth.app', 'www.menorah.me', 'www.menorahhealth.app', 'localhost:3002']);
+
+const safeWebAppUrl = () => {
+  const raw = (process.env.WEB_APP_URL || 'https://menorah.me').trim();
+  try {
+    const { hostname, port } = new URL(raw);
+    const host = port ? `${hostname}:${port}` : hostname;
+    if (!ALLOWED_REDIRECT_HOSTS.has(host)) {
+      return 'https://menorah.me';
+    }
+    return raw.replace(/\/$/, '');
+  } catch {
+    return 'https://menorah.me';
+  }
+};
+
+router.get('/reset-password', (req, res) => {
+  const token      = req.query.token;
+  const webAppUrl  = safeWebAppUrl();
 
   if (!token) {
     return res.redirect(`${webAppUrl}/reset-password?error=missing-token`);
   }
 
   const userAgent = req.headers['user-agent'] || '';
-  const isMobileApp = /Expo|React Native/i.test(userAgent);
-  const isAndroid = /Android/i.test(userAgent);
-  const isIOS = /iPhone|iPad|iPod/i.test(userAgent);
+  const isMobile  = /Android|iPhone|iPad|iPod|Expo|React Native/i.test(userAgent);
 
-  // Mobile browsers: try deep link first, fall back to web app
-  if (isAndroid || isIOS || isMobileApp) {
-    const appScheme = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
-    const separator = appScheme.includes('?') ? '&' : '?';
-    const appUrl = `${appScheme}${separator}token=${encodeURIComponent(token)}`;
+  if (isMobile) {
+    const appScheme  = (process.env.MOBILE_APP_SCHEME || 'menorah-health://reset-password').trim();
+    const sep        = appScheme.includes('?') ? '&' : '?';
+    // Use JSON.stringify to safely embed URL values into JavaScript string literals
+    // This prevents XSS if the token value ever contains JS metacharacters.
+    const appUrl     = `${appScheme}${sep}token=${encodeURIComponent(token)}`;
     const webFallback = `${webAppUrl}/reset-password?token=${encodeURIComponent(token)}`;
 
-    return res.status(200).send(`
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Reset your password</title>
-          <script>
-            window.location.href = '${appUrl}';
-            setTimeout(function() {
-              window.location.href = '${webFallback}';
-            }, 2000);
-          </script>
-        </head>
-        <body style="font-family: Arial, sans-serif; background: #f5f3eb; padding: 32px; color: #1f2937;">
-          <div style="max-width: 420px; margin: 0 auto; background: white; border-radius: 18px; padding: 28px; box-shadow: 0 12px 35px rgba(0,0,0,0.08);">
-            <h1 style="margin-top: 0;">Open Menorah Health</h1>
-            <p style="line-height: 1.6;">Opening the app to reset your password...</p>
-            <a href="${appUrl}" style="display: inline-block; margin-top: 8px; background: #314830; color: white; padding: 14px 20px; border-radius: 12px; text-decoration: none; font-weight: 600;">Open the app</a>
-            <p style="margin-top: 18px; color: #6b7280; font-size: 14px;">
-              App not opening? <a href="${webFallback}" style="color: #314830;">Reset via browser instead</a>
-            </p>
-          </div>
-        </body>
-      </html>
-    `);
+    return res.status(200).send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Reset your password</title>
+  <script>
+    window.location.href = ${JSON.stringify(appUrl)};
+    setTimeout(function(){window.location.href=${JSON.stringify(webFallback)};},2000);
+  </script>
+</head>
+<body style="font-family:Arial,sans-serif;background:#f5f3eb;padding:32px;color:#1f2937">
+  <div style="max-width:420px;margin:0 auto;background:white;border-radius:18px;padding:28px">
+    <h1 style="margin-top:0">Open Menorah Health</h1>
+    <p>Opening the app to reset your password...</p>
+    <a href=${JSON.stringify(appUrl)} style="background:#314830;color:white;padding:14px 20px;border-radius:12px;text-decoration:none;font-weight:600;display:inline-block;margin-top:8px">Open the app</a>
+    <p style="margin-top:18px;color:#6b7280;font-size:14px">App not opening? <a href=${JSON.stringify(webFallback)} style="color:#314830">Reset via browser</a></p>
+  </div>
+</body>
+</html>`);
   }
 
-  // Desktop browser: redirect directly to web app reset page
   return res.redirect(`${webAppUrl}/reset-password?token=${encodeURIComponent(token)}`);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/reset-password
-// @desc    Reset password
 // @access  Public
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/reset-password', [
-  body('token').notEmpty().withMessage('Reset token is required'),
-  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters long')
+  body('token').notEmpty(),
+  body('password').isStrongPassword({ minLength: 8, minLowercase: 1, minUppercase: 1, minNumbers: 1, minSymbols: 0 })
+    .withMessage('Password must be at least 8 characters and include uppercase, lowercase, and a number'),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -522,39 +477,40 @@ router.post('/reset-password', [
     }
 
     const { token, password } = req.body;
-
-    // Hash incoming token and compare against stored hash
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
     const user = await User.findOne({
-      passwordResetToken: hashedToken,
-      passwordResetExpires: { $gt: Date.now() }
+      passwordResetToken:   hashedToken,
+      passwordResetExpires: { $gt: Date.now() },
     });
 
     if (!user) {
       return res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
     }
 
-    user.password = password;
-    user.passwordResetToken = undefined;
+    user.password             = password;
+    user.passwordResetToken   = undefined;
     user.passwordResetExpires = undefined;
     await user.save();
 
     res.json({ success: true, message: 'Password reset successfully' });
-
   } catch (error) {
     console.error('Reset password error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
 // @route   GET /api/auth/me
-// @desc    Get current user
 // @access  Private
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password').lean();
+    const user = await User.findById(req.user._id).select(
+      '-password -emailVerificationToken -passwordResetToken -passwordResetExpires -loginAttempts -lockUntil'
+    ).lean();
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    // Return same shape as login/register so user.id is always a string everywhere
+    // Return same shape as login/register so user.id is always a string on the frontend
     res.json({
       success: true,
       data: {
@@ -581,11 +537,15 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/logout
-// @desc    Logout user
+// @desc    Invalidate the current JWT by adding it to the Redis blocklist
 // @access  Private
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/logout', auth, async (req, res) => {
   try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (token) await blockToken(token);
     res.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error.message);

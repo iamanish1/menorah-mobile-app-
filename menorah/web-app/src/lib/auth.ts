@@ -57,7 +57,7 @@ export const auth = {
 
   async checkAuth(): Promise<void> {
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
       if (!token) {
         authStore.setState({ user: null, isLoading: false });
         return;
@@ -72,13 +72,13 @@ export const auth = {
       } else {
         authStore.setState({ user: null, isLoading: false });
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('auth_token');
+          sessionStorage.removeItem('auth_token');
         }
       }
     } catch (error) {
       authStore.setState({ user: null, isLoading: false });
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('auth_token');
+        sessionStorage.removeItem('auth_token');
       }
     }
   },

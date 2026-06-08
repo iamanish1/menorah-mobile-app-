@@ -33,5 +33,11 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Android signing credentials — NEVER commit these
+credentials.json
+credentials/
+*.jks
+upload_certificate*.pem
+
 # typescript
 *.tsbuildinfo

@@ -1,0 +1,55 @@
+# =============================================================================
+# LiveKit Server — VPS-3 Docker Compose
+# =============================================================================
+# Run on VPS-3 (8 vCPU, 16 GB RAM):
+#   docker compose -f docker-compose.livekit.yml up -d
+#   docker compose -f docker-compose.livekit.yml logs -f
+#
+# Required before starting:
+#   1. Edit livekit.yaml — replace REPLACE_LIVEKIT_API_KEY and REPLACE_LIVEKIT_API_SECRET
+#   2. Open VPS-3 firewall ports:
+#      sudo ufw allow 7880/tcp   # LiveKit HTTP API + WebSocket
+#      sudo ufw allow 7881/tcp   # RTC over TCP
+#      sudo ufw allow 443/tcp    # TURN TLS (already open from vps-setup.sh)
+#      sudo ufw allow 50000:60000/udp  # WebRTC UDP media
+#   3. Point DNS: livekit.menorahhealth.app → VPS-3 public IP
+#   4. Issue SSL cert:
+#      certbot certonly --standalone -d livekit.menorahhealth.app
+# =============================================================================
+
+version: '3.9'
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.8
+    container_name: menorah-livekit
+    restart: unless-stopped
+
+    # Use host networking — LiveKit needs to know its real external IP
+    # for WebRTC ICE candidate generation. Bridge networking causes ICE failures.
+    network_mode: host
+
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+      # Mount Let's Encrypt certs for TURN TLS
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+
+    command: --config /etc/livekit.yaml
+
+    environment:
+      # Ensures LiveKit logs use UTC timestamps
+      TZ: UTC
+
+    # Healthcheck — used by Docker to restart unhealthy containers
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7880/"]
+      interval: 30s
+      timeout:  5s
+      retries:  3
+      start_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"

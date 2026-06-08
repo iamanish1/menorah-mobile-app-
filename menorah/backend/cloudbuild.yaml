@@ -1,0 +1,120 @@
+# ── Menorah Health — GCP Cloud Build CI/CD ──────────────────────────────────
+#
+# Triggered on push to main branch → builds Docker image → pushes to Artifact
+# Registry → deploys to Cloud Run (burst/failover backend).
+#
+# One-time setup (run these in your GCP project, replace PROJECT_ID):
+#
+#   # Enable required APIs
+#   gcloud services enable cloudbuild.googleapis.com run.googleapis.com artifactregistry.googleapis.com
+#
+#   # Create Artifact Registry repo
+#   gcloud artifacts repositories create menorah \
+#     --repository-format=docker \
+#     --location=asia-south1 \
+#     --description="Menorah Health API images"
+#
+#   # Grant Cloud Build permission to deploy to Cloud Run
+#   PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format='value(projectNumber)')
+#   gcloud projects add-iam-policy-binding PROJECT_ID \
+#     --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+#     --role="roles/run.admin"
+#   gcloud iam service-accounts add-iam-policy-binding \
+#     ${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+#     --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+#     --role="roles/iam.serviceAccountUser"
+#
+#   # Store all backend secrets in Secret Manager (run once for each):
+#   for SECRET in MONGODB_URI JWT_SECRET JWT_REFRESH_SECRET ALLOWED_ORIGINS \
+#     REDIS_URL \
+#     MSG91_AUTH_KEY MSG91_OTP_TEMPLATE_ID MSG91_SMS_TEMPLATE_ID \
+#     MSG91_EMAIL_DOMAIN MSG91_EMAIL_TEMPLATE_ID EMAIL_FROM \
+#     RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET \
+#     RAZORPAY_X_KEY_ID RAZORPAY_X_KEY_SECRET RAZORPAY_PAYOUT_ACCOUNT_NUMBER RAZORPAY_X_WEBHOOK_SECRET \
+#     CHECKOUT_RETURN_URL \
+#     LIVEKIT_URL LIVEKIT_API_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET \
+#     CLOUDINARY_CLOUD_NAME CLOUDINARY_API_KEY CLOUDINARY_API_SECRET; do
+#     echo -n "REPLACE_WITH_VALUE" | gcloud secrets create $SECRET --data-file=-
+#     gcloud secrets add-iam-policy-binding $SECRET \
+#       --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+#       --role="roles/secretmanager.secretAccessor"
+#   done
+#
+#   # Connect this repo to Cloud Build:
+#   #   GCP Console → Cloud Build → Triggers → Connect Repository
+#   #   Add trigger: push to branch "main", config file "Menorah/backend/cloudbuild.yaml"
+#
+# Substitution variables (set in the Cloud Build trigger, not here):
+#   _PROJECT_ID   — your GCP project ID
+#   _REGION       — Cloud Run region (e.g. asia-south1)
+#   _SERVICE_NAME — Cloud Run service name (e.g. menorah-api)
+
+substitutions:
+  _PROJECT_ID: your-gcp-project-id
+  _REGION: asia-south1
+  _SERVICE_NAME: menorah-api
+  _REPO: menorah
+  _IMAGE: asia-south1-docker.pkg.dev/$_PROJECT_ID/$_REPO/$_SERVICE_NAME
+
+steps:
+  # ── Step 1: Build Docker image ─────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - --tag=$_IMAGE:$COMMIT_SHA
+      - --tag=$_IMAGE:latest
+      - --cache-from=$_IMAGE:latest   # reuse previous layer cache to speed up builds
+      - --file=Menorah/backend/Dockerfile
+      - Menorah/backend              # build context = backend directory
+    waitFor: ['-']                   # start immediately
+
+  # ── Step 2: Push image to Artifact Registry ────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: push
+    args:
+      - push
+      - --all-tags
+      - $_IMAGE
+    waitFor: [build]
+
+  # ── Step 3: Deploy to Cloud Run ────────────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - $_SERVICE_NAME
+      - --image=$_IMAGE:$COMMIT_SHA
+      - --region=$_REGION
+      - --platform=managed
+      - --allow-unauthenticated         # Cloudflare Worker calls this without a GCP token
+      - --port=8080                     # matches Dockerfile EXPOSE
+      - --min-instances=0              # scale to zero when no traffic (cost saving)
+      - --max-instances=10             # cap burst scale-out
+      - --memory=512Mi
+      - --cpu=1
+      - --timeout=60                   # max request duration (seconds)
+      - --concurrency=80               # requests per container instance
+      # Mount all secrets from Secret Manager as env vars.
+      # Format: ENV_VAR_NAME=secret-name:version
+      # Create each secret once with: echo -n "value" | gcloud secrets create SECRET_NAME --data-file=-
+      - --set-secrets=MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,ALLOWED_ORIGINS=ALLOWED_ORIGINS:latest,REDIS_URL=REDIS_URL:latest,MSG91_AUTH_KEY=MSG91_AUTH_KEY:latest,MSG91_OTP_TEMPLATE_ID=MSG91_OTP_TEMPLATE_ID:latest,MSG91_SMS_TEMPLATE_ID=MSG91_SMS_TEMPLATE_ID:latest,MSG91_EMAIL_DOMAIN=MSG91_EMAIL_DOMAIN:latest,MSG91_EMAIL_TEMPLATE_ID=MSG91_EMAIL_TEMPLATE_ID:latest,EMAIL_FROM=EMAIL_FROM:latest,RAZORPAY_KEY_ID=RAZORPAY_KEY_ID:latest,RAZORPAY_KEY_SECRET=RAZORPAY_KEY_SECRET:latest,RAZORPAY_WEBHOOK_SECRET=RAZORPAY_WEBHOOK_SECRET:latest,RAZORPAY_X_KEY_ID=RAZORPAY_X_KEY_ID:latest,RAZORPAY_X_KEY_SECRET=RAZORPAY_X_KEY_SECRET:latest,RAZORPAY_PAYOUT_ACCOUNT_NUMBER=RAZORPAY_PAYOUT_ACCOUNT_NUMBER:latest,RAZORPAY_X_WEBHOOK_SECRET=RAZORPAY_X_WEBHOOK_SECRET:latest,CHECKOUT_RETURN_URL=CHECKOUT_RETURN_URL:latest,LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_URL=LIVEKIT_API_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,CLOUDINARY_CLOUD_NAME=CLOUDINARY_CLOUD_NAME:latest,CLOUDINARY_API_KEY=CLOUDINARY_API_KEY:latest,CLOUDINARY_API_SECRET=CLOUDINARY_API_SECRET:latest
+      # Non-secret env vars set inline.
+      # ENABLE_SOCKET_ADAPTER=false: Cloud Run receives no socket.io traffic
+      # (Cloudflare Worker pins /socket.io/ to VPS), so skip the Redis pub/sub pair.
+      - --set-env-vars=NODE_ENV=production,SERVER_TZ=Asia/Kolkata,BCRYPT_ROUNDS=12,MAX_FILE_SIZE=5242880,MOBILE_APP_SCHEME=menorah-health://reset-password,ENABLE_SOCKET_ADAPTER=false,UPLOAD_PATH=./uploads
+    waitFor: [push]
+
+# Store the built image in Artifact Registry (required for Cloud Build to push)
+images:
+  - $_IMAGE:$COMMIT_SHA
+  - $_IMAGE:latest
+
+# Build timeout — 15 min should be plenty for this image
+timeout: 900s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8   # faster builds — costs a few extra cents per build

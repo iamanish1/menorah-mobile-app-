@@ -1,0 +1,266 @@
+name: Build & Deploy — Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'menorah/backend/**'
+      - 'gcp/cloudrun.yaml'
+      - '.github/workflows/deploy.yml'
+
+  workflow_dispatch:    # manual trigger from GitHub Actions UI
+
+env:
+  # GitHub Container Registry (for VPS pull)
+  GHCR_REGISTRY: ghcr.io
+  GHCR_IMAGE:    ${{ github.repository_owner }}/menorah-api
+
+  # GCP Artifact Registry (for Cloud Run)
+  # GCP_AR_REGION, GCP_PROJECT_ID, GCP_REGION come from GitHub Secrets
+  AR_IMAGE:      ${{ secrets.GCP_AR_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/menorah/menorah-api
+
+jobs:
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 1 — Build Docker image and push to BOTH registries
+  # ════════════════════════════════════════════════════════════════════════════
+  build:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # push to GHCR
+      id-token: write          # needed for GCP Workload Identity (if used later)
+
+    outputs:
+      short_sha: ${{ steps.sha.outputs.short }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Short SHA
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      # ── Auth to GHCR ─────────────────────────────────────────────────────
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Auth to GCP Artifact Registry ─────────────────────────────────────
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ secrets.GCP_AR_REGION }}-docker.pkg.dev --quiet
+
+      # ── Build once, push to both registries ───────────────────────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push to GHCR + Artifact Registry
+        uses: docker/build-push-action@v5
+        with:
+          context:    ./menorah/backend
+          file:       ./menorah/backend/Dockerfile
+          push:       true
+          tags: |
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE }}:latest
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE }}:sha-${{ steps.sha.outputs.short }}
+            ${{ env.AR_IMAGE }}:latest
+            ${{ env.AR_IMAGE }}:sha-${{ steps.sha.outputs.short }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          # GitHub Actions layer cache — fast rebuilds
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 2 — Deploy to VPS  (runs in parallel with Job 3)
+  # ════════════════════════════════════════════════════════════════════════════
+  deploy-vps:
+    name: Deploy → VPS
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: SSH to VPS and deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key:      ${{ secrets.VPS_SSH_KEY }}
+          port:     ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            SHORT_SHA="${{ needs.build.outputs.short_sha }}"
+            IMAGE="${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE }}:sha-${SHORT_SHA}"
+
+            echo "==> Logging into GHCR"
+            echo "${{ secrets.GITHUB_TOKEN }}" \
+              | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            echo "==> Pulling image ${IMAGE}"
+            docker pull "${IMAGE}"
+
+            echo "==> Stopping old container"
+            docker stop menorah-api 2>/dev/null || true
+            docker rm   menorah-api 2>/dev/null || true
+
+            echo "==> Starting new container (network=host, uses local Redis)"
+            docker run -d \
+              --name menorah-api \
+              --restart unless-stopped \
+              --network host \
+              --env-file /opt/menorah/.env \
+              -e NODE_ENV=production \
+              -e PORT=3000 \
+              -e REDIS_URL=redis://127.0.0.1:6379 \
+              -v /opt/menorah/logs:/app/logs \
+              "${IMAGE}"
+
+            echo "==> Health check (waiting 15s for startup)"
+            sleep 15
+            curl -sf http://localhost:3000/health | grep -q '"status":"OK"'
+            echo "==> VPS health check passed ✅"
+
+            echo "==> Pruning old images"
+            docker image prune -f
+
+      - name: Notify on VPS failure
+        if: failure()
+        run: |
+          echo "::error::VPS deploy failed. Check logs: docker logs menorah-api"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 3 — Deploy to GCP Cloud Run  (runs in parallel with Job 2)
+  # ════════════════════════════════════════════════════════════════════════════
+  deploy-cloudrun:
+    name: Deploy → Cloud Run
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout (for cloudrun.yaml)
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      # ── Install envsubst (part of gettext-base, not pre-installed) ──────
+      - name: Install gettext-base
+        run: sudo apt-get install -y gettext-base
+
+      # ── Substitute template variables in cloudrun.yaml ────────────────
+      - name: Generate final cloudrun.yaml
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION:     ${{ secrets.GCP_REGION }}
+          GCP_AR_REGION:  ${{ secrets.GCP_AR_REGION }}
+          IMAGE_TAG:      sha-${{ needs.build.outputs.short_sha }}
+        run: |
+          # envsubst replaces ${VAR} placeholders in the YAML with real values
+          envsubst < gcp/cloudrun.yaml > /tmp/cloudrun-final.yaml
+          echo "==> cloudrun.yaml generated (content redacted from logs)"
+
+      # ── Deploy to Cloud Run ───────────────────────────────────────────
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run services replace /tmp/cloudrun-final.yaml \
+            --region=${{ secrets.GCP_REGION }} \
+            --quiet
+
+          # Allow unauthenticated invocations (traffic comes from Cloudflare Worker)
+          gcloud run services add-iam-policy-binding menorah-api \
+            --region=${{ secrets.GCP_REGION }} \
+            --member="allUsers" \
+            --role="roles/run.invoker" \
+            --quiet 2>/dev/null || true   # idempotent — ignore if already set
+
+      # ── Print Cloud Run URL ───────────────────────────────────────────
+      - name: Get Cloud Run URL
+        id: cloudrun_url
+        run: |
+          URL=$(gcloud run services describe menorah-api \
+            --region=${{ secrets.GCP_REGION }} \
+            --format='value(status.url)')
+          echo "url=${URL}" >> $GITHUB_OUTPUT
+          echo "==> Cloud Run URL: ${URL}"
+
+      # ── Smoke test ────────────────────────────────────────────────────
+      - name: Cloud Run health check
+        run: |
+          URL="${{ steps.cloudrun_url.outputs.url }}"
+          echo "==> Hitting ${URL}/health"
+          # Cloud Run may take 30s to cold-start on first deploy
+          for i in {1..6}; do
+            if curl -sf "${URL}/health" | grep -q '"status":"OK"'; then
+              echo "==> Cloud Run health check passed ✅"
+              exit 0
+            fi
+            echo "    Attempt ${i}/6 — waiting 10s..."
+            sleep 10
+          done
+          echo "::error::Cloud Run health check failed after 60s"
+          exit 1
+
+      - name: Remind to update Cloudflare Worker
+        run: |
+          echo ""
+          echo "════════════════════════════════════════════════════════"
+          echo " Cloud Run deployed successfully!"
+          echo " URL: ${{ steps.cloudrun_url.outputs.url }}"
+          echo ""
+          echo " If this is a new Cloud Run URL, update your Cloudflare Worker:"
+          echo "   cd cloudflare"
+          echo "   npx wrangler secret put GCP_URL"
+          echo "   # paste: ${{ steps.cloudrun_url.outputs.url }}"
+          echo "════════════════════════════════════════════════════════"
+
+      - name: Notify on Cloud Run failure
+        if: failure()
+        run: |
+          echo "::error::Cloud Run deploy failed. Check: gcloud run services describe menorah-api --region=${{ secrets.GCP_REGION }}"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 4 — Summary (runs after both deploys complete)
+  # ════════════════════════════════════════════════════════════════════════════
+  summary:
+    name: Deployment summary
+    needs: [build, deploy-vps, deploy-cloudrun]
+    runs-on: ubuntu-latest
+    if: always()    # run even if one job failed
+
+    steps:
+      - name: Print summary
+        run: |
+          VPS_STATUS="${{ needs.deploy-vps.result }}"
+          GCP_STATUS="${{ needs.deploy-cloudrun.result }}"
+          SHA="sha-${{ needs.build.outputs.short_sha }}"
+
+          echo "╔══════════════════════════════════════════════════╗"
+          echo "║         Menorah Health — Deploy Summary          ║"
+          echo "╠══════════════════════════════════════════════════╣"
+          echo "║ Image tag : ${SHA}"
+          echo "║ VPS       : ${VPS_STATUS}"
+          echo "║ Cloud Run : ${GCP_STATUS}"
+          echo "╚══════════════════════════════════════════════════╝"
+
+          if [[ "$VPS_STATUS" == "failure" || "$GCP_STATUS" == "failure" ]]; then
+            exit 1
+          fi

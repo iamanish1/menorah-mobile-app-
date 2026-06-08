@@ -15,6 +15,10 @@ router.use(auth, adminAuth);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Escapes all special regex metacharacters so user-supplied search strings
+// cannot be used to craft catastrophic backtracking (ReDoS) patterns.
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const generateSecurePassword = () => {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   const lower = 'abcdefghjkmnpqrstuvwxyz';
@@ -163,9 +167,9 @@ router.get('/counsellors', [
     if (status === 'pending') {
       const searchQuery = search
         ? { $or: [
-            { firstName: { $regex: search, $options: 'i' } },
-            { lastName: { $regex: search, $options: 'i' } },
-            { email: { $regex: search, $options: 'i' } }
+            { firstName: { $regex: escapeRegex(search), $options: 'i' } },
+            { lastName: { $regex: escapeRegex(search), $options: 'i' } },
+            { email: { $regex: escapeRegex(search), $options: 'i' } }
           ]}
         : {};
       searchQuery.status = 'pending';
@@ -201,9 +205,9 @@ router.get('/counsellors', [
     if (status === 'rejected') {
       const searchQuery = search
         ? { $or: [
-            { firstName: { $regex: search, $options: 'i' } },
-            { lastName: { $regex: search, $options: 'i' } },
-            { email: { $regex: search, $options: 'i' } }
+            { firstName: { $regex: escapeRegex(search), $options: 'i' } },
+            { lastName: { $regex: escapeRegex(search), $options: 'i' } },
+            { email: { $regex: escapeRegex(search), $options: 'i' } }
           ]}
         : {};
       searchQuery.status = 'rejected';
@@ -248,9 +252,9 @@ router.get('/counsellors', [
     if (search) {
       const matchingUsers = await User.find({
         $or: [
-          { firstName: { $regex: search, $options: 'i' } },
-          { lastName: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } }
+          { firstName: { $regex: escapeRegex(search), $options: 'i' } },
+          { lastName: { $regex: escapeRegex(search), $options: 'i' } },
+          { email: { $regex: escapeRegex(search), $options: 'i' } }
         ]
       }).select('_id').lean();
       counsellorQuery.user = { $in: matchingUsers.map(u => u._id) };
@@ -624,10 +628,10 @@ router.get('/users', [
 
     if (search) {
       userQuery.$or = [
-        { firstName: { $regex: search, $options: 'i' } },
-        { lastName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } }
+        { firstName: { $regex: escapeRegex(search), $options: 'i' } },
+        { lastName: { $regex: escapeRegex(search), $options: 'i' } },
+        { email: { $regex: escapeRegex(search), $options: 'i' } },
+        { phone: { $regex: escapeRegex(search), $options: 'i' } }
       ];
     }
 
@@ -870,9 +874,27 @@ router.get('/revenue/counsellors/:id', [
   }
 });
 
-// ─── Payouts ──────────────────────────────────────────────────────────────────
+// ─── Payouts ─────────────────────────────────────────────────────────────────
 
-// POST /api/admin/payouts/:counsellorId — Initiate Razorpay X payout
+const Payout = require('../models/Payout');
+
+// SMS helper — notify counsellor of payout status
+async function sendPayoutSms(phone, firstName, amountRupees, payoutId, status) {
+  const key = process.env.MSG91_AUTH_KEY;
+  if (!key || !phone) return;
+  try {
+    const message = status === 'initiated'
+      ? `Dear ${firstName}, a payout of Rs.${amountRupees} has been initiated by Menorah Health. ID: ${payoutId}. Expected within 1-2 business days.`
+      : `Dear ${firstName}, your payout of Rs.${amountRupees} was processed successfully. ID: ${payoutId}. Thank you - Menorah Health.`;
+    await axios.post('https://api.msg91.com/api/sendhttp.php', null, {
+      params: { authkey: key, mobiles: phone.replace(/^\+/, ''), message, sender: 'MENRH', route: 4 }
+    });
+  } catch (err) {
+    console.error('Payout SMS notification error:', err.message);
+  }
+}
+
+// POST /api/admin/payouts/:counsellorId — Initiate payout
 router.post('/payouts/:counsellorId', [
   param('counsellorId').isMongoId(),
   body('amount').isInt({ min: 100 }).withMessage('Amount must be at least ₹1 (100 paise)'),
@@ -882,44 +904,59 @@ router.post('/payouts/:counsellorId', [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
-    const counsellor = await Counsellor.findById(req.params.counsellorId).populate('user', 'firstName lastName email phone').lean();
+    const counsellor = await Counsellor.findById(req.params.counsellorId)
+      .populate('user', 'firstName lastName email phone').lean();
     if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
 
     if (!counsellor.bankDetails?.accountNumber || !counsellor.bankDetails?.ifscCode) {
-      return res.status(400).json({ success: false, message: 'Counsellor does not have bank details on file. Please update their profile first.' });
+      return res.status(400).json({ success: false, message: 'Counsellor has no bank details on file.' });
     }
 
-    // Razorpay X (Payout API) uses its own key pair if configured; falls back to regular keys
-    const RAZORPAY_KEY_ID = process.env.RAZORPAY_X_KEY_ID || process.env.RAZORPAY_KEY_ID;
-    const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_X_KEY_SECRET || process.env.RAZORPAY_KEY_SECRET;
-    if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
-      return res.status(500).json({ success: false, message: 'Razorpay credentials not configured on the server.' });
+    // ── Idempotency: block if a payout is already in-flight ──────────────────
+    const inFlight = await Payout.findOne({
+      counsellor: counsellor._id,
+      status: { $in: ['processing', 'queued', 'pending', 'on_hold'] }
+    }).lean();
+    if (inFlight) {
+      return res.status(409).json({
+        success: false,
+        message: `A payout of ₹${inFlight.amountRupees} is already ${inFlight.status} (ID: ${inFlight.razorpayPayoutId}). Wait for it to complete before initiating another.`,
+        data: { existingPayoutId: inFlight.razorpayPayoutId, status: inFlight.status }
+      });
+    }
+
+    // ── Razorpay X credentials ────────────────────────────────────────────────
+    const RZP_KEY    = process.env.RAZORPAY_X_KEY_ID    || process.env.RAZORPAY_KEY_ID;
+    const RZP_SECRET = process.env.RAZORPAY_X_KEY_SECRET || process.env.RAZORPAY_KEY_SECRET;
+    if (!RZP_KEY || !RZP_SECRET) {
+      return res.status(500).json({ success: false, message: 'Razorpay credentials not configured.' });
     }
     if (!process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER) {
-      return res.status(500).json({ success: false, message: 'RAZORPAY_PAYOUT_ACCOUNT_NUMBER not configured on the server.' });
+      return res.status(500).json({ success: false, message: 'RAZORPAY_PAYOUT_ACCOUNT_NUMBER not configured.' });
     }
-    const rzpAuth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64');
+
+    const rzpAuth = Buffer.from(`${RZP_KEY}:${RZP_SECRET}`).toString('base64');
     const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${rzpAuth}` };
 
-    let contactId = counsellor.razorpayContactId;
+    let contactId     = counsellor.razorpayContactId;
     let fundAccountId = counsellor.razorpayFundAccountId;
 
     // Step 1: Create or reuse Razorpay Contact
     if (!contactId) {
-      const contactRes = await axios.post('https://api.razorpay.com/v1/contacts', {
+      const res1 = await axios.post('https://api.razorpay.com/v1/contacts', {
         name: `${counsellor.user.firstName} ${counsellor.user.lastName}`,
         email: counsellor.user.email,
         contact: counsellor.user.phone,
         type: 'vendor',
         reference_id: counsellor._id.toString()
       }, { headers });
-      contactId = contactRes.data.id;
+      contactId = res1.data.id;
       await Counsellor.findByIdAndUpdate(counsellor._id, { razorpayContactId: contactId });
     }
 
     // Step 2: Create or reuse Fund Account
     if (!fundAccountId) {
-      const fundRes = await axios.post('https://api.razorpay.com/v1/fund_accounts', {
+      const res2 = await axios.post('https://api.razorpay.com/v1/fund_accounts', {
         contact_id: contactId,
         account_type: 'bank_account',
         bank_account: {
@@ -928,50 +965,145 @@ router.post('/payouts/:counsellorId', [
           account_number: counsellor.bankDetails.accountNumber
         }
       }, { headers });
-      fundAccountId = fundRes.data.id;
+      fundAccountId = res2.data.id;
       await Counsellor.findByIdAndUpdate(counsellor._id, { razorpayFundAccountId: fundAccountId });
     }
 
-    // Step 3: Create Payout
+    // Step 3: Initiate Razorpay Payout
+    const referenceId = `menorah_payout_${counsellor._id}_${Date.now()}`;
     const payoutRes = await axios.post('https://api.razorpay.com/v1/payouts', {
-      account_number: process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER,
-      fund_account_id: fundAccountId,
-      amount: req.body.amount,
-      currency: 'INR',
-      mode: 'IMPS',
-      purpose: 'payout',
+      account_number:      process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER,
+      fund_account_id:     fundAccountId,
+      amount:              req.body.amount,
+      currency:            'INR',
+      mode:                'IMPS',
+      purpose:             'payout',
       queue_if_low_balance: true,
-      reference_id: `menorah_payout_${counsellor._id}_${Date.now()}`,
-      narration: `Menorah Health counsellor payout`,
-      notes: { counsellorId: counsellor._id.toString(), notes: req.body.notes || '' }
+      reference_id:        referenceId,
+      narration:           'Menorah Health counsellor payout',
+      notes: { counsellorId: counsellor._id.toString(), adminNotes: req.body.notes || '' }
     }, { headers });
 
-    const amountInRupees = req.body.amount / 100;
-    await Counsellor.findByIdAndUpdate(counsellor._id, {
-      lastPayoutAt: new Date(),
-      lastPayoutAmount: amountInRupees,
-      $inc: { totalPaidOut: amountInRupees }
+    const amountRupees = req.body.amount / 100;
+
+    // Step 4: Persist payout record
+    const payoutRecord = await Payout.create({
+      counsellor:        counsellor._id,
+      initiatedBy:       req.user._id,
+      amountPaise:       req.body.amount,
+      amountRupees,
+      razorpayPayoutId:      payoutRes.data.id,
+      razorpayFundAccountId: fundAccountId,
+      razorpayContactId:     contactId,
+      referenceId,
+      status: payoutRes.data.status || 'processing',
+      bankDetailsSnapshot: {
+        accountNumberMasked: '···' + counsellor.bankDetails.accountNumber.slice(-4),
+        ifscCode:            counsellor.bankDetails.ifscCode,
+        accountHolderName:   counsellor.bankDetails.accountHolderName,
+        bankName:            counsellor.bankDetails.bankName
+      },
+      notes: req.body.notes || ''
     });
+
+    // Step 5: Update counsellor payout stats
+    await Counsellor.findByIdAndUpdate(counsellor._id, {
+      lastPayoutAt:     new Date(),
+      lastPayoutAmount: amountRupees,
+      $inc: { totalPaidOut: amountRupees }
+    });
+
+    // Step 6: SMS notification to counsellor
+    await sendPayoutSms(counsellor.user.phone, counsellor.user.firstName, amountRupees, payoutRes.data.id, 'initiated');
 
     res.json({
       success: true,
-      message: `Payout of ₹${amountInRupees} initiated successfully.`,
+      message: `Payout of ₹${amountRupees} initiated successfully.`,
       data: {
-        payoutId: payoutRes.data.id,
-        status: payoutRes.data.status,
-        amount: amountInRupees,
-        counsellorId: counsellor._id,
+        payoutId:       payoutRes.data.id,
+        payoutRecordId: payoutRecord._id,
+        status:         payoutRes.data.status,
+        amount:         amountRupees,
+        counsellorId:   counsellor._id,
         fundAccountId
       }
     });
   } catch (error) {
-    const razorpayError = error.response?.data;
-    console.error('Admin payout error:', razorpayError || error.message);
+    const rzpErr = error.response?.data;
+    console.error('Admin payout error:', rzpErr || error.message);
     res.status(500).json({
       success: false,
-      message: razorpayError?.error?.description || 'Payout failed. Please check Razorpay X is activated on your account.',
-      error: razorpayError
+      message: rzpErr?.error?.description || 'Payout failed. Please verify Razorpay X is activated and credentials are correct.'
     });
+  }
+});
+
+// GET /api/admin/payouts — list all payouts with pagination + filtering
+router.get('/payouts', async (req, res) => {
+  try {
+    const page   = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit  = Math.min(50, parseInt(req.query.limit) || 20);
+    const skip   = (page - 1) * limit;
+    const filter = {};
+
+    if (req.query.status)       filter.status = req.query.status;
+    if (req.query.counsellorId?.match(/^[0-9a-fA-F]{24}$/)) {
+      filter.counsellor = req.query.counsellorId;
+    }
+
+    const [payouts, total] = await Promise.all([
+      Payout.find(filter)
+        .populate({
+          path: 'counsellor',
+          select: 'bankDetails',
+          populate: { path: 'user', select: 'firstName lastName email' }
+        })
+        .populate('initiatedBy', 'firstName lastName')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Payout.countDocuments(filter)
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        payouts,
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+      }
+    });
+  } catch (error) {
+    console.error('Get payouts error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/payouts/counsellor/:counsellorId — payouts for one counsellor
+router.get('/payouts/counsellor/:counsellorId', [
+  param('counsellorId').isMongoId()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+
+    const payouts = await Payout.find({ counsellor: req.params.counsellorId })
+      .populate('initiatedBy', 'firstName lastName')
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    const summary = {
+      total:        payouts.length,
+      totalPaid:    payouts.filter(p => p.status === 'processed').reduce((s, p) => s + p.amountRupees, 0),
+      totalPending: payouts.filter(p => ['processing','queued','pending','on_hold'].includes(p.status)).reduce((s, p) => s + p.amountRupees, 0),
+      totalFailed:  payouts.filter(p => ['failed','reversed','cancelled'].includes(p.status)).reduce((s, p) => s + p.amountRupees, 0)
+    };
+
+    res.json({ success: true, data: { payouts, summary } });
+  } catch (error) {
+    console.error('Get counsellor payouts error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 

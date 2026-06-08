@@ -138,3 +138,42 @@ export interface ApiResponse<T = unknown> {
   data?: T;
   errors?: { field?: string; message?: string }[];
 }
+
+export type PayoutStatus =
+  | 'processing' | 'queued' | 'pending' | 'on_hold'
+  | 'processed' | 'reversed' | 'cancelled' | 'failed';
+
+export interface PayoutRecord {
+  _id: string;
+  counsellor: {
+    _id: string;
+    user: { firstName: string; lastName: string; email: string };
+    bankDetails?: BankDetails;
+  };
+  initiatedBy: { firstName: string; lastName: string };
+  amountPaise: number;
+  amountRupees: number;
+  razorpayPayoutId: string;
+  razorpayFundAccountId?: string;
+  referenceId?: string;
+  status: PayoutStatus;
+  bankDetailsSnapshot: {
+    accountNumberMasked?: string;
+    ifscCode?: string;
+    accountHolderName?: string;
+    bankName?: string;
+  };
+  notes?: string;
+  failureReason?: string;
+  utr?: string;
+  lastWebhookAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayoutSummary {
+  total: number;
+  totalPaid: number;
+  totalPending: number;
+  totalFailed: number;
+}

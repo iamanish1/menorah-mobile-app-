@@ -48,7 +48,7 @@ export default function RegisterPage() {
 
   // On mount: if a pending application email is stored, check its status
   useEffect(() => {
-    const savedEmail = localStorage.getItem(STORAGE_KEY);
+    const savedEmail = sessionStorage.getItem(STORAGE_KEY);
     if (!savedEmail) return;
 
     setAppStatus('checking');
@@ -145,7 +145,7 @@ export default function RegisterPage() {
       if (result.success) {
         setError(null);
         setFieldErrors({});
-        localStorage.setItem(STORAGE_KEY, registrationData.email);
+        sessionStorage.setItem(STORAGE_KEY, registrationData.email);
         setSubmitted(true);
         setAppStatus('pending');
       } else {

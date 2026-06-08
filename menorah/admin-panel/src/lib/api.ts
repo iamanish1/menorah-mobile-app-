@@ -2,7 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { getToken, clearToken } from './auth';
 import type {
   ApiResponse, PlatformStats, Counsellor, CounsellorRevenue,
-  RevenueData, User, Pagination
+  RevenueData, User, Pagination, PayoutRecord, PayoutSummary, PayoutStatus
 } from '@/types';
 
 class AdminApiClient {
@@ -133,8 +133,20 @@ class AdminApiClient {
 
   // ── Payouts ─────────────────────────────────────────────────────────────────
   initiatePayout(counsellorId: string, amount: number, notes?: string) {
-    return this.request<{ payoutId: string; status: string; amount: number }>(
+    return this.request<{ payoutId: string; payoutRecordId: string; status: string; amount: number }>(
       () => this.client.post(`/admin/payouts/${counsellorId}`, { amount, notes })
+    );
+  }
+
+  getPayouts(params?: { page?: number; limit?: number; status?: PayoutStatus; counsellorId?: string }) {
+    return this.request<{ payouts: PayoutRecord[]; pagination: Pagination }>(
+      () => this.client.get('/admin/payouts', { params })
+    );
+  }
+
+  getCounsellorPayouts(counsellorId: string) {
+    return this.request<{ payouts: PayoutRecord[]; summary: PayoutSummary }>(
+      () => this.client.get(`/admin/payouts/counsellor/${counsellorId}`)
     );
   }
 }

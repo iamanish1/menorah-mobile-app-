@@ -1,0 +1,42 @@
+# ── Menorah Health — Cloudflare Worker config ─────────────────────────────
+# Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+#
+# Deploy:
+#   npx wrangler deploy                  → deploy to production
+#   npx wrangler dev                     → local dev (no KV, no cron)
+#   npx wrangler secret put VPS_URL      → set secret: https://vps.menorah.me
+#   npx wrangler secret put GCP_URL      → set secret: https://<cloud-run-url>.a.run.app
+
+name            = "menorah-router"
+main            = "worker.js"
+compatibility_date = "2024-09-23"
+
+# ── Cron triggers ─────────────────────────────────────────────────────────────
+# Free plan minimum: 1 minute.  Paid plan: "*/30 * * * * *" for 30-second checks.
+[triggers]
+crons = ["* * * * *"]   # every minute
+
+# ── KV namespace ──────────────────────────────────────────────────────────────
+# Create with: npx wrangler kv namespace create "HEALTH_KV"
+# Then paste the returned id below.
+[[kv_namespaces]]
+binding = "HEALTH_KV"
+id      = "REPLACE_WITH_KV_NAMESPACE_ID"         # paste id from `wrangler kv namespace create`
+
+# Preview KV namespace for `wrangler dev` testing
+preview_id = "REPLACE_WITH_KV_PREVIEW_NAMESPACE_ID"
+
+# ── Environment variables ──────────────────────────────────────────────────────
+# Non-secret values go here. Secrets (VPS_URL, GCP_URL) are set via:
+#   npx wrangler secret put VPS_URL      → value: https://vps.menorah.me
+#   npx wrangler secret put GCP_URL      → value: https://<cloud-run-url>.a.run.app
+# so they never appear in this file.
+[vars]
+# No public vars needed — all sensitive config is via secrets
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+# The Worker intercepts all requests to api.menorah.me
+# Zone: menorah.me (the Cloudflare zone your domain is in)
+[[routes]]
+pattern   = "api.menorah.me/*"
+zone_name = "menorah.me"

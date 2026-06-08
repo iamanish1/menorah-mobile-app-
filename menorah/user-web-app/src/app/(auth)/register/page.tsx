@@ -46,7 +46,9 @@ export default function RegisterPage() {
     const { confirmPassword, ...payload } = data;
     const res = await registerUser(payload);
     if (res.success) {
-      router.push(`/verify-otp?email=${encodeURIComponent(data.email)}`);
+      // Store email in sessionStorage — not in URL (avoids browser history / server log exposure)
+      sessionStorage.setItem('pending_verify_email', data.email);
+      router.push('/verify-otp');
     } else {
       setServerError(res.message || 'Registration failed. Please try again.');
     }

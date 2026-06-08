@@ -4,6 +4,7 @@ const { auth } = require('../middleware/auth');
 const ChatRoom = require('../models/ChatRoom');
 const Message = require('../models/Message');
 const Counsellor = require('../models/Counsellor');
+const { getRedisClient } = require('../config/redis');
 
 // Socket.IO instance will be set from server.js to avoid circular dependency
 let socketIOInstance = null;
@@ -13,15 +14,39 @@ const setSocketIO = (io) => {
 
 const router = express.Router();
 
-// Store online users for real-time status (can be moved to Redis in production)
-const onlineUsers = new Map();
+// ─── Redis-backed presence ─────────────────────────────────────────────────
+// TTL of 5 min — acts as a safety net if the disconnect event is missed
+const PRESENCE_TTL = 300;
 
-// Called from server.js on socket connect/disconnect
 const setUserOnline = (userId, userName) => {
-  onlineUsers.set(userId, { userName, onlineSince: new Date().toISOString() });
+  try {
+    const redis = getRedisClient();
+    redis.setEx(`presence:${userId}`, PRESENCE_TTL, userName || '').catch((err) =>
+      console.error('Redis setUserOnline error:', err.message)
+    );
+  } catch {
+    // Redis not ready yet (e.g. first connection) — silently ignore
+  }
 };
+
 const setUserOffline = (userId) => {
-  onlineUsers.delete(userId);
+  try {
+    const redis = getRedisClient();
+    redis.del(`presence:${userId}`).catch((err) =>
+      console.error('Redis setUserOffline error:', err.message)
+    );
+  } catch {
+    // Redis not ready yet — silently ignore
+  }
+};
+
+const isUserOnline = async (userId) => {
+  try {
+    const redis = getRedisClient();
+    return (await redis.exists(`presence:${userId}`)) === 1;
+  } catch {
+    return false;
+  }
 };
 
 // @route   GET /api/chat/rooms
@@ -48,7 +73,7 @@ router.get('/rooms', auth, async (req, res) => {
     const formattedRooms = await Promise.all(chatRooms.map(async (room) => {
       const counsellorUser = room.counsellor && room.counsellor.user ? room.counsellor.user : null;
       const counsellorUserId = counsellorUser ? counsellorUser._id.toString() : null;
-      const isOnline = counsellorUserId ? onlineUsers.has(counsellorUserId) : false;
+      const isOnline = counsellorUserId ? await isUserOnline(counsellorUserId) : false;
 
       // Determine unread count based on who is viewing
       const roomUserId = room.user ? (typeof room.user === 'object' ? room.user._id.toString() : room.user.toString()) : null;
@@ -272,11 +297,14 @@ router.post('/rooms/:roomId/messages', [
       });
     }
 
+    // Strip HTML tags (defense-in-depth against stored XSS if content is ever rendered as HTML)
+    const safeContent = content.trim().replace(/<[^>]*>/g, '');
+
     // Create message
     const message = new Message({
       room: roomId,
       sender: userId,
-      content: content.trim(),
+      content: safeContent,
       type,
       status: 'sent'
     });
@@ -287,7 +315,7 @@ router.post('/rooms/:roomId/messages', [
     await message.populate('sender', 'firstName lastName profileImage');
 
     // Update room's last message
-    await room.updateLastMessage(content, userId);
+    await room.updateLastMessage(safeContent, userId);
 
     // Increment unread count for the other participant
     if (isUser) {
@@ -568,24 +596,20 @@ router.post('/rooms/:roomId/typing', [
 // @access  Private
 router.get('/online-status', auth, async (req, res) => {
   try {
-    const onlineStatus = Array.from(onlineUsers.entries()).map(([userId, data]) => ({
-      userId,
-      userName: data.userName,
-      isOnline: data.isOnline,
-      lastSeen: data.lastSeen
-    }));
+    const redis = getRedisClient();
+    const keys = await redis.keys('presence:*');
+    const onlineStatus = await Promise.all(
+      keys.map(async (key) => {
+        const userId   = key.replace('presence:', '');
+        const userName = await redis.get(key);
+        return { userId, userName: userName || '', isOnline: true };
+      })
+    );
 
-    res.json({
-      success: true,
-      data: { onlineStatus }
-    });
-
+    res.json({ success: true, data: { onlineStatus } });
   } catch (error) {
     console.error('Get online status error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
@@ -616,12 +640,13 @@ router.get('/available-counsellors', auth, async (req, res) => {
     console.log(`Found ${availableCounsellors.length} available counselors for chat`);
 
     // Format response — skip counsellors whose user document was deleted
-    const formattedCounsellors = availableCounsellors
-      .filter(counsellor => counsellor.user != null)
-      .map(counsellor => {
+    const formattedCounsellors = await Promise.all(
+      availableCounsellors
+        .filter(counsellor => counsellor.user != null)
+        .map(async (counsellor) => {
       const counsellorUser = counsellor.user;
       const counsellorUserId = counsellorUser._id.toString();
-      const isOnline = onlineUsers.has(counsellorUserId);
+      const isOnline = await isUserOnline(counsellorUserId);
 
       // Handle specialization - it can be a string or array
       let specializationArray = [];
@@ -649,7 +674,8 @@ router.get('/available-counsellors', auth, async (req, res) => {
         isOnline: isOnline || false,
         isAvailable: counsellor.isAvailable || false
       };
-    });
+    })
+    );
 
     res.json({
       success: true,
@@ -734,7 +760,7 @@ router.post('/start', [
       lastMessage: room.lastMessage?.content || '',
       lastMessageTime: room.lastMessage?.timestamp || room.updatedAt,
       unreadCount: room.unreadCount.user || 0,
-      isOnline: onlineUsers.has(counsellorUserId) || false
+      isOnline: await isUserOnline(counsellorUserId)
     };
 
     // Emit notification to counselor via Socket.IO
@@ -800,7 +826,7 @@ router.get('/counsellor/rooms', auth, async (req, res) => {
     const formattedRooms = await Promise.all(chatRooms.map(async (room) => {
       const user = room.user;
       const userIdStr = user._id.toString();
-      const isOnline = onlineUsers.has(userIdStr);
+      const isOnline = await isUserOnline(userIdStr);
 
       // Determine unread count for counselor
       const unreadCount = room.unreadCount.counsellor || 0;

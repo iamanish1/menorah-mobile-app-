@@ -1,0 +1,65 @@
+# =============================================================================
+# LiveKit Server Configuration — VPS-3
+# =============================================================================
+# Docs: https://docs.livekit.io/home/self-hosting/deployment/
+#
+# Deploy:
+#   docker compose -f docker-compose.livekit.yml up -d
+#
+# Replace all REPLACE_ values before starting.
+# LIVEKIT_API_KEY and LIVEKIT_API_SECRET must match what you set in:
+#   backend/.env  (LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+# =============================================================================
+
+# ── HTTP API + WebSocket listener ─────────────────────────────────────────
+port: 7880
+
+# ── WebRTC / RTC settings ─────────────────────────────────────────────────
+rtc:
+  tcp_port:         7881
+  port_range_start: 50000
+  port_range_end:   60000
+  # Required: tell LiveKit the server's public IP so it includes it in ICE candidates.
+  # Set this to your VPS-3 public IP address.
+  use_external_ip:  true
+  # Enable TURN server on port 443 (gets through corporate firewalls)
+  # Clients with strict firewalls use TCP/443 as fallback
+  turn_servers:
+    - host: livekit.menorahhealth.app
+      port: 443
+      protocol: tls
+
+# ── API key / secret ──────────────────────────────────────────────────────
+# These MUST match LIVEKIT_API_KEY and LIVEKIT_API_SECRET in backend/.env
+keys:
+  REPLACE_LIVEKIT_API_KEY: REPLACE_LIVEKIT_API_SECRET
+
+# ── Redis — shared state for multi-server LiveKit clusters ────────────────
+# Uses the same Redis instance as the backend (on the same VPS)
+redis:
+  address: 127.0.0.1:6379
+  # password: ''   # uncomment if Redis has a password
+
+# ── Room defaults ─────────────────────────────────────────────────────────
+room:
+  # Automatically close the room 5 minutes after the last participant leaves
+  empty_timeout:    300
+  # Grace period after a participant disconnects before they're removed
+  departure_timeout: 20
+  # Maximum participants per room (counselling sessions = 2 people)
+  max_participants:  10
+  # Allow participants to publish before being explicitly allowed
+  auto_subscribe:    true
+
+# ── Webhook ───────────────────────────────────────────────────────────────
+# Sends room lifecycle events to the backend so it can auto-complete sessions.
+# The backend verifies the webhook signature using LIVEKIT_API_KEY/SECRET.
+webhook:
+  api_key: REPLACE_LIVEKIT_API_KEY
+  urls:
+    - https://api.menorahhealth.app/api/video/livekit-webhook
+
+# ── Logging ───────────────────────────────────────────────────────────────
+logging:
+  level:  warn    # info | warn | error
+  sample: false

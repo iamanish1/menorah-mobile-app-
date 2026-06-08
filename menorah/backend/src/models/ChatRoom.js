@@ -46,17 +46,10 @@ const chatRoomSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
-  },
-
-  // Metadata
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
   }
+  // createdAt and updatedAt are managed by { timestamps: true } below.
+  // Manual definitions were removed — they conflicted with Mongoose's timestamps
+  // option, causing updatedAt to be stale on save().
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -64,7 +57,10 @@ const chatRoomSchema = new mongoose.Schema({
 });
 
 // Indexes for efficient queries
-chatRoomSchema.index({ user: 1, counsellor: 1 });
+// Unique constraint prevents race-condition duplicate rooms
+chatRoomSchema.index({ user: 1, counsellor: 1 }, { unique: true }); // findOrCreate lookup
+chatRoomSchema.index({ user: 1, isActive: 1, updatedAt: -1 });       // user room list
+chatRoomSchema.index({ counsellor: 1, isActive: 1, updatedAt: -1 }); // counsellor room list
 chatRoomSchema.index({ booking: 1 });
 chatRoomSchema.index({ updatedAt: -1 });
 
@@ -99,12 +95,8 @@ chatRoomSchema.statics.findOrCreate = async function(userId, counsellorId, booki
 
 // Method to update last message
 chatRoomSchema.methods.updateLastMessage = function(messageContent, senderId) {
-  this.lastMessage = {
-    content: messageContent,
-    senderId: senderId,
-    timestamp: new Date()
-  };
-  this.updatedAt = new Date();
+  this.lastMessage = { content: messageContent, senderId, timestamp: new Date() };
+  // updatedAt is handled automatically by { timestamps: true }
   return this.save();
 };
 

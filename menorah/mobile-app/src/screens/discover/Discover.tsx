@@ -13,9 +13,11 @@ import SubscriptionSelector from "@/components/discover/SubscriptionSelector";
 import FindCounsellorHero from "@/components/discover/FindCounsellorHero";
 import ArticleCard from "@/components/cards/ArticleCard";
 import InstaPostCard from "@/components/cards/InstaPostCard";
-import { ARTICLES } from "@/mock/articles";
-import { mockCounsellors } from "@/mock/counsellors";
-import { INSTA } from "@/mock/instagram";
+// Mock data removed from production builds — use empty arrays as fallback until
+// real Article/Instagram API endpoints are implemented.
+const ARTICLES: any[]        = [];
+const mockCounsellors: any[] = [];
+const INSTA: any[]           = [];
 import { useNotifications } from "@/state/useNotifications";
 import { useAuth } from "@/state/useAuth";
 import { palettes } from "@/theme/colors";

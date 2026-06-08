@@ -1,243 +1,178 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert, Platform, PermissionsAndroid } from 'react-native';
+import {
+  View, Text, TouchableOpacity, ActivityIndicator,
+  Alert, Platform, PermissionsAndroid,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-import { X, PhoneOff } from 'lucide-react-native';
+import { PhoneOff } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { ENV } from '@/lib/env';
 import { api } from '@/lib/api';
 
+interface RouteParams {
+  bookingId:     string;
+  roomId:        string;
+  livekitUrl:    string;   // wss://livekit.menorahhealth.app
+  livekitToken:  string;   // LiveKit JWT participant token
+  sessionType:   'video' | 'audio' | 'chat';
+  counsellorName: string;
+  userName:      string;
+}
+
 export default function CallJoin({ navigation, route }: any) {
-  const { roomId, roomUrl, jitsiToken, bookingId, sessionType, counsellorName, userName } = route.params || {};
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    bookingId,
+    roomId,
+    livekitUrl,
+    livekitToken,
+    sessionType,
+    counsellorName,
+    userName,
+  } = (route.params || {}) as RouteParams;
+
+  const [loading,            setLoading]            = useState(true);
+  const [error,              setError]              = useState<string | null>(null);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
+  const webViewRef = useRef<WebView>(null);
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
-  const webViewRef = useRef<WebView>(null);
 
   useEffect(() => {
-    if (!roomId) {
-      setError('Missing video room information');
+    if (!livekitToken || !livekitUrl) {
+      setError('Missing video session information. Please try again.');
       setLoading(false);
     } else {
-      // Request permissions before loading WebView
       requestPermissions();
     }
-  }, [roomId]);
+  }, [livekitToken, livekitUrl]);
 
+  // ── Android permission request ───────────────────────────────────────────
   const requestPermissions = async () => {
-    if (Platform.OS === 'android') {
-      try {
-        // Check if permissions are already granted
-        const audioCheck = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
-        const cameraCheck = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
-        
-        if (audioCheck && cameraCheck) {
-          console.log('Permissions already granted');
-          setPermissionsGranted(true);
-          return;
-        }
+    if (Platform.OS !== 'android') {
+      setPermissionsGranted(true);
+      return;
+    }
+    try {
+      const granted = await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+      ]);
 
-        // Request permissions
-        const permissions = [
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-          PermissionsAndroid.PERMISSIONS.CAMERA,
-        ];
-        
-        const granted = await PermissionsAndroid.requestMultiple(permissions);
-        
-        const audioGranted = granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED;
-        const cameraGranted = granted[PermissionsAndroid.PERMISSIONS.CAMERA] === PermissionsAndroid.RESULTS.GRANTED;
-        
-        if (audioGranted && cameraGranted) {
-          console.log('Microphone and camera permissions granted');
-          setPermissionsGranted(true);
-        } else {
-          const missingPermissions: string[] = [];
-          if (!audioGranted) missingPermissions.push('Microphone');
-          if (!cameraGranted) missingPermissions.push('Camera');
-          
-          Alert.alert(
-            'Permissions Required',
-            `${missingPermissions.join(' and ')} permission${missingPermissions.length > 1 ? 's are' : ' is'} required for video calls. Please enable ${missingPermissions.length > 1 ? 'them' : 'it'} in app settings.`,
-            [
-              { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
-              { 
-                text: 'Open Settings', 
-                onPress: () => {
-                  // On Android, we can't directly open app settings, but we can show instructions
-                  Alert.alert(
-                    'Enable Permissions',
-                    'Go to: Settings → Apps → Menorah Health → Permissions → Enable Microphone and Camera',
-                    [{ text: 'OK' }]
-                  );
-                }
-              }
-            ]
-          );
-          setPermissionsGranted(false);
-        }
-      } catch (err) {
-        console.error('Permission request error:', err);
+      const audioOk  = granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO]  === PermissionsAndroid.RESULTS.GRANTED;
+      const cameraOk = granted[PermissionsAndroid.PERMISSIONS.CAMERA]         === PermissionsAndroid.RESULTS.GRANTED;
+
+      if (audioOk && cameraOk) {
+        setPermissionsGranted(true);
+      } else {
+        const missing = [...(!audioOk ? ['Microphone'] : []), ...(!cameraOk ? ['Camera'] : [])];
         Alert.alert(
-          'Permission Error',
-          'Failed to request permissions. Please enable microphone and camera in app settings.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
+          'Permissions Required',
+          `${missing.join(' and ')} permission${missing.length > 1 ? 's are' : ' is'} required for video calls.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
+            {
+              text: 'Open Settings',
+              onPress: () => Alert.alert(
+                'Enable Permissions',
+                'Go to: Settings → Apps → Menorah Health → Permissions → Enable Microphone and Camera',
+                [{ text: 'OK' }]
+              ),
+            },
+          ]
         );
         setPermissionsGranted(false);
       }
-    } else {
-      // iOS - permissions are handled automatically
-      setPermissionsGranted(true);
+    } catch {
+      Alert.alert('Permission Error', 'Failed to request permissions. Please enable them in app settings.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+      setPermissionsGranted(false);
     }
   };
 
-  const handleLeave = async () => {
-    Alert.alert(
-      'Leave Session',
-      'Are you sure you want to leave the session?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Leave',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              if (bookingId) {
-                await api.leaveVideoRoom(bookingId);
-              }
-              navigation.goBack();
-            } catch (error: any) {
-              console.error('Error leaving video room:', error);
-              navigation.goBack();
-            }
+  // ── Leave handler ────────────────────────────────────────────────────────
+  const handleLeave = () => {
+    Alert.alert('Leave Session', 'Are you sure you want to leave the session?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Leave',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            if (bookingId) await api.leaveVideoRoom(bookingId);
+          } catch {
+            // Always navigate back regardless of API error
+          } finally {
+            navigation.goBack();
           }
-        }
-      ]
-    );
+        },
+      },
+    ]);
   };
 
-  const handleWebViewError = (syntheticEvent: any) => {
-    const { nativeEvent } = syntheticEvent;
-    console.error('WebView error:', nativeEvent);
-    setError('Failed to load video session');
-    setLoading(false);
+  // ── Messages from the WebView (LiveKit meet page) ─────────────────────────
+  const handleWebViewMessage = (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.action === 'leave' || data.action === 'session_ended') {
+        // User left via in-page button — call leave API then go back
+        api.leaveVideoRoom(bookingId).catch(() => {}).finally(() => navigation.goBack());
+      }
+    } catch {
+      // Non-JSON message — ignore
+    }
   };
 
-  const handleWebViewLoad = () => {
-    setLoading(false);
-  };
-
+  // ── Error screen ─────────────────────────────────────────────────────────
   if (error) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 12 }}>
-            Error Loading Session
+            Session Error
           </Text>
           <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: 24 }}>
             {error}
           </Text>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            style={{
-              backgroundColor: colors.primary,
-              paddingHorizontal: 24,
-              paddingVertical: 12,
-              borderRadius: 12
-            }}
+            style={{ backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
-              Go Back
-            </Text>
+            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Build Jitsi URL with audio enabled by default
-  // Add config parameters to ensure microphone is enabled
-  const jitsiConfigParams = new URLSearchParams({
-    'config.startWithAudioMuted': 'false',
-    'config.startWithVideoMuted': 'false',
-    'config.enableLayerSuspension': 'true',
-    'config.enableNoAudioDetection': 'true',
-    'config.enableNoisyMicDetection': 'true',
-    'interfaceConfig.SHOW_JITSI_WATERMARK': 'false',
-    'interfaceConfig.SHOW_WATERMARK_FOR_GUESTS': 'false'
-  }).toString();
-  
-  // Build hash fragment with JWT token and config
-  const hashParams: string[] = [];
-  if (jitsiToken) {
-    hashParams.push(`jwt=${jitsiToken}`);
-  }
-  hashParams.push(jitsiConfigParams);
-  const hashFragment = hashParams.length > 0 ? `#${hashParams.join('&')}` : '';
-  
-  const jitsiUrl = roomUrl 
-    ? `${roomUrl}${hashFragment}`
-    : `${ENV.JITSI_BASE_URL}/${roomId}${hashFragment}`;
-
-  // Inject JavaScript to ensure microphone permissions are handled
-  const injectedJavaScript = `
-    (function() {
-      // Request microphone and camera permissions when page loads
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({ audio: true, video: true })
-          .then(function(stream) {
-            console.log('Microphone and camera access granted');
-            // Stop the stream immediately - we just needed permission
-            stream.getTracks().forEach(track => track.stop());
-          })
-          .catch(function(error) {
-            console.error('Permission error:', error);
-            // Try to show a user-friendly message
-            if (window.JitsiMeetJS) {
-              console.log('Jitsi Meet JS is available');
-            }
-          });
-      }
-      
-      // Override console.log to help with debugging
-      const originalLog = console.log;
-      console.log = function(...args) {
-        originalLog.apply(console, args);
-        // Send logs to React Native if needed
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'log',
-            message: args.join(' ')
-          }));
-        }
-      };
-    })();
-    true; // Required for injected JavaScript
-  `;
-
-  // Don't render WebView until permissions are granted
+  // Waiting for Android permission dialog
   if (!permissionsGranted && Platform.OS === 'android') {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginTop: 16, textAlign: 'center' }}>
-            Requesting permissions...
-          </Text>
-          <Text style={{ fontSize: 14, color: colors.muted, marginTop: 8, textAlign: 'center' }}>
-            Please grant microphone and camera permissions to continue
+            Requesting permissions…
           </Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  // Build the meet URL served by the backend
+  // The backend's GET /api/video/meet renders an HTML page with the LiveKit JS SDK.
+  const apiBase  = (ENV.API_BASE_URL || 'http://localhost:3000/api').replace(/\/api\/?$/, '');
+  const meetUrl  = `${apiBase}/api/video/meet`
+    + `?token=${encodeURIComponent(livekitToken)}`
+    + `&url=${encodeURIComponent(livekitUrl)}`
+    + `&name=${encodeURIComponent(userName || 'Participant')}`
+    + `&type=${sessionType === 'video' ? 'video' : 'audio'}`;
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Header Controls */}
+      {/* Header */}
       <View style={{
         backgroundColor: colors.card,
         flexDirection: 'row',
@@ -246,7 +181,7 @@ export default function CallJoin({ navigation, route }: any) {
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: colors.border
+        borderBottomColor: colors.border,
       }}>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }} numberOfLines={1}>
@@ -256,7 +191,6 @@ export default function CallJoin({ navigation, route }: any) {
             {counsellorName || 'Counsellor'}
           </Text>
         </View>
-        
         <TouchableOpacity
           onPress={handleLeave}
           style={{
@@ -266,91 +200,57 @@ export default function CallJoin({ navigation, route }: any) {
             borderRadius: 12,
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8
+            gap: 8,
           }}
         >
           <PhoneOff size={16} color="white" />
-          <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
-            Leave
-          </Text>
+          <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Leave</Text>
         </TouchableOpacity>
       </View>
 
-      {/* WebView Container */}
+      {/* LiveKit meet page */}
       <View style={{ flex: 1 }}>
         {loading && (
           <View style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
             backgroundColor: colors.bg,
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 1
+            justifyContent: 'center', alignItems: 'center', zIndex: 1,
           }}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={{ fontSize: 14, color: colors.muted, marginTop: 12 }}>
-              Loading video session...
+              Connecting to session…
             </Text>
           </View>
         )}
-        
+
         <WebView
-          source={{ uri: jitsiUrl }}
+          ref={webViewRef}
+          source={{ uri: meetUrl }}
+          onLoad={() => setLoading(false)}
+          onError={() => { setError('Failed to load video session. Please check your connection.'); setLoading(false); }}
+          onMessage={handleWebViewMessage}
+          // Media permissions
           allowsInlineMediaPlayback={true}
           mediaPlaybackRequiresUserAction={false}
           allowsProtectedMedia={true}
-          onError={handleWebViewError}
-          onLoad={handleWebViewLoad}
-          style={{ flex: 1 }}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          startInLoadingState={true}
+          // Performance
           androidHardwareAccelerationDisabled={false}
           androidLayerType="hardware"
-          ref={webViewRef}
-          injectedJavaScript={injectedJavaScript}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          style={{ flex: 1 }}
           onPermissionRequest={(request) => {
-            // Grant microphone and camera permissions for WebView
             const { nativeEvent } = request;
-            console.log('WebView permission request:', nativeEvent.permission);
-            
-            // Grant all audio and video capture permissions
-            if (nativeEvent.permission === 'android.webkit.resource.AUDIO_CAPTURE' ||
-                nativeEvent.permission === 'android.webkit.resource.VIDEO_CAPTURE') {
-              console.log('Granting permission:', nativeEvent.permission);
+            // Grant mic and camera for WebRTC
+            if (
+              nativeEvent.permission === 'android.webkit.resource.AUDIO_CAPTURE' ||
+              nativeEvent.permission === 'android.webkit.resource.VIDEO_CAPTURE'
+            ) {
               nativeEvent.request.grant(nativeEvent.resources);
             } else {
-              console.log('Denying permission:', nativeEvent.permission);
               nativeEvent.request.deny();
             }
           }}
-          onHttpError={(syntheticEvent) => {
-            const { nativeEvent } = syntheticEvent;
-            console.error('WebView HTTP error:', nativeEvent);
-          }}
-          onMessage={(event) => {
-            // Handle messages from Jitsi if needed
-            try {
-              const data = JSON.parse(event.nativeEvent.data);
-              if (data.type === 'log') {
-                console.log('Jitsi log:', data.message);
-              }
-            } catch (e) {
-              console.log('WebView message:', event.nativeEvent.data);
-            }
-          }}
-          onShouldStartLoadWithRequest={(request) => {
-            // Allow all navigation
-            return true;
-          }}
-          renderLoading={() => (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
-              <ActivityIndicator size="large" color={colors.primary} />
-            </View>
-          )}
         />
       </View>
     </SafeAreaView>

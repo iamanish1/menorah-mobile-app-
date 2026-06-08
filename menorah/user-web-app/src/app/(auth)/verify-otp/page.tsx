@@ -28,7 +28,7 @@ function VerifyOtpForm() {
 
   // Load pending email from sessionStorage on mount
   useEffect(() => {
-    const email = sessionStorage.getItem('pendingEmail') || '';
+    const email = sessionStorage.getItem('pending_verify_email') || sessionStorage.getItem('pendingEmail') || '';
     if (!email) {
       // No pending registration — redirect to register
       router.replace('/register');

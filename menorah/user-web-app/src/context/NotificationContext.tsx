@@ -9,7 +9,7 @@ const MAX_NOTIFICATIONS = 50;
 
 function loadFromStorage(): AppNotification[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -18,7 +18,7 @@ function loadFromStorage(): AppNotification[] {
 
 function saveToStorage(notifications: AppNotification[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
   } catch {}
 }
 

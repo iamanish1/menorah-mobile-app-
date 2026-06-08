@@ -9,7 +9,9 @@ class SocketClient {
     const apiURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
     // Remove /api suffix if present and use as base URL for Socket.IO
     this.socketURL = process.env.NEXT_PUBLIC_SOCKET_URL || apiURL.replace(/\/api\/?$/, '');
-    console.log('Socket.IO connecting to:', this.socketURL);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Socket.IO connecting to:', this.socketURL);
+    }
   }
 
   connect(token: string): Socket {
@@ -24,53 +26,46 @@ class SocketClient {
     }
 
     this.socket = io(this.socketURL, {
-      auth: {
-        token,
-      },
-      transports: ['polling', 'websocket'], // Try polling first, then websocket
+      auth: { token },
+      // WebSocket first — polling is fallback only (matches server config)
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
       timeout: 20000,
-      forceNew: true,
     });
 
-    this.socket.on('connect', () => {
-      console.log('Socket connected:', this.socket?.id);
-    });
-
-    this.socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
-    });
-
-    this.socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
-      console.error('Socket URL:', this.socketURL);
-      console.error('Error details:', {
-        message: error.message,
-        type: (error as any).type,
-        description: (error as any).description
+    if (process.env.NODE_ENV === 'development') {
+      this.socket.on('connect', () => {
+        console.log('Socket connected:', this.socket?.id);
       });
-      // Don't show error to user, just log it
-      // The socket will automatically retry with polling
-    });
 
-    this.socket.on('reconnect_attempt', (attemptNumber) => {
-      console.log(`Socket reconnection attempt ${attemptNumber}`);
-    });
+      this.socket.on('disconnect', (reason) => {
+        console.log('Socket disconnected:', reason);
+      });
 
-    this.socket.on('reconnect', (attemptNumber) => {
-      console.log(`Socket reconnected after ${attemptNumber} attempts`);
-    });
+      this.socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error.message);
+        console.error('Socket URL:', this.socketURL);
+      });
 
-    this.socket.on('reconnect_error', (error) => {
-      console.error('Socket reconnection error:', error);
-    });
+      this.socket.on('reconnect_attempt', (attemptNumber) => {
+        console.log(`Socket reconnection attempt ${attemptNumber}`);
+      });
 
-    this.socket.on('reconnect_failed', () => {
-      console.error('Socket reconnection failed after all attempts');
-    });
+      this.socket.on('reconnect', (attemptNumber) => {
+        console.log(`Socket reconnected after ${attemptNumber} attempts`);
+      });
+
+      this.socket.on('reconnect_error', (error) => {
+        console.error('Socket reconnection error:', error.message);
+      });
+
+      this.socket.on('reconnect_failed', () => {
+        console.error('Socket reconnection failed after all attempts');
+      });
+    }
 
     return this.socket;
   }

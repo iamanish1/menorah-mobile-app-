@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { DashboardStats, TodaySchedule, Booking, CounsellorStatus } from '@/types';
 import { format } from 'date-fns';
@@ -17,17 +18,38 @@ import styles from './page.module.css';
 export default function DashboardPage() {
   const router = useRouter();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [todaySchedule, setTodaySchedule] = useState<TodaySchedule[]>([]);
-  const [recentBookings, setRecentBookings] = useState<Booking[]>([]);
-  const [counsellorStatus, setCounsellorStatus] = useState<CounsellorStatus | null>(null);
   const [statusToggling, setStatusToggling] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [isFetching, setIsFetching] = useState(false);
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
   const { on, off } = useSocket(token);
+  const queryClient = useQueryClient();
+
+  // ── React Query — replaces manual useState + fetchDashboard ─────────────
+  const {
+    data:      dashboardData,
+    isLoading: loading,
+    error:     queryError,
+    refetch,
+  } = useQuery({
+    queryKey:  ['dashboard'],
+    queryFn:   () => api.getDashboard(),
+    enabled:   isAuthenticated,
+    staleTime: 60 * 1000,   // 1 min — dashboard stats change on new bookings
+    select: (res) => res.success ? res.data : null,
+  });
+
+  const stats            = dashboardData?.stats           ?? null;
+  const todaySchedule    = dashboardData?.todaySchedule   ?? [];
+  const recentBookings   = dashboardData?.recentBookings  ?? [];
+  const [counsellorStatus, setCounsellorStatus] = useState<CounsellorStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Sync counsellor status from query result into local state (needed for optimistic toggle)
+  useEffect(() => {
+    if (dashboardData?.counsellorStatus) {
+      setCounsellorStatus(dashboardData.counsellorStatus);
+    }
+  }, [dashboardData?.counsellorStatus]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -48,70 +70,25 @@ export default function DashboardPage() {
     }
   }, [isAuthenticated, isLoading, router]);
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchDashboard();
-    }
-  }, [isAuthenticated]);
+  // React Query handles the initial fetch when isAuthenticated → enabled:true
+  // No manual fetchDashboard() needed here.
 
+  // Socket events → invalidate dashboard cache (React Query re-fetches once, not on every event)
   useEffect(() => {
     if (!token || !isAuthenticated) return;
-
-    let debounceTimer: NodeJS.Timeout;
-    const debouncedFetch = () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => { fetchDashboard(); }, 1000);
-    };
-
-    const handleNewBooking = () => { debouncedFetch(); };
-    const handleBookingAssigned = () => { debouncedFetch(); };
-    const handleBookingScheduled = () => { debouncedFetch(); };
-    const handleStatusChanged = () => { debouncedFetch(); };
-
-    on('new_booking_available', handleNewBooking);
-    on('booking_assigned', handleBookingAssigned);
-    on('booking_scheduled', handleBookingScheduled);
-    on('booking_status_changed', handleStatusChanged);
-
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    on('new_booking_available', invalidate);
+    on('booking_assigned',      invalidate);
+    on('booking_scheduled',     invalidate);
+    on('booking_status_changed', invalidate);
     return () => {
-      clearTimeout(debounceTimer);
-      off('new_booking_available', handleNewBooking);
-      off('booking_assigned', handleBookingAssigned);
-      off('booking_scheduled', handleBookingScheduled);
-      off('booking_status_changed', handleStatusChanged);
+      off('new_booking_available', invalidate);
+      off('booking_assigned',      invalidate);
+      off('booking_scheduled',     invalidate);
+      off('booking_status_changed', invalidate);
     };
-  }, [token, on, off, isAuthenticated]);
+  }, [token, isAuthenticated, on, off, queryClient]);
 
-  const fetchDashboard = async () => {
-    if (isFetching) return;
-    try {
-      setIsFetching(true);
-      setLoading(true);
-      setError(null);
-      const response = await api.getDashboard();
-      if (response.success && response.data) {
-        setCounsellorStatus(response.data.counsellorStatus);
-        setStats(response.data.stats);
-        setTodaySchedule(response.data.todaySchedule);
-        setRecentBookings(response.data.recentBookings);
-      } else {
-        if (response.message?.includes('Too many requests')) {
-          console.warn('Rate limit reached, will retry later');
-          return;
-        }
-        setError(response.message || 'Failed to load dashboard data');
-      }
-    } catch (error: any) {
-      if (error.message?.includes('Too many requests') || error.status === 429) {
-        console.warn('Rate limit reached, will retry later');
-        return;
-      }
-      setError(error.message || 'An error occurred while loading dashboard');
-    } finally {
-      setLoading(false);
-      setIsFetching(false);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -128,12 +105,16 @@ export default function DashboardPage() {
     if (!counsellorStatus || statusToggling) return;
     const newStatus = !counsellorStatus.isAvailable;
     setStatusToggling(true);
+    // Optimistic update — show change immediately, then re-validate from server
+    setCounsellorStatus(prev => prev ? { ...prev, isAvailable: newStatus } : prev);
     const response = await api.updateAvailabilityStatus(newStatus);
     setStatusToggling(false);
     if (response.success) {
-      setCounsellorStatus(prev => prev ? { ...prev, isAvailable: newStatus } : prev);
-      fetchDashboard();
+      // Invalidate so the next background fetch gets the server truth
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     } else {
+      // Roll back on failure
+      setCounsellorStatus(prev => prev ? { ...prev, isAvailable: !newStatus } : prev);
       setError(response.message || 'Failed to update availability');
     }
   };
@@ -210,7 +191,7 @@ export default function DashboardPage() {
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
           </svg>
           <p>{error}</p>
-          <Button variant="ghost" size="sm" onClick={() => { setError(null); fetchDashboard(); }}>Retry</Button>
+          <Button variant="ghost" size="sm" onClick={() => { setError(null); refetch(); }}>Retry</Button>
         </div>
       )}
 

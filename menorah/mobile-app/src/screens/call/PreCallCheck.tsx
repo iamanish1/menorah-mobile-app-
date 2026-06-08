@@ -95,12 +95,12 @@ export default function PreCallCheck({ navigation, route }: any) {
       if (joinResponse.success && joinResponse.data) {
         navigation.navigate('CallJoin', {
           bookingId,
-          roomId: joinResponse.data.roomId,
-          roomUrl: joinResponse.data.roomUrl,
-          jitsiToken: joinResponse.data.jitsiToken,
-          sessionType: joinResponse.data.sessionType,
+          roomId:        joinResponse.data.roomId,
+          livekitUrl:    joinResponse.data.livekitUrl,
+          livekitToken:  joinResponse.data.livekitToken,
+          sessionType:   joinResponse.data.sessionType,
           counsellorName: joinResponse.data.counsellorName,
-          userName: joinResponse.data.userName,
+          userName:      joinResponse.data.userName,
         });
         return true;
       }
