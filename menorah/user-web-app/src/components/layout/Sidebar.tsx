@@ -44,16 +44,16 @@ export function Sidebar() {
       aria-label="Primary navigation"
       onMouseLeave={handleMouseLeave}
       className={cn(
-        'group/sidebar hidden lg:flex fixed left-0 top-0 bottom-0 z-40 min-h-screen w-72 flex-col',
-        'border-r border-primary-100 bg-white/95 shadow-[0_22px_60px_-34px_rgba(17,24,39,0.55)] backdrop-blur-xl',
+        'app-sidebar-glass group/sidebar hidden lg:flex fixed bottom-3 left-0 top-3 z-40 w-72 flex-col overflow-hidden rounded-r-[2rem]',
+        'border-y border-r border-primary-100/80 shadow-[0_28px_80px_-40px_rgba(17,24,39,0.62)] backdrop-blur-2xl',
         'transition-transform duration-300 ease-out will-change-transform',
         '-translate-x-[calc(100%_-_1.15rem)] hover:translate-x-0 focus-within:translate-x-0 motion-reduce:transition-none',
-        'dark:border-primary-800 dark:bg-primary-950/95'
+        'dark:border-primary-700/70'
       )}
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute bottom-6 right-0 top-6 w-[1.15rem] rounded-r-2xl border-y border-r border-primary-100 bg-gradient-to-b from-primary-600 via-primary-500 to-primary-700 shadow-[10px_0_30px_-20px_rgba(45,122,92,0.85)] transition-opacity duration-200 group-hover/sidebar:opacity-0 group-focus-within/sidebar:opacity-0 dark:border-primary-700"
+        className="pointer-events-none absolute bottom-7 right-0 top-7 z-10 w-[1.15rem] rounded-r-[1.75rem] border-y border-r border-white/45 bg-gradient-to-b from-primary-500/90 via-primary-600/85 to-primary-700/90 shadow-[12px_0_34px_-22px_rgba(45,122,92,0.95)] backdrop-blur-md transition-opacity duration-200 group-hover/sidebar:opacity-0 group-focus-within/sidebar:opacity-0 dark:border-primary-400/25"
       />
       {/* Logo */}
       <div className="px-6 py-5 border-b border-primary-100 dark:border-primary-800">

@@ -128,6 +128,43 @@ html.dark {
   .app-pill-active {
     @apply border-primary-600 bg-primary-600 text-white hover:bg-primary-700 dark:border-primary-500 dark:bg-primary-500 dark:text-white;
   }
+  .app-sidebar-glass {
+    isolation: isolate;
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.62) 48%, rgba(240, 249, 244, 0.78)),
+      rgba(255, 255, 255, 0.68);
+    border-color: rgba(220, 241, 229, 0.72);
+    box-shadow:
+      0 28px 80px -40px rgba(17, 24, 39, 0.62),
+      inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    -webkit-backdrop-filter: blur(24px) saturate(145%);
+    backdrop-filter: blur(24px) saturate(145%);
+  }
+  .app-sidebar-glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background-image:
+      linear-gradient(115deg, rgba(255, 255, 255, 0.42), transparent 30%, rgba(45, 122, 92, 0.06) 68%, transparent),
+      repeating-linear-gradient(135deg, rgba(45, 122, 92, 0.055) 0 1px, transparent 1px 10px);
+    opacity: 0.78;
+  }
+  .app-sidebar-glass::after {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.48);
+  }
+  .app-sidebar-glass > :not([aria-hidden="true"]) {
+    position: relative;
+    z-index: 1;
+  }
   .counsellor-profile-grid {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 21.5rem), 1fr));
   }
@@ -413,6 +450,27 @@ html.dark .menorah-app-shell .counsellor-profile-card__outline-button:hover,
 html.dark .menorah-app-shell .counsellor-profile-card__book-button {
   background-color: #a6f4c3;
   color: #06110b;
+}
+
+html.dark .menorah-app-shell .app-sidebar-glass {
+  background:
+    linear-gradient(145deg, rgba(7, 17, 11, 0.88), rgba(2, 6, 4, 0.72) 48%, rgba(16, 32, 22, 0.8)),
+    rgba(2, 6, 4, 0.74);
+  border-color: rgba(33, 58, 44, 0.82);
+  box-shadow:
+    0 30px 88px -48px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(166, 244, 195, 0.12);
+}
+
+html.dark .menorah-app-shell .app-sidebar-glass::before {
+  background-image:
+    linear-gradient(115deg, rgba(166, 244, 195, 0.1), transparent 32%, rgba(166, 244, 195, 0.05) 68%, transparent),
+    repeating-linear-gradient(135deg, rgba(166, 244, 195, 0.045) 0 1px, transparent 1px 10px);
+  opacity: 0.72;
+}
+
+html.dark .menorah-app-shell .app-sidebar-glass::after {
+  border-color: rgba(166, 244, 195, 0.13);
 }
 
 @keyframes counsellor-card-enter {
