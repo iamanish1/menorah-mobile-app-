@@ -125,6 +125,75 @@ export interface CounsellorRevenue {
   razorpayFundAccountId?: string;
 }
 
+export type ArticleStatus = 'draft' | 'review' | 'published' | 'archived' | 'rejected';
+export type ArticleGenerationRunStatus = 'queued' | 'running' | 'completed' | 'partial' | 'failed';
+export type ArticleGenerationRunSource = 'manual' | 'scheduled';
+
+export interface ArticleContentBlock {
+  type: 'heading' | 'paragraph' | 'quote' | 'bullet_list' | 'image' | 'callout';
+  text?: string | null;
+  level?: number | null;
+  items?: string[];
+  url?: string | null;
+  alt?: string | null;
+  caption?: string | null;
+}
+
+export interface Article {
+  id: string;
+  _id?: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  category: string;
+  tags: string[];
+  coverImageUrl?: string | null;
+  coverImagePublicId?: string | null;
+  imagePrompt?: string;
+  contentBlocks?: ArticleContentBlock[];
+  seoTitle?: string;
+  seoDescription?: string;
+  canonicalUrl?: string;
+  status: ArticleStatus;
+  generationRun?: string | null;
+  wordCount?: number;
+  generatedByAi?: boolean;
+  reviewedByHuman?: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  rejectionReason?: string;
+  rejectedAt?: string | null;
+  publishedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ArticleGenerationRunError {
+  topic?: string;
+  stage?: string;
+  message: string;
+  at?: string;
+}
+
+export interface ArticleGenerationRun {
+  id: string;
+  _id?: string;
+  source: ArticleGenerationRunSource;
+  status: ArticleGenerationRunStatus;
+  requestedCount: number;
+  completedCount: number;
+  failedCount: number;
+  timezone: string;
+  dateKey?: string | null;
+  requestedBy?: string | null;
+  articleIds?: Article[];
+  errors?: ArticleGenerationRunError[];
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Pagination {
   page: number;
   limit: number;

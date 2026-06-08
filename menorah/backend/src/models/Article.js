@@ -93,9 +93,19 @@ const articleSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'review', 'published', 'archived'],
+    enum: ['draft', 'review', 'published', 'archived', 'rejected'],
     default: 'draft',
     index: true
+  },
+  generationRun: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ArticleGenerationRun',
+    default: null,
+    index: true
+  },
+  wordCount: {
+    type: Number,
+    default: 0
   },
   generatedByAi: {
     type: Boolean,
@@ -104,6 +114,23 @@ const articleSchema = new mongoose.Schema({
   reviewedByHuman: {
     type: Boolean,
     default: false
+  },
+  reviewedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  reviewedAt: {
+    type: Date,
+    default: null
+  },
+  rejectionReason: {
+    type: String,
+    default: ''
+  },
+  rejectedAt: {
+    type: Date,
+    default: null
   },
   publishedAt: {
     type: Date,
@@ -123,5 +150,6 @@ articleSchema.index({
 });
 articleSchema.index({ status: 1, publishedAt: -1 });
 articleSchema.index({ category: 1, status: 1 });
+articleSchema.index({ generationRun: 1, status: 1 });
 
 module.exports = mongoose.model('Article', articleSchema);

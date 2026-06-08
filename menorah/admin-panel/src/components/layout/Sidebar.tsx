@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, Users, UserCheck, BarChart3, Wallet, LogOut, Menu, X
+  LayoutDashboard, Users, UserCheck, Wallet, LogOut, Menu, X, Newspaper
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -13,6 +13,7 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/counsellors', label: 'Counsellors', icon: UserCheck },
   { href: '/users', label: 'Users', icon: Users },
+  { href: '/articles', label: 'Articles', icon: Newspaper },
   { href: '/revenue', label: 'Revenue & Payouts', icon: Wallet },
 ];
 

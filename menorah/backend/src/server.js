@@ -38,6 +38,7 @@ if (process.env.NODE_ENV === "production") {
 const connectDB = require("./config/database");
 const errorHandler = require("./middleware/errorHandler");
 const notFound = require("./middleware/notFound");
+const { startArticleScheduler } = require("./services/articleScheduler");
 
 // Import routes
 const authRoutes = require("./routes/auth");
@@ -94,7 +95,9 @@ const io = new Server(server, {
 });
 
 // Connect to database
-connectDB();
+connectDB().then(() => {
+  startArticleScheduler();
+});
 
 // CORS + preflight
 app.use(cors(corsOptions));
