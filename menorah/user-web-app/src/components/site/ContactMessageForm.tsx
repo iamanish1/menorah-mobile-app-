@@ -1,50 +1,39 @@
-"use client";
+'use client';
 
-import { FormEvent, useState } from "react";
-import { Send } from "lucide-react";
+import { FormEvent, useState } from 'react';
+import { Send } from 'lucide-react';
 
-type FormState = "idle" | "submitting" | "success" | "error";
-type SubmissionResponse = {
-  ok?: boolean;
-  emailDelivery?: {
-    sent: boolean;
-  };
-};
+type FormState = 'idle' | 'submitting' | 'success' | 'error';
+type SubmissionResponse = { ok?: boolean; emailDelivery?: { sent: boolean } };
 
 export function ContactMessageForm() {
-  const [state, setState] = useState<FormState>("idle");
-  const [message, setMessage] = useState("");
+  const [state, setState] = useState<FormState>('idle');
+  const [message, setMessage] = useState('');
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setState("submitting");
-    setMessage("");
-
+    setState('submitting');
+    setMessage('');
     const form = event.currentTarget;
     const formData = new FormData(form);
-
     try {
-      const response = await fetch("/api/contact-message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch('/api/contact-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: formData.get("name"),
-          email: formData.get("email"),
-          message: formData.get("message")
-        })
+          name: formData.get('name'),
+          email: formData.get('email'),
+          message: formData.get('message'),
+        }),
       });
       const result = (await response.json().catch(() => ({}))) as SubmissionResponse;
-
-      if (!response.ok) {
-        throw new Error("Request failed");
-      }
-
+      if (!response.ok) throw new Error('Request failed');
       form.reset();
-      setState("success");
-      setMessage(result.emailDelivery?.sent ? "Your message has been sent." : "Your message has been saved. Email delivery needs SMTP setup.");
+      setState('success');
+      setMessage(result.emailDelivery?.sent ? 'Your message has been sent.' : 'Your message has been saved.');
     } catch {
-      setState("error");
-      setMessage("Something went wrong. Please try again.");
+      setState('error');
+      setMessage('Something went wrong. Please try again.');
     }
   }
 
@@ -79,14 +68,16 @@ export function ContactMessageForm() {
       </label>
       <button
         type="submit"
-        disabled={state === "submitting"}
+        disabled={state === 'submitting'}
         className="inline-flex min-h-14 items-center justify-center gap-3 rounded-full border border-primary px-10 font-brand text-sm uppercase tracking-[0.12em] transition hover:bg-primary hover:text-primary-foreground disabled:opacity-60"
       >
         <Send className="h-4 w-4" aria-hidden="true" />
-        {state === "submitting" ? "Sending" : "Send Message"}
+        {state === 'submitting' ? 'Sending' : 'Send Message'}
       </button>
       {message ? (
-        <p className={`text-center text-sm font-medium ${state === "success" ? "text-success" : "text-destructive"}`}>{message}</p>
+        <p className={`text-center text-sm font-medium ${state === 'success' ? 'text-success' : 'text-destructive'}`}>
+          {message}
+        </p>
       ) : null}
     </form>
   );

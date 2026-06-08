@@ -1,67 +1,58 @@
-import Image from "next/image";
-import { MessageSquare } from "lucide-react";
-import { MenorahFooter } from "@/components/site/MenorahFooter";
+import Image from 'next/image';
+import { MessageSquare } from 'lucide-react';
+import { MenorahFooter } from '@/components/site/MenorahFooter';
 
 const sections = [
   {
-    id: "about",
-    title: "ABOUT THE\nORGANIZATION",
-    image: {
-      src: "/what-we-do-about.png",
-      alt: "Menorah illustration of a man carrying emotional weight"
-    },
-    imageSide: "left",
+    id: 'about',
+    title: 'ABOUT THE\nORGANIZATION',
+    image: { src: '/what-we-do-about.png', alt: 'Menorah illustration of a man carrying emotional weight' },
+    imageSide: 'left',
     body: (
       <>
         <strong>Menorah Health, The World&apos;s First Free Mental Health App for Men,</strong> is a groundbreaking
         organization dedicated to providing support, guidance, and resources for men seeking help with their mental
-        well-being. The organization&apos;s primary tool for achieving this mission is their innovative and{" "}
+        well-being. The organization&apos;s primary tool for achieving this mission is their innovative and{' '}
         <strong>user-friendly mobile app.</strong> Through this app, <strong>Menorah</strong> strives to dismantle
         barriers that hinder men from seeking help, providing a safe and empathetic space for addressing their mental
         health concerns.
       </>
-    )
+    ),
   },
   {
-    id: "mission",
-    title: "MISSION",
-    image: {
-      src: "/what-we-do-mission.png",
-      alt: "Menorah illustration of a man climbing toward a target"
-    },
-    imageSide: "right",
+    id: 'mission',
+    title: 'MISSION',
+    image: { src: '/what-we-do-mission.png', alt: 'Menorah illustration of a man climbing toward a target' },
+    imageSide: 'right',
     body: (
       <>
         <strong>Our mission is to empower men</strong> to take an active role in managing their mental health and to
-        provide them with the tools and resources they need to thrive. Our organization is committed to creating{" "}
+        provide them with the tools and resources they need to thrive. Our organization is committed to creating{' '}
         <strong>safe and supportive spaces</strong> where men can share their experiences, connect with others, and
         receive the help they need to live <strong>healthy, fulfilling lives.</strong>
         <br />
         We believe that men&apos;s mental health is a <strong>critical</strong> issue that deserves attention, and we
         are dedicated to making a positive impact in the lives of <strong>men and their families.</strong>
       </>
-    )
+    ),
   },
   {
-    id: "vision",
-    title: "VISION",
-    image: {
-      src: "/what-we-do-vision.png",
-      alt: "Menorah illustration of a mental health support conversation"
-    },
-    imageSide: "left",
+    id: 'vision',
+    title: 'VISION',
+    image: { src: '/what-we-do-vision.png', alt: 'Menorah illustration of a mental health support conversation' },
+    imageSide: 'left',
     body: (
       <>
         <strong>Our vision</strong> is a world where men are able to live healthy and fulfilling lives, free from the
-        constraints of <strong>mental health</strong> issues. Through education, <strong>advocacy</strong>, and{" "}
+        constraints of <strong>mental health</strong> issues. Through education, <strong>advocacy</strong>, and{' '}
         <strong>collaboration</strong>, we envision a society where men are empowered to seek help when they need it,
-        and where mental health is viewed as an <strong>essential</strong> component of overall health and{" "}
+        and where mental health is viewed as an <strong>essential</strong> component of overall health and{' '}
         <strong>wellness.</strong> We yearn to improve the mental health and <strong>well-being</strong> of men by
         promoting awareness, reducing stigma, and <strong>providing support</strong> and resources for men who are
         struggling with mental health issues.
       </>
-    )
-  }
+    ),
+  },
 ] as const;
 
 export function WhatWeDoSection() {
@@ -113,7 +104,7 @@ function ContentRow({ section }: { section: (typeof sections)[number] }) {
 
   return (
     <article className="grid items-center gap-10 md:grid-cols-2 md:gap-14">
-      {section.imageSide === "left" ? (
+      {section.imageSide === 'left' ? (
         <>
           {image}
           {copy}

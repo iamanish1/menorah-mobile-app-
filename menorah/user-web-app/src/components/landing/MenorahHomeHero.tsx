@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import Image from "next/image";
-import Link from "next/link";
-import { Play } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { MenorahNavbar } from "@/components/site/MenorahNavbar";
+import Image from 'next/image';
+import Link from 'next/link';
+import { Play } from 'lucide-react';
+import { Button } from '@/components/landing-ui/button';
+import { MenorahNavbar } from '@/components/site/MenorahNavbar';
 
 const videoUrl =
-  "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260319_015952_e1deeb12-8fb7-4071-a42a-60779fc64ab6.mp4";
+  'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260319_015952_e1deeb12-8fb7-4071-a42a-60779fc64ab6.mp4';
 
 export function MenorahHomeHero() {
   return (
@@ -79,7 +79,7 @@ function ProductPreview() {
           unoptimized
           sizes="(min-width: 1024px) 720px, 86vw"
           className="absolute left-1/2 z-10 block h-auto w-full max-w-none -translate-x-1/2 opacity-100 drop-shadow-[0_28px_70px_rgba(0,0,0,0.18)]"
-          style={{ top: "-44%" }}
+          style={{ top: '-44%' }}
         />
       </div>
       <Image

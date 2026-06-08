@@ -1,66 +1,66 @@
-import type { Metadata } from "next";
-import Image from "next/image";
-import { HelpCircle } from "lucide-react";
-import { FaqQuestionForm } from "@/components/site/FaqQuestionForm";
-import { MenorahFooter } from "@/components/site/MenorahFooter";
-import { MenorahNavbar } from "@/components/site/MenorahNavbar";
+import type { Metadata } from 'next';
+import Image from 'next/image';
+import { HelpCircle } from 'lucide-react';
+import { FaqQuestionForm } from '@/components/site/FaqQuestionForm';
+import { MenorahFooter } from '@/components/site/MenorahFooter';
+import { MenorahNavbar } from '@/components/site/MenorahNavbar';
 
 export const metadata: Metadata = {
   title: "FAQ's | Menorah",
-  description: "Frequently asked questions about Menorah and the Menorah mental health app for men."
+  description: "Frequently asked questions about Menorah and the Menorah mental health app for men.",
 };
 
 const faqs = [
   {
-    question: "What is Menorah?",
+    question: 'What is Menorah?',
     answer:
-      "Menorah is a men's mental health organization that offers support, guidance, and resources for men seeking help with their mental well-being. We provide a mobile app through which users can connect with clinical psychologist students and engage in peer-to-peer conversations to address their mental health concerns."
+      "Menorah is a men's mental health organization that offers support, guidance, and resources for men seeking help with their mental well-being. We provide a mobile app through which users can connect with clinical psychologist students and engage in peer-to-peer conversations to address their mental health concerns.",
   },
   {
-    question: "How does the Menorah app work?",
+    question: 'How does the Menorah app work?',
     answer:
-      "The Menorah app allows you to chat with handpicked clinical psychologist students and engage in peer support with other men who have volunteered to help. You can choose from different age groups (15-18, 19-24, and 25-35) for peer support, and you have access to a range of educational resources, self-help tools, and support groups."
+      'The Menorah app allows you to chat with handpicked clinical psychologist students and engage in peer support with other men who have volunteered to help. You can choose from different age groups (15-18, 19-24, and 25-35) for peer support, and you have access to a range of educational resources, self-help tools, and support groups.',
   },
   {
-    question: "Is my conversation confidential?",
+    question: 'Is my conversation confidential?',
     answer:
-      "Absolutely. We prioritize your privacy and confidentiality. All interactions within the Menorah app, whether with clinical psychologist students or peers, are secure and anonymous. You can express yourself openly without worrying about your information being shared."
+      'Absolutely. We prioritize your privacy and confidentiality. All interactions within the Menorah app, whether with clinical psychologist students or peers, are secure and anonymous. You can express yourself openly without worrying about your information being shared.',
   },
   {
-    question: "How do I connect with clinical psychologist students?",
+    question: 'How do I connect with clinical psychologist students?',
     answer:
-      "Once you're on the Menorah app, you can initiate a chat with one of our handpicked clinical psychologist students. They are available 24/7 to provide expert advice, guidance, and support tailored to your mental health needs."
+      "Once you're on the Menorah app, you can initiate a chat with one of our handpicked clinical psychologist students. They are available 24/7 to provide expert advice, guidance, and support tailored to your mental health needs.",
   },
   {
     question: 'What is "Man to Man" peer support?',
     answer:
-      "Man to Man is a feature on the Menorah app that allows you to connect with other men who have volunteered to offer peer support. You can choose your age group (15-18, 19-24, or 25-35) and engage in conversations with individuals who may have experienced similar challenges or life stages."
+      'Man to Man is a feature on the Menorah app that allows you to connect with other men who have volunteered to offer peer support. You can choose your age group (15-18, 19-24, or 25-35) and engage in conversations with individuals who may have experienced similar challenges or life stages.',
   },
   {
-    question: "Are there any self-help resources available on the app?",
+    question: 'Are there any self-help resources available on the app?',
     answer:
-      "Yes, the Menorah app provides a variety of self-help resources, including articles, podcasts, newsletters and videos. These resources cover a wide range of mental health topics and are designed to empower you to take control of your mental well-being."
+      'Yes, the Menorah app provides a variety of self-help resources, including articles, podcasts, newsletters and videos. These resources cover a wide range of mental health topics and are designed to empower you to take control of your mental well-being.',
   },
   {
-    question: "Is there a cost to using the Menorah app?",
+    question: 'Is there a cost to using the Menorah app?',
     answer:
-      "Our aim is to make mental health support accessible to all. All features of the app are free to all users. We are committed to providing value and ensuring that everyone can benefit from our resources."
+      'Our aim is to make mental health support accessible to all. All features of the app are free to all users. We are committed to providing value and ensuring that everyone can benefit from our resources.',
   },
   {
-    question: "How do I ensure my safety while using the app?",
+    question: 'How do I ensure my safety while using the app?',
     answer:
-      "Menorah takes safety seriously. We have implemented measures to ensure a safe and respectful environment within the app. If you encounter any inappropriate behavior or have concerns, you can report it, and our team will take appropriate action."
+      'Menorah takes safety seriously. We have implemented measures to ensure a safe and respectful environment within the app. If you encounter any inappropriate behavior or have concerns, you can report it, and our team will take appropriate action.',
   },
   {
-    question: "How do I get started with the Menorah app?",
+    question: 'How do I get started with the Menorah app?',
     answer:
-      "To get started, simply download the Menorah app from the Apple App Store or Google Play Store, create an account, and explore the various features available. You can begin chatting with clinical psychologist students, engaging in peer support, accessing resources, and joining support groups to enhance your mental well-being journey."
+      'To get started, simply download the Menorah app from the Apple App Store or Google Play Store, create an account, and explore the various features available. You can begin chatting with clinical psychologist students, engaging in peer support, accessing resources, and joining support groups to enhance your mental well-being journey.',
   },
   {
-    question: "I think I have a serious problem with my mental health. What do I do to tackle it?",
+    question: 'I think I have a serious problem with my mental health. What do I do to tackle it?',
     answer:
-      "If you believe your situation is urgent or requires immediate attention, please don't hesitate to reach out to a licensed mental health professional or a healthcare provider in your local area. Remember, seeking help is a sign of strength, and you're taking important steps towards better mental health. Your well-being matters, and there are resources and people available to assist you on this journey."
-  }
+      "If you believe your situation is urgent or requires immediate attention, please don't hesitate to reach out to a licensed mental health professional or a healthcare provider in your local area. Remember, seeking help is a sign of strength, and you're taking important steps towards better mental health. Your well-being matters, and there are resources and people available to assist you on this journey.",
+  },
 ];
 
 export default function FaqPage() {
@@ -95,7 +95,10 @@ export default function FaqPage() {
 
           <div className="space-y-4">
             {faqs.map((faq, index) => (
-              <details key={faq.question} className="group rounded-2xl border border-menorah-cream bg-background p-5 shadow-sm open:shadow-dashboard">
+              <details
+                key={faq.question}
+                className="group rounded-2xl border border-menorah-cream bg-background p-5 shadow-sm open:shadow-dashboard"
+              >
                 <summary className="flex cursor-pointer list-none items-start justify-between gap-5 text-left">
                   <span className="text-base font-semibold leading-7">
                     {index + 1}. {faq.question}
