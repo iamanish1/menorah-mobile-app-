@@ -59,6 +59,10 @@ const videoRoutes           = require('./routes/video');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust nginx proxy — required for correct IP detection behind a reverse proxy.
+// Without this, express-rate-limit sees all requests as coming from 127.0.0.1.
+app.set('trust proxy', 1);
+
 // ─── CORS ──────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map((o) => o.trim()).filter(Boolean);
