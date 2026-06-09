@@ -362,6 +362,10 @@ export default function Register({ navigation }: any) {
                   if (confirmPassword) validateField('confirmPassword', confirmPassword);
                 }}
                 secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+                textContentType="newPassword"
                 style={{
                   flex: 1,
                   borderWidth: 0,
@@ -450,6 +454,10 @@ export default function Register({ navigation }: any) {
                   validateField('confirmPassword', text);
                 }}
                 secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+                textContentType="newPassword"
                 style={{
                   flex: 1,
                   borderWidth: 0,
