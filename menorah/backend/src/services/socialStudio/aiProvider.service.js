@@ -39,18 +39,29 @@ const isProduction = () => process.env.NODE_ENV === 'production';
 
 const isPlaceholderValue = (value) => /REPLACE_WITH|placeholder|your-|your_/i.test(value || '');
 
-const getOpenAiApiKey = () => {
-  const value = String(process.env.OPENAI_API_KEY || '').trim();
-  return value && !isPlaceholderValue(value) ? value : '';
+const getUsableEnv = (...keys) => {
+  for (const key of keys) {
+    const value = String(process.env[key] || '').trim();
+    if (value && !isPlaceholderValue(value)) {
+      return value;
+    }
+  }
+  return '';
 };
 
+const getOpenAiApiKey = () => getUsableEnv('SOCIAL_STUDIO_OPENAI_API_KEY', 'OPENAI_API_KEY');
+
 const getTextModel = () =>
-  process.env.AI_TEXT_MODEL ||
-  process.env.OPENAI_ARTICLE_MODEL ||
-  process.env.OPENAI_MODEL ||
+  getUsableEnv(
+    'SOCIAL_STUDIO_AI_TEXT_MODEL',
+    'SOCIAL_STUDIO_OPENAI_MODEL',
+    'AI_TEXT_MODEL',
+    'OPENAI_ARTICLE_MODEL',
+    'OPENAI_MODEL'
+  ) ||
   'gpt-4o-mini';
 
-const getProviderName = () => process.env.AI_PROVIDER || 'openai';
+const getProviderName = () => getUsableEnv('SOCIAL_STUDIO_AI_PROVIDER', 'AI_PROVIDER') || 'openai';
 
 const canUseMockMode = () => {
   if (process.env.AI_MOCK_MODE === 'true' && !isProduction()) {
@@ -74,7 +85,7 @@ const extractOutputText = (responseData) => {
 const callOpenAiResponses = async ({ schema, name, task, input }) => {
   const apiKey = getOpenAiApiKey();
   if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is required for AI Social Studio generation outside mock mode');
+    throw new Error('SOCIAL_STUDIO_OPENAI_API_KEY or OPENAI_API_KEY is required for AI Social Studio generation outside mock mode');
   }
 
   const response = await axios.post(

@@ -124,6 +124,15 @@ jobs:
               echo "::warning::OPENAI_API_KEY is not configured; CMS AI article generation will fail"
             fi
 
+            echo "==> Checking Social Studio AI configuration"
+            if grep -q '^SOCIAL_STUDIO_OPENAI_API_KEY=.' /opt/menorah/.env; then
+              echo "==> SOCIAL_STUDIO_OPENAI_API_KEY is configured"
+            elif grep -q '^OPENAI_API_KEY=.' /opt/menorah/.env; then
+              echo "::warning::SOCIAL_STUDIO_OPENAI_API_KEY is not configured; Social Studio will fall back to OPENAI_API_KEY"
+            else
+              echo "::warning::SOCIAL_STUDIO_OPENAI_API_KEY is not configured; AI Social Studio generation will fail"
+            fi
+
             echo "==> Ensuring local Redis is running"
             docker pull redis:7-alpine
             if docker inspect menorah-redis >/dev/null 2>&1; then

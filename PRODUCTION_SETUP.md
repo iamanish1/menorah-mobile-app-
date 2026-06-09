@@ -112,6 +112,12 @@ CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
 
+OPENAI_API_KEY=
+SOCIAL_STUDIO_OPENAI_API_KEY=
+SOCIAL_STUDIO_AI_PROVIDER=openai
+SOCIAL_STUDIO_AI_TEXT_MODEL=gpt-4o-mini
+SOCIAL_STUDIO_STORAGE=local
+
 LIVEKIT_API_KEY=
 LIVEKIT_API_SECRET=
 LIVEKIT_URL=
@@ -269,6 +275,8 @@ curl https://menorah-api-<hash>-uc.a.run.app/health
 | `ALLOWED_ORIGINS` | `.env` | Secret Manager | comma-separated |
 | `WEB_APP_URL` | `.env` | Secret Manager | `https://menorah.me` |
 | `MOBILE_APP_SCHEME` | `.env` | cloudbuild inline | `menorah://` |
+| `OPENAI_API_KEY` | `.env` | Secret Manager | CMS article generation |
+| `SOCIAL_STUDIO_OPENAI_API_KEY` | `.env` | not required in Cloud Run while Social Studio is VPS-pinned | Dedicated key for AI Social Studio; falls back to `OPENAI_API_KEY` if empty |
 
 ---
 
