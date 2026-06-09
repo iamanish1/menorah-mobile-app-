@@ -85,7 +85,7 @@ export default function RootNavigator() {
     prevIsLoadingRef.current = isLoading;
   }, [isLoading, isAuthed]);
 
-  // React to auth state changes (when user logs out)
+  // React to auth state changes after the app has mounted.
   useEffect(() => {
     // Skip on initial mount
     if (prevIsAuthedRef.current === null) {
@@ -93,16 +93,13 @@ export default function RootNavigator() {
       return;
     }
 
-    // Only navigate when auth state changes from authenticated to unauthenticated
-    if (!isLoading && navigationRef.isReady() && prevIsAuthedRef.current === true && !isAuthed) {
-      // User logged out - navigate to Onboarding
-      // Use setTimeout to ensure navigation happens after state update
+    if (!isLoading && navigationRef.isReady() && prevIsAuthedRef.current !== isAuthed) {
       setTimeout(() => {
         try {
           if (navigationRef.isReady()) {
             navigationRef.reset({
               index: 0,
-              routes: [{ name: 'Onboarding' }],
+              routes: [{ name: isAuthed ? 'Tabs' : 'Onboarding' }],
             });
           }
         } catch (error) {

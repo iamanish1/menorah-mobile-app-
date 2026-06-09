@@ -67,9 +67,7 @@ export default function Login({ navigation }: any) {
     setShowNetworkError(false);
     try {
       const result = await login(normalizedEmail, password);
-      if (result.success) {
-        navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
-      } else {
+      if (!result.success) {
         if (result.message?.includes('Network error')) {
           setShowNetworkError(true);
         } else {

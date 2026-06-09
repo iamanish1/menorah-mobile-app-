@@ -192,6 +192,10 @@ export default function ResetPassword({ navigation, route }: any) {
                     }
                   }}
                   secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  textContentType="newPassword"
                   error={passwordError}
                   style={{ borderRadius: 14, paddingRight: 52 }}
                 />
@@ -215,6 +219,10 @@ export default function ResetPassword({ navigation, route }: any) {
                     }
                   }}
                   secureTextEntry={!showConfirmPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  textContentType="newPassword"
                   error={confirmError}
                   style={{ borderRadius: 14, paddingRight: 52 }}
                 />

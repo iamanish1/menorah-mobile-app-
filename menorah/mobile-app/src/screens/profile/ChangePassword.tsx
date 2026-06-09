@@ -142,6 +142,10 @@ export default function ChangePassword({ navigation }: any) {
                 }
               }}
               secureTextEntry={!showCurrentPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              textContentType="password"
               style={{
                 flex: 1,
                 borderWidth: 0,
@@ -203,6 +207,10 @@ export default function ChangePassword({ navigation }: any) {
                 }
               }}
               secureTextEntry={!showNewPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              textContentType="newPassword"
               style={{
                 flex: 1,
                 borderWidth: 0,
@@ -262,6 +270,10 @@ export default function ChangePassword({ navigation }: any) {
                 }
               }}
               secureTextEntry={!showConfirmPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              textContentType="newPassword"
               style={{
                 flex: 1,
                 borderWidth: 0,
@@ -312,4 +324,3 @@ export default function ChangePassword({ navigation }: any) {
     </SafeAreaView>
   );
 }
-
