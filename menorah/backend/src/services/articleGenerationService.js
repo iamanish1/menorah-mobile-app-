@@ -287,6 +287,11 @@ const executeGenerationRun = async (runId) => {
     });
 
     for (const topicInput of topics.slice(0, run.requestedCount)) {
+      const currentRun = await ArticleGenerationRun.findById(run._id).select('status').lean();
+      if (currentRun?.status !== 'running') {
+        break;
+      }
+
       try {
         const article = await createReviewArticle({
           input: topicInput,

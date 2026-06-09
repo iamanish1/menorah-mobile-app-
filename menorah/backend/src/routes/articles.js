@@ -208,6 +208,40 @@ router.post('/admin/generation-runs', adminAuth, [
   }
 });
 
+// POST /api/articles/admin/generation-runs/cancel-active
+router.post('/admin/generation-runs/cancel-active', adminAuth, async (req, res) => {
+  try {
+    const now = new Date();
+    const result = await ArticleGenerationRun.updateMany({
+      status: { $in: ['queued', 'running'] }
+    }, {
+      $set: {
+        status: 'failed',
+        finishedAt: now
+      },
+      $push: {
+        errors: {
+          topic: '',
+          stage: 'cancelled',
+          message: 'Generation cancelled by admin.',
+          at: now
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        matchedCount: result.matchedCount ?? result.n ?? 0,
+        modifiedCount: result.modifiedCount ?? result.nModified ?? 0
+      }
+    });
+  } catch (error) {
+    console.error('Cancel active article generation runs error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // GET /api/articles/admin/generation-runs/:id
 router.get('/admin/generation-runs/:id', adminAuth, [
   param('id').isMongoId().withMessage('Invalid run ID')
