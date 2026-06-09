@@ -149,16 +149,83 @@ jobs:
             docker stop menorah-api 2>/dev/null || true
             docker rm   menorah-api 2>/dev/null || true
 
-            echo "==> Stopping legacy PM2 API process if present"
+            echo "==> Stopping legacy PM2 backend if present"
             if command -v pm2 >/dev/null 2>&1; then
-              pm2 stop menorah-api 2>/dev/null || true
+              pm2 list || true
+              LEGACY_PM2_IDS="$(pm2 jlist 2>/dev/null | node -e '
+                const fs = require("fs");
+                const raw = fs.readFileSync(0, "utf8").trim();
+                if (!raw) process.exit(0);
+                const apps = JSON.parse(raw);
+                const legacyNeedles = [
+                  "/root/menorah-mobile-app-/menorah/backend",
+                  "menorah/backend/src/server",
+                  "menorah-api"
+                ];
+                const ids = apps
+                  .filter((app) => {
+                    const env = app.pm2_env || {};
+                    const fields = [
+                      app.name,
+                      env.name,
+                      env.cwd,
+                      env.pm_exec_path,
+                      ...(Array.isArray(env.args) ? env.args : [])
+                    ].filter(Boolean).join(" ");
+                    return legacyNeedles.some((needle) => fields.includes(needle));
+                  })
+                  .map((app) => app.pm_id);
+                process.stdout.write(ids.join(" "));
+              ' || true)"
+              if [ -n "$LEGACY_PM2_IDS" ]; then
+                echo "==> Removing legacy PM2 app ids: ${LEGACY_PM2_IDS}"
+                pm2 delete ${LEGACY_PM2_IDS} 2>/dev/null || true
+              fi
               pm2 delete menorah-api 2>/dev/null || true
               pm2 save --force 2>/dev/null || true
             fi
 
-            echo "==> Freeing API port 3000 if a legacy process is still bound"
-            if command -v fuser >/dev/null 2>&1; then
+            echo "==> Freeing API port 3000 if a legacy Menorah backend is still bound"
+            for attempt in 1 2 3; do
+              PORT_PIDS="$(fuser 3000/tcp 2>/dev/null || true)"
+              if [ -z "$PORT_PIDS" ]; then
+                echo "==> Port 3000 is free"
+                break
+              fi
+
+              for pid in $PORT_PIDS; do
+                CMD="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
+                CWD="$(readlink -f "/proc/${pid}/cwd" 2>/dev/null || true)"
+                PPID="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
+                echo "==> Port 3000 owner pid=${pid} ppid=${PPID} cwd=${CWD} cmd=${CMD}"
+
+                if echo "${CMD} ${CWD}" | grep -Eq 'menorah-mobile-app-.*/menorah/backend|menorah/backend/src/server|menorah-api'; then
+                  kill -TERM "$pid" 2>/dev/null || true
+                  if [ -n "$PPID" ] && [ "$PPID" != "1" ]; then
+                    PCMD="$(tr '\0' ' ' < "/proc/${PPID}/cmdline" 2>/dev/null || true)"
+                    echo "==> Legacy parent pid=${PPID} cmd=${PCMD}"
+                    if echo "$PCMD" | grep -Eiq 'pm2|node'; then
+                      kill -TERM "$PPID" 2>/dev/null || true
+                    fi
+                  fi
+                else
+                  echo "::error::Port 3000 is occupied by an unknown process; refusing to kill it"
+                  exit 1
+                fi
+              done
+              sleep 3
+            done
+
+            if fuser 3000/tcp >/dev/null 2>&1; then
+              echo "==> Legacy backend still owns port 3000; forcing shutdown"
               fuser -k 3000/tcp 2>/dev/null || true
+              sleep 3
+            fi
+
+            if fuser 3000/tcp >/dev/null 2>&1; then
+              echo "::error::Port 3000 is still occupied after cleanup"
+              fuser -v 3000/tcp 2>/dev/null || true
+              exit 1
             fi
 
             echo "==> Starting new container (network=host, uses local Redis)"
