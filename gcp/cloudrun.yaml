@@ -190,9 +190,9 @@ spec:
                   key: latest
             # LiveKit — video call infrastructure
             - name: LIVEKIT_URL
-              value: wss://livekit.menorahhealth.app
+              value: wss://menorah-zewb2yog.livekit.cloud
             - name: LIVEKIT_API_URL
-              value: https://livekit.menorahhealth.app
+              value: https://menorah-zewb2yog.livekit.cloud
             - name: LIVEKIT_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -202,6 +202,12 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: LIVEKIT_API_SECRET
+                  key: latest
+            # OpenAI — AI article generation
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: OPENAI_API_KEY
                   key: latest
 
           # ── Startup probe — wait for DB+Redis to connect ───────────────
