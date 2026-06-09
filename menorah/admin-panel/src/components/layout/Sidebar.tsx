@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, Users, UserCheck, Wallet, Send, Newspaper, LogOut, Menu, X
+  LayoutDashboard, Users, UserCheck, Wallet, Send, Newspaper, Sparkles, LogOut, Menu, X
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -16,6 +16,7 @@ const navItems = [
   { href: '/revenue',     label: 'Revenue & Payouts', icon: Wallet          },
   { href: '/payouts',     label: 'Payout History',    icon: Send            },
   { href: '/articles',    label: 'Articles',          icon: Newspaper       },
+  { href: '/ai-social-studio', label: 'AI Social Studio', icon: Sparkles     },
 ];
 
 export default function Sidebar() {

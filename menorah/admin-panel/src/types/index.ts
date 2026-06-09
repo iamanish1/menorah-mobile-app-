@@ -194,6 +194,148 @@ export interface ArticleGenerationRun {
   updatedAt?: string;
 }
 
+export type SocialPostStatus =
+  | 'draft'
+  | 'needs_review'
+  | 'approved'
+  | 'scheduled'
+  | 'publishing'
+  | 'published'
+  | 'rejected'
+  | 'failed_generation'
+  | 'failed_publish'
+  | 'expired_token';
+
+export type SocialPostType = 'single_image' | 'carousel' | 'reel_cover';
+export type SocialAspectRatio = '1:1' | '4:5' | '9:16';
+export type SocialTemplateKey = 'thought_leadership' | 'educational_tip' | 'announcement';
+
+export interface BrandAsset {
+  id: string;
+  _id?: string;
+  type: 'logo' | 'font' | 'image' | 'icon' | 'template' | 'background' | 'product_image' | 'reference_post' | 'brand_guideline';
+  name: string;
+  filename?: string;
+  url: string;
+  publicId?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  tags?: string[];
+  colors?: string[];
+  width?: number | null;
+  height?: number | null;
+  status: 'active' | 'archived';
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface BrandGuideline {
+  id: string;
+  _id?: string;
+  brandName: string;
+  tone: string;
+  audience: string;
+  primaryColors: string[];
+  secondaryColors: string[];
+  fonts: string[];
+  logoRules: {
+    allowedPositions: string[];
+    minWidth: number;
+    clearSpace: number;
+  };
+  postRules: {
+    maxWordsOnImage: number;
+    allowedAspectRatios: SocialAspectRatio[];
+    defaultAspectRatio: SocialAspectRatio;
+    forbiddenWords: string[];
+    ctaStyle: string;
+  };
+  instagramRules: {
+    defaultHashtags: string[];
+    bannedHashtags: string[];
+    captionMaxLength: number;
+  };
+  status: 'active' | 'inactive' | 'archived';
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface InstagramAccount {
+  id: string;
+  _id?: string;
+  businessName: string;
+  igUserId: string;
+  pageId?: string;
+  username?: string;
+  accountType?: string;
+  tokenExpiresAt?: string | null;
+  status: 'connected' | 'expired' | 'revoked' | 'error';
+  lastVerifiedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SocialPost {
+  id: string;
+  _id?: string;
+  platform: 'instagram';
+  postType: SocialPostType;
+  status: SocialPostStatus;
+  topic: string;
+  campaignName?: string;
+  audience?: string;
+  objective?: string;
+  tone?: string;
+  hookText: string;
+  bodyText: string;
+  ctaText: string;
+  caption: string;
+  hashtags: string[];
+  aiPrompt?: string;
+  designBrief?: string;
+  templateKey?: SocialTemplateKey;
+  selectedAssetIds?: BrandAsset[] | string[];
+  imageUrl?: string;
+  finalImageUrl?: string;
+  thumbnailUrl?: string;
+  aspectRatio: SocialAspectRatio;
+  width?: number;
+  height?: number;
+  modelUsed?: string;
+  promptVersion?: string;
+  qualityScore?: number;
+  qualityIssues?: string[];
+  scheduledAt?: string | null;
+  publishedAt?: string | null;
+  instagramAccount?: InstagramAccount | string | null;
+  instagramMediaId?: string;
+  instagramPermalink?: string;
+  errorLog?: { message?: string; code?: string; at?: string } | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SocialGenerationJob {
+  id: string;
+  _id?: string;
+  socialPostId?: string | null;
+  status: 'queued' | 'generating_concept' | 'generating_caption' | 'generating_image' | 'rendering' | 'quality_checking' | 'completed' | 'failed';
+  step?: string;
+  progress?: number;
+  provider?: string;
+  error?: string;
+  logs?: { step: string; message: string; at: string }[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SocialStudioStats {
+  counts: Partial<Record<SocialPostStatus, number>>;
+  connectedAccounts: number;
+  recentPosts: SocialPost[];
+}
+
 export interface Pagination {
   page: number;
   limit: number;

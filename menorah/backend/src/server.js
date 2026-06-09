@@ -9,6 +9,7 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const jwt = require('jsonwebtoken');
+const path = require('path');
 require('dotenv').config();
 
 // ─── Startup validation ────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ const { connectRedis, getRedisClient, getPubClient, getSubClient } = require('./
 const errorHandler = require('./middleware/errorHandler');
 const notFound = require('./middleware/notFound');
 const { startArticleScheduler } = require('./services/articleScheduler');
+const { startSocialScheduler } = require('./services/socialStudio/socialScheduler.service');
 
 const Counsellor = require('./models/Counsellor');
 const Message    = require('./models/Message');
@@ -58,6 +60,7 @@ const chatRoutes               = require('./routes/chat');
 const videoRoutes            = require('./routes/video');
 const adminRoutes            = require('./routes/admin');
 const articleRoutes          = require('./routes/articles');
+const socialStudioRoutes     = require('./routes/socialStudio');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -120,6 +123,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(compression());
 app.use(process.env.NODE_ENV === 'development' ? morgan('dev') : morgan('combined'));
+app.use('/uploads', express.static(path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads')));
 
 // Health checks (no rate-limiting — load balancers need these)
 // NODE_ENV removed — avoids revealing whether this is a production instance
@@ -406,6 +410,7 @@ async function startServer() {
   app.use('/api/payments', paymentRoutes);
   app.use('/api/chat', chatRoutes);
   app.use('/api/video', videoRoutes);
+  app.use('/api/admin/social-studio', socialStudioRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/articles', articleRoutes);
 
@@ -415,6 +420,7 @@ async function startServer() {
 
   chatRoutes.setSocketIO(io);
   app.set('io', io);
+  startSocialScheduler();
 
   // 6. Start listening
   server.listen(PORT, () => {

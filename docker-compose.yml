@@ -47,6 +47,7 @@ services:
       - "3000:8080"                       # host:3000 → container:8080
     volumes:
       - api_logs:/app/logs
+      - api_uploads:/app/uploads
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 30s
@@ -77,3 +78,4 @@ services:
 volumes:
   redis_data:
   api_logs:
+  api_uploads:

@@ -236,6 +236,8 @@ jobs:
             fi
 
             echo "==> Starting new container (network=host, uses local Redis)"
+            mkdir -p /opt/menorah/uploads /opt/menorah/logs
+            chmod 777 /opt/menorah/uploads
             docker run -d \
               --name menorah-api \
               --restart unless-stopped \
@@ -245,6 +247,7 @@ jobs:
               -e PORT=3000 \
               -e REDIS_URL=redis://127.0.0.1:6379 \
               -v /opt/menorah/logs:/app/logs \
+              -v /opt/menorah/uploads:/app/uploads \
               "${IMAGE}"
 
             echo "==> Health check (waiting 15s for startup)"

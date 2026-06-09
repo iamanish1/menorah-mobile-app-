@@ -44,6 +44,13 @@ export default {
       return proxyTo(request, env.VPS_URL, 'vps-livekit-webhook');
     }
 
+    // Social Studio stores rendered Instagram images on the VPS filesystem.
+    // Keep its admin API and uploaded assets on VPS so generated image URLs,
+    // previews, approvals, and Meta image fetches all see the same files.
+    if (url.pathname.startsWith('/api/admin/social-studio') || url.pathname.startsWith('/uploads/')) {
+      return proxyTo(request, env.VPS_URL, 'vps-social-studio');
+    }
+
     // Read latest health state written by the cron trigger
     const health = await getHealthState(env);
 

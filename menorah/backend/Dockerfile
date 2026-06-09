@@ -25,8 +25,8 @@ COPY src/ ./src/
 # Each container runs a single Node process; the orchestrator handles clustering.
 COPY package.json ./
 
-# Create logs dir with correct ownership
-RUN mkdir -p logs && chown -R menorah:menorah /app
+# Create writable runtime dirs with correct ownership
+RUN mkdir -p logs uploads && chown -R menorah:menorah /app
 
 USER menorah
 

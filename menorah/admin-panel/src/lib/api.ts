@@ -3,7 +3,9 @@ import { getToken, clearToken } from './auth';
 import type {
   ApiResponse, PlatformStats, Counsellor, CounsellorRevenue,
   RevenueData, User, Pagination, PayoutRecord, PayoutSummary, PayoutStatus,
-  Article, ArticleGenerationRun, ArticleStatus
+  Article, ArticleGenerationRun, ArticleStatus, BrandAsset, BrandGuideline,
+  InstagramAccount, SocialAspectRatio, SocialGenerationJob, SocialPost,
+  SocialPostStatus, SocialPostType, SocialStudioStats, SocialTemplateKey
 } from '@/types';
 
 class AdminApiClient {
@@ -191,6 +193,173 @@ class AdminApiClient {
   getArticleGenerationRun(id: string) {
     return this.request<{ run: ArticleGenerationRun }>(
       () => this.client.get(`/articles/admin/generation-runs/${id}`)
+    );
+  }
+
+  // AI Social Studio
+  getSocialStudioStats() {
+    return this.request<SocialStudioStats>(() => this.client.get('/admin/social-studio/stats'));
+  }
+
+  generateSocialPost(payload: {
+    topic: string;
+    campaignName?: string;
+    audience?: string;
+    objective?: string;
+    tone?: string;
+    postType?: SocialPostType;
+    aspectRatio?: SocialAspectRatio;
+  }) {
+    return this.request<{ post: SocialPost; job: SocialGenerationJob }>(
+      () => this.client.post('/admin/social-studio/posts/generate', payload)
+    );
+  }
+
+  getSocialPosts(params?: {
+    status?: SocialPostStatus | 'all';
+    campaignName?: string;
+    q?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    return this.request<{ posts: SocialPost[]; pagination: Pagination }>(
+      () => this.client.get('/admin/social-studio/posts', { params })
+    );
+  }
+
+  getSocialPost(id: string) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.get(`/admin/social-studio/posts/${id}`)
+    );
+  }
+
+  updateSocialPost(id: string, payload: Partial<SocialPost> & { selectedAssetIds?: string[] }) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.patch(`/admin/social-studio/posts/${id}`, payload)
+    );
+  }
+
+  regenerateSocialCaption(id: string) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post(`/admin/social-studio/posts/${id}/regenerate-caption`)
+    );
+  }
+
+  regenerateSocialImage(id: string) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post(`/admin/social-studio/posts/${id}/regenerate-image`)
+    );
+  }
+
+  renderSocialPost(id: string) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post(`/admin/social-studio/posts/${id}/render`)
+    );
+  }
+
+  approveSocialPost(id: string) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post(`/admin/social-studio/posts/${id}/approve`)
+    );
+  }
+
+  rejectSocialPost(id: string, reason?: string) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post(`/admin/social-studio/posts/${id}/reject`, { reason })
+    );
+  }
+
+  scheduleSocialPost(id: string, scheduledAt: string) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post(`/admin/social-studio/posts/${id}/schedule`, { scheduledAt })
+    );
+  }
+
+  publishSocialPostNow(id: string) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post(`/admin/social-studio/posts/${id}/publish-now`)
+    );
+  }
+
+  getBrandAssets(params?: { type?: string; status?: 'active' | 'archived' | 'all' }) {
+    return this.request<{ assets: BrandAsset[] }>(
+      () => this.client.get('/admin/social-studio/brand-assets', { params })
+    );
+  }
+
+  createBrandAsset(formData: FormData) {
+    return this.request<{ asset: BrandAsset }>(
+      () => this.client.post('/admin/social-studio/brand-assets', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+    );
+  }
+
+  updateBrandAsset(id: string, payload: Partial<BrandAsset>) {
+    return this.request<{ asset: BrandAsset }>(
+      () => this.client.patch(`/admin/social-studio/brand-assets/${id}`, payload)
+    );
+  }
+
+  archiveBrandAsset(id: string) {
+    return this.request<{ asset: BrandAsset }>(
+      () => this.client.delete(`/admin/social-studio/brand-assets/${id}`)
+    );
+  }
+
+  getActiveBrandGuideline() {
+    return this.request<{ guideline: BrandGuideline }>(
+      () => this.client.get('/admin/social-studio/brand-guidelines/active')
+    );
+  }
+
+  createBrandGuideline(payload: Partial<BrandGuideline>) {
+    return this.request<{ guideline: BrandGuideline }>(
+      () => this.client.post('/admin/social-studio/brand-guidelines', payload)
+    );
+  }
+
+  updateBrandGuideline(id: string, payload: Partial<BrandGuideline>) {
+    return this.request<{ guideline: BrandGuideline }>(
+      () => this.client.patch(`/admin/social-studio/brand-guidelines/${id}`, payload)
+    );
+  }
+
+  getInstagramAccounts() {
+    return this.request<{ accounts: InstagramAccount[] }>(
+      () => this.client.get('/admin/social-studio/instagram/accounts')
+    );
+  }
+
+  connectInstagramAccount(payload: {
+    businessName: string;
+    igUserId: string;
+    pageId?: string;
+    username?: string;
+    accountType?: string;
+    accessToken: string;
+    tokenExpiresAt?: string;
+  }) {
+    return this.request<{ account: InstagramAccount }>(
+      () => this.client.post('/admin/social-studio/instagram/accounts/manual-connect', payload)
+    );
+  }
+
+  verifyInstagramAccount(id: string) {
+    return this.request<{ account: InstagramAccount }>(
+      () => this.client.post(`/admin/social-studio/instagram/accounts/${id}/verify`)
+    );
+  }
+
+  disconnectInstagramAccount(id: string) {
+    return this.request<{ account: InstagramAccount }>(
+      () => this.client.delete(`/admin/social-studio/instagram/accounts/${id}`)
+    );
+  }
+
+  getSocialPublishLogs() {
+    return this.request<{ logs: SocialPost[] }>(
+      () => this.client.get('/admin/social-studio/publish-logs')
     );
   }
 }
