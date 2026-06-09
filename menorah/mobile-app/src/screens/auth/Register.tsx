@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react-native';
@@ -349,11 +349,14 @@ export default function Register({ navigation }: any) {
               placeholder="+1234567890"
               value={phone}
               onChangeText={(text) => {
-                setPhone(text);
-                validateField('phone', text);
+                const formatted = text.length > 0 && !text.startsWith('+') ? `+${text}` : text;
+                setPhone(formatted);
+                validateField('phone', formatted);
               }}
-              keyboardType="phone-pad"
+              keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'phone-pad'}
               autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="telephoneNumber"
               error={errors.phone}
             />
             <Text style={{
@@ -447,6 +450,9 @@ export default function Register({ navigation }: any) {
                   if (confirmPassword) validateField('confirmPassword', confirmPassword);
                 }}
                 secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="newPassword"
                 style={{
                   flex: 1,
                   borderWidth: 0,
@@ -535,6 +541,9 @@ export default function Register({ navigation }: any) {
                   validateField('confirmPassword', text);
                 }}
                 secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="newPassword"
                 style={{
                   flex: 1,
                   borderWidth: 0,

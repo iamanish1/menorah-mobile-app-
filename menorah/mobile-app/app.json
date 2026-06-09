@@ -24,7 +24,7 @@
         "backgroundColor": "#f0f9f4"
       },
       "package": "com.menorah.healthmobile",
-      "versionCode": 12,
+      "versionCode": 13,
       "statusBar": {
         "barStyle": "light-content",
         "backgroundColor": "#314830",
@@ -44,9 +44,7 @@
     "updates": {
       "url": "https://u.expo.dev/d7fb6e65-3440-4a79-b4b2-6746d2582fa7"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "extra": {
       "API_BASE_URL": "https://api.menorah.me/api",
       "CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
