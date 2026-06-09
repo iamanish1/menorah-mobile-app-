@@ -7,7 +7,7 @@
     "icon": "./assets/brand/menorah_logo.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/brand/splash.png",
+      "image": "./assets/brand/menorah_logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#f0f9f4"
     },
