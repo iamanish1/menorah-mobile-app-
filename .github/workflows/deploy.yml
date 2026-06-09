@@ -248,6 +248,23 @@ jobs:
               "${IMAGE}"
 
             echo "==> Health check (waiting 15s for startup)"
+            for i in $(seq 1 18); do
+              if curl -sf http://localhost:3000/health | grep -q '"status":"OK"' \
+                && curl -sf "http://localhost:3000/api/articles?limit=1" | grep -q '"success":true'; then
+                echo "==> VPS API became ready"
+                break
+              fi
+
+              if [ "$i" -eq 18 ]; then
+                echo "::error::VPS health check failed after 90s"
+                docker ps -a || true
+                docker logs --tail=120 menorah-api || true
+                exit 1
+              fi
+
+              echo "    Attempt ${i}/18 failed; waiting 5s..."
+              sleep 5
+            done
             sleep 15
             curl -sf http://localhost:3000/health | grep -q '"status":"OK"'
             curl -sf "http://localhost:3000/api/articles?limit=1" | grep -q '"success":true'
