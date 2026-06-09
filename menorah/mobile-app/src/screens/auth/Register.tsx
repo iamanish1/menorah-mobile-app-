@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react-native';
@@ -264,11 +264,15 @@ export default function Register({ navigation }: any) {
               placeholder="+1234567890"
               value={phone}
               onChangeText={(text) => {
-                setPhone(text);
-                validateField('phone', text);
+                // Auto-prepend + if user starts typing digits without it
+                const formatted = text.length > 0 && !text.startsWith('+') ? `+${text}` : text;
+                setPhone(formatted);
+                validateField('phone', formatted);
               }}
-              keyboardType="phone-pad"
+              keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'phone-pad'}
               autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="telephoneNumber"
               error={errors.phone}
             />
             <Text style={{ 
