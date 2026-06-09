@@ -164,6 +164,17 @@ const countArticleWords = (article = {}) => {
   }, 0);
 };
 
+const toPlainArticleText = (value) => {
+  return String(value || '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/(^|\s)#{1,6}\s+/g, '$1')
+    .replace(/[*_`~]+/g, '')
+    .replace(/[\u2022\u00b7\u25aa\u25cf]/g, '')
+    .replace(/^\s*(?:[-+]|\d+[.)])\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 const buildMockParagraphs = (topic) => [
   `Many men learn to keep pressure private, especially when the pressure feels difficult to explain. ${topic} is worth talking about because mental health often changes through ordinary moments: how a man sleeps, how he responds to stress, how much space he has to be honest, and whether he feels allowed to ask for support before things become overwhelming.`,
   'A practical starting point is to notice patterns without turning them into self-criticism. Pay attention to what happens before a difficult mood, a short temper, a long silence, or the urge to withdraw. These patterns are not proof that something is wrong with you. They are information that can help you respond earlier and more clearly.',
@@ -251,28 +262,28 @@ const sanitizeDraft = (draft, input) => {
   const fallback = buildMockDraft(input);
 
   return {
-    title: String(draft?.title || fallback.title).trim(),
-    excerpt: String(draft?.excerpt || fallback.excerpt).trim(),
-    category: String(draft?.category || fallback.category).trim(),
+    title: toPlainArticleText(draft?.title || fallback.title),
+    excerpt: toPlainArticleText(draft?.excerpt || fallback.excerpt),
+    category: toPlainArticleText(draft?.category || fallback.category),
     tags: Array.isArray(draft?.tags)
-      ? draft.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 12)
+      ? draft.tags.map((tag) => toPlainArticleText(tag)).filter(Boolean).slice(0, 12)
       : fallback.tags,
     contentBlocks: Array.isArray(draft?.contentBlocks) && draft.contentBlocks.length > 0
       ? draft.contentBlocks
         .filter((block) => ['heading', 'paragraph', 'quote', 'bullet_list', 'image', 'callout'].includes(block?.type))
         .map((block) => ({
           type: block.type,
-          text: block.text ? String(block.text).trim() : '',
+          text: block.text ? toPlainArticleText(block.text) : '',
           level: block.level || null,
-          items: Array.isArray(block.items) ? block.items.map((item) => String(item).trim()).filter(Boolean) : [],
+          items: Array.isArray(block.items) ? block.items.map((item) => toPlainArticleText(item)).filter(Boolean) : [],
           url: block.url || null,
-          alt: block.alt || '',
-          caption: block.caption || ''
+          alt: toPlainArticleText(block.alt),
+          caption: toPlainArticleText(block.caption)
         }))
       : fallback.contentBlocks,
-    seoTitle: String(draft?.seoTitle || fallback.seoTitle).trim(),
-    seoDescription: String(draft?.seoDescription || fallback.seoDescription).trim(),
-    imagePrompt: String(draft?.imagePrompt || fallback.imagePrompt).trim()
+    seoTitle: toPlainArticleText(draft?.seoTitle || fallback.seoTitle),
+    seoDescription: toPlainArticleText(draft?.seoDescription || fallback.seoDescription),
+    imagePrompt: toPlainArticleText(draft?.imagePrompt || fallback.imagePrompt)
   };
 };
 
@@ -337,9 +348,12 @@ const generateArticleDraft = async (input = {}) => {
               text: [
                 'You create safe mental-health education articles for Menorah Health.',
                 'Return structured JSON only.',
+                'Write in a warm, human, plain-spoken voice, like a thoughtful support article from someone who understands pressure and wants the reader to feel less alone.',
+                'Use simple sentences, concrete examples, and a calm editorial rhythm.',
                 'Write for men without stereotypes or shame.',
                 'Do not diagnose, do not promise medical outcomes, and do not give harmful advice.',
-                'Use supportive, non-alarmist wording.',
+                'Use supportive, non-alarmist wording and avoid robotic, textbook-like phrasing.',
+                'Never use Markdown or formatting syntax. Do not use asterisks, bold text, italic text, backticks, hashes, bullets with symbols, or link syntax inside any field.',
                 'Mention professional support when appropriate.',
                 'Include crisis-safe wording when the topic could involve overwhelming distress, self-harm, or urgent safety concerns.'
               ].join(' ')
@@ -360,6 +374,8 @@ const generateArticleDraft = async (input = {}) => {
                   wordCountFeedback: normalized.wordCountFeedback,
                   wordCountScope: 'Only contentBlocks text and list items count. Title, excerpt, SEO fields, tags, and imagePrompt do not count.',
                   bodyLengthGuidance: 'For a 700-word target, write a complete article body with enough paragraph and list content to land inside the acceptable range.',
+                  plainTextOnly: 'No Markdown. No **bold**. No italics markers. No backticks. No link syntax. No decorative symbols. Use clean plain text only.',
+                  style: 'Warm, natural, gentle, practical, human, and easy to read.',
                   contentBlockTypes: ['heading', 'paragraph', 'quote', 'bullet_list', 'image', 'callout'],
                   noDiagnosis: true,
                   noMedicalPromises: true,
@@ -396,7 +412,7 @@ const buildFallbackTopics = (count, recentArticles = []) => {
       topic,
       category: 'Mental Health',
       audience: 'Men looking for practical mental health support',
-      tone: 'warm, direct, practical, and non-clinical',
+      tone: 'warm, human, practical, gentle, and plain-spoken',
       imagePrompt: `A calm editorial article cover about ${topic}, no readable text, hopeful and grounded.`,
       imageStyle: 'premium editorial mental health illustration',
       imageMood: 'calm, grounded, masculine but inclusive, hopeful',
@@ -415,15 +431,15 @@ const sanitizeTopics = (topics, count, recentArticles = []) => {
 
   return (Array.isArray(topics) ? topics : [])
     .map((topic) => ({
-      topic: String(topic?.topic || '').trim(),
-      category: String(topic?.category || 'Mental Health').trim(),
-      audience: String(topic?.audience || 'Men looking for practical mental health support').trim(),
-      tone: String(topic?.tone || 'warm, direct, practical, and non-clinical').trim(),
-      imagePrompt: String(topic?.imagePrompt || '').trim(),
-      imageStyle: String(topic?.imageStyle || 'premium editorial mental health illustration').trim(),
-      imageMood: String(topic?.imageMood || 'calm, grounded, masculine but inclusive, hopeful').trim(),
-      imageColors: String(topic?.imageColors || 'earthy green, cream, soft shadows').trim(),
-      imageAvoid: String(topic?.imageAvoid || 'no text, no hospital, no doctors, no distressing stereotypes').trim()
+      topic: toPlainArticleText(topic?.topic || ''),
+      category: toPlainArticleText(topic?.category || 'Mental Health'),
+      audience: toPlainArticleText(topic?.audience || 'Men looking for practical mental health support'),
+      tone: toPlainArticleText(topic?.tone || 'warm, human, practical, gentle, and plain-spoken'),
+      imagePrompt: toPlainArticleText(topic?.imagePrompt || ''),
+      imageStyle: toPlainArticleText(topic?.imageStyle || 'premium editorial mental health illustration'),
+      imageMood: toPlainArticleText(topic?.imageMood || 'calm, grounded, masculine but inclusive, hopeful'),
+      imageColors: toPlainArticleText(topic?.imageColors || 'earthy green, cream, soft shadows'),
+      imageAvoid: toPlainArticleText(topic?.imageAvoid || 'no text, no hospital, no doctors, no distressing stereotypes')
     }))
     .filter((topic) => topic.topic.length >= 3)
     .filter((topic) => {
@@ -462,6 +478,8 @@ const generateArticleTopics = async ({ count, recentArticles = [] } = {}) => {
                 'You plan safe, varied article topics for Menorah Health.',
                 'All topics must relate to men\'s mental health, wellbeing, emotional awareness, stress, relationships, confidence, help-seeking, or practical self-care.',
                 'Avoid duplicates and avoid topics that sound too similar to recent articles.',
+                'Create topics that support warm, human, plain-spoken articles.',
+                'Never use Markdown, formatting symbols, bold markers, or link syntax in any field.',
                 'Return structured JSON only.'
               ].join(' ')
             }

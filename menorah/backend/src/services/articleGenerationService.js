@@ -88,10 +88,10 @@ const getRecentArticles = async () => {
     .lean();
 };
 
-const buildExpansionParagraphs = (topic) => [
-  `A useful way to mark ${topic} is to make support easier to reach before a crisis starts. That can mean saving a helpline, booking a first conversation with a professional, or choosing one trusted person who can hear the truth without turning it into a debate. Preparation makes help feel less like a last resort and more like a normal part of staying well.`,
+const buildExpansionParagraphs = () => [
+  'A useful way to move from awareness to care is to make support easier to reach before a crisis starts. That can mean saving a helpline, booking a first conversation with a professional, or choosing one trusted person who can hear the truth without turning it into a debate. Preparation makes help feel less like a last resort and more like a normal part of staying well.',
   'Workplaces, families, and friend groups can also make a difference by changing the questions they ask. Instead of waiting for a man to prove he is struggling, they can create space for ordinary check-ins about sleep, stress, anger, grief, confidence, and loneliness. These conversations do not need to be dramatic. They need to be consistent, respectful, and private enough that honesty feels safe.',
-  'The month matters most when it leads to action after the awareness posts end. One small action is to choose a weekly mental health check-in and treat it like any other responsibility. Notice what is heavy, what is helping, and whether support is needed. The answer can guide a practical next step instead of leaving pressure unnamed.',
+  'The point is not to turn every difficult day into a deep conversation. It is to give men more room to be honest before pressure becomes too heavy. A simple check-in, a quieter evening, a boundary, or a first appointment can all be meaningful steps when they are chosen with care.',
   'Men also benefit when support options are practical and easy to understand. A short conversation, a private app-based resource, a peer support space, or a session with a trained professional can each meet a different need. The important part is having a path that feels realistic enough to use before stress becomes overwhelming.',
   'Awareness is not a replacement for care, but it can lower the barrier to care. When men hear clear, respectful language about mental health, it becomes easier to name what is happening and choose one next step. That step might be rest, a boundary, a conversation, or professional support.'
 ];
@@ -106,13 +106,12 @@ const expandShortDraftToRange = ({ draft, input, range }) => {
     return { draft, wordCount };
   }
 
-  const topic = String(input.topic || draft.title || 'men mental health').trim();
   const expandedDraft = {
     ...draft,
     contentBlocks: [...draft.contentBlocks]
   };
 
-  for (const paragraph of buildExpansionParagraphs(topic)) {
+  for (const paragraph of buildExpansionParagraphs()) {
     const block = { type: 'paragraph', text: paragraph };
     const blockWordCount = countArticleWords({ contentBlocks: [block] });
 
