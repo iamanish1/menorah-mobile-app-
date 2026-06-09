@@ -117,6 +117,13 @@ jobs:
             echo "==> Pulling image ${IMAGE}"
             docker pull "${IMAGE}"
 
+            echo "==> Checking article AI configuration"
+            if grep -q '^OPENAI_API_KEY=.' /opt/menorah/.env; then
+              echo "==> OPENAI_API_KEY is configured"
+            else
+              echo "::warning::OPENAI_API_KEY is not configured; CMS AI article generation will fail"
+            fi
+
             echo "==> Ensuring local Redis is running"
             docker pull redis:7-alpine
             if docker inspect menorah-redis >/dev/null 2>&1; then
