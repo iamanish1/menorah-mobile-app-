@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { ArrowLeft, Send, Phone, Video } from 'lucide-react-native';
+import { ArrowLeft, MoreVertical, Phone, Send, Video } from 'lucide-react-native';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useChat } from "@/state/useChat";
@@ -10,6 +10,7 @@ import { useAuth } from "@/state/useAuth";
 import { api } from "@/lib/api";
 import ChatBubble from "@/components/chat/ChatBubble";
 import TypingIndicator from "@/components/chat/TypingIndicator";
+import { ChatMessage } from '@/lib/socket';
 
 export default function ChatThread({ navigation, route }: any) {
   const { roomId, counsellorId } = route.params || {};
@@ -17,56 +18,38 @@ export default function ChatThread({ navigation, route }: any) {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
+  const [safetyActionLoading, setSafetyActionLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const crisisBg = isDark ? colors.accentLight : '#FEF3C7';
+  const crisisBorder = isDark ? '#5A3E12' : '#FDE68A';
+  const crisisText = isDark ? colors.accent : '#92400E';
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
   const { user } = useAuth();
   const { 
     messages, 
     sendMessage: sendChatMessage, 
     typingUsers, 
-    onlineUsers,
-    roomPresence,
     isConnected,
     fetchMessages,
     joinRoom,
     leaveRoom,
-    chatRooms
   } = useChat();
   
-  const roomMessages = messages[roomId] || [];
+  const roomMessages = useMemo(() => messages[roomId] || [], [messages, roomId]);
   const typingInRoom = typingUsers[roomId] || [];
   const counsellorName = route.params?.counsellorName || 'Counsellor';
   const counsellorImage = route.params?.counsellorImage;
+  const otherUserId = route.params?.counsellorUserId || counsellorId;
   
 
-  useEffect(() => {
-    if (roomId) {
-      loadMessages();
-      joinRoom(roomId);
-    }
-    
-    return () => {
-      if (roomId) {
-        leaveRoom(roomId);
-      }
-    };
-  }, [roomId]);
-
-  useEffect(() => {
-    // Auto-scroll to bottom when new messages arrive
-    if (roomMessages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [roomMessages]);
-
-  const loadMessages = async () => {
+  const loadMessages = useCallback(async () => {
     if (!roomId) return;
-    
+
     setLoading(true);
     try {
       await fetchMessages(roomId);
@@ -76,7 +59,28 @@ export default function ChatThread({ navigation, route }: any) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchMessages, roomId]);
+
+  useEffect(() => {
+    if (roomId) {
+      loadMessages();
+      joinRoom(roomId);
+    }
+
+    return () => {
+      if (roomId) {
+        leaveRoom(roomId);
+      }
+    };
+  }, [joinRoom, leaveRoom, loadMessages, roomId]);
+
+  useEffect(() => {
+    if (roomMessages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [roomMessages]);
 
   const handleSendMessage = async () => {
     if (!message.trim() || !roomId || sending) return;
@@ -133,39 +137,146 @@ export default function ChatThread({ navigation, route }: any) {
     }, 3000);
   };
 
-  const formatTimestamp = (timestamp: string) => {
-    try {
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diff = now.getTime() - date.getTime();
-      const minutes = Math.floor(diff / (1000 * 60));
-      
-      if (minutes < 1) return 'Just now';
-      if (minutes < 60) return `${minutes}m ago`;
-      if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } catch {
-      return timestamp;
+  const showSafetyResult = (title: string, response: { success: boolean; message?: string }) => {
+    if (response.success) {
+      Alert.alert(title, response.message || 'Thank you. The Menorah support team will review this.');
+      return;
     }
+
+    Alert.alert(
+      `${title} Not Submitted`,
+      response.message ||
+        'This safety action is not fully connected yet. Please contact support from Settings so the team can review this manually.'
+    );
+  };
+
+  const submitSafetyAction = async (action: () => Promise<{ success: boolean; message?: string }>, title: string) => {
+    if (safetyActionLoading) return;
+
+    setSafetyActionLoading(true);
+    try {
+      const response = await action();
+      showSafetyResult(title, response);
+    } catch (error) {
+      console.error('Safety action error:', error);
+      Alert.alert(
+        `${title} Not Submitted`,
+        'This safety action is not fully connected yet. Please contact support from Settings so the team can review this manually.'
+      );
+    } finally {
+      setSafetyActionLoading(false);
+    }
+  };
+
+  const handleReportUser = (userId?: string, reason = 'Unsafe or abusive behavior reported from chat') => {
+    if (!userId) {
+      Alert.alert('Report User', 'User information is missing for this chat.');
+      return;
+    }
+
+    submitSafetyAction(
+      () => api.reportUser({ userId, roomId, reason }),
+      'Report Submitted'
+    );
+  };
+
+  const handleBlockUser = (userId?: string) => {
+    if (!userId) {
+      Alert.alert('Block User', 'User information is missing for this chat.');
+      return;
+    }
+
+    Alert.alert(
+      'Block User',
+      'Blocking helps limit unwanted contact where supported by the service. You can still contact support if there is an immediate safety concern.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: () =>
+            submitSafetyAction(
+              () => api.blockUser(userId, roomId),
+              'Block Request Submitted'
+            ),
+        },
+      ]
+    );
+  };
+
+  const handleSafetyMenu = () => {
+    Alert.alert(
+      'Chat Safety',
+      'Report unsafe behavior, block unwanted contact, or review the community guidelines.',
+      [
+        { text: 'Report User', onPress: () => handleReportUser(otherUserId) },
+        { text: 'Block User', style: 'destructive', onPress: () => handleBlockUser(otherUserId) },
+        { text: 'Community Guidelines', onPress: () => navigation.navigate('Legal', { type: 'community' }) },
+        { text: 'Contact Support', onPress: () => navigation.navigate('Legal', { type: 'support' }) },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleMessageLongPress = (chatMessage: ChatMessage, isUser: boolean) => {
+    if (isUser) {
+      Alert.alert(
+        'Message Options',
+        'You can review the community guidelines or contact support if you need help with this conversation.',
+        [
+          { text: 'Community Guidelines', onPress: () => navigation.navigate('Legal', { type: 'community' }) },
+          { text: 'Contact Support', onPress: () => navigation.navigate('Legal', { type: 'support' }) },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Message Safety',
+      'Report this message or take action on this user.',
+      [
+        {
+          text: 'Report Message',
+          onPress: () =>
+            submitSafetyAction(
+              () =>
+                api.reportContent({
+                  contentType: 'message',
+                  contentId: chatMessage.id,
+                  roomId,
+                  reportedUserId: chatMessage.senderId,
+                  reason: 'Unsafe or inappropriate message reported from chat',
+                }),
+              'Message Report Submitted'
+            ),
+        },
+        { text: 'Report User', onPress: () => handleReportUser(chatMessage.senderId) },
+        { text: 'Block User', style: 'destructive', onPress: () => handleBlockUser(chatMessage.senderId) },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   };
 
   const renderMessage = ({ item }: { item: any }) => {
     const isUser = item.senderId === user?.id;
+    const chatMessage: ChatMessage = {
+      id: item.id,
+      content: item.content,
+      timestamp: item.timestamp,
+      senderId: item.senderId,
+      senderName: item.senderName || (isUser ? `${user?.firstName} ${user?.lastName}` : counsellorName),
+      senderImage: isUser ? user?.profileImage : counsellorImage,
+      status: item.status || 'sent',
+      type: item.type || 'text'
+    };
     
     return (
       <ChatBubble
-        message={{
-          id: item.id,
-          content: item.content,
-          timestamp: item.timestamp,
-          senderId: item.senderId,
-          senderName: item.senderName || (isUser ? `${user?.firstName} ${user?.lastName}` : counsellorName),
-          senderImage: isUser ? user?.profileImage : counsellorImage,
-          status: item.status || 'sent',
-          type: item.type || 'text'
-        }}
+        message={chatMessage}
         isUser={isUser}
         showAvatar={!isUser}
+        onLongPress={() => handleMessageLongPress(chatMessage, isUser)}
       />
     );
   };
@@ -244,6 +355,18 @@ export default function ChatThread({ navigation, route }: any) {
             >
               <Video size={18} color={colors.primary} />
             </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSafetyMenu}
+              disabled={safetyActionLoading}
+              style={{
+                width: 38, height: 38, borderRadius: 19,
+                backgroundColor: colors.primary + '14',
+                alignItems: 'center', justifyContent: 'center',
+                opacity: safetyActionLoading ? 0.6 : 1,
+              }}
+            >
+              <MoreVertical size={18} color={colors.primary} />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -294,6 +417,21 @@ export default function ChatThread({ navigation, route }: any) {
           </View>
         )}
 
+        <View style={{
+          backgroundColor: crisisBg,
+          borderTopWidth: 1,
+          borderTopColor: crisisBorder,
+          paddingHorizontal: 16,
+          paddingVertical: 10
+        }}>
+          <Text style={{ color: crisisText, fontSize: 12, lineHeight: 18 }}>
+            This app is not an emergency service. If you are in immediate danger, contact local emergency services now.
+          </Text>
+          <TouchableOpacity onPress={() => navigation.navigate('CrisisHelp')} style={{ marginTop: 6 }}>
+            <Text style={{ color: crisisText, fontSize: 12, fontWeight: '700' }}>View crisis guidance</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Input */}
         <View style={{
           backgroundColor: colors.card,
@@ -336,9 +474,9 @@ export default function ChatThread({ navigation, route }: any) {
               }}
             >
               {sending ? (
-                <ActivityIndicator size="small" color="white" />
+                <ActivityIndicator size="small" color={primaryActionText} />
               ) : (
-                <Send size={16} color="white" />
+                <Send size={16} color={primaryActionText} />
               )}
             </TouchableOpacity>
           </View>

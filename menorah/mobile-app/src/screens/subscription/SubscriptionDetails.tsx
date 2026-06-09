@@ -5,11 +5,16 @@ import Button from '@/components/ui/Button';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { getSubscriptionPlan, type SubscriptionType } from './subscriptionPlans';
+import {
+  IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE,
+  shouldDisableIOSSubscriptionPurchase,
+} from '@/lib/paymentPolicy';
 
 export default function SubscriptionDetails({ route, navigation }: any) {
   const { subscriptionType } = route.params || {};
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
   const plan = getSubscriptionPlan(subscriptionType as SubscriptionType);
 
   if (!plan) {
@@ -29,6 +34,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
   }
 
   const IconComponent = plan.icon;
+  const isIOSSubscriptionDisabled = shouldDisableIOSSubscriptionPurchase();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -66,7 +72,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
               width: 56,
               height: 56,
               borderRadius: 18,
-              backgroundColor: plan.bgColor,
+              backgroundColor: isDark ? plan.color + '22' : plan.bgColor,
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: 16,
@@ -84,7 +90,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
 
           <View
             style={{
-              backgroundColor: scheme === 'dark' ? colors.surface : '#F8FAF8',
+              backgroundColor: isDark ? colors.surface : '#F8FAF8',
               borderRadius: 18,
               padding: 16,
             }}
@@ -119,7 +125,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
                   width: 22,
                   height: 22,
                   borderRadius: 11,
-                  backgroundColor: plan.bgColor,
+                  backgroundColor: isDark ? plan.color + '22' : plan.bgColor,
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginRight: 10,
@@ -135,32 +141,54 @@ export default function SubscriptionDetails({ route, navigation }: any) {
           ))}
         </View>
 
-        <View
-          style={{
-            backgroundColor: scheme === 'dark' ? colors.surface : '#F8FAF8',
-            borderRadius: 20,
-            padding: 16,
-            marginBottom: 24,
-          }}
-        >
-          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-            Before payment
-          </Text>
-          <Text style={{ fontSize: 14, lineHeight: 21, color: colors.muted }}>
-            Review the plan details above. When you continue, you&apos;ll move to the payment step to activate this subscription.
-          </Text>
-        </View>
+        {isIOSSubscriptionDisabled ? (
+          <View
+            style={{
+              backgroundColor: isDark ? colors.surface : '#F8FAF8',
+              borderRadius: 20,
+              padding: 16,
+              marginBottom: 24,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+              Subscriptions unavailable on iOS
+            </Text>
+            <Text style={{ fontSize: 14, lineHeight: 21, color: colors.muted }}>
+              {IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE}
+            </Text>
+          </View>
+        ) : (
+          <View
+            style={{
+              backgroundColor: isDark ? colors.surface : '#F8FAF8',
+              borderRadius: 20,
+              padding: 16,
+              marginBottom: 24,
+            }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+              Before payment
+            </Text>
+            <Text style={{ fontSize: 14, lineHeight: 21, color: colors.muted }}>
+              Review the plan details above. When you continue, you&apos;ll move to the payment step to activate this subscription.
+            </Text>
+          </View>
+        )}
 
-        <Button
-          title={`Continue with ${plan.shortLabel} Plan`}
-          onPress={() =>
-            navigation.navigate('SubscriptionPayment', {
-              subscriptionType: plan.id,
-              paymentMethod: 'razorpay',
-            })
-          }
-          style={{ marginBottom: 12 }}
-        />
+        {!isIOSSubscriptionDisabled && (
+          <Button
+            title={`Continue with ${plan.shortLabel} Plan`}
+            onPress={() =>
+              navigation.navigate('SubscriptionPayment', {
+                subscriptionType: plan.id,
+                paymentMethod: 'razorpay',
+              })
+            }
+            style={{ marginBottom: 12 }}
+          />
+        )}
         <Button title="Back" variant="outline" onPress={() => navigation.goBack()} />
       </ScrollView>
     </SafeAreaView>

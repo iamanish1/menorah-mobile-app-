@@ -39,6 +39,7 @@ import ArticleList from '@/screens/articles/ArticleList';
 import ArticleDetail from '@/screens/articles/ArticleDetail';
 
 const Stack = createNativeStackNavigator();
+const PUBLIC_ROUTES = new Set(['Onboarding', 'Login', 'Register', 'Forgot', 'ResetPassword', 'Verify']);
 
 export default function RootNavigator() {
   const { isAuthed, isLoading } = useAuth();
@@ -46,7 +47,6 @@ export default function RootNavigator() {
   const colors = palettes[scheme];
   const prevIsAuthedRef = useRef<boolean | null>(null);
   const prevIsLoadingRef = useRef<boolean>(true);
-  const publicRoutes = new Set(['Onboarding', 'Login', 'Register', 'Forgot', 'ResetPassword', 'Verify']);
   const linking = {
     prefixes: [Linking.createURL('/'), 'menorah-health://', 'exp+menorah-health-app://'],
     config: {
@@ -68,7 +68,7 @@ export default function RootNavigator() {
           if (navigationRef.isReady()) {
             const currentRoute = navigationRef.getCurrentRoute();
             console.log('[RootNavigator] Current route:', currentRoute?.name);
-            if (currentRoute?.name && !publicRoutes.has(currentRoute.name)) {
+            if (currentRoute?.name && !PUBLIC_ROUTES.has(currentRoute.name)) {
               console.log('[RootNavigator] Resetting to Onboarding');
               navigationRef.reset({
                 index: 0,

@@ -1,5 +1,7 @@
-import { TouchableOpacity, Text, View } from "react-native";
-import { styles, colors } from "@/styles/theme";
+import { TouchableOpacity, Text } from "react-native";
+import { styles } from "@/styles/theme";
+import { useThemeMode } from "@/theme/ThemeProvider";
+import { palettes } from "@/theme/colors";
 
 export default function QuickAction({
   title,
@@ -10,12 +12,15 @@ export default function QuickAction({
   subtitle?: string;
   onPress?: () => void;
 }) {
+  const { scheme } = useThemeMode();
+  const colors = palettes[scheme];
+
   return (
     <TouchableOpacity 
       onPress={onPress} 
       style={{
         flex: 1,
-        backgroundColor: colors.bg.base,
+        backgroundColor: colors.card,
         borderRadius: 20,
         padding: 16,
         marginRight: 12,
@@ -23,8 +28,8 @@ export default function QuickAction({
         borderColor: colors.border
       }}
     >
-      {subtitle && <Text style={[styles.textCaption, { color: colors.text.muted }]}>{subtitle}</Text>}
-      <Text style={[styles.textBody, { fontWeight: '600', marginTop: 4 }]}>
+      {subtitle && <Text style={[styles.textCaption, { color: colors.muted }]}>{subtitle}</Text>}
+      <Text style={[styles.textBody, { color: colors.text, fontWeight: '600', marginTop: 4 }]}>
         {title}
       </Text>
     </TouchableOpacity>

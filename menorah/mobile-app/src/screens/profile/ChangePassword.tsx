@@ -19,6 +19,9 @@ export default function ChangePassword({ navigation }: any) {
 
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const headerBg = isDark ? colors.primaryDark : colors.primary;
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -55,7 +58,7 @@ export default function ChangePassword({ navigation }: any) {
     setLoading(true);
     try {
       const response = await api.changePassword(currentPassword, newPassword);
-      
+
       if (response.success) {
         Alert.alert(
           'Success',
@@ -82,7 +85,7 @@ export default function ChangePassword({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
       <View style={{
-        backgroundColor: colors.primary,
+        backgroundColor: headerBg,
         paddingHorizontal: 16,
         paddingVertical: 20,
         flexDirection: 'row',
@@ -93,20 +96,20 @@ export default function ChangePassword({ navigation }: any) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <ArrowLeft size={24} color="white" />
         </TouchableOpacity>
-        <Text style={{ 
-          color: 'white', 
-          fontSize: 20, 
-          fontWeight: '700', 
-          marginLeft: 16 
+        <Text style={{
+          color: 'white',
+          fontSize: 20,
+          fontWeight: '700',
+          marginLeft: 16
         }}>
           Change Password
         </Text>
       </View>
 
       <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 24 }} showsVerticalScrollIndicator={false}>
-        <Text style={{ 
-          fontSize: 14, 
-          color: colors.muted, 
+        <Text style={{
+          fontSize: 14,
+          color: colors.muted,
           marginBottom: 24,
           lineHeight: 20
         }}>
@@ -115,18 +118,18 @@ export default function ChangePassword({ navigation }: any) {
 
         {/* Current Password */}
         <View style={{ marginBottom: 16 }}>
-          <Text style={{ 
-            fontSize: 14, 
-            fontWeight: '600', 
-            color: colors.text, 
-            marginBottom: 8 
+          <Text style={{
+            fontSize: 14,
+            fontWeight: '600',
+            color: colors.text,
+            marginBottom: 8
           }}>
             Current Password
           </Text>
           <View style={{
             backgroundColor: colors.card,
             borderWidth: 1,
-            borderColor: errors.currentPassword ? '#EF4444' : colors.border,
+            borderColor: errors.currentPassword ? colors.error : colors.border,
             borderRadius: 12,
             paddingHorizontal: 16,
             flexDirection: 'row',
@@ -165,7 +168,7 @@ export default function ChangePassword({ navigation }: any) {
             </TouchableOpacity>
           </View>
           {errors.currentPassword && (
-            <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 4 }}>
+            <Text style={{ fontSize: 12, color: colors.error, marginTop: 4, marginLeft: 4 }}>
               {errors.currentPassword}
             </Text>
           )}
@@ -173,18 +176,18 @@ export default function ChangePassword({ navigation }: any) {
 
         {/* New Password */}
         <View style={{ marginBottom: 16 }}>
-          <Text style={{ 
-            fontSize: 14, 
-            fontWeight: '600', 
-            color: colors.text, 
-            marginBottom: 8 
+          <Text style={{
+            fontSize: 14,
+            fontWeight: '600',
+            color: colors.text,
+            marginBottom: 8
           }}>
             New Password
           </Text>
           <View style={{
             backgroundColor: colors.card,
             borderWidth: 1,
-            borderColor: errors.newPassword ? '#EF4444' : colors.border,
+            borderColor: errors.newPassword ? colors.error : colors.border,
             borderRadius: 12,
             paddingHorizontal: 16,
             flexDirection: 'row',
@@ -230,7 +233,7 @@ export default function ChangePassword({ navigation }: any) {
             </TouchableOpacity>
           </View>
           {errors.newPassword && (
-            <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 4 }}>
+            <Text style={{ fontSize: 12, color: colors.error, marginTop: 4, marginLeft: 4 }}>
               {errors.newPassword}
             </Text>
           )}
@@ -238,18 +241,18 @@ export default function ChangePassword({ navigation }: any) {
 
         {/* Confirm Password */}
         <View style={{ marginBottom: 24 }}>
-          <Text style={{ 
-            fontSize: 14, 
-            fontWeight: '600', 
-            color: colors.text, 
-            marginBottom: 8 
+          <Text style={{
+            fontSize: 14,
+            fontWeight: '600',
+            color: colors.text,
+            marginBottom: 8
           }}>
             Confirm New Password
           </Text>
           <View style={{
             backgroundColor: colors.card,
             borderWidth: 1,
-            borderColor: errors.confirmPassword ? '#EF4444' : 
+            borderColor: errors.confirmPassword ? colors.error :
                         (confirmPassword && newPassword === confirmPassword ? '#10B981' : colors.border),
             borderRadius: 12,
             paddingHorizontal: 16,
@@ -293,7 +296,7 @@ export default function ChangePassword({ navigation }: any) {
             </TouchableOpacity>
           </View>
           {errors.confirmPassword && (
-            <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 4 }}>
+            <Text style={{ fontSize: 12, color: colors.error, marginTop: 4, marginLeft: 4 }}>
               {errors.confirmPassword}
             </Text>
           )}
@@ -313,9 +316,9 @@ export default function ChangePassword({ navigation }: any) {
           }}
         >
           {loading ? (
-            <ActivityIndicator size="small" color="white" />
+            <ActivityIndicator size="small" color={primaryActionText} />
           ) : (
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
               Change Password
             </Text>
           )}

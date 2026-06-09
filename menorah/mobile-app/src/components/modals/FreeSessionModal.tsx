@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, Modal, Animated,
-  Dimensions, Platform,
 } from 'react-native';
 import { X, Sparkles, ShieldCheck, Clock, Heart } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
@@ -13,8 +12,6 @@ interface FreeSessionModalProps {
   onBookSession: () => void;
 }
 
-const { width } = Dimensions.get('window');
-
 const FEATURES = [
   { icon: Clock,       label: '45-minute session',      sub: 'A full session, completely free' },
   { icon: ShieldCheck, label: 'Completely confidential', sub: 'Your privacy is our priority' },
@@ -24,6 +21,8 @@ const FEATURES = [
 export default function FreeSessionModal({ visible, onClose, onBookSession }: FreeSessionModalProps) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const primaryActionText = isDark ? colors.primaryDark : '#fff';
 
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -40,7 +39,7 @@ export default function FreeSessionModal({ visible, onClose, onBookSession }: Fr
         Animated.timing(opacityAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
       ]).start();
     }
-  }, [visible]);
+  }, [opacityAnim, scaleAnim, visible]);
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
@@ -119,7 +118,7 @@ export default function FreeSessionModal({ visible, onClose, onBookSession }: Fr
                   marginTop: -10,
                   marginLeft: 36,
                 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 0.8 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: primaryActionText, letterSpacing: 0.8 }}>
                     FREE
                   </Text>
                 </View>
@@ -194,7 +193,7 @@ export default function FreeSessionModal({ visible, onClose, onBookSession }: Fr
                   elevation: 6,
                 }}
               >
-                <Text style={{ fontSize: 16, fontWeight: '700', color: '#fff', letterSpacing: 0.2 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: primaryActionText, letterSpacing: 0.2 }}>
                   Book My Free Session
                 </Text>
               </TouchableOpacity>

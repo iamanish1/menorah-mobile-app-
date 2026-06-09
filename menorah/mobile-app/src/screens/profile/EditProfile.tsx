@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Camera, User, Mail, Phone } from 'lucide-react-native';
+import { ArrowLeft, Camera, Mail, Phone } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import Input from '@/components/ui/Input';
@@ -11,7 +11,7 @@ import { useAuth } from "@/state/useAuth";
 import { api } from "@/lib/api";
 
 export default function EditProfile({ navigation }: any) {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, logout } = useAuth();
   const [selectedImage, setSelectedImage] = useState<{
     uri: string;
     name?: string;
@@ -30,6 +30,9 @@ export default function EditProfile({ navigation }: any) {
 
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const headerBg = isDark ? colors.primaryDark : colors.primary;
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
 
   useEffect(() => {
     if (user) {
@@ -88,10 +91,48 @@ export default function EditProfile({ navigation }: any) {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete Account',
-      'Are you sure you want to delete your account? This action cannot be undone.',
+      'This will request deletion of your account and personal data. Some records may be retained if required for legal, safety, payment, or dispute obligations.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => navigation.navigate('Login') }
+        {
+          text: 'Request Deletion',
+          style: 'destructive',
+          onPress: async () => {
+            setLoading(true);
+            try {
+              const response = await api.requestAccountDeletion();
+              if (response.success) {
+                Alert.alert(
+                  'Request Submitted',
+                  'Your account deletion request has been submitted. You will be signed out now.',
+                  [
+                    {
+                      text: 'OK',
+                      onPress: async () => {
+                        await logout();
+                        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+                      },
+                    },
+                  ]
+                );
+              } else {
+                Alert.alert(
+                  'Request Not Submitted',
+                  response.message ||
+                    'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
+                );
+              }
+            } catch (error) {
+              console.error('Account deletion request error:', error);
+              Alert.alert(
+                'Request Not Submitted',
+                'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
+              );
+            } finally {
+              setLoading(false);
+            }
+          },
+        }
       ]
     );
   };
@@ -143,7 +184,7 @@ export default function EditProfile({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
       <View style={{
-        backgroundColor: colors.primary,
+        backgroundColor: headerBg,
         paddingHorizontal: 16,
         paddingVertical: 20,
         flexDirection: 'row',
@@ -215,7 +256,7 @@ export default function EditProfile({ navigation }: any) {
                 padding: 8
               }}
             >
-              <Camera size={20} color="white" />
+              <Camera size={20} color={primaryActionText} />
             </TouchableOpacity>
           </View>
           <Text style={{ 
@@ -320,7 +361,7 @@ export default function EditProfile({ navigation }: any) {
               alignItems: 'center'
             }}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
               Save Changes
             </Text>
           </TouchableOpacity>
@@ -336,14 +377,14 @@ export default function EditProfile({ navigation }: any) {
           <TouchableOpacity
             onPress={handleDeleteAccount}
             style={{
-              backgroundColor: '#EF4444' + '0A',
+              backgroundColor: colors.error + (isDark ? '18' : '0A'),
               borderRadius: 16,
               padding: 16,
               alignItems: 'center',
               marginBottom: 32
             }}
           >
-            <Text style={{ color: '#EF4444', fontWeight: '600' }}>Delete Account</Text>
+            <Text style={{ color: colors.error, fontWeight: '600' }}>Delete Account</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

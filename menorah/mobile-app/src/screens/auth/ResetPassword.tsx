@@ -17,6 +17,9 @@ import { useAuth } from '@/state/useAuth';
 export default function ResetPassword({ navigation, route }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
+  const successBg = isDark ? colors.primary + '18' : '#DCFCE7';
   const { resetPassword } = useAuth();
 
   const token = useMemo(() => {
@@ -120,16 +123,16 @@ export default function ResetPassword({ navigation, route }: any) {
                 width: 84,
                 height: 84,
                 borderRadius: 42,
-                backgroundColor: success ? '#DCFCE7' : colors.primary,
+                backgroundColor: success ? successBg : colors.primary,
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: 20,
               }}
             >
               {success ? (
-                <CheckCircle2 size={36} color="#16A34A" />
+                <CheckCircle2 size={36} color={colors.primary} />
               ) : (
-                <LockKeyhole size={34} color="white" />
+                <LockKeyhole size={34} color={primaryActionText} />
               )}
             </View>
 
@@ -239,7 +242,7 @@ export default function ResetPassword({ navigation, route }: any) {
               </View>
 
               {!token && (
-                <Text style={{ fontSize: 13, color: '#EF4444', marginTop: 4 }}>
+                <Text style={{ fontSize: 13, color: colors.error, marginTop: 4 }}>
                   This reset link is invalid. Please go back and request a new one.
                 </Text>
               )}
@@ -266,13 +269,13 @@ export default function ResetPassword({ navigation, route }: any) {
           >
             {loading ? (
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+                <ActivityIndicator size="small" color={primaryActionText} style={{ marginRight: 8 }} />
+                <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
                   Updating password...
                 </Text>
               </View>
             ) : (
-              <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+              <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
                 {success ? 'Back to sign in' : 'Reset password'}
               </Text>
             )}

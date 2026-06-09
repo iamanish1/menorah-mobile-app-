@@ -71,7 +71,9 @@ export default function GenderSelection({ navigation, route }: GenderSelectionPr
   const [selectedGender, setSelectedGender] = useState<TherapistGender>('any');
 
   const session = SESSION_DETAILS[sessionType] ?? SESSION_DETAILS.basic;
-  const cardBg = isDark ? colors.surface : '#ffffff';
+  const cardBg = isDark ? colors.card : '#ffffff';
+  const heroColor = colors.primaryDark;
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
 
   const handleContinue = () => {
     navigation.navigate('SessionReview', {
@@ -87,7 +89,7 @@ export default function GenderSelection({ navigation, route }: GenderSelectionPr
     <View style={{ flex: 1, backgroundColor: isDark ? colors.bg : '#f5f7f5' }}>
 
       {/* ── Dark green header ── */}
-      <SafeAreaView style={{ backgroundColor: '#2d5c3e' }} edges={['top']}>
+      <SafeAreaView style={{ backgroundColor: heroColor }} edges={['top']}>
         <View style={{
           flexDirection: 'row', alignItems: 'center',
           paddingHorizontal: 16, paddingTop: 8, paddingBottom: 20,
@@ -223,7 +225,7 @@ export default function GenderSelection({ navigation, route }: GenderSelectionPr
                 {/* Icon circle */}
                 <View style={{
                   width: 54, height: 54, borderRadius: 27,
-                  backgroundColor: opt.bgColor,
+                  backgroundColor: isDark ? opt.color + '22' : opt.bgColor,
                   alignItems: 'center', justifyContent: 'center',
                   marginRight: 14,
                 }}>
@@ -252,7 +254,7 @@ export default function GenderSelection({ navigation, route }: GenderSelectionPr
                   {isSelected && (
                     <View style={{
                       width: 10, height: 10, borderRadius: 5,
-                      backgroundColor: 'white',
+                      backgroundColor: primaryActionText,
                     }} />
                   )}
                 </View>
@@ -264,7 +266,7 @@ export default function GenderSelection({ navigation, route }: GenderSelectionPr
         {/* ── Privacy note ── */}
         <View style={{
           marginHorizontal: 16, marginTop: 20,
-          backgroundColor: isDark ? colors.surface : '#f0faf4',
+          backgroundColor: isDark ? colors.surfaceAlt : '#f0faf4',
           borderRadius: 16, padding: 14,
           flexDirection: 'row', alignItems: 'center', gap: 12,
           borderWidth: 1, borderColor: colors.primary + '22',
@@ -281,7 +283,7 @@ export default function GenderSelection({ navigation, route }: GenderSelectionPr
               Your preference is respected
             </Text>
             <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 17 }}>
-              We'll match you with the best available counsellor.
+              We{"'"}ll match you with the best available counsellor.
             </Text>
           </View>
         </View>
@@ -297,7 +299,7 @@ export default function GenderSelection({ navigation, route }: GenderSelectionPr
               alignItems: 'center', justifyContent: 'center',
             }}
           >
-            <Text style={{ color: 'white', fontSize: 17, fontWeight: '800', letterSpacing: 0.2 }}>
+            <Text style={{ color: primaryActionText, fontSize: 17, fontWeight: '800', letterSpacing: 0.2 }}>
               Continue
             </Text>
           </TouchableOpacity>

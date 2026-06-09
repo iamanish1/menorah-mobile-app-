@@ -44,7 +44,7 @@ export const api = {
     return filtered;
   },
 
-  async availability(counsellorId: string) {
+  async availability(_counsellorId: string) {
     await delay(200);
     
     // Generate random availability slots for the next 7 days

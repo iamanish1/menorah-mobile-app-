@@ -1,12 +1,19 @@
 import { View, Text } from "react-native";
 import { Image } from "expo-image";
-import { styles, colors } from "@/styles/theme";
+import { styles } from "@/styles/theme";
+import { useThemeMode } from "@/theme/ThemeProvider";
+import { palettes } from "@/theme/colors";
 
 export default function ChatCTA() {
+  const { scheme } = useThemeMode();
+  const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const bannerBg = isDark ? colors.primaryDark : colors.primary;
+
   return (
     <View style={[styles.px4, { marginTop: 12 }]}>
       <View style={{
-        backgroundColor: colors.brand.primary,
+        backgroundColor: bannerBg,
         borderRadius: 24,
         paddingHorizontal: 20,
         paddingVertical: 20,
@@ -14,7 +21,7 @@ export default function ChatCTA() {
         alignItems: 'center',
         justifyContent: 'space-between',
         borderWidth: 1,
-        borderColor: colors.brand.primary + 'B3'
+        borderColor: isDark ? colors.border : colors.primary + 'B3'
       }}>
         <View style={{ flex: 1, paddingRight: 16 }}>
           <Text style={{ 

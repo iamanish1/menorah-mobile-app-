@@ -15,6 +15,9 @@ export default function Forgot({ navigation }: any) {
 
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
+  const successBg = isDark ? colors.primary + '18' : '#DCFCE7';
   const { forgotPassword } = useAuth();
 
   const validateEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -89,16 +92,16 @@ export default function Forgot({ navigation }: any) {
                 width: 84,
                 height: 84,
                 borderRadius: 42,
-                backgroundColor: success ? '#DCFCE7' : colors.primary,
+                backgroundColor: success ? successBg : colors.primary,
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: 20,
               }}
             >
               {success ? (
-                <CheckCircle2 size={36} color="#16A34A" />
+                <CheckCircle2 size={36} color={colors.primary} />
               ) : (
-                <Mail size={34} color="white" />
+                <Mail size={34} color={primaryActionText} />
               )}
             </View>
 
@@ -195,13 +198,13 @@ export default function Forgot({ navigation }: any) {
           >
             {loading ? (
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+                <ActivityIndicator size="small" color={primaryActionText} style={{ marginRight: 8 }} />
+                <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
                   Sending reset link...
                 </Text>
               </View>
             ) : (
-              <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+              <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
                 {success ? 'Back to sign in' : 'Send reset link'}
               </Text>
             )}

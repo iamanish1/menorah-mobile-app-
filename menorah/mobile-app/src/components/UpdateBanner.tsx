@@ -8,9 +8,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppUpdate } from '@/hooks/useAppUpdate';
+import { useThemeMode } from '@/theme/ThemeProvider';
+import { palettes } from '@/theme/colors';
 
 export default function UpdateBanner() {
   const { updateState, applyUpdate } = useAppUpdate();
+  const { scheme } = useThemeMode();
+  const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(-100)).current;
   const visible = updateState === 'ready';
@@ -21,7 +26,7 @@ export default function UpdateBanner() {
       useNativeDriver: true,
       bounciness: 4,
     }).start();
-  }, [visible]);
+  }, [translateY, visible]);
 
   if (updateState === 'idle' || updateState === 'checking') return null;
 
@@ -29,7 +34,12 @@ export default function UpdateBanner() {
     <Animated.View
       style={[
         styles.banner,
-        { top: insets.top + 8, transform: [{ translateY }] },
+        {
+          top: insets.top + 8,
+          transform: [{ translateY }],
+          backgroundColor: isDark ? colors.surface : '#1C2B1A',
+          borderColor: isDark ? colors.border : 'transparent',
+        },
       ]}
     >
       {updateState === 'downloading' ? (
@@ -40,10 +50,19 @@ export default function UpdateBanner() {
       ) : (
         // updateState === 'ready'
         <View style={styles.row}>
-          <View style={[styles.dot, { backgroundColor: '#4ADE80' }]} />
+          <View style={[styles.dot, { backgroundColor: colors.primary }]} />
           <Text style={styles.text}>Update ready!</Text>
-          <TouchableOpacity onPress={applyUpdate} style={styles.button}>
-            <Text style={styles.buttonText}>Restart</Text>
+          <TouchableOpacity
+            onPress={applyUpdate}
+            style={[
+              styles.button,
+              {
+                backgroundColor: isDark ? colors.primary + '18' : '#314830',
+                borderColor: colors.primary,
+              },
+            ]}
+          >
+            <Text style={[styles.buttonText, { color: colors.primary }]}>Restart</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -60,6 +79,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderWidth: 1,
     zIndex: 9999,
     elevation: 10,
     shadowColor: '#000',

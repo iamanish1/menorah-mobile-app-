@@ -5,7 +5,7 @@
     "version": "2.4.0",
     "orientation": "portrait",
     "icon": "./assets/brand/menorah_logo.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/brand/menorah_logo.png",
       "resizeMode": "contain",

@@ -1,14 +1,21 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { api, User } from '@/lib/api';
+import { ApiValidationError, api, User } from '@/lib/api';
 import { secureStorage } from '@/lib/secureStorage';
 import { socketService } from '@/lib/socket';
 import { ENV } from '@/lib/env';
+
+interface AuthResult {
+  success: boolean;
+  message?: string;
+  errors?: ApiValidationError[];
+  needsVerification?: boolean;
+}
 
 interface AuthContextType {
   user: User | null;
   isAuthed: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  login: (email: string, password: string) => Promise<AuthResult>;
   register: (userData: {
     firstName: string;
     lastName: string;
@@ -17,7 +24,7 @@ interface AuthContextType {
     password: string;
     dateOfBirth: string;
     gender: string;
-  }) => Promise<{ success: boolean; message?: string }>;
+  }) => Promise<AuthResult>;
   logout: () => Promise<void>;
   verifyEmail: (code: string) => Promise<{ success: boolean; message?: string }>;
   verifyEmailOtp: (email: string, otp: string) => Promise<{ success: boolean; message?: string }>;
@@ -30,6 +37,15 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const validationErrorsToMessage = (errors?: ApiValidationError[]) => {
+  if (!errors?.length) return undefined;
+
+  return errors
+    .map(error => error.msg || error.message)
+    .filter((message): message is string => Boolean(message))
+    .join('\n');
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -75,11 +91,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await api.login({ email, password });
+      const response = await api.login({ email: email.trim().toLowerCase(), password });
 
-      if (response.success && response.data) {
-        api.setToken(response.data.token);
+      if (response.success && response.data?.user && response.data?.token) {
+        await api.setToken(response.data.token);
         setUser(response.data.user);
+
+        if (!response.data.user.isEmailVerified) {
+          return {
+            success: true,
+            needsVerification: true,
+            message: 'Please verify your email address.',
+          };
+        }
+
         return { success: true };
       } else {
         // Check if it's a network error
@@ -95,7 +120,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         return { 
           success: false, 
-          message: response.message || 'Login failed' 
+          message: validationErrorsToMessage(response.errors) || response.message || 'Login failed',
+          errors: response.errors,
         };
       }
     } catch (error: any) {
@@ -112,7 +138,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       return {
         success: false,
-        message: error.response?.data?.message || error.message || 'Login failed'
+        message: validationErrorsToMessage(error.response?.data?.errors) || error.response?.data?.message || error.message || 'Login failed',
+        errors: error.response?.data?.errors,
       };
     }
   };
@@ -134,20 +161,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Token and user will be set after OTP verification via verifyEmailOtp().
         return { success: true, message: response.message };
       } else {
-        const validationMessage = Array.isArray(response.errors)
-          ? response.errors.map((err: any) => err.msg).filter(Boolean).join('\n')
-          : undefined;
-
         return {
           success: false,
-          message: validationMessage || response.message || 'Registration failed'
+          message: validationErrorsToMessage(response.errors) || response.message || 'Registration failed',
+          errors: response.errors,
         };
       }
     } catch (error: any) {
       console.error('Registration error:', error);
       return {
         success: false,
-        message: error.response?.data?.message || 'Registration failed'
+        message: validationErrorsToMessage(error.response?.data?.errors) || error.response?.data?.message || 'Registration failed',
+        errors: error.response?.data?.errors,
       };
     }
   };
@@ -162,7 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Logout error:', error);
     } finally {
       // Always clear token and user state, even if API call fails
-      api.clearToken();
+      await api.clearToken();
       setUser(null);
     }
   };
@@ -197,7 +222,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await api.verifyEmailOtp(email, otp);
 
       if (response.success && response.data) {
-        api.setToken(response.data.token);
+        await api.setToken(response.data.token);
         setUser(response.data.user);
         return { success: true };
       } else {

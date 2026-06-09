@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ActivityIndicator, Alert, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, TouchableOpacity, NativeModules } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-import RazorpayCheckout from 'react-native-razorpay';
 import { X } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
@@ -11,6 +10,38 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/state/useAuth';
 import subscriptionService from '@/services/subscriptionService';
 import type { SubscriptionType } from './subscriptionPlans';
+import {
+  IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE,
+  shouldDisableIOSSubscriptionPurchase,
+} from '@/lib/paymentPolicy';
+
+const RAZORPAY_UNAVAILABLE_MESSAGE =
+  'Payments require a development build. Expo Go preview does not support native Razorpay.';
+
+type RazorpayCheckoutModule = {
+  open: (options: Record<string, unknown>) => Promise<any>;
+};
+
+type RazorpayRequireResult = {
+  default?: RazorpayCheckoutModule;
+  open?: RazorpayCheckoutModule['open'];
+};
+
+const hasNativeRazorpay = () =>
+  Boolean(NativeModules.RNRazorpayCheckout && NativeModules.RazorpayEventEmitter);
+
+const loadRazorpayCheckout = (): RazorpayCheckoutModule | null => {
+  if (!hasNativeRazorpay()) {
+    return null;
+  }
+
+  const razorpayModule = require('react-native-razorpay') as RazorpayRequireResult;
+  const checkout =
+    razorpayModule.default ??
+    (razorpayModule.open ? (razorpayModule as RazorpayCheckoutModule) : null);
+
+  return checkout && typeof checkout.open === 'function' ? checkout : null;
+};
 
 export default function SubscriptionPayment({ route, navigation }: any) {
   const { subscriptionType, paymentMethod = 'razorpay' } = route.params || {};
@@ -22,14 +53,41 @@ export default function SubscriptionPayment({ route, navigation }: any) {
   const [amount, setAmount] = useState<number | null>(null);
   const [currency, setCurrency] = useState<string>('INR');
   const [isPolling, setIsPolling] = useState(false);
-  const [webViewLoading, setWebViewLoading] = useState(true);
+  const [, setWebViewLoading] = useState(true);
   const [sdkPaymentInitiated, setSdkPaymentInitiated] = useState(false);
   const { scheme } = useThemeMode();
   const { user } = useAuth();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const actionTextColor = isDark ? colors.primaryDark : 'white';
   const returnUrl = ENV.CHECKOUT_RETURN_URL || 'menorah://payments/subscription/return';
   const USE_RAZORPAY_SDK = ENV.USE_RAZORPAY_SDK ?? true;
-  const canUseRazorpaySdk = USE_RAZORPAY_SDK && typeof RazorpayCheckout?.open === 'function';
+  const canUseRazorpaySdk = USE_RAZORPAY_SDK && hasNativeRazorpay();
+  const isIOSSubscriptionDisabled = shouldDisableIOSSubscriptionPurchase();
+
+  const verifyAndActivateSubscription = useCallback(async () => {
+    try {
+      // If we have payment details from SDK, verify with them
+      // Otherwise, verify using order status
+      const verifyResponse = await api.verifySubscriptionPayment({
+        subscriptionType: subscriptionType as SubscriptionType,
+        orderId: orderId || undefined
+      });
+
+      if (verifyResponse.success) {
+        // Sync subscription with local storage
+        await subscriptionService.setPremiumSubscription(subscriptionType as SubscriptionType);
+
+        // Navigate to success screen
+        navigation.replace('SubscriptionSuccess', { subscriptionType });
+      } else {
+        setError(verifyResponse.message || 'Failed to activate subscription');
+      }
+    } catch (err: any) {
+      console.error('Error verifying subscription payment:', err);
+      setError('Failed to activate subscription. Please contact support.');
+    }
+  }, [subscriptionType, orderId, navigation]);
 
   const pollOrderStatus = useCallback(async (maxAttempts: number = 15) => {
     if (!orderId || paymentMethod !== 'razorpay') {
@@ -69,35 +127,17 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     };
 
     setTimeout(poll, 2000);
-  }, [orderId, paymentMethod]);
-
-  const verifyAndActivateSubscription = useCallback(async () => {
-    try {
-      // If we have payment details from SDK, verify with them
-      // Otherwise, verify using order status
-      const verifyResponse = await api.verifySubscriptionPayment({
-        subscriptionType: subscriptionType as SubscriptionType,
-        orderId: orderId || undefined
-      });
-
-      if (verifyResponse.success) {
-        // Sync subscription with local storage
-        await subscriptionService.setPremiumSubscription(subscriptionType as SubscriptionType);
-        
-        // Navigate to success screen
-        navigation.replace('SubscriptionSuccess', { subscriptionType });
-      } else {
-        setError(verifyResponse.message || 'Failed to activate subscription');
-      }
-    } catch (err: any) {
-      console.error('Error verifying subscription payment:', err);
-      setError('Failed to activate subscription. Please contact support.');
-    }
-  }, [subscriptionType, orderId, navigation]);
+  }, [orderId, paymentMethod, verifyAndActivateSubscription]);
 
   const createCheckoutSession = useCallback(async () => {
     setLoading(true);
     setError(null);
+
+    if (isIOSSubscriptionDisabled) {
+      setError(IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
+      setLoading(false);
+      return;
+    }
     
     try {
       console.log('Creating subscription checkout session with:', { subscriptionType, paymentMethod });
@@ -130,7 +170,11 @@ export default function SubscriptionPayment({ route, navigation }: any) {
           setCheckoutUrl(url);
         } else if (!canUseRazorpaySdk || paymentMethod !== 'razorpay') {
           console.error('No checkout URL in response:', response);
-          setError('Checkout URL not found in response');
+          setError(
+            paymentMethod === 'razorpay' && !canUseRazorpaySdk
+              ? RAZORPAY_UNAVAILABLE_MESSAGE
+              : 'Checkout URL not found in response'
+          );
         }
       } else {
         console.error('Subscription checkout session failed:', response);
@@ -142,11 +186,26 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     } finally {
       setLoading(false);
     }
-  }, [subscriptionType, paymentMethod, canUseRazorpaySdk]);
+  }, [subscriptionType, paymentMethod, canUseRazorpaySdk, isIOSSubscriptionDisabled]);
 
   const initiateSDKPayment = useCallback(async () => {
+    if (isIOSSubscriptionDisabled) {
+      Alert.alert('Subscriptions unavailable on iOS', IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
+      setError(IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
+      return;
+    }
+
     if (!canUseRazorpaySdk) {
-      console.warn('Razorpay SDK unavailable for subscription payment, using WebView fallback');
+      Alert.alert('Development build required', RAZORPAY_UNAVAILABLE_MESSAGE);
+      setError(RAZORPAY_UNAVAILABLE_MESSAGE);
+      return;
+    }
+
+    const RazorpayCheckout = loadRazorpayCheckout();
+
+    if (!RazorpayCheckout) {
+      Alert.alert('Development build required', RAZORPAY_UNAVAILABLE_MESSAGE);
+      setError(RAZORPAY_UNAVAILABLE_MESSAGE);
       return;
     }
 
@@ -176,7 +235,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
           name: userName || 'User'
         },
         theme: {
-          color: '#314830'
+          color: colors.primary
         }
       };
 
@@ -229,7 +288,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         [{ text: 'OK' }]
       );
     }
-  }, [canUseRazorpaySdk, keyId, orderId, amount, currency, user, subscriptionType, navigation, pollOrderStatus]);
+  }, [isIOSSubscriptionDisabled, canUseRazorpaySdk, keyId, orderId, amount, currency, user, subscriptionType, navigation, pollOrderStatus, colors.primary]);
 
   useEffect(() => {
     if (subscriptionType) {
@@ -283,6 +342,34 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     );
   };
 
+  if (isIOSSubscriptionDisabled) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 12, textAlign: 'center' }}>
+            Subscriptions unavailable on iOS
+          </Text>
+          <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
+            {IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE}
+          </Text>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={{
+              backgroundColor: colors.primary,
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+              borderRadius: 12,
+            }}
+          >
+            <Text style={{ color: actionTextColor, fontSize: 16, fontWeight: '600' }}>
+              Go Back
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (loading || (canUseRazorpaySdk && paymentMethod === 'razorpay' && !sdkPaymentInitiated && !error)) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -315,7 +402,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
               borderRadius: 12
             }}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: actionTextColor, fontSize: 16, fontWeight: '600' }}>
               Go Back
             </Text>
           </TouchableOpacity>
@@ -343,7 +430,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
               borderRadius: 12
             }}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: actionTextColor, fontSize: 16, fontWeight: '600' }}>
               Go Back
             </Text>
           </TouchableOpacity>
@@ -404,11 +491,10 @@ export default function SubscriptionPayment({ route, navigation }: any) {
       ) : (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <Text style={{ fontSize: 16, color: colors.text, textAlign: 'center' }}>
-            Payment window should open automatically. If it doesn't, please try again.
+            Payment window should open automatically. If it does not, please try again.
           </Text>
         </View>
       )}
     </SafeAreaView>
   );
 }
-

@@ -9,6 +9,12 @@ export default function BookingSuccess({ navigation, route }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const { isSubscriptionBooking } = route.params || {};
+  const isDark = scheme === 'dark';
+  const subscriptionBg = isDark ? colors.accentLight : '#FEF3C7';
+  const subscriptionText = isDark ? colors.accent : '#92400E';
+  const nextStepsBg = isDark ? colors.surfaceAlt : '#F0F9FF';
+  const nextStepsBorder = isDark ? colors.border : '#0EA5E9';
+  const nextStepsText = isDark ? colors.text : '#0C4A6E';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -39,17 +45,17 @@ export default function BookingSuccess({ navigation, route }: any) {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: '#FEF3C7',
+            backgroundColor: subscriptionBg,
             paddingHorizontal: 16,
             paddingVertical: 8,
             borderRadius: 20,
             marginBottom: 12
           }}>
-            <Crown size={16} color="#F59E0B" style={{ marginRight: 6 }} />
+            <Crown size={16} color={colors.accent} style={{ marginRight: 6 }} />
             <Text style={{
               fontSize: 14,
               fontWeight: '600',
-              color: '#92400E'
+              color: subscriptionText
             }}>
               Covered by Subscription
             </Text>
@@ -70,29 +76,29 @@ export default function BookingSuccess({ navigation, route }: any) {
 
         {/* Next Steps */}
         <View style={{
-          backgroundColor: '#F0F9FF',
+          backgroundColor: nextStepsBg,
           borderRadius: 12,
           padding: 16,
           marginBottom: 32,
           borderWidth: 1,
-          borderColor: '#0EA5E9'
+          borderColor: nextStepsBorder
         }}>
           <Text style={{
             fontSize: 16,
             fontWeight: '600',
-            color: '#0C4A6E',
+            color: nextStepsText,
             marginBottom: 8
           }}>
             What happens next?
           </Text>
           <Text style={{
             fontSize: 14,
-            color: '#0C4A6E',
+            color: nextStepsText,
             lineHeight: 20
           }}>
-            • You'll receive a confirmation email with session details{'\n'}
+            • You{"'"}ll receive a confirmation email with session details{'\n'}
             • Your therapist will be assigned within 24 hours{'\n'}
-            • You'll get a notification when your therapist is ready{'\n'}
+            • You{"'"}ll get a notification when your therapist is ready{'\n'}
             • Session details will be shared via email and app
           </Text>
         </View>

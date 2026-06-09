@@ -25,6 +25,7 @@ interface CounsellorCardProps {
 export function CounsellorCard({ counsellor, onPress, variant = 'default' }: CounsellorCardProps) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const primaryActionText = scheme === 'dark' ? colors.primaryDark : 'white';
 
   if (variant === 'compact') {
     return (
@@ -135,7 +136,7 @@ export function CounsellorCard({ counsellor, onPress, variant = 'default' }: Cou
             borderRadius: 20
           }}
         >
-          <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Book Session</Text>
+          <Text style={{ color: primaryActionText, fontSize: 14, fontWeight: '600' }}>Book Session</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>

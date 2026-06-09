@@ -46,9 +46,10 @@ if (__DEV__) {
 }
 
 // Catch unhandled JS errors before React renders so we can surface them
-if (global.ErrorUtils) {
-  const prevHandler = global.ErrorUtils.getGlobalHandler();
-  global.ErrorUtils.setGlobalHandler((error: Error, isFatal: boolean) => {
+const errorUtils = (globalThis as any).ErrorUtils;
+if (errorUtils) {
+  const prevHandler = errorUtils.getGlobalHandler();
+  errorUtils.setGlobalHandler((error: Error, isFatal: boolean) => {
     console.error('[GlobalError]', isFatal ? 'FATAL' : 'non-fatal', error?.message, error?.stack);
     prevHandler(error, isFatal);
   });

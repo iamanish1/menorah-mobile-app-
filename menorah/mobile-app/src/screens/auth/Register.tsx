@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react-native';
@@ -7,6 +7,34 @@ import Input from '@/components/ui/Input';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from '@/state/useAuth';
+
+type RegisterPayload = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  password: string;
+  dateOfBirth: string;
+  gender: string;
+};
+
+type BackendValidationError = {
+  path?: string;
+  param?: string;
+  msg?: string;
+  message?: string;
+};
+
+const validGenders = ['male', 'female', 'other', 'prefer-not-to-say'];
+
+const normalizePhone = (value: string) => value.trim().replace(/[\s()-]/g, '');
+
+const sanitizeRegisterPayload = (payload: RegisterPayload) => ({
+  ...payload,
+  password: `[redacted; length=${payload.password.length}]`,
+});
+
+const getBackendErrorMessage = (error: BackendValidationError) => error.msg || error.message;
 
 export default function Register({ navigation }: any) {
   const [firstName, setFirstName] = useState('');
@@ -16,7 +44,7 @@ export default function Register({ navigation }: any) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
-  const [gender, setGender] = useState('male');
+  const [gender] = useState('male');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -24,6 +52,10 @@ export default function Register({ navigation }: any) {
 
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const brandSurface = isDark ? colors.primaryDark : '#2d5c3e';
+  const brandAccent = isDark ? colors.primary : '#2d5c3e';
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
   const { register } = useAuth();
 
   // Validation functions
@@ -33,18 +65,14 @@ export default function Register({ navigation }: any) {
   };
 
   const validatePhone = (phone: string) => {
-    return phone.startsWith('+') && phone.length >= 10;
+    return /^\+[1-9]\d{1,14}$/.test(normalizePhone(phone));
   };
 
   const validateDate = (date: string) => {
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(date)) return false;
     const dateObj = new Date(date);
-    return dateObj instanceof Date && !isNaN(dateObj.getTime());
-  };
-
-  const validatePassword = (value: string) => {
-    return value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value);
+    return dateObj instanceof Date && !isNaN(dateObj.getTime()) && dateObj <= new Date();
   };
 
   const getPasswordStrength = (password: string) => {
@@ -62,14 +90,24 @@ export default function Register({ navigation }: any) {
     delete newErrors[field];
 
     switch (field) {
+      case 'firstName':
+        if (value && (value.trim().length < 2 || value.trim().length > 50)) {
+          newErrors.firstName = 'First name must be between 2 and 50 characters';
+        }
+        break;
+      case 'lastName':
+        if (value && (value.trim().length < 2 || value.trim().length > 50)) {
+          newErrors.lastName = 'Last name must be between 2 and 50 characters';
+        }
+        break;
       case 'email':
-        if (value && !validateEmail(value)) {
+        if (value && !validateEmail(value.trim())) {
           newErrors.email = 'Please enter a valid email address';
         }
         break;
       case 'phone':
         if (value && !validatePhone(value)) {
-          newErrors.phone = 'Phone must include country code (e.g., +1234567890)';
+          newErrors.phone = 'Phone must include country code and digits only (e.g., +971501234567)';
         }
         break;
       case 'dateOfBirth':
@@ -78,8 +116,8 @@ export default function Register({ navigation }: any) {
         }
         break;
       case 'password':
-        if (value && !validatePassword(value)) {
-          newErrors.password = 'Password must be at least 8 characters and include uppercase, lowercase, and a number';
+        if (value && value.length < 8) {
+          newErrors.password = 'Password must be at least 8 characters';
         }
         break;
       case 'confirmPassword':
@@ -92,36 +130,75 @@ export default function Register({ navigation }: any) {
     setErrors(newErrors);
   };
 
+  const buildPayload = (): RegisterPayload => ({
+    firstName: firstName.trim(),
+    lastName: lastName.trim(),
+    email: email.trim().toLowerCase(),
+    phone: normalizePhone(phone),
+    password,
+    dateOfBirth: dateOfBirth.trim(),
+    gender,
+  });
+
+  const validationErrorsToFieldMap = (backendErrors?: BackendValidationError[]) => {
+    const fieldErrors: Record<string, string> = {};
+
+    backendErrors?.forEach((error) => {
+      const field = error.path || error.param;
+      const message = getBackendErrorMessage(error);
+
+      if (field && message) {
+        fieldErrors[field] = message;
+      }
+    });
+
+    return fieldErrors;
+  };
+
+  const validationErrorsToFriendlyMessage = (backendErrors?: BackendValidationError[]) => {
+    const messages = backendErrors
+      ?.map(getBackendErrorMessage)
+      .filter((message): message is string => Boolean(message));
+
+    return messages?.length ? messages.join('\n') : undefined;
+  };
+
   const handleRegister = async () => {
     // Reset errors
     setErrors({});
+    const payload = buildPayload();
 
     // Validate all fields
     const newErrors: Record<string, string> = {};
 
-    const normalizedEmail = email.trim().toLowerCase();
-
-    if (!firstName.trim()) newErrors.firstName = 'First name is required';
-    if (!lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!normalizedEmail) newErrors.email = 'Email is required';
-    else if (!validateEmail(normalizedEmail)) newErrors.email = 'Please enter a valid email';
-    
-    const normalizedPhone = phone.trim();
-    const normalizedDateOfBirth = dateOfBirth.trim();
-
-    if (!normalizedPhone) newErrors.phone = 'Phone is required';
-    else if (!validatePhone(normalizedPhone)) newErrors.phone = 'Phone must include country code (e.g., +1234567890)';
-    
-    if (!normalizedDateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
-    else if (!validateDate(normalizedDateOfBirth)) newErrors.dateOfBirth = 'Please enter date in YYYY-MM-DD format';
-    
-    if (!password) newErrors.password = 'Password is required';
-    else if (!validatePassword(password)) {
-      newErrors.password = 'Password must be at least 8 characters and include uppercase, lowercase, and a number';
+    if (!payload.firstName) newErrors.firstName = 'First name is required';
+    else if (payload.firstName.length < 2 || payload.firstName.length > 50) {
+      newErrors.firstName = 'First name must be between 2 and 50 characters';
     }
-    
+
+    if (!payload.lastName) newErrors.lastName = 'Last name is required';
+    else if (payload.lastName.length < 2 || payload.lastName.length > 50) {
+      newErrors.lastName = 'Last name must be between 2 and 50 characters';
+    }
+
+    if (!payload.email) newErrors.email = 'Email is required';
+    else if (!validateEmail(payload.email)) newErrors.email = 'Please enter a valid email';
+
+    if (!payload.phone) newErrors.phone = 'Phone is required';
+    else if (!validatePhone(payload.phone)) {
+      newErrors.phone = 'Phone must include country code and digits only (e.g., +971501234567)';
+    }
+
+    if (!payload.dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
+    else if (!validateDate(payload.dateOfBirth)) newErrors.dateOfBirth = 'Please enter a valid past date in YYYY-MM-DD format';
+
+    if (!validGenders.includes(payload.gender)) newErrors.gender = 'Please select a valid gender';
+
+    if (!payload.password) newErrors.password = 'Password is required';
+    else if (payload.password.length < 8) newErrors.password = 'Password must be at least 8 characters';
+
     if (!confirmPassword) newErrors.confirmPassword = 'Please confirm your password';
-    else if (password !== confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+    else if (payload.password !== confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -131,22 +208,30 @@ export default function Register({ navigation }: any) {
 
     setLoading(true);
     try {
-      if (__DEV__) { console.log('📱 Registering user'); }
-      const result = await register({
-        firstName,
-        lastName,
-        email: normalizedEmail,
-        phone: normalizedPhone,
-        password,
-        dateOfBirth: normalizedDateOfBirth,
-        gender
-      });
+      if (__DEV__) {
+        console.log('[Register] POST /auth/register payload:', JSON.stringify(sanitizeRegisterPayload(payload), null, 2));
+      }
+
+      if (phone !== payload.phone) setPhone(payload.phone);
+
+      const result = await register(payload);
 
       if (result.success) {
-        console.log('✅ Registration successful');
-        navigation.navigate('Verify', { email });
+        if (__DEV__) {
+          console.log('[Register] Registration successful:', result.message);
+        }
+
+        navigation.navigate('Verify', { email: payload.email });
       } else {
-        Alert.alert('Registration Failed', result.message || 'Failed to create account. Please try again.');
+        const backendFieldErrors = validationErrorsToFieldMap(result.errors);
+        if (Object.keys(backendFieldErrors).length > 0) {
+          setErrors(backendFieldErrors);
+        }
+
+        Alert.alert(
+          'Registration Failed',
+          validationErrorsToFriendlyMessage(result.errors) || result.message || 'Failed to create account. Please try again.'
+        );
       }
     } catch (error: any) {
       console.error('Registration error:', error);
@@ -160,7 +245,7 @@ export default function Register({ navigation }: any) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView 
+      <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 24 }}
         showsVerticalScrollIndicator={false}
@@ -170,17 +255,17 @@ export default function Register({ navigation }: any) {
         <View style={{ alignItems: 'center', marginBottom: 32 }}>
           <View style={{
             width: 100, height: 100, borderRadius: 50,
-            backgroundColor: 'white',
+            backgroundColor: colors.card,
             alignItems: 'center', justifyContent: 'center',
             marginBottom: 20,
-            shadowColor: '#2d5c3e',
+            shadowColor: brandAccent,
             shadowOffset: { width: 0, height: 5 },
             shadowOpacity: 0.15, shadowRadius: 14, elevation: 8,
             padding: 4,
           }}>
             <View style={{
               width: 92, height: 92, borderRadius: 46,
-              backgroundColor: '#2d5c3e',
+              backgroundColor: brandSurface,
               alignItems: 'center', justifyContent: 'center',
               overflow: 'hidden',
             }}>
@@ -191,17 +276,17 @@ export default function Register({ navigation }: any) {
               />
             </View>
           </View>
-          <Text style={{ 
-            fontSize: 28, 
-            fontWeight: '700', 
-            color: colors.text, 
-            marginBottom: 8 
+          <Text style={{
+            fontSize: 28,
+            fontWeight: '700',
+            color: colors.text,
+            marginBottom: 8
           }}>
             Create Account
           </Text>
-          <Text style={{ 
-            fontSize: 15, 
-            color: colors.muted, 
+          <Text style={{
+            fontSize: 15,
+            color: colors.muted,
             textAlign: 'center',
             lineHeight: 22
           }}>
@@ -242,7 +327,7 @@ export default function Register({ navigation }: any) {
               />
             </View>
           </View>
-          
+
           {/* Email */}
           <Input
             label="Email"
@@ -256,7 +341,7 @@ export default function Register({ navigation }: any) {
             autoCapitalize="none"
             error={errors.email}
           />
-          
+
           {/* Phone */}
           <View style={{ marginBottom: 16 }}>
             <Input
@@ -264,27 +349,23 @@ export default function Register({ navigation }: any) {
               placeholder="+1234567890"
               value={phone}
               onChangeText={(text) => {
-                // Auto-prepend + if user starts typing digits without it
-                const formatted = text.length > 0 && !text.startsWith('+') ? `+${text}` : text;
-                setPhone(formatted);
-                validateField('phone', formatted);
+                setPhone(text);
+                validateField('phone', text);
               }}
-              keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'phone-pad'}
+              keyboardType="phone-pad"
               autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="telephoneNumber"
               error={errors.phone}
             />
-            <Text style={{ 
-              fontSize: 12, 
-              color: colors.muted, 
+            <Text style={{
+              fontSize: 12,
+              color: colors.muted,
               marginTop: 4,
               marginLeft: 4
             }}>
               Include country code (e.g., +1 for US, +44 for UK)
             </Text>
           </View>
-          
+
           {/* Date of Birth */}
           <View style={{ marginBottom: 16 }}>
             <Input
@@ -298,23 +379,23 @@ export default function Register({ navigation }: any) {
               keyboardType="default"
               error={errors.dateOfBirth}
             />
-            <Text style={{ 
-              fontSize: 12, 
-              color: colors.muted, 
+            <Text style={{
+              fontSize: 12,
+              color: colors.muted,
               marginTop: 4,
               marginLeft: 4
             }}>
               Format: YYYY-MM-DD (e.g., 1990-01-15)
             </Text>
           </View>
-          
+
           {/* Gender Selection - Only Male */}
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ 
-              fontSize: 14, 
-              fontWeight: '600', 
-              color: colors.text, 
-              marginBottom: 12 
+            <Text style={{
+              fontSize: 14,
+              fontWeight: '600',
+              color: colors.text,
+              marginBottom: 12
             }}>
               Gender
             </Text>
@@ -330,28 +411,28 @@ export default function Register({ navigation }: any) {
             }}>
               <Text style={{
                 fontSize: 14,
-                color: 'white',
+                color: primaryActionText,
                 fontWeight: '600'
               }}>
                 Male
               </Text>
             </View>
           </View>
-          
+
           {/* Password */}
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ 
-              fontSize: 14, 
-              fontWeight: '600', 
-              color: colors.text, 
-              marginBottom: 8 
+            <Text style={{
+              fontSize: 14,
+              fontWeight: '600',
+              color: colors.text,
+              marginBottom: 8
             }}>
               Password
             </Text>
             <View style={{
               backgroundColor: colors.card,
               borderWidth: 1,
-              borderColor: errors.password ? '#EF4444' : colors.border,
+              borderColor: errors.password ? colors.error : colors.border,
               borderRadius: 12,
               paddingHorizontal: 16,
               flexDirection: 'row',
@@ -366,10 +447,6 @@ export default function Register({ navigation }: any) {
                   if (confirmPassword) validateField('confirmPassword', confirmPassword);
                 }}
                 secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-                spellCheck={false}
-                textContentType="newPassword"
                 style={{
                   flex: 1,
                   borderWidth: 0,
@@ -380,7 +457,7 @@ export default function Register({ navigation }: any) {
                   marginBottom: 0
                 }}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
                 style={{ padding: 4 }}
               >
@@ -394,10 +471,10 @@ export default function Register({ navigation }: any) {
             {password.length > 0 && (
               <View style={{ marginTop: 8, marginLeft: 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                  <View style={{ 
-                    flex: 1, 
-                    height: 4, 
-                    backgroundColor: colors.border, 
+                  <View style={{
+                    flex: 1,
+                    height: 4,
+                    backgroundColor: colors.border,
                     borderRadius: 2,
                     marginRight: 8
                   }}>
@@ -408,8 +485,8 @@ export default function Register({ navigation }: any) {
                       borderRadius: 2
                     }} />
                   </View>
-                  <Text style={{ 
-                    fontSize: 12, 
+                  <Text style={{
+                    fontSize: 12,
                     color: passwordStrength.color,
                     fontWeight: '600'
                   }}>
@@ -419,9 +496,9 @@ export default function Register({ navigation }: any) {
               </View>
             )}
             {errors.password && (
-              <Text style={{ 
-                fontSize: 12, 
-                color: '#EF4444', 
+              <Text style={{
+                fontSize: 12,
+                color: colors.error,
                 marginTop: 4,
                 marginLeft: 4
               }}>
@@ -432,18 +509,18 @@ export default function Register({ navigation }: any) {
 
           {/* Confirm Password */}
           <View style={{ marginBottom: 24 }}>
-            <Text style={{ 
-              fontSize: 14, 
-              fontWeight: '600', 
-              color: colors.text, 
-              marginBottom: 8 
+            <Text style={{
+              fontSize: 14,
+              fontWeight: '600',
+              color: colors.text,
+              marginBottom: 8
             }}>
               Confirm Password
             </Text>
             <View style={{
               backgroundColor: colors.card,
               borderWidth: 1,
-              borderColor: errors.confirmPassword ? '#EF4444' : 
+              borderColor: errors.confirmPassword ? colors.error :
                           (confirmPassword && password === confirmPassword ? '#10B981' : colors.border),
               borderRadius: 12,
               paddingHorizontal: 16,
@@ -458,10 +535,6 @@ export default function Register({ navigation }: any) {
                   validateField('confirmPassword', text);
                 }}
                 secureTextEntry={!showConfirmPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-                spellCheck={false}
-                textContentType="newPassword"
                 style={{
                   flex: 1,
                   borderWidth: 0,
@@ -480,10 +553,10 @@ export default function Register({ navigation }: any) {
                 )}
                 {confirmPassword && password !== confirmPassword && (
                   <View style={{ marginRight: 8 }}>
-                    <XCircle size={18} color="#EF4444" />
+                  <XCircle size={18} color={colors.error} />
                   </View>
                 )}
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                   style={{ padding: 4 }}
                 >
@@ -496,9 +569,9 @@ export default function Register({ navigation }: any) {
               </View>
             </View>
             {errors.confirmPassword && (
-              <Text style={{ 
-                fontSize: 12, 
-                color: '#EF4444', 
+              <Text style={{
+                fontSize: 12,
+                color: colors.error,
                 marginTop: 4,
                 marginLeft: 4
               }}>
@@ -527,13 +600,13 @@ export default function Register({ navigation }: any) {
           >
             {loading ? (
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+                <ActivityIndicator size="small" color={primaryActionText} style={{ marginRight: 8 }} />
+                <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
                   Creating Account...
                 </Text>
               </View>
             ) : (
-              <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+              <Text style={{ color: primaryActionText, fontSize: 16, fontWeight: '600' }}>
                 Create Account
               </Text>
             )}

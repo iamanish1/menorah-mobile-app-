@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Shield, Smartphone } from 'lucide-react-native';
@@ -7,11 +7,14 @@ import { palettes } from "@/theme/colors";
 import { useAuth } from "@/state/useAuth";
 
 export default function TwoFactorAuth({ navigation }: any) {
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const twoFactorEnabled = false;
   const { user } = useAuth();
 
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const isDark = scheme === 'dark';
+  const headerBg = isDark ? colors.primaryDark : colors.primary;
+  const primaryActionText = isDark ? colors.primaryDark : 'white';
 
   const handleToggle = (value: boolean) => {
     Alert.alert(
@@ -25,11 +28,9 @@ export default function TwoFactorAuth({ navigation }: any) {
           text: value ? 'Enable' : 'Disable',
           style: value ? 'default' : 'destructive',
           onPress: () => {
-            setTwoFactorEnabled(value);
-            // TODO: Implement actual 2FA API call
             Alert.alert(
-              'Coming Soon',
-              'Two-factor authentication feature is coming soon. This will be implemented in a future update.',
+              'Not Available',
+              'Two-factor authentication is not available in this build. Use a strong password and contact support if you need account security help.',
               [{ text: 'OK' }]
             );
           }
@@ -42,7 +43,7 @@ export default function TwoFactorAuth({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
       <View style={{
-        backgroundColor: colors.primary,
+        backgroundColor: headerBg,
         paddingHorizontal: 16,
         paddingVertical: 20,
         flexDirection: 'row',
@@ -86,7 +87,7 @@ export default function TwoFactorAuth({ navigation }: any) {
               <Shield size={24} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 18, fontWeight: '600', color: '#000000', marginBottom: 4 }}>
+              <Text style={{ fontSize: 18, fontWeight: '600', color: colors.cardText, marginBottom: 4 }}>
                 Enhanced Security
               </Text>
               <Text style={{ fontSize: 14, color: colors.muted }}>
@@ -107,7 +108,7 @@ export default function TwoFactorAuth({ navigation }: any) {
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flex: 1, marginRight: 16 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: '#000000', marginBottom: 4 }}>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.cardText, marginBottom: 4 }}>
                 Two-Factor Authentication
               </Text>
               <Text style={{ fontSize: 14, color: colors.muted }}>
@@ -134,7 +135,7 @@ export default function TwoFactorAuth({ navigation }: any) {
           borderWidth: 1,
           borderColor: colors.border
         }}>
-          <Text style={{ fontSize: 16, fontWeight: '600', color: '#000000', marginBottom: 16 }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.cardText, marginBottom: 16 }}>
             How it works
           </Text>
           <View style={{ marginBottom: 12 }}>
@@ -148,11 +149,11 @@ export default function TwoFactorAuth({ navigation }: any) {
                 justifyContent: 'center',
                 marginRight: 12
               }}>
-                <Text style={{ color: 'white', fontSize: 12, fontWeight: '600' }}>1</Text>
+                <Text style={{ color: primaryActionText, fontSize: 12, fontWeight: '600' }}>1</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, color: colors.cardText, lineHeight: 20 }}>
-                  When you enable 2FA, you'll receive a verification code on your registered phone number
+                  When 2FA is available, you will receive a verification code on your registered phone number
                 </Text>
               </View>
             </View>
@@ -166,11 +167,11 @@ export default function TwoFactorAuth({ navigation }: any) {
                 justifyContent: 'center',
                 marginRight: 12
               }}>
-                <Text style={{ color: 'white', fontSize: 12, fontWeight: '600' }}>2</Text>
+                <Text style={{ color: primaryActionText, fontSize: 12, fontWeight: '600' }}>2</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, color: colors.cardText, lineHeight: 20 }}>
-                  Each time you log in, you'll need to enter this code along with your password
+                  Each time you log in, you will need to enter this code along with your password
                 </Text>
               </View>
             </View>
@@ -184,7 +185,7 @@ export default function TwoFactorAuth({ navigation }: any) {
                 justifyContent: 'center',
                 marginRight: 12
               }}>
-                <Text style={{ color: 'white', fontSize: 12, fontWeight: '600' }}>3</Text>
+                <Text style={{ color: primaryActionText, fontSize: 12, fontWeight: '600' }}>3</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, color: colors.cardText, lineHeight: 20 }}>
@@ -207,7 +208,7 @@ export default function TwoFactorAuth({ navigation }: any) {
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
               <Smartphone size={20} color={colors.primary} style={{ marginRight: 12 }} />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#000000' }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.cardText }}>
                 Verification Phone Number
               </Text>
             </View>
@@ -223,4 +224,3 @@ export default function TwoFactorAuth({ navigation }: any) {
     </SafeAreaView>
   );
 }
-

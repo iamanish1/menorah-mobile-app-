@@ -34,8 +34,8 @@ export function useCounsellors(params?: {
   minPrice?: number;
   maxPrice?: number;
   limit?: number;
-  sortBy?: string;
-  sortOrder?: string;
+  sortBy?: 'rating' | 'price' | 'experience' | 'name';
+  sortOrder?: 'asc' | 'desc';
 }) {
   return useQuery({
     queryKey:  QUERY_KEYS.counsellors(params),

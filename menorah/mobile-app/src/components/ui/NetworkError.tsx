@@ -15,6 +15,7 @@ export default function NetworkError({ onRetry, showDiagnostics = false }: Netwo
   const [isChecking, setIsChecking] = useState(false);
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const primaryActionText = scheme === 'dark' ? colors.primaryDark : 'white';
 
   useEffect(() => {
     const handleNetworkChange = (status: NetworkStatus) => {
@@ -126,9 +127,9 @@ export default function NetworkError({ onRetry, showDiagnostics = false }: Netwo
           }}
         >
           {isChecking ? (
-            <RefreshCw size={16} color="white" style={{ marginRight: 8 }} />
+            <RefreshCw size={16} color={primaryActionText} style={{ marginRight: 8 }} />
           ) : null}
-          <Text style={{ color: 'white', fontWeight: '600' }}>
+          <Text style={{ color: primaryActionText, fontWeight: '600' }}>
             {isChecking ? 'Checking...' : 'Retry'}
           </Text>
         </TouchableOpacity>

@@ -11,6 +11,8 @@ import { api } from '@/lib/api';
 import { socketService } from '@/lib/socket';
 import NetInfo from '@react-native-community/netinfo';
 
+type Palette = (typeof palettes)[keyof typeof palettes];
+
 export default function PreCallCheck({ navigation, route }: any) {
   const { bookingId } = route.params || {};
   const { scheme } = useThemeMode();
@@ -297,7 +299,7 @@ function CheckRow({
   loading: boolean;
   ok: boolean;
   failLabel: string;
-  C: (typeof palettes)['light'];
+  C: Palette;
 }) {
   return (
     <View style={styles.checkRow}>

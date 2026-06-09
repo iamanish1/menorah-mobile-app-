@@ -66,7 +66,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [loadingMessages, setLoadingMessages] = useState(false);
 
   // Typing timeout refs
-  const typingTimeouts = React.useRef<{ [roomId: string]: NodeJS.Timeout }>({});
+  const typingTimeouts = React.useRef<{ [roomId: string]: ReturnType<typeof setTimeout> }>({});
   // Ref so connection callbacks always see the latest currentRoom without re-registering
   const currentRoomRef = React.useRef<string | null>(null);
 
