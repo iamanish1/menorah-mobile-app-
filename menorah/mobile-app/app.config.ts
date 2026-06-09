@@ -23,9 +23,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       checkAutomatically: 'ON_LOAD',
       fallbackToCacheTimeout: 0,
     },
-    runtimeVersion: {
-      policy: 'appVersion',
-    },
+    runtimeVersion: '1.0.0',
     // ─────────────────────────────────────────────────────────────────────────
     icon: './assets/brand/menorah_logo.png',
     userInterfaceStyle: 'light',
