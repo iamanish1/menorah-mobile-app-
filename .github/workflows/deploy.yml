@@ -149,6 +149,13 @@ jobs:
             docker stop menorah-api 2>/dev/null || true
             docker rm   menorah-api 2>/dev/null || true
 
+            echo "==> Stopping legacy PM2 API process if present"
+            if command -v pm2 >/dev/null 2>&1; then
+              pm2 stop menorah-api 2>/dev/null || true
+              pm2 delete menorah-api 2>/dev/null || true
+              pm2 save --force 2>/dev/null || true
+            fi
+
             echo "==> Starting new container (network=host, uses local Redis)"
             docker run -d \
               --name menorah-api \
