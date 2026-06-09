@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useSocket } from './SocketContext';
-import type { AppNotification } from '@/types';
+import { useAuth } from './AuthContext';
+import type { AppNotification, User } from '@/types';
 
 const STORAGE_KEY = 'menorah_notifications';
 const MAX_NOTIFICATIONS = 50;
@@ -22,6 +23,20 @@ function saveToStorage(notifications: AppNotification[]) {
   } catch {}
 }
 
+type UserWithMongoId = User & {
+  _id?: string | { toString: () => string };
+};
+
+function getUserId(user: User | null): string {
+  const rawId = user?.id ?? (user as UserWithMongoId | null)?._id;
+  if (!rawId) return '';
+  return typeof rawId === 'string' ? rawId : rawId.toString();
+}
+
+function getUserName(user: User | null): string {
+  return [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+}
+
 interface NotificationContextValue {
   notifications: AppNotification[];
   unreadCount: number;
@@ -36,6 +51,9 @@ const NotificationContext = createContext<NotificationContextValue | null>(null)
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const { socket } = useSocket();
+  const { user } = useAuth();
+  const currentUserId = getUserId(user);
+  const currentUserName = getUserName(user);
 
   // Load persisted notifications on mount
   useEffect(() => {
@@ -59,6 +77,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     };
     updateNotifications((prev) => [newN, ...prev].slice(0, MAX_NOTIFICATIONS));
   }, [updateNotifications]);
+
+  useEffect(() => {
+    if (!currentUserId && !currentUserName) return;
+
+    updateNotifications((prev) =>
+      prev.filter((n) => {
+        if (n.type !== 'message') return true;
+        if (currentUserId && n.data?.senderId === currentUserId) return false;
+        if (currentUserName && n.body === `${currentUserName} sent you a message.`) return false;
+        return true;
+      })
+    );
+  }, [currentUserId, currentUserName, updateNotifications]);
 
   // Subscribe to real-time notifications from backend
   useEffect(() => {
@@ -133,12 +164,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     };
 
     // New chat message
-    const onNewMessage = (data: { senderName?: string; roomId?: string }) => {
+    const onNewMessage = (data: { senderId?: string; senderName?: string; roomId?: string }) => {
+      if (currentUserId && data.senderId === currentUserId) return;
+      if (!data.senderId && currentUserName && data.senderName === currentUserName) return;
+
       addNotification({
         type: 'message',
         title: 'New Message',
         body: `${data.senderName ?? 'Someone'} sent you a message.`,
-        data: { roomId: data.roomId ?? '' },
+        data: { roomId: data.roomId ?? '', senderId: data.senderId ?? '' },
       });
     };
 
@@ -157,7 +191,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       socket.off('booking_rescheduled',     onBookingRescheduled);
       socket.off('new_message',             onNewMessage);
     };
-  }, [socket, addNotification]);
+  }, [socket, addNotification, currentUserId, currentUserName]);
 
   const markRead    = (id: string) => updateNotifications((p) => p.map((n) => n.id === id ? { ...n, isRead: true } : n));
   const markAllRead = () => updateNotifications((p) => p.map((n) => ({ ...n, isRead: true })));
