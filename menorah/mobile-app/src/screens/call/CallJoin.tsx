@@ -1,32 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ActivityIndicator,
-  Alert, Platform, PermissionsAndroid,
+  Alert, Platform, PermissionsAndroid, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-import { PhoneOff } from 'lucide-react-native';
-import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
+import { useThemeMode } from '@/theme/ThemeProvider';
 import { ENV } from '@/lib/env';
 import { api } from '@/lib/api';
 
 const WebViewWithPermissions = WebView as any;
 
 interface RouteParams {
-  bookingId:     string;
-  roomId:        string;
-  livekitUrl:    string;   // wss://livekit.menorahhealth.app
-  livekitToken:  string;   // LiveKit JWT participant token
-  sessionType:   'video' | 'audio' | 'chat';
+  bookingId:      string;
+  roomId:         string;
+  livekitUrl:     string;
+  livekitToken:   string;
+  sessionType:    'video' | 'audio' | 'chat';
   counsellorName: string;
-  userName:      string;
+  userName:       string;
 }
 
 export default function CallJoin({ navigation, route }: any) {
   const {
     bookingId,
-    roomId,
     livekitUrl,
     livekitToken,
     sessionType,
@@ -34,23 +32,23 @@ export default function CallJoin({ navigation, route }: any) {
     userName,
   } = (route.params || {}) as RouteParams;
 
+  const { scheme } = useThemeMode();
+  const C = palettes[scheme];
+
   const [loading,            setLoading]            = useState(true);
   const [error,              setError]              = useState<string | null>(null);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const webViewRef = useRef<WebView>(null);
-  const { scheme } = useThemeMode();
-  const colors = palettes[scheme];
 
   useEffect(() => {
     if (!livekitToken || !livekitUrl) {
-      setError('Missing video session information. Please try again.');
+      setError('Missing session information. Please go back and try again.');
       setLoading(false);
     } else {
       requestPermissions();
     }
   }, [livekitToken, livekitUrl]);
 
-  // ── Android permission request ───────────────────────────────────────────
   const requestPermissions = async () => {
     if (Platform.OS !== 'android') {
       setPermissionsGranted(true);
@@ -61,9 +59,8 @@ export default function CallJoin({ navigation, route }: any) {
         PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
         PermissionsAndroid.PERMISSIONS.CAMERA,
       ]);
-
-      const audioOk  = granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO]  === PermissionsAndroid.RESULTS.GRANTED;
-      const cameraOk = granted[PermissionsAndroid.PERMISSIONS.CAMERA]         === PermissionsAndroid.RESULTS.GRANTED;
+      const audioOk  = granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED;
+      const cameraOk = granted[PermissionsAndroid.PERMISSIONS.CAMERA]        === PermissionsAndroid.RESULTS.GRANTED;
 
       if (audioOk && cameraOk) {
         setPermissionsGranted(true);
@@ -71,14 +68,14 @@ export default function CallJoin({ navigation, route }: any) {
         const missing = [...(!audioOk ? ['Microphone'] : []), ...(!cameraOk ? ['Camera'] : [])];
         Alert.alert(
           'Permissions Required',
-          `${missing.join(' and ')} permission${missing.length > 1 ? 's are' : ' is'} required for video calls.`,
+          `${missing.join(' and ')} permission${missing.length > 1 ? 's are' : ' is'} required for this session.`,
           [
-            { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
+            { text: 'Go Back', style: 'cancel', onPress: () => navigation.goBack() },
             {
               text: 'Open Settings',
               onPress: () => Alert.alert(
-                'Enable Permissions',
-                'Go to: Settings → Apps → Menorah Health → Permissions → Enable Microphone and Camera',
+                'Enable in Settings',
+                'Settings → Apps → Menorah Health → Permissions → Enable Camera & Microphone',
                 [{ text: 'OK' }]
               ),
             },
@@ -87,173 +84,181 @@ export default function CallJoin({ navigation, route }: any) {
         setPermissionsGranted(false);
       }
     } catch {
-      Alert.alert('Permission Error', 'Failed to request permissions. Please enable them in app settings.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
+      Alert.alert('Permission Error', 'Could not request permissions. Please enable them in app settings.', [
+        { text: 'Go Back', onPress: () => navigation.goBack() },
       ]);
       setPermissionsGranted(false);
     }
   };
 
-  // ── Leave handler ────────────────────────────────────────────────────────
   const handleLeave = () => {
-    Alert.alert('Leave Session', 'Are you sure you want to leave the session?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Leave',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            if (bookingId) await api.leaveVideoRoom(bookingId);
-          } catch {
-            // Always navigate back regardless of API error
-          } finally {
+    Alert.alert(
+      'Leave Session',
+      'Are you sure you want to leave the session?',
+      [
+        { text: 'Stay', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: async () => {
+            try { if (bookingId) await api.leaveVideoRoom(bookingId); } catch {}
             navigation.goBack();
-          }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
-  // ── Messages from the WebView (LiveKit meet page) ─────────────────────────
   const handleWebViewMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.action === 'leave' || data.action === 'session_ended') {
-        // User left via in-page button — call leave API then go back
         api.leaveVideoRoom(bookingId).catch(() => {}).finally(() => navigation.goBack());
       }
-    } catch {
-      // Non-JSON message — ignore
-    }
+    } catch {}
   };
 
   // ── Error screen ─────────────────────────────────────────────────────────
+
   if (error) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 12 }}>
-            Session Error
-          </Text>
-          <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: 24 }}>
-            {error}
-          </Text>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{ backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
-          >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Go Back</Text>
-          </TouchableOpacity>
+      <SafeAreaView style={[styles.centered, { backgroundColor: '#0a0f1e' }]}>
+        <View style={styles.errorIcon}>
+          <Text style={{ fontSize: 40 }}>📵</Text>
         </View>
+        <Text style={styles.errorTitle}>Session Error</Text>
+        <Text style={styles.errorMsg}>{error}</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.errorBtn}>
+          <Text style={styles.errorBtnText}>Go Back</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
-  // Waiting for Android permission dialog
+  // ── Waiting for permissions ───────────────────────────────────────────────
+
   if (!permissionsGranted && Platform.OS === 'android') {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginTop: 16, textAlign: 'center' }}>
-            Requesting permissions…
-          </Text>
-        </View>
+      <SafeAreaView style={[styles.centered, { backgroundColor: '#0a0f1e' }]}>
+        <ActivityIndicator size="large" color="#3d9470" />
+        <Text style={styles.permText}>Requesting permissions…</Text>
       </SafeAreaView>
     );
   }
 
-  // Build the meet URL served by the backend
-  // The backend's GET /api/video/meet renders an HTML page with the LiveKit JS SDK.
-  const apiBase  = (ENV.API_BASE_URL || 'http://localhost:3000/api').replace(/\/api\/?$/, '');
-  const meetUrl  = `${apiBase}/api/video/meet`
+  // ── Build meet URL ───────────────────────────────────────────────────────
+  const apiBase = (ENV.API_BASE_URL || 'http://localhost:3000/api').replace(/\/api\/?$/, '');
+  const meetUrl = `${apiBase}/api/video/meet`
     + `?token=${encodeURIComponent(livekitToken)}`
     + `&url=${encodeURIComponent(livekitUrl)}`
     + `&name=${encodeURIComponent(userName || 'Participant')}`
     + `&type=${sessionType === 'video' ? 'video' : 'audio'}`;
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Header */}
-      <View style={{
-        backgroundColor: colors.card,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-      }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }} numberOfLines={1}>
-            {sessionType === 'video' ? 'Video Session' : 'Audio Session'}
-          </Text>
-          <Text style={{ fontSize: 12, color: colors.muted }} numberOfLines={1}>
-            {counsellorName || 'Counsellor'}
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={handleLeave}
-          style={{
-            backgroundColor: '#EF4444',
-            paddingHorizontal: 16,
-            paddingVertical: 8,
-            borderRadius: 12,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <PhoneOff size={16} color="white" />
-          <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Leave</Text>
-        </TouchableOpacity>
-      </View>
+  // ── Full-screen call view ─────────────────────────────────────────────────
 
-      {/* LiveKit meet page */}
-      <View style={{ flex: 1 }}>
-        {loading && (
-          <View style={{
-            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: colors.bg,
-            justifyContent: 'center', alignItems: 'center', zIndex: 1,
-          }}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={{ fontSize: 14, color: colors.muted, marginTop: 12 }}>
-              Connecting to session…
+  return (
+    <View style={styles.fullScreen}>
+      {/* Loading overlay — shown until WebView finishes loading */}
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingAvatarCircle}>
+            <Text style={styles.loadingAvatarText}>
+              {(counsellorName || 'C').charAt(0).toUpperCase()}
             </Text>
           </View>
-        )}
+          <Text style={styles.loadingTitle}>
+            {counsellorName ? `Session with ${counsellorName}` : 'Joining session…'}
+          </Text>
+          <ActivityIndicator color="#3d9470" size="small" style={{ marginTop: 16 }} />
+          <Text style={styles.loadingSubtitle}>Setting up your connection</Text>
 
-        <WebViewWithPermissions
-          ref={webViewRef}
-          source={{ uri: meetUrl }}
-          onLoad={() => setLoading(false)}
-          onError={() => { setError('Failed to load video session. Please check your connection.'); setLoading(false); }}
-          onMessage={handleWebViewMessage}
-          // Media permissions
-          allowsInlineMediaPlayback={true}
-          mediaPlaybackRequiresUserAction={false}
-          allowsProtectedMedia={true}
-          // Performance
-          androidLayerType="hardware"
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          style={{ flex: 1 }}
-          onPermissionRequest={(request: any) => {
-            const { nativeEvent } = request;
-            // Grant mic and camera for WebRTC
-            if (
-              nativeEvent.permission === 'android.webkit.resource.AUDIO_CAPTURE' ||
-              nativeEvent.permission === 'android.webkit.resource.VIDEO_CAPTURE'
-            ) {
-              nativeEvent.request.grant(nativeEvent.resources);
-            } else {
-              nativeEvent.request.deny();
-            }
-          }}
-        />
-      </View>
-    </SafeAreaView>
+          {/* Emergency leave during load */}
+          <TouchableOpacity onPress={handleLeave} style={styles.loadingLeaveBtn}>
+            <Text style={styles.loadingLeaveBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <WebViewWithPermissions
+        ref={webViewRef}
+        source={{ uri: meetUrl }}
+        onLoad={() => setLoading(false)}
+        onError={() => {
+          setError('Failed to load video session. Please check your connection and try again.');
+          setLoading(false);
+        }}
+        onMessage={handleWebViewMessage}
+        allowsInlineMediaPlayback={true}
+        mediaPlaybackRequiresUserAction={false}
+        allowsProtectedMedia={true}
+        androidLayerType="hardware"
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        style={styles.webView}
+        onPermissionRequest={(request: any) => {
+          const { nativeEvent } = request;
+          if (
+            nativeEvent.permission === 'android.webkit.resource.AUDIO_CAPTURE' ||
+            nativeEvent.permission === 'android.webkit.resource.VIDEO_CAPTURE'
+          ) {
+            nativeEvent.request.grant(nativeEvent.resources);
+          } else {
+            nativeEvent.request.deny();
+          }
+        }}
+      />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  fullScreen: { flex: 1, backgroundColor: '#0a0f1e' },
+  webView:    { flex: 1 },
+
+  // Loading overlay
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0a0f1e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    padding: 32,
+  },
+  loadingAvatarCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#2d7a5c',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    shadowColor: '#3d9470',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  loadingAvatarText: { color: '#fff', fontSize: 34, fontWeight: '700' },
+  loadingTitle:      { color: '#fff', fontSize: 18, fontWeight: '600', textAlign: 'center' },
+  loadingSubtitle:   { color: 'rgba(255,255,255,0.45)', fontSize: 13, marginTop: 8 },
+  loadingLeaveBtn:   { marginTop: 40, paddingVertical: 12, paddingHorizontal: 28 },
+  loadingLeaveBtnText:{ color: 'rgba(255,255,255,0.4)', fontSize: 14, fontWeight: '500' },
+
+  // Error
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  errorIcon: { marginBottom: 16 },
+  errorTitle: { color: '#f87171', fontSize: 20, fontWeight: '700', marginBottom: 10 },
+  errorMsg:   {
+    color: 'rgba(255,255,255,0.5)', fontSize: 14,
+    textAlign: 'center', lineHeight: 22, marginBottom: 28,
+  },
+  errorBtn: {
+    backgroundColor: '#2d7a5c',
+    paddingVertical: 14, paddingHorizontal: 32,
+    borderRadius: 16,
+  },
+  errorBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+  // Permissions loading
+  permText: { color: 'rgba(255,255,255,0.6)', fontSize: 15, marginTop: 16 },
+});

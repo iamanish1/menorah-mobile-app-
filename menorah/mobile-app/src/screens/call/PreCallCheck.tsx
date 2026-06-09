@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ActivityIndicator, Alert, ScrollView, Platform, PermissionsAndroid } from 'react-native';
+import {
+  View, Text, TouchableOpacity, ActivityIndicator,
+  Alert, ScrollView, Platform, PermissionsAndroid, StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Wifi, CheckCircle, XCircle, Video, Mic, Clock } from 'lucide-react-native';
-import Button from '@/components/ui/Button';
+import { Wifi, CheckCircle, XCircle, Video, Mic, Clock, PhoneCall } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { api } from '@/lib/api';
@@ -11,66 +13,71 @@ import NetInfo from '@react-native-community/netinfo';
 
 export default function PreCallCheck({ navigation, route }: any) {
   const { bookingId } = route.params || {};
-  const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(true);
-  const [networkOk, setNetworkOk] = useState(false);
-  const [micPermission, setMicPermission] = useState<boolean | null>(null);
-  const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
-  const [waitingForCounsellor, setWaitingForCounsellor] = useState(false);
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { scheme } = useThemeMode();
-  const colors = palettes[scheme];
+  const C = palettes[scheme];
+
+  const [loading,              setLoading]              = useState(false);
+  const [checking,             setChecking]             = useState(true);
+  const [networkOk,            setNetworkOk]            = useState(false);
+  const [micPermission,        setMicPermission]        = useState<boolean | null>(null);
+  const [cameraPermission,     setCameraPermission]     = useState<boolean | null>(null);
+  const [waitingForCounsellor, setWaitingForCounsellor] = useState(false);
+  const [counsellorName,       setCounsellorName]       = useState('');
+  const [sessionDuration,      setSessionDuration]      = useState(0);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     checkNetwork();
     requestPermissions();
-    return () => {
-      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
-    };
+    fetchBookingInfo();
+    return () => { if (pollTimerRef.current) clearTimeout(pollTimerRef.current); };
   }, [bookingId]);
 
-  // When counsellor starts the session via socket, skip waiting and join immediately
+  // Auto-join when counsellor starts the session via socket
   useEffect(() => {
     if (!bookingId) return;
     const unsub = socketService.onSessionStarted((data) => {
       if (data.bookingId !== bookingId) return;
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
-      // Attempt join immediately — session is now in-progress
       attemptJoin();
     });
     return () => unsub();
   }, [bookingId]);
 
+  const fetchBookingInfo = async () => {
+    try {
+      const res = await api.getBooking(bookingId);
+      if (res.success && res.data?.booking) {
+        const b = res.data.booking;
+        setCounsellorName(b.counsellorName || '');
+        setSessionDuration(b.sessionDuration || 0);
+      }
+    } catch {}
+  };
+
   const requestPermissions = async () => {
     if (Platform.OS === 'android') {
       try {
-        const permissions = [
+        const granted = await PermissionsAndroid.requestMultiple([
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
           PermissionsAndroid.PERMISSIONS.CAMERA,
-        ];
-        
-        const granted = await PermissionsAndroid.requestMultiple(permissions);
-        
-        setMicPermission(granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED);
-        setCameraPermission(granted[PermissionsAndroid.PERMISSIONS.CAMERA] === PermissionsAndroid.RESULTS.GRANTED);
-        
-        if (
-          granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] !== PermissionsAndroid.RESULTS.GRANTED ||
-          granted[PermissionsAndroid.PERMISSIONS.CAMERA] !== PermissionsAndroid.RESULTS.GRANTED
-        ) {
+        ]);
+        const micOk    = granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO]  === PermissionsAndroid.RESULTS.GRANTED;
+        const cameraOk = granted[PermissionsAndroid.PERMISSIONS.CAMERA]        === PermissionsAndroid.RESULTS.GRANTED;
+        setMicPermission(micOk);
+        setCameraPermission(cameraOk);
+        if (!micOk || !cameraOk) {
           Alert.alert(
             'Permissions Required',
-            'Microphone and camera permissions are required for video calls. Please enable them in app settings.',
+            'Microphone and camera are required for video sessions. Please enable them in app settings.',
             [{ text: 'OK' }]
           );
         }
-      } catch (err) {
-        console.error('Permission request error:', err);
+      } catch {
         setMicPermission(false);
         setCameraPermission(false);
       }
     } else {
-      // iOS permissions are handled automatically
       setMicPermission(true);
       setCameraPermission(true);
     }
@@ -80,42 +87,40 @@ export default function PreCallCheck({ navigation, route }: any) {
     try {
       const state = await NetInfo.fetch();
       setNetworkOk(Boolean(state.isConnected && (state.type === 'wifi' || state.type === 'cellular')));
-    } catch (error) {
-      console.error('Network check error:', error);
+    } catch {
       setNetworkOk(false);
     } finally {
       setChecking(false);
     }
   };
 
-
   const attemptJoin = async (): Promise<boolean> => {
     try {
-      const joinResponse = await api.joinVideoRoom(bookingId);
-      if (joinResponse.success && joinResponse.data) {
+      const res = await api.joinVideoRoom(bookingId);
+      if (res.success && res.data) {
         navigation.navigate('CallJoin', {
           bookingId,
-          roomId:        joinResponse.data.roomId,
-          livekitUrl:    joinResponse.data.livekitUrl,
-          livekitToken:  joinResponse.data.livekitToken,
-          sessionType:   joinResponse.data.sessionType,
-          counsellorName: joinResponse.data.counsellorName,
-          userName:      joinResponse.data.userName,
+          roomId:         res.data.roomId,
+          livekitUrl:     res.data.livekitUrl,
+          livekitToken:   res.data.livekitToken,
+          sessionType:    res.data.sessionType,
+          counsellorName: res.data.counsellorName,
+          userName:       res.data.userName,
         });
         return true;
       }
-      const msg: string = (joinResponse as any).message || '';
-      if (msg.toLowerCase().includes('not been started') || msg.toLowerCase().includes('not active')) {
-        return false; // counsellor not started yet — keep waiting
-      }
-      Alert.alert('Error', msg || 'Failed to join session. Please try again.');
-      return true; // stop polling on unexpected errors
-    } catch (error: any) {
-      const msg: string = error.response?.data?.message || error.message || '';
+      const msg: string = (res as any).message || '';
       if (msg.toLowerCase().includes('not been started') || msg.toLowerCase().includes('not active')) {
         return false;
       }
-      Alert.alert('Error', msg || 'Failed to join session. Please try again.');
+      Alert.alert('Cannot Join', msg || 'Failed to join session. Please try again.');
+      return true;
+    } catch (err: any) {
+      const msg: string = err.response?.data?.message || err.message || '';
+      if (msg.toLowerCase().includes('not been started') || msg.toLowerCase().includes('not active')) {
+        return false;
+      }
+      Alert.alert('Cannot Join', msg || 'Failed to join session. Please try again.');
       return true;
     }
   };
@@ -123,176 +128,292 @@ export default function PreCallCheck({ navigation, route }: any) {
   const schedulePoll = () => {
     pollTimerRef.current = setTimeout(async () => {
       const done = await attemptJoin();
-      if (!done) schedulePoll(); // keep retrying every 5s
+      if (!done) schedulePoll();
     }, 5000);
   };
 
   const handleJoinSession = async () => {
     if (!networkOk) {
-      Alert.alert('Network Error', 'Please check your internet connection and try again.');
+      Alert.alert('No Connection', 'Please check your internet connection and try again.');
       return;
     }
     if (!bookingId) {
-      Alert.alert('Error', 'Booking ID is missing. Please try again.');
+      Alert.alert('Error', 'Booking ID is missing. Please go back and try again.');
       return;
     }
-
     setLoading(true);
     const done = await attemptJoin();
     setLoading(false);
-
     if (!done) {
-      // Counsellor hasn't started yet — show waiting state and poll
       setWaitingForCounsellor(true);
       schedulePoll();
     }
   };
 
+  const allReady = networkOk && micPermission === true && cameraPermission === true;
+  const initial  = counsellorName.charAt(0).toUpperCase() || '?';
+
+  // ── Waiting room ─────────────────────────────────────────────────────────
+
   if (waitingForCounsellor) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-          <Clock size={56} color={colors.primary} />
-          <Text style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 24, marginBottom: 12, textAlign: 'center' }}>
-            Waiting for Counsellor
-          </Text>
-          <Text style={{ fontSize: 15, color: colors.muted, textAlign: 'center', marginBottom: 32 }}>
-            Your counsellor hasn't started the session yet. You'll be connected automatically once they begin.
-          </Text>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Button
-            title="Cancel"
+      <SafeAreaView style={[styles.flex, { backgroundColor: '#0a0f1e' }]}>
+        <View style={styles.waitingContainer}>
+          {/* Avatar */}
+          <View style={styles.waitingAvatar}>
+            <Text style={styles.waitingAvatarText}>{initial}</Text>
+          </View>
+
+          {/* Name */}
+          <Text style={styles.waitingName}>{counsellorName || 'Your Counsellor'}</Text>
+          {!!sessionDuration && (
+            <Text style={styles.waitingDuration}>{sessionDuration} min session</Text>
+          )}
+
+          {/* Status card */}
+          <View style={styles.waitingCard}>
+            <ActivityIndicator size="small" color="#3d9470" style={{ marginBottom: 12 }} />
+            <Text style={styles.waitingCardTitle}>Waiting for counsellor to start</Text>
+            <Text style={styles.waitingCardSub}>
+              You'll be connected automatically once your counsellor begins the session.
+            </Text>
+          </View>
+
+          <TouchableOpacity
             onPress={() => {
               if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
               navigation.goBack();
             }}
-            style={{ marginTop: 32, backgroundColor: colors.border }}
-          />
+            style={styles.cancelBtn}
+          >
+            <Text style={styles.cancelBtnText}>Leave Waiting Room</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
+  // ── Pre-call check ────────────────────────────────────────────────────────
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 24, justifyContent: 'center' }}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text, marginBottom: 24, textAlign: 'center' }}>
-          Quick Device Check
-        </Text>
-        
-        <View style={{
-          backgroundColor: colors.card,
-          borderRadius: 20,
-          padding: 20,
-          marginBottom: 16,
-          borderWidth: 1,
-          borderColor: colors.border
-        }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Wifi size={20} color={colors.primary} style={{ marginRight: 12 }} />
-              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>
-                Network
-              </Text>
-            </View>
-            {checking ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : networkOk ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <CheckCircle size={20} color="#10B981" />
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#10B981', marginLeft: 8 }}>
-                  OK
-                </Text>
-              </View>
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <XCircle size={20} color="#EF4444" />
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#EF4444', marginLeft: 8 }}>
-                  Check Connection
-                </Text>
-              </View>
-            )}
+    <SafeAreaView style={[styles.flex, { backgroundColor: C.bg }]}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={[styles.avatarCircle, { backgroundColor: C.primary }]}>
+            <Text style={styles.avatarText}>{initial}</Text>
           </View>
+          <Text style={[styles.headingName, { color: C.text }]}>
+            {counsellorName || 'Session Ready'}
+          </Text>
+          {!!sessionDuration && (
+            <View style={[styles.durationPill, { backgroundColor: C.sand }]}>
+              <Clock size={12} color={C.primary} />
+              <Text style={[styles.durationText, { color: C.primary }]}>{sessionDuration} min</Text>
+            </View>
+          )}
+          <Text style={[styles.headingSubtitle, { color: C.muted }]}>
+            Quick device check before joining
+          </Text>
         </View>
 
-        <View style={{
-          backgroundColor: colors.card,
-          borderRadius: 20,
-          padding: 20,
-          marginBottom: 16,
-          borderWidth: 1,
-          borderColor: colors.border
-        }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Video size={20} color={colors.primary} style={{ marginRight: 12 }} />
-              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>
-                Camera
-              </Text>
-            </View>
-            {cameraPermission === null ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : cameraPermission ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <CheckCircle size={20} color="#10B981" />
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#10B981', marginLeft: 8 }}>
-                  Ready
-                </Text>
-              </View>
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <XCircle size={20} color="#EF4444" />
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#EF4444', marginLeft: 8 }}>
-                  Permission Needed
-                </Text>
-              </View>
-            )}
-          </View>
+        {/* Checks */}
+        <View style={[styles.checksCard, { backgroundColor: C.card, borderColor: C.border }]}>
+          <CheckRow
+            icon={<Wifi size={18} color={C.primary} />}
+            label="Internet"
+            loading={checking}
+            ok={networkOk}
+            failLabel="No connection"
+            C={C}
+          />
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
+          <CheckRow
+            icon={<Video size={18} color={C.primary} />}
+            label="Camera"
+            loading={cameraPermission === null}
+            ok={cameraPermission === true}
+            failLabel="Permission needed"
+            C={C}
+          />
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
+          <CheckRow
+            icon={<Mic size={18} color={C.primary} />}
+            label="Microphone"
+            loading={micPermission === null}
+            ok={micPermission === true}
+            failLabel="Permission needed"
+            C={C}
+          />
         </View>
 
-        <View style={{
-          backgroundColor: colors.card,
-          borderRadius: 20,
-          padding: 20,
-          marginBottom: 24,
-          borderWidth: 1,
-          borderColor: colors.border
-        }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Mic size={20} color={colors.primary} style={{ marginRight: 12 }} />
-              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>
-                Microphone
-              </Text>
-            </View>
-            {micPermission === null ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : micPermission ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <CheckCircle size={20} color="#10B981" />
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#10B981', marginLeft: 8 }}>
-                  Ready
-                </Text>
-              </View>
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <XCircle size={20} color="#EF4444" />
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#EF4444', marginLeft: 8 }}>
-                  Permission Needed
-                </Text>
-              </View>
-            )}
+        {/* Permission hint */}
+        {(micPermission === false || cameraPermission === false) && (
+          <View style={[styles.hintBox, { backgroundColor: C.accentLight, borderColor: C.accent }]}>
+            <Text style={[styles.hintText, { color: C.accent }]}>
+              Go to Settings → Apps → Menorah Health → Permissions and enable Camera and Microphone.
+            </Text>
           </View>
-        </View>
+        )}
 
-        <Button
-          title="Join Session"
+        {/* Join button */}
+        <TouchableOpacity
           onPress={handleJoinSession}
-          disabled={!networkOk || loading || micPermission === false || cameraPermission === false}
-          style={{ marginTop: 20 }}
-          loading={loading}
-        />
+          disabled={!allReady || loading || checking}
+          style={[
+            styles.joinBtn,
+            { backgroundColor: allReady && !loading ? C.primary : C.border },
+          ]}
+          activeOpacity={0.85}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <PhoneCall size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.joinBtnText}>Join Session</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Text style={[styles.backBtnText, { color: C.muted }]}>Go Back</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+// ── Check row component ────────────────────────────────────────────────────
+
+function CheckRow({
+  icon, label, loading, ok, failLabel, C,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  loading: boolean;
+  ok: boolean;
+  failLabel: string;
+  C: (typeof palettes)['light'];
+}) {
+  return (
+    <View style={styles.checkRow}>
+      <View style={styles.checkRowLeft}>
+        {icon}
+        <Text style={[styles.checkLabel, { color: C.text }]}>{label}</Text>
+      </View>
+      {loading ? (
+        <ActivityIndicator size="small" color={C.primary} />
+      ) : ok ? (
+        <View style={styles.checkStatus}>
+          <CheckCircle size={16} color="#10b981" />
+          <Text style={[styles.checkStatusText, { color: '#10b981' }]}>Ready</Text>
+        </View>
+      ) : (
+        <View style={styles.checkStatus}>
+          <XCircle size={16} color="#ef4444" />
+          <Text style={[styles.checkStatusText, { color: '#ef4444' }]}>{failLabel}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  flex:           { flex: 1 },
+  scrollContent:  { padding: 24, paddingBottom: 40 },
+
+  // Header
+  header:         { alignItems: 'center', marginBottom: 28 },
+  avatarCircle:   {
+    width: 80, height: 80, borderRadius: 40,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2, shadowRadius: 8, elevation: 6,
+  },
+  avatarText:     { color: '#fff', fontSize: 30, fontWeight: '700' },
+  headingName:    { fontSize: 20, fontWeight: '700', marginBottom: 6 },
+  durationPill:   {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, marginBottom: 8,
+  },
+  durationText:   { fontSize: 12, fontWeight: '600' },
+  headingSubtitle:{ fontSize: 13, textAlign: 'center' },
+
+  // Checks card
+  checksCard: {
+    borderRadius: 16, borderWidth: 1,
+    marginBottom: 16, overflow: 'hidden',
+  },
+  checkRow:   {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 14,
+  },
+  checkRowLeft:  { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  checkLabel:    { fontSize: 15, fontWeight: '500' },
+  checkStatus:   { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  checkStatusText:{ fontSize: 13, fontWeight: '600' },
+  divider:       { height: 1, marginHorizontal: 16 },
+
+  // Hint
+  hintBox: {
+    borderRadius: 12, borderWidth: 1,
+    padding: 12, marginBottom: 16,
+  },
+  hintText: { fontSize: 12, lineHeight: 18, fontWeight: '500' },
+
+  // Join button
+  joinBtn: {
+    borderRadius: 16, paddingVertical: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2, shadowRadius: 8, elevation: 4,
+  },
+  joinBtnText:  { color: '#fff', fontSize: 17, fontWeight: '700' },
+
+  backBtn:      { alignItems: 'center', paddingVertical: 12 },
+  backBtnText:  { fontSize: 15, fontWeight: '500' },
+
+  // Waiting room
+  waitingContainer: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  waitingAvatar: {
+    width: 96, height: 96, borderRadius: 48,
+    backgroundColor: '#2d7a5c',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 18,
+    shadowColor: '#3d9470', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5, shadowRadius: 16, elevation: 10,
+  },
+  waitingAvatarText: { color: '#fff', fontSize: 36, fontWeight: '700' },
+  waitingName:       { color: '#fff', fontSize: 22, fontWeight: '700', marginBottom: 4 },
+  waitingDuration:   { color: 'rgba(255,255,255,0.5)', fontSize: 14, marginBottom: 28 },
+  waitingCard: {
+    width: '100%', backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 20, padding: 24,
+    alignItems: 'center', marginBottom: 32,
+  },
+  waitingCardTitle: {
+    color: '#fff', fontSize: 16, fontWeight: '600',
+    textAlign: 'center', marginBottom: 8,
+  },
+  waitingCardSub: {
+    color: 'rgba(255,255,255,0.5)', fontSize: 13,
+    textAlign: 'center', lineHeight: 20,
+  },
+  cancelBtn: {
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32,
+  },
+  cancelBtnText: { color: 'rgba(255,255,255,0.7)', fontSize: 15, fontWeight: '600' },
+});

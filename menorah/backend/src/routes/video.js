@@ -482,152 +482,425 @@ router.get('/meet', [
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Menorah Session</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; background: #0f172a; color: #fff; font-family: -apple-system, sans-serif; overflow: hidden; }
-    #app { width: 100%; height: 100%; display: flex; flex-direction: column; }
-    #videos { flex: 1; display: grid; grid-template-columns: 1fr; gap: 4px; padding: 4px; overflow: hidden; }
-    #videos.two-up { grid-template-columns: 1fr 1fr; }
-    .video-tile { position: relative; background: #1e293b; border-radius: 12px; overflow: hidden; aspect-ratio: 4/3; }
-    .video-tile video { width: 100%; height: 100%; object-fit: cover; }
-    .tile-name { position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,.5); padding: 2px 8px; border-radius: 12px; font-size: 12px; }
-    .tile-audio-off { position: absolute; top: 8px; right: 8px; background: rgba(239,68,68,.8); border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
-    #controls { display: flex; justify-content: center; gap: 16px; padding: 16px; background: #1e293b; }
-    .ctrl-btn { width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 22px; transition: transform .1s; }
-    .ctrl-btn:active { transform: scale(.92); }
-    .ctrl-btn.on  { background: #334155; }
-    .ctrl-btn.off { background: #ef4444; }
-    .ctrl-btn.leave { background: #ef4444; }
-    #status { position: fixed; top: 0; left: 0; right: 0; padding: 12px 16px; background: rgba(15,23,42,.9); text-align: center; font-size: 14px; z-index: 10; display: none; }
-    #status.show { display: block; }
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    html,body{width:100%;height:100vh;background:#0a0f1e;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;overflow:hidden;touch-action:manipulation}
+    #app{position:fixed;inset:0;display:flex;flex-direction:column}
+
+    /* ── Video area ── */
+    #videos{position:relative;flex:1;background:#0a0f1e;overflow:hidden}
+
+    /* Remote: fullscreen */
+    #remote-tile{position:absolute;inset:0;background:#111827;display:flex;align-items:center;justify-content:center}
+    #remote-tile video,#remote-tile audio{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+
+    /* Local PiP */
+    #local-tile{
+      position:absolute;top:16px;right:16px;
+      width:88px;height:132px;
+      border-radius:14px;overflow:hidden;
+      background:#1a2235;
+      border:2px solid rgba(255,255,255,0.18);
+      box-shadow:0 8px 32px rgba(0,0,0,0.5);
+      z-index:6
+    }
+    #local-tile video{width:100%;height:100%;object-fit:cover}
+
+    /* Avatar placeholder */
+    .avatar-wrap{
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      gap:10px;width:100%;height:100%
+    }
+    .avatar-circle{
+      width:72px;height:72px;border-radius:50%;
+      background:linear-gradient(135deg,#2d7a5c,#3d9470);
+      display:flex;align-items:center;justify-content:center;
+      font-size:28px;font-weight:700;color:#fff;
+      box-shadow:0 4px 20px rgba(61,148,112,0.4)
+    }
+    .avatar-circle.sm{width:36px;height:36px;font-size:14px}
+    .avatar-label{font-size:13px;color:rgba(255,255,255,0.6);font-weight:500;text-align:center;padding:0 8px}
+
+    /* Name badge on remote */
+    #remote-name{
+      position:absolute;bottom:100px;left:16px;
+      background:rgba(0,0,0,0.55);
+      backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+      padding:5px 12px;border-radius:20px;
+      font-size:13px;color:#fff;font-weight:500;
+      display:none
+    }
+
+    /* Mic-off badge on remote */
+    #remote-mic-off{
+      position:absolute;top:16px;left:16px;
+      background:rgba(239,68,68,0.85);border-radius:50%;
+      width:32px;height:32px;
+      display:none;align-items:center;justify-content:center;z-index:5
+    }
+
+    /* Status bar (top gradient) */
+    #status-bar{
+      position:absolute;top:0;left:0;right:0;
+      height:56px;
+      background:linear-gradient(to bottom,rgba(10,15,30,0.92) 0%,transparent 100%);
+      display:flex;align-items:center;justify-content:center;gap:8px;
+      z-index:10;pointer-events:none
+    }
+    #conn-dot{
+      width:8px;height:8px;border-radius:50%;
+      background:#f59e0b;flex-shrink:0;
+      transition:background 0.4s
+    }
+    #conn-dot.live{background:#10b981;animation:pulse-dot 2.5s infinite}
+    @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.4}}
+    #status-text{font-size:13px;color:rgba(255,255,255,0.75);font-weight:500}
+
+    /* Timer */
+    #timer{
+      position:absolute;top:16px;right:${videoOnly ? '120px' : '16px'};
+      background:rgba(0,0,0,0.45);
+      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+      padding:4px 10px;border-radius:20px;
+      font-size:12px;color:rgba(255,255,255,0.8);
+      font-family:monospace;letter-spacing:0.5px;
+      z-index:10;display:none
+    }
+
+    /* Controls bar (bottom) */
+    #controls{
+      position:absolute;bottom:0;left:0;right:0;
+      padding:20px 24px 40px;
+      background:linear-gradient(to top,rgba(10,15,30,0.96) 0%,transparent 100%);
+      display:flex;align-items:center;justify-content:center;gap:18px;
+      z-index:10
+    }
+    .ctrl-btn{
+      width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+      transition:transform 0.12s,background 0.2s;
+      box-shadow:0 4px 16px rgba(0,0,0,0.3);
+      outline:none
+    }
+    .ctrl-btn:active{transform:scale(0.88)}
+    .ctrl-btn.active{background:rgba(255,255,255,0.14)}
+    .ctrl-btn.muted{background:rgba(239,68,68,0.9)}
+    .ctrl-btn.cam-off{background:rgba(239,68,68,0.9)}
+    .ctrl-btn.leave{
+      width:64px;height:64px;
+      background:#ef4444;
+      box-shadow:0 4px 24px rgba(239,68,68,0.5)
+    }
+
+    /* Connecting overlay */
+    #connecting{
+      position:fixed;inset:0;background:#0a0f1e;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      gap:20px;z-index:30;transition:opacity 0.4s
+    }
+    #connecting.fade-out{opacity:0;pointer-events:none}
+    #connecting.gone{display:none}
+    .spinner{
+      width:52px;height:52px;
+      border:3px solid rgba(61,148,112,0.25);
+      border-top:3px solid #3d9470;
+      border-radius:50%;animation:spin 0.8s linear infinite
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .conn-title{font-size:18px;font-weight:600;color:#fff}
+    .conn-sub{font-size:14px;color:rgba(255,255,255,0.5)}
+
+    /* Error overlay */
+    #error-screen{
+      position:fixed;inset:0;background:#0a0f1e;
+      display:none;flex-direction:column;align-items:center;justify-content:center;
+      gap:16px;padding:32px;z-index:30
+    }
+    #error-screen.show{display:flex}
+    .err-icon{font-size:48px}
+    .err-title{font-size:18px;font-weight:600;color:#f87171}
+    .err-msg{font-size:14px;color:rgba(255,255,255,0.5);text-align:center;line-height:1.5}
+    .err-btn{
+      margin-top:8px;background:#2d7a5c;color:#fff;border:none;
+      padding:12px 28px;border-radius:24px;font-size:15px;font-weight:600;
+      cursor:pointer
+    }
   </style>
 </head>
 <body>
 <div id="app">
-  <div id="status" class="show">Connecting to session…</div>
-  <div id="videos"></div>
-  <div id="controls">
-    <button id="btn-mic"   class="ctrl-btn on"    title="Mute">🎤</button>
-    ${videoOnly ? '<button id="btn-cam" class="ctrl-btn on" title="Camera">📷</button>' : ''}
-    <button id="btn-leave" class="ctrl-btn leave" title="Leave">📵</button>
+  <!-- Connecting overlay -->
+  <div id="connecting">
+    <div class="spinner"></div>
+    <div>
+      <div class="conn-title">Joining session…</div>
+      <div class="conn-sub" style="text-align:center;margin-top:4px">Setting up your connection</div>
+    </div>
+  </div>
+
+  <!-- Error overlay -->
+  <div id="error-screen">
+    <div class="err-icon">📵</div>
+    <div class="err-title">Connection Failed</div>
+    <div class="err-msg" id="err-msg">Unable to connect to the session. Please check your connection and try again.</div>
+    <button class="err-btn" onclick="notifyNative('leave')">Go Back</button>
+  </div>
+
+  <!-- Video area -->
+  <div id="videos">
+    <!-- Remote participant (fullscreen) -->
+    <div id="remote-tile">
+      <div class="avatar-wrap" id="remote-avatar">
+        <div class="avatar-circle" id="remote-initial">?</div>
+        <div class="avatar-label" id="remote-avatar-name">Waiting for counsellor…</div>
+      </div>
+    </div>
+
+    <!-- Local PiP -->
+    <div id="local-tile">
+      <div class="avatar-wrap" id="local-avatar">
+        <div class="avatar-circle sm" id="local-initial">${safeName.charAt(0).toUpperCase() || 'Y'}</div>
+      </div>
+    </div>
+
+    <!-- Overlays -->
+    <div id="status-bar">
+      <div id="conn-dot"></div>
+      <span id="status-text">Connecting…</span>
+    </div>
+    <div id="timer">00:00</div>
+    <div id="remote-name"></div>
+    <div id="remote-mic-off">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+        <line x1="1" y1="1" x2="23" y2="23"/>
+        <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+        <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+        <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div id="controls" style="position:absolute;bottom:0;left:0;right:0">
+    <!-- Mic -->
+    <button id="btn-mic" class="ctrl-btn active" title="Mute microphone">
+      <svg id="ic-mic" width="22" height="22" viewBox="0 0 24 24" fill="white">
+        <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+        <path d="M19 10a7 7 0 0 1-14 0" stroke="white" stroke-width="2" stroke-linecap="round" fill="none"/>
+        <line x1="12" y1="17" x2="12" y2="21" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        <line x1="9" y1="21" x2="15" y2="21" stroke="white" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <svg id="ic-mic-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" style="display:none">
+        <line x1="1" y1="1" x2="23" y2="23"/>
+        <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+        <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </button>
+
+    <!-- End call -->
+    <button id="btn-leave" class="ctrl-btn leave" title="End call">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
+        <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+      </svg>
+    </button>
+
+    ${videoOnly ? `<!-- Camera -->
+    <button id="btn-cam" class="ctrl-btn active" title="Toggle camera">
+      <svg id="ic-cam" width="22" height="22" viewBox="0 0 24 24" fill="white">
+        <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+      </svg>
+      <svg id="ic-cam-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" style="display:none">
+        <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/>
+        <line x1="1" y1="1" x2="23" y2="23"/>
+      </svg>
+    </button>` : ''}
   </div>
 </div>
+
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <script>
 (async () => {
-  const TOKEN   = '${safeToken}';
-  const WS_URL  = '${safeUrl}';
+  const TOKEN    = '${safeToken}';
+  const WS_URL   = '${safeUrl}';
   const IS_VIDEO = ${videoOnly ? 'true' : 'false'};
+  const MY_NAME  = '${safeName}';
 
-  const videosEl = document.getElementById('videos');
-  const statusEl = document.getElementById('status');
+  // ── Elements ──────────────────────────────────────────────────────────────
+  const remoteTile   = document.getElementById('remote-tile');
+  const remoteAvatar = document.getElementById('remote-avatar');
+  const remoteInitEl = document.getElementById('remote-initial');
+  const remoteNameEl = document.getElementById('remote-avatar-name');
+  const remoteNameBadge = document.getElementById('remote-name');
+  const remoteMicOff = document.getElementById('remote-mic-off');
+  const localTile    = document.getElementById('local-tile');
+  const localAvatar  = document.getElementById('local-avatar');
+  const localInit    = document.getElementById('local-initial');
+  const connDot      = document.getElementById('conn-dot');
+  const statusText   = document.getElementById('status-text');
+  const timerEl      = document.getElementById('timer');
+  const connecting   = document.getElementById('connecting');
+  const errorScreen  = document.getElementById('error-screen');
+  const errMsg       = document.getElementById('err-msg');
 
-  const setStatus = (msg, hide) => {
-    statusEl.textContent = msg;
-    statusEl.className = hide ? '' : 'show';
-  };
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function notifyNative(action) {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ action }));
+    }
+  }
 
+  function setConnected(on) {
+    connDot.className = on ? 'live' : '';
+    connDot.style.background = on ? '' : '#f59e0b';
+    statusText.textContent   = on ? 'Live' : 'Connecting…';
+  }
+
+  function showError(msg) {
+    connecting.className = 'gone';
+    errMsg.textContent   = msg || 'Unable to connect. Please try again.';
+    errorScreen.className = 'show';
+  }
+
+  function initial(name) {
+    return (name || '?').charAt(0).toUpperCase();
+  }
+
+  // ── Timer ─────────────────────────────────────────────────────────────────
+  let timerStart = null;
+  let timerInterval = null;
+
+  function startTimer() {
+    timerStart = Date.now();
+    timerEl.style.display = 'block';
+    timerInterval = setInterval(() => {
+      const s = Math.floor((Date.now() - timerStart) / 1000);
+      const m = String(Math.floor(s / 60)).padStart(2,'0');
+      const sec = String(s % 60).padStart(2,'0');
+      timerEl.textContent = m + ':' + sec;
+    }, 1000);
+  }
+
+  // ── LiveKit Room ──────────────────────────────────────────────────────────
   const room = new LivekitClient.Room({
     adaptiveStream: true,
-    dynacast:       true,
-    videoCaptureDefaults: { resolution: LivekitClient.VideoPresets.h720.resolution },
+    dynacast: true,
+    videoCaptureDefaults: {
+      resolution: LivekitClient.VideoPresets.h720.resolution,
+      facingMode: 'user',
+    },
+    audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true },
   });
 
-  // ── Track rendering ──────────────────────────────────────────────────────
-  const tiles = {};
-
-  function getOrCreateTile(identity) {
-    if (tiles[identity]) return tiles[identity];
-    const div = document.createElement('div');
-    div.className = 'video-tile';
-    div.id = 'tile-' + identity;
-    div.innerHTML = '<div class="tile-name">' + identity + '</div>';
-    videosEl.appendChild(div);
-    tiles[identity] = div;
-    updateGrid();
-    return div;
-  }
-
-  function updateGrid() {
-    const count = Object.keys(tiles).length;
-    videosEl.className = count > 1 ? 'two-up' : '';
-  }
-
-  function removeTile(identity) {
-    const div = tiles[identity];
-    if (div) { div.remove(); delete tiles[identity]; }
-    updateGrid();
-  }
-
-  function attachTrack(track, participant) {
-    const tile = getOrCreateTile(participant.identity);
-    const el   = track.attach();
-    el.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;';
-    // Replace existing same-kind element
-    const old = tile.querySelector(track.kind === 'video' ? 'video' : 'audio');
-    if (old) old.remove();
-    tile.insertBefore(el, tile.firstChild);
-  }
-
-  function detachTrack(track, participant) {
-    track.detach().forEach(el => el.remove());
-    const tile = tiles[participant.identity];
-    if (tile && !tile.querySelector('video') && !tile.querySelector('audio')) {
-      removeTile(participant.identity);
+  // ── Remote track rendering ────────────────────────────────────────────────
+  function attachRemote(track, participant) {
+    const el = track.attach();
+    if (track.kind === 'video') {
+      el.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover';
+      const old = remoteTile.querySelector('video');
+      if (old) old.remove();
+      remoteAvatar.style.display = 'none';
+      remoteTile.appendChild(el);
+      remoteNameBadge.style.display = 'block';
+    } else {
+      el.style.display = 'none'; // audio element — hidden but active
+      remoteTile.appendChild(el);
     }
+    remoteInitEl.textContent = initial(participant.identity);
+    remoteNameEl.textContent = participant.identity;
+    remoteNameBadge.textContent = participant.identity;
   }
 
-  // ── Room events ──────────────────────────────────────────────────────────
+  function detachRemote(track) {
+    track.detach().forEach(el => {
+      el.remove();
+      if (el.tagName === 'VIDEO') {
+        remoteAvatar.style.display = 'flex';
+        remoteNameBadge.style.display = 'none';
+      }
+    });
+  }
+
+  // ── Local track rendering ─────────────────────────────────────────────────
+  function attachLocal(track) {
+    if (track.kind !== 'video') return;
+    const el = track.attach();
+    el.style.cssText = 'width:100%;height:100%;object-fit:cover';
+    el.setAttribute('playsinline', '');
+    el.muted = true;
+    const old = localTile.querySelector('video');
+    if (old) old.remove();
+    localAvatar.style.display = 'none';
+    localTile.appendChild(el);
+  }
+
+  // ── Room event bindings ───────────────────────────────────────────────────
   room
     .on(LivekitClient.RoomEvent.TrackSubscribed, (track, _pub, participant) => {
-      attachTrack(track, participant);
+      attachRemote(track, participant);
     })
     .on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
-      detachTrack(track, participant);
+      detachRemote(track);
+    })
+    .on(LivekitClient.RoomEvent.TrackMuted, (pub, participant) => {
+      if (pub.kind === 'audio') remoteMicOff.style.display = 'flex';
+    })
+    .on(LivekitClient.RoomEvent.TrackUnmuted, (pub, participant) => {
+      if (pub.kind === 'audio') remoteMicOff.style.display = 'none';
     })
     .on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
-      removeTile(participant.identity);
+      const v = remoteTile.querySelector('video');
+      if (v) v.remove();
+      remoteAvatar.style.display = 'flex';
+      remoteNameEl.textContent = 'Waiting for counsellor…';
+      remoteNameBadge.style.display = 'none';
     })
     .on(LivekitClient.RoomEvent.Disconnected, () => {
-      setStatus('Session ended');
+      setConnected(false);
+      if (timerInterval) clearInterval(timerInterval);
       notifyNative('session_ended');
     })
-    .on(LivekitClient.RoomEvent.Reconnecting, () => setStatus('Reconnecting…'))
-    .on(LivekitClient.RoomEvent.Reconnected,  () => setStatus('', true));
+    .on(LivekitClient.RoomEvent.Reconnecting, () => {
+      connDot.style.background = '#f59e0b';
+      statusText.textContent   = 'Reconnecting…';
+    })
+    .on(LivekitClient.RoomEvent.Reconnected, () => { setConnected(true); });
 
-  // ── Connect ──────────────────────────────────────────────────────────────
+  // ── Connect ───────────────────────────────────────────────────────────────
   try {
-    await room.connect(WS_URL, TOKEN, {
-      autoSubscribe: true,
-    });
+    await room.connect(WS_URL, TOKEN, { autoSubscribe: true });
 
-    setStatus('', true);
+    // Fade out the connecting overlay
+    connecting.className = 'fade-out';
+    setTimeout(() => connecting.className = 'gone', 400);
+    setConnected(true);
+    startTimer();
 
-    // Publish local tracks
-    const trackOptions = { audio: true };
-    if (IS_VIDEO) trackOptions.video = true;
-    await room.localParticipant.enableCameraAndMicrophone();
-
-    // Render local video
-    const localVideoTrack = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
-    if (localVideoTrack && localVideoTrack.track) {
-      attachTrack(localVideoTrack.track, room.localParticipant);
+    // Publish local camera + mic
+    if (IS_VIDEO) {
+      await room.localParticipant.enableCameraAndMicrophone();
+    } else {
+      await room.localParticipant.setMicrophoneEnabled(true);
     }
 
-    // Render already-subscribed remote tracks (for late joiners)
-    room.remoteParticipants.forEach(participant => {
-      participant.trackPublications.forEach(pub => {
-        if (pub.isSubscribed && pub.track) attachTrack(pub.track, participant);
+    // Render local camera
+    const camPub = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
+    if (camPub && camPub.track) attachLocal(camPub.track);
+
+    // Render any already-present remote tracks (rejoining)
+    room.remoteParticipants.forEach(p => {
+      p.trackPublications.forEach(pub => {
+        if (pub.isSubscribed && pub.track) attachRemote(pub.track, p);
       });
     });
   } catch (err) {
-    setStatus('Failed to connect: ' + err.message);
-    console.error('LiveKit connect error:', err);
+    showError('Failed to connect: ' + (err.message || 'unknown error'));
+    return;
   }
 
-  // ── Controls ─────────────────────────────────────────────────────────────
+  // ── Controls ──────────────────────────────────────────────────────────────
   let micOn = true;
   let camOn = IS_VIDEO;
 
@@ -635,8 +908,15 @@ router.get('/meet', [
     micOn = !micOn;
     await room.localParticipant.setMicrophoneEnabled(micOn);
     const btn = document.getElementById('btn-mic');
-    btn.className = 'ctrl-btn ' + (micOn ? 'on' : 'off');
-    btn.textContent = micOn ? '🎤' : '🔇';
+    btn.className = 'ctrl-btn ' + (micOn ? 'active' : 'muted');
+    document.getElementById('ic-mic').style.display     = micOn ? '' : 'none';
+    document.getElementById('ic-mic-off').style.display = micOn ? 'none' : '';
+  });
+
+  document.getElementById('btn-leave').addEventListener('click', async () => {
+    if (timerInterval) clearInterval(timerInterval);
+    await room.disconnect();
+    notifyNative('leave');
   });
 
   if (IS_VIDEO) {
@@ -644,21 +924,14 @@ router.get('/meet', [
       camOn = !camOn;
       await room.localParticipant.setCameraEnabled(camOn);
       const btn = document.getElementById('btn-cam');
-      btn.className = 'ctrl-btn ' + (camOn ? 'on' : 'off');
-      btn.textContent = camOn ? '📷' : '🚫';
+      btn.className = 'ctrl-btn ' + (camOn ? 'active' : 'cam-off');
+      document.getElementById('ic-cam').style.display     = camOn ? '' : 'none';
+      document.getElementById('ic-cam-off').style.display = camOn ? 'none' : '';
+      // Show/hide local avatar
+      localAvatar.style.display     = camOn ? 'none' : 'flex';
+      const localVid = localTile.querySelector('video');
+      if (localVid) localVid.style.display = camOn ? '' : 'none';
     });
-  }
-
-  document.getElementById('btn-leave').addEventListener('click', async () => {
-    await room.disconnect();
-    notifyNative('leave');
-  });
-
-  // ── Notify React Native WebView ──────────────────────────────────────────
-  function notifyNative(action) {
-    if (window.ReactNativeWebView) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({ action }));
-    }
   }
 })();
 </script>
