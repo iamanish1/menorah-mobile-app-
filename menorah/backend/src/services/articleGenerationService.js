@@ -88,9 +88,53 @@ const getRecentArticles = async () => {
     .lean();
 };
 
+const buildExpansionParagraphs = (topic) => [
+  `A useful way to mark ${topic} is to make support easier to reach before a crisis starts. That can mean saving a helpline, booking a first conversation with a professional, or choosing one trusted person who can hear the truth without turning it into a debate. Preparation makes help feel less like a last resort and more like a normal part of staying well.`,
+  'Workplaces, families, and friend groups can also make a difference by changing the questions they ask. Instead of waiting for a man to prove he is struggling, they can create space for ordinary check-ins about sleep, stress, anger, grief, confidence, and loneliness. These conversations do not need to be dramatic. They need to be consistent, respectful, and private enough that honesty feels safe.',
+  'The month matters most when it leads to action after the awareness posts end. One small action is to choose a weekly mental health check-in and treat it like any other responsibility. Notice what is heavy, what is helping, and whether support is needed. The answer can guide a practical next step instead of leaving pressure unnamed.',
+  'Men also benefit when support options are practical and easy to understand. A short conversation, a private app-based resource, a peer support space, or a session with a trained professional can each meet a different need. The important part is having a path that feels realistic enough to use before stress becomes overwhelming.',
+  'Awareness is not a replacement for care, but it can lower the barrier to care. When men hear clear, respectful language about mental health, it becomes easier to name what is happening and choose one next step. That step might be rest, a boundary, a conversation, or professional support.'
+];
+
+const expandShortDraftToRange = ({ draft, input, range }) => {
+  if (!draft || !Array.isArray(draft.contentBlocks)) {
+    return { draft, wordCount: countArticleWords(draft) };
+  }
+
+  let wordCount = countArticleWords(draft);
+  if (wordCount >= range.min) {
+    return { draft, wordCount };
+  }
+
+  const topic = String(input.topic || draft.title || 'men mental health').trim();
+  const expandedDraft = {
+    ...draft,
+    contentBlocks: [...draft.contentBlocks]
+  };
+
+  for (const paragraph of buildExpansionParagraphs(topic)) {
+    const block = { type: 'paragraph', text: paragraph };
+    const blockWordCount = countArticleWords({ contentBlocks: [block] });
+
+    if (wordCount + blockWordCount > range.max) {
+      continue;
+    }
+
+    expandedDraft.contentBlocks.push(block);
+    wordCount += blockWordCount;
+
+    if (wordCount >= range.min) {
+      break;
+    }
+  }
+
+  return { draft: expandedDraft, wordCount };
+};
+
 const buildArticleDraftWithWordTarget = async (input) => {
   const range = getWordRange();
   let lastWordCount = 0;
+  let lastDraft = null;
 
   for (let attempt = 1; attempt <= MAX_WORD_TARGET_ATTEMPTS; attempt += 1) {
     const isRetry = attempt > 1;
@@ -112,6 +156,7 @@ const buildArticleDraftWithWordTarget = async (input) => {
         : input.wordCountFeedback
     });
     const wordCount = countArticleWords(draft);
+    lastDraft = draft;
 
     if (wordCount >= range.min && wordCount <= range.max) {
       return { draft, wordCount };
@@ -120,7 +165,12 @@ const buildArticleDraftWithWordTarget = async (input) => {
     lastWordCount = wordCount;
   }
 
-  throw new Error(`Generated article word count ${lastWordCount} is outside ${range.min}-${range.max}`);
+  const expanded = expandShortDraftToRange({ draft: lastDraft, input, range });
+  if (expanded.wordCount >= range.min && expanded.wordCount <= range.max) {
+    return expanded;
+  }
+
+  throw new Error(`Generated article word count ${expanded.wordCount || lastWordCount} is outside ${range.min}-${range.max}`);
 };
 
 const createReviewArticle = async ({ input, run }) => {
