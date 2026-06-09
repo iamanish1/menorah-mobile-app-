@@ -55,11 +55,8 @@ export default function BookingDetailPage() {
     qc.invalidateQueries({ queryKey: ['bookings'] });
   };
 
-  const handleJoinCall = async () => {
-    const res = await api.joinVideoRoom(id);
-    if (res.success && res.data?.roomUrl) {
-      window.open(res.data.roomUrl, '_blank');
-    }
+  const handleJoinCall = () => {
+    router.push(`/call/${id}`);
   };
 
   if (isLoading) return <div className="flex items-center justify-center min-h-[60vh]"><Spinner size="lg" /></div>;
