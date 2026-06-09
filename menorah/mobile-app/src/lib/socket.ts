@@ -90,9 +90,8 @@ class SocketService {
         throw new Error('Authentication token required for socket connection');
       }
 
-      // Socket.IO connects to the origin (no /api prefix).
-      // URL is always derived from ENV — no domain is hardcoded here.
-      const socketUrl = ENV.API_ORIGIN || ENV.API_BASE_URL?.replace(/\/api\/?$/, '') || 'http://localhost:3000';
+      // Socket.IO connects to the deployed origin (no /api prefix).
+      const socketUrl = ENV.API_ORIGIN || ENV.API_BASE_URL?.replace(/\/api\/?$/, '') || 'https://api.menorah.me';
 
       this.socket = io(socketUrl, {
         auth: { token },

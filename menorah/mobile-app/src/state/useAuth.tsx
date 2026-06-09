@@ -138,9 +138,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Token and user will be set after OTP verification via verifyEmailOtp().
         return { success: true, message: response.message };
       } else {
+        const validationMessage = Array.isArray(response.errors)
+          ? response.errors.map((err: any) => err.msg).filter(Boolean).join('\n')
+          : undefined;
+
         return {
           success: false,
-          message: response.message || 'Registration failed'
+          message: validationMessage || response.message || 'Registration failed'
         };
       }
     } catch (error: any) {

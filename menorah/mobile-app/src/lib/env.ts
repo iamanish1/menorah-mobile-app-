@@ -7,7 +7,7 @@ const configBaseURL: string | undefined =
   ((Constants.expoConfig?.extra as any)?.API_BASE_URL as string | undefined);
 
 const normalizeBaseURL = (url?: string) => {
-  const candidate = (url ?? 'http://localhost:3000/api').trim().replace(/\/+$/, '');
+  const candidate = (url ?? 'https://api.menorah.me/api').trim().replace(/\/+$/, '');
 
   // Only remap localhost for Android emulator (emulator can't reach host via localhost)
   if (Platform.OS === 'android' && candidate.includes('localhost')) {

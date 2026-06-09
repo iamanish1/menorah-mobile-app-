@@ -57,14 +57,16 @@ export default function Login({ navigation }: any) {
   const { login } = useAuth();
 
   const handleLogin = async () => {
-    if (!email || !password) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
     setLoading(true);
     setShowNetworkError(false);
     try {
-      const result = await login(email, password);
+      const result = await login(normalizedEmail, password);
       if (result.success) {
         navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
       } else {

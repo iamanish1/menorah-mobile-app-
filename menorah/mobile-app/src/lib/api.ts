@@ -196,6 +196,10 @@ class ApiClient {
     return cleaned;
   }
 
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
   // Generic request method
   private async request<T>(config: any): Promise<ApiResponse<T>> {
     try {
@@ -252,7 +256,14 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: '/auth/register',
-      data: userData,
+      data: {
+        ...userData,
+        firstName: userData.firstName.trim(),
+        lastName: userData.lastName.trim(),
+        email: this.normalizeEmail(userData.email),
+        phone: userData.phone.trim(),
+        dateOfBirth: userData.dateOfBirth.trim(),
+      },
     });
   }
 
@@ -260,7 +271,10 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: '/auth/login',
-      data: credentials,
+      data: {
+        ...credentials,
+        email: this.normalizeEmail(credentials.email),
+      },
     });
   }
 
@@ -276,7 +290,7 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: '/auth/verify-email-otp',
-      data: { email, otp },
+      data: { email: this.normalizeEmail(email), otp: otp.trim() },
     });
   }
 
@@ -284,7 +298,7 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: '/auth/resend-email-verification',
-      data: { email },
+      data: { email: this.normalizeEmail(email) },
     });
   }
 
@@ -292,7 +306,7 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: '/auth/resend-email-otp',
-      data: { email },
+      data: { email: this.normalizeEmail(email) },
     });
   }
 

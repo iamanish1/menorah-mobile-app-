@@ -43,6 +43,10 @@ export default function Register({ navigation }: any) {
     return dateObj instanceof Date && !isNaN(dateObj.getTime());
   };
 
+  const validatePassword = (value: string) => {
+    return value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value);
+  };
+
   const getPasswordStrength = (password: string) => {
     if (password.length === 0) return { strength: 0, label: '', color: colors.muted };
     if (password.length < 6) return { strength: 1, label: 'Weak', color: '#EF4444' };
@@ -74,8 +78,8 @@ export default function Register({ navigation }: any) {
         }
         break;
       case 'password':
-        if (value && value.length < 8) {
-          newErrors.password = 'Password must be at least 8 characters';
+        if (value && !validatePassword(value)) {
+          newErrors.password = 'Password must be at least 8 characters and include uppercase, lowercase, and a number';
         }
         break;
       case 'confirmPassword':
@@ -95,19 +99,26 @@ export default function Register({ navigation }: any) {
     // Validate all fields
     const newErrors: Record<string, string> = {};
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     if (!firstName.trim()) newErrors.firstName = 'First name is required';
     if (!lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!email.trim()) newErrors.email = 'Email is required';
-    else if (!validateEmail(email)) newErrors.email = 'Please enter a valid email';
+    if (!normalizedEmail) newErrors.email = 'Email is required';
+    else if (!validateEmail(normalizedEmail)) newErrors.email = 'Please enter a valid email';
     
-    if (!phone.trim()) newErrors.phone = 'Phone is required';
-    else if (!validatePhone(phone)) newErrors.phone = 'Phone must include country code (e.g., +1234567890)';
+    const normalizedPhone = phone.trim();
+    const normalizedDateOfBirth = dateOfBirth.trim();
+
+    if (!normalizedPhone) newErrors.phone = 'Phone is required';
+    else if (!validatePhone(normalizedPhone)) newErrors.phone = 'Phone must include country code (e.g., +1234567890)';
     
-    if (!dateOfBirth.trim()) newErrors.dateOfBirth = 'Date of birth is required';
-    else if (!validateDate(dateOfBirth)) newErrors.dateOfBirth = 'Please enter date in YYYY-MM-DD format';
+    if (!normalizedDateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
+    else if (!validateDate(normalizedDateOfBirth)) newErrors.dateOfBirth = 'Please enter date in YYYY-MM-DD format';
     
     if (!password) newErrors.password = 'Password is required';
-    else if (password.length < 8) newErrors.password = 'Password must be at least 8 characters';
+    else if (!validatePassword(password)) {
+      newErrors.password = 'Password must be at least 8 characters and include uppercase, lowercase, and a number';
+    }
     
     if (!confirmPassword) newErrors.confirmPassword = 'Please confirm your password';
     else if (password !== confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
@@ -124,10 +135,10 @@ export default function Register({ navigation }: any) {
       const result = await register({
         firstName,
         lastName,
-        email,
-        phone,
+        email: normalizedEmail,
+        phone: normalizedPhone,
         password,
-        dateOfBirth,
+        dateOfBirth: normalizedDateOfBirth,
         gender
       });
 
