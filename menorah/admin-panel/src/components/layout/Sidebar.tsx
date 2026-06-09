@@ -3,20 +3,20 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, Users, UserCheck, Wallet, Send, Newspaper, Sparkles, LogOut, Menu, X
+  Bot, CircleGauge, FileText, LogOut, Menu, SendHorizontal, UserRoundCheck, UsersRound, WalletCards, X
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { href: '/dashboard',   label: 'Dashboard',        icon: LayoutDashboard },
-  { href: '/counsellors', label: 'Counsellors',       icon: UserCheck       },
-  { href: '/users',       label: 'Users',             icon: Users           },
-  { href: '/revenue',     label: 'Revenue & Payouts', icon: Wallet          },
-  { href: '/payouts',     label: 'Payout History',    icon: Send            },
-  { href: '/articles',    label: 'Articles',          icon: Newspaper       },
-  { href: '/ai-social-studio', label: 'AI Social Studio', icon: Sparkles     },
+  { href: '/dashboard',   label: 'Dashboard',        icon: CircleGauge    },
+  { href: '/counsellors', label: 'Counsellors',       icon: UserRoundCheck },
+  { href: '/users',       label: 'Users',             icon: UsersRound     },
+  { href: '/revenue',     label: 'Revenue & Payouts', icon: WalletCards    },
+  { href: '/payouts',     label: 'Payout History',    icon: SendHorizontal },
+  { href: '/articles',    label: 'Articles',          icon: FileText       },
+  { href: '/ai-social-studio', label: 'AI Social Studio', icon: Bot         },
 ];
 
 export default function Sidebar() {
@@ -27,16 +27,16 @@ export default function Sidebar() {
   const NavContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-700/50">
-        <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white text-lg">M</div>
-        <div>
+      <div className="flex items-center gap-3 border-b border-white/10 px-4 py-5">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-lg font-bold text-white shadow-lg shadow-blue-950/20">M</div>
+        <div className="min-w-0 overflow-hidden transition-all duration-300 lg:w-0 lg:opacity-0 lg:group-hover/sidebar:w-44 lg:group-hover/sidebar:opacity-100 lg:group-focus-within/sidebar:w-44 lg:group-focus-within/sidebar:opacity-100">
           <p className="text-white font-semibold text-sm leading-none">Menorah Health</p>
           <p className="text-slate-400 text-xs mt-0.5">Admin Panel</p>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-4 space-y-1.5">
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/');
           return (
@@ -44,37 +44,43 @@ export default function Sidebar() {
               key={href}
               href={href}
               onClick={() => setMobileOpen(false)}
+              title={label}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                'flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200',
                 active
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400 hover:bg-slate-700/60 hover:text-white'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-950/20'
+                  : 'text-slate-400 hover:bg-white/10 hover:text-white'
               )}
             >
-              <Icon size={18} />
-              {label}
+              <Icon size={19} strokeWidth={1.9} className="flex-shrink-0" />
+              <span className="min-w-0 overflow-hidden whitespace-nowrap transition-all duration-300 lg:w-0 lg:opacity-0 lg:group-hover/sidebar:w-44 lg:group-hover/sidebar:opacity-100 lg:group-focus-within/sidebar:w-44 lg:group-focus-within/sidebar:opacity-100">
+                {label}
+              </span>
             </Link>
           );
         })}
       </nav>
 
       {/* User + Logout */}
-      <div className="px-3 py-4 border-t border-slate-700/50">
-        <div className="flex items-center gap-3 px-3 py-2 mb-1">
-          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
+      <div className="border-t border-white/10 px-3 py-4">
+        <div className="mb-1 flex items-center gap-3 px-3 py-2">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
             {user?.firstName?.[0]}{user?.lastName?.[0]}
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 overflow-hidden transition-all duration-300 lg:w-0 lg:opacity-0 lg:group-hover/sidebar:w-44 lg:group-hover/sidebar:opacity-100 lg:group-focus-within/sidebar:w-44 lg:group-focus-within/sidebar:opacity-100">
             <p className="text-white text-sm font-medium truncate">{user?.firstName} {user?.lastName}</p>
             <p className="text-slate-400 text-xs truncate">{user?.email}</p>
           </div>
         </div>
         <button
           onClick={logout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-red-600/20 hover:text-red-400 transition-colors w-full"
+          title="Sign Out"
+          className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-400 transition-colors hover:bg-red-600/20 hover:text-red-400"
         >
-          <LogOut size={18} />
-          Sign Out
+          <LogOut size={19} strokeWidth={1.9} className="flex-shrink-0" />
+          <span className="min-w-0 overflow-hidden whitespace-nowrap transition-all duration-300 lg:w-0 lg:opacity-0 lg:group-hover/sidebar:w-44 lg:group-hover/sidebar:opacity-100 lg:group-focus-within/sidebar:w-44 lg:group-focus-within/sidebar:opacity-100">
+            Sign Out
+          </span>
         </button>
       </div>
     </div>
@@ -84,7 +90,7 @@ export default function Sidebar() {
     <>
       {/* Mobile toggle */}
       <button
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-slate-800 text-white"
+        className="fixed left-4 top-4 z-50 rounded-xl bg-slate-900 p-2 text-white shadow-xl lg:hidden"
         onClick={() => setMobileOpen(!mobileOpen)}
       >
         {mobileOpen ? <X size={20} /> : <Menu size={20} />}
@@ -97,14 +103,17 @@ export default function Sidebar() {
 
       {/* Mobile sidebar */}
       <aside className={cn(
-        'lg:hidden fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 transition-transform duration-200',
+        'fixed inset-y-0 left-0 z-40 w-64 bg-slate-950 transition-transform duration-200 lg:hidden',
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
         <NavContent />
       </aside>
 
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex flex-col w-64 bg-slate-900 h-screen sticky top-0">
+      <aside
+        className="group/sidebar fixed inset-y-4 left-4 z-40 hidden w-[72px] flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-950/95 shadow-2xl shadow-slate-950/25 backdrop-blur-xl transition-[width] duration-300 ease-out hover:w-[280px] focus-within:w-[280px] lg:flex"
+        aria-label="Admin navigation"
+      >
         <NavContent />
       </aside>
     </>
