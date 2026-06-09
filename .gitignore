@@ -64,6 +64,8 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 local.properties
+menorah/mobile-app/credentials.json
+menorah/mobile-app/credentials/
 
 # Generated native iOS project
 menorah/mobile-app/ios/
