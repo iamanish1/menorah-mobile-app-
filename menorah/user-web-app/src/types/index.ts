@@ -164,8 +164,8 @@ export interface ChatMessage {
 // ─── Video ────────────────────────────────────────────────────────────────────
 export interface VideoRoom {
   roomId: string;
-  roomUrl: string;
-  jitsiToken: string | null;
+  livekitUrl: string;
+  livekitToken: string;
   sessionType: SessionType;
   counsellorName: string;
   userName: string;

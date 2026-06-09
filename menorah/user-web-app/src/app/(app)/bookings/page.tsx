@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Plus, Video, MessageCircle, Headphones, Clock } from 'lucide-react';
+import { CalendarDays, Plus, Video, MessageCircle, Headphones, Clock, CreditCard } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Badge, Button, SegmentedControl, Spinner } from '@/components/ui';
 import { formatBookingDate, formatCurrency, getStatusColor } from '@/lib/utils';
@@ -84,31 +84,52 @@ export default function BookingsPage() {
         <div className="space-y-3">
           {bookings.map((booking) => {
             const Icon = sessionIcons[booking.sessionType] ?? Video;
-            return (
-              <Link key={booking.id} href={`/bookings/${booking.id}`}>
-                <div className="card p-4 hover:shadow-md transition-shadow flex gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-primary-50 dark:bg-primary-800 flex items-center justify-center shrink-0">
-                    <Icon className="w-5 h-5 text-primary-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-bold text-gray-950 dark:text-primary-50 truncate">
-                        {booking.counsellorName ?? 'Counsellor to be assigned'}
-                      </p>
+            const needsPayment = booking.paymentStatus === 'pending' && !booking.isSubscriptionBooking;
+            const cardContent = (
+              <div className={`card p-4 hover:shadow-md transition-shadow flex gap-4 ${needsPayment ? 'border border-amber-200 dark:border-amber-700' : ''}`}>
+                <div className="w-10 h-10 rounded-2xl bg-primary-50 dark:bg-primary-800 flex items-center justify-center shrink-0">
+                  <Icon className="w-5 h-5 text-primary-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-bold text-gray-950 dark:text-primary-50 truncate">
+                      {booking.counsellorName ?? 'Counsellor to be assigned'}
+                    </p>
+                    {needsPayment ? (
+                      <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-800 dark:text-amber-200">
+                        Payment pending
+                      </Badge>
+                    ) : (
                       <Badge className={getStatusColor(booking.status)}>
                         {booking.status}
                       </Badge>
-                    </div>
-                    <p className="text-sm text-gray-500 dark:text-primary-100/65 mt-0.5 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {booking.scheduledAt ? formatBookingDate(booking.scheduledAt) : 'Schedule pending'}
-                    </p>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 dark:text-primary-100/50">
-                      <span className="capitalize">{booking.sessionType} • {booking.sessionDuration} min</span>
-                      {booking.amount && <span>{formatCurrency(booking.amount, booking.currency)}</span>}
-                    </div>
+                    )}
                   </div>
+                  <p className="text-sm text-gray-500 dark:text-primary-100/65 mt-0.5 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {booking.scheduledAt ? formatBookingDate(booking.scheduledAt) : 'Schedule pending'}
+                  </p>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 dark:text-primary-100/50">
+                    <span className="capitalize">{booking.sessionType} • {booking.sessionDuration} min</span>
+                    {booking.amount && <span>{formatCurrency(booking.amount, booking.currency)}</span>}
+                  </div>
+                  {needsPayment && (
+                    <div className="mt-2 flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                      <CreditCard className="w-3 h-3" />
+                      Tap to complete payment
+                    </div>
+                  )}
                 </div>
+              </div>
+            );
+
+            return needsPayment ? (
+              <Link key={booking.id} href={`/bookings/payment?bookingId=${booking.id}`}>
+                {cardContent}
+              </Link>
+            ) : (
+              <Link key={booking.id} href={`/bookings/${booking.id}`}>
+                {cardContent}
               </Link>
             );
           })}
