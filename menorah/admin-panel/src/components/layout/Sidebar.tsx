@@ -29,7 +29,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="flex items-center gap-3 border-b border-white/10 px-4 py-5">
         <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-lg font-bold text-white shadow-lg shadow-blue-950/20">M</div>
-        <div className="min-w-0 overflow-hidden transition-all duration-300 lg:w-0 lg:opacity-0 lg:group-hover/sidebar:w-44 lg:group-hover/sidebar:opacity-100 lg:group-focus-within/sidebar:w-44 lg:group-focus-within/sidebar:opacity-100">
+        <div className="min-w-0 overflow-hidden">
           <p className="text-white font-semibold text-sm leading-none">Menorah Health</p>
           <p className="text-slate-400 text-xs mt-0.5">Admin Panel</p>
         </div>
@@ -53,7 +53,7 @@ export default function Sidebar() {
               )}
             >
               <Icon size={19} strokeWidth={1.9} className="flex-shrink-0" />
-              <span className="min-w-0 overflow-hidden whitespace-nowrap transition-all duration-300 lg:w-0 lg:opacity-0 lg:group-hover/sidebar:w-44 lg:group-hover/sidebar:opacity-100 lg:group-focus-within/sidebar:w-44 lg:group-focus-within/sidebar:opacity-100">
+              <span className="min-w-0 overflow-hidden whitespace-nowrap">
                 {label}
               </span>
             </Link>
@@ -67,7 +67,7 @@ export default function Sidebar() {
           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
             {user?.firstName?.[0]}{user?.lastName?.[0]}
           </div>
-          <div className="min-w-0 overflow-hidden transition-all duration-300 lg:w-0 lg:opacity-0 lg:group-hover/sidebar:w-44 lg:group-hover/sidebar:opacity-100 lg:group-focus-within/sidebar:w-44 lg:group-focus-within/sidebar:opacity-100">
+          <div className="min-w-0 overflow-hidden">
             <p className="text-white text-sm font-medium truncate">{user?.firstName} {user?.lastName}</p>
             <p className="text-slate-400 text-xs truncate">{user?.email}</p>
           </div>
@@ -78,7 +78,7 @@ export default function Sidebar() {
           className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-400 transition-colors hover:bg-red-600/20 hover:text-red-400"
         >
           <LogOut size={19} strokeWidth={1.9} className="flex-shrink-0" />
-          <span className="min-w-0 overflow-hidden whitespace-nowrap transition-all duration-300 lg:w-0 lg:opacity-0 lg:group-hover/sidebar:w-44 lg:group-hover/sidebar:opacity-100 lg:group-focus-within/sidebar:w-44 lg:group-focus-within/sidebar:opacity-100">
+          <span className="min-w-0 overflow-hidden whitespace-nowrap">
             Sign Out
           </span>
         </button>
@@ -111,7 +111,7 @@ export default function Sidebar() {
 
       {/* Desktop sidebar */}
       <aside
-        className="group/sidebar fixed inset-y-4 left-4 z-40 hidden w-[72px] flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-950/95 shadow-2xl shadow-slate-950/25 backdrop-blur-xl transition-[width] duration-300 ease-out hover:w-[280px] focus-within:w-[280px] lg:flex"
+        className="fixed inset-y-4 left-4 z-40 hidden w-64 flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-950/95 shadow-2xl shadow-slate-950/25 backdrop-blur-xl lg:flex"
         aria-label="Admin navigation"
       >
         <NavContent />
