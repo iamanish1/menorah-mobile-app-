@@ -65,6 +65,9 @@ expo-env.d.ts
 *.mobileprovision
 local.properties
 
+# Generated native iOS project
+menorah/mobile-app/ios/
+
 # Temporary files
 tmp/
 temp/
@@ -84,4 +87,3 @@ temp/
 # Debug files
 *.log
 debug.log
-
