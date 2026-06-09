@@ -1,19 +1,14 @@
 import React from 'react';
 import { createBottomTabNavigator, type BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
-import { Platform } from 'react-native';
 import { Search, Calendar, MessageCircle, User } from 'lucide-react-native';
 import type { ComponentType } from 'react';
 import Discover from '@/screens/discover/Discover';
 import Bookings from '@/screens/booking/Bookings';
 import ChatList from '@/screens/chat/ChatList';
 import ProfileHome from '@/screens/profile/ProfileHome';
-import { palettes } from '@/theme/colors';
-import { useThemeMode } from '@/theme/ThemeProvider';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IOSFloatingTabBar, useIOSTheme } from '@/components/ios';
 
 const Tab = createBottomTabNavigator();
-const isIOS = Platform.OS === 'ios';
 
 type IconProps = {
   color?: string;
@@ -34,42 +29,22 @@ function createTabOptions({ label, Icon }: TabOptionConfig): BottomTabNavigation
 }
 
 export default function TabNavigator() {
-  const { scheme } = useThemeMode();
-  const colors = palettes[scheme];
   const iosTheme = useIOSTheme();
-  const insets = useSafeAreaInsets();
-  const tabBarBottomPadding = Math.max(insets.bottom, 16);
-  const tabBarHeight = 60 + tabBarBottomPadding;
 
   return (
     <Tab.Navigator
       initialRouteName="Discover"
-      tabBar={isIOS ? (props) => <IOSFloatingTabBar {...props} /> : undefined}
+      tabBar={(props) => <IOSFloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: isIOS ? iosTheme.colors.primary : scheme === 'dark' ? colors.secondary : colors.primary,
-        tabBarInactiveTintColor: isIOS ? iosTheme.colors.textMuted : scheme === 'dark' ? colors.muted : '#9CA3AF',
-        tabBarStyle: isIOS
-          ? {
-              position: 'absolute',
-              backgroundColor: 'transparent',
-              borderTopWidth: 0,
-              elevation: 0,
-            }
-          : {
-              backgroundColor: scheme === 'dark' ? colors.bg : '#ffffff',
-              borderTopWidth: 1,
-              borderTopColor: colors.border,
-              paddingBottom: tabBarBottomPadding,
-              paddingTop: 8,
-              height: tabBarHeight,
-            },
-        tabBarLabelStyle: isIOS
-          ? undefined
-          : {
-              fontSize: 12,
-              fontWeight: '600',
-            },
+        tabBarActiveTintColor: iosTheme.colors.primary,
+        tabBarInactiveTintColor: iosTheme.colors.textMuted,
+        tabBarStyle: {
+          position: 'absolute',
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
+          elevation: 0,
+        },
       }}
     >
       <Tab.Screen
