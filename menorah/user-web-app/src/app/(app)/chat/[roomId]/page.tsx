@@ -3,14 +3,55 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Send, Paperclip, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Check, CheckCheck, Clock3, Send } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Avatar, Spinner } from '@/components/ui';
 import { formatMessageTime } from '@/lib/utils';
 import { useSocket } from '@/context/SocketContext';
 import { useAuth } from '@/context/AuthContext';
 import { socketEvents } from '@/lib/socket';
-import type { ChatMessage } from '@/types';
+import type { ChatMessage, User } from '@/types';
+
+type LocalChatMessage = ChatMessage & {
+  localId?: string;
+  localStatus?: 'sending' | 'failed';
+};
+
+type UserWithMongoId = User & {
+  _id?: string | { toString: () => string };
+};
+
+function getUserId(user: User | null): string {
+  const rawId = user?.id ?? (user as UserWithMongoId | null)?._id;
+  if (!rawId) return '';
+  return typeof rawId === 'string' ? rawId : rawId.toString();
+}
+
+function getUserName(user: User | null): string {
+  const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+  return name || 'You';
+}
+
+function MessageStatus({ status, localStatus }: { status?: ChatMessage['status']; localStatus?: LocalChatMessage['localStatus'] }) {
+  if (localStatus === 'sending') {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <Clock3 className="h-3 w-3" />
+        Sending
+      </span>
+    );
+  }
+
+  if (localStatus === 'failed') {
+    return <span className="text-red-500 dark:text-red-300">Failed</span>;
+  }
+
+  if (status === 'read') {
+    return <CheckCheck className="inline h-3.5 w-3.5 text-primary-500 dark:text-primary-200" aria-label="Read" />;
+  }
+
+  return <Check className="inline h-3.5 w-3.5" aria-label={status === 'delivered' ? 'Delivered' : 'Sent'} />;
+}
 
 function TypingIndicator() {
   return (
@@ -36,7 +77,7 @@ export default function ChatThreadPage() {
   const qc         = useQueryClient();
   const { socket, joinRoom, leaveRoom, startTyping, stopTyping, markRead } = useSocket();
 
-  const [messages, setMessages]       = useState<ChatMessage[]>([]);
+  const [messages, setMessages]       = useState<LocalChatMessage[]>([]);
   const [input, setInput]             = useState('');
   const [isTyping, setIsTyping]       = useState(false);
   const [counsellorTyping, setCounsellorTyping] = useState(false);
@@ -48,6 +89,7 @@ export default function ChatThreadPage() {
   const bottomRef    = useRef<HTMLDivElement>(null);
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
   const typingTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const myId         = getUserId(user);
 
   // Get chat rooms to find counsellor info — always refetch so newly created rooms show up
   const { data: roomsData } = useQuery({
@@ -93,27 +135,34 @@ export default function ChatThreadPage() {
     if (!socket) return;
 
     const onNewMessage = (msg: ChatMessage) => {
+      const isOwnIncoming = !!myId && msg.senderId === myId;
+
       setMessages((prev) => {
         // Replace optimistic placeholder if content matches (own sent messages)
-        const optIdx = prev.findIndex(
-          (m) => m.id.startsWith('opt_') && m.content === msg.content
-        );
+        const optIdx = isOwnIncoming
+          ? prev.findIndex((m) => m.id.startsWith('opt_') && m.senderId === myId && m.content === msg.content)
+          : -1;
+
         if (optIdx !== -1) {
           const next = [...prev];
-          next[optIdx] = msg;
+          next[optIdx] = {
+            ...msg,
+            localId: next[optIdx].localId ?? next[optIdx].id,
+            localStatus: undefined,
+          };
           return next;
         }
         // Deduplicate by real message ID
         if (prev.some((m) => m.id === msg.id)) return prev;
         return [...prev, msg];
       });
-      if (msg.senderId !== user?.id) {
+      if (!isOwnIncoming) {
         markRead(roomId, msg.id);
       }
     };
 
     const onTyping = (data: { userId?: string; isTyping?: boolean }) => {
-      if (data.userId !== user?.id) setCounsellorTyping(data.isTyping ?? false);
+      if (data.userId !== myId) setCounsellorTyping(data.isTyping ?? false);
     };
 
     const onStatusChanged = (data: { userId?: string; isOnline?: boolean }) => {
@@ -131,7 +180,7 @@ export default function ChatThreadPage() {
       socket.off(socketEvents.USER_TYPING, onTyping);
       socket.off(socketEvents.USER_STATUS_CHANGED, onStatusChanged);
     };
-  }, [socket, user, roomId, room, markRead]);
+  }, [socket, myId, roomId, room, markRead]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -140,26 +189,48 @@ export default function ChatThreadPage() {
 
   const handleSend = useCallback(async () => {
     const content = input.trim();
-    if (!content) return;
+    if (!content || !myId) return;
 
     setInput('');
     stopTyping(roomId);
 
     // Optimistic update
-    const optimistic: ChatMessage = {
-      id:         `opt_${Date.now()}`,
-      senderId:   user?.id ?? '',
-      senderName: `${user?.firstName} ${user?.lastName}`,
+    const optimisticId = `opt_${Date.now()}`;
+    const optimistic: LocalChatMessage = {
+      id:         optimisticId,
+      localId:    optimisticId,
+      senderId:   myId,
+      senderName: getUserName(user),
       content,
       timestamp:  new Date().toISOString(),
       type:       'text',
       status:     'sent',
+      localStatus: 'sending',
     };
     setMessages((prev) => [...prev, optimistic]);
 
     // Send via REST only — backend emits new_message via socket to all participants
-    await api.sendMessage(roomId, content);
-  }, [input, roomId, user, stopTyping]);
+    try {
+      const res = await api.sendMessage(roomId, content);
+      if (res.success && res.data?.message) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === optimisticId
+              ? { ...res.data!.message, localId: optimisticId, localStatus: undefined }
+              : msg
+          )
+        );
+      } else {
+        setMessages((prev) =>
+          prev.map((msg) => (msg.id === optimisticId ? { ...msg, localStatus: 'failed' } : msg))
+        );
+      }
+    } catch {
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === optimisticId ? { ...msg, localStatus: 'failed' } : msg))
+      );
+    }
+  }, [input, roomId, user, myId, stopTyping]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -195,18 +266,18 @@ export default function ChatThreadPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen lg:h-[calc(100vh-0px)]">
+    <div className="chat-thread flex h-screen flex-col bg-surface-50 lg:h-[calc(100vh-0px)] dark:bg-[#020604]">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3 shrink-0">
-        <button onClick={() => router.back()} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-          <ArrowLeft className="w-5 h-5 text-gray-600" />
+      <div className="flex shrink-0 items-center gap-3 border-b border-gray-100 bg-white/90 px-4 py-3 backdrop-blur-xl dark:border-primary-900 dark:bg-[#07110b]/92">
+        <button onClick={() => router.back()} className="rounded-full p-2 transition-colors hover:bg-gray-100 dark:hover:bg-primary-900">
+          <ArrowLeft className="h-5 w-5 text-gray-600 dark:text-primary-100" />
         </button>
         {room ? (
           <>
             <Avatar src={room.counsellorImage} name={room.counsellorName} size="sm" online={counsellorOnline || room.isOnline} />
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-gray-900 text-sm">{room.counsellorName}</p>
-              <p className="text-xs text-gray-400">
+              <p className="text-sm font-semibold text-gray-900 dark:text-primary-50">{room.counsellorName}</p>
+              <p className="text-xs text-gray-400 dark:text-primary-100/55">
                 {counsellorOnline || room.isOnline ? 'Online' : 'Offline'}
               </p>
             </div>
@@ -220,7 +291,7 @@ export default function ChatThreadPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-surface-50">
+      <div className="flex-1 space-y-3 overflow-y-auto bg-surface-50 px-4 py-4 dark:bg-[#020604]">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <Spinner size="lg" />
@@ -241,26 +312,32 @@ export default function ChatThreadPage() {
             )}
 
             {messages.map((msg) => {
-              const myId = user?.id ?? (user as any)?._id?.toString();
               const isMe = !!myId && msg.senderId === myId;
+              const isSending = msg.localStatus === 'sending';
+              const isFailed = msg.localStatus === 'failed';
               return (
-                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} gap-2`}>
+                <div
+                  key={msg.localId ?? msg.id}
+                  className={`chat-message-row flex ${isMe ? 'chat-message-row--me justify-end' : 'chat-message-row--them justify-start'} gap-2`}
+                >
                   {!isMe && (
                     <Avatar src={room?.counsellorImage} name={room?.counsellorName ?? 'C'} size="sm" className="mt-auto shrink-0" />
                   )}
-                  <div className={`max-w-[75%] group`}>
-                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed
-                      ${isMe
-                        ? 'bg-primary-600 text-white rounded-br-sm'
-                        : 'bg-white text-gray-900 shadow-card rounded-bl-sm'
-                      }`}
+                  <div className="group max-w-[78%]">
+                    <div
+                      className={`chat-bubble px-4 py-2.5 text-sm leading-relaxed
+                        ${isMe ? 'chat-bubble--me' : 'chat-bubble--them'}
+                        ${isSending ? 'chat-bubble--sending' : ''}
+                        ${isFailed ? 'chat-bubble--failed' : ''}`}
                     >
                       {msg.content}
                     </div>
-                    <p className={`text-[10px] mt-1 ${isMe ? 'text-right text-gray-400' : 'text-gray-400'}`}>
+                    <p className={`mt-1.5 text-[10px] ${isMe ? 'text-right text-gray-400 dark:text-primary-100/45' : 'text-gray-400 dark:text-primary-100/45'}`}>
                       {formatMessageTime(msg.timestamp)}
-                      {isMe && msg.status && (
-                        <span className="ml-1">{msg.status === 'read' ? '✓✓' : '✓'}</span>
+                      {isMe && (
+                        <span className="ml-1.5 align-middle">
+                          <MessageStatus status={msg.status} localStatus={msg.localStatus} />
+                        </span>
                       )}
                     </p>
                   </div>
@@ -275,7 +352,7 @@ export default function ChatThreadPage() {
       </div>
 
       {/* Input bar */}
-      <div className="bg-white border-t border-gray-100 px-4 py-3 flex items-end gap-3 shrink-0">
+      <div className="flex shrink-0 items-end gap-3 border-t border-gray-100 bg-white/92 px-4 py-3 backdrop-blur-xl dark:border-primary-900 dark:bg-[#07110b]/92">
         <textarea
           ref={textareaRef}
           value={input}
@@ -283,9 +360,10 @@ export default function ChatThreadPage() {
           onKeyDown={handleKeyDown}
           placeholder="Type a message… (Enter to send)"
           rows={1}
-          className="flex-1 resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3
-                     text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                     max-h-32 transition-all"
+          className="flex-1 resize-none rounded-[1.35rem] border border-gray-200 bg-gray-50 px-4 py-3
+                     text-sm text-gray-950 transition-all placeholder:text-gray-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500
+                     dark:border-primary-800 dark:bg-[#020604] dark:text-primary-50 dark:placeholder:text-primary-100/45
+                     max-h-32"
           style={{ height: 'auto' }}
           onInput={(e) => {
             const el = e.target as HTMLTextAreaElement;
@@ -296,8 +374,7 @@ export default function ChatThreadPage() {
         <button
           onClick={handleSend}
           disabled={!input.trim()}
-          className="w-10 h-10 bg-primary-600 hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed
-                     rounded-xl flex items-center justify-center text-white transition-colors shrink-0"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white shadow-lg shadow-primary-600/20 transition-all hover:scale-105 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100 dark:bg-primary-300 dark:text-[#06110b] dark:shadow-primary-300/15"
         >
           <Send className="w-4 h-4" />
         </button>
