@@ -20,7 +20,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/brand/menorah-logo-no-bg.png",
+        "foregroundImage": "./assets/brand/menorah_logo.png",
         "backgroundColor": "#f0f9f4"
       },
       "package": "com.menorah.healthmobile",
