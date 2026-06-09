@@ -25,6 +25,16 @@ a {
 
 [data-menorah-landing-theme="source"] {
   color-scheme: light;
+  --app-primary: #2d7a5c;
+  --app-secondary: #3d9470;
+  --app-accent: #ff7d10;
+  --app-bg: #f9fafb;
+  --app-sand: #f0f9f4;
+  --app-card: #ffffff;
+  --app-text: #111827;
+  --app-muted: #6b7280;
+  --app-border: #e5e7eb;
+  --app-shadow: 0 10px 30px -18px rgba(45, 122, 92, 0.35);
 }
 
 html.dark [data-menorah-landing-theme="source"] .bg-white {
@@ -68,6 +78,111 @@ html.dark [data-menorah-landing-theme="source"] .text-gray-500 {
 
 html.dark [data-menorah-landing-theme="source"] .text-gray-400 {
   color: rgb(156 163 175);
+}
+
+html.dark [data-menorah-landing-theme="source"] .card {
+  background: rgb(255 255 255);
+  border-color: color-mix(in srgb, rgb(229 231 235) 86%, transparent);
+  box-shadow: 0 10px 30px -18px rgba(45, 122, 92, 0.35);
+}
+
+html.dark [data-menorah-landing-theme="source"] .input-field {
+  background: rgb(255 255 255);
+  color: rgb(17 24 39);
+  border-color: rgb(229 231 235);
+}
+
+html.dark [data-menorah-landing-theme="source"] .app-page-heading,
+html.dark [data-menorah-landing-theme="source"] .section-title,
+html.dark [data-menorah-landing-theme="source"] .dark\:text-primary-50 {
+  color: rgb(3 7 18);
+}
+
+html.dark [data-menorah-landing-theme="source"] .app-page-subtitle,
+html.dark [data-menorah-landing-theme="source"] .dark\:text-primary-100\/70,
+html.dark [data-menorah-landing-theme="source"] .dark\:text-primary-100\/65,
+html.dark [data-menorah-landing-theme="source"] .dark\:text-primary-100\/60,
+html.dark [data-menorah-landing-theme="source"] .dark\:text-primary-100\/50,
+html.dark [data-menorah-landing-theme="source"] .dark\:text-primary-100\/45 {
+  color: rgb(107 114 128);
+}
+
+html.dark [data-menorah-landing-theme="source"] .dark\:bg-primary-950,
+html.dark [data-menorah-landing-theme="source"] .dark\:bg-primary-900 {
+  background-color: rgb(255 255 255);
+}
+
+html.dark [data-menorah-landing-theme="source"] .dark\:bg-primary-800 {
+  background-color: rgb(220 252 231);
+}
+
+html.dark [data-menorah-landing-theme="source"] .dark\:border-primary-800,
+html.dark [data-menorah-landing-theme="source"] .dark\:border-primary-700 {
+  border-color: rgb(229 231 235);
+}
+
+html.dark [data-menorah-landing-theme="source"] .dark\:bg-green-950 {
+  background-color: rgb(220 252 231);
+}
+
+html.dark [data-menorah-landing-theme="source"] .dark\:text-green-200 {
+  color: rgb(21 128 61);
+}
+
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card {
+  border-color: #dfe3dd;
+  background: rgb(255 255 255);
+  box-shadow: 0 14px 45px rgba(35, 45, 36, 0.08);
+}
+
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card:hover {
+  border-color: #dfe3dd;
+  box-shadow: 0 24px 70px rgba(35, 45, 36, 0.12);
+}
+
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card__body {
+  background: rgb(255 255 255);
+}
+
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card__avatar {
+  border-color: rgb(255 255 255 / 0.35);
+  background: rgb(255 255 255 / 0.25);
+  color: hsl(var(--menorah-green));
+}
+
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card__tag,
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card__waveform {
+  border-color: #d9ddd6;
+  background: rgb(255 255 255);
+  color: #0f172a;
+}
+
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card__outline-button {
+  border-color: #0f172a;
+  background: rgb(255 255 255);
+  color: #0f172a;
+}
+
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card__book-button {
+  background: hsl(var(--menorah-green));
+  color: rgb(255 255 255);
+}
+
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card__stat {
+  background: #f7f7f6;
+}
+
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card__stat-value,
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card__availability-value {
+  color: #0f172a;
+}
+
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card__stat-label {
+  color: #334155;
+}
+
+html.dark [data-menorah-landing-theme="source"] .counsellor-profile-card__availability-label {
+  color: #a1a8ad;
 }
 
 .site-loader-shell {

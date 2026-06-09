@@ -12,7 +12,7 @@ export function MenorahHomeHero() {
   const heroRef = useRef<HTMLElement>(null);
 
   return (
-    <section ref={heroRef} data-menorah-home-ready className="relative min-h-[165vh] bg-background text-foreground">
+    <section ref={heroRef} data-menorah-home-ready className="relative min-h-[460vh] bg-background text-foreground">
       <div className="sticky top-0 flex h-screen flex-col overflow-hidden">
         <video
           className="absolute inset-0 z-0 h-full w-full object-cover"

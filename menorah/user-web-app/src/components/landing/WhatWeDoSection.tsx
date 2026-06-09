@@ -85,7 +85,7 @@ export function WhatWeDoSection() {
   return (
     <section
       id="about"
-      className="relative overflow-hidden bg-background px-6 pb-16 pt-12 font-body text-foreground md:px-10 md:pt-16"
+      className="relative overflow-hidden bg-background px-6 pb-16 pt-28 font-body text-foreground md:px-10 md:pt-32 lg:pt-36"
     >
       <div className="what-we-do-backdrop" aria-hidden="true" />
 

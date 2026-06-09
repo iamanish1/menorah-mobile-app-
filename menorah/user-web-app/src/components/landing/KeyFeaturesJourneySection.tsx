@@ -90,7 +90,7 @@ export function KeyFeaturesJourneySection() {
 
   if (compactViewport) {
     return (
-      <section className="relative overflow-hidden bg-background px-4 py-16 text-foreground sm:px-6">
+      <section className="relative overflow-hidden bg-background px-4 pb-16 pt-28 text-foreground sm:px-6">
         <FeatureTransitionGlow />
         <FeatureBackgroundVideo videoRef={videoRef} />
         <div className="relative z-10">
@@ -108,7 +108,7 @@ export function KeyFeaturesJourneySection() {
   return (
     <section ref={sectionRef} className="relative min-h-[340vh] bg-background text-foreground">
       <FeatureTransitionGlow />
-      <div className="sticky top-0 flex h-screen overflow-hidden px-6 py-9 lg:px-10">
+      <div className="sticky top-0 flex h-screen overflow-hidden px-6 pb-6 pt-[clamp(7rem,13vh,9rem)] lg:px-10">
         <FeatureBackgroundVideo videoRef={videoRef} />
         <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-col items-center">
           <Header />
