@@ -164,6 +164,7 @@ jobs:
             echo "==> Health check (waiting 15s for startup)"
             sleep 15
             curl -sf http://localhost:3000/health | grep -q '"status":"OK"'
+            curl -sf "http://localhost:3000/api/articles?limit=1" | grep -q '"success":true'
             echo "==> VPS health check passed ✅"
 
             echo "==> Pruning old images"
@@ -249,6 +250,7 @@ jobs:
           # Cloud Run may take 30s to cold-start on first deploy
           for i in {1..6}; do
             if curl -sf "${URL}/health" | grep -q '"status":"OK"'; then
+              curl -sf "${URL}/api/articles?limit=1" | grep -q '"success":true'
               echo "==> Cloud Run health check passed ✅"
               exit 0
             fi
