@@ -156,6 +156,11 @@ jobs:
               pm2 save --force 2>/dev/null || true
             fi
 
+            echo "==> Freeing API port 3000 if a legacy process is still bound"
+            if command -v fuser >/dev/null 2>&1; then
+              fuser -k 3000/tcp 2>/dev/null || true
+            fi
+
             echo "==> Starting new container (network=host, uses local Redis)"
             docker run -d \
               --name menorah-api \
