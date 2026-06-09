@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Bell } from 'lucide-react';
+import { Bell, Newspaper } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useAuth } from '@/context/AuthContext';
@@ -27,6 +27,9 @@ export function Topbar() {
 
       <div className="flex items-center gap-3">
         <ThemeToggle className="h-10 w-10" />
+        <Link href="/learn" className="relative p-2.5 rounded-full bg-white text-gray-700 shadow-sm hover:bg-primary-100 transition-colors dark:bg-primary-900 dark:text-primary-100 dark:hover:bg-primary-800" aria-label="Open articles">
+          <Newspaper className="w-5 h-5" />
+        </Link>
         <Link href="/notifications" className="relative p-2.5 rounded-full bg-white text-gray-700 shadow-sm hover:bg-primary-100 transition-colors dark:bg-primary-900 dark:text-primary-100 dark:hover:bg-primary-800">
           <Bell className="w-5 h-5" />
           {unreadCount > 0 && (

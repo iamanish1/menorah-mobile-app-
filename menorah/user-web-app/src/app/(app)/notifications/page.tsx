@@ -13,6 +13,7 @@ const iconMap: Record<AppNotification['type'], React.ElementType> = {
   booking_cancelled: CalendarDays,
   session_reminder:  CalendarDays,
   message:           MessageCircle,
+  article:           BookOpen,
   system:            Info,
 };
 
@@ -22,6 +23,7 @@ const colorMap: Record<AppNotification['type'], string> = {
   booking_cancelled: 'bg-red-50 text-red-600',
   session_reminder:  'bg-yellow-50 text-yellow-600',
   message:           'bg-purple-50 text-purple-600',
+  article:           'bg-primary-50 text-primary-600 dark:bg-primary-900 dark:text-primary-100',
   system:            'bg-gray-50 text-gray-600',
 };
 
@@ -33,13 +35,14 @@ export default function NotificationsPage() {
     markRead(n.id);
     if (n.data?.bookingId) router.push(`/bookings/${n.data.bookingId}`);
     else if (n.data?.roomId) router.push(`/chat/${n.data.roomId}`);
+    else if (n.data?.articleSlug) router.push(`/learn/${n.data.articleSlug}`);
   };
 
   return (
     <div className="page-container max-w-2xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-primary-50">Notifications</h1>
           {unreadCount > 0 && (
             <p className="text-sm text-gray-500 mt-0.5">{unreadCount} unread</p>
           )}
@@ -74,14 +77,14 @@ export default function NotificationsPage() {
                 key={n.id}
                 onClick={() => handleClick(n)}
                 className={`w-full flex items-start gap-3 p-4 rounded-2xl text-left transition-colors
-                  ${n.isRead ? 'bg-white hover:bg-gray-50' : 'bg-primary-50/60 hover:bg-primary-50'}`}
+                  ${n.isRead ? 'bg-white hover:bg-gray-50 dark:bg-primary-950 dark:hover:bg-primary-900' : 'bg-primary-50/60 hover:bg-primary-50 dark:bg-primary-900/80 dark:hover:bg-primary-900'}`}
               >
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${color}`}>
                   <Icon className="w-5 h-5" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
-                    <p className={`text-sm font-medium ${n.isRead ? 'text-gray-700' : 'text-gray-900'}`}>
+                    <p className={`text-sm font-medium ${n.isRead ? 'text-gray-700 dark:text-primary-100/75' : 'text-gray-900 dark:text-primary-50'}`}>
                       {n.title}
                     </p>
                     {!n.isRead && (

@@ -21,7 +21,7 @@ const navItems = [
   { href: '/chat',          label: 'Chat',           icon: MessageCircle },
   { href: '/subscription',  label: 'Subscription',   icon: CreditCard },
   { href: '/notifications', label: 'Notifications',  icon: Bell },
-  { href: '/articles',      label: 'Articles',       icon: Newspaper },
+  { href: '/learn',         label: 'Articles',       icon: Newspaper },
   { href: '/profile',       label: 'Profile',        icon: User },
 ];
 

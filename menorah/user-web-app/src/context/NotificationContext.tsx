@@ -3,10 +3,13 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useSocket } from './SocketContext';
 import { useAuth } from './AuthContext';
-import type { AppNotification, User } from '@/types';
+import { api } from '@/lib/api';
+import type { AppNotification, Article, User } from '@/types';
 
 const STORAGE_KEY = 'menorah_notifications';
+const LATEST_ARTICLE_STORAGE_KEY = 'menorah_latest_article_key';
 const MAX_NOTIFICATIONS = 50;
+const ARTICLE_POLL_INTERVAL_MS = 60_000;
 
 function loadFromStorage(): AppNotification[] {
   try {
@@ -37,6 +40,25 @@ function getUserName(user: User | null): string {
   return [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
 }
 
+function getArticleNotificationKey(article: Article | null | undefined): string {
+  if (!article?.slug) return '';
+  return [article.id ?? article._id ?? article.slug, article.publishedAt ?? article.createdAt ?? ''].filter(Boolean).join(':');
+}
+
+function getStoredLatestArticleKey(): string {
+  try {
+    return sessionStorage.getItem(LATEST_ARTICLE_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function storeLatestArticleKey(key: string) {
+  try {
+    sessionStorage.setItem(LATEST_ARTICLE_STORAGE_KEY, key);
+  } catch {}
+}
+
 interface NotificationContextValue {
   notifications: AppNotification[];
   unreadCount: number;
@@ -51,7 +73,7 @@ const NotificationContext = createContext<NotificationContextValue | null>(null)
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const { socket } = useSocket();
-  const { user } = useAuth();
+  const { user, isAuthed } = useAuth();
   const currentUserId = getUserId(user);
   const currentUserName = getUserName(user);
 
@@ -90,6 +112,60 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       })
     );
   }, [currentUserId, currentUserName, updateNotifications]);
+
+  useEffect(() => {
+    if (!isAuthed) return;
+
+    let cancelled = false;
+
+    const checkLatestArticle = async () => {
+      const res = await api.getArticles({ page: 1, limit: 1 });
+      if (cancelled || !res.success) return;
+
+      const latestArticle = res.data?.articles?.[0];
+      const latestKey = getArticleNotificationKey(latestArticle);
+      if (!latestArticle?.slug || !latestKey) return;
+
+      const storedKey = getStoredLatestArticleKey();
+
+      if (!storedKey) {
+        storeLatestArticleKey(latestKey);
+        return;
+      }
+
+      if (storedKey === latestKey) return;
+
+      storeLatestArticleKey(latestKey);
+      updateNotifications((prev) => {
+        if (prev.some((n) => n.type === 'article' && n.data?.articleSlug === latestArticle.slug)) {
+          return prev;
+        }
+
+        const newN: AppNotification = {
+          id: `notif_article_${Date.now()}_${latestArticle.slug}`,
+          type: 'article',
+          title: 'New Article',
+          body: latestArticle.title,
+          data: {
+            articleSlug: latestArticle.slug,
+            articleTitle: latestArticle.title,
+          },
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        };
+
+        return [newN, ...prev].slice(0, MAX_NOTIFICATIONS);
+      });
+    };
+
+    checkLatestArticle();
+    const intervalId = window.setInterval(checkLatestArticle, ARTICLE_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [isAuthed, updateNotifications]);
 
   // Subscribe to real-time notifications from backend
   useEffect(() => {

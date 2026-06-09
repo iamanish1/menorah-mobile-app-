@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Routes that require authentication
-const PROTECTED_PREFIXES = ['/discover', '/bookings', '/profile', '/chat', '/subscription'];
+const PROTECTED_PREFIXES = ['/discover', '/bookings', '/profile', '/chat', '/subscription', '/learn'];
 
 // Routes accessible only when NOT authenticated
 const AUTH_ROUTES = ['/login', '/register', '/verify-otp', '/forgot-password', '/reset-password'];
@@ -35,6 +35,7 @@ export const config = {
     '/profile/:path*',
     '/chat/:path*',
     '/subscription/:path*',
+    '/learn/:path*',
     '/login',
     '/register',
     '/verify-otp',

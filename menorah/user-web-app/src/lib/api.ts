@@ -3,6 +3,7 @@ import { authStorage } from './auth';
 import type {
   ApiResponse, User, Counsellor, CounsellorFilters,
   Booking, ChatRoom, ChatMessage, VideoRoom,
+  Article, ArticleFilters, ArticlePagination,
 } from '@/types';
 
 class ApiClient {
@@ -164,6 +165,19 @@ class ApiClient {
 
   async changePassword(currentPassword: string, newPassword: string): Promise<ApiResponse<void>> {
     return this.put<void>('/users/change-password', { currentPassword, newPassword });
+  }
+
+  // Articles
+  async getArticles(filters?: ArticleFilters): Promise<ApiResponse<{ articles: Article[]; pagination: ArticlePagination }>> {
+    return this.get<{ articles: Article[]; pagination: ArticlePagination }>('/articles', filters as Record<string, unknown>);
+  }
+
+  async getArticleCategories(): Promise<ApiResponse<{ categories: string[] }>> {
+    return this.get<{ categories: string[] }>('/articles/categories/list');
+  }
+
+  async getArticle(slug: string): Promise<ApiResponse<{ article: Article }>> {
+    return this.get<{ article: Article }>(`/articles/${encodeURIComponent(slug)}`);
   }
 
   // ─── Counsellors ───────────────────────────────────────────────────────────

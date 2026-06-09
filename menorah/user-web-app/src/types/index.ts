@@ -186,10 +186,69 @@ export interface SubscriptionPlan {
   popular?: boolean;
 }
 
+// Articles
+export type ArticleContentBlock =
+  | { type: 'heading'; text: string; level?: number }
+  | { type: 'paragraph'; text: string }
+  | { type: 'quote'; text: string }
+  | { type: 'bullet_list'; items: string[] }
+  | { type: 'image'; url: string; alt?: string; caption?: string }
+  | { type: 'callout'; text: string }
+  | {
+      type: 'unknown';
+      originalType?: string;
+      text?: string;
+      items?: string[];
+      level?: number;
+      url?: string;
+      alt?: string;
+      caption?: string;
+    };
+
+export interface Article {
+  id?: string;
+  _id?: string;
+  title: string;
+  slug: string;
+  excerpt?: string;
+  category?: string;
+  tags?: string[];
+  coverImageUrl?: string;
+  coverImagePublicId?: string;
+  imagePrompt?: string;
+  contentBlocks?: ArticleContentBlock[];
+  seoTitle?: string;
+  seoDescription?: string;
+  canonicalUrl?: string;
+  status?: string;
+  generatedByAi?: boolean;
+  reviewedByHuman?: boolean;
+  publishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ArticlePagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
+  hasPreviousPage?: boolean;
+}
+
+export interface ArticleFilters {
+  page?: number;
+  limit?: number;
+  category?: string;
+  q?: string;
+}
+
 // ─── Notification ─────────────────────────────────────────────────────────────
 export interface AppNotification {
   id: string;
-  type: 'booking_assigned' | 'booking_confirmed' | 'booking_cancelled' | 'session_reminder' | 'message' | 'system';
+  type: 'booking_assigned' | 'booking_confirmed' | 'booking_cancelled' | 'session_reminder' | 'message' | 'article' | 'system';
   title: string;
   body: string;
   data?: Record<string, string>;
