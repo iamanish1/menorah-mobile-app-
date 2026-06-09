@@ -358,6 +358,8 @@ const generateArticleDraft = async (input = {}) => {
                   acceptableWordCountRange: [normalized.minWordCount, normalized.maxWordCount],
                   strictWordCount: normalized.strictWordCount,
                   wordCountFeedback: normalized.wordCountFeedback,
+                  wordCountScope: 'Only contentBlocks text and list items count. Title, excerpt, SEO fields, tags, and imagePrompt do not count.',
+                  bodyLengthGuidance: 'For a 700-word target, write a complete article body with enough paragraph and list content to land inside the acceptable range.',
                   contentBlockTypes: ['heading', 'paragraph', 'quote', 'bullet_list', 'image', 'callout'],
                   noDiagnosis: true,
                   noMedicalPromises: true,

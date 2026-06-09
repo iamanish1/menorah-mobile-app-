@@ -22,6 +22,8 @@ const getDailyCount = () => getNumber(process.env.ARTICLE_DAILY_GENERATION_COUNT
 
 const getTimezone = () => process.env.ARTICLE_GENERATION_TIMEZONE || DEFAULT_TIMEZONE;
 
+const MAX_WORD_TARGET_ATTEMPTS = 4;
+
 const normalizeTags = (tags) => {
   if (!Array.isArray(tags)) {
     return [];
@@ -88,33 +90,37 @@ const getRecentArticles = async () => {
 
 const buildArticleDraftWithWordTarget = async (input) => {
   const range = getWordRange();
-  let draft = await generateArticleDraft({
-    ...input,
-    targetWordCount: range.target,
-    minWordCount: range.min,
-    maxWordCount: range.max
-  });
-  let wordCount = countArticleWords(draft);
+  let lastWordCount = 0;
 
-  if (wordCount >= range.min && wordCount <= range.max) {
-    return { draft, wordCount };
+  for (let attempt = 1; attempt <= MAX_WORD_TARGET_ATTEMPTS; attempt += 1) {
+    const isRetry = attempt > 1;
+    const draft = await generateArticleDraft({
+      ...input,
+      targetWordCount: range.target,
+      minWordCount: range.min,
+      maxWordCount: range.max,
+      strictWordCount: isRetry,
+      wordCountFeedback: isRetry
+        ? [
+            `The previous draft body was ${lastWordCount} words, measured only from contentBlocks text and list items.`,
+            `Rewrite the article body to be between ${range.min} and ${range.max} words, aiming close to ${range.target}.`,
+            lastWordCount < range.min
+              ? 'Expand the body with additional practical paragraphs, examples, and supportive guidance.'
+              : 'Tighten the body while preserving the most useful guidance.',
+            'Do not rely on title, excerpt, SEO fields, tags, or imagePrompt to satisfy the word count.'
+          ].join(' ')
+        : input.wordCountFeedback
+    });
+    const wordCount = countArticleWords(draft);
+
+    if (wordCount >= range.min && wordCount <= range.max) {
+      return { draft, wordCount };
+    }
+
+    lastWordCount = wordCount;
   }
 
-  draft = await generateArticleDraft({
-    ...input,
-    targetWordCount: range.target,
-    minWordCount: range.min,
-    maxWordCount: range.max,
-    strictWordCount: true,
-    wordCountFeedback: `The previous draft was ${wordCount} words. Rewrite the article body to be between ${range.min} and ${range.max} words.`
-  });
-  wordCount = countArticleWords(draft);
-
-  if (wordCount < range.min || wordCount > range.max) {
-    throw new Error(`Generated article word count ${wordCount} is outside ${range.min}-${range.max}`);
-  }
-
-  return { draft, wordCount };
+  throw new Error(`Generated article word count ${lastWordCount} is outside ${range.min}-${range.max}`);
 };
 
 const createReviewArticle = async ({ input, run }) => {
