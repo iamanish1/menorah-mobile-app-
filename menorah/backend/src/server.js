@@ -367,7 +367,7 @@ async function startServer() {
   const authLimiter = rateLimit({
     ...makeRateLimitStore(),
     windowMs: 15 * 60 * 1000,
-    max: parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 10,
+    max: parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 30,
     message: 'Too many requests, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -377,7 +377,7 @@ async function startServer() {
   const apiLimiter = rateLimit({
     ...makeRateLimitStore(),
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 300,
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000,
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
