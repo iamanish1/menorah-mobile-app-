@@ -49,7 +49,16 @@ class ApiClient {
 
   private getToken(): string | null {
     if (typeof window === 'undefined') return null;
-    return sessionStorage.getItem('auth_token');
+    const sessionToken = sessionStorage.getItem('auth_token');
+    if (sessionToken) return sessionToken;
+    // Fall back to cookie so session survives new tabs / browser restarts
+    const match = document.cookie.match(/(?:^|;\s*)mn_counsellor_auth=([^;]+)/);
+    if (match) {
+      const token = decodeURIComponent(match[1]);
+      sessionStorage.setItem('auth_token', token);
+      return token;
+    }
+    return null;
   }
 
   private setToken(token: string): void {

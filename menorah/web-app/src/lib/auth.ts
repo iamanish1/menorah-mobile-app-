@@ -57,7 +57,18 @@ export const auth = {
 
   async checkAuth(): Promise<void> {
     try {
-      const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+      let token: string | null = null;
+      if (typeof window !== 'undefined') {
+        token = sessionStorage.getItem('auth_token');
+        if (!token) {
+          // Fall back to cookie (survives new tabs / browser restarts)
+          const match = document.cookie.match(/(?:^|;\s*)mn_counsellor_auth=([^;]+)/);
+          if (match) {
+            token = decodeURIComponent(match[1]);
+            sessionStorage.setItem('auth_token', token);
+          }
+        }
+      }
       if (!token) {
         authStore.setState({ user: null, isLoading: false });
         return;
