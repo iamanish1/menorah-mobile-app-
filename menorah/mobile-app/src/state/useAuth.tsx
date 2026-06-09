@@ -75,7 +75,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      setIsLoading(true);
       const response = await api.login({ email, password });
 
       if (response.success && response.data) {
@@ -111,12 +110,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
       
-      return { 
-        success: false, 
-        message: error.response?.data?.message || error.message || 'Login failed' 
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Login failed'
       };
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -130,7 +127,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     gender: string;
   }) => {
     try {
-      setIsLoading(true);
       const response = await api.register(userData);
 
       if (response.success) {
@@ -153,8 +149,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         success: false,
         message: error.response?.data?.message || 'Registration failed'
       };
-    } finally {
-      setIsLoading(false);
     }
   };
 
