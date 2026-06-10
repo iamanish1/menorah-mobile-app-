@@ -104,6 +104,9 @@ const callOpenAiResponses = async ({ schema, name, task, input }) => {
                 'Use warm, human, plain text.',
                 'No Markdown, asterisks, decorative symbols, link syntax, diagnosis, or medical promises.',
                 'Keep image text concise enough for a polished Instagram static post.',
+                'The visual style is editorial and illustrated: a painterly image panel on top, cream copy space below, oversized condensed serif headline, Menorah green and olive brand colors, and logo top-right.',
+                'Write hookText like a short magazine headline, ideally 6 to 10 words.',
+                'Write bodyText as one warm sentence, ideally 12 to 22 words, with no bullet symbols.',
                 'Do not write text that encourages shame, panic, or stereotypes.'
               ].join(' ')
             }
@@ -152,7 +155,7 @@ const mockConcept = (input = {}) => {
     hookText: topic.length > 58 ? topic.slice(0, 55).trim() : topic,
     bodyText: `A grounded reminder that support can start with one honest conversation, one calmer routine, and one practical next step. ${objective}`,
     ctaText: 'Start with one honest check-in.',
-    designBrief: 'Premium Menorah-style wellness post with deep green typography, calm cream space, soft layered shapes, and no visual clutter.',
+    designBrief: 'Editorial illustrated wellness post with painterly photo-style top scene, warm cream copy field, oversized condensed serif headline, Menorah logo green, olive accent, and logo locked top-right.',
     templateKey: 'educational_tip',
     bulletPoints: [
       'Name what feels heavy',

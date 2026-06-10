@@ -10,13 +10,12 @@ const SIZE_BY_RATIO = {
   '9:16': { width: 1080, height: 1920 }
 };
 
-const templateNames = {
-  thought_leadership: 'Quote/Thought Leadership',
-  educational_tip: 'Educational Tip',
-  announcement: 'Promotional/Announcement'
-};
-
-const SVG_FONT_FAMILY = 'DejaVu Sans, Liberation Sans, Arial, sans-serif';
+const TEXT_FONT_FAMILY = 'DejaVu Sans, Liberation Sans, Arial, sans-serif';
+const DISPLAY_FONT_FAMILY = 'DejaVu Serif Condensed, Liberation Serif, serif';
+const MENORAH_GREEN = '#2B4F32';
+const MENORAH_OLIVE = '#706E43';
+const WARM_CREAM = '#F8EADA';
+const DEEP_PLUM = '#321533';
 
 const escapeXml = (value) => String(value || '')
   .replace(/&/g, '&amp;')
@@ -61,150 +60,262 @@ const wrapText = (text, maxChars, maxLines = 5) => {
   return clipped;
 };
 
-const renderText = ({ text, x, y, fontSize, fill, weight = 700, maxChars, lineHeight, maxLines, anchor = 'start' }) => {
-  const lines = wrapText(text, maxChars, maxLines);
-  return [
-    `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="${fill}" font-family="${SVG_FONT_FAMILY}" font-size="${fontSize}" font-weight="${weight}">`,
-    ...lines.map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`),
-    '</text>'
-  ].join('');
-};
+const renderTextLines = ({
+  lines,
+  x,
+  y,
+  fontSize,
+  fill,
+  weight = 700,
+  lineHeight,
+  anchor = 'start',
+  fontFamily = TEXT_FONT_FAMILY,
+  opacity = 1
+}) => [
+  `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="${fill}" opacity="${opacity}" font-family="${fontFamily}" font-size="${fontSize}" font-weight="${weight}">`,
+  ...lines.map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`),
+  '</text>'
+].join('');
 
-const renderBulletLines = ({ items, x, y, fontSize, fill, maxChars }) => {
-  let currentY = y;
-  return (items || []).slice(0, 3).map((item) => {
-    const lines = wrapText(item, maxChars, 2);
-    const block = [
-      `<circle cx="${x}" cy="${currentY - 8}" r="7" fill="${fill}" opacity="0.9" />`,
-      `<text x="${x + 26}" y="${currentY}" fill="${fill}" font-family="${SVG_FONT_FAMILY}" font-size="${fontSize}" font-weight="650">`,
-      ...lines.map((line, index) => `<tspan x="${x + 26}" dy="${index === 0 ? 0 : fontSize + 10}">${escapeXml(line)}</tspan>`),
-      '</text>'
-    ].join('');
-    currentY += 86 + Math.max(0, lines.length - 1) * 28;
-    return block;
-  }).join('');
+const renderText = ({
+  text,
+  x,
+  y,
+  fontSize,
+  fill,
+  weight = 700,
+  maxChars,
+  lineHeight,
+  maxLines,
+  anchor = 'start',
+  fontFamily = TEXT_FONT_FAMILY,
+  opacity = 1
+}) => {
+  const lines = wrapText(text, maxChars, maxLines);
+  return renderTextLines({ lines, x, y, fontSize, fill, weight, lineHeight, anchor, fontFamily, opacity });
 };
 
 const getPalette = (brandGuideline = {}) => {
-  const primary = brandGuideline.primaryColors?.[0] || '#27533A';
-  const accent = brandGuideline.primaryColors?.[1] || '#2F8A63';
-  const cream = brandGuideline.secondaryColors?.[0] || '#F7F0DF';
+  const primary = MENORAH_GREEN;
+  const accent = brandGuideline.primaryColors?.[1] || MENORAH_OLIVE;
+  const olive = MENORAH_OLIVE;
+  const cream = brandGuideline.secondaryColors?.[0] || WARM_CREAM;
   const ink = brandGuideline.secondaryColors?.[2] || '#1F2933';
-  return { primary, accent, cream, ink, white: '#FFFFFF' };
+  return { primary, accent, olive, cream, ink, plum: DEEP_PLUM, white: '#FFFFFF' };
 };
+
+const hashSeed = (value = '') => String(value)
+  .split('')
+  .reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) >>> 0, 2166136261);
+
+const seededRandom = (seed) => {
+  let state = seed || 123456789;
+  return () => {
+    state = (1664525 * state + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+};
+
+const joinAsWarmSentence = (parts = []) => {
+  const cleaned = parts
+    .map((part) => toPlainText(part).replace(/[.,;:!?]+$/g, '').trim())
+    .filter(Boolean);
+
+  if (cleaned.length === 0) return '';
+  if (cleaned.length === 1) return cleaned[0];
+  if (cleaned.length === 2) return `${cleaned[0]} and ${cleaned[1]}.`;
+  return `${cleaned.slice(0, -1).join(', ')}, and ${cleaned[cleaned.length - 1]}.`;
+};
+
+const getDeckText = (socialPost) => {
+  const body = toPlainText(socialPost.bodyText || '');
+  const parts = body.split('|').map((item) => item.trim()).filter(Boolean);
+  if (parts.length > 1) return joinAsWarmSentence(parts.slice(0, 3));
+  return body || toPlainText(socialPost.ctaText || 'Start with one honest step.');
+};
+
+const getLayout = (aspectRatio, width, height) => {
+  if (aspectRatio === '1:1') {
+    return {
+      heroHeight: 480,
+      copyX: 96,
+      headlineY: 600,
+      headlineSize: 67,
+      headlineLineHeight: 76,
+      headlineChars: 22,
+      headlineLines: 4,
+      deckSize: 34,
+      deckLineHeight: 47,
+      deckChars: 42,
+      ctaY: height - 88
+    };
+  }
+
+  if (aspectRatio === '9:16') {
+    return {
+      heroHeight: 760,
+      copyX: 90,
+      headlineY: 930,
+      headlineSize: 84,
+      headlineLineHeight: 96,
+      headlineChars: 19,
+      headlineLines: 5,
+      deckSize: 39,
+      deckLineHeight: 54,
+      deckChars: 38,
+      ctaY: height - 120
+    };
+  }
+
+  return {
+    heroHeight: 560,
+    copyX: 96,
+    headlineY: 720,
+    headlineSize: 78,
+    headlineLineHeight: 88,
+    headlineChars: 22,
+    headlineLines: 5,
+    deckSize: 38,
+    deckLineHeight: 52,
+    deckChars: 42,
+    ctaY: height - 104
+  };
+};
+
+const renderLogoMark = ({ width, palette }) => {
+  const size = 104;
+  const x = width - size - 58;
+  const y = 56;
+
+  return [
+    `<g transform="translate(${x} ${y})">`,
+    `<circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="${palette.cream}" opacity="0.93" />`,
+    `<circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 10}" fill="${palette.primary}" />`,
+    `<path d="M36 70 L50 32 L61 70 L72 32 L83 70" fill="none" stroke="${palette.white}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.96" />`,
+    `<path d="M42 72 L57 44 L68 72" fill="none" stroke="${palette.olive}" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.78" />`,
+    '</g>'
+  ].join('');
+};
+
+const renderSpeckles = ({ width, heroHeight, palette, seedValue }) => {
+  const random = seededRandom(hashSeed(seedValue));
+  const circles = [];
+  const count = width > 1080 ? 340 : 280;
+
+  for (let index = 0; index < count; index += 1) {
+    const x = Math.round(random() * width);
+    const y = Math.round(heroHeight - 124 + random() * 150);
+    const radius = (random() * 2.8 + 0.9).toFixed(2);
+    const opacity = (0.38 + random() * 0.48).toFixed(2);
+    circles.push(`<circle cx="${x}" cy="${y}" r="${radius}" fill="${palette.cream}" opacity="${opacity}" />`);
+  }
+
+  return [
+    `<path d="M0 ${heroHeight - 36} C ${width * 0.18} ${heroHeight + 18}, ${width * 0.48} ${heroHeight - 4}, ${width} ${heroHeight + 38} L ${width} ${heroHeight + 126} L 0 ${heroHeight + 126} Z" fill="${palette.cream}" />`,
+    ...circles
+  ].join('');
+};
+
+const renderEditorialIllustration = ({ width, heroHeight, palette }) => {
+  const windowX = Math.round(width * 0.58);
+  const figureX = Math.round(width * 0.37);
+  const deskY = heroHeight - 118;
+
+  return [
+    `<g clip-path="url(#heroClip)">`,
+    `<rect width="${width}" height="${heroHeight + 60}" fill="url(#heroGradient)" />`,
+    `<rect x="${windowX}" y="0" width="${Math.round(width * 0.32)}" height="${heroHeight}" fill="url(#windowGlow)" opacity="0.78" />`,
+    `<rect x="${windowX + 42}" y="34" width="34" height="${heroHeight - 138}" fill="${palette.white}" opacity="0.58" />`,
+    `<rect x="${windowX + 152}" y="-20" width="28" height="${heroHeight - 92}" fill="${palette.white}" opacity="0.72" />`,
+    `<path d="M${windowX + 220} 96 L${windowX + 310} 40 L${windowX + 405} 96 L${windowX + 405} ${heroHeight} L${windowX + 220} ${heroHeight} Z" fill="#EFA276" opacity="0.42" />`,
+    `<rect x="52" y="54" width="230" height="210" rx="8" fill="#241C33" opacity="0.52" />`,
+    `<rect x="76" y="78" width="182" height="156" rx="4" fill="#31265A" opacity="0.55" />`,
+    `<path d="M0 ${heroHeight - 150} C 220 ${heroHeight - 205}, 390 ${heroHeight - 82}, ${width} ${heroHeight - 160} L ${width} ${heroHeight + 70} L 0 ${heroHeight + 70} Z" fill="${palette.primary}" opacity="0.14" />`,
+    `<ellipse cx="${figureX - 120}" cy="${deskY + 4}" rx="178" ry="48" fill="#332333" opacity="0.23" />`,
+    `<path d="M${figureX - 245} ${deskY + 18} C ${figureX - 210} ${deskY - 92}, ${figureX - 58} ${deskY - 86}, ${figureX + 6} ${deskY + 20} L ${figureX - 22} ${deskY + 74} L ${figureX - 250} ${deskY + 74} Z" fill="#4A3336" opacity="0.82" />`,
+    `<path d="M${figureX - 78} ${deskY - 248} C ${figureX + 16} ${deskY - 230}, ${figureX + 74} ${deskY - 116}, ${figureX + 44} ${deskY + 46} L ${figureX - 86} ${deskY + 56} C ${figureX - 134} ${deskY - 92}, ${figureX - 148} ${deskY - 204}, ${figureX - 78} ${deskY - 248} Z" fill="${palette.white}" opacity="0.95" />`,
+    `<path d="M${figureX - 42} ${deskY - 248} C ${figureX + 18} ${deskY - 244}, ${figureX + 58} ${deskY - 182}, ${figureX + 72} ${deskY - 94}" fill="none" stroke="#C95F55" stroke-width="20" stroke-linecap="round" opacity="0.55" />`,
+    `<circle cx="${figureX - 86}" cy="${deskY - 288}" r="56" fill="#BE5B4F" />`,
+    `<path d="M${figureX - 144} ${deskY - 314} C ${figureX - 108} ${deskY - 386}, ${figureX + 6} ${deskY - 338}, ${figureX - 22} ${deskY - 276} C ${figureX - 48} ${deskY - 296}, ${figureX - 86} ${deskY - 278}, ${figureX - 118} ${deskY - 286} Z" fill="#211A23" />`,
+    `<path d="M${figureX - 218} ${deskY + 68} L${figureX + 412} ${deskY + 68}" stroke="#35252E" stroke-width="28" stroke-linecap="round" opacity="0.8" />`,
+    `<rect x="${figureX + 230}" y="${deskY - 118}" width="34" height="160" rx="5" fill="#283C52" opacity="0.82" />`,
+    `<rect x="${figureX + 278}" y="${deskY - 160}" width="38" height="202" rx="5" fill="#A66B5C" opacity="0.9" />`,
+    `<rect x="${figureX + 326}" y="${deskY - 110}" width="42" height="152" rx="5" fill="${palette.olive}" opacity="0.86" />`,
+    `<rect x="${figureX + 120}" y="${deskY - 95}" width="82" height="82" rx="16" fill="#BE6F4B" opacity="0.88" />`,
+    `<path d="M${figureX + 160} ${deskY - 98} C ${figureX + 120} ${deskY - 176}, ${figureX + 72} ${deskY - 142}, ${figureX + 120} ${deskY - 102}" fill="#315C39" />`,
+    `<path d="M${figureX + 164} ${deskY - 102} C ${figureX + 238} ${deskY - 188}, ${figureX + 248} ${deskY - 110}, ${figureX + 176} ${deskY - 98}" fill="#315C39" opacity="0.86" />`,
+    `<rect width="${width}" height="${heroHeight + 60}" fill="url(#grain)" opacity="0.19" />`,
+    renderLogoMark({ width, palette }),
+    '</g>'
+  ].join('');
+};
+
+const renderHeadline = ({ lines, x, y, fontSize, lineHeight, palette }) => lines
+  .map((line, index) => {
+    const fill = index === lines.length - 1 && lines.length > 1 ? palette.olive : palette.primary;
+    return `<text x="${x}" y="${y + index * lineHeight}" fill="${fill}" font-family="${DISPLAY_FONT_FAMILY}" font-size="${fontSize}" font-weight="900">${escapeXml(line)}</text>`;
+  })
+  .join('');
 
 const buildSvg = ({ socialPost, brandGuideline, assets }) => {
   const { width, height } = SIZE_BY_RATIO[socialPost.aspectRatio] || SIZE_BY_RATIO['4:5'];
   const palette = getPalette(brandGuideline);
-  const templateKey = socialPost.templateKey || 'thought_leadership';
-  const padding = socialPost.aspectRatio === '9:16' ? 92 : 76;
-  const hookSize = socialPost.aspectRatio === '9:16' ? 78 : 68;
-  const bodySize = socialPost.aspectRatio === '9:16' ? 38 : 34;
-  const ctaY = height - padding - 18;
-  const logoAsset = (assets || []).find((asset) => asset.type === 'logo');
+  const layout = getLayout(socialPost.aspectRatio, width, height);
   const brandName = brandGuideline.brandName || 'Menorah Health';
-  const hookY = socialPost.aspectRatio === '1:1' ? 310 : 390;
-  const bodyY = socialPost.aspectRatio === '1:1' ? 560 : 710;
-  const maxChars = socialPost.aspectRatio === '9:16' ? 20 : 24;
+  const headline = toPlainText(socialPost.hookText || socialPost.topic || brandName);
+  const deck = getDeckText(socialPost);
+  const headlineLines = wrapText(headline, layout.headlineChars, layout.headlineLines);
+  const deckY = layout.headlineY + headlineLines.length * layout.headlineLineHeight + 56;
+  const cta = toPlainText(socialPost.ctaText || '').slice(0, 74);
 
   const shared = [
     `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">`,
+    '<defs>',
+    `<clipPath id="heroClip"><rect x="0" y="0" width="${width}" height="${layout.heroHeight + 74}" /></clipPath>`,
+    '<linearGradient id="heroGradient" x1="0%" y1="0%" x2="100%" y2="100%">',
+    '<stop offset="0%" stop-color="#574A72" />',
+    '<stop offset="34%" stop-color="#A9D4C4" />',
+    '<stop offset="68%" stop-color="#F2B07D" />',
+    '<stop offset="100%" stop-color="#C9C5F2" />',
+    '</linearGradient>',
+    '<linearGradient id="windowGlow" x1="0%" y1="0%" x2="100%" y2="100%">',
+    '<stop offset="0%" stop-color="#EAF9EE" stop-opacity="0.2" />',
+    '<stop offset="56%" stop-color="#FDF2D7" stop-opacity="0.92" />',
+    '<stop offset="100%" stop-color="#BBBCFF" stop-opacity="0.38" />',
+    '</linearGradient>',
+    '<filter id="grain">',
+    '<feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" stitchTiles="stitch" />',
+    '<feColorMatrix type="saturate" values="0" />',
+    '<feComponentTransfer><feFuncA type="table" tableValues="0 0.34" /></feComponentTransfer>',
+    '</filter>',
+    '</defs>',
     `<rect width="${width}" height="${height}" fill="${palette.cream}" />`,
-    `<circle cx="${width - 160}" cy="170" r="260" fill="${palette.accent}" opacity="0.15" />`,
-    `<circle cx="90" cy="${height - 120}" r="300" fill="${palette.primary}" opacity="0.08" />`,
-    `<path d="M0 ${height * 0.72} C ${width * 0.28} ${height * 0.62}, ${width * 0.63} ${height * 0.87}, ${width} ${height * 0.66} L ${width} ${height} L 0 ${height} Z" fill="${palette.white}" opacity="0.62" />`,
-    `<rect x="${padding}" y="${padding}" width="${width - padding * 2}" height="${height - padding * 2}" rx="44" fill="${palette.white}" opacity="0.54" />`,
-    `<text x="${padding + 16}" y="${padding + 54}" fill="${palette.primary}" font-family="${SVG_FONT_FAMILY}" font-size="32" font-weight="800">${escapeXml(brandName)}</text>`,
-    logoAsset?.url ? `<text x="${padding + 16}" y="${padding + 90}" fill="${palette.ink}" opacity="0.48" font-family="${SVG_FONT_FAMILY}" font-size="18">Brand asset selected</text>` : '',
-    `<text x="${width - padding - 16}" y="${padding + 54}" text-anchor="end" fill="${palette.ink}" opacity="0.45" font-family="${SVG_FONT_FAMILY}" font-size="20">${escapeXml(templateNames[templateKey] || 'Instagram Post')}</text>`
-  ];
-
-  if (templateKey === 'educational_tip') {
-    const bodyItems = toPlainText(socialPost.bodyText)
-      .split('|')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    shared.push(
-      renderText({
-        text: socialPost.hookText,
-        x: padding + 48,
-        y: hookY,
-        fontSize: hookSize,
-        fill: palette.primary,
-        weight: 850,
-        maxChars,
-        lineHeight: hookSize + 12,
-        maxLines: 3
-      }),
-      renderBulletLines({
-        items: bodyItems.length > 0 ? bodyItems : [socialPost.bodyText, socialPost.ctaText].filter(Boolean),
-        x: padding + 56,
-        y: bodyY,
-        fontSize: bodySize,
-        fill: palette.ink,
-        maxChars: socialPost.aspectRatio === '9:16' ? 33 : 40
-      })
-    );
-  } else if (templateKey === 'announcement') {
-    shared.push(
-      `<rect x="${padding + 44}" y="${hookY - 112}" width="${width - padding * 2 - 88}" height="${socialPost.aspectRatio === '1:1' ? 430 : 560}" rx="34" fill="${palette.primary}" />`,
-      renderText({
-        text: socialPost.hookText,
-        x: padding + 88,
-        y: hookY,
-        fontSize: hookSize,
-        fill: palette.white,
-        weight: 850,
-        maxChars,
-        lineHeight: hookSize + 10,
-        maxLines: 3
-      }),
-      renderText({
-        text: socialPost.bodyText,
-        x: padding + 88,
-        y: bodyY,
-        fontSize: bodySize,
-        fill: '#E9F3EC',
-        weight: 500,
-        maxChars: socialPost.aspectRatio === '9:16' ? 31 : 38,
-        lineHeight: bodySize + 14,
-        maxLines: 4
-      })
-    );
-  } else {
-    shared.push(
-      `<text x="${padding + 48}" y="${hookY - 52}" fill="${palette.accent}" font-family="${SVG_FONT_FAMILY}" font-size="94" font-weight="800" opacity="0.35">"</text>`,
-      renderText({
-        text: socialPost.hookText,
-        x: padding + 48,
-        y: hookY,
-        fontSize: hookSize,
-        fill: palette.primary,
-        weight: 850,
-        maxChars,
-        lineHeight: hookSize + 12,
-        maxLines: 4
-      }),
-      renderText({
-        text: socialPost.bodyText,
-        x: padding + 52,
-        y: bodyY,
-        fontSize: bodySize,
-        fill: palette.ink,
-        weight: 500,
-        maxChars: socialPost.aspectRatio === '9:16' ? 34 : 42,
-        lineHeight: bodySize + 15,
-        maxLines: socialPost.aspectRatio === '1:1' ? 4 : 5
-      })
-    );
-  }
-
-  shared.push(
-    `<rect x="${padding + 44}" y="${ctaY - 54}" width="${Math.min(width - padding * 2 - 88, 620)}" height="82" rx="41" fill="${palette.primary}" opacity="0.96" />`,
-    `<text x="${padding + 82}" y="${ctaY}" fill="${palette.white}" font-family="${SVG_FONT_FAMILY}" font-size="28" font-weight="800">${escapeXml(toPlainText(socialPost.ctaText || 'Start with one honest step.').slice(0, 52))}</text>`,
-    `<text x="${width - padding - 18}" y="${height - padding - 10}" text-anchor="end" fill="${palette.ink}" opacity="0.46" font-family="${SVG_FONT_FAMILY}" font-size="21">@menorahhealth</text>`,
+    renderEditorialIllustration({ width, heroHeight: layout.heroHeight, palette }),
+    renderSpeckles({ width, heroHeight: layout.heroHeight, palette, seedValue: `${socialPost._id || ''}${headline}` }),
+    renderHeadline({
+      lines: headlineLines,
+      x: layout.copyX,
+      y: layout.headlineY,
+      fontSize: layout.headlineSize,
+      lineHeight: layout.headlineLineHeight,
+      palette
+    }),
+    renderText({
+      text: deck,
+      x: layout.copyX,
+      y: deckY,
+      fontSize: layout.deckSize,
+      fill: palette.plum,
+      weight: 500,
+      maxChars: layout.deckChars,
+      lineHeight: layout.deckLineHeight,
+      maxLines: socialPost.aspectRatio === '1:1' ? 3 : 4,
+      fontFamily: TEXT_FONT_FAMILY
+    }),
+    cta ? `<text x="${layout.copyX}" y="${layout.ctaY}" fill="${palette.primary}" font-family="${TEXT_FONT_FAMILY}" font-size="${socialPost.aspectRatio === '9:16' ? 30 : 27}" font-weight="800" opacity="0.9">${escapeXml(cta)}</text>` : '',
+    `<text x="${width - layout.copyX}" y="${layout.ctaY}" text-anchor="end" fill="${palette.primary}" font-family="${TEXT_FONT_FAMILY}" font-size="${socialPost.aspectRatio === '9:16' ? 24 : 22}" font-weight="700" opacity="0.58">@menorahhealth</text>`,
     '</svg>'
-  );
+  ];
 
   return shared.join('');
 };

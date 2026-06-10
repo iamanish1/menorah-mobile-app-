@@ -6,11 +6,11 @@ const defaultGuidelinePayload = {
   brandName: 'Menorah Health',
   tone: 'Warm, grounded, professional, practical, and hopeful.',
   audience: 'Men looking for accessible mental health education and support.',
-  primaryColors: ['#27533A', '#2F8A63'],
-  secondaryColors: ['#F7F0DF', '#FFFFFF', '#1F2933'],
-  fonts: ['Inter', 'Arial', 'sans-serif'],
+  primaryColors: ['#2B4F32', '#706E43'],
+  secondaryColors: ['#F8EADA', '#FFFFFF', '#321533'],
+  fonts: ['DejaVu Serif Condensed', 'DejaVu Sans', 'sans-serif'],
   logoRules: {
-    allowedPositions: ['top_left', 'bottom_right'],
+    allowedPositions: ['top_right'],
     minWidth: 120,
     clearSpace: 48
   },

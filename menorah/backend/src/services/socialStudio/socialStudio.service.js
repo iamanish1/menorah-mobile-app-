@@ -56,7 +56,7 @@ const createSocialPostDraft = async ({ input, createdBy }) => {
       ...normalizedInput,
       status: 'draft',
       hookText: concept.hookText,
-      bodyText: concept.bulletPoints?.length ? concept.bulletPoints.join(' | ') : concept.bodyText,
+      bodyText: concept.bodyText || (concept.bulletPoints?.length ? concept.bulletPoints.join(' | ') : ''),
       ctaText: concept.ctaText,
       caption: caption.caption,
       hashtags: normalizeHashtags([
