@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IOSFloatingTabBar, useIOSTheme } from '@/components/ios';
 
 const Tab = createBottomTabNavigator();
-const isIOS = Platform.OS === 'ios';
+const usesFloatingTabBar = Platform.OS === 'ios' || Platform.OS === 'android';
 
 type IconProps = {
   color?: string;
@@ -44,12 +44,12 @@ export default function TabNavigator() {
   return (
     <Tab.Navigator
       initialRouteName="Discover"
-      tabBar={isIOS ? (props) => <IOSFloatingTabBar {...props} /> : undefined}
+      tabBar={usesFloatingTabBar ? (props) => <IOSFloatingTabBar {...props} /> : undefined}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: isIOS ? iosTheme.colors.primary : scheme === 'dark' ? colors.secondary : colors.primary,
-        tabBarInactiveTintColor: isIOS ? iosTheme.colors.textMuted : scheme === 'dark' ? colors.muted : '#9CA3AF',
-        tabBarStyle: isIOS
+        tabBarActiveTintColor: usesFloatingTabBar ? iosTheme.colors.primary : scheme === 'dark' ? colors.secondary : colors.primary,
+        tabBarInactiveTintColor: usesFloatingTabBar ? iosTheme.colors.textMuted : scheme === 'dark' ? colors.muted : '#9CA3AF',
+        tabBarStyle: usesFloatingTabBar
           ? {
               position: 'absolute',
               backgroundColor: 'transparent',
@@ -64,7 +64,7 @@ export default function TabNavigator() {
               paddingTop: 8,
               height: tabBarHeight,
             },
-        tabBarLabelStyle: isIOS
+        tabBarLabelStyle: usesFloatingTabBar
           ? undefined
           : {
               fontSize: 12,

@@ -59,6 +59,7 @@ export default function IOSFloatingTabBar({ state, descriptors, navigation }: Bo
             shadowOffset: { width: 0, height: 10 },
             shadowOpacity: 0.1,
             shadowRadius: 24,
+            elevation: 16,
           },
         ]}
       >
