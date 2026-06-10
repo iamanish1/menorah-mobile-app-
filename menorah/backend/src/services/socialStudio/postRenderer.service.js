@@ -201,18 +201,20 @@ const renderLogoMark = ({ width, palette }) => {
 const renderSpeckles = ({ width, heroHeight, palette, seedValue }) => {
   const random = seededRandom(hashSeed(seedValue));
   const circles = [];
-  const count = width > 1080 ? 340 : 280;
+  const count = width > 1080 ? 260 : 220;
 
   for (let index = 0; index < count; index += 1) {
     const x = Math.round(random() * width);
-    const y = Math.round(heroHeight - 124 + random() * 150);
-    const radius = (random() * 2.8 + 0.9).toFixed(2);
-    const opacity = (0.38 + random() * 0.48).toFixed(2);
+    const y = Math.round(heroHeight - 142 + random() * 178);
+    const radius = (random() * 2.4 + 0.7).toFixed(2);
+    const opacity = (0.2 + random() * 0.36).toFixed(2);
     circles.push(`<circle cx="${x}" cy="${y}" r="${radius}" fill="${palette.cream}" opacity="${opacity}" />`);
   }
 
   return [
-    `<path d="M0 ${heroHeight - 36} C ${width * 0.18} ${heroHeight + 18}, ${width * 0.48} ${heroHeight - 4}, ${width} ${heroHeight + 38} L ${width} ${heroHeight + 126} L 0 ${heroHeight + 126} Z" fill="${palette.cream}" />`,
+    `<rect x="0" y="${heroHeight - 190}" width="${width}" height="330" fill="url(#imageCreamFade)" />`,
+    `<path d="M-80 ${heroHeight - 68} C ${width * 0.18} ${heroHeight + 26}, ${width * 0.54} ${heroHeight - 12}, ${width + 80} ${heroHeight + 48} L ${width + 80} ${heroHeight + 148} L -80 ${heroHeight + 148} Z" fill="${palette.cream}" opacity="0.52" filter="url(#transitionSoftBlur)" />`,
+    `<path d="M-80 ${heroHeight - 24} C ${width * 0.28} ${heroHeight + 28}, ${width * 0.62} ${heroHeight + 10}, ${width + 80} ${heroHeight + 68} L ${width + 80} ${heroHeight + 158} L -80 ${heroHeight + 158} Z" fill="${palette.cream}" opacity="0.34" filter="url(#transitionSoftBlur)" />`,
     ...circles
   ].join('');
 };
@@ -331,6 +333,16 @@ const buildSvg = ({ socialPost, brandGuideline, assets, heroImageDataUri }) => {
     '<feColorMatrix type="saturate" values="0" />',
     '<feComponentTransfer><feFuncA type="table" tableValues="0 0.34" /></feComponentTransfer>',
     '</filter>',
+    `<filter id="transitionSoftBlur" x="-120" y="${layout.heroHeight - 190}" width="${width + 240}" height="380" filterUnits="userSpaceOnUse">`,
+    '<feGaussianBlur stdDeviation="30" />',
+    '</filter>',
+    `<linearGradient id="imageCreamFade" gradientUnits="userSpaceOnUse" x1="0" y1="${layout.heroHeight - 190}" x2="0" y2="${layout.heroHeight + 114}">`,
+    `<stop offset="0%" stop-color="${palette.cream}" stop-opacity="0" />`,
+    `<stop offset="34%" stop-color="${palette.cream}" stop-opacity="0.24" />`,
+    `<stop offset="58%" stop-color="${palette.cream}" stop-opacity="0.68" />`,
+    `<stop offset="82%" stop-color="${palette.cream}" stop-opacity="0.96" />`,
+    `<stop offset="100%" stop-color="${palette.cream}" stop-opacity="1" />`,
+    '</linearGradient>',
     '<linearGradient id="heroVignette" x1="0%" y1="0%" x2="100%" y2="100%">',
     '<stop offset="0%" stop-color="#241C33" stop-opacity="0.18" />',
     '<stop offset="52%" stop-color="#F8EADA" stop-opacity="0.02" />',
