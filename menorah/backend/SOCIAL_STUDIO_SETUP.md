@@ -6,8 +6,8 @@ Menorah AI Social Studio generates static Instagram post drafts, renders the fin
 
 1. Admin opens `AI Social Studio`.
 2. Admin generates a post from a topic, campaign, audience, objective, tone, post type, and aspect ratio.
-3. Backend creates a structured AI concept and caption.
-4. Backend renders the final static post image with Sharp using Menorah brand settings.
+3. Backend creates a structured AI concept, caption, hashtags, and image direction.
+4. Backend generates a unique premium image with the same OpenAI image model used for article covers, then composes the final static post image with Sharp using Menorah brand settings.
 5. The draft is saved as `needs_review`.
 6. Admin edits image text, caption, and hashtags in the review screen.
 7. Admin approves the post.
@@ -25,6 +25,12 @@ SOCIAL_STUDIO_STORAGE=local
 
 AI_PROVIDER=openai
 AI_MOCK_MODE=true
+SOCIAL_STUDIO_OPENAI_API_KEY=
+SOCIAL_STUDIO_AI_TEXT_MODEL=gpt-4o-mini
+SOCIAL_STUDIO_AI_IMAGE_MODEL=gpt-image-2
+SOCIAL_STUDIO_AI_IMAGE_SIZE=1536x1024
+SOCIAL_STUDIO_AI_IMAGE_QUALITY=medium
+SOCIAL_STUDIO_AI_IMAGE_FORMAT=jpeg
 OPENAI_API_KEY=
 AI_TEXT_MODEL=gpt-4o-mini
 AI_IMAGE_MODEL=
@@ -51,7 +57,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ## Local Mock Mode
 
-Set `AI_MOCK_MODE=true` in local development to generate realistic drafts without spending API credits. In production, generation requires a real `OPENAI_API_KEY`.
+Set `AI_MOCK_MODE=true` in local development to generate realistic drafts without spending API credits. In production, generation requires `SOCIAL_STUDIO_OPENAI_API_KEY` or `OPENAI_API_KEY`.
 
 With `SOCIAL_STUDIO_STORAGE=local`, rendered images and Social Studio brand assets are saved under:
 
@@ -62,7 +68,7 @@ uploads/social-studio-assets
 
 The backend serves them from `/uploads`.
 
-This is separate from article cover images. Article images can continue using Cloudinary while Social Studio media stays on the backend machine.
+This uses the same image model family as article cover images, but Social Studio media can stay on the backend machine with `SOCIAL_STUDIO_STORAGE=local`.
 
 For production Docker deploys, mount a persistent host folder:
 
@@ -114,7 +120,8 @@ Only posts with `approved` or `scheduled` status can be published. Drafts, rejec
 ## Production Checklist
 
 - Set `AI_MOCK_MODE=false`.
-- Set `OPENAI_API_KEY`.
+- Set `SOCIAL_STUDIO_OPENAI_API_KEY`, or allow Social Studio to fall back to `OPENAI_API_KEY`.
+- Set `SOCIAL_STUDIO_AI_IMAGE_MODEL=gpt-image-2` to match article cover generation unless article covers are moved to a different `OPENAI_IMAGE_MODEL`.
 - Set `SOCIAL_TOKEN_ENCRYPTION_KEY`.
 - Configure Cloudinary.
 - Ensure `PUBLIC_WEB_BASE_URL` points to a public HTTPS backend URL.

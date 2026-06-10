@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { generateOpenAiImage } = require('../articleImageService');
 const { normalizeHashtags, toPlainText } = require('./textUtils');
 
 const CONCEPT_SCHEMA = {
@@ -62,6 +63,14 @@ const getTextModel = () =>
   'gpt-4o-mini';
 
 const getProviderName = () => getUsableEnv('SOCIAL_STUDIO_AI_PROVIDER', 'AI_PROVIDER') || 'openai';
+
+const getImageModel = () =>
+  getUsableEnv(
+    'SOCIAL_STUDIO_AI_IMAGE_MODEL',
+    'OPENAI_IMAGE_MODEL',
+    'AI_IMAGE_MODEL'
+  ) ||
+  'gpt-image-2';
 
 const canUseMockMode = () => {
   if (process.env.AI_MOCK_MODE === 'true' && !isProduction()) {
@@ -239,19 +248,39 @@ const generateCaption = async (input = {}) => {
   return sanitizeCaption(caption, input);
 };
 
+const buildPremiumSocialImagePrompt = (input = {}) => {
+  const topic = toPlainText(input.topic || input.imagePrompt || 'Menorah Health support');
+  const hook = toPlainText(input.concept?.hookText || input.hookText || '');
+  const body = toPlainText(input.concept?.bodyText || input.bodyText || '');
+  const audience = toPlainText(input.audience || 'men looking for practical mental health support');
+  const basePrompt = toPlainText(input.imagePrompt || input.prompt || '');
+
+  return [
+    basePrompt || `Create a premium editorial mental wellness image about ${topic}.`,
+    hook ? `Post headline context: ${hook}.` : '',
+    body ? `Post body context: ${body}.` : '',
+    `Audience: ${audience}.`,
+    'Visual style: premium animated editorial photo illustration, painterly but refined, cinematic light, quiet luxury mental-health brand aesthetic, unique scene composition, not generic stock.',
+    'Layout requirement: leave clean space and calm composition because typography and the Menorah logo will be added by the app after generation.',
+    'Color direction: Menorah deep green, olive, warm cream, soft peach, muted violet shadows, natural light.',
+    'Subject direction: calm adult men in grounded everyday moments such as office, home, commute, journaling, therapy-adjacent conversation, or quiet reflection.',
+    'Avoid: readable text, logos, UI, medical/hospital imagery, stereotypes, distressing crisis scenes, exaggerated sadness, extra limbs, deformed hands, blurry low-quality output.'
+  ].filter(Boolean).join('\n');
+};
+
 const generateImagePrompt = async (input = {}) => {
   if (canUseMockMode()) {
     const topic = toPlainText(input.topic || 'Menorah Health support');
     return {
-      imagePrompt: `Soft editorial mental wellness background for ${topic}. No readable text.`,
-      backgroundDirection: 'Warm cream and green abstract shapes with calm, premium spacing.'
+      imagePrompt: `Premium animated editorial mental wellness image for ${topic}. No readable text, no logos.`,
+      backgroundDirection: 'Unique painterly photo-illustration with Menorah green, olive, warm cream, soft peach, muted violet shadows, and calm premium spacing.'
     };
   }
 
   const prompt = await callOpenAiResponses({
     schema: IMAGE_PROMPT_SCHEMA,
     name: 'social_post_image_prompt',
-    task: 'Generate a background image prompt for a deterministic rendered static post',
+    task: 'Generate a premium image prompt for an Instagram post background',
     input
   });
 
@@ -261,17 +290,31 @@ const generateImagePrompt = async (input = {}) => {
   };
 };
 
-const generateBackgroundImage = async (input = {}) => ({
-  imageUrl: '',
-  prompt: toPlainText(input.imagePrompt || input.topic || ''),
-  provider: getProviderName(),
-  note: 'MVP uses deterministic Sharp rendering for final Instagram images.'
-});
+const generateBackgroundImage = async (input = {}) => {
+  const prompt = buildPremiumSocialImagePrompt(input);
+  const buffer = await generateOpenAiImage(prompt, {
+    apiKeyEnvNames: ['SOCIAL_STUDIO_OPENAI_API_KEY', 'OPENAI_API_KEY'],
+    model: getImageModel(),
+    sizeEnvNames: ['SOCIAL_STUDIO_AI_IMAGE_SIZE', 'OPENAI_IMAGE_SIZE'],
+    qualityEnvNames: ['SOCIAL_STUDIO_AI_IMAGE_QUALITY', 'OPENAI_IMAGE_QUALITY'],
+    outputFormatEnvNames: ['SOCIAL_STUDIO_AI_IMAGE_FORMAT', 'OPENAI_IMAGE_FORMAT'],
+    timeoutEnvNames: ['SOCIAL_STUDIO_AI_IMAGE_TIMEOUT_MS', 'OPENAI_IMAGE_TIMEOUT_MS'],
+    missingKeyMessage: 'SOCIAL_STUDIO_OPENAI_API_KEY or OPENAI_API_KEY is required for Social Studio image generation'
+  });
+
+  return {
+    imageBuffer: buffer,
+    prompt,
+    provider: getProviderName(),
+    modelUsed: buffer ? getImageModel() : 'mock'
+  };
+};
 
 module.exports = {
   generateBackgroundImage,
   generateCaption,
   generateImagePrompt,
   generatePostConcept,
+  getImageModel,
   getProviderName
 };

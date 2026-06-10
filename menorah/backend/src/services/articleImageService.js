@@ -7,9 +7,12 @@ const isPlaceholderValue = (value) => /REPLACE_WITH|placeholder|your-|your_/i.te
 
 const isProduction = () => process.env.NODE_ENV === 'production';
 
-const getUsableEnv = (name) => {
-  const value = String(process.env[name] || '').trim();
-  return value && !isPlaceholderValue(value) ? value : '';
+const getUsableEnv = (...names) => {
+  for (const name of names) {
+    const value = String(process.env[name] || '').trim();
+    if (value && !isPlaceholderValue(value)) return value;
+  }
+  return '';
 };
 
 const compact = (parts) => parts.map((part) => String(part || '').trim()).filter(Boolean);
@@ -43,24 +46,30 @@ const buildCloudinaryPublicId = (article = {}) => {
   return `${title || 'article-cover'}-${Date.now()}`;
 };
 
-const generateOpenAiImage = async (prompt) => {
-  const apiKey = getUsableEnv('OPENAI_API_KEY');
+const generateOpenAiImage = async (prompt, options = {}) => {
+  const apiKey = getUsableEnv(...(options.apiKeyEnvNames || ['OPENAI_API_KEY']));
 
   if (!apiKey) {
     if (isProduction()) {
-      throw new Error('OPENAI_API_KEY is required for production cover image generation');
+      throw new Error(options.missingKeyMessage || 'OPENAI_API_KEY is required for production image generation');
     }
     return null;
   }
 
+  const model = options.model || getUsableEnv(...(options.modelEnvNames || ['OPENAI_IMAGE_MODEL'])) || 'gpt-image-2';
+  const size = options.size || getUsableEnv(...(options.sizeEnvNames || ['OPENAI_IMAGE_SIZE'])) || '1536x1024';
+  const quality = options.quality || getUsableEnv(...(options.qualityEnvNames || ['OPENAI_IMAGE_QUALITY'])) || 'medium';
+  const outputFormat = options.outputFormat || getUsableEnv(...(options.outputFormatEnvNames || ['OPENAI_IMAGE_FORMAT'])) || 'jpeg';
+  const timeout = Number(options.timeoutMs || getUsableEnv(...(options.timeoutEnvNames || ['OPENAI_IMAGE_TIMEOUT_MS'])) || 120000);
+
   const response = await axios.post(
     'https://api.openai.com/v1/images/generations',
     {
-      model: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2',
+      model,
       prompt,
-      size: process.env.OPENAI_IMAGE_SIZE || '1536x1024',
-      quality: process.env.OPENAI_IMAGE_QUALITY || 'medium',
-      output_format: process.env.OPENAI_IMAGE_FORMAT || 'jpeg',
+      size,
+      quality,
+      output_format: outputFormat,
       n: 1
     },
     {
@@ -68,7 +77,7 @@ const generateOpenAiImage = async (prompt) => {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      timeout: Number(process.env.OPENAI_IMAGE_TIMEOUT_MS || 120000)
+      timeout
     }
   );
 
@@ -139,5 +148,7 @@ const resolveCoverImage = async ({ coverImageUrl, coverImagePublicId, article, .
 };
 
 module.exports = {
+  buildImagePrompt,
+  generateOpenAiImage,
   resolveCoverImage
 };

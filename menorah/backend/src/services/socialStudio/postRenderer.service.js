@@ -1,5 +1,6 @@
 const fs = require('fs/promises');
 const path = require('path');
+const axios = require('axios');
 const sharp = require('sharp');
 const { uploadBuffer } = require('../../utils/cloudinary');
 const { toPlainText } = require('./textUtils');
@@ -250,6 +251,48 @@ const renderEditorialIllustration = ({ width, heroHeight, palette }) => {
   ].join('');
 };
 
+const renderHeroImage = ({ width, heroHeight, palette, heroImageDataUri }) => {
+  if (!heroImageDataUri) {
+    return renderEditorialIllustration({ width, heroHeight, palette });
+  }
+
+  return [
+    '<g clip-path="url(#heroClip)">',
+    `<image href="${heroImageDataUri}" x="0" y="0" width="${width}" height="${heroHeight + 74}" preserveAspectRatio="xMidYMid slice" />`,
+    `<rect x="0" y="0" width="${width}" height="${heroHeight + 74}" fill="${palette.primary}" opacity="0.08" />`,
+    `<rect x="0" y="0" width="${width}" height="${heroHeight + 74}" fill="url(#heroVignette)" opacity="0.72" />`,
+    `<rect width="${width}" height="${heroHeight + 74}" fill="url(#grain)" opacity="0.13" />`,
+    renderLogoMark({ width, palette }),
+    '</g>'
+  ].join('');
+};
+
+const bufferToJpegDataUri = async ({ buffer, width, heroHeight }) => {
+  if (!buffer) return '';
+
+  const normalized = await sharp(buffer)
+    .resize({
+      width,
+      height: heroHeight + 74,
+      fit: 'cover',
+      position: 'attention'
+    })
+    .modulate({ saturation: 0.92, brightness: 1.03 })
+    .jpeg({ quality: 88, mozjpeg: true })
+    .toBuffer();
+
+  return `data:image/jpeg;base64,${normalized.toString('base64')}`;
+};
+
+const loadRemoteImageBuffer = async (imageUrl) => {
+  if (!imageUrl) return null;
+  const response = await axios.get(imageUrl, {
+    responseType: 'arraybuffer',
+    timeout: 45000
+  });
+  return Buffer.from(response.data);
+};
+
 const renderHeadline = ({ lines, x, y, fontSize, lineHeight, palette }) => lines
   .map((line, index) => {
     const fill = index === lines.length - 1 && lines.length > 1 ? palette.olive : palette.primary;
@@ -257,7 +300,7 @@ const renderHeadline = ({ lines, x, y, fontSize, lineHeight, palette }) => lines
   })
   .join('');
 
-const buildSvg = ({ socialPost, brandGuideline, assets }) => {
+const buildSvg = ({ socialPost, brandGuideline, assets, heroImageDataUri }) => {
   const { width, height } = SIZE_BY_RATIO[socialPost.aspectRatio] || SIZE_BY_RATIO['4:5'];
   const palette = getPalette(brandGuideline);
   const layout = getLayout(socialPost.aspectRatio, width, height);
@@ -288,9 +331,14 @@ const buildSvg = ({ socialPost, brandGuideline, assets }) => {
     '<feColorMatrix type="saturate" values="0" />',
     '<feComponentTransfer><feFuncA type="table" tableValues="0 0.34" /></feComponentTransfer>',
     '</filter>',
+    '<linearGradient id="heroVignette" x1="0%" y1="0%" x2="100%" y2="100%">',
+    '<stop offset="0%" stop-color="#241C33" stop-opacity="0.18" />',
+    '<stop offset="52%" stop-color="#F8EADA" stop-opacity="0.02" />',
+    '<stop offset="100%" stop-color="#321533" stop-opacity="0.1" />',
+    '</linearGradient>',
     '</defs>',
     `<rect width="${width}" height="${height}" fill="${palette.cream}" />`,
-    renderEditorialIllustration({ width, heroHeight: layout.heroHeight, palette }),
+    renderHeroImage({ width, heroHeight: layout.heroHeight, palette, heroImageDataUri }),
     renderSpeckles({ width, heroHeight: layout.heroHeight, palette, seedValue: `${socialPost._id || ''}${headline}` }),
     renderHeadline({
       lines: headlineLines,
@@ -349,9 +397,17 @@ const saveImage = async (buffer, filename, folder) => {
   };
 };
 
-const renderStaticPost = async ({ socialPost, brandGuideline, assets = [] }) => {
+const renderStaticPost = async ({ socialPost, brandGuideline, assets = [], backgroundImageBuffer = null }) => {
   const size = SIZE_BY_RATIO[socialPost.aspectRatio] || SIZE_BY_RATIO['4:5'];
-  const svg = buildSvg({ socialPost, brandGuideline, assets });
+  const id = socialPost._id?.toString() || `social-${Date.now()}`;
+  const folder = process.env.CLOUDINARY_SOCIAL_STUDIO_FOLDER || 'menorah/social-studio';
+  const sourceBuffer = backgroundImageBuffer || await loadRemoteImageBuffer(socialPost.imageUrl).catch(() => null);
+  const heroImageDataUri = await bufferToJpegDataUri({
+    buffer: sourceBuffer,
+    width: size.width,
+    heroHeight: getLayout(socialPost.aspectRatio, size.width, size.height).heroHeight
+  });
+  const svg = buildSvg({ socialPost, brandGuideline, assets, heroImageDataUri });
   const imageBuffer = await sharp(Buffer.from(svg))
     .jpeg({ quality: 92, mozjpeg: true })
     .toBuffer();
@@ -360,16 +416,24 @@ const renderStaticPost = async ({ socialPost, brandGuideline, assets = [] }) => 
     .jpeg({ quality: 82, mozjpeg: true })
     .toBuffer();
 
-  const id = socialPost._id?.toString() || `social-${Date.now()}`;
-  const folder = process.env.CLOUDINARY_SOCIAL_STUDIO_FOLDER || 'menorah/social-studio';
-  const [image, thumbnail] = await Promise.all([
+  const saveTasks = [
     saveImage(imageBuffer, `${id}-final.jpg`, folder),
     saveImage(thumbBuffer, `${id}-thumb.jpg`, `${folder}/thumbs`)
-  ]);
+  ];
+
+  if (backgroundImageBuffer) {
+    const sourceJpeg = await sharp(backgroundImageBuffer)
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+    saveTasks.push(saveImage(sourceJpeg, `${id}-source.jpg`, `${folder}/sources`));
+  }
+
+  const [image, thumbnail, source] = await Promise.all(saveTasks);
 
   return {
     finalImageUrl: image.url,
     finalImagePublicId: image.publicId,
+    imageUrl: source?.url || socialPost.imageUrl || '',
     thumbnailUrl: thumbnail.url,
     width: size.width,
     height: size.height

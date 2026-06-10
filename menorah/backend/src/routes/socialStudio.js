@@ -18,7 +18,7 @@ const {
   getActiveBrandGuidelines,
   normalizeGuidelinePayload
 } = require('../services/socialStudio/assetSelector.service');
-const { generateCaption } = require('../services/socialStudio/aiProvider.service');
+const { generateBackgroundImage, generateCaption } = require('../services/socialStudio/aiProvider.service');
 const { renderStaticPost } = require('../services/socialStudio/postRenderer.service');
 const { runQualityCheck } = require('../services/socialStudio/qualityCheck.service');
 const { publishApprovedPost, encryptToken, verifyInstagramAccount } = require('../services/socialStudio/instagramPublisher.service');
@@ -125,13 +125,40 @@ const getImageDimensions = async (file) => {
   }
 };
 
-const renderAndCheckPost = async (post) => {
+const renderAndCheckPost = async (post, { regenerateBackground = false } = {}) => {
   const brandGuideline = await getActiveBrandGuidelines();
   const assets = post.selectedAssetIds?.length
     ? await BrandAsset.find({ _id: { $in: post.selectedAssetIds }, status: 'active' })
     : [];
-  const rendered = await renderStaticPost({ socialPost: post, brandGuideline, assets });
+  const backgroundImage = regenerateBackground
+    ? await generateBackgroundImage({
+      topic: post.topic,
+      campaignName: post.campaignName,
+      audience: post.audience,
+      objective: post.objective,
+      tone: post.tone,
+      imagePrompt: post.aiPrompt,
+      hookText: post.hookText,
+      bodyText: post.bodyText,
+      ctaText: post.ctaText,
+      brandGuideline
+    })
+    : null;
+
+  const rendered = await renderStaticPost({
+    socialPost: post,
+    brandGuideline,
+    assets,
+    backgroundImageBuffer: backgroundImage?.imageBuffer || null
+  });
   Object.assign(post, rendered);
+  if (backgroundImage?.modelUsed) {
+    const existingModels = String(post.modelUsed || '')
+      .split('+')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    post.modelUsed = Array.from(new Set([...existingModels, backgroundImage.modelUsed])).join(' + ');
+  }
   const quality = runQualityCheck({ socialPost: post, brandGuideline, assets });
   post.qualityScore = quality.qualityScore;
   post.qualityIssues = quality.qualityIssues;
@@ -437,7 +464,7 @@ router.post('/posts/:id/regenerate-image', [param('id').isMongoId()], async (req
   try {
     const post = await SocialPost.findById(req.params.id);
     if (!post) return res.status(404).json({ success: false, message: 'Social post not found' });
-    await renderAndCheckPost(post);
+    await renderAndCheckPost(post, { regenerateBackground: true });
     res.json({ success: true, data: { post: formatModel(post) } });
   } catch (error) {
     console.error('Regenerate Social Studio image error:', error);

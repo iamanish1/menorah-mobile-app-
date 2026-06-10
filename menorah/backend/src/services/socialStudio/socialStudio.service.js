@@ -1,6 +1,7 @@
 const SocialPost = require('../../models/SocialPost');
 const GenerationJob = require('../../models/GenerationJob');
 const {
+  generateBackgroundImage,
   generateCaption,
   generateImagePrompt,
   generatePostConcept,
@@ -70,11 +71,26 @@ const createSocialPostDraft = async ({ input, createdBy }) => {
       modelUsed: concept.modelUsed || '',
       createdBy
     });
-
     job.socialPostId = post._id;
-    await updateJob(job, 'rendering', 70, 'Rendering final static image.');
-    const rendered = await renderStaticPost({ socialPost: post, brandGuideline, assets });
+
+    await updateJob(job, 'generating_image', 60, 'Generating premium AI visual.');
+    const backgroundImage = await generateBackgroundImage({
+      ...normalizedInput,
+      concept,
+      caption,
+      imagePrompt: imagePrompt.imagePrompt,
+      brandGuideline
+    });
+
+    await updateJob(job, 'rendering', 78, 'Composing final Instagram post.');
+    const rendered = await renderStaticPost({
+      socialPost: post,
+      brandGuideline,
+      assets,
+      backgroundImageBuffer: backgroundImage.imageBuffer
+    });
     Object.assign(post, rendered);
+    post.modelUsed = [concept.modelUsed, backgroundImage.modelUsed].filter(Boolean).join(' + ');
 
     await updateJob(job, 'quality_checking', 88, 'Running quality checks.');
     const quality = runQualityCheck({ socialPost: post, brandGuideline, assets });
