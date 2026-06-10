@@ -16,6 +16,8 @@ const templateNames = {
   announcement: 'Promotional/Announcement'
 };
 
+const SVG_FONT_FAMILY = 'DejaVu Sans, Liberation Sans, Arial, sans-serif';
+
 const escapeXml = (value) => String(value || '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -62,7 +64,7 @@ const wrapText = (text, maxChars, maxLines = 5) => {
 const renderText = ({ text, x, y, fontSize, fill, weight = 700, maxChars, lineHeight, maxLines, anchor = 'start' }) => {
   const lines = wrapText(text, maxChars, maxLines);
   return [
-    `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="${fill}" font-family="Inter, Arial, sans-serif" font-size="${fontSize}" font-weight="${weight}">`,
+    `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="${fill}" font-family="${SVG_FONT_FAMILY}" font-size="${fontSize}" font-weight="${weight}">`,
     ...lines.map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`),
     '</text>'
   ].join('');
@@ -74,7 +76,7 @@ const renderBulletLines = ({ items, x, y, fontSize, fill, maxChars }) => {
     const lines = wrapText(item, maxChars, 2);
     const block = [
       `<circle cx="${x}" cy="${currentY - 8}" r="7" fill="${fill}" opacity="0.9" />`,
-      `<text x="${x + 26}" y="${currentY}" fill="${fill}" font-family="Inter, Arial, sans-serif" font-size="${fontSize}" font-weight="650">`,
+      `<text x="${x + 26}" y="${currentY}" fill="${fill}" font-family="${SVG_FONT_FAMILY}" font-size="${fontSize}" font-weight="650">`,
       ...lines.map((line, index) => `<tspan x="${x + 26}" dy="${index === 0 ? 0 : fontSize + 10}">${escapeXml(line)}</tspan>`),
       '</text>'
     ].join('');
@@ -112,9 +114,9 @@ const buildSvg = ({ socialPost, brandGuideline, assets }) => {
     `<circle cx="90" cy="${height - 120}" r="300" fill="${palette.primary}" opacity="0.08" />`,
     `<path d="M0 ${height * 0.72} C ${width * 0.28} ${height * 0.62}, ${width * 0.63} ${height * 0.87}, ${width} ${height * 0.66} L ${width} ${height} L 0 ${height} Z" fill="${palette.white}" opacity="0.62" />`,
     `<rect x="${padding}" y="${padding}" width="${width - padding * 2}" height="${height - padding * 2}" rx="44" fill="${palette.white}" opacity="0.54" />`,
-    `<text x="${padding + 16}" y="${padding + 54}" fill="${palette.primary}" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="800">${escapeXml(brandName)}</text>`,
-    logoAsset?.url ? `<text x="${padding + 16}" y="${padding + 90}" fill="${palette.ink}" opacity="0.48" font-family="Inter, Arial, sans-serif" font-size="18">Brand asset selected</text>` : '',
-    `<text x="${width - padding - 16}" y="${padding + 54}" text-anchor="end" fill="${palette.ink}" opacity="0.45" font-family="Inter, Arial, sans-serif" font-size="20">${escapeXml(templateNames[templateKey] || 'Instagram Post')}</text>`
+    `<text x="${padding + 16}" y="${padding + 54}" fill="${palette.primary}" font-family="${SVG_FONT_FAMILY}" font-size="32" font-weight="800">${escapeXml(brandName)}</text>`,
+    logoAsset?.url ? `<text x="${padding + 16}" y="${padding + 90}" fill="${palette.ink}" opacity="0.48" font-family="${SVG_FONT_FAMILY}" font-size="18">Brand asset selected</text>` : '',
+    `<text x="${width - padding - 16}" y="${padding + 54}" text-anchor="end" fill="${palette.ink}" opacity="0.45" font-family="${SVG_FONT_FAMILY}" font-size="20">${escapeXml(templateNames[templateKey] || 'Instagram Post')}</text>`
   ];
 
   if (templateKey === 'educational_tip') {
@@ -171,7 +173,7 @@ const buildSvg = ({ socialPost, brandGuideline, assets }) => {
     );
   } else {
     shared.push(
-      `<text x="${padding + 48}" y="${hookY - 52}" fill="${palette.accent}" font-family="Inter, Arial, sans-serif" font-size="94" font-weight="800" opacity="0.35">"</text>`,
+      `<text x="${padding + 48}" y="${hookY - 52}" fill="${palette.accent}" font-family="${SVG_FONT_FAMILY}" font-size="94" font-weight="800" opacity="0.35">"</text>`,
       renderText({
         text: socialPost.hookText,
         x: padding + 48,
@@ -199,8 +201,8 @@ const buildSvg = ({ socialPost, brandGuideline, assets }) => {
 
   shared.push(
     `<rect x="${padding + 44}" y="${ctaY - 54}" width="${Math.min(width - padding * 2 - 88, 620)}" height="82" rx="41" fill="${palette.primary}" opacity="0.96" />`,
-    `<text x="${padding + 82}" y="${ctaY}" fill="${palette.white}" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800">${escapeXml(toPlainText(socialPost.ctaText || 'Start with one honest step.').slice(0, 52))}</text>`,
-    `<text x="${width - padding - 18}" y="${height - padding - 10}" text-anchor="end" fill="${palette.ink}" opacity="0.46" font-family="Inter, Arial, sans-serif" font-size="21">@menorahhealth</text>`,
+    `<text x="${padding + 82}" y="${ctaY}" fill="${palette.white}" font-family="${SVG_FONT_FAMILY}" font-size="28" font-weight="800">${escapeXml(toPlainText(socialPost.ctaText || 'Start with one honest step.').slice(0, 52))}</text>`,
+    `<text x="${width - padding - 18}" y="${height - padding - 10}" text-anchor="end" fill="${palette.ink}" opacity="0.46" font-family="${SVG_FONT_FAMILY}" font-size="21">@menorahhealth</text>`,
     '</svg>'
   );
 

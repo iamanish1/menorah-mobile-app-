@@ -10,6 +10,10 @@ RUN npm ci --only=production
 # ── Stage 2: final runtime image ───────────────────────────────────────────
 FROM node:20-alpine AS runner
 
+# Fonts are required by Sharp/libvips when rendering SVG text for Social Studio
+# Instagram images. Without them, production renders letters as square glyphs.
+RUN apk add --no-cache fontconfig ttf-dejavu ttf-liberation && fc-cache -f
+
 # Security: run as non-root user
 RUN addgroup -S menorah && adduser -S menorah -G menorah
 
