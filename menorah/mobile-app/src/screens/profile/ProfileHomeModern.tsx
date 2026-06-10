@@ -60,6 +60,13 @@ const ACCOUNT_ITEMS = [
   { icon: LogOut, label: 'Sign Out', sub: 'Logout from your account', route: null, danger: true },
 ];
 
+const kycSubtitle = (status?: string) => {
+  if (status === 'verified') return 'Verified with eKYC';
+  if (status === 'manual_review' || status === 'pending') return 'Admin review in progress';
+  if (status === 'rejected') return 'Resubmit clear identity photos';
+  return 'Complete secure identity verification';
+};
+
 export default function ProfileHome({ navigation }: any) {
   const { logout, user } = useAuth();
   const rootNavigation = useNavigation();
@@ -75,6 +82,17 @@ export default function ProfileHome({ navigation }: any) {
   })();
 
   const initials = user?.firstName?.charAt(0)?.toUpperCase() || 'U';
+  const kycStatus = user?.kyc?.status || 'not_started';
+  const accountItems = [
+    {
+      icon: ShieldCheck,
+      label: 'Identity Verification',
+      sub: kycSubtitle(kycStatus),
+      route: 'IdentityVerification',
+      danger: false,
+    },
+    ...ACCOUNT_ITEMS,
+  ];
 
   const handleSignOut = () => {
     Alert.alert(
@@ -194,7 +212,7 @@ export default function ProfileHome({ navigation }: any) {
                 >
                   <ShieldCheck size={13} color={iosTheme.colors.inverseText} strokeWidth={2.2} />
                   <Text style={{ color: iosTheme.colors.inverseText, fontSize: 11, lineHeight: 14, fontWeight: '800' }}>
-                    {memberSince ? `Member since ${memberSince}` : 'Verified Member'}
+                    {kycStatus === 'verified' ? 'Identity verified' : memberSince ? `Member since ${memberSince}` : 'Member'}
                   </Text>
                 </View>
               </View>
@@ -234,6 +252,18 @@ export default function ProfileHome({ navigation }: any) {
           </View>
         </IOSCard>
 
+        {kycStatus !== 'verified' ? (
+          <IOSActionCard
+            dark
+            icon={ShieldCheck}
+            title={kycStatus === 'manual_review' || kycStatus === 'pending' ? 'Identity under review' : 'Verify identity'}
+            subtitle={kycSubtitle(kycStatus)}
+            actionLabel={kycStatus === 'manual_review' || kycStatus === 'pending' ? 'View status' : 'Start eKYC'}
+            onPress={() => navigation.navigate('IdentityVerification')}
+            style={{ marginTop: iosTheme.spacing.md }}
+          />
+        ) : null}
+
         <IOSSectionHeader title="Quick Actions" />
         <View style={{ gap: iosTheme.spacing.md }}>
           {QUICK_ACTIONS.map((item) => (
@@ -250,14 +280,14 @@ export default function ProfileHome({ navigation }: any) {
 
         <IOSSectionHeader title="Account" />
         <IOSCard>
-          {ACCOUNT_ITEMS.map((item, index) => (
+          {accountItems.map((item, index) => (
             <IOSListItem
               key={item.label}
               title={item.label}
               subtitle={item.sub}
               icon={item.icon}
               danger={item.danger}
-              showDivider={index < ACCOUNT_ITEMS.length - 1}
+              showDivider={index < accountItems.length - 1}
               onPress={item.danger ? handleSignOut : () => navigation.navigate(item.route)}
             />
           ))}

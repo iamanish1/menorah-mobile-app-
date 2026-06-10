@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Animated, FlatList, Linking, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, FlatList, Linking, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   BookOpen,
@@ -23,11 +23,12 @@ import {
   useIOSTheme,
 } from '@/components/ios';
 import { discoverScrollY } from '@/components/ios/iosScrollSignals';
-import { ARTICLES } from '@/mock/articles';
+import { useArticles } from '@/hooks/useArticles';
 import { INSTA } from '@/mock/instagram';
 import { mockCounsellors } from '@/mock/counsellors';
 import subscriptionService from '@/services/subscriptionService';
 import { useNotifications } from '@/state/useNotifications';
+import type { Article } from '@/types/article';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SESSION_DETAILS: Record<string, { duration: number; price: number; label: string }> = {
@@ -43,6 +44,13 @@ export default function Discover({ navigation }: any) {
   const { unreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const iosTheme = useIOSTheme();
+  const {
+    data: articlesData,
+    isLoading: articlesLoading,
+    isError: articlesError,
+    refetch: refetchArticles,
+  } = useArticles({ page: 1, limit: 8 });
+  const articles = articlesData?.articles || [];
 
   useEffect(() => {
     const checkModal = async () => {
@@ -81,6 +89,10 @@ export default function Discover({ navigation }: any) {
     });
   };
 
+  const openArticle = (article: Article) => {
+    navigation.navigate('ArticleDetail', { slug: article.slug });
+  };
+
   const normalizedQuery = q.trim().toLowerCase();
   const isSearching = normalizedQuery.length > 0;
 
@@ -100,15 +112,15 @@ export default function Discover({ navigation }: any) {
   const matchedArticles = useMemo(
     () =>
       isSearching
-        ? ARTICLES.filter((article) =>
-            [article.title, article.excerpt, article.category]
+        ? articles.filter((article) =>
+            [article.title, article.excerpt, article.category, ...(article.tags || [])]
               .filter(Boolean)
               .join(' ')
               .toLowerCase()
               .includes(normalizedQuery)
           )
         : [],
-    [isSearching, normalizedQuery]
+    [articles, isSearching, normalizedQuery]
   );
 
   const matchedSocialPosts = useMemo(
@@ -120,8 +132,6 @@ export default function Discover({ navigation }: any) {
   );
 
   const totalResults = matchedCounsellors.length + matchedArticles.length + matchedSocialPosts.length;
-  const getArticleUrl = (article: (typeof ARTICLES)[number]) =>
-    article.canonicalUrl || `https://menorah.me/articles/${article.slug}`;
   const headerFullHeight = insets.top + iosTheme.spacing.xl + 68 + iosTheme.spacing.lg;
   const headerOpacity = discoverScrollY.interpolate({
     inputRange: [0, 54, 104],
@@ -265,8 +275,8 @@ export default function Discover({ navigation }: any) {
                 <IOSSectionHeader title="Articles" />
                 {matchedArticles.slice(0, 4).map((article) => (
                   <IOSCard
-                    key={article.id || article.slug}
-                    onPress={() => Linking.openURL(getArticleUrl(article))}
+                    key={article.id || article._id || article.slug}
+                    onPress={() => openArticle(article)}
                     style={{ marginBottom: iosTheme.spacing.md }}
                   >
                     <Text style={iosTheme.typography.cardTitle}>{article.title}</Text>
@@ -326,18 +336,41 @@ export default function Discover({ navigation }: any) {
             <IOSSectionHeader
               title="Read Articles"
               actionLabel="View all"
-              onPress={() => Linking.openURL('https://menorah.me/newsletter')}
+              onPress={() => navigation.navigate('ArticleList')}
             />
-            <FlatList
-              data={ARTICLES}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.id || item.slug}
-              contentContainerStyle={{ paddingRight: iosTheme.layout.screenPadding }}
-              renderItem={({ item }) => (
-                <IOSArticleCard item={item} onPress={() => Linking.openURL(getArticleUrl(item))} />
-              )}
-            />
+            {articlesLoading ? (
+              <IOSCard style={{ marginRight: iosTheme.layout.screenPadding }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: iosTheme.spacing.md }}>
+                  <ActivityIndicator color={iosTheme.colors.primary} />
+                  <Text style={iosTheme.typography.body}>Loading articles...</Text>
+                </View>
+              </IOSCard>
+            ) : articlesError ? (
+              <IOSCard onPress={() => refetchArticles()} style={{ marginRight: iosTheme.layout.screenPadding }}>
+                <Text style={iosTheme.typography.cardTitle}>Articles could not load</Text>
+                <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
+                  Tap to try again.
+                </Text>
+              </IOSCard>
+            ) : articles.length > 0 ? (
+              <FlatList
+                data={articles}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.id || item._id || item.slug}
+                contentContainerStyle={{ paddingRight: iosTheme.layout.screenPadding }}
+                renderItem={({ item }) => (
+                  <IOSArticleCard item={item} onPress={() => openArticle(item)} />
+                )}
+              />
+            ) : (
+              <IOSCard style={{ marginRight: iosTheme.layout.screenPadding }}>
+                <Text style={iosTheme.typography.cardTitle}>No articles yet</Text>
+                <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
+                  Check back soon for new Menorah reads.
+                </Text>
+              </IOSCard>
+            )}
 
             <View style={{ flexDirection: 'row', gap: iosTheme.spacing.md, marginTop: iosTheme.spacing.md }}>
               <IOSActionCard

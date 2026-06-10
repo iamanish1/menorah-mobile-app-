@@ -1,6 +1,6 @@
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
-import { ArrowUpRight } from 'lucide-react-native';
+import { BookOpen } from 'lucide-react-native';
 import type { Article } from '@/types/article';
 import { useIOSTheme } from './iosTheme';
 
@@ -47,7 +47,7 @@ export default function IOSArticleCard({ item, onPress }: IOSArticleCardProps) {
           <Text style={{ color: iosTheme.colors.primaryMuted, fontSize: 11, lineHeight: 14, fontWeight: '900' }}>
             {item.category || 'ARTICLE'}
           </Text>
-          <ArrowUpRight size={16} color={iosTheme.colors.primaryMuted} strokeWidth={2.4} />
+          <BookOpen size={16} color={iosTheme.colors.primaryMuted} strokeWidth={2.4} />
         </View>
         <Text style={{ color: iosTheme.colors.text, fontSize: 16, lineHeight: 21, fontWeight: '900', marginBottom: iosTheme.spacing.sm }} numberOfLines={2}>
           {item.title}

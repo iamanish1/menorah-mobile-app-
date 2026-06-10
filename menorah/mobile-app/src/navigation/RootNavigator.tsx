@@ -66,13 +66,12 @@ export default function RootNavigator() {
         Tabs: {
           screens: {
             Discover: 'discover',
-            Articles: 'articles',
             Bookings: 'bookings',
             Chat: 'chat',
             Profile: 'profile',
           },
         },
-        ArticleList: 'article-list',
+        ArticleList: 'articles',
         ArticleDetail: 'articles/:slug',
       },
     },
