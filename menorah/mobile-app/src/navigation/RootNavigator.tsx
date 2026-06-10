@@ -7,6 +7,7 @@ import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { useAuth } from '@/state/useAuth';
 import { navigationRef } from '@/services/navigationService';
+import { ENV } from '@/lib/env';
 import TabNavigator from './TabNavigator';
 import Onboarding from '@/screens/auth/Onboarding';
 import Login from '@/screens/auth/Login';
@@ -40,6 +41,7 @@ import ArticleDetail from '@/screens/articles/ArticleDetail';
 
 const Stack = createNativeStackNavigator();
 const PUBLIC_ROUTES = new Set(['Onboarding', 'Login', 'Register', 'Forgot', 'ResetPassword', 'Verify']);
+const PUBLIC_WEB_BASE_URL = ENV.WEB_BASE_URL.replace(/\/+$/, '');
 
 export default function RootNavigator() {
   const { isAuthed, isLoading } = useAuth();
@@ -48,11 +50,28 @@ export default function RootNavigator() {
   const prevIsAuthedRef = useRef<boolean | null>(null);
   const prevIsLoadingRef = useRef<boolean>(true);
   const linking = {
-    prefixes: [Linking.createURL('/'), 'menorah-health://', 'exp+menorah-health-app://'],
+    prefixes: [
+      Linking.createURL('/'),
+      'menorah-health://',
+      'exp+menorah-health-app://',
+      PUBLIC_WEB_BASE_URL,
+      `${PUBLIC_WEB_BASE_URL}/`,
+      'https://menorah.me',
+      'https://menorah.me/',
+    ],
     config: {
       screens: {
         ResetPassword: 'reset-password',
-        ArticleList: 'articles',
+        Tabs: {
+          screens: {
+            Discover: 'discover',
+            Articles: 'articles',
+            Bookings: 'bookings',
+            Chat: 'chat',
+            Profile: 'profile',
+          },
+        },
+        ArticleList: 'article-list',
         ArticleDetail: 'articles/:slug',
       },
     },
@@ -85,7 +104,7 @@ export default function RootNavigator() {
     prevIsLoadingRef.current = isLoading;
   }, [isLoading, isAuthed]);
 
-  // React to auth state changes after the app has mounted.
+  // React to auth state changes (when user logs out)
   useEffect(() => {
     // Skip on initial mount
     if (prevIsAuthedRef.current === null) {
@@ -93,13 +112,16 @@ export default function RootNavigator() {
       return;
     }
 
-    if (!isLoading && navigationRef.isReady() && prevIsAuthedRef.current !== isAuthed) {
+    // Only navigate when auth state changes from authenticated to unauthenticated
+    if (!isLoading && navigationRef.isReady() && prevIsAuthedRef.current === true && !isAuthed) {
+      // User logged out - navigate to Onboarding
+      // Use setTimeout to ensure navigation happens after state update
       setTimeout(() => {
         try {
           if (navigationRef.isReady()) {
             navigationRef.reset({
               index: 0,
-              routes: [{ name: isAuthed ? 'Tabs' : 'Onboarding' }],
+              routes: [{ name: 'Onboarding' }],
             });
           }
         } catch (error) {

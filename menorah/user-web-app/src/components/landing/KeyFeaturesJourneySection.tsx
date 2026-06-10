@@ -2,6 +2,7 @@
 
 import type { CSSProperties, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { BookOpen, CheckCircle2, HeartPulse, LockKeyhole, MessageCircle, ShieldCheck, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -192,9 +193,15 @@ function Header() {
         Key features across your mental wellness journey.
       </h2>
       <p className="mx-auto mt-3 max-w-3xl text-base leading-7 text-foreground/70">
-        From private support to self-help tools, Menorah gives men a safe space to understand themselves, connect with
-        others, and take the next step with clarity.
+        From private support to self-help tools and India-focused mental-health articles, Menorah gives men a safe space
+        to understand themselves, connect with others, and take the next step with clarity.
       </p>
+      <Link
+        href="/articles"
+        className="mt-5 inline-flex min-h-11 items-center justify-center rounded-full border border-menorah-green/15 bg-background/80 px-5 text-sm font-semibold text-menorah-green shadow-sm transition hover:border-menorah-green/35 hover:text-menorah-olive"
+      >
+        Explore mental-health articles
+      </Link>
     </div>
   );
 }

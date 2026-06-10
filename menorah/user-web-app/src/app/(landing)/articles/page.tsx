@@ -8,8 +8,19 @@ import { MenorahNavbar } from "@/components/site/MenorahNavbar";
 import { getArticleCategories, getArticles, type Article } from "@/lib/articles";
 
 export const metadata: Metadata = {
-  title: "Articles | Menorah",
-  description: "Read Menorah articles on mental health, support, self-help tools, and private care for men."
+  title: "Men's Mental Health Articles",
+  description:
+    "Read practical Menorah articles for men in India on stress, burnout, anxiety, relationships, counselling stigma, self-help tools, and private mental health support.",
+  alternates: {
+    canonical: "/articles"
+  },
+  openGraph: {
+    title: "Men's Mental Health Articles | Menorah Health",
+    description:
+      "Practical mental health articles for Indian men navigating stress, burnout, anxiety, relationships, counselling stigma, and help-seeking.",
+    url: "/articles",
+    type: "website"
+  }
 };
 
 type ArticlesPageProps = {
@@ -100,11 +111,43 @@ export default async function ArticlesPage({ searchParams }: ArticlesPageProps) 
           {articles.length ? (
             <PaginationControls page={pagination.page} hasNextPage={pagination.hasNextPage} hasPreviousPage={pagination.hasPreviousPage} q={q} category={category} />
           ) : null}
+
+          <ArticleLandingCta />
         </section>
 
         <MenorahFooter />
       </main>
     </div>
+  );
+}
+
+function ArticleLandingCta() {
+  return (
+    <section className="mt-14 rounded-[2rem] border border-menorah-green/12 bg-background p-6 shadow-dashboard md:p-8">
+      <div className="grid gap-5 md:grid-cols-[1fr_auto] md:items-center">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-menorah-olive">Need more than reading?</p>
+          <h2 className="mt-3 text-2xl font-semibold leading-tight text-foreground">Move from articles to private support.</h2>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-foreground/68">
+            Menorah combines practical mental-health education with private support paths for men in India who want help with stress, burnout, anxiety, relationships, or difficult conversations.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/register"
+            className="inline-flex min-h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
+          >
+            Create account
+          </Link>
+          <Link
+            href="/contact-us"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-menorah-green/20 bg-background px-5 text-sm font-semibold text-foreground/72 transition hover:text-foreground"
+          >
+            Contact Menorah
+          </Link>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -5,7 +5,8 @@ import type {
   RevenueData, User, Pagination, PayoutRecord, PayoutSummary, PayoutStatus,
   Article, ArticleGenerationRun, ArticleStatus, BrandAsset, BrandGuideline,
   InstagramAccount, SocialAspectRatio, SocialGenerationJob, SocialPost,
-  SocialPostStatus, SocialPostType, SocialStudioStats, SocialTemplateKey
+  SocialCampaignBrief, SocialGenerationRun, SocialPostStatus, SocialPostType,
+  SocialPromptSettings, SocialStudioStats, SocialWorkflow
 } from '@/types';
 
 class AdminApiClient {
@@ -209,9 +210,67 @@ class AdminApiClient {
     tone?: string;
     postType?: SocialPostType;
     aspectRatio?: SocialAspectRatio;
+    textSystemPrompt?: string;
+    imageSystemPrompt?: string;
+    sequenceNumber?: number;
+    totalCount?: number;
   }) {
     return this.request<{ post: SocialPost; job: SocialGenerationJob }>(
       () => this.client.post('/admin/social-studio/posts/generate', payload)
+    );
+  }
+
+  getSocialPromptSettings() {
+    return this.request<{ settings: SocialPromptSettings }>(
+      () => this.client.get('/admin/social-studio/settings/prompts')
+    );
+  }
+
+  updateSocialPromptSettings(payload: Partial<Pick<SocialPromptSettings, 'textSystemPrompt' | 'imageSystemPrompt'>>) {
+    return this.request<{ settings: SocialPromptSettings }>(
+      () => this.client.patch('/admin/social-studio/settings/prompts', payload)
+    );
+  }
+
+  getSocialWorkflows() {
+    return this.request<{ workflows: SocialWorkflow[] }>(
+      () => this.client.get('/admin/social-studio/workflows')
+    );
+  }
+
+  createSocialWorkflow(payload: Partial<SocialWorkflow> & { campaigns?: SocialCampaignBrief[] }) {
+    return this.request<{ workflow: SocialWorkflow }>(
+      () => this.client.post('/admin/social-studio/workflows', payload)
+    );
+  }
+
+  updateSocialWorkflow(id: string, payload: Partial<SocialWorkflow> & { campaigns?: SocialCampaignBrief[] }) {
+    return this.request<{ workflow: SocialWorkflow }>(
+      () => this.client.patch(`/admin/social-studio/workflows/${id}`, payload)
+    );
+  }
+
+  deleteSocialWorkflow(id: string) {
+    return this.request<{ workflow: SocialWorkflow }>(
+      () => this.client.delete(`/admin/social-studio/workflows/${id}`)
+    );
+  }
+
+  runSocialWorkflow(id: string) {
+    return this.request<{ run: SocialGenerationRun }>(
+      () => this.client.post(`/admin/social-studio/workflows/${id}/run`)
+    );
+  }
+
+  getSocialRuns(params?: { page?: number; limit?: number; workflow?: string }) {
+    return this.request<{ runs: SocialGenerationRun[]; pagination: Pagination }>(
+      () => this.client.get('/admin/social-studio/runs', { params })
+    );
+  }
+
+  getSocialRun(id: string) {
+    return this.request<{ run: SocialGenerationRun; posts: SocialPost[] }>(
+      () => this.client.get(`/admin/social-studio/runs/${id}`)
     );
   }
 
@@ -278,6 +337,12 @@ class AdminApiClient {
   publishSocialPostNow(id: string) {
     return this.request<{ post: SocialPost }>(
       () => this.client.post(`/admin/social-studio/posts/${id}/publish-now`)
+    );
+  }
+
+  retrySocialPost(id: string) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post(`/admin/social-studio/posts/${id}/retry`)
     );
   }
 

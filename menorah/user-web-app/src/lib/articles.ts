@@ -57,6 +57,7 @@ export type Article = {
   status?: string;
   generatedByAi?: boolean;
   reviewedByHuman?: boolean;
+  reviewedAt?: string;
   publishedAt?: string;
   createdAt?: string;
   updatedAt?: string;

@@ -6,6 +6,12 @@ const configBaseURL: string | undefined =
   (process.env.EXPO_PUBLIC_API_BASE_URL?.trim()) ||
   ((Constants.expoConfig?.extra as any)?.API_BASE_URL as string | undefined);
 
+const configWebBaseURL: string | undefined =
+  (process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim()) ||
+  (process.env.PUBLIC_WEB_BASE_URL?.trim()) ||
+  ((Constants.expoConfig?.extra as any)?.WEB_BASE_URL as string | undefined) ||
+  ((Constants.expoConfig?.extra as any)?.PUBLIC_WEB_BASE_URL as string | undefined);
+
 const normalizeBaseURL = (url?: string) => {
   const fallbackUrl = __DEV__ ? 'http://localhost:3000/api' : 'https://api.menorah.me/api';
   const candidate = (url ?? fallbackUrl).trim().replace(/\/+$/, '');
@@ -19,6 +25,7 @@ const normalizeBaseURL = (url?: string) => {
 };
 
 const buildAPIBaseURL = () => normalizeBaseURL(configBaseURL);
+const buildWebBaseURL = () => (configWebBaseURL ?? 'https://menorahhealth.app').trim().replace(/\/+$/, '');
 
 const deriveAPIOrigin = (baseUrl: string) => {
   try {
@@ -30,6 +37,7 @@ const deriveAPIOrigin = (baseUrl: string) => {
 
 const API_BASE_URL = buildAPIBaseURL();
 const API_ORIGIN = deriveAPIOrigin(API_BASE_URL);
+const WEB_BASE_URL = buildWebBaseURL();
 const IS_EXPO_GO = (Constants.executionEnvironment as string) === 'expo';
 
 // Feature flag for Razorpay SDK integration
@@ -39,6 +47,7 @@ const USE_RAZORPAY_SDK = !IS_EXPO_GO;
 export const ENV = {
   API_BASE_URL,
   API_ORIGIN,
+  WEB_BASE_URL,
   CHECKOUT_RETURN_URL: (Constants.expoConfig?.extra as any)?.CHECKOUT_RETURN_URL as string,
   JITSI_BASE_URL: (Constants.expoConfig?.extra as any)?.JITSI_BASE_URL as string,
   IS_EXPO_GO,
@@ -52,6 +61,7 @@ console.log('Environment Configuration:', {
   IS_EXPO_GO: ENV.IS_EXPO_GO,
   API_BASE_URL: ENV.API_BASE_URL,
   API_ORIGIN: ENV.API_ORIGIN,
+  WEB_BASE_URL: ENV.WEB_BASE_URL,
   CHECKOUT_RETURN_URL: ENV.CHECKOUT_RETURN_URL,
   JITSI_BASE_URL: ENV.JITSI_BASE_URL,
 });

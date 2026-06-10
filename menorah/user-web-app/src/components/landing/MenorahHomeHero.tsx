@@ -39,13 +39,20 @@ function HeroSection() {
         </h1>
 
         <p className="mt-4 max-w-[650px] text-center font-body text-base leading-relaxed text-muted-foreground md:text-lg">
-          A free mental health platform built to help men understand their patterns, find support, and take the next
-          step with clarity.
+          A free mental health platform built for men in India to understand stress, burnout, anxiety, relationships,
+          and help-seeking with private support and practical resources.
         </p>
 
-        <div className="mt-5 flex items-center gap-3">
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
           <Button asChild className="rounded-full px-6 py-5 font-body text-sm font-medium">
             <Link href="/register">Book a demo</Link>
+          </Button>
+          <Button
+            asChild
+            variant="ghost"
+            className="rounded-full border border-primary/25 bg-background/70 px-6 py-5 font-body text-sm font-medium backdrop-blur"
+          >
+            <Link href="/articles">Read articles</Link>
           </Button>
         </div>
       </section>

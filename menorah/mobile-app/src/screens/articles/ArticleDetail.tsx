@@ -7,11 +7,13 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { ArrowLeft, AlertCircle } from 'lucide-react-native';
+import { ArrowLeft, AlertCircle, ShieldCheck } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { useArticle } from '@/hooks/useArticles';
 import type { ArticleContentBlock } from '@/types/article';
+
+const EDITORIAL_REVIEWER_NAME = 'Menorah Editorial Team';
 
 const formatDate = (value?: string | null) => {
   if (!value) {
@@ -250,6 +252,64 @@ export default function ArticleDetail({ route, navigation }: any) {
 
             <View
               style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                backgroundColor: colors.primary + '12',
+                borderWidth: 1,
+                borderColor: colors.primary + '24',
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                alignSelf: 'flex-start',
+                marginTop: 14,
+              }}
+            >
+              <ShieldCheck size={16} color={colors.primary} />
+              <Text style={{ color: colors.text, fontSize: 12, fontWeight: '800' }}>
+                Editorially reviewed by {EDITORIAL_REVIEWER_NAME}
+              </Text>
+            </View>
+
+            {article.tags?.length ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
+                {article.tags.slice(0, 8).map((tag) => (
+                  <View
+                    key={tag}
+                    style={{
+                      backgroundColor: subtleBg,
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '700' }}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            <View
+              style={{
+                flexDirection: 'row',
+                gap: 10,
+                backgroundColor: colors.primary + '10',
+                borderWidth: 1,
+                borderColor: colors.primary + '28',
+                borderRadius: 16,
+                padding: 14,
+                marginTop: 18,
+              }}
+            >
+              <AlertCircle size={18} color={colors.primary} />
+              <Text style={{ color: colors.cardText, fontSize: 13, lineHeight: 20, flex: 1 }}>
+                This article is for education and reflection only. It is not a diagnosis, treatment, or emergency
+                support. If safety feels uncertain, contact local emergency services or a trusted crisis helpline.
+              </Text>
+            </View>
+
+            <View
+              style={{
                 backgroundColor: cardBg,
                 borderWidth: 1,
                 borderColor: colors.border,
@@ -258,7 +318,13 @@ export default function ArticleDetail({ route, navigation }: any) {
                 marginTop: 20,
               }}
             >
-              {(article.contentBlocks || []).map(renderBlock)}
+              {article.contentBlocks?.length ? (
+                article.contentBlocks.map(renderBlock)
+              ) : (
+                <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 23 }}>
+                  This article is published, but the body content is not available yet.
+                </Text>
+              )}
             </View>
           </View>
         </ScrollView>

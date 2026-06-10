@@ -2,10 +2,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BookOpen, CalendarDays, CheckCircle2, Quote, Tag } from "lucide-react";
+import { ArrowLeft, BookOpen, CalendarDays, CheckCircle2, Quote, ShieldCheck, Tag } from "lucide-react";
 import { MenorahFooter } from "@/components/site/MenorahFooter";
 import { MenorahNavbar } from "@/components/site/MenorahNavbar";
 import { getArticleBySlug, type Article, type ArticleContentBlock } from "@/lib/articles";
+import { EDITORIAL_REVIEWER_NAME, getPublicWebUrl, SITE_NAME } from "@/lib/site";
 
 type ArticlePageProps = {
   params: Promise<{
@@ -27,7 +28,7 @@ export async function generateMetadata({ params }: ArticlePageProps): Promise<Me
   const description = article.seoDescription || article.excerpt || "Read this Menorah article.";
 
   return {
-    title: `${title} | Menorah`,
+    title,
     description,
     alternates: {
       canonical: article.canonicalUrl || `/articles/${article.slug}`
@@ -46,6 +47,12 @@ export async function generateMetadata({ params }: ArticlePageProps): Promise<Me
             }
           ]
         : undefined
+    },
+    twitter: {
+      card: article.coverImageUrl ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: article.coverImageUrl ? [article.coverImageUrl] : undefined
     }
   };
 }
@@ -58,10 +65,14 @@ export default async function ArticleDetailPage({ params }: ArticlePageProps) {
     notFound();
   }
 
+  const articleJsonLd = buildArticleJsonLd(article);
+  const breadcrumbJsonLd = buildBreadcrumbJsonLd(article);
+
   return (
     <div className="min-h-screen bg-menorah-page text-foreground">
       <MenorahNavbar elevated />
       <main className="px-6 pb-16 pt-10 md:px-10 lg:px-20">
+        <JsonLdScript data={[articleJsonLd, breadcrumbJsonLd]} />
         <article className="mx-auto max-w-4xl">
           <Link href="/articles" className="inline-flex items-center gap-2 text-sm font-semibold text-menorah-green transition hover:text-menorah-olive">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -85,6 +96,18 @@ export default async function ArticleDetailPage({ params }: ArticlePageProps) {
             <h1 className="mt-5 font-display text-4xl leading-tight tracking-[0.02em] md:text-6xl">{article.title}</h1>
             {article.excerpt ? <p className="mt-6 text-lg leading-8 text-foreground/72">{article.excerpt}</p> : null}
 
+            <div className="mt-6 flex flex-wrap gap-3 text-sm font-medium text-foreground/62">
+              <span className="inline-flex items-center gap-2 rounded-full bg-menorah-page px-4 py-2">
+                <ShieldCheck className="h-4 w-4 text-menorah-green" aria-hidden="true" />
+                Editorially reviewed by {EDITORIAL_REVIEWER_NAME}
+              </span>
+              {article.updatedAt ? (
+                <span className="inline-flex items-center gap-2 rounded-full bg-menorah-page px-4 py-2">
+                  Updated {formatArticleDate(article.updatedAt)}
+                </span>
+              ) : null}
+            </div>
+
             {article.tags.length ? (
               <div className="mt-7 flex flex-wrap gap-2">
                 {article.tags.map((tag) => (
@@ -102,13 +125,134 @@ export default async function ArticleDetailPage({ params }: ArticlePageProps) {
             </figure>
           ) : null}
 
+          <ArticleSafetyNote />
           <ArticleBody article={article} />
+          <ArticleSupportCta />
         </article>
 
         <MenorahFooter />
       </main>
     </div>
   );
+}
+
+function ArticleSafetyNote() {
+  return (
+    <aside className="mt-8 rounded-2xl border border-menorah-green/12 bg-menorah-green/10 p-5 text-sm leading-7 text-foreground/76">
+      This article is for mental-health education and reflection only. It is not a diagnosis, medical treatment, or emergency support. If you may harm yourself or someone else, contact local emergency services or a trusted crisis helpline immediately.
+    </aside>
+  );
+}
+
+function ArticleSupportCta() {
+  return (
+    <section className="mt-8 rounded-[2rem] border border-menorah-cream bg-background p-6 shadow-dashboard md:p-8">
+      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-menorah-olive">Take the next step</p>
+      <h2 className="mt-3 text-2xl font-semibold leading-tight text-foreground">Use Menorah when reading is not enough.</h2>
+      <p className="mt-3 text-sm leading-7 text-foreground/68">
+        Create an account to move from mental-health articles into private support, counsellor discovery, chat, and practical tools built for men in India.
+      </p>
+      <div className="mt-6 flex flex-wrap gap-3">
+        <Link
+          href="/register"
+          className="inline-flex min-h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
+        >
+          Create account
+        </Link>
+        <Link
+          href="/articles"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-menorah-green/20 bg-background px-5 text-sm font-semibold text-foreground/72 transition hover:text-foreground"
+        >
+          More articles
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function JsonLdScript({ data }: { data: unknown }) {
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, "\\u003c") }}
+    />
+  );
+}
+
+function buildArticleJsonLd(article: Article) {
+  const articleUrl = getPublicWebUrl(`/articles/${article.slug}`);
+  const publishedDate = getIsoDate(article.publishedAt || article.createdAt);
+  const modifiedDate = getIsoDate(article.updatedAt || article.reviewedAt || article.publishedAt || article.createdAt);
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": articleUrl
+    },
+    headline: article.title,
+    description: article.seoDescription || article.excerpt || "Read this Menorah mental-health article.",
+    image: article.coverImageUrl ? [article.coverImageUrl] : undefined,
+    datePublished: publishedDate,
+    dateModified: modifiedDate,
+    author: {
+      "@type": "Organization",
+      name: EDITORIAL_REVIEWER_NAME,
+      url: getPublicWebUrl("/")
+    },
+    publisher: {
+      "@type": "Organization",
+      name: SITE_NAME,
+      url: getPublicWebUrl("/")
+    },
+    reviewedBy: article.reviewedByHuman
+      ? {
+          "@type": "Organization",
+          name: EDITORIAL_REVIEWER_NAME,
+          url: getPublicWebUrl("/")
+        }
+      : undefined,
+    about: article.tags.length ? article.tags : undefined
+  };
+}
+
+function buildBreadcrumbJsonLd(article: Article) {
+  const articleUrl = getPublicWebUrl(`/articles/${article.slug}`);
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: getPublicWebUrl("/")
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Articles",
+        item: getPublicWebUrl("/articles")
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: article.title,
+        item: articleUrl
+      }
+    ]
+  };
+}
+
+function getIsoDate(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 function ArticleBody({ article }: { article: Article }) {

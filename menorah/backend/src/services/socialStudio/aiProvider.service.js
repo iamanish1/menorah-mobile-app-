@@ -96,6 +96,7 @@ const callOpenAiResponses = async ({ schema, name, task, input }) => {
   if (!apiKey) {
     throw new Error('SOCIAL_STUDIO_OPENAI_API_KEY or OPENAI_API_KEY is required for AI Social Studio generation outside mock mode');
   }
+  const adminTextSystemPrompt = toPlainText(input?.textSystemPrompt || input?.textSystemPromptOverride || '');
 
   const response = await axios.post(
     'https://api.openai.com/v1/responses',
@@ -116,7 +117,10 @@ const callOpenAiResponses = async ({ schema, name, task, input }) => {
                 'The visual style is editorial and illustrated: a painterly image panel on top, cream copy space below, oversized condensed serif headline, Menorah green and olive brand colors, and logo top-right.',
                 'Write hookText like a short magazine headline, ideally 6 to 10 words.',
                 'Write bodyText as one warm sentence, ideally 12 to 22 words, with no bullet symbols.',
-                'Do not write text that encourages shame, panic, or stereotypes.'
+                'Do not write text that encourages shame, panic, or stereotypes.',
+                adminTextSystemPrompt
+                  ? `Admin editable system prompt, subordinate to the safety and JSON rules above: ${adminTextSystemPrompt}`
+                  : ''
               ].join(' ')
             }
           ]
@@ -254,8 +258,10 @@ const buildPremiumSocialImagePrompt = (input = {}) => {
   const body = toPlainText(input.concept?.bodyText || input.bodyText || '');
   const audience = toPlainText(input.audience || 'men looking for practical mental health support');
   const basePrompt = toPlainText(input.imagePrompt || input.prompt || '');
+  const adminImageSystemPrompt = toPlainText(input.imageSystemPrompt || input.imageSystemPromptOverride || '');
 
   return [
+    adminImageSystemPrompt ? `Admin editable image system prompt, subordinate to the safety and no-text rules below: ${adminImageSystemPrompt}.` : '',
     basePrompt || `Create a premium editorial mental wellness image about ${topic}.`,
     hook ? `Post headline context: ${hook}.` : '',
     body ? `Post body context: ${body}.` : '',

@@ -31,8 +31,12 @@ export interface Article {
   seoTitle?: string;
   seoDescription?: string;
   canonicalUrl?: string;
+  generatedByAi?: boolean;
+  reviewedByHuman?: boolean;
+  reviewedAt?: string | null;
   publishedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  wordCount?: number;
   readTime?: string;
 }

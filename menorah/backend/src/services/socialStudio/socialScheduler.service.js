@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const SocialPost = require('../../models/SocialPost');
 const { publishApprovedPost } = require('./instagramPublisher.service');
+const { processDueWorkflows } = require('./workflowRunner.service');
 
 let scheduledTask = null;
 
@@ -32,6 +33,8 @@ const processDueScheduledPosts = async () => {
       console.error('Social Studio scheduled publish failed:', post._id.toString(), error.message);
     }
   }
+
+  await processDueWorkflows();
 };
 
 const startSocialScheduler = () => {

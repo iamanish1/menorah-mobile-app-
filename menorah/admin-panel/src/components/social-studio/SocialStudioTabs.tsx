@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CalendarClock, CircleGauge, CirclePlus, ClipboardList, Images, Instagram, SlidersHorizontal } from 'lucide-react';
+import { CalendarClock, CircleGauge, CirclePlus, ClipboardList, Images, Instagram, SlidersHorizontal, Workflow } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const tabs = [
   { href: '/ai-social-studio', label: 'Dashboard', icon: CircleGauge },
   { href: '/ai-social-studio/generate', label: 'Generate', icon: CirclePlus },
   { href: '/ai-social-studio/posts', label: 'Posts', icon: ClipboardList },
+  { href: '/ai-social-studio/workflows', label: 'Workflows', icon: Workflow },
   { href: '/ai-social-studio/calendar', label: 'Calendar', icon: CalendarClock },
   { href: '/ai-social-studio/assets', label: 'Assets', icon: Images },
   { href: '/ai-social-studio/settings', label: 'Settings', icon: SlidersHorizontal },

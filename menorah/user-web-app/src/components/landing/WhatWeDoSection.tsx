@@ -25,7 +25,8 @@ const sections = [
         well-being. The organization&apos;s primary tool for achieving this mission is their innovative and{" "}
         <strong>user-friendly mobile app.</strong> Through this app, <strong>Menorah</strong> strives to dismantle
         barriers that hinder men from seeking help, providing a safe and empathetic space for addressing their mental
-        health concerns.
+        health concerns, including stress, burnout, anxiety, family pressure, work pressure, and relationship challenges
+        that Indian men may find difficult to discuss openly.
       </>
     )
   },

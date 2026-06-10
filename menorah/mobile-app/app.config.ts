@@ -1,16 +1,13 @@
 import os from 'os';
 import { ExpoConfig, ConfigContext } from 'expo/config';
 
-const DEFAULT_API_BASE_URL = 'https://api.menorah.me/api';
-const DEFAULT_CHECKOUT_RETURN_URL = 'https://menorah.me/checkout/return';
-const DEFAULT_JITSI_BASE_URL = 'https://meet.jit.si';
-
 const detectLocalIp = () => {
   const interfaces = os.networkInterfaces();
   const candidates: string[] = [];
 
   for (const [, addresses] of Object.entries(interfaces)) {
     for (const address of addresses ?? []) {
+      // Node <18 uses string 'IPv4'; Node >=18 uses number 4
       const isIPv4 = address.family === 'IPv4' || (address.family as unknown) === 4;
       if (isIPv4 && !address.internal) {
         candidates.push(address.address);
@@ -18,16 +15,29 @@ const detectLocalIp = () => {
     }
   }
 
-  return candidates.find(a => a.startsWith('192.168.'))
-    || candidates.find(a => a.startsWith('10.'))
-    || candidates.find(a => /^172\.(1[6-9]|2\d|3[0-1])\./.test(a));
+  // Prefer 192.168.x.x (WiFi) over 10.x.x.x over 172.x.x.x (Hyper-V/Docker/VPN)
+  const prefer192 = candidates.find(a => a.startsWith('192.168.'));
+  if (prefer192) return prefer192;
+
+  const prefer10 = candidates.find(a => a.startsWith('10.'));
+  if (prefer10) return prefer10;
+
+  const prefer172 = candidates.find(a => /^172\.(1[6-9]|2\d|3[0-1])\./.test(a));
+  if (prefer172) return prefer172;
+
+  return undefined;
 };
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const isDev = process.env.NODE_ENV !== 'production';
   const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  const configuredWebBaseUrl =
+    process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim() ||
+    process.env.PUBLIC_WEB_BASE_URL?.trim();
   const configuredLocalIp = process.env.EXPO_PUBLIC_LOCAL_IP?.trim();
   const detectedLocalIp = detectLocalIp();
+
+  // Prefer a full API base URL from env. Otherwise build one from a local IP if provided.
   const devApiBaseUrl = configuredApiBaseUrl
     ? configuredApiBaseUrl.replace(/\/+$/, '')
     : configuredLocalIp
@@ -35,10 +45,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       : detectedLocalIp
         ? `http://${detectedLocalIp}:3000/api`
         : 'http://localhost:3000/api';
+
   const devApiUrl = new URL(devApiBaseUrl);
   const devApiHost = devApiUrl.hostname;
   const devApiProtocol = devApiUrl.protocol;
-  const apiBaseUrl = (configuredApiBaseUrl || (isDev ? devApiBaseUrl : DEFAULT_API_BASE_URL)).replace(/\/+$/, '');
   
   const EAS_PROJECT_ID = 'd7fb6e65-3440-4a79-b4b2-6746d2582fa7';
 
@@ -47,7 +57,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: 'Menorah Health',
     slug: 'menorah-health-app',
     owner: 'menorahsoftware',
-    version: '2.5.0',
+    version: '2.3.0',
     orientation: 'portrait',
     // ─── OTA Updates via EAS Update ──────────────────────────────────────────
     updates: {
@@ -58,9 +68,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     runtimeVersion: '1.0.0',
     // ─────────────────────────────────────────────────────────────────────────
     icon: './assets/brand/menorah_logo.png',
-    userInterfaceStyle: 'automatic',
+    userInterfaceStyle: 'light',
     splash: {
-      image: './assets/brand/menorah_logo.png',
+      image: './assets/splash.png',
       resizeMode: 'contain',
       backgroundColor: '#f0f9f4'
     },
@@ -69,20 +79,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.menorah.health.app',
-      infoPlist: {
-        NSCameraUsageDescription: 'Menorah Health uses camera access when you join video support sessions.',
-        NSMicrophoneUsageDescription: 'Menorah Health uses microphone access when you join audio or video support sessions.',
-        NSPhotoLibraryUsageDescription: 'Menorah Health uses photo library access only when you update your profile picture.',
-      },
+      bundleIdentifier: 'com.menorah.health.app'
     },
     android: ({
       adaptiveIcon: {
-        foregroundImage: './assets/brand/menorah_logo.png',
+        foregroundImage: './assets/brand/menorah-logo-no-bg.png',
         backgroundColor: '#f0f9f4'
       },
       package: 'com.menorah.healthmobile',
-      versionCode: 13,
+      versionCode: 11,
       permissions: [
         'android.permission.CAMERA',
         'android.permission.RECORD_AUDIO',
@@ -94,7 +99,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ],
       statusBar: {
         barStyle: 'light-content',
-        backgroundColor: '#314830',
+        backgroundColor: '#2d7a5c',
         translucent: false
       },
       navigationBar: {
@@ -123,17 +128,28 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ],
     scheme: 'menorah-health',
     extra: {
-      // Default to the deployed Cloudflare gateway, which routes to VPS/Cloud Run.
-      // Set EXPO_PUBLIC_API_BASE_URL only when intentionally targeting another API.
-      API_BASE_URL: apiBaseUrl,
+      // In Expo Go on a phone, localhost points to the phone itself.
+      // Set EXPO_PUBLIC_API_BASE_URL or EXPO_PUBLIC_LOCAL_IP before starting Expo.
+      // All URLs are driven by env vars — no domain is hardcoded in source.
+      // In production, set EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_WEB_BASE_URL,
+      // EXPO_PUBLIC_CHECKOUT_RETURN_URL, and EXPO_PUBLIC_JITSI_BASE_URL before building. Leaving them unset in
+      // production will surface the misconfiguration immediately at startup.
+      API_BASE_URL: configuredApiBaseUrl
+        ? configuredApiBaseUrl.replace(/\/+$/, '')
+        : (isDev ? devApiBaseUrl : undefined),
+
+      // Public web URL used as the canonical article fallback in native clients.
+      WEB_BASE_URL: configuredWebBaseUrl
+        ? configuredWebBaseUrl.replace(/\/+$/, '')
+        : 'https://menorahhealth.app',
 
       // Checkout Return URL
       CHECKOUT_RETURN_URL: process.env.EXPO_PUBLIC_CHECKOUT_RETURN_URL?.trim()
-        || (isDev ? `${devApiProtocol}//${devApiHost}:8081/checkout/return` : DEFAULT_CHECKOUT_RETURN_URL),
+        || (isDev ? `${devApiProtocol}//${devApiHost}:8081/checkout/return` : undefined),
 
       // Jitsi Base URL
       JITSI_BASE_URL: process.env.EXPO_PUBLIC_JITSI_BASE_URL?.trim()
-        || (isDev ? `${devApiProtocol}//${devApiHost}:8080` : DEFAULT_JITSI_BASE_URL),
+        || (isDev ? `${devApiProtocol}//${devApiHost}:8080` : undefined),
       
       // EAS project configuration
       eas: {

@@ -35,11 +35,13 @@ const formatDate = (value?: string | null) => {
   });
 };
 
-export default function ArticleList({ navigation }: any) {
+export default function ArticleList({ navigation, route }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const isDark = scheme === 'dark';
   const [search, setSearch] = useState('');
+  const isTabRoot = route?.name === 'Articles';
+  const showBackButton = !isTabRoot && navigation.canGoBack?.();
 
   const query = search.trim();
   const { data, isLoading, isError, error, refetch, isFetching } = useArticles({
@@ -60,10 +62,21 @@ export default function ArticleList({ navigation }: any) {
     return 'Latest mental health reads';
   }, [articles.length, query]);
 
+  const openArticle = (slug: string) => {
+    const parentNavigation = navigation.getParent?.();
+
+    if (isTabRoot && parentNavigation?.navigate) {
+      parentNavigation.navigate('ArticleDetail', { slug });
+      return;
+    }
+
+    navigation.navigate('ArticleDetail', { slug });
+  };
+
   const renderArticle = ({ item }: { item: Article }) => (
     <TouchableOpacity
       activeOpacity={0.88}
-      onPress={() => navigation.navigate('ArticleDetail', { slug: item.slug })}
+      onPress={() => openArticle(item.slug)}
       accessibilityRole="button"
       accessibilityLabel={`Open article ${item.title}`}
       style={{
@@ -131,24 +144,26 @@ export default function ArticleList({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: pageBg }} edges={['top']}>
       <View style={{ paddingHorizontal: 16, paddingTop: 6, paddingBottom: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: cardBg,
-              borderWidth: 1,
-              borderColor: colors.border,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 12,
-            }}
-          >
-            <ArrowLeft size={19} color={colors.text} />
-          </TouchableOpacity>
+          {showBackButton ? (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: cardBg,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 12,
+              }}
+            >
+              <ArrowLeft size={19} color={colors.text} />
+            </TouchableOpacity>
+          ) : null}
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.text, fontSize: 22, fontWeight: '900' }}>
               Articles

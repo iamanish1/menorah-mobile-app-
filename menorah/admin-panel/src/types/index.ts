@@ -330,6 +330,81 @@ export interface SocialGenerationJob {
   updatedAt?: string;
 }
 
+export interface SocialPromptSettings {
+  id: string;
+  _id?: string;
+  key: 'default';
+  textSystemPrompt: string;
+  imageSystemPrompt: string;
+  updatedBy?: string | User | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SocialCampaignBrief {
+  id?: string;
+  _id?: string;
+  topic: string;
+  campaignName: string;
+  audience: string;
+  objective: string;
+  tone?: string;
+  postType?: SocialPostType;
+  aspectRatio?: SocialAspectRatio;
+  postCount: number;
+  textSystemPromptOverride?: string;
+  imageSystemPromptOverride?: string;
+}
+
+export interface SocialWorkflowSchedule {
+  enabled: boolean;
+  type: 'none' | 'once' | 'daily' | 'weekly' | 'monthly';
+  timezone: string;
+  runAt?: string | null;
+  timeOfDay?: string;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  lastScheduledKey?: string;
+}
+
+export interface SocialWorkflow {
+  id: string;
+  _id?: string;
+  name: string;
+  description?: string;
+  status: 'active' | 'paused' | 'archived';
+  customMaxPosts: number;
+  campaigns: SocialCampaignBrief[];
+  schedule: SocialWorkflowSchedule;
+  createdBy?: string | User | null;
+  updatedBy?: string | User | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SocialGenerationRun {
+  id: string;
+  _id?: string;
+  source: 'manual' | 'scheduled';
+  status: 'queued' | 'running' | 'completed' | 'partial' | 'failed';
+  requestedCount: number;
+  completedCount: number;
+  failedCount: number;
+  workflow?: string | SocialWorkflow | null;
+  workflowName?: string;
+  campaigns: SocialCampaignBrief[];
+  textSystemPrompt?: string;
+  imageSystemPrompt?: string;
+  timezone?: string;
+  scheduleKey?: string | null;
+  postIds?: string[] | SocialPost[];
+  errors?: { campaignName?: string; stage?: string; message: string; at?: string }[];
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface SocialStudioStats {
   counts: Partial<Record<SocialPostStatus, number>>;
   connectedAccounts: number;

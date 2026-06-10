@@ -10,6 +10,9 @@ const BrandGuideline = require('../models/BrandGuideline');
 const SocialPost = require('../models/SocialPost');
 const InstagramAccount = require('../models/InstagramAccount');
 const GenerationJob = require('../models/GenerationJob');
+const SocialPromptSettings = require('../models/SocialPromptSettings');
+const SocialWorkflow = require('../models/SocialWorkflow');
+const SocialGenerationRun = require('../models/SocialGenerationRun');
 const { adminAuth } = require('../middleware/auth');
 const { uploadBuffer } = require('../utils/cloudinary');
 const { createSocialPostDraft } = require('../services/socialStudio/socialStudio.service');
@@ -23,6 +26,13 @@ const { renderStaticPost } = require('../services/socialStudio/postRenderer.serv
 const { runQualityCheck } = require('../services/socialStudio/qualityCheck.service');
 const { publishApprovedPost, encryptToken, verifyInstagramAccount } = require('../services/socialStudio/instagramPublisher.service');
 const { scheduleApprovedPost } = require('../services/socialStudio/socialScheduler.service');
+const {
+  countCampaignPosts,
+  createWorkflowRun,
+  getMaxPostsPerRun,
+  getRunPosts,
+  normalizeCampaignBrief
+} = require('../services/socialStudio/workflowRunner.service');
 const { normalizeHashtags, parseList, toPlainText } = require('../services/socialStudio/textUtils');
 
 const router = express.Router();
@@ -70,6 +80,39 @@ const formatInstagramAccount = (account) => {
   if (!plain) return null;
   delete plain.accessTokenEncrypted;
   return plain;
+};
+
+const normalizeSchedulePayload = (schedule = {}) => ({
+  enabled: Boolean(schedule.enabled),
+  type: ['none', 'once', 'daily', 'weekly', 'monthly'].includes(schedule.type) ? schedule.type : 'none',
+  timezone: toPlainText(schedule.timezone || 'Asia/Dubai'),
+  runAt: schedule.runAt ? new Date(schedule.runAt) : null,
+  timeOfDay: /^([01]\d|2[0-3]):[0-5]\d$/.test(schedule.timeOfDay || '') ? schedule.timeOfDay : '09:00',
+  dayOfWeek: Math.max(0, Math.min(6, Number(schedule.dayOfWeek) || 0)),
+  dayOfMonth: Math.max(1, Math.min(31, Number(schedule.dayOfMonth) || 1)),
+  lastScheduledKey: toPlainText(schedule.lastScheduledKey || '')
+});
+
+const normalizeWorkflowPayload = (payload = {}, userId = null, { partial = false } = {}) => {
+  const next = {};
+
+  if (!partial || Object.prototype.hasOwnProperty.call(payload, 'name')) next.name = toPlainText(payload.name);
+  if (!partial || Object.prototype.hasOwnProperty.call(payload, 'description')) next.description = toPlainText(payload.description || '');
+  if (!partial || Object.prototype.hasOwnProperty.call(payload, 'status')) {
+    next.status = ['active', 'paused', 'archived'].includes(payload.status) ? payload.status : 'active';
+  }
+  if (!partial || Object.prototype.hasOwnProperty.call(payload, 'customMaxPosts')) {
+    next.customMaxPosts = Math.max(1, Math.min(100, Number(payload.customMaxPosts) || getMaxPostsPerRun()));
+  }
+  if (!partial || Object.prototype.hasOwnProperty.call(payload, 'schedule')) next.schedule = normalizeSchedulePayload(payload.schedule || {});
+  if (!partial || Object.prototype.hasOwnProperty.call(payload, 'campaigns')) {
+    next.campaigns = Array.isArray(payload.campaigns)
+      ? payload.campaigns.map(normalizeCampaignBrief).filter((campaign) => campaign.topic && campaign.campaignName)
+      : [];
+  }
+
+  if (userId) next.updatedBy = userId;
+  return next;
 };
 
 const getPublicBaseUrl = () => {
@@ -188,6 +231,193 @@ router.get('/stats', async (_req, res) => {
     });
   } catch (error) {
     console.error('Social Studio stats error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Prompt settings
+router.get('/settings/prompts', async (_req, res) => {
+  try {
+    const settings = await SocialPromptSettings.findOneAndUpdate(
+      { key: 'default' },
+      { $setOnInsert: { key: 'default', textSystemPrompt: '', imageSystemPrompt: '' } },
+      { new: true, upsert: true }
+    ).lean();
+    res.json({ success: true, data: { settings: formatModel(settings) } });
+  } catch (error) {
+    console.error('Get Social Studio prompt settings error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+router.patch('/settings/prompts', [
+  body('textSystemPrompt').optional().isString().isLength({ max: 8000 }),
+  body('imageSystemPrompt').optional().isString().isLength({ max: 8000 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors.array());
+
+    const updates = { updatedBy: req.user._id };
+    if (Object.prototype.hasOwnProperty.call(req.body, 'textSystemPrompt')) updates.textSystemPrompt = toPlainText(req.body.textSystemPrompt);
+    if (Object.prototype.hasOwnProperty.call(req.body, 'imageSystemPrompt')) updates.imageSystemPrompt = toPlainText(req.body.imageSystemPrompt);
+
+    const settings = await SocialPromptSettings.findOneAndUpdate(
+      { key: 'default' },
+      { $set: updates, $setOnInsert: { key: 'default' } },
+      { new: true, upsert: true, runValidators: true }
+    ).lean();
+    res.json({ success: true, data: { settings: formatModel(settings) } });
+  } catch (error) {
+    console.error('Update Social Studio prompt settings error:', error);
+    res.status(400).json({ success: false, message: error.message || 'Unable to update prompt settings' });
+  }
+});
+
+// Workflows and generation runs
+router.get('/workflows', async (_req, res) => {
+  try {
+    const workflows = await SocialWorkflow.find({ status: { $ne: 'archived' } }).sort({ updatedAt: -1 }).lean();
+    res.json({ success: true, data: { workflows: workflows.map(formatModel) } });
+  } catch (error) {
+    console.error('List Social Studio workflows error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+router.post('/workflows', [
+  body('name').trim().isLength({ min: 2, max: 160 }),
+  body('campaigns').isArray({ min: 1 }),
+  body('customMaxPosts').optional().isInt({ min: 1, max: 100 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors.array());
+
+    const payload = normalizeWorkflowPayload(req.body, req.user._id);
+    const requestedCount = countCampaignPosts(payload.campaigns);
+    const maxPosts = Math.min(getMaxPostsPerRun(), payload.customMaxPosts || getMaxPostsPerRun());
+    if (requestedCount > maxPosts) {
+      return res.status(400).json({ success: false, message: `Workflow requests ${requestedCount} posts, but the limit is ${maxPosts}` });
+    }
+
+    const workflow = await SocialWorkflow.create({
+      ...payload,
+      createdBy: req.user._id,
+      updatedBy: req.user._id
+    });
+    res.status(201).json({ success: true, data: { workflow: formatModel(workflow) } });
+  } catch (error) {
+    console.error('Create Social Studio workflow error:', error);
+    res.status(400).json({ success: false, message: error.message || 'Unable to create workflow' });
+  }
+});
+
+router.post('/workflows/:id/run', [param('id').isMongoId()], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors.array());
+
+    const workflow = await SocialWorkflow.findById(req.params.id);
+    if (!workflow || workflow.status === 'archived') return res.status(404).json({ success: false, message: 'Workflow not found' });
+    if (workflow.status === 'paused') return res.status(400).json({ success: false, message: 'Workflow is paused' });
+
+    const settings = await SocialPromptSettings.findOne({ key: 'default' }).lean();
+    const run = await createWorkflowRun({
+      workflow,
+      requestedBy: req.user._id,
+      source: 'manual',
+      textSystemPrompt: settings?.textSystemPrompt || '',
+      imageSystemPrompt: settings?.imageSystemPrompt || ''
+    });
+
+    res.status(202).json({ success: true, data: { run: formatModel(run) } });
+  } catch (error) {
+    console.error('Run Social Studio workflow error:', error);
+    res.status(400).json({ success: false, message: error.message || 'Unable to run workflow' });
+  }
+});
+
+router.patch('/workflows/:id', [
+  param('id').isMongoId(),
+  body('name').optional().trim().isLength({ min: 2, max: 160 }),
+  body('campaigns').optional().isArray({ min: 1 }),
+  body('customMaxPosts').optional().isInt({ min: 1, max: 100 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors.array());
+
+    const payload = normalizeWorkflowPayload(req.body, req.user._id, { partial: true });
+    if (payload.campaigns) {
+      const maxPosts = Math.min(getMaxPostsPerRun(), payload.customMaxPosts || getMaxPostsPerRun());
+      const requestedCount = countCampaignPosts(payload.campaigns);
+      if (requestedCount > maxPosts) {
+        return res.status(400).json({ success: false, message: `Workflow requests ${requestedCount} posts, but the limit is ${maxPosts}` });
+      }
+    }
+
+    const workflow = await SocialWorkflow.findByIdAndUpdate(req.params.id, payload, { new: true, runValidators: true }).lean();
+    if (!workflow) return res.status(404).json({ success: false, message: 'Workflow not found' });
+    res.json({ success: true, data: { workflow: formatModel(workflow) } });
+  } catch (error) {
+    console.error('Update Social Studio workflow error:', error);
+    res.status(400).json({ success: false, message: error.message || 'Unable to update workflow' });
+  }
+});
+
+router.delete('/workflows/:id', [param('id').isMongoId()], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors.array());
+    const workflow = await SocialWorkflow.findByIdAndUpdate(req.params.id, { status: 'archived', updatedBy: req.user._id }, { new: true }).lean();
+    if (!workflow) return res.status(404).json({ success: false, message: 'Workflow not found' });
+    res.json({ success: true, data: { workflow: formatModel(workflow) } });
+  } catch (error) {
+    console.error('Archive Social Studio workflow error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+router.get('/runs', [
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 50 }),
+  query('workflow').optional().isMongoId()
+], async (req, res) => {
+  try {
+    const pageNumber = Math.max(1, Number(req.query.page) || 1);
+    const limitNumber = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const filter = {};
+    if (req.query.workflow) filter.workflow = req.query.workflow;
+
+    const [runs, total] = await Promise.all([
+      SocialGenerationRun.find(filter).sort({ createdAt: -1 }).skip((pageNumber - 1) * limitNumber).limit(limitNumber).lean(),
+      SocialGenerationRun.countDocuments(filter)
+    ]);
+    res.json({
+      success: true,
+      data: {
+        runs: runs.map(formatModel),
+        pagination: { page: pageNumber, limit: limitNumber, total, pages: Math.ceil(total / limitNumber) }
+      }
+    });
+  } catch (error) {
+    console.error('List Social Studio runs error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+router.get('/runs/:id', [param('id').isMongoId()], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors.array());
+
+    const run = await SocialGenerationRun.findById(req.params.id).lean();
+    if (!run) return res.status(404).json({ success: false, message: 'Run not found' });
+    const posts = await getRunPosts(run);
+    res.json({ success: true, data: { run: formatModel(run), posts: posts.map(formatModel) } });
+  } catch (error) {
+    console.error('Get Social Studio run error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
@@ -338,7 +568,11 @@ router.post('/posts/generate', generationLimiter, [
   body('objective').optional().isString().trim().isLength({ max: 240 }),
   body('tone').optional().isString().trim().isLength({ max: 160 }),
   body('postType').optional().isIn(['single_image', 'carousel', 'reel_cover']),
-  body('aspectRatio').optional().isIn(['1:1', '4:5', '9:16'])
+  body('aspectRatio').optional().isIn(['1:1', '4:5', '9:16']),
+  body('textSystemPrompt').optional().isString().isLength({ max: 8000 }),
+  body('imageSystemPrompt').optional().isString().isLength({ max: 8000 }),
+  body('sequenceNumber').optional().isInt({ min: 1, max: 100 }),
+  body('totalCount').optional().isInt({ min: 1, max: getMaxPostsPerRun() })
 ], async (req, res) => {
   try {
     if (process.env.SOCIAL_STUDIO_ENABLED === 'false') {
@@ -544,6 +778,37 @@ router.post('/posts/:id/publish-now', [param('id').isMongoId()], async (req, res
   } catch (error) {
     console.error('Publish Social Studio post error:', error.message);
     res.status(400).json({ success: false, message: error.message || 'Unable to publish post' });
+  }
+});
+
+router.post('/posts/:id/retry', [param('id').isMongoId()], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors.array());
+
+    const post = await SocialPost.findById(req.params.id);
+    if (!post) return res.status(404).json({ success: false, message: 'Social post not found' });
+
+    if (['failed_publish', 'expired_token'].includes(post.status)) {
+      post.status = 'approved';
+      post.errorLog = null;
+      await post.save();
+      const published = await publishApprovedPost(post._id);
+      return res.json({ success: true, data: { post: formatModel(published) } });
+    }
+
+    if (post.status === 'failed_generation') {
+      post.errorLog = null;
+      await renderAndCheckPost(post, { regenerateBackground: true });
+      post.status = 'needs_review';
+      await post.save();
+      return res.json({ success: true, data: { post: formatModel(post) } });
+    }
+
+    return res.status(400).json({ success: false, message: 'Only failed posts can be retried' });
+  } catch (error) {
+    console.error('Retry Social Studio post error:', error.message);
+    res.status(400).json({ success: false, message: error.message || 'Unable to retry post' });
   }
 });
 

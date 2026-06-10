@@ -8,7 +8,10 @@ const titles: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/counsellors': 'Counsellors',
   '/users': 'Users',
-  '/revenue': 'Revenue & Payouts'
+  '/revenue': 'Revenue & Payouts',
+  '/payouts': 'Payout History',
+  '/articles': 'Articles',
+  '/social-studio': 'AI Social Studio'
 };
 
 export default function Topbar() {

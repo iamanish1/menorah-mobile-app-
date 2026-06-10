@@ -1,64 +1,44 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Animated, FlatList, Linking, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useState, useEffect } from "react";
 import {
-  BookOpen,
-  CalendarDays,
-  Search,
-  ShieldCheck,
-  SlidersHorizontal,
-  Users,
-} from 'lucide-react-native';
-import HelpSheet from '@/components/help/HelpSheet';
-import FreeSessionModal from '@/components/modals/FreeSessionModal';
-import {
-  IOSActionCard,
-  IOSArticleCard,
-  IOSCard,
-  IOSChatBanner,
-  IOSDiscoverHeader,
-  IOSHeroCard,
-  IOSScreen,
-  IOSSectionHeader,
-  useIOSTheme,
-} from '@/components/ios';
-import { discoverScrollY } from '@/components/ios/iosScrollSignals';
-import { ARTICLES } from '@/mock/articles';
-import { INSTA } from '@/mock/instagram';
-import { mockCounsellors } from '@/mock/counsellors';
-import subscriptionService from '@/services/subscriptionService';
-import { useNotifications } from '@/state/useNotifications';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const SESSION_DETAILS: Record<string, { duration: number; price: number; label: string }> = {
-  basic: { duration: 45, price: 1000, label: '45 min' },
-  premium: { duration: 60, price: 2000, label: '60 min' },
-  pro: { duration: 90, price: 3000, label: '90 min' },
-};
+  View, ScrollView, FlatList, Linking, Text, TouchableOpacity,
+  TextInput,
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { BookOpen, ChevronRight, SlidersHorizontal, Search } from "lucide-react-native";
+import Navbar from "@/components/nav/Navbar";
+import HelpSheet from "@/components/help/HelpSheet";
+import SectionHeader from "@/components/ui/SectionHeader";
+import SessionTypeSelector from "@/components/discover/SessionTypeSelector";
+import SubscriptionSelector from "@/components/discover/SubscriptionSelector";
+import FindCounsellorHero from "@/components/discover/FindCounsellorHero";
+import InstaPostCard from "@/components/cards/InstaPostCard";
+import { mockCounsellors } from "@/mock/counsellors";
+import { INSTA } from "@/mock/instagram";
+import { useNotifications } from "@/state/useNotifications";
+import { useAuth } from "@/state/useAuth";
+import { useArticles } from "@/hooks/useArticles";
+import { palettes } from "@/theme/colors";
+import { useThemeMode } from "@/theme/ThemeProvider";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import FreeSessionModal from "@/components/modals/FreeSessionModal";
+import subscriptionService from "@/services/subscriptionService";
 
 export default function Discover({ navigation }: any) {
   const [help, setHelp] = useState(false);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState("");
   const [showFreeSessionModal, setShowFreeSessionModal] = useState(false);
-  const { unreadCount } = useNotifications();
-  const insets = useSafeAreaInsets();
-  const iosTheme = useIOSTheme();
 
   useEffect(() => {
     const checkModal = async () => {
       try {
         const seen = await AsyncStorage.getItem('hasSeenFreeSessionModal');
         if (seen) return;
-
         const hasPremium = await subscriptionService.hasPremiumSubscription();
         if (!hasPremium) setShowFreeSessionModal(true);
-      } catch (error) {
-        console.warn('Unable to check subscription modal state:', error);
-      }
+      } catch { undefined; }
     };
-
-    const timer = setTimeout(checkModal, 800);
-    return () => clearTimeout(timer);
+    const t = setTimeout(checkModal, 800);
+    return () => clearTimeout(t);
   }, []);
 
   const handleCloseModal = async () => {
@@ -72,351 +52,313 @@ export default function Discover({ navigation }: any) {
     navigation.navigate('GenderSelection');
   };
 
-  const handleSessionSelect = (sessionType: string) => {
-    const details = SESSION_DETAILS[sessionType];
-    navigation.navigate('GenderSelection', {
-      sessionType,
-      duration: details.duration,
-      price: details.price,
-    });
-  };
+  const insets = useSafeAreaInsets();
+  const { scheme } = useThemeMode();
+  const colors = palettes[scheme];
+  const { unreadCount } = useNotifications();
+  const { user } = useAuth();
+  const { data: articlesData } = useArticles({ page: 1, limit: 8 });
+  const articles = articlesData?.articles || [];
 
   const normalizedQuery = q.trim().toLowerCase();
   const isSearching = normalizedQuery.length > 0;
 
-  const matchedCounsellors = useMemo(
-    () =>
-      isSearching
-        ? mockCounsellors.filter((c) =>
-            [c.name, c.specialization, c.language, c.location, ...c.specializations]
-              .join(' ')
-              .toLowerCase()
-              .includes(normalizedQuery)
-          )
-        : [],
-    [isSearching, normalizedQuery]
-  );
+  const matchedCounsellors = isSearching
+    ? mockCounsellors.filter((c) =>
+        [c.name, c.specialization, c.language, c.location, ...c.specializations]
+          .join(" ").toLowerCase().includes(normalizedQuery)
+      )
+    : [];
 
-  const matchedArticles = useMemo(
-    () =>
-      isSearching
-        ? ARTICLES.filter((article) =>
-            [article.title, article.excerpt, article.category]
-              .filter(Boolean)
-              .join(' ')
-              .toLowerCase()
-              .includes(normalizedQuery)
-          )
-        : [],
-    [isSearching, normalizedQuery]
-  );
+  const matchedArticles = isSearching
+    ? articles.filter((a) =>
+        [a.title, a.excerpt, a.category, ...(a.tags || [])].filter(Boolean).join(" ").toLowerCase().includes(normalizedQuery)
+      )
+    : [];
 
-  const matchedSocialPosts = useMemo(
-    () =>
-      isSearching
-        ? INSTA.filter((post) => (post.caption ?? '').toLowerCase().includes(normalizedQuery))
-        : [],
-    [isSearching, normalizedQuery]
-  );
+  const matchedSocialPosts = isSearching
+    ? INSTA.filter((p) => (p.caption ?? '').toLowerCase().includes(normalizedQuery))
+    : [];
 
   const totalResults = matchedCounsellors.length + matchedArticles.length + matchedSocialPosts.length;
-  const getArticleUrl = (article: (typeof ARTICLES)[number]) =>
-    article.canonicalUrl || `https://menorah.me/articles/${article.slug}`;
-  const headerFullHeight = insets.top + iosTheme.spacing.xl + 68 + iosTheme.spacing.lg;
-  const headerOpacity = discoverScrollY.interpolate({
-    inputRange: [0, 54, 104],
-    outputRange: [1, 0.5, 0],
-    extrapolate: 'clamp',
-  });
-  const headerTranslateY = discoverScrollY.interpolate({
-    inputRange: [0, 104],
-    outputRange: [0, -24],
-    extrapolate: 'clamp',
-  });
-  const headerHeight = discoverScrollY.interpolate({
-    inputRange: [0, 104],
-    outputRange: [headerFullHeight, 0],
-    extrapolate: 'clamp',
-  });
+
+  const openArticleDetail = (slug: string) => {
+    const parentNavigation = navigation.getParent?.();
+
+    if (parentNavigation?.navigate) {
+      parentNavigation.navigate('ArticleDetail', { slug });
+      return;
+    }
+
+    navigation.navigate('ArticleDetail', { slug });
+  };
 
   return (
-    <View style={{ flex: 1, backgroundColor: iosTheme.colors.background }}>
-      <Animated.View
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      {/* Header */}
+      <View
         style={{
-          height: headerHeight,
-          opacity: headerOpacity,
-          transform: [{ translateY: headerTranslateY }],
-          backgroundColor: iosTheme.colors.background,
-          overflow: 'hidden',
+          backgroundColor: colors.sand,
+          borderBottomLeftRadius: 24,
+          borderBottomRightRadius: 24,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          paddingBottom: 14,
         }}
       >
-        <IOSDiscoverHeader
-          onMenuPress={() => setHelp(true)}
-          onNotificationsPress={() => navigation.navigate('Notifications')}
-          onChatPress={() => navigation.navigate('Chat')}
+        <Navbar
+          onHelp={() => setHelp(true)}
+          onBell={() => navigation.navigate('Notifications')}
           unreadCount={unreadCount}
+          userName={user?.firstName}
+          userImage={user?.profileImage}
         />
-      </Animated.View>
 
-      <IOSScreen
-        edges={['right', 'bottom', 'left']}
-        contentContainerStyle={{ paddingTop: iosTheme.spacing.sm }}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: discoverScrollY } } }], {
-          useNativeDriver: false,
-        })}
-        scrollEventThrottle={16}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: iosTheme.spacing.md,
-            marginBottom: iosTheme.spacing.xl,
-          }}
-        >
+        {/* Search bar + filter button */}
+        <View style={{ paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <View
-            style={[
-              {
-                flex: 1,
-                height: 50,
-                borderRadius: iosTheme.radius.pill,
-                backgroundColor: iosTheme.colors.surface,
-                borderWidth: 1,
-                borderColor: iosTheme.colors.border,
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: iosTheme.spacing.lg,
-                gap: iosTheme.spacing.sm,
-              },
-              iosTheme.shadows.card,
-            ]}
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: colors.card,
+              borderRadius: 50,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingHorizontal: 14,
+              height: 46,
+              gap: 8,
+            }}
           >
-            <Search size={18} color={iosTheme.colors.textMuted} strokeWidth={2.2} />
+            <Search size={16} color={colors.muted} />
             <TextInput
               value={q}
               onChangeText={setQ}
-              placeholder="Search support, articles, counsellors"
-              placeholderTextColor={iosTheme.colors.textMuted}
+              placeholder="Search by name, issue, therapy..."
+              placeholderTextColor={colors.muted}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="search"
               style={{
                 flex: 1,
-                color: iosTheme.colors.text,
-                fontSize: 15,
+                fontSize: 14,
+                color: colors.text,
                 paddingVertical: 0,
               }}
             />
           </View>
-
           <TouchableOpacity
-            activeOpacity={0.84}
-            accessibilityRole="button"
-            accessibilityLabel="Open filters"
-            style={[
-              {
-                width: 50,
-                height: 50,
-                borderRadius: 25,
-                backgroundColor: iosTheme.colors.surface,
-                borderWidth: 1,
-                borderColor: iosTheme.colors.border,
-                alignItems: 'center',
-                justifyContent: 'center',
-              },
-              iosTheme.shadows.card,
-            ]}
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: 23,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
-            <SlidersHorizontal size={20} color={iosTheme.colors.primary} strokeWidth={2.2} />
+            <SlidersHorizontal size={18} color={colors.text} />
           </TouchableOpacity>
         </View>
+      </View>
 
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 28 + insets.bottom, paddingTop: 20 }}
+        showsVerticalScrollIndicator={false}
+      >
         {isSearching ? (
-          <View>
-            <IOSCard style={{ marginBottom: iosTheme.spacing.lg }}>
-              <Text style={iosTheme.typography.cardTitle}>Search results</Text>
-              <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
+          /* ── Search results ── */
+          <View style={{ paddingHorizontal: 16 }}>
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 20,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: colors.border,
+                marginBottom: 16,
+              }}
+            >
+              <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
+                Search results
+              </Text>
+              <Text style={{ fontSize: 14, color: colors.muted, lineHeight: 20 }}>
                 {totalResults > 0
                   ? `${totalResults} result${totalResults === 1 ? '' : 's'} found for "${q.trim()}"`
                   : `No matches found for "${q.trim()}"`}
               </Text>
-            </IOSCard>
+            </View>
 
-            {matchedCounsellors.length > 0 ? (
-              <View style={{ marginBottom: iosTheme.spacing.lg }}>
-                <IOSSectionHeader title="Counsellors" />
+            {matchedCounsellors.length > 0 && (
+              <View style={{ marginBottom: 18 }}>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 12 }}>Counsellors</Text>
                 {matchedCounsellors.slice(0, 4).map((c) => (
-                  <IOSCard
+                  <TouchableOpacity
                     key={c.id}
-                    onPress={() => navigation.navigate('Bookings')}
-                    style={{ marginBottom: iosTheme.spacing.md }}
+                    onPress={() => navigation.navigate("Bookings")}
+                    activeOpacity={0.9}
+                    style={{
+                      backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+                      borderRadius: 18, padding: 14, marginBottom: 10,
+                    }}
                   >
-                    <Text style={iosTheme.typography.cardTitle}>{c.name}</Text>
-                    <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
-                      {c.specialization} - {c.language}
-                    </Text>
-                  </IOSCard>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.cardText, marginBottom: 4 }}>{c.name}</Text>
+                    <Text style={{ fontSize: 13, color: colors.muted }}>{c.specialization} • {c.language}</Text>
+                  </TouchableOpacity>
                 ))}
               </View>
-            ) : null}
+            )}
 
-            {matchedArticles.length > 0 ? (
-              <View style={{ marginBottom: iosTheme.spacing.lg }}>
-                <IOSSectionHeader title="Articles" />
-                {matchedArticles.slice(0, 4).map((article) => (
-                  <IOSCard
-                    key={article.id || article.slug}
-                    onPress={() => Linking.openURL(getArticleUrl(article))}
-                    style={{ marginBottom: iosTheme.spacing.md }}
+            {matchedArticles.length > 0 && (
+              <View style={{ marginBottom: 18 }}>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 12 }}>Articles</Text>
+                {matchedArticles.slice(0, 4).map((a) => (
+                  <TouchableOpacity
+                    key={a.id || a._id || a.slug}
+                    onPress={() => openArticleDetail(a.slug)}
+                    activeOpacity={0.9}
+                    style={{
+                      backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+                      borderRadius: 18, padding: 14, marginBottom: 10,
+                    }}
                   >
-                    <Text style={iosTheme.typography.cardTitle}>{article.title}</Text>
-                    <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
-                      {article.excerpt || article.category}
-                    </Text>
-                  </IOSCard>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.cardText, marginBottom: 4 }}>{a.title}</Text>
+                    <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 18 }}>{a.excerpt || a.category}</Text>
+                  </TouchableOpacity>
                 ))}
               </View>
-            ) : null}
+            )}
 
-            {matchedSocialPosts.length > 0 ? (
-              <View style={{ marginBottom: iosTheme.spacing.lg }}>
-                <IOSSectionHeader title="Social media" />
-                {matchedSocialPosts.slice(0, 4).map((post) => (
-                  <IOSCard
-                    key={post.id}
-                    onPress={() => Linking.openURL(post.url)}
-                    style={{ marginBottom: iosTheme.spacing.md }}
+            {matchedSocialPosts.length > 0 && (
+              <View style={{ marginBottom: 18 }}>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 12 }}>Social media</Text>
+                {matchedSocialPosts.slice(0, 4).map((p) => (
+                  <TouchableOpacity
+                    key={p.id}
+                    onPress={() => Linking.openURL(p.url)}
+                    activeOpacity={0.9}
+                    style={{
+                      backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+                      borderRadius: 18, padding: 14, marginBottom: 10,
+                    }}
                   >
-                    <Text style={iosTheme.typography.caption}>INSTAGRAM</Text>
-                    <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
-                      {post.caption}
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary, marginBottom: 6, letterSpacing: 0.4 }}>
+                      INSTAGRAM
                     </Text>
-                  </IOSCard>
+                    <Text style={{ fontSize: 14, color: colors.cardText, lineHeight: 20 }}>{p.caption}</Text>
+                  </TouchableOpacity>
                 ))}
               </View>
-            ) : null}
+            )}
 
-            {totalResults === 0 ? (
-              <IOSCard>
-                <Text style={iosTheme.typography.cardTitle}>Try searching for</Text>
-                <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.sm }]}>
-                  Anxiety, trauma, CBT, relationships, stress, depression, or mindfulness.
+            {totalResults === 0 && (
+              <View style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 16 }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 6 }}>
+                  Try searching for things like:
                 </Text>
-              </IOSCard>
-            ) : null}
+                <Text style={{ fontSize: 14, color: colors.muted, lineHeight: 22 }}>
+                  Anxiety, trauma, CBT, relationship, stress, depression, mindfulness
+                </Text>
+              </View>
+            )}
           </View>
         ) : (
-          <View>
-            <IOSHeroCard
-              source={require('../../../assets/brand/team-hero.jpeg')}
-              eyebrow="Menorah"
-              title="Mind Over Matter, Redefined"
-              subtitle="A calmer place to begin the conversation."
-              height={248}
-              onPress={() => navigation.navigate('CounsellorList')}
+          /* ── Home feed ── */
+          <>
+            {/* Find Counsellor Hero */}
+            <FindCounsellorHero onPress={() => navigation.navigate('CounsellorList')} />
+
+            {/* Session Type */}
+            <SessionTypeSelector
+              onSessionSelect={(sessionType) => {
+                const details: Record<string, { duration: number; price: number }> = {
+                  basic: { duration: 45, price: 1000 },
+                  premium: { duration: 60, price: 2000 },
+                  pro: { duration: 90, price: 3000 },
+                };
+                navigation.navigate("GenderSelection", {
+                  sessionType,
+                  duration: details[sessionType].duration,
+                  price: details[sessionType].price,
+                });
+              }}
             />
 
-            <IOSChatBanner
-              title="Chat with us"
-              subtitle="Speak with a trained clinical psychology student or another man just like you in a safe space."
-              onPress={() => navigation.navigate('Chat')}
-              style={{ marginTop: iosTheme.spacing.xl }}
-            />
-
-            <IOSSectionHeader
-              title="Read Articles"
-              actionLabel="View all"
-              onPress={() => Linking.openURL('https://menorah.me/newsletter')}
-            />
-            <FlatList
-              data={ARTICLES}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.id || item.slug}
-              contentContainerStyle={{ paddingRight: iosTheme.layout.screenPadding }}
-              renderItem={({ item }) => (
-                <IOSArticleCard item={item} onPress={() => Linking.openURL(getArticleUrl(item))} />
-              )}
-            />
-
-            <View style={{ flexDirection: 'row', gap: iosTheme.spacing.md, marginTop: iosTheme.spacing.md }}>
-              <IOSActionCard
-                compact
-                icon={Users}
-                title="Find support"
-                subtitle="Browse counsellors"
-                onPress={() => navigation.navigate('CounsellorList')}
-                style={{ flex: 1 }}
-              />
-              <IOSActionCard
-                compact
-                icon={CalendarDays}
-                title="Book session"
-                subtitle="Choose a format"
-                onPress={() => navigation.navigate('GenderSelection')}
-                style={{ flex: 1 }}
-              />
+            {/* Subscription */}
+            <View style={{ marginTop: 20 }}>
+              <SubscriptionSelector />
             </View>
 
-            <IOSSectionHeader title="Session types" />
-            <View style={{ gap: iosTheme.spacing.md }}>
-              {Object.entries(SESSION_DETAILS).map(([sessionType, details]) => (
-                <IOSCard key={sessionType} onPress={() => handleSessionSelect(sessionType)}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: iosTheme.spacing.md }}>
-                    <View
-                      style={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: iosTheme.radius.lg,
-                        backgroundColor: iosTheme.colors.surfaceAlt,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <ShieldCheck size={22} color={iosTheme.colors.primary} strokeWidth={2.2} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={iosTheme.typography.cardTitle}>
-                        {sessionType.charAt(0).toUpperCase() + sessionType.slice(1)}
-                      </Text>
-                      <Text style={[iosTheme.typography.body, { marginTop: 2 }]}>
-                        {details.label} session - INR {details.price}
-                      </Text>
-                    </View>
-                  </View>
-                </IOSCard>
-              ))}
-            </View>
+            {/* Read Articles */}
+            <SectionHeader
+              title="Articles"
+              onPress={() => navigation.navigate('Articles')}
+              style={{ marginTop: 20 }}
+            />
+            <TouchableOpacity
+              activeOpacity={0.9}
+              accessibilityRole="button"
+              accessibilityLabel="Open Articles tab"
+              onPress={() => navigation.navigate('Articles')}
+              style={{
+                marginHorizontal: 16,
+                borderRadius: 22,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+                padding: 16,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: scheme === 'dark' ? 0.1 : 0.04,
+                shadowRadius: 8,
+                elevation: 1,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <View
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 18,
+                    backgroundColor: colors.primary + '16',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <BookOpen size={24} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 17, fontWeight: '900', marginBottom: 4 }}>
+                    Read in the app
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>
+                    Browse CMS-published mental health articles in the native Articles tab.
+                  </Text>
+                </View>
+                <ChevronRight size={20} color={colors.primary} />
+              </View>
+            </TouchableOpacity>
 
-            <IOSSectionHeader
-              title="Community updates"
-              actionLabel="Instagram"
-              onPress={() => Linking.openURL('https://www.instagram.com/wearemenorah')}
+            {/* Social Media */}
+            <SectionHeader
+              title="Our Social Media Presence"
+              onPress={() => Linking.openURL("https://www.instagram.com/wearemenorah")}
+              style={{ marginTop: 8 }}
             />
             <FlatList
               data={INSTA}
               horizontal
               showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{ paddingRight: iosTheme.layout.screenPadding }}
-              renderItem={({ item }) => (
-                <IOSCard
-                  onPress={() => Linking.openURL(item.url)}
-                  style={{ width: 236, minHeight: 154, marginRight: iosTheme.spacing.lg }}
-                >
-                  <BookOpen size={20} color={iosTheme.colors.primary} strokeWidth={2.2} />
-                  <Text style={[iosTheme.typography.caption, { marginTop: iosTheme.spacing.md }]}>
-                    INSTAGRAM
-                  </Text>
-                  <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]} numberOfLines={4}>
-                    {item.caption}
-                  </Text>
-                </IOSCard>
-              )}
+              keyExtractor={(i) => i.id}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 4 }}
+              renderItem={({ item }) => <InstaPostCard item={item} />}
             />
-          </View>
+          </>
         )}
-      </IOSScreen>
+      </ScrollView>
 
       <HelpSheet visible={help} onClose={() => setHelp(false)} />
       <FreeSessionModal

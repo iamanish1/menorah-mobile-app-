@@ -39,7 +39,11 @@ const createSocialPostDraft = async ({ input, createdBy }) => {
       objective: toPlainText(input.objective || 'Encourage a practical next step'),
       tone: toPlainText(input.tone || 'Warm, grounded, premium, and practical'),
       postType: input.postType || 'single_image',
-      aspectRatio: input.aspectRatio || '4:5'
+      aspectRatio: input.aspectRatio || '4:5',
+      textSystemPrompt: toPlainText(input.textSystemPrompt || input.textSystemPromptOverride || ''),
+      imageSystemPrompt: toPlainText(input.imageSystemPrompt || input.imageSystemPromptOverride || ''),
+      sequenceNumber: Number(input.sequenceNumber) || 1,
+      totalCount: Number(input.totalCount) || 1
     };
 
     await updateJob(job, 'generating_concept', 15, 'Generating post concept.');
