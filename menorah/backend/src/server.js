@@ -61,6 +61,7 @@ const videoRoutes            = require('./routes/video');
 const adminRoutes            = require('./routes/admin');
 const articleRoutes          = require('./routes/articles');
 const socialStudioRoutes     = require('./routes/socialStudio');
+const ekycRoutes             = require('./routes/ekyc');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -179,6 +180,10 @@ io.on('connection', async (socket) => {
     Counsellor.findOne({ user: socket.userId, isActive: true })
       .then((c) => { if (c) socket.join(`counsellor_${c._id}`); })
       .catch((err) => console.error('Error joining counsellor room:', err));
+  }
+
+  if (socket.userRole === 'admin') {
+    socket.join('admin');
   }
 
   // ── join_room — verify membership before joining ──────────────────────
@@ -410,6 +415,7 @@ async function startServer() {
   app.use('/api/payments', paymentRoutes);
   app.use('/api/chat', chatRoutes);
   app.use('/api/video', videoRoutes);
+  app.use('/api/ekyc', ekycRoutes);
   app.use('/api/admin/social-studio', socialStudioRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/articles', articleRoutes);

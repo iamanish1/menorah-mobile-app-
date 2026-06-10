@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Bot, CircleGauge, FileText, LogOut, Menu, SendHorizontal, UserRoundCheck, UsersRound, WalletCards, X
+  Bot, CircleGauge, FileText, LogOut, Menu, SendHorizontal, ShieldCheck, UserRoundCheck, UsersRound, WalletCards, X
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -13,6 +13,7 @@ const navItems = [
   { href: '/dashboard',   label: 'Dashboard',        icon: CircleGauge    },
   { href: '/counsellors', label: 'Counsellors',       icon: UserRoundCheck },
   { href: '/users',       label: 'Users',             icon: UsersRound     },
+  { href: '/ekyc',        label: 'eKYC Reviews',      icon: ShieldCheck    },
   { href: '/revenue',     label: 'Revenue & Payouts', icon: WalletCards    },
   { href: '/payouts',     label: 'Payout History',    icon: SendHorizontal },
   { href: '/articles',    label: 'Articles',          icon: FileText       },

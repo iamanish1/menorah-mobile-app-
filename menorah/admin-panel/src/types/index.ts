@@ -85,6 +85,15 @@ export interface User {
     plan: string;
     isActive: boolean;
   };
+  kyc?: {
+    status: KycStatus;
+    provider?: string | null;
+    submittedAt?: string;
+    verifiedAt?: string;
+    reviewedAt?: string;
+    reviewReason?: string;
+    faceCheckConfidence?: number;
+  };
 }
 
 export interface PlatformStats {
@@ -92,6 +101,27 @@ export interface PlatformStats {
   counsellors: { total: number; pending: number; approved: number; blocked: number };
   bookings: { total: number; active: number; completed: number; today: number };
   revenue: { total: number; monthly: number; weekly: number; today: number };
+  kyc?: { pendingReview: number; verified: number; rejected: number };
+}
+
+export type KycStatus = 'not_started' | 'pending' | 'verified' | 'manual_review' | 'rejected';
+
+export interface KycReview {
+  id: string;
+  user: Pick<User, '_id' | 'firstName' | 'lastName' | 'email' | 'phone' | 'kyc' | 'createdAt'>;
+  status: KycStatus;
+  provider: string;
+  checkType: string;
+  submittedAt?: string;
+  verifiedAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: { firstName: string; lastName: string; email: string };
+  reviewReason?: string;
+  failureReason?: string;
+  faceCount?: number | null;
+  faceCheckConfidence?: number | null;
+  threshold?: number | null;
+  createdAt: string;
 }
 
 export interface RevenueData {

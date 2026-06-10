@@ -89,6 +89,10 @@ spec:
               value: "12"
             - name: MAX_FILE_SIZE
               value: "5242880"
+            - name: EKYC_MAX_FILE_SIZE
+              value: "5242880"
+            - name: LUXAND_FACE_CONFIDENCE_THRESHOLD
+              value: "90"
             # Disable Socket.IO Redis adapter on Cloud Run:
             # Cloudflare Worker routes all /socket.io/ traffic to VPS only,
             # so Cloud Run never handles WebSocket connections.
@@ -208,6 +212,12 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: OPENAI_API_KEY
+                  key: latest
+            # Luxand.Cloud — zero-storage face check API
+            - name: LUXAND_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: LUXAND_API_TOKEN
                   key: latest
 
           # ── Startup probe — wait for DB+Redis to connect ───────────────

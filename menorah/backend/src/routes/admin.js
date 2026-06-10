@@ -6,6 +6,7 @@ const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
 const Booking = require('../models/Booking');
 const PendingApplication = require('../models/PendingApplication');
+const KycVerification = require('../models/KycVerification');
 const { adminAuth, auth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -67,7 +68,10 @@ router.get('/stats', async (req, res) => {
       weekRevenueResult,
       todayRevenueResult,
       newUsersToday,
-      newUsersThisMonth
+      newUsersThisMonth,
+      pendingKycReviews,
+      verifiedKycUsers,
+      rejectedKycUsers
     ] = await Promise.all([
       User.countDocuments({ role: 'user' }),
       Counsellor.countDocuments(),
@@ -83,7 +87,10 @@ router.get('/stats', async (req, res) => {
       Booking.aggregate([{ $match: { paymentStatus: 'paid', createdAt: { $gte: weekStart } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
       Booking.aggregate([{ $match: { paymentStatus: 'paid', createdAt: { $gte: todayStart } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
       User.countDocuments({ role: 'user', createdAt: { $gte: todayStart } }),
-      User.countDocuments({ role: 'user', createdAt: { $gte: monthStart } })
+      User.countDocuments({ role: 'user', createdAt: { $gte: monthStart } }),
+      KycVerification.countDocuments({ status: 'manual_review' }),
+      User.countDocuments({ role: 'user', 'kyc.status': 'verified' }),
+      KycVerification.countDocuments({ status: 'rejected' })
     ]);
 
     res.json({
@@ -111,6 +118,11 @@ router.get('/stats', async (req, res) => {
           monthly: monthRevenueResult[0]?.total || 0,
           weekly: weekRevenueResult[0]?.total || 0,
           today: todayRevenueResult[0]?.total || 0
+        },
+        kyc: {
+          pendingReview: pendingKycReviews,
+          verified: verifiedKycUsers,
+          rejected: rejectedKycUsers
         }
       }
     });
@@ -1103,6 +1115,142 @@ router.get('/payouts/counsellor/:counsellorId', [
     res.json({ success: true, data: { payouts, summary } });
   } catch (error) {
     console.error('Get counsellor payouts error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/ekyc/reviews — list identity verification review records
+router.get('/ekyc/reviews', [
+  query('status').optional().isIn(['manual_review', 'verified', 'rejected', 'pending', 'all']),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 100 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit, 10) || 20);
+    const filter = {};
+    if (req.query.status && req.query.status !== 'all') {
+      filter.status = req.query.status;
+    }
+
+    const [reviews, total] = await Promise.all([
+      KycVerification.find(filter)
+        .populate('user', 'firstName lastName email phone kyc createdAt')
+        .populate('reviewedBy', 'firstName lastName email')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      KycVerification.countDocuments(filter)
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        reviews: reviews.map((review) => ({
+          id: review._id,
+          user: review.user,
+          status: review.status,
+          provider: review.provider,
+          checkType: review.checkType,
+          submittedAt: review.submittedAt,
+          verifiedAt: review.verifiedAt,
+          reviewedAt: review.reviewedAt,
+          reviewedBy: review.reviewedBy,
+          reviewReason: review.reviewReason,
+          failureReason: review.failureReason,
+          faceCount: review.faceCheck?.faceCount ?? null,
+          faceCheckConfidence: review.faceCheck?.confidence ?? null,
+          threshold: review.faceCheck?.threshold ?? null,
+          createdAt: review.createdAt,
+        })),
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+      }
+    });
+  } catch (error) {
+    console.error('Admin KYC reviews error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// PUT /api/admin/ekyc/reviews/:id/approve — manually approve a review
+router.put('/ekyc/reviews/:id/approve', [
+  param('id').isMongoId()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+
+    const review = await KycVerification.findById(req.params.id);
+    if (!review) return res.status(404).json({ success: false, message: 'KYC review not found' });
+
+    review.status = 'verified';
+    review.verifiedAt = new Date();
+    review.reviewedAt = new Date();
+    review.reviewedBy = req.user._id;
+    review.reviewReason = 'Manual admin approval';
+    await review.save();
+
+    await User.findByIdAndUpdate(review.user, {
+      $set: {
+        kyc: {
+          status: 'verified',
+          provider: review.provider,
+          submittedAt: review.submittedAt,
+          verifiedAt: review.verifiedAt,
+          reviewedAt: review.reviewedAt,
+          reviewedBy: req.user._id,
+          reviewReason: review.reviewReason,
+          faceCheckConfidence: review.faceCheck?.confidence,
+        }
+      }
+    });
+
+    res.json({ success: true, message: 'KYC review approved.', data: { reviewId: review._id, status: review.status } });
+  } catch (error) {
+    console.error('Admin approve KYC error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// PUT /api/admin/ekyc/reviews/:id/reject — reject a review with a reason
+router.put('/ekyc/reviews/:id/reject', [
+  param('id').isMongoId(),
+  body('reason').trim().notEmpty().withMessage('Rejection reason is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+
+    const review = await KycVerification.findById(req.params.id);
+    if (!review) return res.status(404).json({ success: false, message: 'KYC review not found' });
+
+    review.status = 'rejected';
+    review.reviewedAt = new Date();
+    review.reviewedBy = req.user._id;
+    review.reviewReason = req.body.reason;
+    await review.save();
+
+    await User.findByIdAndUpdate(review.user, {
+      $set: {
+        kyc: {
+          status: 'rejected',
+          provider: review.provider,
+          submittedAt: review.submittedAt,
+          reviewedAt: review.reviewedAt,
+          reviewedBy: req.user._id,
+          reviewReason: review.reviewReason,
+          faceCheckConfidence: review.faceCheck?.confidence,
+        }
+      }
+    });
+
+    res.json({ success: true, message: 'KYC review rejected.', data: { reviewId: review._id, status: review.status } });
+  } catch (error) {
+    console.error('Admin reject KYC error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });

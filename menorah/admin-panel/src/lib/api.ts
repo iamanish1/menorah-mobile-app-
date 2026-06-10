@@ -4,7 +4,7 @@ import type {
   ApiResponse, PlatformStats, Counsellor, CounsellorRevenue,
   RevenueData, User, Pagination, PayoutRecord, PayoutSummary, PayoutStatus,
   Article, ArticleGenerationRun, ArticleStatus, BrandAsset, BrandGuideline,
-  InstagramAccount, SocialAspectRatio, SocialGenerationJob, SocialPost,
+  InstagramAccount, KycReview, KycStatus, SocialAspectRatio, SocialGenerationJob, SocialPost,
   SocialCampaignBrief, SocialGenerationRun, SocialPostStatus, SocialPostType,
   SocialPromptSettings, SocialStudioStats, SocialWorkflow
 } from '@/types';
@@ -117,6 +117,24 @@ class AdminApiClient {
   getUsers(params?: { page?: number; limit?: number; search?: string; role?: string }) {
     return this.request<{ users: User[]; pagination: Pagination }>(
       () => this.client.get('/admin/users', { params })
+    );
+  }
+
+  getKycReviews(params?: { status?: KycStatus | 'all'; page?: number; limit?: number }) {
+    return this.request<{ reviews: KycReview[]; pagination: Pagination }>(
+      () => this.client.get('/admin/ekyc/reviews', { params })
+    );
+  }
+
+  approveKycReview(id: string) {
+    return this.request<{ reviewId: string; status: KycStatus }>(
+      () => this.client.put(`/admin/ekyc/reviews/${id}/approve`)
+    );
+  }
+
+  rejectKycReview(id: string, reason: string) {
+    return this.request<{ reviewId: string; status: KycStatus }>(
+      () => this.client.put(`/admin/ekyc/reviews/${id}/reject`, { reason })
     );
   }
 

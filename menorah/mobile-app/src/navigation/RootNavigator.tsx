@@ -30,6 +30,7 @@ import CrisisHelp from '@/screens/profile/CrisisHelp';
 import ChangePassword from '@/screens/profile/ChangePassword';
 import TwoFactorAuth from '@/screens/profile/TwoFactorAuth';
 import PrivacySettings from '@/screens/profile/PrivacySettings';
+import IdentityVerification from '@/screens/profile/IdentityVerification';
 import SubscriptionDetails from '@/screens/subscription/SubscriptionDetails';
 import SubscriptionPayment from '@/screens/subscription/SubscriptionPayment';
 import SubscriptionSuccess from '@/screens/subscription/SubscriptionSuccess';
@@ -170,6 +171,7 @@ export default function RootNavigator() {
         <Stack.Screen name="ChangePassword" component={ChangePassword} />
         <Stack.Screen name="TwoFactorAuth" component={TwoFactorAuth} />
         <Stack.Screen name="PrivacySettings" component={PrivacySettings} />
+        <Stack.Screen name="IdentityVerification" component={IdentityVerification} />
         <Stack.Screen name="Notifications" component={Notifications} />
         <Stack.Screen name="ArticleList" component={ArticleList} />
         <Stack.Screen name="ArticleDetail" component={ArticleDetail} />

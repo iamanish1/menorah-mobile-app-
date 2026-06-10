@@ -20,7 +20,33 @@ export interface User {
     sms?: boolean;
     push?: boolean;
   };
+  kyc?: {
+    status: KycStatus;
+    provider?: string | null;
+    submittedAt?: string;
+    verifiedAt?: string;
+    reviewedAt?: string;
+    reviewReason?: string;
+    faceCheckConfidence?: number;
+  };
   createdAt?: string;
+}
+
+export type KycStatus = 'not_started' | 'pending' | 'verified' | 'manual_review' | 'rejected';
+
+export interface KycVerification {
+  id: string;
+  status: KycStatus;
+  provider: string;
+  checkType: string;
+  submittedAt?: string;
+  verifiedAt?: string;
+  reviewedAt?: string;
+  reviewReason?: string;
+  failureReason?: string;
+  faceCount?: number | null;
+  faceCheckConfidence?: number | null;
+  threshold?: number | null;
 }
 
 export interface Counsellor {
@@ -921,6 +947,46 @@ class ApiClient {
       url: '/users/notification-preferences',
       data: preferences,
     });
+  }
+
+  async getKycStatus(): Promise<ApiResponse<{ status: KycStatus; verification: KycVerification | null }>> {
+    return this.request({
+      method: 'GET',
+      url: '/ekyc/status',
+    });
+  }
+
+  async submitKycVerification(payload: {
+    selfie: ProfileImageUpload;
+    consentAccepted: boolean;
+  }): Promise<ApiResponse<{ status: KycStatus; verification: KycVerification; kyc: User['kyc'] }>> {
+    try {
+      const formData = new FormData();
+      formData.append('consentAccepted', payload.consentAccepted ? 'true' : 'false');
+      formData.append('selfie', {
+        uri: payload.selfie.uri,
+        name: payload.selfie.name || `selfie-${Date.now()}.jpg`,
+        type: payload.selfie.type || 'image/jpeg',
+      } as any);
+
+      const response = await this.client.post('/ekyc/submit', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 30000,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      if (errorResponse) return errorResponse;
+
+      const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error');
+      return {
+        success: false,
+        message: isNetworkError
+          ? 'Network error: Unable to submit identity verification. Please check your connection and try again.'
+          : error.message || 'Identity verification failed',
+      };
+    }
   }
 
   async updatePrivacyPreferences(preferences: {

@@ -63,6 +63,7 @@ declare -A SECRET_MAP=(
     ["SENDGRID_API_KEY"]="sendgrid-api-key"
     ["LIVEKIT_API_KEY"]="livekit-api-key"
     ["LIVEKIT_API_SECRET"]="livekit-api-secret"
+    ["LUXAND_API_TOKEN"]="LUXAND_API_TOKEN"
 )
 
 # ── Helper: push a value to Secret Manager ────────────────────────────────

@@ -176,7 +176,16 @@ router.post('/verify-email-otp', [
       success: true,
       message: 'Email verified. Registration complete.',
       data: {
-        user: { id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone, isEmailVerified: true, isPhoneVerified: user.isPhoneVerified },
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone,
+          isEmailVerified: true,
+          isPhoneVerified: user.isPhoneVerified,
+          kyc: user.kyc,
+        },
         token,
       },
     });
@@ -265,6 +274,7 @@ router.post('/login', [
           email: user.email, phone: user.phone,
           isEmailVerified: user.isEmailVerified, isPhoneVerified: user.isPhoneVerified,
           profileImage: user.profileImage, role: user.role || 'user',
+          kyc: user.kyc,
         },
         token,
       },
@@ -526,6 +536,7 @@ router.get('/me', auth, async (req, res) => {
           profileImage: user.profileImage || null,
           dateOfBirth: user.dateOfBirth,
           gender: user.gender,
+          kyc: user.kyc,
           subscription: user.subscription,
           notificationPreferences: user.notificationPreferences,
         }

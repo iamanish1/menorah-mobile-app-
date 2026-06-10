@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import {
-  Users, UserCheck, CalendarCheck, IndianRupee, Clock, TrendingUp, Activity
+  Users, UserCheck, CalendarCheck, IndianRupee, Clock, TrendingUp, Activity, ShieldAlert
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
@@ -29,8 +29,8 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+          {[...Array(5)].map((_, i) => (
             <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 h-28 animate-pulse">
               <div className="flex gap-4">
                 <div className="w-12 h-12 bg-gray-100 rounded-xl" />
@@ -48,11 +48,30 @@ export default function DashboardPage() {
 
   const dailyData = revenue?.dailyTrend?.slice(-14) || [];
   const monthlyData = revenue?.monthlyTrend || [];
+  const pendingKycReviews = stats?.kyc?.pendingReview || 0;
 
   return (
     <div className="space-y-6">
+      {pendingKycReviews > 0 && (
+        <Link
+          href="/ekyc"
+          className="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 transition-colors hover:bg-amber-100"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500 text-white">
+              <ShieldAlert size={20} />
+            </div>
+            <div>
+              <p className="text-sm font-bold">KYC reviews need attention</p>
+              <p className="text-xs text-amber-700">{pendingKycReviews} identity check{pendingKycReviews === 1 ? '' : 's'} waiting for admin review</p>
+            </div>
+          </div>
+          <span className="text-sm font-semibold">Review</span>
+        </Link>
+      )}
+
       {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <StatCard
           title="Total Users"
           value={stats?.users.total.toLocaleString() || '0'}
@@ -81,15 +100,23 @@ export default function DashboardPage() {
           icon={IndianRupee}
           color="amber"
         />
+        <StatCard
+          title="KYC Reviews"
+          value={pendingKycReviews}
+          subtitle={`${stats?.kyc?.verified || 0} verified users`}
+          icon={ShieldAlert}
+          color={pendingKycReviews > 0 ? 'red' : 'green'}
+        />
       </div>
 
       {/* Secondary stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
           { label: 'Pending Approvals', value: stats?.counsellors.pending || 0, href: '/counsellors?status=pending', color: 'text-amber-600 bg-amber-50', icon: Clock },
           { label: 'Blocked Counsellors', value: stats?.counsellors.blocked || 0, href: '/counsellors?status=blocked', color: 'text-red-600 bg-red-50', icon: Activity },
           { label: 'Sessions Today', value: stats?.bookings.today || 0, href: '/counsellors', color: 'text-blue-600 bg-blue-50', icon: TrendingUp },
-          { label: 'Weekly Revenue', value: formatCurrency(stats?.revenue.weekly || 0), href: '/revenue', color: 'text-green-600 bg-green-50', icon: IndianRupee }
+          { label: 'Weekly Revenue', value: formatCurrency(stats?.revenue.weekly || 0), href: '/revenue', color: 'text-green-600 bg-green-50', icon: IndianRupee },
+          { label: 'KYC Reviews', value: pendingKycReviews, href: '/ekyc', color: 'text-red-600 bg-red-50', icon: ShieldAlert }
         ].map((item) => (
           <Link key={item.label} href={item.href}
             className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow flex items-center gap-3">

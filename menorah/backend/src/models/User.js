@@ -126,6 +126,28 @@ const userSchema = new mongoose.Schema({
     }
   },
 
+  // Identity verification status. Biometric/document images are not stored here.
+  kyc: {
+    status: {
+      type: String,
+      enum: ['not_started', 'pending', 'verified', 'manual_review', 'rejected'],
+      default: 'not_started'
+    },
+    provider: {
+      type: String,
+      default: null
+    },
+    submittedAt: Date,
+    verifiedAt: Date,
+    reviewedAt: Date,
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    reviewReason: String,
+    faceCheckConfidence: Number
+  },
+
   // Role
   role: {
     type: String,
@@ -160,6 +182,7 @@ userSchema.virtual('age').get(function() {
 userSchema.index({ email: 1, phone: 1 });
 userSchema.index({ firstName: 1, lastName: 1 });
 userSchema.index({ role: 1 });
+userSchema.index({ 'kyc.status': 1 });
 
 // Sparse indexes on token fields — speeds up password-reset and email-verify lookups
 userSchema.index({ passwordResetToken:     1 }, { sparse: true });

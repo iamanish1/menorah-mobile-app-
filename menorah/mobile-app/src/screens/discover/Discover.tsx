@@ -111,7 +111,7 @@ export default function Discover({ navigation }: any) {
           onBell={() => navigation.navigate('Notifications')}
           unreadCount={unreadCount}
           userName={user?.firstName}
-          userImage={user?.profileImage}
+          userImage={user?.profileImage ?? undefined}
         />
 
         {/* Search bar + filter button */}
