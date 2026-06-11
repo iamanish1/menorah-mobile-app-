@@ -7,14 +7,13 @@
 #
 # Prerequisites:
 #   - gcloud CLI authenticated:  gcloud auth login
-#   - gcp-setup.sh already run (secrets exist, just need updated values)
 #
 # Usage:
 #   GCP_PROJECT_ID=your-project-id bash gcp/secrets-sync.sh menorah/backend/.env
 #
 # What it does:
 #   Reads each KEY=VALUE line from the .env file.
-#   Creates a new secret version in Secret Manager for every secret key.
+#   Creates missing Secret Manager secrets or adds a new version to existing ones.
 #   Skips blank lines, comments, and non-secret config (PORT, NODE_ENV, etc.)
 #   Treats REDIS_URL specially — prompts you to enter the Upstash URL instead
 #   of using the local redis://localhost:6379 value from .env.
@@ -43,26 +42,26 @@ info "==========================================================="
 # Only keys listed here are synced. Non-secret config (PORT, NODE_ENV, etc.)
 # is hardcoded directly in cloudrun.yaml.
 declare -A SECRET_MAP=(
-    ["MONGODB_URI"]="mongodb-uri"
-    ["JWT_SECRET"]="jwt-secret"
-    ["JWT_REFRESH_SECRET"]="jwt-refresh-secret"
-    ["ALLOWED_ORIGINS"]="allowed-origins"
-    ["MSG91_AUTH_KEY"]="msg91-auth-key"
-    ["MSG91_OTP_TEMPLATE_ID"]="msg91-otp-template-id"
-    ["MSG91_SMS_TEMPLATE_ID"]="msg91-sms-template-id"
-    ["MSG91_EMAIL_DOMAIN"]="msg91-email-domain"
-    ["MSG91_EMAIL_TEMPLATE_ID"]="msg91-email-template-id"
-    ["RAZORPAY_KEY_ID"]="razorpay-key-id"
-    ["RAZORPAY_KEY_SECRET"]="razorpay-key-secret"
-    ["RAZORPAY_WEBHOOK_SECRET"]="razorpay-webhook-secret"
-    ["RAZORPAY_X_KEY_ID"]="razorpay-x-key-id"
-    ["RAZORPAY_X_KEY_SECRET"]="razorpay-x-key-secret"
-    ["CLOUDINARY_CLOUD_NAME"]="cloudinary-cloud-name"
-    ["CLOUDINARY_API_KEY"]="cloudinary-api-key"
-    ["CLOUDINARY_API_SECRET"]="cloudinary-api-secret"
-    ["SENDGRID_API_KEY"]="sendgrid-api-key"
-    ["LIVEKIT_API_KEY"]="livekit-api-key"
-    ["LIVEKIT_API_SECRET"]="livekit-api-secret"
+    ["MONGODB_URI"]="MONGODB_URI"
+    ["JWT_SECRET"]="JWT_SECRET"
+    ["JWT_REFRESH_SECRET"]="JWT_REFRESH_SECRET"
+    ["ALLOWED_ORIGINS"]="ALLOWED_ORIGINS"
+    ["MSG91_AUTH_KEY"]="MSG91_AUTH_KEY"
+    ["MSG91_OTP_TEMPLATE_ID"]="MSG91_OTP_TEMPLATE_ID"
+    ["MSG91_SMS_TEMPLATE_ID"]="MSG91_SMS_TEMPLATE_ID"
+    ["MSG91_EMAIL_DOMAIN"]="MSG91_EMAIL_DOMAIN"
+    ["MSG91_EMAIL_TEMPLATE_ID"]="MSG91_EMAIL_TEMPLATE_ID"
+    ["RAZORPAY_KEY_ID"]="RAZORPAY_KEY_ID"
+    ["RAZORPAY_KEY_SECRET"]="RAZORPAY_KEY_SECRET"
+    ["RAZORPAY_WEBHOOK_SECRET"]="RAZORPAY_WEBHOOK_SECRET"
+    ["CLOUDINARY_CLOUD_NAME"]="CLOUDINARY_CLOUD_NAME"
+    ["CLOUDINARY_API_KEY"]="CLOUDINARY_API_KEY"
+    ["CLOUDINARY_API_SECRET"]="CLOUDINARY_API_SECRET"
+    ["SENDGRID_API_KEY"]="SENDGRID_API_KEY"
+    ["WEB_APP_URL"]="WEB_APP_URL"
+    ["LIVEKIT_API_KEY"]="LIVEKIT_API_KEY"
+    ["LIVEKIT_API_SECRET"]="LIVEKIT_API_SECRET"
+    ["OPENAI_API_KEY"]="OPENAI_API_KEY"
     ["LUXAND_API_TOKEN"]="LUXAND_API_TOKEN"
 )
 
@@ -77,12 +76,21 @@ push_secret() {
         return
     fi
 
-    # Add new version (Secret Manager keeps version history automatically)
-    printf '%s' "$value" | gcloud secrets versions add "${secret_name}" \
-        --data-file=- \
-        --project="${PROJECT_ID}" \
-        --quiet
-    success "Updated secret: ${secret_name}"
+    if gcloud secrets describe "${secret_name}" --project="${PROJECT_ID}" --quiet >/dev/null 2>&1; then
+        # Add new version (Secret Manager keeps version history automatically)
+        printf '%s' "$value" | gcloud secrets versions add "${secret_name}" \
+            --data-file=- \
+            --project="${PROJECT_ID}" \
+            --quiet
+        success "Updated secret: ${secret_name}"
+    else
+        printf '%s' "$value" | gcloud secrets create "${secret_name}" \
+            --data-file=- \
+            --replication-policy=automatic \
+            --project="${PROJECT_ID}" \
+            --quiet
+        success "Created secret: ${secret_name}"
+    fi
 }
 
 # ── Parse .env file ────────────────────────────────────────────────────────
@@ -113,10 +121,10 @@ echo ""
 read -rp "Paste your Upstash Redis URL (rediss://...): " UPSTASH_URL
 
 if [[ -n "$UPSTASH_URL" && "$UPSTASH_URL" == rediss://* ]]; then
-    push_secret "redis-url" "$UPSTASH_URL"
+    push_secret "REDIS_URL" "$UPSTASH_URL"
 else
-    warn "Invalid or empty Upstash URL — skipping redis-url secret."
-    warn "Set it manually: echo -n 'rediss://...' | gcloud secrets versions add redis-url --data-file=-"
+    warn "Invalid or empty Upstash URL — skipping REDIS_URL secret."
+    warn "Set it manually: echo -n 'rediss://...' | gcloud secrets versions add REDIS_URL --data-file=-"
 fi
 
 # ── Sync all mapped secrets ────────────────────────────────────────────────

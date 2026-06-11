@@ -101,7 +101,7 @@ spec:
 
           # ── Secrets from GCP Secret Manager ───────────────────────────
           # Each secret is injected as an environment variable at container startup.
-          # Values are set by running: bash scripts/secrets-sync.sh
+          # Values are set by running: bash gcp/secrets-sync.sh
             - name: MONGODB_URI
               valueFrom:
                 secretKeyRef:

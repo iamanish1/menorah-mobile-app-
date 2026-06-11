@@ -105,6 +105,8 @@ Go to GitHub → repo → Settings → Secrets → Actions → New repository se
 | `VPS_SSH_KEY` | Contents of `~/.ssh/menorah_deploy` (private key) |
 | `VPS_PORT` | `22` |
 
+`VPS_HOST` must be the raw VPS public IP, or a DNS-only hostname that resolves directly to that IP. Do not use a Cloudflare-proxied hostname such as an orange-cloud `vps.*` record for SSH; GitHub Actions will time out before the deploy script can update nginx.
+
 ---
 
 ## Phase 3 — GCP Cloud Run Setup
@@ -120,7 +122,7 @@ This script:
 - Enables required GCP APIs
 - Creates Artifact Registry repo
 - Creates service accounts with minimum IAM permissions
-- Creates all Secret Manager secrets
+- Creates all Secret Manager secrets used by `gcp/cloudrun.yaml`, including `LUXAND_API_TOKEN`
 - Prints the `GCP_SA_KEY` base64 value you need for GitHub Secrets
 
 ### 3b. Create Upstash Redis (for Cloud Run)
