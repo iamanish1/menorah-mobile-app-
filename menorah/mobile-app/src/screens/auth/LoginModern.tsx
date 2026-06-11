@@ -154,6 +154,7 @@ export default function Login({ navigation }: any) {
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            textContentType="emailAddress"
             style={{ flex: 1, fontSize: 15, color: iosTheme.colors.text, paddingVertical: 0 }}
           />
         </View>
@@ -184,6 +185,10 @@ export default function Login({ navigation }: any) {
             placeholder="Enter your password"
             placeholderTextColor={iosTheme.colors.textMuted}
             secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            textContentType="password"
             style={{ flex: 1, fontSize: 15, color: iosTheme.colors.text, paddingVertical: 0 }}
           />
           <TouchableOpacity
