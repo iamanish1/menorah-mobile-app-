@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   Alert, RefreshControl,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   CalendarPlus, CalendarCheck, CheckCircle, Calendar, Clock,
   User, ShieldCheck, Heart, ChevronRight, MapPin,
@@ -81,6 +81,9 @@ export default function Bookings({ navigation }: any) {
   const completedBookings = bookings.filter(b => b.status === 'completed');
   const displayBookings   = activeTab === 'upcoming' ? upcomingBookings : completedBookings;
 
+  const insets = useSafeAreaInsets();
+  const tabBarClearance = 74 + Math.max(insets.bottom, 16) + 24;
+
   const cardBg = scheme === 'dark' ? colors.surface : colors.card;
   const trustBg = scheme === 'dark' ? colors.surface : '#f8fdf9';
   const bannerBg = scheme === 'dark' ? '#1a2e22' : '#edf7f1';
@@ -89,7 +92,7 @@ export default function Bookings({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{ paddingBottom: tabBarClearance }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={isFetching && !isLoading} onRefresh={onRefresh} tintColor={colors.primary} />}
       >

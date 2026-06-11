@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   RefreshControl, Alert, Modal, TextInput,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import {
   Plus, X, Search, SlidersHorizontal, ShieldCheck,
@@ -120,6 +120,9 @@ export default function ChatList({ navigation }: any) {
     return true;
   });
 
+  const insets = useSafeAreaInsets();
+  const tabBarClearance = 74 + Math.max(insets.bottom, 16) + 24;
+
   const isDark   = scheme === 'dark';
   const cardBg   = isDark ? colors.card : '#ffffff';
   const pageBg   = isDark ? colors.bg : '#f5f7f5';
@@ -132,7 +135,7 @@ export default function ChatList({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: pageBg }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{ paddingBottom: tabBarClearance }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
