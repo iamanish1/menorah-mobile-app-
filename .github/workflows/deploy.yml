@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'menorah/backend/**'
+      - 'nginx/**'
+      - 'scripts/vps-setup.sh'
       - 'gcp/cloudrun.yaml'
       - '.github/workflows/deploy.yml'
 
@@ -258,6 +260,25 @@ jobs:
               -v /opt/menorah/logs:/app/logs \
               -v /opt/menorah/uploads:/app/uploads \
               "${IMAGE}"
+
+            echo "==> Updating nginx config"
+            NGINX_TMP="/tmp/menorah-nginx-${SHORT_SHA}.conf"
+            curl -fsSL \
+              "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/menorah/backend/nginx.conf" \
+              -o "${NGINX_TMP}"
+
+            if command -v sudo >/dev/null 2>&1; then
+              SUDO="sudo -n"
+            else
+              SUDO=""
+            fi
+
+            if ${SUDO} sh -c "cp '${NGINX_TMP}' /etc/nginx/sites-available/menorah && ln -sf /etc/nginx/sites-available/menorah /etc/nginx/sites-enabled/menorah && nginx -t && systemctl reload nginx"; then
+              echo "==> nginx config updated and reloaded ✅"
+            else
+              echo "::error::nginx reload failed. Run on VPS: sudo cp ${NGINX_TMP} /etc/nginx/sites-available/menorah && sudo nginx -t && sudo systemctl reload nginx"
+              exit 1
+            fi
 
             echo "==> Health check (waiting 15s for startup)"
             for i in $(seq 1 18); do
