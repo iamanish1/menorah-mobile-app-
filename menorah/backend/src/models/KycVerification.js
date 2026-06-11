@@ -47,6 +47,9 @@ const kycVerificationSchema = new mongoose.Schema({
   providerRequestId: String,
   metadata: {
     selfieMimeType: String,
+    originalSelfieMimeType: String,
+    originalSelfieSize: Number,
+    normalizedSelfieSize: Number,
   },
 }, {
   timestamps: true,

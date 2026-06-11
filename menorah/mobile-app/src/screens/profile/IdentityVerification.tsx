@@ -168,19 +168,35 @@ export default function IdentityVerification({ navigation, route }: any) {
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: false,
-        quality: 0.85,
+        quality: 0.7,
       });
 
       if (result.canceled || !result.assets?.length) return;
 
       const asset = result.assets[0];
+      const imageType = asset.mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+      const imageExtension = imageType === 'image/png' ? 'png' : 'jpg';
+      const imageName = asset.fileName
+        ? asset.fileName.replace(/\.[^.]+$/, `.${imageExtension}`)
+        : `selfie-${Date.now()}.${imageExtension}`;
       const image = {
         uri: asset.uri,
-        name: asset.fileName || `selfie-${Date.now()}.jpg`,
-        type: asset.mimeType === 'image/png' ? 'image/png' : 'image/jpeg',
+        name: imageName,
+        type: imageType,
       };
+
+      if (__DEV__) {
+        console.log('[IdentityVerification] Captured selfie:', {
+          width: asset.width,
+          height: asset.height,
+          fileSize: asset.fileSize,
+          mimeType: asset.mimeType,
+          uploadType: image.type,
+          uploadName: image.name,
+        });
+      }
 
       setSelfie(image);
     } catch (error) {
@@ -208,7 +224,11 @@ export default function IdentityVerification({ navigation, route }: any) {
     setLoading(false);
 
     if (!response.success || !response.data) {
-      Alert.alert('Verification Failed', response.message || 'Please try again with clear photos.');
+      const message = response.message || 'Identity verification could not be completed right now. Please try again later or skip for now.';
+      if (__DEV__) {
+        console.error('[IdentityVerification] Submit failed:', response);
+      }
+      Alert.alert('Verification Failed', message);
       return;
     }
 

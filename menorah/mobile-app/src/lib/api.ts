@@ -974,10 +974,19 @@ class ApiClient {
         timeout: 30000,
       });
 
+      this.logDebug('[API] eKYC submit response:', response.data);
       return response.data;
     } catch (error: any) {
       const errorResponse = error.response?.data;
-      if (errorResponse) return errorResponse;
+      if (errorResponse) {
+        if (__DEV__) {
+          console.error('[API] eKYC submit error:', this.stringifyForLog({
+            status: error.response?.status,
+            response: errorResponse,
+          }));
+        }
+        return errorResponse;
+      }
 
       const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error');
       return {

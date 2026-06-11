@@ -1,25 +1,49 @@
 const express = require('express');
 const multer = require('multer');
+const sharp = require('sharp');
 const User = require('../models/User');
 const KycVerification = require('../models/KycVerification');
 const { auth } = require('../middleware/auth');
 
 const router = express.Router();
-const allowedMimeTypes = new Set(['image/jpeg', 'image/png']);
+const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/heic', 'image/heif']);
+const DEFAULT_MAX_FILE_SIZE = 15 * 1024 * 1024;
+const maxFileSize = parseInt(process.env.EKYC_MAX_FILE_SIZE, 10) || DEFAULT_MAX_FILE_SIZE;
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     files: 1,
-    fileSize: parseInt(process.env.EKYC_MAX_FILE_SIZE, 10) || 5 * 1024 * 1024,
+    fileSize: maxFileSize,
   },
   fileFilter: (_req, file, cb) => {
     if (!allowedMimeTypes.has(file.mimetype)) {
-      return cb(new Error('Only JPEG or PNG images are supported for identity verification'));
+      return cb(new Error('Only JPEG, PNG, HEIC, or HEIF images are supported for identity verification'));
     }
     cb(null, true);
   },
 });
+
+const uploadSelfie = (req, res, next) => {
+  upload.single('selfie')(req, res, (error) => {
+    if (!error) return next();
+
+    const isTooLarge = error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE';
+    console.error('KYC upload error:', {
+      code: error.code,
+      message: error.message,
+      maxFileSize,
+    });
+
+    return res.status(400).json({
+      success: false,
+      code: isTooLarge ? 'EKYC_PHOTO_TOO_LARGE' : 'EKYC_UNSUPPORTED_PHOTO',
+      message: isTooLarge
+        ? 'The selfie photo is too large. Please retake it or choose a smaller image and try again.'
+        : error.message || 'The selfie photo could not be uploaded. Please retake it and try again.',
+    });
+  });
+};
 
 const getLuxandDetectUrl = () =>
   process.env.LUXAND_DETECT_URL || 'https://api.luxand.cloud/photo/detect';
@@ -53,6 +77,64 @@ const getFaceConfidence = (face) => normalizeConfidence(
     ?? face?.face_probability
     ?? face?.score
 );
+
+const sanitizeProviderMessage = (message) => {
+  if (!message || typeof message !== 'string') return undefined;
+  return message.replace(/\s+/g, ' ').trim().slice(0, 180);
+};
+
+const providerFailureMessage = (status, providerMessage) => {
+  if (status === 401 || status === 403) {
+    return 'Identity verification is not accepting requests right now. Please contact support or skip for now.';
+  }
+  if (status === 413) {
+    return 'The selfie photo is too large for identity verification. Please retake it and try again.';
+  }
+  if (status === 429) {
+    return 'Identity verification is busy right now. Please try again in a few minutes or skip for now.';
+  }
+  if (status >= 500) {
+    return 'Identity verification is temporarily unavailable. Please try again later or skip for now.';
+  }
+
+  const cleanProviderMessage = sanitizeProviderMessage(providerMessage);
+  return cleanProviderMessage
+    ? `Identity verification could not process this photo: ${cleanProviderMessage}`
+    : 'Identity verification could not process this photo. Please retake it in good light or skip for now.';
+};
+
+const normalizeSelfieForProvider = async (file) => {
+  try {
+    const buffer = await sharp(file.buffer, { failOn: 'none' })
+      .rotate()
+      .resize({
+        width: 1600,
+        height: 1600,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: 85, mozjpeg: true })
+      .toBuffer();
+
+    const baseName = (file.originalname || `selfie-${Date.now()}`)
+      .replace(/\.[^.]+$/, '')
+      .replace(/[^\w.-]+/g, '-')
+      .slice(0, 80) || `selfie-${Date.now()}`;
+
+    return {
+      ...file,
+      buffer,
+      size: buffer.length,
+      mimetype: 'image/jpeg',
+      originalname: `${baseName}.jpg`,
+    };
+  } catch (error) {
+    error.statusCode = 400;
+    error.code = 'EKYC_UNSUPPORTED_IMAGE_FORMAT';
+    error.publicMessage = 'We could not process this selfie format. Please retake the photo and try again.';
+    throw error;
+  }
+};
 
 const serializeVerification = (verification) => ({
   id: verification._id.toString(),
@@ -98,17 +180,27 @@ const submitToLuxand = async (file) => {
   if (!token) {
     const error = new Error('LUXAND_API_TOKEN is not configured');
     error.statusCode = 503;
+    error.code = 'EKYC_PROVIDER_NOT_CONFIGURED';
+    error.publicMessage = 'Identity verification is temporarily unavailable. Please skip for now or contact support.';
     throw error;
   }
 
   const form = new FormData();
   form.append('photo', new Blob([file.buffer], { type: file.mimetype }), file.originalname || `selfie-${Date.now()}.jpg`);
 
-  const response = await fetch(getLuxandDetectUrl(), {
-    method: 'POST',
-    headers: { token },
-    body: form,
-  });
+  let response;
+  try {
+    response = await fetch(getLuxandDetectUrl(), {
+      method: 'POST',
+      headers: { token },
+      body: form,
+    });
+  } catch (error) {
+    error.statusCode = 502;
+    error.code = 'EKYC_PROVIDER_NETWORK_ERROR';
+    error.publicMessage = 'Identity verification service could not be reached. Please try again later or skip for now.';
+    throw error;
+  }
 
   const text = await response.text();
   let payload = null;
@@ -119,8 +211,11 @@ const submitToLuxand = async (file) => {
   }
 
   if (!response.ok) {
-    const error = new Error(payload?.error || payload?.message || 'Luxand face detection failed');
-    error.statusCode = response.status;
+    const providerMessage = payload?.error || payload?.message || payload?.detail || 'Luxand face detection failed';
+    const error = new Error(providerMessage);
+    error.statusCode = response.status >= 500 ? 502 : response.status;
+    error.code = `EKYC_PROVIDER_${response.status}`;
+    error.publicMessage = providerFailureMessage(response.status, providerMessage);
     error.providerResponse = payload;
     throw error;
   }
@@ -154,7 +249,7 @@ router.get('/status', auth, async (req, res) => {
   }
 });
 
-router.post('/submit', auth, upload.single('selfie'), async (req, res) => {
+router.post('/submit', auth, uploadSelfie, async (req, res) => {
   try {
     const consentAccepted = req.body.consentAccepted === 'true' || req.body.consentAccepted === true;
     if (!consentAccepted) {
@@ -177,8 +272,9 @@ router.post('/submit', auth, upload.single('selfie'), async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    const normalizedSelfie = await normalizeSelfieForProvider(selfie);
     const threshold = getConfidenceThreshold();
-    const luxandResult = await submitToLuxand(selfie);
+    const luxandResult = await submitToLuxand(normalizedSelfie);
     const faces = extractFaces(luxandResult);
     const face = faces[0] || null;
     const confidence = getFaceConfidence(face);
@@ -198,7 +294,10 @@ router.post('/submit', auth, upload.single('selfie'), async (req, res) => {
       },
       providerRequestId: luxandResult?.request_id || luxandResult?.requestId,
       metadata: {
-        selfieMimeType: selfie.mimetype,
+        selfieMimeType: normalizedSelfie.mimetype,
+        originalSelfieMimeType: selfie.mimetype,
+        originalSelfieSize: selfie.size,
+        normalizedSelfieSize: normalizedSelfie.size,
       },
     });
 
@@ -222,16 +321,21 @@ router.post('/submit', auth, upload.single('selfie'), async (req, res) => {
     });
   } catch (error) {
     console.error('KYC submit error:', {
+      code: error?.code,
       message: error?.message,
       statusCode: error?.statusCode,
       providerResponse: error?.providerResponse,
+      file: req.file ? {
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        originalname: req.file.originalname,
+      } : null,
     });
 
     res.status(error?.statusCode || 500).json({
       success: false,
-      message: error?.statusCode === 503
-        ? 'Identity verification is not configured. Set LUXAND_API_TOKEN.'
-        : 'Identity verification failed. Please try again with a clear face photo.',
+      code: error?.code || 'EKYC_SUBMIT_FAILED',
+      message: error?.publicMessage || 'Identity verification could not be completed right now. Please try again later or skip for now.',
     });
   }
 });
