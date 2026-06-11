@@ -221,7 +221,10 @@ export default function Register({ navigation }: any) {
           console.log('[Register] Registration successful:', result.message);
         }
 
-        navigation.navigate('Verify', { email: payload.email });
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Verify', params: { email: payload.email, fromSignup: true } }],
+        });
       } else {
         const backendFieldErrors = validationErrorsToFieldMap(result.errors);
         if (Object.keys(backendFieldErrors).length > 0) {

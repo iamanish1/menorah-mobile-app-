@@ -7,6 +7,7 @@ import {
   BadgeCheck,
   Camera,
   CheckSquare,
+  ChevronRight,
   ShieldCheck,
   Square,
 } from 'lucide-react-native';
@@ -111,9 +112,10 @@ function ImageSlot({ title, subtitle, image, icon: Icon, onPress }: ImageSlotPro
   );
 }
 
-export default function IdentityVerification({ navigation }: any) {
+export default function IdentityVerification({ navigation, route }: any) {
   const iosTheme = useIOSTheme();
   const { user, updateUser } = useAuth();
+  const fromSignup = route?.params?.fromSignup === true;
   const [selfie, setSelfie] = useState<ProfileImageUpload | null>(null);
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [status, setStatus] = useState<KycStatus>(user?.kyc?.status || 'not_started');
@@ -121,6 +123,13 @@ export default function IdentityVerification({ navigation }: any) {
   const [checkingStatus, setCheckingStatus] = useState(true);
 
   const copy = statusCopy[status] || statusCopy.not_started;
+  const canContinueFromSignup = fromSignup && ['pending', 'manual_review', 'verified'].includes(status);
+  const continueToApp = () => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Tabs' }],
+    });
+  };
   const toneColors = useMemo(() => {
     if (copy.tone === 'success') {
       return { bg: '#dcfce7', fg: '#166534', border: '#bbf7d0', Icon: BadgeCheck };
@@ -210,7 +219,10 @@ export default function IdentityVerification({ navigation }: any) {
 
     Alert.alert(
       response.data.status === 'verified' ? 'Verified' : 'Submitted for Review',
-      response.message || 'Identity verification submitted.'
+      response.message || 'Identity verification submitted.',
+      fromSignup
+        ? [{ text: 'Continue', onPress: continueToApp }]
+        : undefined
     );
   };
 
@@ -219,14 +231,38 @@ export default function IdentityVerification({ navigation }: any) {
   return (
     <View style={{ flex: 1, backgroundColor: iosTheme.colors.background }}>
       <IOSHeader
-        title="Identity"
-        subtitle="eKYC verification"
+        title={fromSignup ? 'Verify identity' : 'Identity'}
+        subtitle={fromSignup ? 'Optional account trust step' : 'eKYC verification'}
         showWordmark={false}
-        onMenuPress={() => navigation.goBack()}
-        onRightPress={() => navigation.goBack()}
+        onMenuPress={fromSignup ? continueToApp : () => navigation.goBack()}
+        onRightPress={fromSignup ? continueToApp : () => navigation.goBack()}
+        rightIcon={fromSignup ? ChevronRight : undefined}
       />
 
       <IOSScreen edges={['right', 'bottom', 'left']} contentContainerStyle={{ paddingTop: iosTheme.spacing.sm }}>
+        {fromSignup ? (
+          <IOSCard>
+            <Text style={iosTheme.typography.cardTitle}>Optional verification</Text>
+            <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
+              Verify now to build account trust, or skip and do it later from Profile.
+            </Text>
+            <IOSButton
+              title="Skip for now"
+              variant="ghost"
+              onPress={continueToApp}
+              style={{ marginTop: iosTheme.spacing.md, minHeight: 44, alignSelf: 'flex-start' }}
+            />
+          </IOSCard>
+        ) : null}
+
+        {fromSignup ? (
+          <IOSCard contentStyle={{ flexDirection: 'row', alignItems: 'center', gap: iosTheme.spacing.md }}>
+            <Text style={[iosTheme.typography.body, { flex: 1 }]}>
+              You can continue without eKYC. Some trust features may ask you to complete it later.
+            </Text>
+          </IOSCard>
+        ) : null}
+
         <IOSCard
           style={{ borderColor: toneColors.border, backgroundColor: toneColors.bg }}
           contentStyle={{ flexDirection: 'row', alignItems: 'center', gap: iosTheme.spacing.md }}
@@ -284,10 +320,10 @@ export default function IdentityVerification({ navigation }: any) {
         </TouchableOpacity>
 
         <IOSButton
-          title="Submit Verification"
-          onPress={submit}
+          title={canContinueFromSignup ? 'Continue' : 'Submit Verification'}
+          onPress={canContinueFromSignup ? continueToApp : submit}
           loading={loading}
-          disabled={!selfie || !consentAccepted}
+          disabled={!canContinueFromSignup && (!selfie || !consentAccepted)}
           iconEnd={ShieldCheck}
           style={{ marginTop: iosTheme.spacing.md }}
         />

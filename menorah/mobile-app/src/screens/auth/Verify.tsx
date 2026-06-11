@@ -16,6 +16,8 @@ export default function Verify({ navigation, route }: any) {
   
   // Get email from route params or user object
   const email = route?.params?.email || user?.email;
+  const fromSignup = route?.params?.fromSignup === true;
+  const shouldOfferIdentityVerification = fromSignup || (route?.params?.fromSignup == null && !user);
 
   const handleVerify = async () => {
     if (!code || code.length !== 6) {
@@ -32,14 +34,17 @@ export default function Verify({ navigation, route }: any) {
     try {
       const result = await verifyEmailOtp(email, code);
       if (result.success) {
-        Alert.alert('Success', 'Email verified successfully!', [
+        Alert.alert('Success', shouldOfferIdentityVerification ? 'Email verified. You can verify your identity now or skip for later.' : 'Email verified successfully!', [
           {
             text: 'OK',
             onPress: () => {
-              // Navigate to main app after successful verification
               navigation.reset({
                 index: 0,
-                routes: [{ name: 'Tabs' }],
+                routes: [
+                  shouldOfferIdentityVerification
+                    ? { name: 'IdentityVerification', params: { fromSignup: true } }
+                    : { name: 'Tabs' },
+                ],
               });
             },
           },
