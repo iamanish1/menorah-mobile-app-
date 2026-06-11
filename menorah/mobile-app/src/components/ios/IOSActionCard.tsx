@@ -61,24 +61,31 @@ export default function IOSActionCard({
       {Icon ? (
         <View
           style={{
-            width: compact ? 46 : 54,
-            height: compact ? 46 : 54,
-            borderRadius: compact ? 17 : 20,
+            width: compact ? 38 : 54,
+            height: compact ? 38 : 54,
+            borderRadius: compact ? 14 : 20,
             backgroundColor: dark ? iosTheme.colors.inverseSurface : iosTheme.colors.surfaceAlt,
             alignItems: 'center',
             justifyContent: 'center',
+            flexShrink: 0,
           }}
         >
-          <Icon size={compact ? 21 : 24} color={dark ? iosTheme.colors.inverseText : iosTheme.colors.primary} strokeWidth={2.25} />
+          <Icon size={compact ? 18 : 24} color={dark ? iosTheme.colors.inverseText : iosTheme.colors.primary} strokeWidth={2.25} />
         </View>
       ) : null}
 
-      <View style={{ flex: 1 }}>
-        <Text style={{ color: foreground, fontSize: compact ? 16 : 20, lineHeight: compact ? 22 : 26, fontWeight: '900' }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          style={{ color: foreground, fontSize: compact ? 14 : 20, lineHeight: compact ? 19 : 26, fontWeight: '900' }}
+          numberOfLines={compact ? 2 : undefined}
+        >
           {title}
         </Text>
         {subtitle ? (
-          <Text style={{ color: secondary, fontSize: compact ? 13 : 14, lineHeight: compact ? 18 : 21, marginTop: iosTheme.spacing.xs }}>
+          <Text
+            style={{ color: secondary, fontSize: compact ? 12 : 14, lineHeight: compact ? 16 : 21, marginTop: iosTheme.spacing.xs }}
+            numberOfLines={compact ? 1 : undefined}
+          >
             {subtitle}
           </Text>
         ) : null}

@@ -55,12 +55,12 @@ export default function IOSChatBanner({
         <Text
           style={{
             color: iosTheme.colors.inverseText,
-            fontSize: 31,
-            lineHeight: 35,
+            fontSize: 22,
+            lineHeight: 27,
             fontWeight: '900',
-            marginBottom: 7,
+            marginBottom: 6,
           }}
-          numberOfLines={1}
+          numberOfLines={2}
         >
           {title}
         </Text>

@@ -8,7 +8,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import type { ReactNode } from 'react';
-import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
 import { useIOSTheme } from './iosTheme';
 
 type IOSScreenProps = {
@@ -35,6 +35,9 @@ export default function IOSScreen({
   edges = ['top', 'right', 'bottom', 'left'],
 }: IOSScreenProps) {
   const iosTheme = useIOSTheme();
+  const insets = useSafeAreaInsets();
+  // tab bar is 74px tall; bottom offset = insets.bottom + 16 (or just 16 when no inset)
+  const tabBarClearance = 74 + Math.max(insets.bottom, 16) + 24;
 
   const body = scroll ? (
     <Animated.ScrollView
@@ -42,7 +45,7 @@ export default function IOSScreen({
       contentContainerStyle={[
         {
           paddingHorizontal: iosTheme.layout.screenPadding,
-          paddingBottom: 132,
+          paddingBottom: tabBarClearance,
         },
         contentContainerStyle,
       ]}

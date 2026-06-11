@@ -152,42 +152,44 @@ export default function ProfileHome({ navigation }: any) {
               borderBottomRightRadius: iosTheme.radius.xl,
             }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: iosTheme.spacing.lg }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: iosTheme.spacing.md }}>
               {user?.profileImage ? (
                 <Image
                   source={{ uri: user.profileImage }}
                   style={{
-                    width: 84,
-                    height: 84,
-                    borderRadius: 42,
-                    borderWidth: 3,
+                    width: 72,
+                    height: 72,
+                    borderRadius: 36,
+                    borderWidth: 2,
                     borderColor: iosTheme.colors.inverseTextMuted,
+                    flexShrink: 0,
                   }}
                   contentFit="cover"
                 />
               ) : (
                 <View
                   style={{
-                    width: 84,
-                    height: 84,
-                    borderRadius: 42,
-                    borderWidth: 3,
+                    width: 72,
+                    height: 72,
+                    borderRadius: 36,
+                    borderWidth: 2,
                     borderColor: iosTheme.colors.inverseTextMuted,
                     backgroundColor: iosTheme.colors.inverseSurface,
                     alignItems: 'center',
                     justifyContent: 'center',
+                    flexShrink: 0,
                   }}
                 >
-                  <Text style={{ color: iosTheme.colors.inverseText, fontSize: 34, lineHeight: 40, fontWeight: '900' }}>
+                  <Text style={{ color: iosTheme.colors.inverseText, fontSize: 28, lineHeight: 34, fontWeight: '900' }}>
                     {initials}
                   </Text>
                 </View>
               )}
 
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text
-                  style={{ color: iosTheme.colors.inverseText, fontSize: 24, lineHeight: 30, fontWeight: '900' }}
-                  numberOfLines={2}
+                  style={{ color: iosTheme.colors.inverseText, fontSize: 19, lineHeight: 24, fontWeight: '900' }}
+                  numberOfLines={1}
                 >
                   {user ? `${user.firstName} ${user.lastName}` : 'User'}
                 </Text>
@@ -223,7 +225,7 @@ export default function ProfileHome({ navigation }: any) {
                 accessibilityLabel="Edit profile"
                 color={iosTheme.colors.inverseText}
                 backgroundColor={iosTheme.colors.inverseSurface}
-                style={{ borderColor: iosTheme.colors.inverseSurfaceBorder, shadowOpacity: 0 }}
+                style={{ borderColor: iosTheme.colors.inverseSurfaceBorder, shadowOpacity: 0, flexShrink: 0 }}
               />
             </View>
           </View>
