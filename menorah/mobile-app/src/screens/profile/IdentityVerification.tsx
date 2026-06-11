@@ -170,7 +170,7 @@ export default function IdentityVerification({ navigation, route }: any) {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
-        quality: 0.7,
+        quality: 0.4,
       });
 
       if (result.canceled || !result.assets?.length) return;
