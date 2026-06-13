@@ -46,7 +46,6 @@
     },
     "runtimeVersion": "1.0.0",
     "extra": {
-      "API_BASE_URL": "https://api.menorah.me/api",
       "CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
       "eas": {
         "projectId": "d7fb6e65-3440-4a79-b4b2-6746d2582fa7"

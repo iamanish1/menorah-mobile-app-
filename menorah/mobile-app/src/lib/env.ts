@@ -13,7 +13,11 @@ const configWebBaseURL: string | undefined =
   ((Constants.expoConfig?.extra as any)?.PUBLIC_WEB_BASE_URL as string | undefined);
 
 const normalizeBaseURL = (url?: string) => {
-  const fallbackUrl = __DEV__ ? 'http://localhost:3000/api' : 'https://api.menorah.me/api';
+  if (!url && !__DEV__) {
+    throw new Error('EXPO_PUBLIC_API_BASE_URL is required for production builds');
+  }
+
+  const fallbackUrl = 'http://localhost:3000/api';
   const candidate = (url ?? fallbackUrl).trim().replace(/\/+$/, '');
 
   // Only remap localhost for Android emulator (emulator can't reach host via localhost)
@@ -54,14 +58,15 @@ export const ENV = {
   USE_RAZORPAY_SDK,
 };
 
-// Debug logging
-console.log('Environment Configuration:', {
-  Platform: Platform.OS,
-  __DEV__,
-  IS_EXPO_GO: ENV.IS_EXPO_GO,
-  API_BASE_URL: ENV.API_BASE_URL,
-  API_ORIGIN: ENV.API_ORIGIN,
-  WEB_BASE_URL: ENV.WEB_BASE_URL,
-  CHECKOUT_RETURN_URL: ENV.CHECKOUT_RETURN_URL,
-  JITSI_BASE_URL: ENV.JITSI_BASE_URL,
-});
+if (__DEV__) {
+  console.log('Environment Configuration:', {
+    Platform: Platform.OS,
+    __DEV__,
+    IS_EXPO_GO: ENV.IS_EXPO_GO,
+    API_BASE_URL: ENV.API_BASE_URL,
+    API_ORIGIN: ENV.API_ORIGIN,
+    WEB_BASE_URL: ENV.WEB_BASE_URL,
+    CHECKOUT_RETURN_URL: ENV.CHECKOUT_RETURN_URL,
+    JITSI_BASE_URL: ENV.JITSI_BASE_URL,
+  });
+}

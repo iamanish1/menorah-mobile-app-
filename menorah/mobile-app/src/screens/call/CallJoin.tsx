@@ -147,7 +147,7 @@ export default function CallJoin({ navigation, route }: any) {
   }
 
   // ── Build meet URL ───────────────────────────────────────────────────────
-  const apiBase = (ENV.API_BASE_URL || 'https://api.menorah.me/api').replace(/\/api\/?$/, '');
+  const apiBase = ENV.API_ORIGIN || ENV.API_BASE_URL.replace(/\/api\/?$/, '');
   const meetUrl = `${apiBase}/api/video/meet`
     + `?token=${encodeURIComponent(livekitToken)}`
     + `&url=${encodeURIComponent(livekitUrl)}`
