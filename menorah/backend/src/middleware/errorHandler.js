@@ -2,16 +2,6 @@ const errorHandler = (err, req, res, next) => {
   let error = { ...err };
   error.message = err.message;
 
-  // Log error for debugging
-  console.error('Error:', {
-    message: err.message,
-    stack: err.stack,
-    url: req.url,
-    method: req.method,
-    ip: req.ip,
-    userAgent: req.get('User-Agent')
-  });
-
   // Mongoose bad ObjectId
   if (err.name === 'CastError') {
     const message = 'Resource not found';
@@ -60,8 +50,19 @@ const errorHandler = (err, req, res, next) => {
   }
 
   // Default error
-  const statusCode = error.statusCode || err.statusCode || 500;
+  const statusCode = error.statusCode || err.statusCode || (res.statusCode !== 200 ? res.statusCode : 500);
   const message = error.message || 'Internal Server Error';
+
+  if (statusCode >= 500) {
+    console.error('Error:', {
+      message: err.message,
+      stack: err.stack,
+      url: req.url,
+      method: req.method,
+      ip: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+  }
 
   res.status(statusCode).json({
     success: false,

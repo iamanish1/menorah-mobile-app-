@@ -1,4 +1,4 @@
-const { startService } = require('./shared/app/startService');
+const { startService } = require('../../shared/app/startService');
 
 const start = () =>
   startService({
@@ -10,7 +10,7 @@ const start = () =>
 
 if (require.main === module) {
   start().catch((err) => {
-    console.error('FATAL: Failed to start compatibility api-web server:', err);
+    console.error('FATAL: Failed to start api-web:', err);
     process.exit(1);
   });
 }
