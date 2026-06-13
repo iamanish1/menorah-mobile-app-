@@ -1,0 +1,101 @@
+{
+	email {$PUBLIC_EMAIL}
+	servers {
+		trusted_proxies cloudflare
+	}
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+}
+
+(api_proxy) {
+	import security_headers
+	encode gzip zstd
+	request_body {
+		max_size 20MB
+	}
+}
+
+{$WWW_DOMAIN} {
+	import security_headers
+	encode gzip zstd
+	reverse_proxy landing-page:3002
+	log {
+		output file /var/log/caddy/www-access.log
+		format json
+	}
+}
+
+{$APP_DOMAIN} {
+	import security_headers
+	encode gzip zstd
+	reverse_proxy user-web-app:3002
+	log {
+		output file /var/log/caddy/app-access.log
+		format json
+	}
+}
+
+{$ADMIN_DOMAIN} {
+	import security_headers
+	encode gzip zstd
+	reverse_proxy admin-panel:3003
+	log {
+		output file /var/log/caddy/admin-access.log
+		format json
+	}
+}
+
+{$API_IOS_DOMAIN} {
+	import api_proxy
+	reverse_proxy api-ios:8080
+	log {
+		output file /var/log/caddy/api-ios-access.log
+		format json
+	}
+}
+
+{$API_ANDROID_DOMAIN} {
+	import api_proxy
+	reverse_proxy api-android:8080
+	log {
+		output file /var/log/caddy/api-android-access.log
+		format json
+	}
+}
+
+{$API_WEB_DOMAIN} {
+	import api_proxy
+	reverse_proxy api-web:8080
+	log {
+		output file /var/log/caddy/api-web-access.log
+		format json
+	}
+}
+
+{$API_ADMIN_DOMAIN} {
+	import api_proxy
+	reverse_proxy api-admin:8080
+	log {
+		output file /var/log/caddy/api-admin-access.log
+		format json
+	}
+}
+
+{$CALLS_DOMAIN} {
+	import security_headers
+	encode gzip zstd
+	reverse_proxy {$LIVEKIT_UPSTREAM}
+	log {
+		output file /var/log/caddy/calls-access.log
+		format json
+	}
+}

@@ -43,7 +43,7 @@ WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \
-    PORT=8080
+    PORT=3002
 
 RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
 
@@ -56,6 +56,6 @@ COPY --from=builder --chown=nextjs:nextjs /app/next.config.ts ./next.config.ts
 
 USER nextjs
 
-EXPOSE 8080
+EXPOSE 3002
 
-CMD ["sh", "-c", "node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-8080}"]
+CMD ["sh", "-c", "node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-3002}"]

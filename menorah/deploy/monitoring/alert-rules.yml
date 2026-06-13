@@ -1,0 +1,27 @@
+groups:
+  - name: menorah-core
+    rules:
+      - alert: ApiHealthEndpointDown
+        expr: up{job="api-services"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API health endpoint is down"
+          description: "{{ $labels.instance }} has not responded for 2 minutes."
+
+      - alert: ContainerMetricsDown
+        expr: up{job="cadvisor"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container metrics are unavailable"
+
+      - alert: PrometheusDown
+        expr: up{job="prometheus"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape itself"

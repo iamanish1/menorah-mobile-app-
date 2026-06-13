@@ -1,0 +1,318 @@
+services:
+  reverse-proxy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    env_file:
+      - ./env/home.env
+    environment:
+      PUBLIC_EMAIL: ${PUBLIC_EMAIL}
+      LIVEKIT_UPSTREAM: ${LIVEKIT_UPSTREAM}
+      WWW_DOMAIN: ${WWW_DOMAIN}
+      APP_DOMAIN: ${APP_DOMAIN}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN}
+      API_IOS_DOMAIN: ${API_IOS_DOMAIN}
+      API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN}
+      API_WEB_DOMAIN: ${API_WEB_DOMAIN}
+      API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN}
+      CALLS_DOMAIN: ${CALLS_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${MENORAH_DATA_ROOT}/caddy/data:/data
+      - ${MENORAH_DATA_ROOT}/caddy/config:/config
+      - ${MENORAH_DATA_ROOT}/logs/caddy:/var/log/caddy
+    networks:
+      - public_net
+      - app_net
+      - monitoring_net
+    depends_on:
+      - landing-page
+      - user-web-app
+      - admin-panel
+      - api-ios
+      - api-android
+      - api-web
+      - api-admin
+
+  landing-page:
+    build:
+      context: ../user-web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
+        NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+        NEXT_PUBLIC_WEB_BASE_URL: https://${WWW_DOMAIN}
+        NEXT_PUBLIC_SITE_URL: https://${WWW_DOMAIN}
+        PUBLIC_WEB_BASE_URL: https://${WWW_DOMAIN}
+        MENORAH_API_BASE_URL: https://${API_WEB_DOMAIN}/api
+    restart: unless-stopped
+    environment:
+      PORT: 3002
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
+      NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
+      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+    networks:
+      - app_net
+
+  web-app:
+    build:
+      context: ../web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
+        NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
+      NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
+      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+    networks:
+      - app_net
+
+  user-web-app:
+    build:
+      context: ../user-web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
+        NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+        NEXT_PUBLIC_WEB_BASE_URL: https://${APP_DOMAIN}
+        NEXT_PUBLIC_SITE_URL: https://${APP_DOMAIN}
+        PUBLIC_WEB_BASE_URL: https://${APP_DOMAIN}
+        MENORAH_API_BASE_URL: https://${API_WEB_DOMAIN}/api
+    restart: unless-stopped
+    environment:
+      PORT: 3002
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
+      NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
+      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+    networks:
+      - app_net
+
+  admin-panel:
+    build:
+      context: ../admin-panel
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://${API_ADMIN_DOMAIN}/api
+    restart: unless-stopped
+    environment:
+      PORT: 3003
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://${API_ADMIN_DOMAIN}/api
+    networks:
+      - app_net
+
+  api-ios:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start:api-ios"]
+    env_file:
+      - ./env/home.env
+    environment:
+      PORT: 8080
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uploads/api-ios:/app/uploads
+    networks:
+      - app_net
+      - db_net
+    depends_on:
+      - mongo-primary
+      - redis
+
+  api-android:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start:api-android"]
+    env_file:
+      - ./env/home.env
+    environment:
+      PORT: 8080
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uploads/api-android:/app/uploads
+    networks:
+      - app_net
+      - db_net
+    depends_on:
+      - mongo-primary
+      - redis
+
+  api-web:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start:api-web"]
+    env_file:
+      - ./env/home.env
+    environment:
+      PORT: 8080
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uploads/api-web:/app/uploads
+    networks:
+      - app_net
+      - db_net
+    depends_on:
+      - mongo-primary
+      - redis
+
+  api-admin:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start:api-admin"]
+    env_file:
+      - ./env/home.env
+    environment:
+      PORT: 8080
+      ENABLE_SOCKET_IO: "false"
+      ENABLE_SOCKET_ADAPTER: "false"
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uploads/api-admin:/app/uploads
+    networks:
+      - app_net
+      - db_net
+    depends_on:
+      - mongo-primary
+      - redis
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start:worker"]
+    env_file:
+      - ./env/home.env
+    environment:
+      PORT: 8080
+      WORKER_MODE: active
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uploads/worker:/app/uploads
+    networks:
+      - app_net
+      - db_net
+    depends_on:
+      - mongo-primary
+      - redis
+
+  mongo-primary:
+    image: mongo:7
+    restart: unless-stopped
+    command: ["mongod", "--config", "/etc/mongod.conf"]
+    volumes:
+      - ./mongo/mongod-primary.conf:/etc/mongod.conf:ro
+      - ${MENORAH_DATA_ROOT}/mongo/primary:/data/db
+      - ${MENORAH_DATA_ROOT}/mongo/keyfile/mongo-keyfile:/etc/mongo-keyfile:ro
+    networks:
+      - db_net
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ${MENORAH_DATA_ROOT}/redis:/data
+    networks:
+      - db_net
+
+  backup-runner:
+    image: mongo:7
+    profiles: ["ops"]
+    env_file:
+      - ./env/home.env
+    volumes:
+      - ./backup:/scripts:ro
+      - ${MENORAH_BACKUP_ROOT}:/backups
+    command: ["bash", "-lc", "while true; do /scripts/backup-mongo.sh; sleep 21600; done"]
+    networks:
+      - db_net
+    depends_on:
+      - mongo-primary
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - ${MENORAH_DATA_ROOT}/prometheus:/prometheus
+    networks:
+      - monitoring_net
+      - app_net
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    restart: unless-stopped
+    volumes:
+      - ${MENORAH_DATA_ROOT}/grafana:/var/lib/grafana
+    networks:
+      - monitoring_net
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    restart: unless-stopped
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uptime-kuma:/app/data
+    networks:
+      - monitoring_net
+      - app_net
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - monitoring_net
+
+  log-collector:
+    image: grafana/promtail:3.2.1
+    restart: unless-stopped
+    volumes:
+      - ./logging/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ${MENORAH_DATA_ROOT}/logs:/var/log/menorah:ro
+    command: ["-config.file=/etc/promtail/config.yml"]
+    networks:
+      - monitoring_net
+    depends_on:
+      - loki
+
+  loki:
+    image: grafana/loki:3.2.1
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/config.yml"]
+    volumes:
+      - ./logging/loki-config.yml:/etc/loki/config.yml:ro
+      - ${MENORAH_DATA_ROOT}/loki:/loki
+    networks:
+      - monitoring_net
+
+networks:
+  public_net:
+  app_net:
+    internal: true
+  db_net:
+    internal: true
+  monitoring_net:
+    internal: true
