@@ -39,6 +39,24 @@ describe('route profiles', () => {
       .expect(401);
 
     await request(app)
+      .post('/api/payments/verify-razorpay')
+      .send({
+        bookingId: '64f000000000000000000000',
+        razorpay_order_id: 'order_test',
+        razorpay_payment_id: 'pay_test',
+        razorpay_signature: 'signature_test'
+      })
+      .expect(401);
+
+    await request(app)
+      .get('/api/payments/order/order_test/status')
+      .expect(401);
+
+    await request(app)
+      .get('/api/payments/booking/64f000000000000000000000')
+      .expect(401);
+
+    await request(app)
       .post('/api/payments/booking/create-order')
       .send({ bookingId: '64f000000000000000000000' })
       .expect(401);
@@ -98,6 +116,16 @@ describe('route profiles', () => {
     await request(app)
       .post('/api/payments/subscription/verify')
       .send({ subscriptionType: 'monthly' })
+      .expect(404);
+
+    await request(app)
+      .post('/api/payments/razorpay-webhook')
+      .send({})
+      .expect(404);
+
+    await request(app)
+      .post('/api/payments/future-non-booking-payment-route')
+      .send({})
       .expect(404);
   });
 

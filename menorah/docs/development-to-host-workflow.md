@@ -23,7 +23,9 @@ $env:EXPO_PUBLIC_API_BASE_URL="http://YOUR_WINDOWS_LAN_IP:4002/api"
 npx expo start -c --dev-client
 ```
 
-Production mobile builds must use platform-specific API URLs:
+Production mobile builds must use platform-specific API URLs. Do not run the generic
+`development`, `preview`, or `production` EAS profiles directly; they are base
+templates and do not pin the split iOS/Android API URL.
 
 ```powershell
 eas build --platform ios --profile production-ios

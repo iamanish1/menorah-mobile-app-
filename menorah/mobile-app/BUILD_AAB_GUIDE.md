@@ -34,13 +34,19 @@ eas login
 
 ### Step 3: Configure Build Settings
 
-Your `eas.json` is already configured for production builds with AAB format:
+Your `eas.json` is already configured for Android production builds with AAB format.
+Use only the platform-specific build profiles. The generic `development`, `preview`, and
+`production` profiles are base templates and must not be used directly because they do
+not pin the split API URL for iOS vs Android.
 
 ```json
 {
   "build": {
-    "production": {
+    "production-android": {
       "distribution": "store",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api"
+      },
       "android": {
         "buildType": "app-bundle"
       }
@@ -55,7 +61,7 @@ Navigate to the mobile-app directory and run:
 
 ```bash
 cd menorah/mobile-app
-eas build --platform android --profile production
+eas build --platform android --profile production-android
 ```
 
 This will:
@@ -149,7 +155,7 @@ cd menorah/mobile-app/android
 
 On Windows:
 ```bash
-cd Menorah\mobile-app\android
+cd menorah\mobile-app\android
 gradlew.bat bundleRelease
 ```
 
@@ -261,7 +267,7 @@ Before uploading to Play Store, test your AAB:
 
 ```bash
 # EAS Build (Recommended)
-eas build --platform android --profile production
+eas build --platform android --profile production-android
 
 # Local Build
 cd android && ./gradlew bundleRelease

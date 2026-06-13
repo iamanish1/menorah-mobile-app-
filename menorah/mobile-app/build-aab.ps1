@@ -43,7 +43,7 @@ if ($choice -eq "1") {
     Write-Host "This will build an AAB file in the cloud." -ForegroundColor Yellow
     Write-Host ""
     
-    eas build --platform android --profile production
+    eas build --platform android --profile production-android
     
     if ($LASTEXITCODE -eq 0) {
         Write-Host ""

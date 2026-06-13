@@ -105,6 +105,9 @@ Use this checklist on a real iPhone after installing a development build or Test
 - [ ] Confirm no old tokens or stale local subscription data remain.
 
 ## Commands
+Only use the platform-specific EAS profiles. The generic `development`, `preview`, and
+`production` profiles are base templates and do not pin the iOS split API URL.
+
 Start Metro for an installed dev client:
 
 ```bash
@@ -116,12 +119,12 @@ Create an iOS TestFlight/preview build:
 
 ```bash
 cd ~/menorah/menorah-mobile-app-/menorah/mobile-app
-eas build --platform ios --profile preview
+eas build --platform ios --profile preview-ios
 ```
 
 Use production profile only after preview QA passes:
 
 ```bash
 cd ~/menorah/menorah-mobile-app-/menorah/mobile-app
-eas build --platform ios --profile production
+eas build --platform ios --profile production-ios
 ```
