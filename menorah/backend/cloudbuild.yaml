@@ -133,24 +133,55 @@ steps:
         set -euo pipefail
 
         BACKEND_SECRETS="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,ALLOWED_ORIGINS=ALLOWED_ORIGINS:latest,REDIS_URL=REDIS_URL:latest,MSG91_AUTH_KEY=MSG91_AUTH_KEY:latest,MSG91_OTP_TEMPLATE_ID=MSG91_OTP_TEMPLATE_ID:latest,MSG91_SMS_TEMPLATE_ID=MSG91_SMS_TEMPLATE_ID:latest,MSG91_EMAIL_DOMAIN=MSG91_EMAIL_DOMAIN:latest,MSG91_EMAIL_TEMPLATE_ID=MSG91_EMAIL_TEMPLATE_ID:latest,MSG91_EMAIL_OTP_TEMPLATE_ID=MSG91_EMAIL_OTP_TEMPLATE_ID:latest,EMAIL_FROM=EMAIL_FROM:latest,RAZORPAY_KEY_ID=RAZORPAY_KEY_ID:latest,RAZORPAY_KEY_SECRET=RAZORPAY_KEY_SECRET:latest,RAZORPAY_WEBHOOK_SECRET=RAZORPAY_WEBHOOK_SECRET:latest,RAZORPAY_X_KEY_ID=RAZORPAY_X_KEY_ID:latest,RAZORPAY_X_KEY_SECRET=RAZORPAY_X_KEY_SECRET:latest,RAZORPAY_PAYOUT_ACCOUNT_NUMBER=RAZORPAY_PAYOUT_ACCOUNT_NUMBER:latest,RAZORPAY_X_WEBHOOK_SECRET=RAZORPAY_X_WEBHOOK_SECRET:latest,CHECKOUT_RETURN_URL=CHECKOUT_RETURN_URL:latest,LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_URL=LIVEKIT_API_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,CLOUDINARY_CLOUD_NAME=CLOUDINARY_CLOUD_NAME:latest,CLOUDINARY_API_KEY=CLOUDINARY_API_KEY:latest,CLOUDINARY_API_SECRET=CLOUDINARY_API_SECRET:latest,LUXAND_API_TOKEN=LUXAND_API_TOKEN:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,SOCIAL_TOKEN_ENCRYPTION_KEY=SOCIAL_TOKEN_ENCRYPTION_KEY:latest"
-        BACKEND_ENV="NODE_ENV=production,SERVER_TZ=Asia/Kolkata,BCRYPT_ROUNDS=12,MAX_FILE_SIZE=5242880,MOBILE_APP_SCHEME=menorah-health://reset-password,ENABLE_SOCKET_ADAPTER=false,UPLOAD_PATH=./uploads,LUXAND_DETECT_URL=https://api.luxand.cloud/photo/detect,LUXAND_FACE_CONFIDENCE_THRESHOLD=90,EKYC_MAX_FILE_SIZE=15728640,SOCIAL_STUDIO_ENABLED=true,SOCIAL_STUDIO_STORAGE=cloudinary,CLOUDINARY_ARTICLE_FOLDER=menorah/articles,CLOUDINARY_SOCIAL_STUDIO_FOLDER=menorah/social-studio,CLOUDINARY_SOCIAL_STUDIO_ASSET_FOLDER=menorah/social-studio-assets"
+        BACKEND_ENV="NODE_ENV=production,SERVICE_RUNTIME=cloudrun,ENABLE_SOCKET_IO=false,ENABLE_SOCKET_ADAPTER=false,SERVER_TZ=Asia/Kolkata,BCRYPT_ROUNDS=12,MAX_FILE_SIZE=5242880,MOBILE_APP_SCHEME=menorah-health://reset-password,UPLOAD_PATH=./uploads,LUXAND_DETECT_URL=https://api.luxand.cloud/photo/detect,LUXAND_FACE_CONFIDENCE_THRESHOLD=90,EKYC_MAX_FILE_SIZE=15728640,SOCIAL_STUDIO_ENABLED=true,SOCIAL_STUDIO_STORAGE=cloudinary,CLOUDINARY_ARTICLE_FOLDER=menorah/articles,CLOUDINARY_SOCIAL_STUDIO_FOLDER=menorah/social-studio,CLOUDINARY_SOCIAL_STUDIO_ASSET_FOLDER=menorah/social-studio-assets"
 
-        for service in menorah-api-ios menorah-api-android menorah-api-web menorah-api-admin; do
+        deploy_backend_service() {
+          local service="$$1"
+          local script="$$2"
+
           gcloud run deploy "$$service" \
             --image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-api:$COMMIT_SHA \
             --region=${_REGION} \
             --platform=managed \
             --allow-unauthenticated \
             --port=8080 \
+            --command=npm \
+            --args=run,"$$script" \
             --min-instances=0 \
             --max-instances=10 \
             --memory=512Mi \
             --cpu=1 \
             --timeout=60 \
             --concurrency=80 \
+            --startup-probe=httpGet.path=/health/ready,periodSeconds=10,timeoutSeconds=5,failureThreshold=12 \
+            --liveness-probe=httpGet.path=/health/live,periodSeconds=30,timeoutSeconds=5,failureThreshold=3 \
             --set-secrets="$$BACKEND_SECRETS" \
             --set-env-vars="$$BACKEND_ENV"
-        done
+        }
+
+        deploy_backend_service menorah-api-ios start:api-ios
+        deploy_backend_service menorah-api-android start:api-android
+        deploy_backend_service menorah-api-web start:api-web
+        deploy_backend_service menorah-api-admin start:api-admin
+
+        gcloud run deploy menorah-worker \
+          --image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-api:$COMMIT_SHA \
+          --region=${_REGION} \
+          --platform=managed \
+          --no-allow-unauthenticated \
+          --port=8080 \
+          --command=npm \
+          --args=run,start:worker \
+          --min-instances=0 \
+          --max-instances=1 \
+          --memory=512Mi \
+          --cpu=1 \
+          --timeout=60 \
+          --concurrency=10 \
+          --startup-probe=httpGet.path=/health/ready,periodSeconds=10,timeoutSeconds=5,failureThreshold=12 \
+          --liveness-probe=httpGet.path=/health/live,periodSeconds=30,timeoutSeconds=5,failureThreshold=3 \
+          --set-secrets="$$BACKEND_SECRETS" \
+          --set-env-vars="$$BACKEND_ENV,WORKER_MODE=standby,ENABLE_ARTICLE_SCHEDULER=false,ENABLE_SOCIAL_SCHEDULER=false,ENABLE_BACKUP_JOBS=false,ENABLE_EMAIL_JOBS=false,ENABLE_NOTIFICATION_JOBS=false"
     waitFor: [push-backend]
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk

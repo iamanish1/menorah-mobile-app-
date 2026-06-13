@@ -284,7 +284,7 @@ docker run -p 3000:3000 --env-file .env menorah-backend
 npm install -g pm2
 
 # Start application
-pm2 start src/server.js --name "menorah-backend"
+pm2 start src/services/api-web/server.js --name "menorah-backend"
 
 # Monitor application
 pm2 monit
