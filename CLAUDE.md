@@ -6,7 +6,7 @@ Menorah Health is a **mental health counselling platform** with three client app
 
 | Component | Tech | Port | Purpose |
 |-----------|------|------|---------|
-| `Menorah/backend` | Node.js + Express + MongoDB | 3000 | REST API + Socket.IO server |
+| `menorah/backend` | Node.js + Express + MongoDB | 3000 | REST API + Socket.IO server |
 | `Menorah/mobile-app` | React Native (Expo SDK 54) | N/A | User-facing mobile app (Android/iOS) |
 | `Menorah/user-web-app` | Next.js 15 + Tailwind | 3002 | User-facing web app (mirrors mobile) |
 | `Menorah/web-app` | Next.js 16 | 3001 | **Counsellor dashboard** (manage bookings, chat, sessions) |

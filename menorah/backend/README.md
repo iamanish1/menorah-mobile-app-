@@ -40,7 +40,7 @@ A comprehensive Node.js/Express.js backend API for the Menorah Health mobile app
 
 1. **Clone the repository and navigate to backend directory:**
 ```bash
-cd Menorah/backend
+cd menorah/backend
 ```
 
 2. **Install dependencies:**

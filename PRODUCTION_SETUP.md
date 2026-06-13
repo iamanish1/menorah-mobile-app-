@@ -200,7 +200,7 @@ echo -n "new-value" | gcloud secrets versions add REDIS_URL --data-file=-
 ```bash
 # From repo root — triggers cloudbuild.yaml
 gcloud builds submit \
-  --config=Menorah/backend/cloudbuild.yaml \
+  --config=menorah/backend/cloudbuild.yaml \
   --substitutions=_PROJECT_ID=<YOUR_PROJECT_ID>,_REGION=asia-south1,_SERVICE_NAME=menorah-api \
   .
 ```

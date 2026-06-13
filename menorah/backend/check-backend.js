@@ -36,7 +36,7 @@ req.on('error', (error) => {
   console.log('2. Backend is running on a different IP/port');
   console.log('3. Firewall is blocking the connection');
   console.log('\nTo start the backend:');
-  console.log('  cd Menorah/backend');
+  console.log('  cd menorah/backend');
   console.log('  npm run dev');
 });
 

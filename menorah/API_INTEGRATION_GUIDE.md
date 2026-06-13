@@ -94,7 +94,7 @@ const { user, isAuthed, login, logout } = useAuth();
 
 1. Navigate to the backend directory:
 ```bash
-cd Menorah/backend
+cd menorah/backend
 ```
 
 2. Install dependencies:

@@ -26,7 +26,7 @@ netstat -ano | findstr :3000
 
 **Option B: Start the backend server**
 ```bash
-cd Menorah/backend
+cd menorah/backend
 npm run dev
 ```
 
@@ -43,7 +43,7 @@ You should see:
 
 **Check if `.env` file exists:**
 ```bash
-cd Menorah/backend
+cd menorah/backend
 if (Test-Path .env) { Write-Host "✅ .env file exists" } else { Write-Host "❌ .env file missing - create it!" }
 ```
 
@@ -128,14 +128,14 @@ The backend CORS is configured to allow:
 - `http://127.0.0.1:8081`
 - `http://127.0.0.1:3000`
 
-If your IP is different, add it to `Menorah/backend/src/server.js` (line 46-54) or set `CORS_ORIGIN` in `.env`.
+If your IP is different, add it to `menorah/backend/src/server.js` (line 46-54) or set `CORS_ORIGIN` in `.env`.
 
 ## Common Issues and Solutions
 
 ### Issue 1: ERR_NETWORK Error
 **Cause**: Backend server is not running or not reachable
 **Solution**: 
-1. Start the backend server: `cd Menorah/backend && npm run dev`
+1. Start the backend server: `cd menorah/backend && npm run dev`
 2. Verify the server is running on the correct port
 3. Check firewall settings
 

@@ -46,7 +46,7 @@ To find your IP:
 ### Step 2: Ensure Backend is Running
 Make sure your backend server is running on port 3000:
 ```bash
-cd Menorah/backend
+cd menorah/backend
 npm start
 ```
 
