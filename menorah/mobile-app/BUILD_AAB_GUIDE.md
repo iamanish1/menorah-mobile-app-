@@ -54,7 +54,7 @@ Your `eas.json` is already configured for production builds with AAB format:
 Navigate to the mobile-app directory and run:
 
 ```bash
-cd Menorah/mobile-app
+cd menorah/mobile-app
 eas build --platform android --profile production
 ```
 
@@ -83,7 +83,7 @@ If you prefer to build locally, you can use Gradle directly.
 ### Step 1: Navigate to Android Directory
 
 ```bash
-cd Menorah/mobile-app/android
+cd menorah/mobile-app/android
 ```
 
 ### Step 2: Generate a Release Keystore (if you don't have one)
@@ -143,7 +143,7 @@ MYAPP_RELEASE_KEY_PASSWORD=your-key-password
 ### Step 5: Build the AAB
 
 ```bash
-cd Menorah/mobile-app/android
+cd menorah/mobile-app/android
 ./gradlew bundleRelease
 ```
 
@@ -165,7 +165,7 @@ If you need more control over the native build:
 ### Step 1: Prebuild Native Code
 
 ```bash
-cd Menorah/mobile-app
+cd menorah/mobile-app
 npx expo prebuild --platform android
 ```
 

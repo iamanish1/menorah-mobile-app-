@@ -33,7 +33,7 @@
 
 3. **Update IP Address in app.config.ts**
    
-   Open `Menorah/mobile-app/app.config.ts` and update line 8:
+   Open `menorah/mobile-app/app.config.ts` and update line 8:
    ```typescript
    const LOCAL_IP = 'YOUR_ACTUAL_IP_HERE'; // e.g., '192.168.1.5'
    ```
@@ -57,7 +57,7 @@
 
 5. **Restart Mobile App**
    ```bash
-   cd Menorah/mobile-app
+   cd menorah/mobile-app
    npm start
    ```
    Then reload the app on your device (shake device → Reload)

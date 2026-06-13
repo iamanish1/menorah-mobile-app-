@@ -131,7 +131,7 @@ npm start
 
 1. Navigate to the mobile app directory:
 ```bash
-cd Menorah/mobile-app
+cd menorah/mobile-app
 ```
 
 2. Install dependencies:

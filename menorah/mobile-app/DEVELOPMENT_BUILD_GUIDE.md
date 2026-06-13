@@ -52,7 +52,7 @@ npm start
 
 ### Step 3: Clean Previous Builds (Optional but Recommended)
 ```bash
-cd Menorah/mobile-app
+cd menorah/mobile-app
 # Clean Android build
 cd android
 ./gradlew clean
@@ -60,7 +60,7 @@ cd ..
 ```
 
 ### Step 4: Build Development App
-From the `Menorah/mobile-app` directory:
+From the `menorah/mobile-app` directory:
 
 **Option A: Build and Install on Connected Device**
 ```bash
@@ -98,7 +98,7 @@ npx expo run:android
 ### 1. Start Development Server
 After the app is installed, start the Expo development server:
 ```bash
-cd Menorah/mobile-app
+cd menorah/mobile-app
 npx expo start --dev-client
 ```
 

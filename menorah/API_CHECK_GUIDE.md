@@ -4,7 +4,7 @@
 
 ### Mobile App Configuration
 - **API Base URL**: `http://192.168.1.3:3000/api`
-- **Location**: `Menorah/mobile-app/app.config.ts` (line 39)
+- **Location**: `menorah/mobile-app/app.config.ts` (line 39)
 
 ### Backend Server Configuration
 - **Default Port**: `3000` (or from `.env` file)
@@ -112,7 +112,7 @@ Make sure your computer's IP address matches `192.168.1.3`:
 ipconfig | findstr IPv4
 ```
 
-If your IP is different, update `Menorah/mobile-app/app.config.ts`:
+If your IP is different, update `menorah/mobile-app/app.config.ts`:
 ```typescript
 API_BASE_URL: 'http://YOUR_ACTUAL_IP:3000/api'
 ```
@@ -160,7 +160,7 @@ If your IP is different, add it to `menorah/backend/src/server.js` (line 46-54) 
 
 ## Quick Test Script
 
-I've created a test script at `Menorah/mobile-app/src/lib/testAPI.ts` that you can use to test the API connection from the mobile app.
+I've created a test script at `menorah/mobile-app/src/lib/testAPI.ts` that you can use to test the API connection from the mobile app.
 
 To use it, import and call it:
 ```typescript

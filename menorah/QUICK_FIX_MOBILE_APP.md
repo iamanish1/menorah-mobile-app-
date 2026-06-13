@@ -35,7 +35,7 @@ Should show:
 
 ### 3. Restart Your Mobile App
 ```bash
-cd Menorah/mobile-app
+cd menorah/mobile-app
 npm start
 ```
 

@@ -39,6 +39,44 @@ describe('route profiles', () => {
       .expect(401);
 
     await request(app)
+      .post('/api/payments/booking/create-order')
+      .send({ bookingId: '64f000000000000000000000' })
+      .expect(401);
+
+    await request(app)
+      .post('/api/payments/create-booking-order')
+      .send({ bookingId: '64f000000000000000000000' })
+      .expect(401);
+
+    await request(app)
+      .post('/api/payments/booking/verify')
+      .send({
+        bookingId: '64f000000000000000000000',
+        razorpay_order_id: 'order_test',
+        razorpay_payment_id: 'pay_test',
+        razorpay_signature: 'signature_test'
+      })
+      .expect(401);
+
+    await request(app)
+      .post('/api/payments/verify-booking-payment')
+      .send({
+        bookingId: '64f000000000000000000000',
+        razorpay_order_id: 'order_test',
+        razorpay_payment_id: 'pay_test',
+        razorpay_signature: 'signature_test'
+      })
+      .expect(401);
+
+    await request(app)
+      .get('/api/payments/booking/order/order_test/status')
+      .expect(401);
+
+    await request(app)
+      .get('/api/payments/booking/64f000000000000000000000/status')
+      .expect(401);
+
+    await request(app)
       .post('/api/payments/create-subscription-checkout')
       .send({ subscriptionType: 'monthly' })
       .expect(404);
@@ -50,6 +88,16 @@ describe('route profiles', () => {
 
     await request(app)
       .get('/api/payments/subscription/status')
+      .expect(404);
+
+    await request(app)
+      .post('/api/payments/subscription/create-order')
+      .send({ subscriptionType: 'monthly' })
+      .expect(404);
+
+    await request(app)
+      .post('/api/payments/subscription/verify')
+      .send({ subscriptionType: 'monthly' })
       .expect(404);
   });
 
