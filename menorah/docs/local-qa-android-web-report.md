@@ -4,15 +4,15 @@
 
 Overall result: PARTIAL
 
-Local Docker APIs are healthy, iOS payment blocking remains intact, web/admin unauthenticated page smoke checks pass, and route isolation is mostly correct. Full Android UI QA is blocked because Android SDK tools are not installed on this machine. Authenticated web/admin/mobile flows are blocked because local QA users are not seeded, and api-admin currently does not mount the auth router used by the admin panel login.
+All local API and web/admin automated checks now pass. The remaining partial status is only because Android emulator UI automation is blocked by missing Android SDK tooling on this Windows machine. The prior api-admin auth blocker is fixed: api-admin now exposes a limited admin auth router, seeded admin login succeeds, seeded normal-user login is rejected, and public registration/OTP/reset flows remain absent from api-admin.
 
 ## Environment
 
 | Item | Value |
 |---|---|
-| Date/time | `2026-06-14T02:51:12+04:00` |
+| Date/time | `2026-06-14T03:35:00+04:00` |
 | Branch | `architecture/self-host-cloudrun-failover` |
-| Commit under test | `da1a8292af00f08d7f964e71814f70d606d5a20d` |
+| Base commit before this fix | `8e854e4` |
 | Docker stack | `menorah/deploy/docker-compose.home.yml` with `menorah/deploy/env/home.env` |
 | Android emulator | BLOCKED - `emulator` not found |
 | Android adb | BLOCKED - `adb` not found |
@@ -45,6 +45,24 @@ Local Docker APIs are healthy, iOS payment blocking remains intact, web/admin un
 | `reverse-proxy` | Up, `8088->80`, `8443->443` |
 | Mongo/Redis | Up |
 
+## Local QA Seed
+
+Command:
+
+```powershell
+docker compose -f menorah/deploy/docker-compose.home.yml --env-file menorah/deploy/env/home.env run --rm --no-deps -e QA_SEED_ENABLED=true -e NODE_ENV=development api-admin npm run seed:qa
+```
+
+Result:
+
+| Account | Result |
+|---|---|
+| `qa.user+local@menorah.test` | Created |
+| `qa.counsellor+local@menorah.test` | Created |
+| `qa.admin+local@menorah.test` | Created |
+
+The seed script is guarded by `QA_SEED_ENABLED=true` plus a local-safe environment gate and does not print passwords.
+
 ## Health Checks
 
 | Service | URL | Result |
@@ -64,16 +82,16 @@ Local Docker APIs are healthy, iOS payment blocking remains intact, web/admin un
 | Expo API config | PASS | `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:18084/api npx expo config --json` resolved `extra.API_BASE_URL` to `http://10.0.2.2:18084/api`. |
 | App launches without crash | BLOCKED | No emulator or adb available. |
 | Login screen loads | BLOCKED | No emulator or adb available. |
-| Signup/login with QA user | BLOCKED | No emulator or adb available. Local QA user login against api-android returned `401 Invalid credentials`, so the preferred QA user is not seeded. |
-| Current user endpoint | PASS | api-android `/api/auth/me` returns `401` without token, proving the auth router is mounted and protected. Authenticated check blocked by missing seeded user. |
+| Signup/login with QA user | API READY, UI BLOCKED | Seeded QA user exists; UI blocked by missing emulator/adb. |
+| Current user endpoint | PASS | api-android `/api/auth/me` returns `401` without token, proving the auth router is mounted and protected. |
 | Articles | API PASS, UI BLOCKED | api-web public articles returned `200`; Android UI blocked by missing emulator. |
 | Counsellors | BLOCKED | UI blocked by missing emulator. |
-| Booking | BLOCKED | UI blocked by missing emulator and no seeded user. |
-| Booking payment | API PASS, UI BLOCKED | api-ios booking route returned `401` without token; Android full route is auth-protected. UI blocked by missing emulator. |
-| Chat | BLOCKED | UI blocked by missing emulator and no seeded user. |
-| Video/call | BLOCKED | UI blocked by missing emulator and no seeded user. |
-| eKYC | BLOCKED | UI blocked by missing emulator and no seeded user. |
-| Logout | BLOCKED | UI blocked by missing emulator and no seeded user. |
+| Booking | BLOCKED | UI blocked by missing emulator. |
+| Booking payment | API PASS, UI BLOCKED | Booking payment route is auth-protected; UI blocked by missing emulator. |
+| Chat | BLOCKED | UI blocked by missing emulator. |
+| Video/call | BLOCKED | UI blocked by missing emulator. |
+| eKYC | BLOCKED | UI blocked by missing emulator. |
+| Logout | BLOCKED | UI blocked by missing emulator. |
 
 ## Web App QA
 
@@ -82,8 +100,8 @@ Local Docker APIs are healthy, iOS payment blocking remains intact, web/admin un
 | Web app loads | PASS | Playwright loaded `https://app.localhost:8443/login` with HTTP `200`. |
 | Login page loads | PASS | Playwright loaded `/login`. |
 | Register page loads | PASS | Playwright loaded `/register`. |
-| Login with QA user | BLOCKED | Preferred QA user is not seeded; direct api-android login returned `401 Invalid credentials`. |
-| Dashboard/home loads | BLOCKED | Requires authentication. |
+| Login with QA user | API READY, UI NOT AUTOMATED | Seeded QA user exists; authenticated web-user UI flow was not expanded in this pass. |
+| Dashboard/home loads | BLOCKED | Requires web-user authenticated UI flow. |
 | Articles load | PASS | Playwright loaded `/articles` with HTTP `200`; api-web `/api/articles` returned `200`. |
 | Counsellor list loads | BLOCKED | Requires authenticated/manual browser flow. |
 | Booking flow opens | PASS unauth gate | `/bookings` redirected to `/login?redirect=%2Fbookings`, which is correct without auth. |
@@ -98,15 +116,16 @@ Local Docker APIs are healthy, iOS payment blocking remains intact, web/admin un
 |---|---|---|
 | Admin panel loads | PASS | Playwright loaded `https://admin.localhost:8443/login` with HTTP `200`. |
 | Admin login page loads | PASS | Login form rendered. |
-| Admin login works with QA admin | FAIL | Admin panel calls `/api/auth/login`, but api-admin does not mount the auth router. Direct `POST http://localhost:18083/api/auth/login` returned `404` before rate limiting was hit. `GET http://localhost:18083/api/auth/me` returns `404`. |
-| Dashboard loads | PASS unauth gate | `/dashboard` redirected to `/login?redirect=%2Fdashboard`, which is correct without auth. |
-| Users page loads | PASS unauth gate | `/users` redirected to login. |
-| Counsellors page loads | PASS unauth gate | `/counsellors` redirected to login. |
+| Admin login works with QA admin | PASS | Seeded admin login reached `https://admin.localhost:8443/dashboard`. |
+| Normal user rejected on api-admin | PASS | Seeded normal user login returned `403`. |
+| Dashboard loads | PASS | Authenticated `/dashboard` returned HTTP `200`. |
+| Users page loads | PASS | Authenticated `/users` returned HTTP `200`. |
+| Counsellors page loads | PASS | Authenticated `/counsellors` returned HTTP `200`. |
 | Bookings page loads | BLOCKED | No admin bookings route/page was identified in the current admin panel file tree. |
-| Articles/admin article section loads | PASS unauth gate | `/articles` redirected to login. |
-| eKYC/admin verification section loads | PASS unauth gate | `/ekyc` redirected to login. |
-| Social Studio loads | PASS unauth gate | `/ai-social-studio` redirected to login. |
-| Admin-only API routes | PASS | `/api/admin` returns `404` on api-ios/api-android/api-web and `401` on api-admin. |
+| Articles/admin article section loads | PASS | Authenticated `/articles` returned HTTP `200`. |
+| eKYC/admin verification section loads | PASS | Authenticated `/ekyc` returned HTTP `200`. |
+| Social Studio loads | PASS | Authenticated `/ai-social-studio` returned HTTP `200`. |
+| Admin-only API routes | PASS | `/api/admin` returns `404` on api-ios/api-android/api-web and `401` on api-admin without token. |
 
 ## API Smoke Test Results
 
@@ -119,16 +138,39 @@ node menorah/scripts/qa/local-api-smoke-test.js
 Result:
 
 ```text
-PASS: 22
-FAIL: 1
+PASS: 30
+FAIL: 0
 BLOCKED: 0
 ```
 
-Failing check:
+Admin auth checks:
 
 | Check | Expected | Actual | Result |
 |---|---|---|---|
-| api-admin auth router mounted for admin login | `401` from protected `/api/auth/me` | `404 Not Found - /api/auth/me` | FAIL |
+| `GET /api/auth/me` without token on api-admin | `401` | `401` | PASS |
+| `POST /api/auth/login` empty body on api-admin | `400` | `400` | PASS |
+| Seeded admin login on api-admin | `200` | `200` | PASS |
+| Seeded normal user login on api-admin | rejected | `403` | PASS |
+| `POST /api/auth/register` on api-admin | `404` | `404` | PASS |
+| `POST /api/auth/forgot-password` on api-admin | `404` | `404` | PASS |
+| `POST /api/auth/verify-email-otp` on api-admin | `404` | `404` | PASS |
+| `GET /api/auth/me` with admin token | `200` | `200` | PASS |
+
+## Web/Admin Smoke Test Results
+
+Command:
+
+```powershell
+python menorah/scripts/qa/local-web-admin-smoke.py
+```
+
+Result:
+
+```text
+PASS: 19
+FAIL: 0
+BLOCKED: 0
+```
 
 ## Payment Safety
 
@@ -140,7 +182,7 @@ Failing check:
 | Future subscription create route on api-ios | `404` | `404` | PASS |
 | Future subscription verify route on api-ios | `404` | `404` | PASS |
 | Future non-booking payment route on api-ios | `404` | `404` | PASS |
-| Booking payment create route on api-ios | Auth-required response | `401 Access denied. No token provided.` | PASS |
+| Booking payment create route on api-ios | Auth-required response | `401` | PASS |
 | Android subscription payment route | Auth-required response | `401` | PASS |
 
 ## Route Isolation
@@ -166,15 +208,11 @@ Failing check:
 ## Failures / Blockers
 
 1. Android emulator UI QA is blocked because `emulator`, `adb`, and Maestro are not installed on this machine.
-2. Local QA users are not seeded. `qa.user+local@menorah.test` with `TestPass123!` returned `401 Invalid credentials`.
-3. Admin authenticated QA is blocked because api-admin does not mount `/api/auth`. The admin panel login uses `/auth/login` through its API client, so admin login against api-admin cannot succeed until an admin auth route is exposed.
-4. Web/admin full authenticated browser workflows need seeded users and, for browser API calls through local Caddy, either local 443 mapped to Caddy or frontend rebuilds using API URLs that include `:8443`.
-5. No screenshots were committed. The Playwright smoke run had no browser failures; Android screenshots could not be captured without emulator/adb.
+2. Web user authenticated flows beyond unauthenticated route gates were not expanded in this admin-auth fix pass.
+3. Admin bookings page remains blocked because no admin bookings page exists in the current admin panel routes.
 
 ## Next Steps
 
 1. Install Android SDK platform tools and an emulator, then rerun Android QA with `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:18084/api`.
-2. Add a guarded local-only seed script for the preferred QA user, counsellor, and admin accounts, using `QA_SEED_ENABLED=true` plus development/test environment checks.
-3. Expose an auth route needed by the admin panel on api-admin, or add a dedicated admin login route under `/api/admin/auth/login`.
-4. For browser API-backed local QA, either map Caddy to local 443 or rebuild web/admin images with local API URLs that include `:8443`.
-5. Rerun `node menorah/scripts/qa/local-api-smoke-test.js` and `python menorah/scripts/qa/local-web-admin-smoke.py` after the above fixes.
+2. Expand web-user authenticated Playwright coverage using the seeded normal QA user.
+3. Add an admin bookings page or remove it from future QA acceptance criteria if it is not a product requirement.

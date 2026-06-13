@@ -1,4 +1,5 @@
 const authRoutes = require('../../routes/auth');
+const adminAuthRoutes = require('../../routes/auth-admin');
 const userRoutes = require('../../routes/users');
 const counsellorRoutes = require('../../routes/counsellors');
 const counsellorBookingsRoutes = require('../../routes/counsellor-bookings');
@@ -15,6 +16,7 @@ const ekycRoutes = require('../../routes/ekyc');
 
 const routeDefinitions = {
   auth: { mountPath: '/api/auth', router: authRoutes },
+  'auth-admin': { mountPath: '/api/auth', router: adminAuthRoutes },
   users: { mountPath: '/api/users', router: userRoutes },
   counsellors: { mountPath: '/api/counsellors', router: counsellorRoutes },
   'counsellor-bookings': { mountPath: '/api/counsellors', router: counsellorBookingsRoutes },
@@ -67,6 +69,7 @@ const routeProfiles = {
     'chat'
   ],
   'api-admin': [
+    'auth-admin',
     'admin-social-studio',
     'admin',
     'articles-admin'

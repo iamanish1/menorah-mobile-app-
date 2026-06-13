@@ -24,7 +24,39 @@ Validate the architecture branch against the local Docker split APIs only. Do no
 - Do not send real SMS, OTP, or email during automated QA.
 - Do not commit `.env`, tokens, screenshots with secrets, or local database dumps.
 - Do not bypass production authentication logic.
-- If test accounts are needed, create them only with a local-only guard such as `QA_SEED_ENABLED=true` and `NODE_ENV=development` or `NODE_ENV=test`.
+- Seed QA accounts only with `QA_SEED_ENABLED=true` and either `NODE_ENV=development`, `NODE_ENV=test`, or `ALLOW_LOCAL_QA_SEED=true`.
+
+## Local QA Seed
+
+Preferred local-only QA accounts:
+
+| Role | Email |
+|---|---|
+| Normal user | `qa.user+local@menorah.test` |
+| Counsellor | `qa.counsellor+local@menorah.test` |
+| Admin | `qa.admin+local@menorah.test` |
+
+Password for all: `TestPass123!`
+
+Run from the host through Docker so it uses the local Compose network and ignored `home.env`:
+
+```powershell
+docker compose -f menorah/deploy/docker-compose.home.yml --env-file menorah/deploy/env/home.env run --rm --no-deps -e QA_SEED_ENABLED=true -e NODE_ENV=development api-admin npm run seed:qa
+```
+
+Or run from `menorah/backend` if your shell already has a local-safe `MONGODB_URI`:
+
+```powershell
+$env:QA_SEED_ENABLED = "true"
+$env:NODE_ENV = "development"
+npm run seed:qa
+```
+
+Expected:
+
+- The script creates or updates the three QA users.
+- It refuses to run without the safety gates.
+- It does not print passwords.
 
 ## Preflight
 
@@ -58,9 +90,12 @@ The script validates:
 - api-ios booking payment route exists and is auth-protected.
 - api-android health, auth router, and subscription payment auth protection.
 - api-web health, auth router, and public articles.
-- api-admin health, auth route mounting, admin route auth protection.
+- api-admin limited auth router: login body validation, seeded admin login success, seeded normal user rejection, `/me` auth protection, and no registration/forgot-password/OTP routes.
+- api-admin route auth protection.
 - worker readiness.
 - admin route isolation from api-ios, api-android, and api-web.
+
+The script sends a unique `X-Forwarded-For` value for auth-rate-limited probes so repeated local QA runs do not collide with previous Redis rate-limit buckets.
 
 ## Web And Admin Browser Smoke Suite
 
@@ -76,6 +111,10 @@ The script uses Python Playwright when available. It checks:
 - Web bookings and chat routes redirect to login when unauthenticated.
 - Admin login loads through local Caddy.
 - Admin dashboard, users, counsellors, articles, eKYC, and social studio routes redirect to login when unauthenticated.
+- Seeded admin login succeeds.
+- Admin dashboard, users, counsellors, articles, eKYC, and social studio pages load after seeded admin login.
+
+The admin app image is built with `https://api-admin.localhost/api`, while local Caddy is published on `8443` on this Windows machine. The Playwright script uses a local-only API proxy to route those browser requests to `http://localhost:18083/api`; this does not touch production and does not change app code.
 
 ## Android QA
 
@@ -100,7 +139,7 @@ Target flows:
 |---|---|
 | App launch | No crash |
 | Login screen | Loads |
-| Signup/login | Works with seeded local QA user, or blocked by OTP/provider dependency |
+| Signup/login | Works with seeded local QA user |
 | Current user | Authenticated `/auth/me` works |
 | Articles | Loads from api-android |
 | Counsellors | Loads from api-android |
@@ -112,17 +151,3 @@ Target flows:
 | Logout | Clears session |
 
 If emulator automation is unavailable, record the exact blocker and do not mark Android UI flows as passed.
-
-## Test Data
-
-Preferred local-only QA accounts:
-
-| Role | Email |
-|---|---|
-| Normal user | `qa.user+local@menorah.test` |
-| Counsellor | `qa.counsellor+local@menorah.test` |
-| Admin | `qa.admin+local@menorah.test` |
-
-Password for all: `TestPass123!`
-
-If the accounts are not present and registration requires OTP/provider delivery, either add a guarded local seed script or record the blocker.

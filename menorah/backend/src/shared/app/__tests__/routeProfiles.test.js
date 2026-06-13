@@ -157,6 +157,30 @@ describe('route profiles', () => {
     const app = buildProfileApp('api-admin');
 
     await request(app)
+      .get('/api/auth/me')
+      .expect(401);
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({})
+      .expect(400);
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({})
+      .expect(404);
+
+    await request(app)
+      .post('/api/auth/forgot-password')
+      .send({})
+      .expect(404);
+
+    await request(app)
+      .post('/api/auth/verify-email-otp')
+      .send({})
+      .expect(404);
+
+    await request(app)
       .get('/api/admin/stats')
       .expect(401);
 

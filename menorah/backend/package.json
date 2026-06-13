@@ -14,7 +14,8 @@
     "test": "jest",
     "lint": "eslint src/",
     "migrate": "node src/database/migrate.js",
-    "seed": "node src/database/seed.js"
+    "seed": "node src/database/seed.js",
+    "seed:qa": "node src/database/seed-qa.js"
   },
   "keywords": [
     "menorah",

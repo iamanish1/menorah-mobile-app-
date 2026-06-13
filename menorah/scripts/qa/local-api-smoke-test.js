@@ -14,6 +14,10 @@ const config = {
   apiWeb: process.env.QA_API_WEB_URL || DEFAULTS.apiWeb,
   apiAdmin: process.env.QA_API_ADMIN_URL || DEFAULTS.apiAdmin,
   worker: process.env.QA_WORKER_URL || DEFAULTS.worker,
+  adminEmail: process.env.QA_ADMIN_EMAIL || 'qa.admin+local@menorah.test',
+  normalEmail: process.env.QA_USER_EMAIL || 'qa.user+local@menorah.test',
+  password: process.env.QA_USER_PASSWORD || 'TestPass123!',
+  runId: Date.now() % 100000,
 };
 
 const results = [];
@@ -63,6 +67,33 @@ async function expectStatus(name, baseUrl, path, expectedStatuses, options = {})
     pushResult(options.blockedOnError ? 'BLOCKED' : 'FAIL', name, error.message);
     return null;
   }
+}
+
+async function expectJsonSuccess(name, baseUrl, path, options = {}) {
+  try {
+    const res = await request(baseUrl, path, options);
+    let payload = {};
+    try {
+      payload = res.text ? JSON.parse(res.text) : {};
+    } catch {}
+
+    if (res.status >= 200 && res.status < 300 && payload.success === true) {
+      pushResult('PASS', name, `${res.status} ${res.url}`);
+      return { res, payload };
+    }
+
+    pushResult('FAIL', name, `expected success JSON got ${res.status} ${res.url}`);
+    return { res, payload };
+  } catch (error) {
+    pushResult('FAIL', name, error.message);
+    return null;
+  }
+}
+
+function qaForwardedFor(offset) {
+  const third = Math.floor(config.runId / 250) % 250;
+  const fourth = ((config.runId + offset) % 250) + 1;
+  return { 'X-Forwarded-For': `10.254.${third}.${fourth}` };
 }
 
 async function main() {
@@ -120,6 +151,41 @@ async function main() {
 
   await expectStatus('api-admin ready health', config.apiAdmin, '/health/ready', 200);
   await expectStatus('api-admin auth router mounted for admin login', config.apiAdmin, '/api/auth/me', 401);
+  await expectStatus('api-admin auth login validates body', config.apiAdmin, '/api/auth/login', 400, {
+    method: 'POST',
+    headers: qaForwardedFor(1),
+    body: {},
+  });
+  const adminLogin = await expectJsonSuccess('api-admin seeded admin login succeeds', config.apiAdmin, '/api/auth/login', {
+    method: 'POST',
+    headers: qaForwardedFor(2),
+    body: { email: config.adminEmail, password: config.password },
+  });
+  await expectStatus('api-admin seeded normal user rejected', config.apiAdmin, '/api/auth/login', 403, {
+    method: 'POST',
+    headers: qaForwardedFor(3),
+    body: { email: config.normalEmail, password: config.password },
+  });
+  await expectStatus('api-admin register route absent', config.apiAdmin, '/api/auth/register', 404, {
+    method: 'POST',
+    headers: qaForwardedFor(4),
+    body: {},
+  });
+  await expectStatus('api-admin forgot password route absent', config.apiAdmin, '/api/auth/forgot-password', 404, {
+    method: 'POST',
+    headers: qaForwardedFor(5),
+    body: {},
+  });
+  await expectStatus('api-admin email OTP route absent', config.apiAdmin, '/api/auth/verify-email-otp', 404, {
+    method: 'POST',
+    headers: qaForwardedFor(6),
+    body: {},
+  });
+  if (adminLogin?.payload?.data?.token) {
+    await expectStatus('api-admin me returns seeded admin with token', config.apiAdmin, '/api/auth/me', 200, {
+      headers: { Authorization: `Bearer ${adminLogin.payload.data.token}` },
+    });
+  }
   await expectStatus('api-admin base admin route exposed', config.apiAdmin, '/api/admin', [401, 403], {
     blockedOnMismatch: false,
   });

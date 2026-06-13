@@ -10,11 +10,18 @@ from __future__ import annotations
 
 import os
 import sys
+import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 
 
 WEB_BASE_URL = os.environ.get("QA_WEB_URL", "https://app.localhost:8443").rstrip("/")
 ADMIN_BASE_URL = os.environ.get("QA_ADMIN_URL", "https://admin.localhost:8443").rstrip("/")
+ADMIN_API_BASE_URL = os.environ.get("QA_ADMIN_API_URL", "http://localhost:18083/api").rstrip("/")
+ADMIN_EMAIL = os.environ.get("QA_ADMIN_EMAIL", "qa.admin+local@menorah.test")
+ADMIN_PASSWORD = os.environ.get("QA_USER_PASSWORD", "TestPass123!")
+QA_RUN_IP = "10.253.%s.%s" % ((int(time.time()) // 250) % 250, (int(time.time()) % 250) + 1)
 
 
 @dataclass
@@ -29,17 +36,75 @@ def print_result(result: Result) -> None:
     print(f"{result.status}: {result.name}{suffix}")
 
 
+def proxy_admin_api(route) -> None:
+    request = route.request
+    cors_headers = {
+        "access-control-allow-origin": ADMIN_BASE_URL,
+        "access-control-allow-credentials": "true",
+        "access-control-allow-headers": "authorization,content-type",
+        "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+        "vary": "Origin",
+    }
+
+    if request.method == "OPTIONS":
+        route.fulfill(status=204, headers=cors_headers, body="")
+        return
+
+    upstream_url = request.url.replace("https://api-admin.localhost/api", ADMIN_API_BASE_URL, 1)
+    headers = {
+        key: value
+        for key, value in request.headers.items()
+        if key.lower() not in {"host", "content-length", "origin", "referer"}
+    }
+    headers["X-Forwarded-For"] = QA_RUN_IP
+    data = request.post_data
+    body = data.encode("utf-8") if data is not None else None
+
+    upstream_request = urllib.request.Request(
+        upstream_url,
+        data=body,
+        headers=headers,
+        method=request.method,
+    )
+
+    try:
+        with urllib.request.urlopen(upstream_request, timeout=15) as response:
+            route.fulfill(
+                status=response.status,
+                headers={
+                    **cors_headers,
+                    "content-type": response.headers.get("content-type", "application/json"),
+                },
+                body=response.read(),
+            )
+    except urllib.error.HTTPError as exc:
+        route.fulfill(
+            status=exc.code,
+            headers={
+                **cors_headers,
+                "content-type": exc.headers.get("content-type", "application/json"),
+            },
+            body=exc.read(),
+        )
+    except Exception as exc:
+        route.fulfill(
+            status=502,
+            headers={**cors_headers, "content-type": "application/json"},
+            body=f'{{"success":false,"message":"Local QA proxy failed: {type(exc).__name__}"}}',
+        )
+
+
 def main() -> int:
     results: list[Result] = []
 
     try:
-      from playwright.sync_api import sync_playwright
+        from playwright.sync_api import sync_playwright
     except Exception as exc:  # pragma: no cover - environment dependent
-      results.append(Result("BLOCKED", "Playwright import", str(exc)))
-      for result in results:
-        print_result(result)
-      print("Summary: PASS: 0 FAIL: 0 BLOCKED: 1")
-      return 0
+        results.append(Result("BLOCKED", "Playwright import", str(exc)))
+        for result in results:
+            print_result(result)
+        print("Summary: PASS: 0 FAIL: 0 BLOCKED: 1")
+        return 0
 
     checks = [
         ("web login page loads", WEB_BASE_URL + "/login", "Menorah"),
@@ -79,6 +144,35 @@ def main() -> int:
                         results.append(Result("BLOCKED", name, f"HTTP {status}; expected text not found at {current_url}"))
                 except Exception as exc:  # pragma: no cover - environment dependent
                     results.append(Result("BLOCKED", name, str(exc)))
+
+            admin_page = context.new_page()
+            admin_page.route("https://api-admin.localhost/api/**", proxy_admin_api)
+
+            try:
+                admin_page.goto(ADMIN_BASE_URL + "/login", wait_until="domcontentloaded", timeout=15000)
+                admin_page.fill('input[type="email"]', ADMIN_EMAIL)
+                admin_page.fill('input[type="password"]', ADMIN_PASSWORD)
+                admin_page.click('button[type="submit"]')
+                admin_page.wait_for_url("**/dashboard", timeout=15000)
+                results.append(Result("PASS", "admin seeded login succeeds", f"final URL {admin_page.url}"))
+            except Exception as exc:  # pragma: no cover - environment dependent
+                results.append(Result("FAIL", "admin seeded login succeeds", str(exc)))
+
+            for path in ["/dashboard", "/users", "/counsellors", "/articles", "/ekyc", "/ai-social-studio"]:
+                try:
+                    response = admin_page.goto(ADMIN_BASE_URL + path, wait_until="domcontentloaded", timeout=15000)
+                    status = response.status if response else 0
+                    body_text = admin_page.locator("body").inner_text(timeout=5000)
+                    if status >= 400:
+                        results.append(Result("FAIL", f"admin authenticated page {path}", f"HTTP {status}"))
+                    elif "login" in admin_page.url.lower():
+                        results.append(Result("FAIL", f"admin authenticated page {path}", f"redirected to {admin_page.url}"))
+                    elif body_text.strip():
+                        results.append(Result("PASS", f"admin authenticated page {path}", f"HTTP {status}; final URL {admin_page.url}"))
+                    else:
+                        results.append(Result("BLOCKED", f"admin authenticated page {path}", "empty page body"))
+                except Exception as exc:  # pragma: no cover - environment dependent
+                    results.append(Result("BLOCKED", f"admin authenticated page {path}", str(exc)))
 
             context.close()
             browser.close()
