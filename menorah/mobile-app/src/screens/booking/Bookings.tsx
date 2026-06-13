@@ -329,7 +329,10 @@ export default function Bookings({ navigation }: any) {
 
             {/* Consistency banner */}
             <TouchableOpacity
+              onPress={() => navigation.navigate('GenderSelection')}
               activeOpacity={0.88}
+              accessibilityRole="button"
+              accessibilityLabel="Book a session"
               style={{
                 backgroundColor: bannerBg, borderRadius: 18, padding: 16,
                 flexDirection: 'row', alignItems: 'center', gap: 14,
