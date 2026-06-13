@@ -1,0 +1,56 @@
+const fs = require('fs');
+const path = require('path');
+const { resolveWorkerJobs } = require('../worker');
+
+describe('worker scheduler isolation', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env.WORKER_MODE;
+    delete process.env.SERVICE_RUNTIME;
+    delete process.env.ENABLE_ARTICLE_SCHEDULER;
+    delete process.env.ENABLE_SOCIAL_SCHEDULER;
+    delete process.env.ARTICLE_SCHEDULER_ENABLED;
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+  });
+
+  test('Cloud Run worker defaults to standby', () => {
+    process.env.SERVICE_RUNTIME = 'cloudrun';
+
+    const jobs = resolveWorkerJobs();
+
+    expect(jobs.mode).toBe('standby');
+    expect(jobs.active).toBe(false);
+    expect(jobs.articleScheduler).toBe(false);
+    expect(jobs.socialScheduler).toBe(false);
+  });
+
+  test('worker only enables schedulers in active mode', () => {
+    process.env.WORKER_MODE = 'active';
+    process.env.ENABLE_ARTICLE_SCHEDULER = 'true';
+    process.env.ENABLE_SOCIAL_SCHEDULER = 'true';
+
+    const jobs = resolveWorkerJobs();
+
+    expect(jobs.active).toBe(true);
+    expect(jobs.articleScheduler).toBe(true);
+    expect(jobs.socialScheduler).toBe(true);
+
+    process.env.WORKER_MODE = 'standby';
+    const standbyJobs = resolveWorkerJobs();
+    expect(standbyJobs.articleScheduler).toBe(false);
+    expect(standbyJobs.socialScheduler).toBe(false);
+  });
+
+  test('API startup does not import scheduler starters', () => {
+    const startServicePath = path.resolve(__dirname, '../../../shared/app/startService.js');
+    const startServiceSource = fs.readFileSync(startServicePath, 'utf8');
+
+    expect(startServiceSource).not.toContain('startArticleScheduler');
+    expect(startServiceSource).not.toContain('startSocialScheduler');
+  });
+});
