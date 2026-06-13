@@ -17,19 +17,28 @@ for (const key of required) {
 
 db = db.getSiblingDB('admin');
 
-db.createUser({
+const createUserIfMissing = (spec) => {
+  if (db.getUser(spec.user)) {
+    print(`Mongo user ${spec.user} already exists`);
+    return;
+  }
+
+  db.createUser(spec);
+};
+
+createUserIfMissing({
   user: process.env.MONGO_ROOT_USER,
   pwd: process.env.MONGO_ROOT_PASSWORD,
   roles: [{ role: 'root', db: 'admin' }]
 });
 
-db.createUser({
+createUserIfMissing({
   user: process.env.MONGO_APP_USER,
   pwd: process.env.MONGO_APP_PASSWORD,
   roles: [{ role: 'readWrite', db: 'menorah' }]
 });
 
-db.createUser({
+createUserIfMissing({
   user: process.env.MONGO_BACKUP_USER,
   pwd: process.env.MONGO_BACKUP_PASSWORD,
   roles: [
@@ -38,7 +47,7 @@ db.createUser({
   ]
 });
 
-db.createUser({
+createUserIfMissing({
   user: process.env.MONGO_RESTORE_TEST_USER,
   pwd: process.env.MONGO_RESTORE_TEST_PASSWORD,
   roles: [{ role: 'readWrite', db: 'menorah_restore_test' }]

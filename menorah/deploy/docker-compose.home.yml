@@ -16,8 +16,8 @@ services:
       API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN}
       CALLS_DOMAIN: ${CALLS_DOMAIN}
     ports:
-      - "80:80"
-      - "443:443"
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${MENORAH_DATA_ROOT}/caddy/data:/data
@@ -124,14 +124,19 @@ services:
       - ./env/home.env
     environment:
       PORT: 8080
+    ports:
+      - "${API_IOS_LOCAL_PORT:-127.0.0.1:8080}:8080"
     volumes:
       - ${MENORAH_DATA_ROOT}/uploads/api-ios:/app/uploads
     networks:
+      - local_probe_net
       - app_net
       - db_net
     depends_on:
-      - mongo-primary
-      - redis
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
 
   api-android:
     build:
@@ -143,14 +148,19 @@ services:
       - ./env/home.env
     environment:
       PORT: 8080
+    ports:
+      - "${API_ANDROID_LOCAL_PORT:-127.0.0.1:8081}:8080"
     volumes:
       - ${MENORAH_DATA_ROOT}/uploads/api-android:/app/uploads
     networks:
+      - local_probe_net
       - app_net
       - db_net
     depends_on:
-      - mongo-primary
-      - redis
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
 
   api-web:
     build:
@@ -162,14 +172,19 @@ services:
       - ./env/home.env
     environment:
       PORT: 8080
+    ports:
+      - "${API_WEB_LOCAL_PORT:-127.0.0.1:8082}:8080"
     volumes:
       - ${MENORAH_DATA_ROOT}/uploads/api-web:/app/uploads
     networks:
+      - local_probe_net
       - app_net
       - db_net
     depends_on:
-      - mongo-primary
-      - redis
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
 
   api-admin:
     build:
@@ -183,14 +198,19 @@ services:
       PORT: 8080
       ENABLE_SOCKET_IO: "false"
       ENABLE_SOCKET_ADAPTER: "false"
+    ports:
+      - "${API_ADMIN_LOCAL_PORT:-127.0.0.1:8083}:8080"
     volumes:
       - ${MENORAH_DATA_ROOT}/uploads/api-admin:/app/uploads
     networks:
+      - local_probe_net
       - app_net
       - db_net
     depends_on:
-      - mongo-primary
-      - redis
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
 
   worker:
     build:
@@ -203,25 +223,71 @@ services:
     environment:
       PORT: 8080
       WORKER_MODE: active
+    ports:
+      - "${WORKER_LOCAL_PORT:-127.0.0.1:8090}:8080"
     volumes:
       - ${MENORAH_DATA_ROOT}/uploads/worker:/app/uploads
     networks:
+      - local_probe_net
       - app_net
       - db_net
     depends_on:
-      - mongo-primary
-      - redis
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
 
   mongo-primary:
     image: mongo:7
     restart: unless-stopped
-    command: ["mongod", "--config", "/etc/mongod.conf"]
+    entrypoint:
+      - bash
+      - -lc
+      - |
+        install -m 400 /mongo-keyfile-source/mongo-keyfile /data/db/mongo-keyfile
+        exec docker-entrypoint.sh mongod --config /etc/mongod.conf --keyFile /data/db/mongo-keyfile
+    env_file:
+      - ./env/home.env
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
     volumes:
       - ./mongo/mongod-primary.conf:/etc/mongod.conf:ro
       - ${MENORAH_DATA_ROOT}/mongo/primary:/data/db
-      - ${MENORAH_DATA_ROOT}/mongo/keyfile/mongo-keyfile:/etc/mongo-keyfile:ro
+      - ${MENORAH_DATA_ROOT}/mongo/keyfile/mongo-keyfile:/mongo-keyfile-source/mongo-keyfile:ro
+      - ./mongo/create-users.js:/docker-entrypoint-initdb.d/20-create-users.js:ro
     networks:
       - db_net
+
+  mongo-replica-init:
+    image: mongo:7
+    restart: "no"
+    env_file:
+      - ./env/home.env
+    command:
+      - bash
+      - -lc
+      - |
+        until mongosh --host mongo-primary:27017 \
+          -u "$$MONGO_ROOT_USER" \
+          -p "$$MONGO_ROOT_PASSWORD" \
+          --authenticationDatabase admin \
+          --quiet \
+          --eval "db.adminCommand({ ping: 1 }).ok" >/dev/null; do
+          echo "Waiting for mongo-primary auth..."
+          sleep 2
+        done
+
+        mongosh --host mongo-primary:27017 \
+          -u "$$MONGO_ROOT_USER" \
+          -p "$$MONGO_ROOT_PASSWORD" \
+          --authenticationDatabase admin \
+          --quiet \
+          --eval "try { printjson(rs.status()) } catch (e) { printjson(rs.initiate({_id: '$${MONGODB_REPLICA_SET_NAME:-menorah-rs}', members: [{_id: 0, host: '$${MONGO_PRIMARY_HOST:-mongo-primary:27017}'}]})) }"
+    networks:
+      - db_net
+    depends_on:
+      - mongo-primary
 
   redis:
     image: redis:7-alpine
@@ -310,6 +376,7 @@ services:
 
 networks:
   public_net:
+  local_probe_net:
   app_net:
     internal: true
   db_net:

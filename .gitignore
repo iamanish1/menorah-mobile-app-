@@ -12,6 +12,9 @@ pnpm-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+menorah/deploy/env/*.env
+!menorah/deploy/env/*.env.example
+menorah/deploy/.local-data/
 
 # Build outputs
 .next/
