@@ -6,6 +6,40 @@ Overall result: PARTIAL
 
 All local API and web/admin automated checks now pass. The remaining partial status is only because Android emulator UI automation is blocked by missing Android SDK tooling on this Windows machine. The prior api-admin auth blocker is fixed: api-admin now exposes a limited admin auth router, seeded admin login succeeds, seeded normal-user login is rejected, and public registration/OTP/reset flows remain absent from api-admin.
 
+## Final Audit Status
+
+| Area | Result |
+|---|---|
+| API smoke | PASS - 30 PASS, 0 FAIL, 0 BLOCKED |
+| Web/admin smoke | PASS - 19 PASS, 0 FAIL, 0 BLOCKED |
+| Admin auth | PASS |
+| QA seed | PASS |
+| Android UI QA | BLOCKED - tooling missing (`emulator`, `adb`, Maestro) |
+
+## Merge Status
+
+Do not merge this branch to `main` yet. The branch is local-staging-ready, but not production-ready.
+
+External validation still required:
+
+- Public DNS/proxy wiring.
+- Cloud Run staging deploy.
+- Cloud Run standby worker validation.
+- Cloud Run REST-only validation.
+- Public HTTPS health checks.
+- Android emulator QA.
+- iOS simulator or real-device QA.
+
+Next technical phase: create staging Cloud Run services first, not production services:
+
+- `staging-menorah-api-ios`
+- `staging-menorah-api-android`
+- `staging-menorah-api-web`
+- `staging-menorah-api-admin`
+- `staging-menorah-worker`
+
+Cloud Run staging must prove `/health/ready` returns `200` on all APIs, worker stays standby, `/socket.io/` is not exposed, iOS subscription Razorpay routes remain `404`, admin login works with a seeded staging admin, and `/health/deep` leaks no secrets.
+
 ## Environment
 
 | Item | Value |
