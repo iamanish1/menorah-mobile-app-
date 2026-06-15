@@ -203,12 +203,13 @@ JWT_REFRESH_EXPIRES_IN=30d
 ALLOWED_ORIGINS=https://menorahhealth.app,https://counsellor.menorahhealth.app,https://www.menorahhealth.app
 
 # ── MSG91 ──────────────────────────────────────────────────
+RESEND_API_KEY=REPLACE_WITH_RESEND_API_KEY
+EMAIL_FROM="Menorah Health <noreply@menorah.me>"
+
+# MSG91 SMS only
 MSG91_AUTH_KEY=REPLACE
 MSG91_OTP_TEMPLATE_ID=REPLACE
 MSG91_SMS_TEMPLATE_ID=REPLACE
-MSG91_EMAIL_DOMAIN=menorah.me
-EMAIL_FROM=noreply@menorah.me
-MSG91_EMAIL_TEMPLATE_ID=menorah_generic
 MOBILE_APP_SCHEME=menorah-health://reset-password
 
 # ── Razorpay ───────────────────────────────────────────────

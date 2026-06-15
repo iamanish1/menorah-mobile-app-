@@ -99,10 +99,13 @@ ALLOWED_ORIGINS=https://menorah.me,https://www.menorah.me,https://app.menorah.me
 WEB_APP_URL=https://menorah.me
 MOBILE_APP_SCHEME=menorah://
 
+RESEND_API_KEY=
+EMAIL_FROM="Menorah Health <noreply@menorah.me>"
+
+# Optional SMS-only MSG91 settings
 MSG91_AUTH_KEY=
 MSG91_OTP_TEMPLATE_ID=
 MSG91_SMS_TEMPLATE_ID=
-SENDGRID_API_KEY=
 
 RAZORPAY_KEY_ID=
 RAZORPAY_KEY_SECRET=
@@ -165,10 +168,8 @@ echo -n "rediss://default:<pass>@<host>.upstash.io:6379" | gcloud secrets create
 echo -n "7d" | gcloud secrets create JWT_EXPIRES_IN --data-file=-
 echo -n "https://menorah.me,https://www.menorah.me" | gcloud secrets create ALLOWED_ORIGINS --data-file=-
 echo -n "https://menorah.me" | gcloud secrets create WEB_APP_URL --data-file=-
-echo -n "<msg91-auth-key>" | gcloud secrets create MSG91_AUTH_KEY --data-file=-
-echo -n "<msg91-otp-template>" | gcloud secrets create MSG91_OTP_TEMPLATE_ID --data-file=-
-echo -n "<msg91-sms-template>" | gcloud secrets create MSG91_SMS_TEMPLATE_ID --data-file=-
-echo -n "<sendgrid-key>" | gcloud secrets create SENDGRID_API_KEY --data-file=-
+echo -n "<resend-api-key>" | gcloud secrets create RESEND_API_KEY --data-file=-
+echo -n "Menorah Health <noreply@menorah.me>" | gcloud secrets create EMAIL_FROM --data-file=-
 echo -n "<razorpay-key-id>" | gcloud secrets create RAZORPAY_KEY_ID --data-file=-
 echo -n "<razorpay-secret>" | gcloud secrets create RAZORPAY_KEY_SECRET --data-file=-
 echo -n "<razorpay-webhook-secret>" | gcloud secrets create RAZORPAY_WEBHOOK_SECRET --data-file=-

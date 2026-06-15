@@ -28,8 +28,15 @@ const redactedProviderStatus = () => ({
     ),
     webhookConfigured: Boolean(process.env.RAZORPAY_WEBHOOK_SECRET)
   },
-  msg91: {
-    configured: Boolean(process.env.MSG91_AUTH_KEY)
+  resend: {
+    configured: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM)
+  },
+  msg91Sms: {
+    configured: Boolean(
+      process.env.MSG91_AUTH_KEY &&
+      process.env.MSG91_OTP_TEMPLATE_ID &&
+      process.env.MSG91_SMS_TEMPLATE_ID
+    )
   },
   luxand: {
     configured: Boolean(process.env.LUXAND_API_TOKEN)

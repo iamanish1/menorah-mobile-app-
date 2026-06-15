@@ -16,7 +16,9 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
   requireEnv('MONGODB_URI', errors);
 
   if (process.env.NODE_ENV === 'production') {
-    ['ALLOWED_ORIGINS', 'MSG91_AUTH_KEY', 'REDIS_URL'].forEach((key) => requireEnv(key, errors));
+    ['ALLOWED_ORIGINS', 'REDIS_URL', 'RESEND_API_KEY', 'EMAIL_FROM'].forEach((key) =>
+      requireEnv(key, errors)
+    );
 
     if (requirePaymentEnv) {
       ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET'].forEach((key) =>

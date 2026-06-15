@@ -24,8 +24,8 @@ A comprehensive Node.js/Express.js backend API for the Menorah Health mobile app
 - **Stripe** & **Razorpay** for payments
 - **Jitsi** for video calls
 - **Cloudinary** for file storage
-- **Nodemailer** for emails
-- **Twilio** for SMS
+- **Resend** for transactional emails
+- **MSG91** for SMS/phone OTP
 - **Express Validator** for input validation
 - **Helmet** for security headers
 - **Rate Limiting** for API protection
@@ -78,17 +78,14 @@ JWT_EXPIRES_IN=7d
 JWT_REFRESH_SECRET=your-refresh-secret-key
 JWT_REFRESH_EXPIRES_IN=30d
 
-# Email Configuration (Nodemailer)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-EMAIL_FROM=noreply@menorahhealth.com
+# Email Configuration (Resend)
+RESEND_API_KEY=REPLACE_WITH_RESEND_API_KEY
+EMAIL_FROM="Menorah Health <noreply@menorah.me>"
 
-# SMS Configuration (Twilio)
-TWILIO_ACCOUNT_SID=your-twilio-account-sid
-TWILIO_AUTH_TOKEN=your-twilio-auth-token
-TWILIO_PHONE_NUMBER=+1234567890
+# SMS Configuration (MSG91, optional)
+MSG91_AUTH_KEY=REPLACE_WITH_MSG91_SMS_KEY
+MSG91_OTP_TEMPLATE_ID=REPLACE_WITH_SMS_OTP_TEMPLATE_ID
+MSG91_SMS_TEMPLATE_ID=REPLACE_WITH_SMS_TEMPLATE_ID
 
 # Payment Gateway Configuration
 STRIPE_SECRET_KEY=sk_test_your-stripe-secret-key
@@ -305,8 +302,8 @@ pm2 monit
 - Webhook handling for payment status updates
 
 ### Communication
-- **Nodemailer**: Email notifications
-- **Twilio**: SMS notifications
+- **Resend**: Transactional email notifications
+- **MSG91**: SMS notifications and phone OTP
 - **Socket.io**: Real-time chat
 
 ### Video Calls
