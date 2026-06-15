@@ -14,7 +14,18 @@ pnpm-debug.log*
 .env.production.local
 menorah/deploy/env/*.env
 !menorah/deploy/env/*.env.example
+menorah/deploy/env/production.env
+menorah/deploy/env/cloudflare.env
 menorah/deploy/.local-data/
+mongo-keyfile
+*.backup
+*.dump
+*.archive.gz
+*.archive.gz.enc
+/backups
+/backups/
+/data
+/data/
 
 # Build outputs
 .next/

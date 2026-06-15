@@ -41,22 +41,25 @@ services:
       context: ../user-web-app
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
-        NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
         NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
         NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
-        NEXT_PUBLIC_WEB_BASE_URL: https://${WWW_DOMAIN}
-        NEXT_PUBLIC_SITE_URL: https://${WWW_DOMAIN}
-        PUBLIC_WEB_BASE_URL: https://${WWW_DOMAIN}
-        MENORAH_API_BASE_URL: https://${API_WEB_DOMAIN}/api
+        NEXT_PUBLIC_WEB_BASE_URL: "${FRONTEND_WWW_URL:-https://${WWW_DOMAIN}}"
+        NEXT_PUBLIC_SITE_URL: "${FRONTEND_WWW_URL:-https://${WWW_DOMAIN}}"
+        PUBLIC_WEB_BASE_URL: "${FRONTEND_WWW_URL:-https://${WWW_DOMAIN}}"
+        MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
     restart: unless-stopped
     environment:
       PORT: 3002
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
-      NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
       NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+    ports:
+      - "${LANDING_LOCAL_PORT:-127.0.0.1:18085}:3002"
     networks:
+      - local_probe_net
       - app_net
 
   web-app:
@@ -64,17 +67,20 @@ services:
       context: ../web-app
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
-        NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
         NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
     restart: unless-stopped
     environment:
-      PORT: 3001
-      NODE_ENV: production
-      NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
-      NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
-      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+        PORT: 3001
+        NODE_ENV: production
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+    ports:
+      - "${WEB_APP_LOCAL_PORT:-127.0.0.1:18086}:3001"
     networks:
+      - local_probe_net
       - app_net
 
   user-web-app:
@@ -82,22 +88,25 @@ services:
       context: ../user-web-app
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
-        NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
         NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
         NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
-        NEXT_PUBLIC_WEB_BASE_URL: https://${APP_DOMAIN}
-        NEXT_PUBLIC_SITE_URL: https://${APP_DOMAIN}
-        PUBLIC_WEB_BASE_URL: https://${APP_DOMAIN}
-        MENORAH_API_BASE_URL: https://${API_WEB_DOMAIN}/api
+        NEXT_PUBLIC_WEB_BASE_URL: "${FRONTEND_APP_URL:-https://${APP_DOMAIN}}"
+        NEXT_PUBLIC_SITE_URL: "${FRONTEND_APP_URL:-https://${APP_DOMAIN}}"
+        PUBLIC_WEB_BASE_URL: "${FRONTEND_APP_URL:-https://${APP_DOMAIN}}"
+        MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
     restart: unless-stopped
     environment:
       PORT: 3002
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: https://${API_WEB_DOMAIN}/api
-      NEXT_PUBLIC_SOCKET_URL: https://${API_WEB_DOMAIN}
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
       NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+    ports:
+      - "${USER_WEB_APP_LOCAL_PORT:-127.0.0.1:18087}:3002"
     networks:
+      - local_probe_net
       - app_net
 
   admin-panel:
@@ -105,13 +114,16 @@ services:
       context: ../admin-panel
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://${API_ADMIN_DOMAIN}/api
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:-https://${API_ADMIN_DOMAIN}/api}"
     restart: unless-stopped
     environment:
       PORT: 3003
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: https://${API_ADMIN_DOMAIN}/api
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:-https://${API_ADMIN_DOMAIN}/api}"
+    ports:
+      - "${ADMIN_PANEL_LOCAL_PORT:-127.0.0.1:18088}:3003"
     networks:
+      - local_probe_net
       - app_net
 
   api-ios:
