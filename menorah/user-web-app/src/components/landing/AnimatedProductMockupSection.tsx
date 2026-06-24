@@ -102,10 +102,10 @@ export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef:
   const reducedMotion = usePrefersReducedMotion();
   const compactViewport = useMediaQuery("(max-width: 767px)");
   const tabletViewport = useMediaQuery("(max-width: 1023px)");
-  const mockUnfoldEnd = 0.38;
-  const mockUntiltEnd = 0.48;
+  const mockUnfoldEnd = 0.42;
+  const mockUntiltEnd = 0.54;
   const featureCycleStart = mockUntiltEnd;
-  const featureCycleEnd = 0.88;
+  const featureCycleEnd = 0.9;
 
   const dashboardProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.24));
   const dashboardLiftProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.08, mockUnfoldEnd));
@@ -118,11 +118,11 @@ export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef:
   const autoJourneyProgress = reducedMotion ? 0 : featureProgress * (webNavItems.length - 1);
   const autoFeatureIndex = Math.min(webNavItems.length - 1, Math.max(0, Math.round(autoJourneyProgress)));
 
-  const dashboardStartY = compactViewport ? 286 : tabletViewport ? 318 : 340;
-  const dashboardEndY = compactViewport ? 12 : tabletViewport ? 24 : 38;
-  const dashboardStartScale = compactViewport ? 0.88 : tabletViewport ? 0.86 : 0.84;
-  const dashboardEndScale = compactViewport ? 1.02 : tabletViewport ? 1.05 : 1.08;
-  const dashboardStartRotateX = compactViewport ? 42 : 60;
+  const dashboardStartY = compactViewport ? 248 : tabletViewport ? 292 : 328;
+  const dashboardEndY = compactViewport ? 10 : tabletViewport ? 20 : 34;
+  const dashboardStartScale = compactViewport ? 0.88 : tabletViewport ? 0.84 : 0.78;
+  const dashboardEndScale = compactViewport ? 0.96 : tabletViewport ? 0.94 : 0.88;
+  const dashboardStartRotateX = compactViewport ? 34 : tabletViewport ? 48 : 56;
   const dashboardRotateX = reducedMotion ? 0 : lerp(dashboardStartRotateX, 0, dashboardUntiltProgress);
   const dashboardDepth = reducedMotion ? 0 : lerp(-92, 0, dashboardLiftProgress);
   const clipTop = reducedMotion ? 0 : lerp(35, 0, dashboardProgress);
@@ -145,6 +145,7 @@ export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef:
     transformOrigin: "center center",
     perspectiveOrigin: "50% 50%",
     transformStyle: "preserve-3d",
+    backfaceVisibility: "hidden",
     willChange: reducedMotion ? undefined : "transform, opacity, clip-path, filter"
   };
 
@@ -185,7 +186,7 @@ export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef:
     <div
       data-product-dashboard
       data-menorah-landing-theme="source"
-      className="absolute left-1/2 top-1/2 z-20 w-[min(1560px,calc(100vw-var(--mockup-x-inset)-var(--mockup-x-inset)))] max-h-[calc(100vh-var(--mockup-y-inset)-var(--mockup-y-inset))] [--mockup-x-inset:8px] [--mockup-y-inset:12px] sm:[--mockup-x-inset:clamp(18px,4vw,90px)] sm:[--mockup-y-inset:clamp(18px,4vh,90px)]"
+      className="absolute left-1/2 top-1/2 z-20 w-[min(1320px,calc(100vw-var(--mockup-x-inset)-var(--mockup-x-inset)))] [--mockup-x-inset:clamp(0.75rem,4vw,5.5rem)] [--mockup-y-inset:clamp(1rem,5svh,5rem)]"
       style={dashboardStyle}
     >
       <DashboardMockup
@@ -224,13 +225,13 @@ function DashboardMockup({
   const ActiveIcon = selectedNav.icon;
 
   return (
-    <div className="relative mx-auto aspect-[4/5] w-full max-h-[calc(100vh-var(--mockup-y-inset)-var(--mockup-y-inset))] select-none overflow-visible [perspective:1400px] sm:aspect-[16/9]">
+    <div className="relative mx-auto aspect-[16/11] w-full max-h-[calc(100svh-var(--mockup-y-inset)-var(--mockup-y-inset))] select-none overflow-visible [perspective:1400px] sm:aspect-[16/10] lg:aspect-[16/9]">
       <div
-        className="absolute left-6 right-6 top-[-18px] h-full rounded-lg border border-primary-100 bg-white/55 shadow-[0_18px_80px_rgba(45,122,92,0.12)] backdrop-blur-xl sm:left-10 sm:right-10"
+        className="absolute left-[clamp(1.25rem,4vw,2.5rem)] right-[clamp(1.25rem,4vw,2.5rem)] top-[-18px] h-full rounded-lg border border-primary-100 bg-white/55 shadow-[0_18px_80px_rgba(45,122,92,0.12)] backdrop-blur-xl"
         style={backPanelStyle}
       />
       <div
-        className="absolute left-12 right-12 top-[-34px] hidden h-full rounded-lg border border-primary-100 bg-white/35 blur-[1px] sm:block"
+        className="absolute left-[clamp(3rem,7vw,5rem)] right-[clamp(3rem,7vw,5rem)] top-[-34px] hidden h-full rounded-lg border border-primary-100 bg-white/35 blur-[1px] sm:block"
         style={backPanelStyle}
       />
 
@@ -257,7 +258,7 @@ function DashboardMockup({
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[54px_minmax(0,1fr)] sm:grid-cols-[210px_minmax(0,1fr)]" style={contentStyle}>
+        <div className="grid min-h-0 flex-1 grid-cols-[clamp(3.25rem,12vw,4rem)_minmax(0,1fr)] sm:grid-cols-[clamp(10.5rem,18vw,13.25rem)_minmax(0,1fr)]" style={contentStyle}>
           <aside className="border-r border-primary-100 bg-white/95 px-2 py-3 text-gray-950 shadow-[0_22px_60px_-34px_rgba(17,24,39,0.55)] sm:px-3 sm:py-4">
             <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-2xl bg-primary-600 text-white sm:mx-0 sm:h-11 sm:w-11">
               <HeartPulse className="h-5 w-5" aria-hidden="true" />
@@ -278,7 +279,7 @@ function DashboardMockup({
             </nav>
           </aside>
 
-          <main className="min-w-0 overflow-hidden bg-[var(--app-bg)] p-3 sm:p-5">
+          <main className="min-w-0 overflow-hidden bg-[var(--app-bg)] p-[clamp(0.65rem,1.8vw,1.25rem)]">
             <div className="flex min-h-0 h-full flex-col">
               <div className="mb-3 flex flex-col gap-3 rounded-[1.75rem] border border-primary-100 bg-primary-50 px-5 py-4 shadow-[0_14px_32px_-26px_rgba(45,122,92,0.5)] sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
@@ -309,7 +310,7 @@ function DashboardMockup({
                 key={activeFeature}
                 className={cn(
                   "min-h-0 flex-1 overflow-hidden",
-                  !reducedMotion && "animate-in fade-in slide-in-from-bottom-2 duration-200"
+                  !reducedMotion && "animate-in fade-in slide-in-from-bottom-2 duration-700 ease-out will-change-[transform,opacity]"
                 )}
               >
                 <WebFeaturePanel
@@ -326,7 +327,7 @@ function DashboardMockup({
       </div>
 
       <div
-        className="absolute bottom-3 right-1 z-20 w-36 rounded-lg border border-primary-200 bg-primary-600 p-3 text-white shadow-[0_22px_60px_rgba(45,122,92,0.28)] sm:-right-5 sm:bottom-2 sm:w-44 sm:p-4"
+        className="absolute bottom-[clamp(0.45rem,2vw,0.75rem)] right-[clamp(0.25rem,1vw,0.75rem)] z-20 w-[clamp(8.5rem,18vw,11rem)] rounded-lg border border-primary-200 bg-primary-600 p-[clamp(0.75rem,1.5vw,1rem)] text-white shadow-[0_22px_60px_rgba(45,122,92,0.28)] sm:-right-5"
         style={badgeStyle}
       >
         <span className="absolute -left-8 top-7 h-10 w-10 rounded-tl-full border-l border-t border-dashed border-primary-200/60" />
@@ -839,10 +840,10 @@ function useScrollProgress(ref: RefObject<HTMLElement | null>) {
       const targetProgress = targetProgressRef.current;
       const remainingDistance = targetProgress - currentProgress;
       const nextProgress =
-        Math.abs(remainingDistance) < 0.0005 ? targetProgress : currentProgress + remainingDistance * 0.14;
+        Math.abs(remainingDistance) < 0.0004 ? targetProgress : currentProgress + remainingDistance * 0.1;
 
       displayedProgressRef.current = nextProgress;
-      setProgress((current) => (Math.abs(current - nextProgress) > 0.0001 ? nextProgress : current));
+      setProgress((current) => (Math.abs(current - nextProgress) > 0.00025 ? nextProgress : current));
 
       if (Math.abs(targetProgress - nextProgress) > 0.0005) {
         animationFrame = window.requestAnimationFrame(animateProgress);

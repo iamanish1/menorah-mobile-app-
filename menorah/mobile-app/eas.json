@@ -14,7 +14,10 @@
       "env": {
         "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
       }
     },
     "development-ios": {
@@ -23,7 +26,9 @@
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": ""
       }
     },
     "development-android": {
@@ -35,7 +40,9 @@
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
       }
     },
     "preview": {
@@ -47,7 +54,10 @@
       "env": {
         "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
       }
     },
     "preview-ios": {
@@ -56,7 +66,9 @@
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": ""
       }
     },
     "preview-android": {
@@ -68,7 +80,9 @@
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
       }
     },
     "production": {
@@ -80,7 +94,10 @@
       "env": {
         "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
       }
     },
     "production-ios": {
@@ -89,7 +106,9 @@
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": ""
       }
     },
     "production-android": {
@@ -101,7 +120,9 @@
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
       }
     }
   }

@@ -51,8 +51,16 @@ function PaymentForm() {
     if (!loaded) { setError('Failed to load payment gateway. Please try again.'); setPaying(false); return; }
 
     const sessionRes = await api.createCheckoutSession(bookingId);
+    if (sessionRes.success && sessionRes.data?.alreadyPaid) {
+      setPaying(false);
+      setSuccess(true);
+      return;
+    }
+
     if (!sessionRes.success || !sessionRes.data?.orderId) {
-      setError(sessionRes.message || 'Failed to create payment session');
+      setError(/expired|slot/i.test(sessionRes.message || '')
+        ? 'This slot expired while waiting for payment. Please choose another available time.'
+        : sessionRes.message || 'Failed to create payment session');
       setPaying(false);
       return;
     }
@@ -73,7 +81,9 @@ function PaymentForm() {
         if (verify.success) {
           setSuccess(true);
         } else {
-          setError(verify.message || 'Payment verification failed');
+          setError(/expired|slot/i.test(verify.message || '')
+            ? 'This slot expired while waiting for payment. Please choose another available time.'
+            : verify.message || 'Payment verification failed');
         }
       },
       modal: { ondismiss: () => setPaying(false) },
@@ -108,6 +118,8 @@ function PaymentForm() {
     );
   }
 
+  const bookingAlreadyPaid = booking?.paymentStatus === 'paid' || booking?.paymentMethod === 'promo';
+
   return (
     <div className="page-container max-w-md">
       <button onClick={() => router.back()} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-6">
@@ -132,7 +144,7 @@ function PaymentForm() {
           <div className="border-t border-gray-100 pt-3 flex justify-between">
             <span className="font-semibold text-gray-900">Total</span>
             <span className="font-bold text-lg text-primary-600">
-              {booking.amount ? formatCurrency(booking.amount, booking.currency) : 'TBD'}
+              {bookingAlreadyPaid ? 'Free' : booking.amount ? formatCurrency(booking.amount, booking.currency) : 'TBD'}
             </span>
           </div>
         </div>
@@ -144,18 +156,27 @@ function PaymentForm() {
         </div>
       )}
 
-      <Button
-        fullWidth size="lg" loading={paying}
-        onClick={handleRazorpay}
-      >
-        <CreditCard className="w-5 h-5" />
-        Pay Now with Razorpay
-      </Button>
+      {bookingAlreadyPaid ? (
+        <Button fullWidth size="lg" onClick={() => router.push('/bookings')}>
+          <CheckCircle className="w-5 h-5" />
+          View Confirmed Booking
+        </Button>
+      ) : (
+        <Button
+          fullWidth size="lg" loading={paying}
+          onClick={handleRazorpay}
+        >
+          <CreditCard className="w-5 h-5" />
+          Pay Now with Razorpay
+        </Button>
+      )}
 
-      <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400 mt-4">
-        <Shield className="w-3.5 h-3.5" />
-        Secured by Razorpay. Your payment is safe.
-      </div>
+      {!bookingAlreadyPaid && (
+        <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400 mt-4">
+          <Shield className="w-3.5 h-3.5" />
+          Secured by Razorpay. Your payment is safe.
+        </div>
+      )}
     </div>
   );
 }

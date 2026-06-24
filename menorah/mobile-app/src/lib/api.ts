@@ -85,7 +85,11 @@ export interface Booking {
   amount: number;
   currency: string;
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
-  paymentMethod?: 'razorpay' | 'wallet' | 'subscription';
+  paymentMethod?: 'razorpay' | 'wallet' | 'subscription' | 'promo';
+  promo?: {
+    code?: string;
+    discountAmount?: number;
+  };
   isSubscriptionBooking?: boolean;
   canBeCancelled: boolean;
   canBeRescheduled: boolean;
@@ -402,6 +406,27 @@ class ApiClient {
     });
   }
 
+  async loginWithGoogle(credential: string): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
+    return this.request({
+      method: 'POST',
+      url: '/auth/google',
+      data: { credential },
+    });
+  }
+
+  async loginWithApple(data: {
+    identityToken: string;
+    authorizationCode?: string | null;
+    email?: string | null;
+    fullName?: string | null;
+  }): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
+    return this.request({
+      method: 'POST',
+      url: '/auth/apple',
+      data,
+    });
+  }
+
   async verifyEmail(code: string): Promise<ApiResponse<void>> {
     return this.request({
       method: 'POST',
@@ -507,12 +532,13 @@ class ApiClient {
   async getCounsellorAvailability(
     id: string,
     startDate: string,
-    endDate: string
+    endDate: string,
+    duration?: number
   ): Promise<ApiResponse<{ availability: any[] }>> {
     return this.request({
       method: 'GET',
       url: `/counsellors/${id}/availability`,
-      params: { startDate, endDate },
+      params: { startDate, endDate, duration },
     });
   }
 
@@ -567,6 +593,7 @@ class ApiClient {
     concerns?: string;
     goals?: string[];
     emergencyContact?: any;
+    promoCode?: string;
   }): Promise<ApiResponse<{ booking: Booking }>> {
     return this.request({
       method: 'POST',

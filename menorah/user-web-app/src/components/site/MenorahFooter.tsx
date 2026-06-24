@@ -2,6 +2,7 @@ import Link from "next/link";
 
 const footerLinks = [
   { label: "Articles", href: "/articles" },
+  { label: "Counsellors", href: "https://counsellor.menorah.me/register" },
   { label: "Contact Us", href: "/contact-us" },
   { label: "FAQ's", href: "/#faq" }
 ];
@@ -15,11 +16,17 @@ export function MenorahFooter() {
   return (
     <footer className="mt-20 text-center font-body">
       <nav className="mx-auto flex max-w-[760px] flex-wrap items-center justify-center gap-x-5 gap-y-4 text-sm font-medium uppercase tracking-[0.18em]">
-        {footerLinks.map((link) => (
-          <Link key={link.label} href={link.href} className="transition hover:text-muted-foreground">
-            {link.label}
-          </Link>
-        ))}
+        {footerLinks.map((link) =>
+          link.href.startsWith("http") ? (
+            <a key={link.label} href={link.href} className="transition hover:text-muted-foreground">
+              {link.label}
+            </a>
+          ) : (
+            <Link key={link.label} href={link.href} className="transition hover:text-muted-foreground">
+              {link.label}
+            </Link>
+          )
+        )}
       </nav>
       <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-sm font-medium uppercase tracking-[0.18em]">
         {legalLinks.map((link) => (

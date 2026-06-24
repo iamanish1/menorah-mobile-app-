@@ -7,8 +7,17 @@ const User = require('../models/User');
 const { auth } = require('../middleware/auth');
 const { sendBookingConfirmationEmail, sendSessionReminderEmail } = require('../utils/email');
 const { sendBookingConfirmationSMS, sendSessionReminderSMS, sendCancellationSMS } = require('../utils/sms');
+const {
+  getPendingHoldExpiresAt,
+  expireStalePendingBookings,
+  isBlockingBooking,
+} = require('../utils/bookingAvailability');
 
 const router = express.Router();
+const FREE_CONSULTATION_PROMO_CODE = 'MENORAHFREECALL';
+const SLOT_TAKEN_MESSAGE = 'This time slot was just booked by someone else. Please choose another available slot.';
+
+const normalizePromoCode = (value) => String(value || '').trim().toUpperCase();
 
 // @route   POST /api/bookings
 // @desc    Create a new booking
@@ -29,6 +38,7 @@ router.post('/', [
   body('sessionDuration').isInt({ min: 15, max: 180 }).withMessage('Session duration must be between 15 and 180 minutes'),
   body('scheduledAt').isISO8601().withMessage('Invalid scheduled date'),
   body('amount').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Invalid amount'),
+  body('promoCode').optional({ nullable: true }).isString().trim().isLength({ max: 64 }).withMessage('Invalid promo code'),
   body('preferences').optional({ nullable: true }).isObject(),
   body('symptoms').optional({ nullable: true }).isArray(),
   body('concerns').optional({ nullable: true }).isString(),
@@ -55,7 +65,8 @@ router.post('/', [
       symptoms,
       concerns,
       goals,
-      emergencyContact
+      emergencyContact,
+      promoCode
     } = req.body;
 
     let counsellor = null;
@@ -83,6 +94,8 @@ router.post('/', [
         });
       }
 
+      await expireStalePendingBookings(Booking, { counsellor: counsellorId });
+
       // Check counsellor availability using their stored timezone
       const tz = counsellor.timezone || 'Asia/Kolkata';
       const tzParts = new Intl.DateTimeFormat('en-US', {
@@ -108,20 +121,30 @@ router.post('/', [
         });
       }
 
-      // Check for conflicting bookings
-      const conflictingBooking = await Booking.findOne({
+      // Check for conflicting bookings. Pending payment bookings only block while
+      // their short hold is still alive; confirmed/paid bookings block permanently.
+      const possibleConflicts = await Booking.find({
         counsellor: counsellorId,
         scheduledAt: {
           $gte: new Date(scheduledTime.getTime() - sessionDuration * 60 * 1000),
           $lte: new Date(scheduledTime.getTime() + sessionDuration * 60 * 1000)
         },
-        status: { $in: ['pending', 'confirmed'] }
+        status: { $in: ['pending', 'confirmed', 'in-progress'] }
+      }).lean();
+
+      const requestedEnd = new Date(scheduledTime.getTime() + sessionDuration * 60 * 1000);
+      const conflictingBooking = possibleConflicts.find((booking) => {
+        if (!isBlockingBooking(booking)) return false;
+        const bookingStart = new Date(booking.scheduledAt);
+        const bookingEnd = new Date(bookingStart.getTime() + (booking.sessionDuration || sessionDuration) * 60 * 1000);
+        return scheduledTime < bookingEnd && requestedEnd > bookingStart;
       });
 
       if (conflictingBooking) {
         return res.status(400).json({
           success: false,
-          message: 'This time slot is already booked'
+          code: conflictingBooking.status === 'pending' ? 'SLOT_PENDING' : 'SLOT_BOOKED',
+          message: SLOT_TAKEN_MESSAGE
         });
       }
 
@@ -161,6 +184,7 @@ router.post('/', [
     let isSubscriptionBooking = false;
     let paymentStatus = 'pending';
     let paymentMethod = 'razorpay';
+    let appliedPromo = null;
     
     if (user && user.subscription) {
       const now = new Date();
@@ -175,6 +199,37 @@ router.post('/', [
       }
     }
 
+    const normalizedPromoCode = normalizePromoCode(promoCode);
+    if (!isSubscriptionBooking && normalizedPromoCode) {
+      if (normalizedPromoCode !== FREE_CONSULTATION_PROMO_CODE) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid promo code'
+        });
+      }
+
+      const previousPromoBooking = await Booking.exists({
+        user: req.user._id,
+        'promo.code': FREE_CONSULTATION_PROMO_CODE
+      });
+
+      if (previousPromoBooking) {
+        return res.status(400).json({
+          success: false,
+          message: 'This free consultation promo has already been used on your account.'
+        });
+      }
+
+      appliedPromo = {
+        code: FREE_CONSULTATION_PROMO_CODE,
+        appliedAt: new Date(),
+        discountAmount: amount
+      };
+      amount = 0;
+      paymentStatus = 'paid';
+      paymentMethod = 'promo';
+    }
+
     // Create booking
     const scheduledTime = new Date(scheduledAt);
     const booking = new Booking({
@@ -187,8 +242,10 @@ router.post('/', [
       currency: currency,
       paymentMethod: paymentMethod,
       paymentStatus: paymentStatus,
-      status: isSubscriptionBooking ? 'confirmed' : 'pending',
+      status: isSubscriptionBooking || appliedPromo ? 'confirmed' : 'pending',
+      holdExpiresAt: paymentStatus === 'pending' ? getPendingHoldExpiresAt() : undefined,
       isSubscriptionBooking: isSubscriptionBooking,
+      promo: appliedPromo || undefined,
       preferences: preferences || {},
       symptoms,
       concerns,
@@ -196,10 +253,37 @@ router.post('/', [
       emergencyContact
     });
 
-    await booking.save();
+    try {
+      await booking.save();
+    } catch (error) {
+      if (error && error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          code: 'SLOT_BOOKED',
+          message: SLOT_TAKEN_MESSAGE
+        });
+      }
+      throw error;
+    }
 
     // NOTE: counsellor socket notifications are sent only after payment is confirmed
     // (see payments.js verify-razorpay handler)
+    if (appliedPromo && !booking.counsellor && req.app.get('io')) {
+      const io = req.app.get('io');
+      const availableCounsellors = await Counsellor.find({ isActive: true, isAvailable: true }).select('_id').lean();
+      const notification = {
+        bookingId: booking._id,
+        sessionType: booking.sessionType,
+        sessionDuration: booking.sessionDuration,
+        scheduledAt: booking.scheduledAt,
+        amount: booking.amount,
+        preferences: booking.preferences,
+        createdAt: booking.createdAt
+      };
+      availableCounsellors.forEach(c => {
+        io.to(`counsellor_${c._id}`).emit('new_booking_available', notification);
+      });
+    }
 
     // Send confirmation notifications only if counsellor is assigned
     if (counsellor) {
@@ -233,7 +317,11 @@ router.post('/', [
           status: booking.status,
           paymentStatus: booking.paymentStatus,
           paymentMethod: booking.paymentMethod,
-          isSubscriptionBooking: booking.isSubscriptionBooking || false
+          isSubscriptionBooking: booking.isSubscriptionBooking || false,
+          promo: booking.promo?.code ? {
+            code: booking.promo.code,
+            discountAmount: booking.promo.discountAmount || 0
+          } : undefined
         }
       }
     });
@@ -267,7 +355,7 @@ router.get('/', [
 
     const { status, page = 1, limit = 10 } = req.query;
 
-    const validStatuses = ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show'];
+    const validStatuses = ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'expired'];
 
     // Build query — support comma-separated status list (e.g. "pending,confirmed")
     const dbQuery = { user: req.user._id };
@@ -323,6 +411,12 @@ router.get('/', [
       amount: booking.amount,
       currency: booking.currency,
       paymentStatus: booking.paymentStatus,
+      paymentMethod: booking.paymentMethod,
+      isSubscriptionBooking: booking.isSubscriptionBooking || false,
+      promo: booking.promo?.code ? {
+        code: booking.promo.code,
+        discountAmount: booking.promo.discountAmount || 0
+      } : undefined,
       canBeCancelled: booking.canBeCancelled,
       canBeRescheduled: booking.canBeRescheduled,
       createdAt: booking.createdAt // Add createdAt for date display
@@ -413,6 +507,10 @@ router.get('/:id', [
       paymentStatus: booking.paymentStatus,
       paymentMethod: booking.paymentMethod,
       isSubscriptionBooking: booking.isSubscriptionBooking || false,
+      promo: booking.promo?.code ? {
+        code: booking.promo.code,
+        discountAmount: booking.promo.discountAmount || 0
+      } : undefined,
       canBeCancelled: booking.canBeCancelled,
       canBeRescheduled: booking.canBeRescheduled,
       createdAt: booking.createdAt,
@@ -472,7 +570,8 @@ router.put('/:id/cancel', [
       });
     }
 
-    if (!booking.canBeCancelled) {
+    const isUnpaidHold = booking.status === 'pending' && booking.paymentStatus === 'pending';
+    if (!isUnpaidHold && !booking.canBeCancelled) {
       return res.status(400).json({
         success: false,
         message: 'Booking cannot be cancelled at this time'

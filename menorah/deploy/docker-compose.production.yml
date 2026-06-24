@@ -6,6 +6,7 @@ x-backend-env: &backend-env
   WWW_DOMAIN: ${WWW_DOMAIN:-www.menorah.me}
   APP_DOMAIN: ${APP_DOMAIN:-app.menorah.me}
   ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.menorah.me}
+  COUNSELLOR_DOMAIN: ${COUNSELLOR_DOMAIN:-counsellor.menorah.me}
   API_IOS_DOMAIN: ${API_IOS_DOMAIN:-api-ios.menorah.me}
   API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN:-api-android.menorah.me}
   API_WEB_DOMAIN: ${API_WEB_DOMAIN:-api-web.menorah.me}
@@ -23,6 +24,12 @@ x-backend-env: &backend-env
   JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-}
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
   JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
+  ADMIN_JWT_EXPIRES_IN: ${ADMIN_JWT_EXPIRES_IN:-8h}
+  GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:-${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}}
+  GOOGLE_IOS_CLIENT_ID: ${GOOGLE_IOS_CLIENT_ID:-${EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID:-}}
+  GOOGLE_ANDROID_CLIENT_ID: ${GOOGLE_ANDROID_CLIENT_ID:-${EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:-}}
+  APPLE_IOS_BUNDLE_ID: ${APPLE_IOS_BUNDLE_ID:-com.menorah.health.app}
+  APPLE_WEB_SERVICE_ID: ${APPLE_WEB_SERVICE_ID:-}
   ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
   ENABLE_SOCKET_IO: ${ENABLE_SOCKET_IO:-true}
   ENABLE_SOCKET_ADAPTER: ${ENABLE_SOCKET_ADAPTER:-true}
@@ -57,6 +64,7 @@ services:
       WWW_DOMAIN: ${WWW_DOMAIN:-www.menorah.me}
       APP_DOMAIN: ${APP_DOMAIN:-app.menorah.me}
       ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.menorah.me}
+      COUNSELLOR_DOMAIN: ${COUNSELLOR_DOMAIN:-counsellor.menorah.me}
       API_IOS_DOMAIN: ${API_IOS_DOMAIN:-api-ios.menorah.me}
       API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN:-api-android.menorah.me}
       API_WEB_DOMAIN: ${API_WEB_DOMAIN:-api-web.menorah.me}
@@ -76,6 +84,7 @@ services:
     depends_on:
       - landing-page
       - user-web-app
+      - web-app
       - admin-panel
       - api-ios
       - api-android
@@ -90,6 +99,7 @@ services:
         NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
         NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
         NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-${RAZORPAY_KEY_ID:-}}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
         NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
         NEXT_PUBLIC_WEB_BASE_URL: "https://${WWW_DOMAIN:-www.menorah.me}"
         NEXT_PUBLIC_SITE_URL: "https://${WWW_DOMAIN:-www.menorah.me}"
@@ -102,6 +112,7 @@ services:
       NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
       NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
       NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
     ports:
       - "${LANDING_LOCAL_PORT:-127.0.0.1:18085}:3002"
     networks:
@@ -116,6 +127,7 @@ services:
         NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
         NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
         NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-${RAZORPAY_KEY_ID:-}}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
         NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
         NEXT_PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:-app.menorah.me}"
         NEXT_PUBLIC_SITE_URL: "https://${APP_DOMAIN:-app.menorah.me}"
@@ -128,6 +140,7 @@ services:
       NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
       NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
       NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
     ports:
       - "${USER_WEB_APP_LOCAL_PORT:-127.0.0.1:18087}:3002"
     networks:

@@ -5,7 +5,7 @@ import type {
   RevenueData, User, Pagination, PayoutRecord, PayoutSummary, PayoutStatus,
   Article, ArticleGenerationRun, ArticleStatus, BrandAsset, BrandGuideline,
   InstagramAccount, KycReview, KycStatus, SocialAspectRatio, SocialGenerationJob, SocialPost,
-  SocialCampaignBrief, SocialGenerationRun, SocialPostStatus, SocialPostType,
+  ServerUsage, SocialCampaignBrief, SocialGenerationRun, SocialPostStatus, SocialPostType,
   SocialPromptSettings, SocialStudioStats, SocialWorkflow
 } from '@/types';
 
@@ -53,6 +53,10 @@ class AdminApiClient {
     );
   }
 
+  logout() {
+    return this.request<void>(() => this.client.post('/auth/logout'));
+  }
+
   // ── Stats ───────────────────────────────────────────────────────────────────
   getStats() {
     return this.request<PlatformStats>(() => this.client.get('/admin/stats'));
@@ -62,6 +66,10 @@ class AdminApiClient {
     return this.request<{ dailyRegistrations: { date: string; count: number }[]; byRole: Record<string, number> }>(
       () => this.client.get('/admin/stats/users')
     );
+  }
+
+  getServerUsage() {
+    return this.request<ServerUsage>(() => this.client.get('/admin/server-usage'));
   }
 
   // ── Counsellors ─────────────────────────────────────────────────────────────

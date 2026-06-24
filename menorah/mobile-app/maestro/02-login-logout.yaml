@@ -1,0 +1,26 @@
+appId: com.menorah.healthmobile
+env:
+  QA_EMAIL: ""
+  QA_PASSWORD: ""
+---
+- launchApp
+- tapOn:
+    text: ".*(Sign in|Login|Get Started|Continue).*"
+    optional: true
+- assertVisible:
+    text: ".*(Login|Welcome back|Email).*"
+- inputText: "${QA_EMAIL}"
+- tapOn:
+    text: ".*Password.*"
+    optional: true
+- inputText: "${QA_PASSWORD}"
+- tapOn:
+    text: ".*(Sign In|Login).*"
+- assertVisible:
+    text: ".*(Discover|Home|Profile|Verify|verification).*"
+- tapOn:
+    text: ".*(Profile|Settings).*"
+    optional: true
+- tapOn:
+    text: ".*(Logout|Log out|Sign out).*"
+    optional: true

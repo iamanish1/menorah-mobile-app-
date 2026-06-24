@@ -16,6 +16,7 @@ Current production domains:
 
 - `www.menorah.me`
 - `app.menorah.me`
+- `counsellor.menorah.me`
 - `admin.menorah.me`
 - `api.menorah.me`
 - `calls.menorah.me`

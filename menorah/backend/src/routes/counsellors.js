@@ -6,6 +6,11 @@ const PendingApplication = require('../models/PendingApplication');
 const { optionalAuth } = require('../middleware/auth');
 const jwt = require('jsonwebtoken');
 const { getRedisClient } = require('../config/redis');
+const Booking = require('../models/Booking');
+const {
+  expireStalePendingBookings,
+  generateAvailabilityForDate,
+} = require('../utils/bookingAvailability');
 
 // ── Regex safety helper ────────────────────────────────────────────────────
 // Escapes regex metacharacters to prevent ReDoS via user-supplied search strings
@@ -42,6 +47,13 @@ const { sendVerificationEmail } = require('../utils/email');
 const { sendSMS } = require('../utils/sms');
 
 const router = express.Router();
+const emailNormalizationOptions = {
+  gmail_remove_dots: false,
+  gmail_remove_subaddress: false,
+  outlookdotcom_remove_subaddress: false,
+  yahoo_remove_subaddress: false,
+  icloud_remove_subaddress: false,
+};
 
 // @route   GET /api/counsellors
 // @desc    Get all counsellors with filtering and search
@@ -398,8 +410,10 @@ router.get('/:id', [
 // @access  Public
 router.get('/:id/availability', [
   param('id').isMongoId().withMessage('Invalid counsellor ID'),
-  query('startDate').isISO8601().withMessage('Start date must be a valid date'),
-  query('endDate').isISO8601().withMessage('End date must be a valid date')
+  query('startDate').optional().isISO8601().withMessage('Start date must be a valid date'),
+  query('endDate').optional().isISO8601().withMessage('End date must be a valid date'),
+  query('date').optional().isISO8601().withMessage('Date must be a valid date'),
+  query('duration').optional().isInt({ min: 15, max: 180 }).withMessage('Duration must be between 15 and 180 minutes')
 ], optionalAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -412,7 +426,16 @@ router.get('/:id/availability', [
     }
 
     const { id } = req.params;
-    const { startDate, endDate } = req.query;
+    const requestedStartDate = req.query.date || req.query.startDate;
+    const requestedEndDate = req.query.date || req.query.endDate || requestedStartDate;
+    const duration = req.query.duration ? parseInt(req.query.duration, 10) : undefined;
+
+    if (!requestedStartDate || !requestedEndDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'A date or startDate/endDate is required'
+      });
+    }
 
     const counsellor = await Counsellor.findById(id);
     if (!counsellor || !counsellor.isActive || !counsellor.isVerified) {
@@ -422,28 +445,42 @@ router.get('/:id/availability', [
       });
     }
 
-    // Generate availability slots for the date range
+    await expireStalePendingBookings(Booking, { counsellor: id });
+
+    const timezone = counsellor.timezone || 'Asia/Kolkata';
+    const start = new Date(requestedStartDate);
+    const end = new Date(requestedEndDate);
+    const rangeStart = new Date(start);
+    rangeStart.setUTCHours(0, 0, 0, 0);
+    rangeStart.setUTCDate(rangeStart.getUTCDate() - 1);
+    const rangeEnd = new Date(end);
+    rangeEnd.setUTCHours(23, 59, 59, 999);
+    rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
+
+    const bookings = await Booking.find({
+      counsellor: id,
+      status: { $in: ['pending', 'confirmed', 'in-progress'] },
+      scheduledAt: { $gte: rangeStart, $lte: rangeEnd },
+    }).select('scheduledAt sessionDuration status paymentStatus holdExpiresAt').lean();
+
     const availability = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-
-    for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
-      const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-      const daySchedule = counsellor.availability[dayOfWeek];
-
-      if (daySchedule && daySchedule.isAvailable) {
-        const slots = generateTimeSlots(daySchedule.start, daySchedule.end, counsellor.sessionDuration);
-        availability.push({
-          date: date.toISOString().split('T')[0],
-          dayOfWeek: dayOfWeek,
-          slots: slots
-        });
-      }
+    for (let date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
+      availability.push(generateAvailabilityForDate({
+        counsellor,
+        date,
+        bookings,
+        duration,
+      }));
     }
 
     res.json({
       success: true,
-      data: { availability }
+      data: {
+        availability,
+        date: req.query.date ? availability[0]?.date : undefined,
+        timezone,
+        holdMinutes: 15,
+      }
     });
 
   } catch (error) {
@@ -462,7 +499,7 @@ router.post('/register', [
   // User fields
   body('firstName').trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
-  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
+  body('email').isEmail().normalizeEmail(emailNormalizationOptions).withMessage('Please provide a valid email'),
   body('phone').matches(/^\+[1-9]\d{1,14}$/).withMessage('Please provide a valid phone number with country code'),
   body('dateOfBirth').isISO8601().withMessage('Please provide a valid date of birth'),
   body('gender').isIn(['male', 'female', 'other', 'prefer-not-to-say']).withMessage('Please provide a valid gender'),
@@ -596,19 +633,5 @@ router.post('/register', [
     });
   }
 });
-
-// Helper function to generate time slots
-const generateTimeSlots = (startTime, endTime, duration) => {
-  const slots = [];
-  const start = new Date(`2000-01-01T${startTime}`);
-  const end = new Date(`2000-01-01T${endTime}`);
-
-  while (start < end) {
-    slots.push(start.toTimeString().slice(0, 5));
-    start.setMinutes(start.getMinutes() + duration);
-  }
-
-  return slots;
-};
 
 module.exports = router;

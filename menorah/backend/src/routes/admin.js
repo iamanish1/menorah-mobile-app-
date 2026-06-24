@@ -1,6 +1,9 @@
 const express = require('express');
 const { body, query, param, validationResult } = require('express-validator');
 const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const axios = require('axios');
 const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
@@ -44,6 +47,93 @@ const dateRanges = () => {
   weekStart.setDate(todayStart.getDate() - todayStart.getDay());
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   return { todayStart, weekStart, monthStart, now };
+};
+
+const bytes = (value) => Number.isFinite(value) ? value : 0;
+
+const readProcStat = () => {
+  const line = fs.readFileSync('/proc/stat', 'utf8').split('\n')[0];
+  const parts = line.trim().split(/\s+/).slice(1).map(Number);
+  const [user = 0, nice = 0, system = 0, idle = 0, iowait = 0, irq = 0, softirq = 0, steal = 0] = parts;
+  const idleAll = idle + iowait;
+  const nonIdle = user + nice + system + irq + softirq + steal;
+  return { idle: idleAll, total: idleAll + nonIdle };
+};
+
+const getCpuSample = () => new Promise((resolve) => {
+  try {
+    const start = readProcStat();
+    setTimeout(() => {
+      try {
+        const end = readProcStat();
+        const totalDiff = end.total - start.total;
+        const idleDiff = end.idle - start.idle;
+        const usagePercent = totalDiff > 0 ? Math.max(0, Math.min(100, (1 - idleDiff / totalDiff) * 100)) : 0;
+        resolve(usagePercent);
+      } catch {
+        resolve(0);
+      }
+    }, 250);
+  } catch {
+    resolve(0);
+  }
+});
+
+const getDiskUsage = (targetPath) => {
+  try {
+    const stats = fs.statfsSync(targetPath);
+    const total = bytes(stats.blocks * stats.bsize);
+    const free = bytes(stats.bavail * stats.bsize);
+    const used = Math.max(0, total - free);
+    return {
+      path: targetPath,
+      total,
+      used,
+      free,
+      usagePercent: total > 0 ? Math.round((used / total) * 1000) / 10 : 0
+    };
+  } catch {
+    return { path: targetPath, total: 0, used: 0, free: 0, usagePercent: 0 };
+  }
+};
+
+const readNumberFile = (filePath) => {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8').trim();
+    if (raw === 'max') return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+};
+
+const getCgroupMemory = () => {
+  const current = readNumberFile('/sys/fs/cgroup/memory.current');
+  const max = readNumberFile('/sys/fs/cgroup/memory.max');
+  if (current === null) return null;
+  return {
+    current,
+    max,
+    usagePercent: max ? Math.round((current / max) * 1000) / 10 : null
+  };
+};
+
+const getNetworkStats = () => {
+  try {
+    const lines = fs.readFileSync('/proc/net/dev', 'utf8').trim().split('\n').slice(2);
+    return lines.reduce((acc, line) => {
+      const [ifacePart, dataPart] = line.split(':');
+      const iface = ifacePart.trim();
+      if (!iface || iface === 'lo') return acc;
+      const values = dataPart.trim().split(/\s+/).map(Number);
+      acc.rxBytes += bytes(values[0]);
+      acc.txBytes += bytes(values[8]);
+      return acc;
+    }, { rxBytes: 0, txBytes: 0 });
+  } catch {
+    return { rxBytes: 0, txBytes: 0 };
+  }
 };
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
@@ -158,6 +248,62 @@ router.get('/stats/users', async (req, res) => {
     });
   } catch (error) {
     console.error('Admin user stats error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/server-usage — live server/container resource telemetry
+router.get('/server-usage', async (_req, res) => {
+  try {
+    const cpuUsagePercent = await getCpuSample();
+    const totalMemory = os.totalmem();
+    const freeMemory = os.freemem();
+    const usedMemory = Math.max(0, totalMemory - freeMemory);
+    const rootDisk = getDiskUsage('/');
+    const uploadPath = path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads');
+    const uploadDisk = getDiskUsage(uploadPath);
+    const cgroupMemory = getCgroupMemory();
+    const network = getNetworkStats();
+
+    res.json({
+      success: true,
+      data: {
+        sampledAt: new Date().toISOString(),
+        host: {
+          hostname: os.hostname(),
+          platform: os.platform(),
+          release: os.release(),
+          uptimeSeconds: Math.round(os.uptime())
+        },
+        cpu: {
+          usagePercent: Math.round(cpuUsagePercent * 10) / 10,
+          cores: os.cpus().length,
+          model: os.cpus()[0]?.model || 'Unknown CPU',
+          loadAverage: os.loadavg()
+        },
+        memory: {
+          total: totalMemory,
+          used: usedMemory,
+          free: freeMemory,
+          usagePercent: totalMemory > 0 ? Math.round((usedMemory / totalMemory) * 1000) / 10 : 0
+        },
+        container: {
+          memory: cgroupMemory
+        },
+        disk: {
+          root: rootDisk,
+          uploads: uploadDisk
+        },
+        network,
+        process: {
+          pid: process.pid,
+          uptimeSeconds: Math.round(process.uptime()),
+          memory: process.memoryUsage()
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Admin server usage error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
@@ -391,24 +537,51 @@ router.put('/counsellors/:id/approve', [
     if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
     if (application.status !== 'pending') return res.status(400).json({ success: false, message: 'Application is not pending' });
 
-    const existingUser = await User.findOne({ $or: [{ email: application.email }, { phone: application.phone }] });
-    if (existingUser) return res.status(400).json({ success: false, message: 'A user with this email or phone already exists' });
+    const [existingByEmail, existingByPhone, existingLicense] = await Promise.all([
+      User.findOne({ email: application.email }),
+      User.findOne({ phone: application.phone }),
+      Counsellor.findOne({ licenseNumber: application.licenseNumber })
+    ]);
+
+    if (existingByEmail && existingByPhone && existingByEmail._id.toString() !== existingByPhone._id.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'This application email and phone belong to different existing users. Use a unique test phone/email or review manually.'
+      });
+    }
+
+    if (existingLicense) {
+      return res.status(400).json({
+        success: false,
+        message: 'A counsellor with this license number already exists.'
+      });
+    }
+
+    const existingUser = existingByEmail || existingByPhone;
+    if (existingUser) {
+      const existingCounsellor = await Counsellor.findOne({ user: existingUser._id });
+      if (existingCounsellor) {
+        return res.status(400).json({
+          success: false,
+          message: 'This user already has a counsellor profile.'
+        });
+      }
+    }
 
     const plainPassword = generateSecurePassword();
 
-    const user = new User({
-      firstName: application.firstName,
-      lastName: application.lastName,
-      email: application.email,
-      phone: application.phone,
-      password: plainPassword,
-      dateOfBirth: application.dateOfBirth,
-      gender: application.gender,
-      role: 'counsellor',
-      isActive: true,
-      isEmailVerified: true,
-      isPhoneVerified: true,
-    });
+    const user = existingUser || new User();
+    user.firstName = application.firstName || user.firstName;
+    user.lastName = application.lastName || user.lastName;
+    user.email = application.email || user.email;
+    user.phone = application.phone || user.phone;
+    user.password = plainPassword;
+    user.dateOfBirth = application.dateOfBirth || user.dateOfBirth;
+    user.gender = application.gender || user.gender || 'male';
+    user.role = 'counsellor';
+    user.isActive = true;
+    user.isEmailVerified = true;
+    user.isPhoneVerified = true;
     await user.save();
 
     const counsellor = new Counsellor({

@@ -104,6 +104,62 @@ export interface PlatformStats {
   kyc?: { pendingReview: number; verified: number; rejected: number };
 }
 
+export interface ServerUsage {
+  sampledAt: string;
+  host: {
+    hostname: string;
+    platform: string;
+    release: string;
+    uptimeSeconds: number;
+  };
+  cpu: {
+    usagePercent: number;
+    cores: number;
+    model: string;
+    loadAverage: number[];
+  };
+  memory: {
+    total: number;
+    used: number;
+    free: number;
+    usagePercent: number;
+  };
+  container: {
+    memory: {
+      current: number;
+      max: number | null;
+      usagePercent: number | null;
+    } | null;
+  };
+  disk: {
+    root: DiskUsage;
+    uploads: DiskUsage;
+  };
+  network: {
+    rxBytes: number;
+    txBytes: number;
+  };
+  process: {
+    pid: number;
+    uptimeSeconds: number;
+    memory: {
+      rss: number;
+      heapTotal: number;
+      heapUsed: number;
+      external: number;
+      arrayBuffers: number;
+    };
+  };
+}
+
+export interface DiskUsage {
+  path: string;
+  total: number;
+  used: number;
+  free: number;
+  usagePercent: number;
+}
+
 export type KycStatus = 'not_started' | 'pending' | 'verified' | 'manual_review' | 'rejected';
 
 export interface KycReview {

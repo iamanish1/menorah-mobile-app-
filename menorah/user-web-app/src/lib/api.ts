@@ -103,6 +103,12 @@ class ApiClient {
     return res;
   }
 
+  async loginWithGoogle(credential: string): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
+    const res = await this.post<{ user: User; token: string; isNewUser?: boolean }>('/auth/google', { credential });
+    if (res.success && res.data?.token) authStorage.setToken(res.data.token);
+    return res;
+  }
+
   async verifyEmail(code: string): Promise<ApiResponse<{ user: User }>> {
     return this.post<{ user: User }>('/auth/verify-email', { code });
   }
@@ -189,8 +195,45 @@ class ApiClient {
     return this.get<{ counsellor: Counsellor }>(`/counsellors/${id}`);
   }
 
-  async getCounsellorAvailability(id: string, startDate: string, endDate: string): Promise<ApiResponse<{ availability: Record<string, string[]> }>> {
-    return this.get<{ availability: Record<string, string[]> }>(`/counsellors/${id}/availability`, { startDate, endDate });
+  async getCounsellorAvailability(
+    id: string,
+    startDate: string,
+    endDate: string,
+    duration?: number,
+  ): Promise<ApiResponse<{ availability: Array<{
+    date: string;
+    dayOfWeek: string;
+    timezone: string;
+    sessionDuration: number;
+    isAvailable: boolean;
+    slots: Array<{
+      startTime: string;
+      endTime: string;
+      startsAt: string;
+      endsAt: string;
+      status: 'available' | 'booked' | 'pending' | 'unavailable' | 'past';
+      isSelectable: boolean;
+      label: string;
+      statusLabel: string;
+    }>;
+  }>; date?: string; timezone?: string; holdMinutes?: number }>> {
+    return this.get<{ availability: Array<{
+      date: string;
+      dayOfWeek: string;
+      timezone: string;
+      sessionDuration: number;
+      isAvailable: boolean;
+      slots: Array<{
+        startTime: string;
+        endTime: string;
+        startsAt: string;
+        endsAt: string;
+        status: 'available' | 'booked' | 'pending' | 'unavailable' | 'past';
+        isSelectable: boolean;
+        label: string;
+        statusLabel: string;
+      }>;
+    }>; date?: string; timezone?: string; holdMinutes?: number }>(`/counsellors/${id}/availability`, { startDate, endDate, duration });
   }
 
   async getSpecializations(): Promise<ApiResponse<{ specializations: string[] }>> {
@@ -208,6 +251,7 @@ class ApiClient {
     sessionDuration: number;
     scheduledAt?: string;
     amount?: number;
+    promoCode?: string;
     preferences?: { gender?: string; sessionType?: string };
     symptoms?: string[];
     concerns?: string;
@@ -240,8 +284,8 @@ class ApiClient {
   // ─── Payments ──────────────────────────────────────────────────────────────
   async createCheckoutSession(
     bookingId: string,
-  ): Promise<ApiResponse<{ sessionId?: string; sessionUrl?: string; orderId?: string; amount?: number; currency?: string; paymentMethod: string }>> {
-    return this.post<{ sessionId?: string; sessionUrl?: string; orderId?: string; amount?: number; currency?: string; paymentMethod: string }>(
+  ): Promise<ApiResponse<{ sessionId?: string; sessionUrl?: string; orderId?: string; amount?: number; currency?: string; paymentMethod: string; alreadyPaid?: boolean }>> {
+    return this.post<{ sessionId?: string; sessionUrl?: string; orderId?: string; amount?: number; currency?: string; paymentMethod: string; alreadyPaid?: boolean }>(
       '/payments/create-checkout-session',
       { bookingId },
     );

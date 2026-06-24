@@ -85,10 +85,10 @@ export interface Counsellor {
 }
 
 // ─── Booking ──────────────────────────────────────────────────────────────────
-export type BookingStatus = 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
+export type BookingStatus = 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show' | 'expired';
 export type SessionType   = 'video' | 'audio' | 'chat';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
-export type PaymentMethod = 'razorpay' | 'wallet' | 'subscription';
+export type PaymentMethod = 'razorpay' | 'wallet' | 'subscription' | 'promo';
 
 export interface Booking {
   id: string;
@@ -104,6 +104,10 @@ export interface Booking {
   currency: string;
   paymentStatus: PaymentStatus;
   paymentMethod?: PaymentMethod;
+  promo?: {
+    code?: string;
+    discountAmount?: number;
+  };
   isSubscriptionBooking?: boolean;
   symptoms?: string[];
   concerns?: string;

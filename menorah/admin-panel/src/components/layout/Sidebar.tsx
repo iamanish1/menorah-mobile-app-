@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Bot, CircleGauge, FileText, LogOut, Menu, SendHorizontal, ShieldCheck, UserRoundCheck, UsersRound, WalletCards, X
+  Bot, CircleGauge, FileText, LogOut, Menu, MonitorCog, SendHorizontal, ShieldCheck, UserRoundCheck, UsersRound, WalletCards, X
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -18,6 +18,7 @@ const navItems = [
   { href: '/payouts',     label: 'Payout History',    icon: SendHorizontal },
   { href: '/articles',    label: 'Articles',          icon: FileText       },
   { href: '/ai-social-studio', label: 'AI Social Studio', icon: Bot         },
+  { href: '/server-usage', label: 'Server Usage',      icon: MonitorCog     },
 ];
 
 export default function Sidebar() {

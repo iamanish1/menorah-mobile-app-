@@ -1,0 +1,16 @@
+{
+  "name": "menorah-production-qa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Safe production QA smoke tests for Menorah.",
+  "scripts": {
+    "test:web": "playwright test -c playwright.config.js",
+    "test:api": "node production-api-smoke.js",
+    "test:otp": "node production-auth-smoke.js",
+    "test:providers": "node production-provider-check.js",
+    "test:all-safe": "npm run test:api && npm run test:web"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1"
+  }
+}

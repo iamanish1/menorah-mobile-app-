@@ -40,6 +40,7 @@ Create these public hostnames in Cloudflare:
 www.menorah.me          -> http://reverse-proxy:80
 app.menorah.me          -> http://reverse-proxy:80
 admin.menorah.me        -> http://reverse-proxy:80
+counsellor.menorah.me   -> http://reverse-proxy:80
 api-ios.menorah.me      -> http://reverse-proxy:80
 api-android.menorah.me  -> http://reverse-proxy:80
 api-web.menorah.me      -> http://reverse-proxy:80
@@ -96,6 +97,7 @@ curl -i https://api-admin.menorah.me/health/ready
 curl -i https://www.menorah.me
 curl -i https://app.menorah.me
 curl -i https://admin.menorah.me
+curl -i https://counsellor.menorah.me/register
 ```
 
 ## Add A Second Connector Later
@@ -113,5 +115,5 @@ After first go-live is stable:
 - Do not expose MongoDB or Redis ports.
 - Do not create public hostnames for internal monitoring tools.
 - Do not route `/socket.io/` to Cloud Run fallback services.
-- Browser camera and microphone permissions are allowed only on `app.menorah.me` and `calls.menorah.me`.
+- Browser camera and microphone permissions are allowed only on `app.menorah.me`, `counsellor.menorah.me`, and `calls.menorah.me`.
 - Keep `admin.menorah.me` behind admin auth and monitor login failures.

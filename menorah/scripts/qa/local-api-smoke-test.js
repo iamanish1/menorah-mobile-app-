@@ -14,9 +14,9 @@ const config = {
   apiWeb: process.env.QA_API_WEB_URL || DEFAULTS.apiWeb,
   apiAdmin: process.env.QA_API_ADMIN_URL || DEFAULTS.apiAdmin,
   worker: process.env.QA_WORKER_URL || DEFAULTS.worker,
-  adminEmail: process.env.QA_ADMIN_EMAIL || 'qa.admin+local@menorah.test',
-  normalEmail: process.env.QA_USER_EMAIL || 'qa.user+local@menorah.test',
-  password: process.env.QA_USER_PASSWORD || 'TestPass123!',
+  adminEmail: process.env.QA_ADMIN_EMAIL,
+  normalEmail: process.env.QA_USER_EMAIL,
+  password: process.env.QA_USER_PASSWORD,
   runId: Date.now() % 100000,
 };
 
@@ -156,16 +156,23 @@ async function main() {
     headers: qaForwardedFor(1),
     body: {},
   });
-  const adminLogin = await expectJsonSuccess('api-admin seeded admin login succeeds', config.apiAdmin, '/api/auth/login', {
-    method: 'POST',
-    headers: qaForwardedFor(2),
-    body: { email: config.adminEmail, password: config.password },
-  });
-  await expectStatus('api-admin seeded normal user rejected', config.apiAdmin, '/api/auth/login', 403, {
-    method: 'POST',
-    headers: qaForwardedFor(3),
-    body: { email: config.normalEmail, password: config.password },
-  });
+  const canRunSeededAuth = config.adminEmail && config.normalEmail && config.password;
+  let adminLogin = null;
+  if (canRunSeededAuth) {
+    adminLogin = await expectJsonSuccess('api-admin seeded admin login succeeds', config.apiAdmin, '/api/auth/login', {
+      method: 'POST',
+      headers: qaForwardedFor(2),
+      body: { email: config.adminEmail, password: config.password },
+    });
+    await expectStatus('api-admin seeded normal user rejected', config.apiAdmin, '/api/auth/login', 403, {
+      method: 'POST',
+      headers: qaForwardedFor(3),
+      body: { email: config.normalEmail, password: config.password },
+    });
+  } else {
+    pushResult('BLOCKED', 'api-admin seeded admin login succeeds', 'set QA_ADMIN_EMAIL, QA_USER_EMAIL, and QA_USER_PASSWORD to run');
+    pushResult('BLOCKED', 'api-admin seeded normal user rejected', 'set QA_ADMIN_EMAIL, QA_USER_EMAIL, and QA_USER_PASSWORD to run');
+  }
   await expectStatus('api-admin register route absent', config.apiAdmin, '/api/auth/register', 404, {
     method: 'POST',
     headers: qaForwardedFor(4),

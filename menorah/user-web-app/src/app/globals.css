@@ -5,6 +5,10 @@
 @tailwind utilities;
 
 :root {
+  --app-root-font-size: clamp(14px, 13px + 0.35vw, 18px);
+  --app-fluid-page-x: clamp(1rem, 3vw, 2.5rem);
+  --app-fluid-page-y: clamp(1rem, 2.4vw, 2.25rem);
+  --app-fluid-card-padding: clamp(1rem, 1.4vw, 1.5rem);
   --app-primary: #2d7a5c;
   --app-secondary: #3d9470;
   --app-accent: #ff7d10;
@@ -69,11 +73,16 @@ html.dark {
 
 @layer base {
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
+  html {
+    scroll-behavior: smooth;
+    font-size: var(--app-root-font-size);
+  }
   body {
     font-family: 'Inter', system-ui, sans-serif;
     background: var(--app-bg);
     color: var(--app-text);
+    min-width: 320px;
+    overflow-x: clip;
     @apply antialiased;
   }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -92,6 +101,8 @@ html.dark {
   .btn-primary {
     @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-full
            px-5 py-3 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+    min-height: clamp(2.5rem, 2.3rem + 0.45vw, 3rem);
+    font-size: clamp(0.875rem, 0.82rem + 0.16vw, 1rem);
   }
   .btn-secondary {
     background: var(--app-card);
@@ -99,6 +110,8 @@ html.dark {
     border-color: var(--app-border);
     @apply hover:bg-primary-50/70 dark:hover:bg-primary-900/70 font-semibold rounded-full
            px-5 py-3 border transition-colors duration-150;
+    min-height: clamp(2.5rem, 2.3rem + 0.45vw, 3rem);
+    font-size: clamp(0.875rem, 0.82rem + 0.16vw, 1rem);
   }
   .input-field {
     background: var(--app-card);
@@ -107,6 +120,8 @@ html.dark {
     @apply w-full px-4 py-3 rounded-2xl border
            placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2
            focus:ring-primary-500 focus:border-transparent transition-all duration-150;
+    min-height: clamp(2.65rem, 2.45rem + 0.5vw, 3.15rem);
+    font-size: clamp(0.875rem, 0.82rem + 0.18vw, 1rem);
   }
   .app-select {
     width: 100%;
@@ -215,20 +230,31 @@ html.dark {
   }
   .section-title {
     color: var(--app-text);
-    @apply text-xl font-bold;
+    font-size: clamp(1.1rem, 0.98rem + 0.38vw, 1.45rem);
+    @apply font-bold;
   }
   .page-container {
-    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6;
+    width: 100%;
+    max-width: min(92rem, calc(100vw - 1rem));
+    margin-left: auto;
+    margin-right: auto;
+    padding: var(--app-fluid-page-y) var(--app-fluid-page-x);
   }
   .app-page-heading {
-    @apply text-2xl sm:text-3xl font-black tracking-tight text-gray-950 dark:text-primary-50;
+    font-size: clamp(1.45rem, 1.05rem + 1.1vw, 2.35rem);
+    @apply font-black tracking-tight text-gray-950 dark:text-primary-50;
   }
   .app-page-subtitle {
-    @apply text-sm sm:text-base text-gray-500 dark:text-primary-100/70;
+    font-size: clamp(0.88rem, 0.82rem + 0.22vw, 1.08rem);
+    @apply text-gray-500 dark:text-primary-100/70;
   }
   .app-pill {
     @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-primary-100 bg-white px-4 text-sm font-bold text-gray-700 shadow-sm transition-colors
            hover:bg-primary-50 dark:border-primary-800 dark:bg-primary-900 dark:text-primary-100 dark:hover:bg-primary-800;
+    min-height: clamp(2.5rem, 2.25rem + 0.55vw, 3rem);
+    padding-left: clamp(0.85rem, 0.65rem + 0.55vw, 1.25rem);
+    padding-right: clamp(0.85rem, 0.65rem + 0.55vw, 1.25rem);
+    font-size: clamp(0.8rem, 0.74rem + 0.18vw, 0.95rem);
   }
   .app-pill-active {
     @apply border-primary-600 bg-primary-600 text-white hover:bg-primary-700 dark:border-primary-500 dark:bg-primary-500 dark:text-white;

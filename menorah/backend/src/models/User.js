@@ -148,6 +148,25 @@ const userSchema = new mongoose.Schema({
     faceCheckConfidence: Number
   },
 
+  socialAuth: {
+    googleSub: {
+      type: String,
+      default: null,
+      index: true,
+      sparse: true
+    },
+    appleSub: {
+      type: String,
+      default: null,
+      index: true,
+      sparse: true
+    },
+    appleEmailPrivateRelay: {
+      type: Boolean,
+      default: false
+    }
+  },
+
   // Role
   role: {
     type: String,

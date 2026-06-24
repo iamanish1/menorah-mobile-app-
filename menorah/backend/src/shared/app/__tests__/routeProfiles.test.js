@@ -153,6 +153,22 @@ describe('route profiles', () => {
       .expect(401);
   });
 
+  test('user-facing api profiles expose social auth routes with validation', async () => {
+    for (const profileName of ['api-ios', 'api-android', 'api-web']) {
+      const app = buildProfileApp(profileName);
+
+      await request(app)
+        .post('/api/auth/google')
+        .send({})
+        .expect(400);
+
+      await request(app)
+        .post('/api/auth/apple')
+        .send({})
+        .expect(400);
+    }
+  });
+
   test('api-admin exposes admin routes but not public payment checkout', async () => {
     const app = buildProfileApp('api-admin');
 
@@ -181,7 +197,21 @@ describe('route profiles', () => {
       .expect(404);
 
     await request(app)
+      .post('/api/auth/google')
+      .send({})
+      .expect(404);
+
+    await request(app)
+      .post('/api/auth/apple')
+      .send({})
+      .expect(404);
+
+    await request(app)
       .get('/api/admin/stats')
+      .expect(401);
+
+    await request(app)
+      .get('/api/admin/server-usage')
       .expect(401);
 
     await request(app)

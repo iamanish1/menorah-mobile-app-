@@ -5,8 +5,13 @@ const Razorpay = require('razorpay');
 const Booking = require('../models/Booking');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
+const {
+  expireStalePendingBookings,
+  isBlockingBooking,
+} = require('../utils/bookingAvailability');
 
 const router = express.Router();
+const SLOT_EXPIRED_MESSAGE = 'This slot expired while waiting for payment. Please choose another available time.';
 
 // Lazy initialization of Razorpay client
 let razorpayClient = null;
@@ -57,7 +62,29 @@ router.post('/create-checkout-session', [
     }
 
     if (booking.paymentStatus === 'paid') {
-      return res.status(400).json({ success: false, message: 'Payment already completed' });
+      return res.json({
+        success: true,
+        message: 'Payment already completed',
+        data: {
+          bookingId: booking._id,
+          amount: Math.round((booking.amount || 0) * 100),
+          currency: booking.currency || 'INR',
+          paymentMethod: booking.paymentMethod || 'razorpay',
+          alreadyPaid: true
+        }
+      });
+    }
+
+    if (booking.status === 'pending' && booking.paymentStatus === 'pending') {
+      await expireStalePendingBookings(Booking, { _id: booking._id });
+      const freshBooking = await Booking.findById(booking._id);
+      if (!freshBooking || freshBooking.status === 'expired' || !isBlockingBooking(freshBooking)) {
+        return res.status(409).json({
+          success: false,
+          code: 'SLOT_EXPIRED',
+          message: SLOT_EXPIRED_MESSAGE
+        });
+      }
     }
 
     const razorpay = getRazorpayClient();
@@ -223,6 +250,18 @@ router.post('/verify-razorpay', [
     // Order ID validation — prevent payment-replay across different bookings
     if (booking.razorpayOrderId && booking.razorpayOrderId !== razorpay_order_id) {
       return res.status(400).json({ success: false, message: 'Order ID does not match booking' });
+    }
+
+    if (booking.status === 'pending' && booking.paymentStatus === 'pending') {
+      await expireStalePendingBookings(Booking, { _id: booking._id });
+      const freshBooking = await Booking.findById(booking._id);
+      if (!freshBooking || freshBooking.status === 'expired' || !isBlockingBooking(freshBooking)) {
+        return res.status(409).json({
+          success: false,
+          code: 'SLOT_EXPIRED',
+          message: SLOT_EXPIRED_MESSAGE
+        });
+      }
     }
 
     const text = `${razorpay_order_id}|${razorpay_payment_id}`;
@@ -599,21 +638,24 @@ const handleRazorpayPaymentSuccess = async (payment, io) => {
   const booking = await Booking.findById(bookingId);
   if (!booking) return;
   if (booking.paymentStatus === 'paid') return; // idempotency guard
+  await expireStalePendingBookings(Booking, { _id: booking._id });
+  const freshBooking = await Booking.findById(booking._id);
+  if (!freshBooking || freshBooking.status === 'expired' || !isBlockingBooking(freshBooking)) return;
 
-  booking.paymentStatus  = 'paid';
-  booking.paymentId      = payment.id;
-  booking.transactionId  = payment.order_id;
-  booking.orderStatus    = 'paid';
-  booking.status         = 'confirmed';
-  await booking.save();
+  freshBooking.paymentStatus  = 'paid';
+  freshBooking.paymentId      = payment.id;
+  freshBooking.transactionId  = payment.order_id;
+  freshBooking.orderStatus    = 'paid';
+  freshBooking.status         = 'confirmed';
+  await freshBooking.save();
 
-  if (!booking.counsellor && io) {
+  if (!freshBooking.counsellor && io) {
     const CounsellorModel = require('../models/Counsellor');
     const available = await CounsellorModel.find({ isActive: true, isAvailable: true }).select('_id').lean();
     const notification = {
-      bookingId: booking._id, sessionType: booking.sessionType,
-      sessionDuration: booking.sessionDuration, scheduledAt: booking.scheduledAt,
-      amount: booking.amount, preferences: booking.preferences, createdAt: booking.createdAt,
+      bookingId: freshBooking._id, sessionType: freshBooking.sessionType,
+      sessionDuration: freshBooking.sessionDuration, scheduledAt: freshBooking.scheduledAt,
+      amount: freshBooking.amount, preferences: freshBooking.preferences, createdAt: freshBooking.createdAt,
     };
     available.forEach(c => io.to(`counsellor_${c._id}`).emit('new_booking_available', notification));
   }
@@ -626,6 +668,7 @@ const handleRazorpayPaymentFailure = async (payment) => {
   if (!booking || booking.paymentStatus === 'paid') return; // don't overwrite a successful payment
   booking.paymentStatus      = 'failed';
   booking.orderStatus        = 'failed';
+  booking.status             = 'expired';
   booking.paymentAttemptedAt = new Date();
   await booking.save();
 };
@@ -634,12 +677,15 @@ const handleRazorpayOrderPaid = async (order) => {
   const booking = await Booking.findOne({ razorpayOrderId: order.id });
   if (!booking) return;
   if (booking.paymentStatus === 'paid') return; // idempotency guard
-  booking.paymentStatus = 'paid';
-  booking.orderStatus   = 'paid';
-  booking.status        = 'confirmed';
+  await expireStalePendingBookings(Booking, { _id: booking._id });
+  const freshBooking = await Booking.findById(booking._id);
+  if (!freshBooking || freshBooking.status === 'expired' || !isBlockingBooking(freshBooking)) return;
+  freshBooking.paymentStatus = 'paid';
+  freshBooking.orderStatus   = 'paid';
+  freshBooking.status        = 'confirmed';
   // Record payment ID from the order.paid event if available
-  if (order.payment_id) booking.paymentId = order.payment_id;
-  await booking.save();
+  if (order.payment_id) freshBooking.paymentId = order.payment_id;
+  await freshBooking.save();
 };
 
 module.exports = router;

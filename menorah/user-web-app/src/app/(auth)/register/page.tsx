@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { Eye, EyeOff, Mail, Lock, User, Phone, Calendar } from 'lucide-react';
 import { Button, Input, Select } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
+import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 
 // Backend validation rules:
 // - phone must match /^\+[1-9]\d{1,14}$/ (E.164 format with country code, no spaces)
@@ -66,6 +67,14 @@ export default function RegisterPage() {
           {serverError}
         </div>
       )}
+
+      <GoogleAuthButton mode="signup" onError={setServerError} />
+
+      <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-primary-100/45">
+        <span className="h-px flex-1 bg-gray-200 dark:bg-primary-800" />
+        <span>or create with email</span>
+        <span className="h-px flex-1 bg-gray-200 dark:bg-primary-800" />
+      </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">

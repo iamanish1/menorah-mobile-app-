@@ -87,15 +87,15 @@ export function SupportPathwaySection() {
       ref={sectionRef}
       id="support-pathway"
       aria-labelledby="support-pathway-title"
-      className="relative min-h-[460vh] bg-menorah-page text-foreground"
+      className="relative min-h-[410svh] bg-menorah-page text-foreground sm:min-h-[430svh] lg:min-h-[460svh]"
     >
       <h2 id="support-pathway-title" className="sr-only">
         Menorah app feature scroll showcase
       </h2>
-      <div className="sticky top-0 flex h-screen overflow-hidden px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
+      <div className="sticky top-0 flex h-[100svh] min-h-[680px] overflow-hidden px-[clamp(1rem,3vw,2.5rem)] pb-[clamp(1.25rem,3vh,2rem)] pt-[clamp(5.75rem,10vh,7rem)] max-sm:min-h-[720px]">
         <div className="feature-transition-glow pointer-events-none absolute inset-x-[-14%] top-0 z-[1] h-40 opacity-60" />
         <div
-          className="relative z-10 mx-auto grid h-full w-full max-w-7xl grid-rows-[minmax(0,0.58fr)_minmax(0,0.42fr)] items-center gap-3 md:grid-rows-[minmax(0,0.56fr)_minmax(0,0.44fr)] lg:grid-cols-[0.9fr_1fr] lg:grid-rows-none lg:gap-14"
+          className="relative z-10 mx-auto grid h-full w-full max-w-[min(78rem,96vw)] grid-rows-[minmax(0,0.56fr)_minmax(0,0.44fr)] items-center gap-[clamp(0.75rem,2vh,1.5rem)] md:grid-rows-[minmax(0,0.55fr)_minmax(0,0.45fr)] lg:grid-cols-[minmax(20rem,0.86fr)_minmax(24rem,1fr)] lg:grid-rows-none lg:gap-[clamp(2.5rem,5vw,4.5rem)]"
           style={stageStyle}
         >
           <div className="relative flex h-full min-h-0 items-center justify-center">
@@ -149,7 +149,7 @@ function PhoneGlowBackdrop({
 
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-1/2 z-0 aspect-[0.82] w-[min(82vw,520px)] -translate-y-1/2 lg:w-[min(39vw,560px)]"
+      className="pointer-events-none absolute left-1/2 top-1/2 z-0 aspect-[0.82] w-[min(70vw,430px)] -translate-y-1/2 sm:w-[min(52vw,470px)] lg:w-[min(31vw,500px)]"
       style={shellStyle}
       aria-hidden="true"
     >
@@ -188,10 +188,10 @@ function PhoneMockup({
       smoothReveal
     )}px rgba(6,16,11,0.42))`,
     transform: `translate3d(0, ${lerp(
-      compactViewport ? 42 : 58,
-      compactViewport ? -6 : -12,
+      compactViewport ? 34 : 46,
+      compactViewport ? -2 : -8,
       smoothReveal
-    )}px, 0) rotateZ(0deg) scale(${lerp(compactViewport ? 0.9 : 0.92, 1.04, smoothReveal)})`,
+    )}px, 0) rotateZ(0deg) scale(${lerp(compactViewport ? 0.86 : 0.9, compactViewport ? 0.94 : 0.98, smoothReveal)})`,
     transformOrigin: "bottom center",
     willChange: reducedMotion ? undefined : "transform, opacity, filter"
   };
@@ -199,7 +199,7 @@ function PhoneMockup({
   return (
     <div
       data-menorah-landing-theme="source"
-      className="relative z-10 mx-auto aspect-[9/18.7] w-[min(58vw,270px)] max-w-[290px] sm:w-[min(48vw,330px)] lg:w-[min(31vw,390px)] lg:max-w-[390px]"
+      className="relative z-10 mx-auto aspect-[9/18.7] w-[min(54vw,230px)] max-w-[250px] sm:w-[min(40vw,285px)] lg:w-[min(27vw,340px)] lg:max-w-[340px]"
       style={phoneStyle}
       aria-label={`Menorah app example: ${featureSlides[activeIndex].title}`}
     >
@@ -735,18 +735,18 @@ function FeatureCopyStack({
 
   return (
     <div
-      className="relative flex h-full min-h-0 items-start justify-center pt-1 md:items-center md:pt-0 lg:justify-start"
+      className="relative flex h-full min-h-0 items-start justify-center pt-0 md:items-center lg:justify-start"
       style={entranceStyle}
     >
-      <div className="relative h-full w-full max-w-xl lg:h-[560px]">
+      <div className="relative h-full w-full max-w-[min(38rem,92vw)] lg:h-[min(58svh,32rem)] lg:min-h-[27rem]">
         <div className="absolute left-0 top-0 hidden lg:block">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-menorah-green">In the app</p>
-          <h2 className="mt-4 max-w-[600px] font-display text-5xl leading-tight">
+          <h2 className="mt-4 max-w-[min(38rem,48vw)] font-display text-[clamp(2.55rem,4.4vw,4.25rem)] leading-[1.05]">
             Watch the phone change as support unfolds.
           </h2>
         </div>
 
-        <div className="absolute inset-x-0 top-0 lg:top-52">
+        <div className="absolute inset-x-0 top-0 lg:top-[clamp(12rem,27vh,15.5rem)]">
           {featureSlides.map((feature, index) => {
             const delta = reducedMotion ? index : index - journeyProgress;
             const distance = Math.abs(delta);
@@ -767,7 +767,7 @@ function FeatureCopyStack({
             return (
               <article
                 key={feature.title}
-                className="absolute inset-x-0 rounded-lg border border-foreground/8 bg-white/92 p-5 shadow-[0_18px_55px_rgba(35,45,36,0.1)] backdrop-blur-sm md:p-6"
+                className="absolute inset-x-0 rounded-lg border border-foreground/8 bg-white/92 p-[clamp(1rem,2vw,1.5rem)] shadow-[0_18px_55px_rgba(35,45,36,0.1)] backdrop-blur-sm"
                 style={{ ...copyStyle, backgroundImage: feature.surface }}
                 aria-hidden={activeIndex !== index}
               >
@@ -779,12 +779,12 @@ function FeatureCopyStack({
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-menorah-olive">
                       {feature.kicker}
                     </p>
-                    <h3 className="mt-2 text-2xl font-semibold leading-tight text-foreground md:text-3xl">
+                    <h3 className="mt-2 text-[clamp(1.45rem,2.5vw,2rem)] font-semibold leading-tight text-foreground">
                       {feature.title}
                     </h3>
                   </div>
                 </div>
-                <p className="mt-4 text-sm leading-6 text-foreground/72 md:text-base md:leading-7">{feature.body}</p>
+                <p className="mt-4 text-[clamp(0.9rem,1.25vw,1rem)] leading-6 text-foreground/72 md:leading-7">{feature.body}</p>
                 <ul className="mt-4 grid gap-2 text-sm font-medium text-foreground/72">
                   {feature.points.map((point) => (
                     <li key={point} className="flex items-center gap-2">
@@ -812,7 +812,7 @@ function FeatureCopyStack({
         </div>
       </div>
 
-      <div className="absolute right-0 top-0 hidden items-center gap-2 rounded-lg border border-menorah-green/10 bg-white/70 px-3 py-2 text-xs font-semibold text-menorah-green shadow-sm lg:flex">
+      <div className="absolute right-0 top-0 hidden items-center gap-2 rounded-lg border border-menorah-green/10 bg-white/70 px-3 py-2 text-xs font-semibold text-menorah-green shadow-sm xl:flex">
         <Sparkles className="h-4 w-4" aria-hidden="true" />
         Scroll controlled
       </div>

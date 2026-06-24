@@ -51,13 +51,13 @@ const bookingSchema = new mongoose.Schema({
   // Status tracking
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show'],
+    enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'expired'],
     default: 'pending'
   },
   statusHistory: [{
     status: {
       type: String,
-      enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show']
+      enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'expired']
     },
     timestamp: {
       type: Date,
@@ -87,7 +87,7 @@ const bookingSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['razorpay', 'wallet', 'subscription'],
+    enum: ['razorpay', 'wallet', 'subscription', 'promo'],
     required: true
   },
   paymentId: String,
@@ -106,6 +106,15 @@ const bookingSchema = new mongoose.Schema({
   },
   orderCreatedAt: Date,
   paymentAttemptedAt: Date,
+  holdExpiresAt: Date,
+  promo: {
+    code: String,
+    appliedAt: Date,
+    discountAmount: {
+      type: Number,
+      default: 0
+    }
+  },
 
   // Session details
   sessionNotes: {
@@ -253,6 +262,17 @@ bookingSchema.index({ status: 1, scheduledAt: 1 });
 bookingSchema.index({ paymentStatus: 1 });
 bookingSchema.index({ razorpayOrderId: 1 });                          // payment verification lookup
 bookingSchema.index({ 'videoCall.roomId': 1 });
+bookingSchema.index(
+  { counsellor: 1, scheduledAt: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      counsellor: { $exists: true, $type: 'objectId' },
+      status: { $in: ['pending', 'confirmed', 'in-progress'] },
+    },
+  }
+);
+bookingSchema.index({ status: 1, paymentStatus: 1, holdExpiresAt: 1 });
 
 // Pre-save middleware to update status history
 bookingSchema.pre('save', function(next) {

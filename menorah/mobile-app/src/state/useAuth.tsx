@@ -16,6 +16,13 @@ interface AuthContextType {
   isAuthed: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<AuthResult>;
+  loginWithGoogle: (credential: string) => Promise<AuthResult>;
+  loginWithApple: (data: {
+    identityToken: string;
+    authorizationCode?: string | null;
+    email?: string | null;
+    fullName?: string | null;
+  }) => Promise<AuthResult>;
   register: (userData: {
     firstName: string;
     lastName: string;
@@ -143,6 +150,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     }
   };
+
+  const completeSocialLogin = async (
+    request: Promise<{ success: boolean; message?: string; data?: { user: User; token: string }; errors?: ApiValidationError[] }>
+  ): Promise<AuthResult> => {
+    try {
+      const response = await request;
+
+      if (response.success && response.data?.user && response.data?.token) {
+        await api.setToken(response.data.token);
+        setUser(response.data.user);
+        return { success: true };
+      }
+
+      return {
+        success: false,
+        message: validationErrorsToMessage(response.errors) || response.message || 'Social sign-in failed',
+        errors: response.errors,
+      };
+    } catch (error: any) {
+      console.error('[Auth] Social login error:', error);
+      return {
+        success: false,
+        message: validationErrorsToMessage(error.response?.data?.errors) || error.response?.data?.message || error.message || 'Social sign-in failed',
+        errors: error.response?.data?.errors,
+      };
+    }
+  };
+
+  const loginWithGoogle = async (credential: string) =>
+    completeSocialLogin(api.loginWithGoogle(credential));
+
+  const loginWithApple = async (data: {
+    identityToken: string;
+    authorizationCode?: string | null;
+    email?: string | null;
+    fullName?: string | null;
+  }) => completeSocialLogin(api.loginWithApple(data));
 
   const register = async (userData: {
     firstName: string;
@@ -358,6 +402,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthed,
     isLoading,
     login,
+    loginWithGoogle,
+    loginWithApple,
     register,
     logout,
     verifyEmail,

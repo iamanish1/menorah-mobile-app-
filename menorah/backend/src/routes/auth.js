@@ -3,12 +3,20 @@ const { body, validationResult } = require('express-validator');
 const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const axios  = require('axios');
 const User   = require('../models/User');
 const { auth } = require('../middleware/auth');
 const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
 const { getRedisClient } = require('../config/redis');
 
 const router = express.Router();
+const emailNormalizationOptions = {
+  gmail_remove_dots: false,
+  gmail_remove_subaddress: false,
+  outlookdotcom_remove_subaddress: false,
+  yahoo_remove_subaddress: false,
+  icloud_remove_subaddress: false,
+};
 
 // ── JWT token generation ───────────────────────────────────────────────────
 // Algorithm pinned to HS256.  fullName removed from payload — PII should not
@@ -58,6 +66,208 @@ const deletePendingReg = async (email) => {
   try { await getRedisClient().del(`pending:reg:${email}`); } catch {}
 };
 
+const getGoogleClientIds = () => [
+  process.env.GOOGLE_WEB_CLIENT_ID,
+  process.env.GOOGLE_IOS_CLIENT_ID,
+  process.env.GOOGLE_ANDROID_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
+]
+  .map((value) => String(value || '').trim())
+  .filter(Boolean);
+
+const splitGoogleName = (payload = {}) => {
+  const givenName = String(payload.given_name || '').trim();
+  const familyName = String(payload.family_name || '').trim();
+  const fullName = String(payload.name || '').trim();
+
+  if (givenName || familyName) {
+    return {
+      firstName: givenName || fullName.split(/\s+/)[0] || 'Menorah',
+      lastName: familyName || fullName.split(/\s+/).slice(1).join(' ') || 'User'
+    };
+  }
+
+  const parts = fullName.split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || 'Menorah',
+    lastName: parts.slice(1).join(' ') || 'User'
+  };
+};
+
+const splitDisplayName = (fullName, fallbackFirst = 'Menorah', fallbackLast = 'User') => {
+  const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || fallbackFirst,
+    lastName: parts.slice(1).join(' ') || fallbackLast
+  };
+};
+
+const serializeAuthUser = (user) => ({
+  id: user._id.toString(),
+  firstName: user.firstName,
+  lastName: user.lastName,
+  email: user.email,
+  phone: user.phone,
+  isEmailVerified: user.isEmailVerified,
+  isPhoneVerified: user.isPhoneVerified,
+  profileImage: user.profileImage,
+  role: user.role || 'user',
+  kyc: user.kyc,
+});
+
+const verifyGoogleCredential = async (credential) => {
+  const clientIds = getGoogleClientIds();
+  if (clientIds.length === 0) {
+    throw new Error('Google OAuth is not configured');
+  }
+
+  const response = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
+    params: { id_token: credential },
+    timeout: 8000
+  });
+  const payload = response.data || {};
+
+  if (!payload.sub || !payload.email) {
+    throw new Error('Google credential is missing required identity fields');
+  }
+  if (!clientIds.includes(payload.aud)) {
+    throw new Error('Google credential audience is not allowed');
+  }
+  if (String(payload.email_verified) !== 'true') {
+    throw new Error('Google account email is not verified');
+  }
+
+  return payload;
+};
+
+const getAppleAudiences = () => [
+  process.env.APPLE_IOS_BUNDLE_ID,
+  process.env.APPLE_WEB_SERVICE_ID
+]
+  .map((value) => String(value || '').trim())
+  .filter(Boolean);
+
+const getAppleSigningKey = async (kid) => {
+  const response = await axios.get('https://appleid.apple.com/auth/keys', { timeout: 8000 });
+  const key = response.data?.keys?.find((candidate) => candidate.kid === kid);
+  if (!key) throw new Error('Apple signing key was not found');
+  return crypto.createPublicKey({ key, format: 'jwk' });
+};
+
+const verifyJwtAsync = (token, getKey, options) =>
+  new Promise((resolve, reject) => {
+    jwt.verify(token, getKey, options, (error, decoded) => {
+      if (error) return reject(error);
+      resolve(decoded);
+    });
+  });
+
+const verifyAppleIdentityToken = async (identityToken) => {
+  const audiences = getAppleAudiences();
+  if (audiences.length === 0) {
+    throw new Error('Apple Sign in is not configured');
+  }
+
+  const decodedHeader = jwt.decode(identityToken, { complete: true })?.header;
+  if (!decodedHeader?.kid) {
+    throw new Error('Apple identity token is missing key id');
+  }
+
+  return verifyJwtAsync(
+    identityToken,
+    async (header, callback) => {
+      try {
+        const key = await getAppleSigningKey(header.kid);
+        callback(null, key);
+      } catch (error) {
+        callback(error);
+      }
+    },
+    {
+      algorithms: ['RS256'],
+      issuer: 'https://appleid.apple.com',
+      audience: audiences
+    }
+  );
+};
+
+const findOrCreateSocialUser = async ({
+  provider,
+  subject,
+  email,
+  firstName,
+  lastName,
+  profileImage = null,
+  privateRelay = false
+}) => {
+  const normalizedEmail = String(email || '').toLowerCase().trim();
+  const socialPath = provider === 'apple' ? 'socialAuth.appleSub' : 'socialAuth.googleSub';
+  const lookup = [{ [socialPath]: subject }];
+  if (normalizedEmail) lookup.push({ email: normalizedEmail });
+
+  let user = await User.findOne({ $or: lookup });
+  const existingUser = Boolean(user);
+
+  if (user && !user.isActive) {
+    const error = new Error('Inactive social auth account');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  if (!user) {
+    const safeEmail = normalizedEmail || `${provider}-${subject}@menorah.local`;
+    const fallbackPhone = `${provider}:${subject}`;
+    user = await User.create({
+      email: safeEmail,
+      phone: fallbackPhone,
+      password: crypto.randomBytes(32).toString('hex'),
+      firstName: firstName || 'Menorah',
+      lastName: lastName || 'User',
+      dateOfBirth: new Date('1970-01-01'),
+      gender: 'prefer-not-to-say',
+      profileImage,
+      role: 'user',
+      isActive: true,
+      isEmailVerified: Boolean(normalizedEmail),
+      isPhoneVerified: false,
+      socialAuth: {
+        googleSub: provider === 'google' ? subject : undefined,
+        appleSub: provider === 'apple' ? subject : undefined,
+        appleEmailPrivateRelay: provider === 'apple' ? Boolean(privateRelay) : undefined
+      }
+    });
+    return { user, existingUser };
+  }
+
+  user.socialAuth = user.socialAuth || {};
+  let changed = false;
+  if (provider === 'google' && user.socialAuth.googleSub !== subject) {
+    user.socialAuth.googleSub = subject;
+    changed = true;
+  }
+  if (provider === 'apple' && user.socialAuth.appleSub !== subject) {
+    user.socialAuth.appleSub = subject;
+    user.socialAuth.appleEmailPrivateRelay = Boolean(privateRelay);
+    changed = true;
+  }
+  if (normalizedEmail && !user.isEmailVerified) {
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    changed = true;
+  }
+  if (profileImage && !user.profileImage) {
+    user.profileImage = profileImage;
+    changed = true;
+  }
+  if (changed) await user.save();
+
+  return { user, existingUser };
+};
+
 // Timing-safe OTP check — SHA-256(input) vs stored hash
 const checkOTP = (storedHash, inputOtp) => {
   const inputHash = crypto.createHash('sha256').update(inputOtp).digest('hex');
@@ -85,7 +295,7 @@ const blockToken = async (token) => {
 router.post('/register', [
   body('firstName').trim().isLength({ min: 2, max: 50 }),
   body('lastName').trim().isLength({ min: 2, max: 50 }),
-  body('email').isEmail().normalizeEmail(),
+  body('email').isEmail().normalizeEmail(emailNormalizationOptions),
   body('phone').matches(/^\+[1-9]\d{1,14}$/),
   body('password').isStrongPassword({ minLength: 8, minLowercase: 1, minUppercase: 1, minNumbers: 1, minSymbols: 0 })
     .withMessage('Password must be at least 8 characters and include uppercase, lowercase, and a number'),
@@ -126,7 +336,7 @@ router.post('/register', [
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/verify-email-otp', [
-  body('email').isEmail().normalizeEmail(),
+  body('email').isEmail().normalizeEmail(emailNormalizationOptions),
   body('otp').matches(/^\d{4,6}$/),
 ], async (req, res) => {
   try {
@@ -200,7 +410,7 @@ router.post('/verify-email-otp', [
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/resend-email-otp', [
-  body('email').isEmail().normalizeEmail(),
+  body('email').isEmail().normalizeEmail(emailNormalizationOptions),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -232,7 +442,7 @@ router.post('/resend-email-otp', [
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/login', [
-  body('email').isEmail().normalizeEmail(),
+  body('email').isEmail().normalizeEmail(emailNormalizationOptions),
   body('password').notEmpty(),
 ], async (req, res) => {
   try {
@@ -282,6 +492,93 @@ router.post('/login', [
   } catch (error) {
     console.error('Login error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/auth/google
+// @desc    Sign in or create a user account with a Google ID token
+// @access  Public
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/google', [
+  body('credential').isString().trim().isLength({ min: 20 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const googleUser = await verifyGoogleCredential(req.body.credential);
+    const { firstName, lastName } = splitGoogleName(googleUser);
+    const { user, existingUser } = await findOrCreateSocialUser({
+      provider: 'google',
+      subject: googleUser.sub,
+      email: googleUser.email,
+      firstName,
+      lastName,
+      profileImage: googleUser.picture || null
+    });
+
+    const token = generateToken(user._id, user.role || 'user');
+    return res.json({
+      success: true,
+      message: existingUser ? 'Login successful' : 'Account created successfully',
+      data: {
+        user: {
+          ...serializeAuthUser(user),
+        },
+        token,
+        isNewUser: !existingUser,
+      },
+    });
+  } catch (error) {
+    console.error('Google auth error:', error.message);
+    return res.status(401).json({ success: false, message: 'Google sign-in failed. Please try again.' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/auth/apple
+// @desc    Sign in or create a user account with an Apple identity token
+// @access  Public
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/apple', [
+  body('identityToken').isString().trim().isLength({ min: 20 }),
+  body('email').optional().isEmail().normalizeEmail(emailNormalizationOptions),
+  body('fullName').optional().isString().trim().isLength({ max: 120 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const appleUser = await verifyAppleIdentityToken(req.body.identityToken);
+    const tokenEmail = String(appleUser.email || req.body.email || '').toLowerCase().trim();
+    const { firstName, lastName } = splitDisplayName(req.body.fullName, 'Menorah', 'User');
+    const { user, existingUser } = await findOrCreateSocialUser({
+      provider: 'apple',
+      subject: appleUser.sub,
+      email: tokenEmail,
+      firstName,
+      lastName,
+      privateRelay: /privaterelay\.appleid\.com$/i.test(tokenEmail)
+    });
+
+    const token = generateToken(user._id, user.role || 'user');
+    return res.json({
+      success: true,
+      message: existingUser ? 'Login successful' : 'Account created successfully',
+      data: {
+        user: serializeAuthUser(user),
+        token,
+        isNewUser: !existingUser,
+      },
+    });
+  } catch (error) {
+    console.error('Apple auth error:', error.message);
+    return res.status(error.statusCode || 401).json({ success: false, message: 'Apple sign-in failed. Please try again.' });
   }
 });
 
@@ -360,7 +657,7 @@ router.post('/verify-phone', [
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/resend-email-verification', [
-  body('email').isEmail().normalizeEmail(),
+  body('email').isEmail().normalizeEmail(emailNormalizationOptions),
 ], async (req, res) => {
   // Always return 200 — prevents email-existence enumeration
   try {
@@ -384,7 +681,7 @@ router.post('/resend-email-verification', [
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/forgot-password', [
-  body('email').isEmail().normalizeEmail(),
+  body('email').isEmail().normalizeEmail(emailNormalizationOptions),
 ], async (req, res) => {
   try {
     const { email } = req.body;

@@ -41,6 +41,13 @@ status_code() {
   curl -k -sS -X "${method}" -o "${body_file}" -w "%{http_code}" "${url}" || printf '000'
 }
 
+status_and_location() {
+  local method="$1"
+  local url="$2"
+  local body_file="$3"
+  curl -k -sS -X "${method}" -o "${body_file}" -w "%{http_code} %{redirect_url}" "${url}" || printf '000 '
+}
+
 require_code() {
   local method="$1"
   local url="$2"
@@ -76,6 +83,57 @@ require_code_any() {
   printf '%s' "${body_file}"
 }
 
+require_code_or_redirect() {
+  local method="$1"
+  local url="$2"
+  local redirect_pattern="$3"
+  shift 3
+  local body_file="${TMP_DIR}/$(echo "${method}-${url}" | tr -c 'A-Za-z0-9' '_').body"
+  local result code location
+  result="$(status_and_location "${method}" "${url}" "${body_file}")"
+  code="${result%% *}"
+  location="${result#* }"
+
+  for expected in "$@"; do
+    if [[ "${code}" == "${expected}" ]]; then
+      echo "PASS ${method} ${url} -> ${code}" >&2
+      printf '%s' "${body_file}"
+      return
+    fi
+  done
+
+  if [[ "${code}" =~ ^30[178]$ && "${location}" =~ ${redirect_pattern} ]]; then
+    echo "PASS ${method} ${url} -> ${code} ${location}" >&2
+    printf '%s' "${body_file}"
+    return
+  fi
+
+  echo "FAIL ${method} ${url} -> ${code} ${location}, expected one of: $* or redirect matching ${redirect_pattern}" >&2
+  failures=$((failures + 1))
+  printf '%s' "${body_file}"
+}
+
+require_container_probe() {
+  local container="$1"
+  local inspect
+  if ! inspect="$(docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "${container}" 2>/dev/null)"; then
+    echo "FAIL container ${container} is missing" >&2
+    failures=$((failures + 1))
+    return
+  fi
+
+  local status health
+  status="${inspect%% *}"
+  health="${inspect#* }"
+
+  if [[ "${status}" == "running" && ( "${health}" == "healthy" || "${health}" == "no-healthcheck" ) ]]; then
+    echo "PASS container ${container} -> ${status}/${health}" >&2
+  else
+    echo "FAIL container ${container} -> ${status}/${health}" >&2
+    failures=$((failures + 1))
+  fi
+}
+
 assert_no_secret_leak() {
   local body_file="$1"
   local label="$2"
@@ -93,6 +151,25 @@ assert_no_secret_leak() {
     fi
   done
 }
+
+for container in \
+  deploy-api-ios-1 \
+  deploy-api-android-1 \
+  deploy-api-web-1 \
+  deploy-api-admin-1 \
+  deploy-worker-1 \
+  deploy-mongo-primary-1 \
+  deploy-redis-1 \
+  deploy-reverse-proxy-1 \
+  deploy-cloudflared-1 \
+  deploy-prometheus-1 \
+  deploy-grafana-1 \
+  deploy-loki-1 \
+  deploy-log-collector-1 \
+  deploy-uptime-kuma-1 \
+  deploy-backup-runner-1; do
+  require_container_probe "${container}"
+done
 
 ios_deep_body="$(require_code GET "${API_IOS_BASE}/health/deep" 200)"
 assert_no_secret_leak "${ios_deep_body}" "api-ios /health/deep"
@@ -120,9 +197,9 @@ if [[ "${CHECK_PUBLIC:-false}" == "true" ]]; then
   require_code GET "https://${API_ANDROID_DOMAIN:-api-android.menorah.me}/health/ready" 200 >/dev/null
   require_code GET "https://${API_WEB_DOMAIN:-api-web.menorah.me}/health/ready" 200 >/dev/null
   require_code GET "https://${API_ADMIN_DOMAIN:-api-admin.menorah.me}/health/ready" 200 >/dev/null
-  require_code GET "https://${WWW_DOMAIN:-www.menorah.me}" 200 >/dev/null
+  require_code_or_redirect GET "https://${WWW_DOMAIN:-www.menorah.me}" "^https://${ROOT_DOMAIN:-menorah.me}/?$" 200 >/dev/null
   require_code GET "https://${APP_DOMAIN:-app.menorah.me}" 200 >/dev/null
-  require_code GET "https://${ADMIN_DOMAIN:-admin.menorah.me}" 200 >/dev/null
+  require_code_or_redirect GET "https://${ADMIN_DOMAIN:-admin.menorah.me}" "^https://${ADMIN_DOMAIN:-admin.menorah.me}/login|^/login" 200 >/dev/null
 else
   echo "Skipping public HTTPS checks. Re-run with CHECK_PUBLIC=true after Cloudflare hostnames are live."
 fi

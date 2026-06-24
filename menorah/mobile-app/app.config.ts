@@ -34,6 +34,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const configuredWebBaseUrl =
     process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim() ||
     process.env.PUBLIC_WEB_BASE_URL?.trim();
+  const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
+  const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
+  const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim();
   const configuredLocalIp = process.env.EXPO_PUBLIC_LOCAL_IP?.trim();
   const detectedLocalIp = detectLocalIp();
 
@@ -79,7 +82,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.menorah.health.app'
+      bundleIdentifier: 'com.menorah.health.app',
+      usesAppleSignIn: true
     },
     android: ({
       adaptiveIcon: {
@@ -124,7 +128,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         {
           username: 'menorahsoftware'
         }
-      ]
+      ],
+      '@react-native-google-signin/google-signin',
+      'expo-apple-authentication'
     ],
     scheme: 'menorah-health',
     extra: {
@@ -150,6 +156,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Jitsi Base URL
       JITSI_BASE_URL: process.env.EXPO_PUBLIC_JITSI_BASE_URL?.trim()
         || (isDev ? `${devApiProtocol}//${devApiHost}:8080` : undefined),
+
+      GOOGLE_WEB_CLIENT_ID: googleWebClientId,
+      GOOGLE_IOS_CLIENT_ID: googleIosClientId,
+      GOOGLE_ANDROID_CLIENT_ID: googleAndroidClientId,
       
       // EAS project configuration
       eas: {

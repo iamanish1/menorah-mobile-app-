@@ -36,7 +36,7 @@
 	}
 }
 
-http://{$WWW_DOMAIN} {
+http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN} {
 	import security_headers
 	encode gzip zstd
 	reverse_proxy landing-page:3002
@@ -62,6 +62,16 @@ http://{$ADMIN_DOMAIN} {
 	reverse_proxy admin-panel:3003
 	log {
 		output file /var/log/caddy/admin-access.log
+		format json
+	}
+}
+
+http://{$COUNSELLOR_DOMAIN} {
+	import browser_call_security_headers
+	encode gzip zstd
+	reverse_proxy web-app:3001
+	log {
+		output file /var/log/caddy/counsellor-access.log
 		format json
 	}
 }

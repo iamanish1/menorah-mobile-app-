@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from '@/state/useAuth';
+import { SocialAuthButtons } from '@/components/auth/SocialAuthButtons';
 
 type RegisterPayload = {
   firstName: string;
@@ -304,6 +305,11 @@ export default function Register({ navigation }: any) {
             Join Menorah Health and start your mental health journey
           </Text>
         </View>
+
+        <SocialAuthButtons
+          mode="signup"
+          onSuccess={() => navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] })}
+        />
 
         {/* Form */}
         <View>

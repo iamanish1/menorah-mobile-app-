@@ -12,8 +12,12 @@ export function MenorahHomeHero() {
   const heroRef = useRef<HTMLElement>(null);
 
   return (
-    <section ref={heroRef} data-menorah-home-ready className="relative min-h-[460vh] bg-background text-foreground">
-      <div className="sticky top-0 flex h-screen flex-col overflow-hidden">
+    <section
+      ref={heroRef}
+      data-menorah-home-ready
+      className="relative min-h-[390svh] bg-background text-foreground sm:min-h-[430svh] lg:min-h-[460svh]"
+    >
+      <div className="sticky top-0 flex h-[100svh] min-h-[620px] flex-col overflow-hidden max-sm:min-h-[560px] relative">
         <video
           className="absolute inset-0 z-0 h-full w-full object-cover"
           src={videoUrl}
@@ -32,25 +36,25 @@ export function MenorahHomeHero() {
 
 function HeroSection() {
   return (
-    <main className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-4 pb-16 sm:pb-20 lg:pb-24">
-      <section className="relative z-10 flex w-full flex-col items-center">
-        <h1 className="max-w-5xl text-center font-display text-5xl leading-[0.95] tracking-tight text-foreground md:text-6xl lg:text-[5rem]">
-          We are Menorah, the worlds first free mental health app for men!
+    <main className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-[clamp(1rem,4vw,3rem)] pb-[clamp(4rem,9vh,7rem)] pt-[clamp(5rem,10vh,7.5rem)]">
+      <section className="relative z-10 flex w-full max-w-[min(68rem,94vw)] flex-col items-center">
+        <h1 className="text-center font-display text-[clamp(2.65rem,7.4vw,5.15rem)] leading-[0.96] tracking-tight text-foreground">
+          We are Menorah, the world's firsts Mental health app for men
         </h1>
 
-        <p className="mt-4 max-w-[650px] text-center font-body text-base leading-relaxed text-muted-foreground md:text-lg">
-          A free mental health platform built for men in India to understand stress, burnout, anxiety, relationships,
+        <p className="mt-[clamp(1rem,2.4vw,1.35rem)] max-w-[min(42rem,88vw)] text-center font-body text-[clamp(0.95rem,1.6vw,1.125rem)] leading-relaxed text-muted-foreground">
+          A mental health platform built for men in India to understand stress, burnout, anxiety, relationships,
           and help-seeking with private support and practical resources.
         </p>
 
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-          <Button asChild className="rounded-full px-6 py-5 font-body text-sm font-medium">
+        <div className="mt-[clamp(1.15rem,2.8vw,1.6rem)] flex flex-wrap items-center justify-center gap-[clamp(0.65rem,1.6vw,0.9rem)]">
+          <Button asChild className="rounded-full px-[clamp(1.25rem,3vw,1.6rem)] py-5 font-body text-sm font-medium">
             <Link href="/register">Book a demo</Link>
           </Button>
           <Button
             asChild
             variant="ghost"
-            className="rounded-full border border-primary/25 bg-background/70 px-6 py-5 font-body text-sm font-medium backdrop-blur"
+            className="rounded-full border border-primary/25 bg-background/70 px-[clamp(1.25rem,3vw,1.6rem)] py-5 font-body text-sm font-medium backdrop-blur"
           >
             <Link href="/articles">Read articles</Link>
           </Button>

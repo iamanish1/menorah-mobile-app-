@@ -16,6 +16,16 @@ menorah/deploy/env/*.env
 !menorah/deploy/env/*.env.example
 menorah/deploy/env/production.env
 menorah/deploy/env/cloudflare.env
+menorah/**/*.bak*
+menorah/deploy/env/*.bak*
+secrets/
+secrets.env-backups/
+*.env.bak*
+*.env-backup*
+*.secret*
+*.secrets*
+!*.env.example
+!*.env.local.example
 menorah/deploy/.local-data/
 mongo-keyfile
 *.backup

@@ -36,6 +36,29 @@ interface BookingDraft {
   genderPreference?: 'male' | 'female' | 'any';
   concerns?: string;
   goals?: string;
+  promoCode?: string;
+}
+
+type SlotStatus = 'available' | 'booked' | 'pending' | 'unavailable' | 'past';
+interface AvailabilitySlot {
+  startTime: string;
+  endTime: string;
+  startsAt: string;
+  endsAt: string;
+  status: SlotStatus;
+  isSelectable: boolean;
+  label: string;
+  statusLabel: string;
+}
+
+interface AvailabilityDay {
+  date: string;
+  dayOfWeek: string;
+  timezone: string;
+  sessionDuration: number;
+  isAvailable: boolean;
+  workingHours?: { start: string; end: string };
+  slots: AvailabilitySlot[];
 }
 
 const genderPreferenceOptions: { value: NonNullable<BookingDraft['genderPreference']>; label: string }[] = [
@@ -49,6 +72,7 @@ const sessionTypes = [
 ];
 
 const durations = [30, 45, 60, 90];
+const FREE_CONSULTATION_PROMO_CODE = 'MENORAHFREECALL';
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
 type AvailabilitySchedule = Record<string, { start: string; end: string; isAvailable: boolean }>;
@@ -121,6 +145,16 @@ function buildTimeOptions(dateValue: string, availability?: AvailabilitySchedule
   });
 }
 
+function fallbackSlotLabel(status: SlotStatus) {
+  return {
+    available: 'Available',
+    booked: 'Booked',
+    pending: 'Temporarily held',
+    unavailable: 'Unavailable',
+    past: 'Past',
+  }[status];
+}
+
 /** Validate a datetime-local value against the counsellor's availability schedule */
 function checkSlotAvailability(scheduledAt: string, availability: AvailabilitySchedule | undefined): string | null {
   if (!scheduledAt || !availability) return null;
@@ -166,30 +200,49 @@ function NewBookingForm() {
   });
   const counsellor = counsellorData?.data?.counsellor;
 
+  const { data: availabilityData, isFetching: availabilityLoading, refetch: refetchAvailability } = useQuery({
+    queryKey: ['counsellor-availability', counsellorId, selectedDate, draft.sessionDuration],
+    queryFn: () => api.getCounsellorAvailability(counsellorId!, selectedDate, selectedDate, draft.sessionDuration),
+    enabled: !!counsellorId,
+  });
+  const availabilityDay = availabilityData?.data?.availability?.[0] as AvailabilityDay | undefined;
+
   const set = <K extends keyof BookingDraft>(key: K, value: BookingDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
 
   const dateOptions = useMemo(() => buildDateOptions(), []);
-  const timeOptions = useMemo(
-    () => buildTimeOptions(selectedDate, counsellor?.availability),
-    [selectedDate, counsellor?.availability]
-  );
-  const selectedTime = draft.scheduledAt.startsWith(`${selectedDate}T`) ? draft.scheduledAt.slice(11, 16) : '';
+  const timeOptions = useMemo(() => {
+    if (counsellorId && availabilityDay) return availabilityDay.slots;
+    return buildTimeOptions(selectedDate, counsellor?.availability).map((option) => ({
+      startTime: option.value,
+      endTime: '',
+      startsAt: `${selectedDate}T${option.value}`,
+      endsAt: '',
+      status: option.disabled ? 'past' as SlotStatus : 'available' as SlotStatus,
+      isSelectable: !option.disabled,
+      label: option.label,
+      statusLabel: option.disabled ? 'Past' : 'Available',
+    }));
+  }, [availabilityDay, counsellor?.availability, counsellorId, selectedDate]);
+  const selectedTime = timeOptions.find((slot) => slot.startsAt === draft.scheduledAt)?.startTime
+    || (draft.scheduledAt.startsWith(`${selectedDate}T`) ? draft.scheduledAt.slice(11, 16) : '');
   const selectedDateOption = dateOptions.find((option) => option.value === selectedDate);
+  const selectedSlot = timeOptions.find((slot) => slot.startsAt === draft.scheduledAt);
   const selectedDateTimeLabel = draft.scheduledAt
     ? new Date(draft.scheduledAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
     : null;
+  const normalizedPromoCode = (draft.promoCode || '').trim().toUpperCase();
+  const promoPreviewApplied = normalizedPromoCode === FREE_CONSULTATION_PROMO_CODE;
+  const estimatedTotal = counsellor ? (counsellor.hourlyRate / 60) * draft.sessionDuration : null;
 
   const selectDate = (dateValue: string) => {
     setSelectedDate(dateValue);
-    const currentTime = draft.scheduledAt.slice(11, 16);
-    const nextTimeOptions = buildTimeOptions(dateValue, counsellor?.availability);
-    const canKeepTime = nextTimeOptions.some((option) => option.value === currentTime && !option.disabled);
-    set('scheduledAt', canKeepTime ? `${dateValue}T${currentTime}` : '');
+    set('scheduledAt', '');
   };
 
-  const selectTime = (timeValue: string) => {
-    set('scheduledAt', `${selectedDate}T${timeValue}`);
+  const selectTime = (slot: AvailabilitySlot) => {
+    if (!slot.isSelectable) return;
+    set('scheduledAt', counsellorId ? slot.startsAt : `${selectedDate}T${slot.startTime}`);
   };
 
   const handleBook = async () => {
@@ -200,12 +253,25 @@ function NewBookingForm() {
     setLoading(true);
     setError('');
 
+    if (counsellorId) {
+      const freshAvailability = await refetchAvailability();
+      const freshDay = freshAvailability.data?.data?.availability?.[0] as AvailabilityDay | undefined;
+      const freshSlot = freshDay?.slots.find((slot) => slot.startsAt === draft.scheduledAt);
+      if (!freshSlot?.isSelectable) {
+        setLoading(false);
+        setStep('session');
+        setError('This time slot was just booked by someone else. Please choose another available slot.');
+        return;
+      }
+    }
+
     // Step 1: Create the booking record
     const bookingRes = await api.createBooking({
       counsellorId:    draft.counsellorId,
       sessionType:     draft.sessionType,
       sessionDuration: draft.sessionDuration,
       scheduledAt:     new Date(draft.scheduledAt).toISOString(),
+      promoCode:       draft.promoCode?.trim() || undefined,
       preferences:     { gender: draft.genderPreference, sessionType: draft.sessionType },
       concerns:        draft.concerns,
       goals:           draft.goals ? [draft.goals] : undefined,
@@ -213,14 +279,19 @@ function NewBookingForm() {
 
     if (!bookingRes.success || !bookingRes.data?.booking) {
       setLoading(false);
-      setError(bookingRes.message || 'Failed to create booking. Please try again.');
+      const friendlySlotError = /slot|booked|pending/i.test(bookingRes.message || '')
+        ? 'This time slot was just booked by someone else. Please choose another available slot.'
+        : bookingRes.message || 'Failed to create booking. Please try again.';
+      setStep('session');
+      setError(friendlySlotError);
+      await refetchAvailability();
       return;
     }
 
     const booking = bookingRes.data.booking;
 
-    // Subscription booking — already paid, no Razorpay needed
-    if (booking.isSubscriptionBooking) {
+    // Subscription and promo bookings are already paid, no Razorpay needed.
+    if (booking.isSubscriptionBooking || booking.paymentMethod === 'promo' || booking.paymentStatus === 'paid') {
       setLoading(false);
       setSuccess(true);
       return;
@@ -240,7 +311,13 @@ function NewBookingForm() {
     if (!sessionRes.success || !sessionRes.data?.orderId) {
       await api.cancelBooking(booking.id, 'Failed to create payment session');
       setLoading(false);
-      setError(sessionRes.message || 'Failed to initialise payment. Please try again.');
+      if (/expired|slot/i.test(sessionRes.message || '')) {
+        setStep('session');
+        setError('This slot expired while waiting for payment. Please choose another available time.');
+        await refetchAvailability();
+      } else {
+        setError(sessionRes.message || 'Failed to initialise payment. Please try again.');
+      }
       return;
     }
 
@@ -263,7 +340,13 @@ function NewBookingForm() {
         if (verify.success) {
           setSuccess(true);
         } else {
-          setError(verify.message || 'Payment verification failed. Please contact support.');
+          if (/expired|slot/i.test(verify.message || '')) {
+            setStep('session');
+            setError('This slot expired while waiting for payment. Please choose another available time.');
+            await refetchAvailability();
+          } else {
+            setError(verify.message || 'Payment verification failed. Please contact support.');
+          }
         }
       },
       modal: {
@@ -289,7 +372,7 @@ function NewBookingForm() {
     : null;
 
   // Validate step 1 before proceeding
-  const canProceedFromSession = !!draft.scheduledAt && !availabilityWarning;
+  const canProceedFromSession = !!draft.scheduledAt && !availabilityWarning && (!counsellorId || selectedSlot?.isSelectable);
 
   if (success) {
     return (
@@ -299,7 +382,7 @@ function NewBookingForm() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Booking Confirmed!</h1>
-          <p className="text-gray-500 mt-2">Your session has been booked and payment received. A counsellor will be assigned shortly.</p>
+          <p className="text-gray-500 mt-2">Your session has been booked and confirmed. A counsellor will be assigned shortly.</p>
         </div>
         <div className="flex flex-col gap-3">
           <Button fullWidth onClick={() => router.push('/bookings')}>View My Bookings</Button>
@@ -376,7 +459,10 @@ function NewBookingForm() {
               ariaLabel="Session duration"
               value={String(draft.sessionDuration)}
               options={durations.map((duration) => ({ value: String(duration), label: `${duration} min` }))}
-              onChange={(value) => set('sessionDuration', Number(value))}
+              onChange={(value) => {
+                set('sessionDuration', Number(value));
+                set('scheduledAt', '');
+              }}
             />
           </div>
 
@@ -451,24 +537,41 @@ function NewBookingForm() {
                 {timeOptions.length > 0 ? (
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {timeOptions.map((option) => {
-                      const active = selectedTime === option.value;
+                      const active = selectedTime === option.startTime && draft.scheduledAt === option.startsAt;
+                      const disabled = !option.isSelectable;
 
                       return (
                         <button
-                          key={option.value}
+                          key={option.startsAt}
                           type="button"
-                          disabled={option.disabled}
+                          disabled={disabled}
                           aria-pressed={active}
-                          onClick={() => selectTime(option.value)}
-                          className={`min-h-12 rounded-2xl border px-3 text-sm font-black transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-35
+                          title={option.statusLabel || fallbackSlotLabel(option.status)}
+                          onClick={() => selectTime(option)}
+                          className={`min-h-[3.75rem] rounded-2xl border px-3 py-2 text-sm font-black transition-all duration-150 disabled:cursor-not-allowed
                             ${active
                               ? 'border-primary-500 bg-primary-600 text-white shadow-sm dark:border-primary-300 dark:bg-primary-300 dark:text-[#06110b]'
+                              : option.status === 'booked'
+                                ? 'border-red-100 bg-red-50 text-red-400 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300'
+                              : option.status === 'pending'
+                                ? 'border-amber-100 bg-amber-50 text-amber-500 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'
+                              : option.status === 'past' || option.status === 'unavailable'
+                                ? 'border-gray-200 bg-gray-50 text-gray-400 dark:border-primary-900 dark:bg-[#07110b] dark:text-primary-100/35'
                               : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300 hover:bg-primary-50/50 dark:border-primary-800 dark:bg-[#07110b] dark:text-primary-100 dark:hover:border-primary-500 dark:hover:bg-[#102016]'}`}
                         >
-                          {option.label}
+                          <span className="block">{option.label}</span>
+                          {option.status !== 'available' && (
+                            <span className="mt-0.5 block text-[10px] font-bold uppercase tracking-wide opacity-80">
+                              {option.statusLabel || fallbackSlotLabel(option.status)}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
+                  </div>
+                ) : availabilityLoading ? (
+                  <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-4 text-sm font-semibold text-gray-500 dark:border-primary-800 dark:bg-[#07110b] dark:text-primary-100/65">
+                    Loading available times...
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-4 text-sm font-semibold text-gray-500 dark:border-primary-800 dark:bg-[#07110b] dark:text-primary-100/65">
@@ -492,6 +595,11 @@ function NewBookingForm() {
             )}
             {availabilityWarning && (
               <p className="text-xs text-red-600 font-medium">{availabilityWarning}</p>
+            )}
+            {draft.scheduledAt && counsellorId && !selectedSlot?.isSelectable && (
+              <p className="text-xs text-red-600 font-medium">
+                This selected time is no longer available. Please choose another slot.
+              </p>
             )}
           </div>
 
@@ -608,7 +716,36 @@ function NewBookingForm() {
               {counsellor && (
                 <div className="flex justify-between text-sm text-gray-500">
                   <span>{formatCurrency(counsellor.hourlyRate, counsellor.currency)}/hr × {draft.sessionDuration} min</span>
-                  <span>{formatCurrency((counsellor.hourlyRate / 60) * draft.sessionDuration, counsellor.currency)}</span>
+                  <span>{formatCurrency(estimatedTotal || 0, counsellor.currency)}</span>
+                </div>
+              )}
+              <div className="space-y-2 py-2">
+                <label htmlFor="promoCode" className="text-sm font-semibold text-gray-700">
+                  Promo code
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    id="promoCode"
+                    value={draft.promoCode ?? ''}
+                    onChange={(event) => set('promoCode', event.target.value.toUpperCase())}
+                    placeholder="Enter promo code"
+                    className="input-field flex-1 uppercase"
+                    autoComplete="off"
+                  />
+                  {promoPreviewApplied && (
+                    <span className="inline-flex items-center justify-center rounded-lg bg-green-100 px-3 py-2 text-sm font-semibold text-green-700">
+                      Free session
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">
+                  Use a valid promo code to make this consultation free.
+                </p>
+              </div>
+              {promoPreviewApplied && estimatedTotal !== null && (
+                <div className="flex justify-between text-sm font-semibold text-green-700">
+                  <span>Promo discount</span>
+                  <span>-{formatCurrency(estimatedTotal, counsellor?.currency || 'INR')}</span>
                 </div>
               )}
               <div className="flex justify-between items-center pt-2 border-t border-gray-200">
@@ -617,9 +754,7 @@ function NewBookingForm() {
                   <span className="text-sm font-semibold text-gray-700">Total due</span>
                 </div>
                 <span className="text-lg font-bold text-primary-700">
-                  {counsellor
-                    ? formatCurrency((counsellor.hourlyRate / 60) * draft.sessionDuration, counsellor.currency)
-                    : 'TBD'}
+                  {promoPreviewApplied ? 'Free' : estimatedTotal !== null ? formatCurrency(estimatedTotal, counsellor?.currency || 'INR') : 'TBD'}
                 </span>
               </div>
             </div>
@@ -636,7 +771,7 @@ function NewBookingForm() {
           <div className="flex gap-3 pt-1">
             <Button variant="secondary" fullWidth onClick={() => setStep('preferences')}>Back</Button>
             <Button fullWidth size="lg" loading={loading} onClick={handleBook}>
-              <CreditCard className="w-4 h-4" /> Confirm &amp; Pay
+              <CreditCard className="w-4 h-4" /> {promoPreviewApplied ? 'Confirm Free Session' : 'Confirm & Pay'}
             </Button>
           </div>
         </div>

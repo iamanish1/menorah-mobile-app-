@@ -12,6 +12,18 @@ const configWebBaseURL: string | undefined =
   ((Constants.expoConfig?.extra as any)?.WEB_BASE_URL as string | undefined) ||
   ((Constants.expoConfig?.extra as any)?.PUBLIC_WEB_BASE_URL as string | undefined);
 
+const configGoogleWebClientId =
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ||
+  ((Constants.expoConfig?.extra as any)?.GOOGLE_WEB_CLIENT_ID as string | undefined);
+
+const configGoogleIosClientId =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ||
+  ((Constants.expoConfig?.extra as any)?.GOOGLE_IOS_CLIENT_ID as string | undefined);
+
+const configGoogleAndroidClientId =
+  process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ||
+  ((Constants.expoConfig?.extra as any)?.GOOGLE_ANDROID_CLIENT_ID as string | undefined);
+
 const normalizeBaseURL = (url?: string) => {
   if (!url && !__DEV__) {
     throw new Error('EXPO_PUBLIC_API_BASE_URL is required for production builds');
@@ -54,6 +66,10 @@ export const ENV = {
   WEB_BASE_URL,
   CHECKOUT_RETURN_URL: (Constants.expoConfig?.extra as any)?.CHECKOUT_RETURN_URL as string,
   JITSI_BASE_URL: (Constants.expoConfig?.extra as any)?.JITSI_BASE_URL as string,
+  GOOGLE_WEB_CLIENT_ID: configGoogleWebClientId,
+  GOOGLE_IOS_CLIENT_ID: configGoogleIosClientId,
+  GOOGLE_ANDROID_CLIENT_ID: configGoogleAndroidClientId,
+  SOCIAL_GOOGLE_CONFIGURED: Boolean(configGoogleWebClientId || configGoogleIosClientId || configGoogleAndroidClientId),
   IS_EXPO_GO,
   USE_RAZORPAY_SDK,
 };
@@ -68,5 +84,8 @@ if (__DEV__) {
     WEB_BASE_URL: ENV.WEB_BASE_URL,
     CHECKOUT_RETURN_URL: ENV.CHECKOUT_RETURN_URL,
     JITSI_BASE_URL: ENV.JITSI_BASE_URL,
+    GOOGLE_WEB_CLIENT_ID: ENV.GOOGLE_WEB_CLIENT_ID ? 'set' : 'missing',
+    GOOGLE_IOS_CLIENT_ID: ENV.GOOGLE_IOS_CLIENT_ID ? 'set' : 'missing',
+    GOOGLE_ANDROID_CLIENT_ID: ENV.GOOGLE_ANDROID_CLIENT_ID ? 'set' : 'missing',
   });
 }
