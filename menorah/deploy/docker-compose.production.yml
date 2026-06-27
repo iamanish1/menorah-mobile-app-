@@ -13,6 +13,23 @@ x-backend-env: &backend-env
   API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN:-api-admin.menorah.me}
   CALLS_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
   LIVEKIT_UPSTREAM: ${LIVEKIT_UPSTREAM:-}
+  LIVEKIT_URL: ${LIVEKIT_URL:-wss://calls.menorah.me}
+  LIVEKIT_API_URL: ${LIVEKIT_API_URL:-https://calls.menorah.me}
+  LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+  LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+  CALLING_REGION_MODE: ${CALLING_REGION_MODE:-hybrid}
+  LIVEKIT_BLOCKED_COUNTRIES: ${LIVEKIT_BLOCKED_COUNTRIES:-AE}
+  BLOCKED_COUNTRY_CALL_PROVIDER: ${BLOCKED_COUNTRY_CALL_PROVIDER:-zoom}
+  BLOCK_LIVEKIT_FOR_UAE: ${BLOCK_LIVEKIT_FOR_UAE:-true}
+  BLOCK_LIVEKIT_FOR_UNKNOWN_REGION: ${BLOCK_LIVEKIT_FOR_UNKNOWN_REGION:-false}
+  UAE_CALL_PROVIDER: ${UAE_CALL_PROVIDER:-zoom}
+  UAE_CALLING_ENABLED: ${UAE_CALLING_ENABLED:-true}
+  VSEE_ENABLED: ${VSEE_ENABLED:-true}
+  VSEE_INTEGRATION_MODE: ${VSEE_INTEGRATION_MODE:-external_link}
+  DOXY_ENABLED: ${DOXY_ENABLED:-false}
+  ZOOM_ENABLED: ${ZOOM_ENABLED:-true}
+  GOOGLE_MEET_ENABLED: ${GOOGLE_MEET_ENABLED:-false}
+  TEAMS_ENABLED: ${TEAMS_ENABLED:-false}
   MONGODB_URI: ${MONGODB_URI:-}
   MONGODB_BACKUP_URI: ${MONGODB_BACKUP_URI:-}
   MONGODB_RESTORE_TEST_URI: ${MONGODB_RESTORE_TEST_URI:-}
@@ -86,10 +103,23 @@ services:
       - user-web-app
       - web-app
       - admin-panel
+      - livekit
       - api-ios
       - api-android
       - api-web
       - api-admin
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ${LIVEKIT_CONFIG_FILE:-./livekit/livekit.yaml}:/etc/livekit.yaml:ro
+    ports:
+      - "${LIVEKIT_RTC_TCP_PORT:-7881}:7881/tcp"
+      - "${LIVEKIT_RTC_UDP_PORT_RANGE:-50000-50100}:50000-50100/udp"
+    networks:
+      - app_net
 
   landing-page:
     build:

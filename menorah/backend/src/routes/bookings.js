@@ -12,12 +12,33 @@ const {
   expireStalePendingBookings,
   isBlockingBooking,
 } = require('../utils/bookingAvailability');
+const {
+  isAllowedExternalProvider,
+  isSafeHttpsUrl,
+  normalizeProvider,
+  providerDisplayName,
+  resolveCallPolicy
+} = require('../services/callPolicyService');
 
 const router = express.Router();
 const FREE_CONSULTATION_PROMO_CODE = 'MENORAHFREECALL';
 const SLOT_TAKEN_MESSAGE = 'This time slot was just booked by someone else. Please choose another available slot.';
 
 const normalizePromoCode = (value) => String(value || '').trim().toUpperCase();
+const formatVideoCall = (videoCall = {}) => ({
+  provider: videoCall.provider,
+  joinMode: videoCall.joinMode,
+  externalProviderName: videoCall.externalProviderName,
+  externalJoinUrl: videoCall.externalJoinUrl,
+  externalHostUrl: videoCall.externalHostUrl,
+  region: videoCall.region,
+  status: videoCall.status,
+  policyReason: videoCall.policyReason,
+  lastPolicyCheckAt: videoCall.lastPolicyCheckAt,
+  configuredAt: videoCall.configuredAt,
+  roomId: videoCall.roomId,
+  roomUrl: videoCall.roomUrl
+});
 
 // @route   POST /api/bookings
 // @desc    Create a new booking
@@ -253,6 +274,23 @@ router.post('/', [
       emergencyContact
     });
 
+    if (sessionType === 'video') {
+      const policy = resolveCallPolicy({
+        user: user || req.user,
+        booking,
+        req: { headers: req.headers, user: req.user }
+      });
+      booking.videoCall.provider = policy.provider;
+      booking.videoCall.joinMode = policy.joinMode;
+      booking.videoCall.region = policy.region;
+      booking.videoCall.status = policy.joinMode === 'disabled' ? 'disabled' : 'not_configured';
+      booking.videoCall.policyReason = policy.reason;
+      booking.videoCall.lastPolicyCheckAt = new Date();
+      if (policy.providerName) {
+        booking.videoCall.externalProviderName = policy.providerName;
+      }
+    }
+
     try {
       await booking.save();
     } catch (error) {
@@ -417,6 +455,7 @@ router.get('/', [
         code: booking.promo.code,
         discountAmount: booking.promo.discountAmount || 0
       } : undefined,
+      videoCall: formatVideoCall(booking.videoCall),
       canBeCancelled: booking.canBeCancelled,
       canBeRescheduled: booking.canBeRescheduled,
       createdAt: booking.createdAt // Add createdAt for date display
@@ -511,6 +550,7 @@ router.get('/:id', [
         code: booking.promo.code,
         discountAmount: booking.promo.discountAmount || 0
       } : undefined,
+      videoCall: formatVideoCall(booking.videoCall),
       canBeCancelled: booking.canBeCancelled,
       canBeRescheduled: booking.canBeRescheduled,
       createdAt: booking.createdAt,
@@ -527,6 +567,78 @@ router.get('/:id', [
       success: false,
       message: 'Internal server error'
     });
+  }
+});
+
+// @route   PATCH /api/bookings/:id/call-link
+// @desc    Configure approved external call link for an assigned session
+// @access  Private (admin or assigned counsellor)
+router.patch('/:id/call-link', [
+  param('id').isMongoId().withMessage('Invalid booking ID'),
+  body('provider').isString().trim().notEmpty(),
+  body('externalJoinUrl').isString().trim().custom(isSafeHttpsUrl).withMessage('External join URL must be HTTPS'),
+  body('externalHostUrl').optional({ nullable: true, checkFalsy: true }).isString().trim().custom(isSafeHttpsUrl).withMessage('External host URL must be HTTPS'),
+  body('externalProviderName').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 80 })
+], auth, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const booking = await Booking.findById(req.params.id)
+      .populate({
+        path: 'counsellor',
+        select: 'user',
+        populate: { path: 'user', select: 'firstName lastName phone address country accountRegion region' }
+      })
+      .populate('user', 'firstName lastName phone address country accountRegion region');
+
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+    const isAdmin = req.user.role === 'admin';
+    const isAssignedCounsellor = booking.counsellor?.user?._id?.toString() === req.user._id.toString();
+    if (!isAdmin && !isAssignedCounsellor) {
+      return res.status(403).json({ success: false, message: 'Only an admin or assigned counsellor can configure this session link.' });
+    }
+
+    const provider = normalizeProvider(req.body.provider, '');
+    if (!isAllowedExternalProvider(provider)) {
+      return res.status(400).json({ success: false, message: 'Unsupported external provider.' });
+    }
+
+    const policy = resolveCallPolicy({ user: booking.user, booking, req: { headers: req.headers, user: req.user } });
+    if (policy.provider === 'livekit') {
+      return res.status(400).json({ success: false, message: 'External links are only required for external-provider sessions.' });
+    }
+    if (policy.joinMode === 'disabled') {
+      return res.status(403).json({ success: false, message: 'Video calling is disabled until this session region is verified.' });
+    }
+
+    booking.videoCall.provider = provider;
+    booking.videoCall.joinMode = 'external_link';
+    booking.videoCall.region = policy.region;
+    booking.videoCall.status = 'ready';
+    booking.videoCall.policyReason = policy.reason;
+    booking.videoCall.lastPolicyCheckAt = new Date();
+    booking.videoCall.externalJoinUrl = req.body.externalJoinUrl.trim();
+    booking.videoCall.externalHostUrl = req.body.externalHostUrl ? req.body.externalHostUrl.trim() : undefined;
+    booking.videoCall.externalProviderName = req.body.externalProviderName?.trim() || providerDisplayName(provider);
+    booking.videoCall.configuredBy = req.user._id;
+    booking.videoCall.configuredAt = new Date();
+    await booking.save();
+
+    res.json({
+      success: true,
+      message: 'External session link saved.',
+      data: {
+        bookingId: booking._id,
+        videoCall: formatVideoCall(booking.videoCall)
+      }
+    });
+  } catch (error) {
+    console.error('Configure booking call link error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
@@ -674,17 +786,53 @@ router.put('/:id/start', [
       });
     }
 
+    let startCallPolicy = null;
+    if (booking.sessionType === 'video') {
+      startCallPolicy = resolveCallPolicy({
+        user: booking.user,
+        booking,
+        req: { headers: req.headers, user: req.user }
+      });
+
+      if (startCallPolicy.joinMode === 'disabled') {
+        booking.videoCall.provider = 'disabled';
+        booking.videoCall.joinMode = 'disabled';
+        booking.videoCall.region = startCallPolicy.region;
+        booking.videoCall.status = 'disabled';
+        booking.videoCall.policyReason = startCallPolicy.reason;
+        booking.videoCall.lastPolicyCheckAt = new Date();
+        await booking.save();
+        return res.status(403).json({
+          success: false,
+          provider: 'disabled',
+          joinMode: 'disabled',
+          region: startCallPolicy.region,
+          status: 'disabled',
+          message: 'Video calling is not available until your region is verified.'
+        });
+      }
+    }
+
     // Start session
     await booking.startSession();
 
     // Generate video call room URL if it's a video session
     let roomUrl = null;
     if (booking.sessionType === 'video') {
-      const roomId = `menorah-${booking._id}`;
-      roomUrl = `${process.env.JITSI_BASE_URL}/${roomId}`;
-      
-      booking.videoCall.roomId = roomId;
-      booking.videoCall.roomUrl = roomUrl;
+      const policy = startCallPolicy;
+      const configuredExternalProvider = policy.joinMode === 'external_link'
+        && booking.videoCall.provider
+        && !['livekit', 'disabled'].includes(booking.videoCall.provider);
+      booking.videoCall.provider = configuredExternalProvider ? booking.videoCall.provider : policy.provider;
+      booking.videoCall.joinMode = policy.joinMode;
+      booking.videoCall.region = policy.region;
+      booking.videoCall.policyReason = policy.reason;
+      booking.videoCall.lastPolicyCheckAt = new Date();
+      booking.videoCall.status = policy.joinMode === 'disabled'
+        ? 'disabled'
+        : policy.joinMode === 'external_link'
+          ? (booking.videoCall.externalJoinUrl ? 'started' : 'not_configured')
+          : 'started';
       await booking.save();
     }
 

@@ -10,7 +10,7 @@ This document captures the production architecture before the self-hosted Cloud 
 | Database | MongoDB Atlas |
 | Backend | VPS / current API server |
 | Mobile API | `https://api.menorah.me/api` |
-| Call service | VPS / LiveKit |
+| Call service | Hostinger VPS / LiveKit at `calls.menorah.me` |
 
 Current production domains:
 
@@ -89,6 +89,23 @@ Admin panel:
 - `LIVEKIT_API_URL`
 - `LIVEKIT_API_KEY`
 - `LIVEKIT_API_SECRET`
+- `LIVEKIT_UPSTREAM`
+- `LIVEKIT_CONFIG_FILE`
+- `LIVEKIT_RTC_TCP_PORT`
+- `LIVEKIT_RTC_UDP_PORT_RANGE`
+- `CALLING_REGION_MODE`
+- `LIVEKIT_BLOCKED_COUNTRIES`
+- `BLOCKED_COUNTRY_CALL_PROVIDER`
+- `BLOCK_LIVEKIT_FOR_UAE`
+- `BLOCK_LIVEKIT_FOR_UNKNOWN_REGION`
+- `UAE_CALL_PROVIDER`
+- `UAE_CALLING_ENABLED`
+- `VSEE_ENABLED`
+- `VSEE_INTEGRATION_MODE`
+- `DOXY_ENABLED`
+- `ZOOM_ENABLED`
+- `GOOGLE_MEET_ENABLED`
+- `TEAMS_ENABLED`
 - `CLOUDINARY_CLOUD_NAME`
 - `CLOUDINARY_API_KEY`
 - `CLOUDINARY_API_SECRET`
@@ -193,6 +210,18 @@ Admin panel:
 - `LIVEKIT_API_URL`
 - `LIVEKIT_API_KEY`
 - `LIVEKIT_API_SECRET`
+- `LIVEKIT_UPSTREAM`
+- Host-only config file: `deploy/livekit/livekit.yaml`
+- Hostinger firewall: `443/tcp`, `7881/tcp`, and `50000-50100/udp`
+
+### Hybrid Calling Policy
+
+- India-classified sessions use in-app LiveKit/WebRTC.
+- Countries in `LIVEKIT_BLOCKED_COUNTRIES`, default `AE`, must use an approved external provider link and must not receive a LiveKit token.
+- Non-blocked countries use in-app LiveKit/WebRTC.
+- Unknown-region sessions use LiveKit by default unless `BLOCK_LIVEKIT_FOR_UNKNOWN_REGION=true`.
+- `BLOCKED_COUNTRY_CALL_PROVIDER` stores the approved default external provider key, currently `zoom`.
+- Provider enable flags (`VSEE_ENABLED`, `DOXY_ENABLED`, `ZOOM_ENABLED`, `GOOGLE_MEET_ENABLED`, `TEAMS_ENABLED`) control which external providers can be selected.
 
 ### Expo / EAS
 

@@ -128,6 +128,35 @@ const bookingSchema = new mongoose.Schema({
 
   // Video call information
   videoCall: {
+    provider: {
+      type: String,
+      enum: ['livekit', 'vsee', 'doxy', 'zoom', 'google_meet', 'teams', 'disabled'],
+      default: 'livekit'
+    },
+    joinMode: {
+      type: String,
+      enum: ['in_app', 'external_link', 'disabled'],
+      default: 'in_app'
+    },
+    externalJoinUrl: String,
+    externalHostUrl: String,
+    externalProviderName: String,
+    region: {
+      type: String,
+      default: 'UNKNOWN'
+    },
+    status: {
+      type: String,
+      enum: ['not_configured', 'scheduled', 'ready', 'started', 'ended', 'cancelled', 'disabled'],
+      default: 'not_configured'
+    },
+    policyReason: String,
+    lastPolicyCheckAt: Date,
+    configuredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    configuredAt: Date,
     roomId: String,
     roomUrl: String,
     startTime: Date,

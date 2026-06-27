@@ -11,6 +11,13 @@ const Booking = require('../models/Booking');
 const PendingApplication = require('../models/PendingApplication');
 const KycVerification = require('../models/KycVerification');
 const { adminAuth, auth } = require('../middleware/auth');
+const {
+  isAllowedExternalProvider,
+  isSafeHttpsUrl,
+  normalizeProvider,
+  providerDisplayName,
+  resolveCallPolicy
+} = require('../services/callPolicyService');
 
 const router = express.Router();
 
@@ -22,6 +29,38 @@ router.use(auth, adminAuth);
 // Escapes all special regex metacharacters so user-supplied search strings
 // cannot be used to craft catastrophic backtracking (ReDoS) patterns.
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const formatVideoCall = (videoCall = {}) => ({
+  provider: videoCall.provider,
+  joinMode: videoCall.joinMode,
+  externalProviderName: videoCall.externalProviderName,
+  externalJoinUrl: videoCall.externalJoinUrl,
+  externalHostUrl: videoCall.externalHostUrl,
+  region: videoCall.region,
+  status: videoCall.status,
+  policyReason: videoCall.policyReason,
+  lastPolicyCheckAt: videoCall.lastPolicyCheckAt,
+  configuredAt: videoCall.configuredAt
+});
+
+const formatAdminBooking = (booking) => ({
+  id: booking._id,
+  user: booking.user || null,
+  userName: booking.user ? `${booking.user.firstName} ${booking.user.lastName}` : 'Unknown user',
+  userEmail: booking.user?.email || '',
+  userPhone: booking.user?.phone || '',
+  counsellor: booking.counsellor || null,
+  counsellorName: booking.counsellor?.user
+    ? `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`
+    : 'Unassigned',
+  sessionType: booking.sessionType,
+  sessionDuration: booking.sessionDuration,
+  scheduledAt: booking.scheduledAt,
+  status: booking.status,
+  paymentStatus: booking.paymentStatus,
+  videoCall: formatVideoCall(booking.videoCall),
+  createdAt: booking.createdAt
+});
 
 const generateSecurePassword = () => {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -277,8 +316,6 @@ router.get('/server-usage', async (_req, res) => {
         },
         cpu: {
           usagePercent: Math.round(cpuUsagePercent * 10) / 10,
-          cores: os.cpus().length,
-          model: os.cpus()[0]?.model || 'Unknown CPU',
           loadAverage: os.loadavg()
         },
         memory: {
@@ -1424,6 +1461,117 @@ router.put('/ekyc/reviews/:id/reject', [
     res.json({ success: true, message: 'KYC review rejected.', data: { reviewId: review._id, status: review.status } });
   } catch (error) {
     console.error('Admin reject KYC error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/bookings — recent booking/session list for call operations
+router.get('/bookings', [
+  query('status').optional().isString(),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 100 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+
+    const page = parseInt(req.query.page || '1', 10);
+    const limit = parseInt(req.query.limit || '25', 10);
+    const filter = { sessionType: 'video' };
+    if (req.query.status) {
+      const statuses = String(req.query.status)
+        .split(',')
+        .map((status) => status.trim())
+        .filter(Boolean);
+      filter.status = statuses.length > 1 ? { $in: statuses } : statuses[0];
+    }
+
+    const [bookings, total] = await Promise.all([
+      Booking.find(filter)
+        .populate('user', 'firstName lastName email phone address country accountRegion region')
+        .populate({
+          path: 'counsellor',
+          select: 'user',
+          populate: { path: 'user', select: 'firstName lastName email phone' }
+        })
+        .sort({ scheduledAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Booking.countDocuments(filter)
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        bookings: bookings.map(formatAdminBooking),
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+      }
+    });
+  } catch (error) {
+    console.error('Admin bookings error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// PATCH /api/admin/bookings/:id/call-link — configure approved external session link
+router.patch('/bookings/:id/call-link', [
+  param('id').isMongoId().withMessage('Invalid booking ID'),
+  body('provider').isString().trim().notEmpty(),
+  body('externalJoinUrl').isString().trim().custom(isSafeHttpsUrl).withMessage('External join URL must be HTTPS'),
+  body('externalHostUrl').optional({ nullable: true, checkFalsy: true }).isString().trim().custom(isSafeHttpsUrl).withMessage('External host URL must be HTTPS'),
+  body('externalProviderName').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 80 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+
+    const provider = normalizeProvider(req.body.provider, '');
+    if (!isAllowedExternalProvider(provider)) {
+      return res.status(400).json({ success: false, message: 'Unsupported external provider.' });
+    }
+
+    const booking = await Booking.findById(req.params.id)
+      .populate('user', 'firstName lastName phone address country accountRegion region')
+      .populate({
+        path: 'counsellor',
+        select: 'user',
+        populate: { path: 'user', select: 'firstName lastName phone address country accountRegion region' }
+      });
+
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+    const policy = resolveCallPolicy({ user: booking.user, booking, req: { headers: req.headers, user: req.user } });
+    if (policy.provider === 'livekit') {
+      return res.status(400).json({ success: false, message: 'LiveKit is enabled for this session region; external links are only for external-provider sessions.' });
+    }
+    if (policy.joinMode === 'disabled') {
+      return res.status(403).json({ success: false, message: 'Video calling is disabled until this session region is verified.' });
+    }
+
+    booking.videoCall.provider = provider;
+    booking.videoCall.joinMode = 'external_link';
+    booking.videoCall.region = policy.region;
+    booking.videoCall.status = 'ready';
+    booking.videoCall.policyReason = policy.reason;
+    booking.videoCall.lastPolicyCheckAt = new Date();
+    booking.videoCall.externalJoinUrl = req.body.externalJoinUrl.trim();
+    booking.videoCall.externalHostUrl = req.body.externalHostUrl ? req.body.externalHostUrl.trim() : undefined;
+    booking.videoCall.externalProviderName = req.body.externalProviderName?.trim() || providerDisplayName(provider);
+    booking.videoCall.configuredBy = req.user._id;
+    booking.videoCall.configuredAt = new Date();
+    await booking.save();
+
+    res.json({
+      success: true,
+      message: 'External session link saved.',
+      data: {
+        bookingId: booking._id,
+        videoCall: formatVideoCall(booking.videoCall)
+      }
+    });
+  } catch (error) {
+    console.error('Admin configure call link error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });

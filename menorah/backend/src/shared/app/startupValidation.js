@@ -25,6 +25,10 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
         requireEnv(key, errors)
       );
     }
+
+    ['LIVEKIT_URL', 'LIVEKIT_API_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'].forEach((key) =>
+      requireEnv(key, errors)
+    );
   }
 
   if (errors.length > 0) {

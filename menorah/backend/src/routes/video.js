@@ -5,6 +5,11 @@ const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 // as a plain object to token.addGrant() instead.
 const Booking = require('../models/Booking');
 const { auth } = require('../middleware/auth');
+const {
+  assertLiveKitAllowed,
+  providerDisplayName,
+  resolveCallPolicy
+} = require('../services/callPolicyService');
 
 const router = express.Router();
 
@@ -27,7 +32,9 @@ const getLivekitClient = () => {
 // name      = display name shown in the call
 // roomName  = LiveKit room name
 // isModerator = counsellors are moderators (can remove participants)
-const generateLivekitToken = async (identity, name, roomName, isModerator = false) => {
+const generateLivekitToken = async (identity, name, roomName, isModerator = false, guardInput = {}) => {
+  assertLiveKitAllowed(guardInput);
+
   const apiKey    = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
 
@@ -61,9 +68,9 @@ const loadBooking = async (bookingId, requestUserId) => {
     .populate({
       path: 'counsellor',
       select: 'user',
-      populate: { path: 'user', select: 'firstName lastName' },
+      populate: { path: 'user', select: 'firstName lastName phone address country accountRegion region' },
     })
-    .populate('user', 'firstName lastName');
+    .populate('user', 'firstName lastName phone address country accountRegion region');
 
   if (!booking) return { booking: null, isUser: false, isCounsellor: false, error: 'Booking not found' };
   if (!booking.counsellor || !booking.counsellor.user) {
@@ -75,6 +82,125 @@ const loadBooking = async (bookingId, requestUserId) => {
 
   return { booking, isUser, isCounsellor, error: null };
 };
+
+const getRequestCountry = (req) =>
+  req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || req.headers['x-country-code'] || '';
+
+const buildGuardInput = (req, booking) => ({
+  user: booking.user,
+  booking,
+  req: {
+    headers: req.headers,
+    ipCountry: getRequestCountry(req),
+    user: req.user
+  }
+});
+
+const updateBookingPolicy = async (booking, policy) => {
+  booking.videoCall = booking.videoCall || {};
+  const configuredExternalProvider = policy.joinMode === 'external_link'
+    && booking.videoCall.provider
+    && !['livekit', 'disabled'].includes(booking.videoCall.provider);
+  booking.videoCall.provider = configuredExternalProvider ? booking.videoCall.provider : policy.provider;
+  booking.videoCall.joinMode = policy.joinMode;
+  booking.videoCall.region = policy.region;
+  booking.videoCall.policyReason = policy.reason;
+  booking.videoCall.lastPolicyCheckAt = new Date();
+
+  if (policy.joinMode === 'disabled') {
+    booking.videoCall.status = 'disabled';
+  } else if (policy.joinMode === 'external_link' && !booking.videoCall.externalJoinUrl) {
+    booking.videoCall.status = 'not_configured';
+  } else if (policy.joinMode === 'external_link') {
+    booking.videoCall.status = 'ready';
+  }
+};
+
+const baseCallPayload = ({ booking, policy }) => ({
+  provider: policy.provider,
+  joinMode: policy.joinMode,
+  region: policy.region,
+  status: booking.videoCall?.status || (policy.joinMode === 'disabled' ? 'disabled' : 'scheduled'),
+  bookingId: booking._id.toString(),
+  sessionType: booking.sessionType,
+  counsellorName: `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`,
+  userName: `${booking.user.firstName} ${booking.user.lastName}`,
+  scheduledAt: booking.scheduledAt,
+  duration: booking.sessionDuration
+});
+
+const externalPayload = ({ booking, policy }) => {
+  const provider = booking.videoCall?.provider || policy.provider;
+  const payload = {
+    ...baseCallPayload({ booking, policy: { ...policy, provider, joinMode: 'external_link' } }),
+    provider,
+    providerName: booking.videoCall?.externalProviderName || providerDisplayName(provider),
+    externalProviderName: booking.videoCall?.externalProviderName || providerDisplayName(provider),
+    joinUrl: booking.videoCall?.externalJoinUrl,
+    hostUrl: booking.videoCall?.externalHostUrl,
+    externalJoinUrl: booking.videoCall?.externalJoinUrl,
+    externalHostUrl: booking.videoCall?.externalHostUrl
+  };
+
+  if (!payload.joinUrl) {
+    return {
+      ...payload,
+      success: false,
+      status: 'not_configured',
+      message: 'Your secure video session link is not ready yet. Please wait for the counsellor/admin to prepare it.'
+    };
+  }
+
+  return {
+    ...payload,
+    success: true,
+    status: 'ready'
+  };
+};
+
+const disabledPayload = ({ booking, policy }) => ({
+  ...baseCallPayload({ booking, policy }),
+  success: false,
+  status: 'disabled',
+  message: 'Video calling is not available until your region is verified.'
+});
+
+const livekitPayload = ({ booking, roomName, livekitUrl, livekitToken, policy }) => ({
+  success: true,
+  provider: 'livekit',
+  joinMode: 'in_app',
+  region: policy.region,
+  livekitUrl,
+  token: livekitToken,
+  livekitToken,
+  roomName,
+  roomId: roomName,
+  bookingId: booking._id.toString(),
+  sessionType: booking.sessionType,
+  counsellorName: `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`,
+  userName: `${booking.user.firstName} ${booking.user.lastName}`,
+  scheduledAt: booking.scheduledAt,
+  duration: booking.sessionDuration,
+  status: booking.status
+});
+
+const respondWithCallPayload = (res, payload, statusCode = 200) =>
+  res.status(statusCode).json({
+    ...payload,
+    data: payload
+  });
+
+const ensureLivekitRoom = async (booking, roomName) => {
+  const client = getLivekitClient();
+  await client.createRoom({
+    name: roomName,
+    emptyTimeout: 300,
+    maxParticipants: 10,
+    metadata: JSON.stringify({ bookingId: booking._id.toString() }),
+  });
+};
+
+const getCallPolicy = (req, booking) => resolveCallPolicy(buildGuardInput(req, booking));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/video/create-room
@@ -113,20 +239,24 @@ router.post('/create-room', [
       }
     }
 
+    const policy = getCallPolicy(req, booking);
+    await updateBookingPolicy(booking, policy);
+    if (policy.joinMode === 'external_link') {
+      await booking.save();
+      const payload = externalPayload({ booking, policy });
+      return respondWithCallPayload(res, payload, payload.success ? 200 : 409);
+    }
+    if (policy.joinMode === 'disabled') {
+      await booking.save();
+      return respondWithCallPayload(res, disabledPayload({ booking, policy }), 403);
+    }
+
     const roomName   = `menorah-${booking._id}`;
     const livekitUrl = process.env.LIVEKIT_URL || 'wss://livekit.menorahhealth.app';
 
-    // Idempotently create the room on the LiveKit server
     try {
-      const client = getLivekitClient();
-      await client.createRoom({
-        name:               roomName,
-        emptyTimeout:       300,   // 5 min after last participant leaves, room closes
-        maxParticipants:    10,
-        metadata:           JSON.stringify({ bookingId: booking._id.toString() }),
-      });
+      await ensureLivekitRoom(booking, roomName);
     } catch (livekitErr) {
-      // Room may already exist — that's fine, createRoom is idempotent
       if (!livekitErr.message?.includes('already exists')) {
         console.error('LiveKit createRoom error:', livekitErr.message);
         return res.status(503).json({ success: false, message: 'Video service unavailable. Please try again.' });
@@ -141,27 +271,17 @@ router.post('/create-room', [
       req.user._id.toString(),
       displayName,
       roomName,
-      isCounsellor   // counsellors are room admins
+      isCounsellor,
+      buildGuardInput(req, booking)
     );
 
     // Persist room details on the booking document
-    booking.videoCall.roomId  = roomName;
-    booking.videoCall.roomUrl = `${livekitUrl}/${roomName}`;
+    booking.videoCall.roomId   = roomName;
+    booking.videoCall.roomUrl  = `${livekitUrl}/${roomName}`;
+    booking.videoCall.status   = booking.status === 'in-progress' ? 'started' : 'scheduled';
     await booking.save();
 
-    return res.json({
-      success: true,
-      data: {
-        roomId:         roomName,
-        livekitUrl,
-        livekitToken,
-        sessionType:    booking.sessionType,
-        counsellorName: `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`,
-        userName:       `${booking.user.firstName} ${booking.user.lastName}`,
-        scheduledAt:    booking.scheduledAt,
-        duration:       booking.sessionDuration,
-      },
-    });
+    return respondWithCallPayload(res, livekitPayload({ booking, roomName, livekitUrl, livekitToken, policy }));
   } catch (err) {
     console.error('Create video room error:', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
@@ -186,7 +306,20 @@ router.get('/room/:bookingId', [
 
     if (error) return res.status(error === 'Booking not found' ? 404 : 400).json({ success: false, message: error });
     if (!isUser && !isCounsellor) return res.status(403).json({ success: false, message: 'Access denied' });
+    const policy = getCallPolicy(req, booking);
+    await updateBookingPolicy(booking, policy);
+    if (policy.joinMode === 'external_link') {
+      await booking.save();
+      const payload = externalPayload({ booking, policy });
+      return respondWithCallPayload(res, payload, payload.success ? 200 : 409);
+    }
+    if (policy.joinMode === 'disabled') {
+      await booking.save();
+      return respondWithCallPayload(res, disabledPayload({ booking, policy }), 403);
+    }
+
     if (!booking.videoCall.roomId) {
+      await booking.save();
       return res.status(404).json({ success: false, message: 'Video room not created yet' });
     }
 
@@ -199,23 +332,19 @@ router.get('/room/:bookingId', [
       req.user._id.toString(),
       displayName,
       booking.videoCall.roomId,
-      isCounsellor
+      isCounsellor,
+      buildGuardInput(req, booking)
     );
 
-    return res.json({
-      success: true,
-      data: {
-        roomId:         booking.videoCall.roomId,
-        livekitUrl,
-        livekitToken,
-        sessionType:    booking.sessionType,
-        counsellorName: `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`,
-        userName:       `${booking.user.firstName} ${booking.user.lastName}`,
-        scheduledAt:    booking.scheduledAt,
-        duration:       booking.sessionDuration,
-        status:         booking.status,
-      },
-    });
+    await booking.save();
+
+    return respondWithCallPayload(res, livekitPayload({
+      booking,
+      roomName: booking.videoCall.roomId,
+      livekitUrl,
+      livekitToken,
+      policy
+    }));
   } catch (err) {
     console.error('Get video room error:', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
@@ -245,37 +374,48 @@ router.post('/room/:bookingId/join', [
       return res.status(400).json({ success: false, message: 'Session is not active' });
     }
 
+    const policy = getCallPolicy(req, booking);
+    await updateBookingPolicy(booking, policy);
+
+    if (policy.joinMode === 'external_link') {
+      if (booking.status === 'confirmed' && isCounsellor) {
+        await booking.startSession();
+        booking.videoCall.status = booking.videoCall.externalJoinUrl ? 'started' : 'not_configured';
+      }
+      await booking.save();
+
+      const io = req.app.get('io');
+      if (io && isCounsellor && booking.status === 'in-progress') {
+        const counsellorName = `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`;
+        io.to(`user_${booking.user._id}`).emit('session_started', {
+          bookingId: booking._id.toString(),
+          status: 'in-progress',
+          sessionType: booking.sessionType,
+          provider: policy.provider,
+          joinMode: policy.joinMode,
+          counsellorName,
+          scheduledAt: booking.scheduledAt.toISOString(),
+          sessionDuration: booking.sessionDuration,
+        });
+        io.to(`user_${booking.user._id}`).emit('booking_status_changed', {
+          bookingId: booking._id.toString(),
+          status: 'in-progress',
+        });
+      }
+
+      const payload = externalPayload({ booking, policy });
+      return respondWithCallPayload(res, payload, payload.success ? 200 : 409);
+    }
+
+    if (policy.joinMode === 'disabled') {
+      await booking.save();
+      return respondWithCallPayload(res, disabledPayload({ booking, policy }), 403);
+    }
+
     if (booking.status === 'confirmed') {
       if (isCounsellor) {
-        // Counsellor joining → start the session
         await booking.startSession();
 
-        // Ensure room exists on LiveKit server
-        if (booking.sessionType === 'video') {
-          const roomName   = `menorah-${booking._id}`;
-          const livekitUrl = process.env.LIVEKIT_URL || 'wss://livekit.menorahhealth.app';
-
-          try {
-            const client = getLivekitClient();
-            await client.createRoom({
-              name:            roomName,
-              emptyTimeout:    300,
-              maxParticipants: 10,
-              metadata:        JSON.stringify({ bookingId: booking._id.toString() }),
-            });
-          } catch (livekitErr) {
-            if (!livekitErr.message?.includes('already exists')) {
-              console.error('LiveKit createRoom error on join:', livekitErr.message);
-              return res.status(503).json({ success: false, message: 'Video service unavailable. Please try again.' });
-            }
-          }
-
-          booking.videoCall.roomId  = roomName;
-          booking.videoCall.roomUrl = `${livekitUrl}/${roomName}`;
-          await booking.save();
-        }
-
-        // Notify user via Socket.IO
         const io = req.app.get('io');
         if (io) {
           const counsellorName = `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`;
@@ -283,6 +423,8 @@ router.post('/room/:bookingId/join', [
             bookingId:       booking._id.toString(),
             status:          'in-progress',
             sessionType:     booking.sessionType,
+            provider:        'livekit',
+            joinMode:        'in_app',
             counsellorName,
             scheduledAt:     booking.scheduledAt.toISOString(),
             sessionDuration: booking.sessionDuration,
@@ -293,7 +435,6 @@ router.post('/room/:bookingId/join', [
           });
         }
       } else {
-        // User joining before counsellor started
         return res.status(400).json({
           success: false,
           message: 'Session has not been started by the counsellor yet',
@@ -301,25 +442,12 @@ router.post('/room/:bookingId/join', [
       }
     }
 
-    // If booking is already in-progress but the room was never created
-    // (happens when the web app called PUT /bookings/:id/start first instead
-    //  of going through this join endpoint), create it now.
-    if (
-      booking.status === 'in-progress' &&
-      !booking.videoCall.roomId &&
-      booking.sessionType === 'video' &&
-      isCounsellor
-    ) {
-      const roomName   = `menorah-${booking._id}`;
-      const livekitUrl = process.env.LIVEKIT_URL || 'wss://livekit.menorahhealth.app';
+    const livekitUrl = process.env.LIVEKIT_URL || 'wss://livekit.menorahhealth.app';
+
+    if (booking.status === 'in-progress' && !booking.videoCall.roomId && booking.sessionType === 'video' && isCounsellor) {
+      const roomName = `menorah-${booking._id}`;
       try {
-        const client = getLivekitClient();
-        await client.createRoom({
-          name:            roomName,
-          emptyTimeout:    300,
-          maxParticipants: 10,
-          metadata:        JSON.stringify({ bookingId: booking._id.toString() }),
-        });
+        await ensureLivekitRoom(booking, roomName);
       } catch (livekitErr) {
         if (!livekitErr.message?.includes('already exists')) {
           console.error('LiveKit createRoom error (in-progress path):', livekitErr.message);
@@ -328,15 +456,14 @@ router.post('/room/:bookingId/join', [
       }
       booking.videoCall.roomId  = roomName;
       booking.videoCall.roomUrl = `${livekitUrl}/${roomName}`;
+      booking.videoCall.status  = 'started';
       await booking.save();
     }
 
-    // Ensure room exists for video sessions
     if (booking.sessionType === 'video' && !booking.videoCall.roomId) {
       return res.status(400).json({ success: false, message: 'Video room not available for this session' });
     }
 
-    const livekitUrl   = process.env.LIVEKIT_URL || 'wss://livekit.menorahhealth.app';
     const displayName  = isUser
       ? `${booking.user.firstName} ${booking.user.lastName}`
       : `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`;
@@ -345,23 +472,19 @@ router.post('/room/:bookingId/join', [
       req.user._id.toString(),
       displayName,
       booking.videoCall.roomId,
-      isCounsellor
+      isCounsellor,
+      buildGuardInput(req, booking)
     );
 
-    return res.json({
-      success: true,
-      message: 'Joined video room successfully',
-      data: {
-        roomId:         booking.videoCall.roomId,
+    return respondWithCallPayload(res, {
+      ...livekitPayload({
+        booking,
+        roomName: booking.videoCall.roomId,
         livekitUrl,
         livekitToken,
-        sessionType:    booking.sessionType,
-        counsellorName: `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`,
-        userName:       `${booking.user.firstName} ${booking.user.lastName}`,
-        scheduledAt:    booking.scheduledAt,
-        duration:       booking.sessionDuration,
-        status:         booking.status,
-      },
+        policy
+      }),
+      message: 'Joined video room successfully'
     });
   } catch (err) {
     console.error('Join video room error:', err);
@@ -390,6 +513,7 @@ router.post('/room/:bookingId/leave', [
 
     if (booking.status === 'in-progress' && isCounsellor) {
       await booking.complete();
+      booking.videoCall.status = 'ended';
 
       // Delete LiveKit room so it doesn't linger
       if (booking.videoCall.roomId) {
@@ -401,6 +525,7 @@ router.post('/room/:bookingId/leave', [
           console.warn('LiveKit deleteRoom warning:', livekitErr.message);
         }
       }
+      await booking.save();
 
       // Notify user via Socket.IO
       const io = req.app.get('io');
@@ -986,5 +1111,10 @@ router.post('/livekit-webhook', async (req, res) => {
     return res.sendStatus(200); // Always 200 — LiveKit retries on non-200
   }
 });
+
+router._private = {
+  generateLivekitToken,
+  getCallPolicy
+};
 
 module.exports = router;

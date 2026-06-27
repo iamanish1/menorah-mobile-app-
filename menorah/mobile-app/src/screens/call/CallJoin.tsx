@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ActivityIndicator,
-  Alert, Platform, PermissionsAndroid, StyleSheet,
+  Alert, Platform, PermissionsAndroid, StyleSheet, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -17,6 +17,10 @@ interface RouteParams {
   roomId:         string;
   livekitUrl:     string;
   livekitToken:   string;
+  provider?:      string;
+  joinMode?:      string;
+  joinUrl?:       string;
+  externalJoinUrl?: string;
   sessionType:    'video' | 'audio' | 'chat';
   counsellorName: string;
   userName:       string;
@@ -27,6 +31,10 @@ export default function CallJoin({ navigation, route }: any) {
     bookingId,
     livekitUrl,
     livekitToken,
+    provider,
+    joinMode,
+    joinUrl,
+    externalJoinUrl,
     sessionType,
     counsellorName,
     userName,
@@ -41,13 +49,28 @@ export default function CallJoin({ navigation, route }: any) {
   const webViewRef = useRef<WebView>(null);
 
   useEffect(() => {
+    if (joinMode === 'external_link') {
+      const externalUrl = joinUrl || externalJoinUrl;
+      if (externalUrl) {
+        Linking.openURL(externalUrl).catch(() => setError('Could not open the external session link.'));
+      } else {
+        setError('External session link is not configured yet.');
+      }
+      setLoading(false);
+      return;
+    }
+    if (joinMode === 'disabled' || provider === 'disabled') {
+      setError('Video calling is not available until your region is verified.');
+      setLoading(false);
+      return;
+    }
     if (!livekitToken || !livekitUrl) {
       setError('Missing session information. Please go back and try again.');
       setLoading(false);
     } else {
       requestPermissions();
     }
-  }, [livekitToken, livekitUrl]);
+  }, [provider, joinMode, joinUrl, externalJoinUrl, livekitToken, livekitUrl]);
 
   const requestPermissions = async () => {
     if (Platform.OS !== 'android') {

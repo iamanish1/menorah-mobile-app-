@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ActivityIndicator,
-  Alert, ScrollView, Platform, PermissionsAndroid, StyleSheet,
+  Alert, ScrollView, Platform, PermissionsAndroid, StyleSheet, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Wifi, CheckCircle, XCircle, Video, Mic, Clock, PhoneCall } from 'lucide-react-native';
@@ -100,15 +100,40 @@ export default function PreCallCheck({ navigation, route }: any) {
     try {
       const res = await api.joinVideoRoom(bookingId);
       if (res.success && res.data) {
+        if (res.data.joinMode === 'external_link') {
+          const joinUrl = res.data.joinUrl || res.data.externalJoinUrl;
+          if (!joinUrl) {
+            Alert.alert('Session Link Pending', res.data.message || 'Your secure video session link is not ready yet.');
+            return true;
+          }
+          await Linking.openURL(joinUrl);
+          return true;
+        }
+        if (res.data.joinMode === 'disabled' || res.data.provider === 'disabled') {
+          Alert.alert('Calling Unavailable', res.data.message || 'Video calling is not available until your region is verified.');
+          return true;
+        }
+        if (res.data.provider !== 'livekit' || res.data.joinMode !== 'in_app' || !res.data.livekitUrl || !(res.data.livekitToken || res.data.token)) {
+          Alert.alert('Cannot Join', res.data.message || 'Session connection details are not ready yet.');
+          return true;
+        }
         navigation.navigate('CallJoin', {
           bookingId,
           roomId:         res.data.roomId,
           livekitUrl:     res.data.livekitUrl,
-          livekitToken:   res.data.livekitToken,
+          livekitToken:   res.data.livekitToken || res.data.token,
           sessionType:    res.data.sessionType,
           counsellorName: res.data.counsellorName,
           userName:       res.data.userName,
         });
+        return true;
+      }
+      if (res.data?.joinMode === 'external_link') {
+        Alert.alert('Session Link Pending', res.data.message || 'Your secure video session link is not ready yet.');
+        return true;
+      }
+      if (res.data?.joinMode === 'disabled' || res.data?.provider === 'disabled') {
+        Alert.alert('Calling Unavailable', res.data.message || 'Video calling is not available until your region is verified.');
         return true;
       }
       const msg: string = (res as any).message || '';

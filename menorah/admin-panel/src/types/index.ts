@@ -96,6 +96,45 @@ export interface User {
   };
 }
 
+export type CallProvider = 'livekit' | 'vsee' | 'doxy' | 'zoom' | 'google_meet' | 'teams' | 'disabled';
+export type CallJoinMode = 'in_app' | 'external_link' | 'disabled';
+export type CallStatus = 'not_configured' | 'ready' | 'started' | 'ended' | 'disabled';
+
+export interface SessionVideoCall {
+  provider?: CallProvider;
+  joinMode?: CallJoinMode;
+  externalProviderName?: string;
+  externalJoinUrl?: string;
+  externalHostUrl?: string;
+  region?: string;
+  status?: CallStatus;
+  policyReason?: string;
+  lastPolicyCheckAt?: string;
+  configuredAt?: string;
+  roomId?: string;
+  roomUrl?: string;
+}
+
+export interface AdminBooking {
+  id: string;
+  _id?: string;
+  user?: Pick<User, '_id' | 'firstName' | 'lastName' | 'email' | 'phone'>;
+  counsellor?: {
+    _id?: string;
+    user?: Pick<User, '_id' | 'firstName' | 'lastName' | 'email' | 'phone'>;
+    specialization?: string;
+  } | null;
+  sessionType: 'video' | 'audio' | 'chat';
+  sessionDuration: number;
+  scheduledAt: string;
+  status: string;
+  paymentStatus?: string;
+  amount?: number;
+  currency?: string;
+  videoCall?: SessionVideoCall;
+  createdAt?: string;
+}
+
 export interface PlatformStats {
   users: { total: number; newToday: number; newThisMonth: number };
   counsellors: { total: number; pending: number; approved: number; blocked: number };
@@ -114,8 +153,6 @@ export interface ServerUsage {
   };
   cpu: {
     usagePercent: number;
-    cores: number;
-    model: string;
     loadAverage: number[];
   };
   memory: {

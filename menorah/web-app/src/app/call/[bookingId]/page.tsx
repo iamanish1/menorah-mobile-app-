@@ -14,16 +14,26 @@ const LiveKitRoom     = dynamic(() => import('@livekit/components-react').then(m
 const VideoConference = dynamic(() => import('@livekit/components-react').then(m => m.VideoConference), { ssr: false });
 
 interface VideoRoomData {
-  roomId:         string;
-  livekitUrl:     string;
-  livekitToken:   string;
-  sessionType:    string;
-  counsellorName: string;
-  userName:       string;
-  status:         string;
+  provider?: string;
+  joinMode?: string;
+  roomId?: string;
+  livekitUrl?: string;
+  livekitToken?: string;
+  token?: string;
+  joinUrl?: string;
+  externalJoinUrl?: string;
+  hostUrl?: string;
+  externalHostUrl?: string;
+  providerName?: string;
+  externalProviderName?: string;
+  message?: string;
+  sessionType?: string;
+  counsellorName?: string;
+  userName?: string;
+  status?: string;
 }
 
-type PageState = 'loading' | 'ready' | 'in-call' | 'ended' | 'error';
+type PageState = 'loading' | 'ready' | 'external' | 'not-configured' | 'disabled' | 'ended' | 'error';
 
 export default function VideoCallPage() {
   const router           = useRouter();
@@ -51,9 +61,15 @@ export default function VideoCallPage() {
     setPageState('loading');
     try {
       const res = await api.joinVideoRoom(bookingId);
-      if (res.success && res.data) {
+      if (res.data?.provider === 'livekit' && res.data.joinMode === 'in_app') {
         setRoomData(res.data);
         setPageState('ready');
+      } else if (res.data?.joinMode === 'external_link') {
+        setRoomData(res.data);
+        setPageState(res.data.joinUrl || res.data.externalJoinUrl ? 'external' : 'not-configured');
+      } else if (res.data?.joinMode === 'disabled' || res.data?.provider === 'disabled') {
+        setRoomData(res.data);
+        setPageState('disabled');
       } else {
         setErrorMsg(res.message || 'Failed to join video room');
         setPageState('error');
@@ -118,8 +134,54 @@ export default function VideoCallPage() {
     );
   }
 
+  if (pageState === 'external' && roomData) {
+    const joinUrl = roomData.hostUrl || roomData.externalHostUrl || roomData.joinUrl || roomData.externalJoinUrl;
+    const providerName = roomData.providerName || roomData.externalProviderName || 'external provider';
+    return (
+      <div style={styles.centred}>
+        <p style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Start on {providerName}</p>
+        <p style={{ color: '#94a3b8', marginBottom: 24, textAlign: 'center', maxWidth: 380 }}>
+          LiveKit is disabled for UAE sessions. Use the approved external provider link.
+        </p>
+        <button style={styles.btn} onClick={() => { if (joinUrl) window.location.href = joinUrl; }}>
+          Open session link
+        </button>
+      </div>
+    );
+  }
+
+  if (pageState === 'not-configured') {
+    return (
+      <div style={styles.centred}>
+        <p style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>External session link not configured</p>
+        <p style={{ color: '#94a3b8', marginBottom: 24, textAlign: 'center', maxWidth: 380 }}>
+          Add an approved external provider link before starting this session.
+        </p>
+        <button style={styles.btn} onClick={() => router.push(`/bookings/${bookingId}`)}>
+          Back to Booking
+        </button>
+      </div>
+    );
+  }
+
+  if (pageState === 'disabled') {
+    return (
+      <div style={styles.centred}>
+        <p style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Calling unavailable</p>
+        <p style={{ color: '#94a3b8', marginBottom: 24, textAlign: 'center', maxWidth: 380 }}>
+          {roomData?.message || 'Video calling is not available until the user region is verified.'}
+        </p>
+        <button style={styles.btn} onClick={() => router.push(`/bookings/${bookingId}`)}>
+          Back to Booking
+        </button>
+      </div>
+    );
+  }
+
   // ── Ready / In-call ───────────────────────────────────────────────────────
   if (!roomData) return null;
+  const token = roomData.livekitToken || roomData.token;
+  if (!roomData.livekitUrl || !token) return null;
 
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#0f172a' }}>
@@ -135,7 +197,7 @@ export default function VideoCallPage() {
       <LiveKitRoom
         video={roomData.sessionType === 'video'}
         audio={true}
-        token={roomData.livekitToken}
+        token={token}
         serverUrl={roomData.livekitUrl}
         data-lk-theme="default"
         style={{ height: '100vh' }}

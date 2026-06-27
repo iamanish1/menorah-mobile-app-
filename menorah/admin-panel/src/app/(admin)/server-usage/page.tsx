@@ -179,7 +179,7 @@ export default function ServerUsagePage() {
         <ResourceCard
           title="CPU"
           value={`${usage.cpu.usagePercent.toFixed(1)}%`}
-          subtitle={`${usage.cpu.cores} cores - load ${usage.cpu.loadAverage[0]?.toFixed(2) || '0.00'}`}
+          subtitle={`Load ${usage.cpu.loadAverage[0]?.toFixed(2) || '0.00'}`}
           percent={usage.cpu.usagePercent}
           icon={Cpu}
         />
@@ -223,12 +223,11 @@ export default function ServerUsagePage() {
             <div className="rounded-xl bg-slate-950 p-5 text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Processor</p>
-                  <p className="mt-2 text-lg font-black">{usage.cpu.cores} logical processors</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">CPU load</p>
+                  <p className="mt-2 text-lg font-black">{usage.cpu.usagePercent.toFixed(1)}% usage</p>
                 </div>
                 <Cpu className="text-blue-300" size={28} />
               </div>
-              <p className="mt-4 line-clamp-2 text-sm text-slate-300">{usage.cpu.model}</p>
               <div className="mt-5 grid grid-cols-3 gap-3">
                 {usage.cpu.loadAverage.map((load, index) => (
                   <div key={index} className="rounded-lg bg-white/10 p-3">

@@ -9,6 +9,20 @@ const SERVER_TZ = process.env.SERVER_TZ || 'Asia/Kolkata';
 
 const router = express.Router();
 
+const formatVideoCall = (videoCall = {}) => ({
+  provider: videoCall.provider,
+  joinMode: videoCall.joinMode,
+  externalProviderName: videoCall.externalProviderName,
+  externalJoinUrl: videoCall.externalJoinUrl,
+  externalHostUrl: videoCall.externalHostUrl,
+  region: videoCall.region,
+  status: videoCall.status,
+  policyReason: videoCall.policyReason,
+  configuredAt: videoCall.configuredAt,
+  roomId: videoCall.roomId,
+  roomUrl: videoCall.roomUrl
+});
+
 // Helper function to get counselor from user
 const getCounsellorFromUser = async (userId) => {
   return await Counsellor.findOne({ user: userId });
@@ -122,6 +136,7 @@ router.get('/me/bookings/pending', [
         concerns: booking.concerns,
         goals: booking.goals,
         emergencyContact: booking.emergencyContact,
+        videoCall: formatVideoCall(booking.videoCall),
         createdAt: booking.createdAt
       }));
 
@@ -230,6 +245,7 @@ router.get('/me/bookings/:id', [
       goals: booking.goals,
       emergencyContact: booking.emergencyContact,
       preferences: booking.preferences,
+      videoCall: formatVideoCall(booking.videoCall),
       assignedAt: booking.assignedAt,
       createdAt: booking.createdAt,
       statusHistory: booking.statusHistory
@@ -863,6 +879,7 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
             sessionDuration: booking.sessionDuration,
             scheduledAt: booking.scheduledAt,
             status: booking.status,
+            videoCall: formatVideoCall(booking.videoCall),
             isSubscriptionBooking: booking.isSubscriptionBooking || false,
             paymentMethod: booking.paymentMethod
           })),
@@ -875,6 +892,7 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
           sessionType: booking.sessionType,
           scheduledAt: booking.scheduledAt,
           status: booking.status,
+          videoCall: formatVideoCall(booking.videoCall),
           amount: booking.amount,
           currency: booking.currency,
           isSubscriptionBooking: booking.isSubscriptionBooking || false,
@@ -1032,4 +1050,3 @@ router.put('/me/bank-details', [
 });
 
 module.exports = router;
-

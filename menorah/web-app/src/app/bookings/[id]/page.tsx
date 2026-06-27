@@ -25,6 +25,12 @@ export default function BookingDetailPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [callLinkForm, setCallLinkForm] = useState({
+    provider: 'vsee',
+    externalJoinUrl: '',
+    externalHostUrl: '',
+    externalProviderName: 'VSee',
+  });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -44,7 +50,16 @@ export default function BookingDetailPage() {
       setError(null);
       const response = await api.getBookingById(params.id as string);
       if (response.success && response.data) {
-        setBooking(response.data.booking);
+        const nextBooking = response.data.booking;
+        setBooking(nextBooking);
+        if (nextBooking.videoCall) {
+          setCallLinkForm({
+            provider: nextBooking.videoCall.provider && nextBooking.videoCall.provider !== 'livekit' ? nextBooking.videoCall.provider : 'vsee',
+            externalJoinUrl: nextBooking.videoCall.externalJoinUrl || '',
+            externalHostUrl: nextBooking.videoCall.externalHostUrl || '',
+            externalProviderName: nextBooking.videoCall.externalProviderName || 'VSee',
+          });
+        }
       } else {
         setError(response.message || 'Failed to load booking');
       }
@@ -150,6 +165,26 @@ export default function BookingDetailPage() {
     }
   };
 
+  const handleSaveCallLink = async () => {
+    if (!booking) return;
+    try {
+      setActionLoading('call-link');
+      setError(null);
+      const response = await api.updateCallLink(booking.id, callLinkForm);
+      if (response.success) {
+        setSuccessMsg('External session link saved');
+        await fetchBooking();
+        setTimeout(() => setSuccessMsg(null), 3000);
+      } else {
+        setError(response.message || 'Failed to save external session link');
+      }
+    } catch (error: any) {
+      setError(error.message || 'Failed to save external session link');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'default'> = {
       'confirmed': 'success',
@@ -199,6 +234,9 @@ export default function BookingDetailPage() {
   // For scheduled sessions, the backend will validate the scheduled time
   const canStart = booking.status === 'confirmed' && booking.assignedAt;
   const canComplete = booking.status === 'in-progress';
+  const isExternalCall = booking.videoCall?.joinMode === 'external_link' || (
+    booking.videoCall?.provider && booking.videoCall.provider !== 'livekit' && booking.videoCall.provider !== 'disabled'
+  );
 
   return (
     <AppLayout>
@@ -317,6 +355,64 @@ export default function BookingDetailPage() {
                   <Card padding="lg" className={styles.infoCard}>
                     <h3 className={styles.cardHeader}>Concerns</h3>
                     <p className={styles.concernsText}>{booking.concerns}</p>
+                  </Card>
+                )}
+
+                {booking.sessionType === 'video' && (
+                  <Card padding="lg" className={styles.infoCard}>
+                    <h3 className={styles.cardHeader}>Call Setup</h3>
+                    <div className={styles.infoGrid}>
+                      <div className={styles.infoItem}>
+                        <p className={styles.infoLabel}>Provider</p>
+                        <p className={styles.infoValue}>{booking.videoCall?.externalProviderName || booking.videoCall?.provider || 'Not checked'}</p>
+                      </div>
+                      <div className={styles.infoItem}>
+                        <p className={styles.infoLabel}>Region</p>
+                        <p className={styles.infoValue}>{booking.videoCall?.region || 'Unknown'}</p>
+                      </div>
+                      <div className={styles.infoItem}>
+                        <p className={styles.infoLabel}>Call Status</p>
+                        <p className={styles.infoValue}>{booking.videoCall?.status || 'not_configured'}</p>
+                      </div>
+                    </div>
+
+                    {isExternalCall && (
+                      <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
+                        <p style={{ color: '#92400e', fontSize: 13, fontWeight: 600 }}>
+                          LiveKit is disabled for UAE sessions. Add an approved external provider link.
+                        </p>
+                        <select
+                          value={callLinkForm.provider}
+                          onChange={(event) => setCallLinkForm((current) => ({ ...current, provider: event.target.value }))}
+                          className={styles.dateInput}
+                        >
+                          <option value="vsee">VSee</option>
+                          <option value="doxy">DOXY</option>
+                          <option value="zoom">Zoom</option>
+                          <option value="google_meet">Google Meet</option>
+                          <option value="teams">Microsoft Teams</option>
+                        </select>
+                        <input
+                          className={styles.dateInput}
+                          placeholder="Participant HTTPS join link"
+                          value={callLinkForm.externalJoinUrl}
+                          onChange={(event) => setCallLinkForm((current) => ({ ...current, externalJoinUrl: event.target.value }))}
+                        />
+                        <input
+                          className={styles.dateInput}
+                          placeholder="Host HTTPS link (optional)"
+                          value={callLinkForm.externalHostUrl}
+                          onChange={(event) => setCallLinkForm((current) => ({ ...current, externalHostUrl: event.target.value }))}
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={handleSaveCallLink}
+                          isLoading={actionLoading === 'call-link'}
+                        >
+                          Save External Link
+                        </Button>
+                      </div>
+                    )}
                   </Card>
                 )}
 

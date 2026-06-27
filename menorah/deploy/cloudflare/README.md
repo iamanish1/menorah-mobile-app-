@@ -17,7 +17,13 @@ api-admin.menorah.me    -> http://reverse-proxy:80
 calls.menorah.me        -> http://reverse-proxy:80
 ```
 
-`calls.menorah.me` is proxied by Caddy to `LIVEKIT_UPSTREAM`, which should point to the external LiveKit/call VPS upstream.
+`calls.menorah.me` is proxied by Caddy to `LIVEKIT_UPSTREAM`. For same-VPS Hostinger LiveKit, use:
+
+```env
+LIVEKIT_UPSTREAM=http://livekit:7880
+```
+
+Cloudflare Tunnel/HTTP proxying is only for HTTPS/WSS signaling. LiveKit media still needs Hostinger firewall/NAT access to the configured RTC ports, normally `7881/tcp` and `50000-50100/udp`, or clients must rely on LiveKit TCP fallback.
 
 ## Mode A: Dashboard-Managed Token
 

@@ -48,7 +48,14 @@ api-admin.menorah.me    -> http://reverse-proxy:80
 calls.menorah.me        -> http://reverse-proxy:80
 ```
 
-`calls.menorah.me` is routed by Caddy to `LIVEKIT_UPSTREAM`. Set `LIVEKIT_UPSTREAM` in `production.env`.
+`calls.menorah.me` is routed by Caddy to `LIVEKIT_UPSTREAM`. For same-VPS Hostinger LiveKit, set `LIVEKIT_UPSTREAM=http://livekit:7880` in `production.env`.
+
+Cloudflare Tunnel/HTTP proxying handles HTTPS/WSS signaling, but it does not carry LiveKit UDP media. On the Hostinger VPS, allow direct media ports configured in `deploy/livekit/livekit.yaml`, normally:
+
+```text
+7881/tcp
+50000-50100/udp
+```
 
 ## Start, Stop, Logs
 

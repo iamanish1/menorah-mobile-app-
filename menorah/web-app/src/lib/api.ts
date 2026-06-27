@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { Article, ArticlePagination, Booking, DashboardStats, TodaySchedule, ApiResponse, CounsellorStatus } from '@/types';
+import { Article, ArticlePagination, Booking, DashboardStats, TodaySchedule, ApiResponse, CounsellorStatus, VideoRoom } from '@/types';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -423,17 +423,26 @@ class ApiClient {
     }
   }
 
-  async joinVideoRoom(bookingId: string): Promise<ApiResponse<{
-    roomId:         string;
-    livekitUrl:     string;   // wss://livekit.menorahhealth.app
-    livekitToken:   string;   // LiveKit participant JWT
-    sessionType:    string;
-    counsellorName: string;
-    userName:       string;
-    scheduledAt:    string;
-    duration:       number;
-    status:         string;
-  }>> {
+  async updateCallLink(bookingId: string, payload: {
+    provider: string;
+    externalJoinUrl: string;
+    externalHostUrl?: string;
+    externalProviderName?: string;
+  }): Promise<ApiResponse<{ videoCall: Booking['videoCall'] }>> {
+    try {
+      const response = await this.client.patch(`/bookings/${bookingId}/call-link`, payload);
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        message: errorResponse?.message || error.message || 'Failed to save external session link',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async joinVideoRoom(bookingId: string): Promise<ApiResponse<VideoRoom>> {
     try {
       const response = await this.client.post(`/video/room/${bookingId}/join`);
       return response.data;
@@ -595,4 +604,3 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
-

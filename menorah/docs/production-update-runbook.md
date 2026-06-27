@@ -55,6 +55,9 @@ The rollback script:
 - [ ] No active incident is in progress.
 - [ ] Branch has the intended commit.
 - [ ] No production env files are changed by git.
+- [ ] If LiveKit config changed, `deploy/livekit/livekit.yaml` was updated on the Hostinger VPS outside git.
+- [ ] Hostinger firewall still allows LiveKit media ports `7881/tcp` and `50000-50100/udp`.
+- [ ] Hybrid calling policy is reviewed: non-blocked countries use LiveKit, countries in `LIVEKIT_BLOCKED_COUNTRIES` use approved external links.
 
 ## Post-Update Checklist
 
@@ -63,13 +66,19 @@ The rollback script:
 - [ ] `api-web /health/ready` returns 200.
 - [ ] `api-admin /health/ready` returns 200.
 - [ ] Worker health returns 200.
+- [ ] `api-web /health/deep` reports LiveKit configured without secret values.
+- [ ] `livekit` container is running.
 - [ ] iOS subscription payment routes still return 404.
 - [ ] Admin auth is still protected.
 - [ ] User login works.
 - [ ] Admin login works.
 - [ ] Article list loads.
 - [ ] Booking flow smoke test passes.
+- [ ] Video session smoke test joins from counsellor and user clients.
+- [ ] UAE video session smoke test opens the configured external-provider link and does not expose a LiveKit token.
+- [ ] Non-blocked-country video session smoke test receives an in-app LiveKit call token.
 
 ## Emergency Notes
 
 Do not run `git reset --hard` on the host unless you have confirmed there are no local operational changes needed for recovery. Env files are ignored by git and should not be affected by normal checkout/pull operations.
+Cloudflare HTTP proxying and tunnels do not replace LiveKit media reachability. If audio/video fails while signaling works, check Hostinger firewall/NAT and LiveKit TCP/UDP port exposure first.

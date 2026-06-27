@@ -3,6 +3,7 @@ import { getToken, clearToken } from './auth';
 import type {
   ApiResponse, PlatformStats, Counsellor, CounsellorRevenue,
   RevenueData, User, Pagination, PayoutRecord, PayoutSummary, PayoutStatus,
+  AdminBooking,
   Article, ArticleGenerationRun, ArticleStatus, BrandAsset, BrandGuideline,
   InstagramAccount, KycReview, KycStatus, SocialAspectRatio, SocialGenerationJob, SocialPost,
   ServerUsage, SocialCampaignBrief, SocialGenerationRun, SocialPostStatus, SocialPostType,
@@ -70,6 +71,24 @@ class AdminApiClient {
 
   getServerUsage() {
     return this.request<ServerUsage>(() => this.client.get('/admin/server-usage'));
+  }
+
+  // -- Sessions ----------------------------------------------------------------
+  getBookings(params?: { status?: string; page?: number; limit?: number }) {
+    return this.request<{ bookings: AdminBooking[]; pagination: Pagination }>(
+      () => this.client.get('/admin/bookings', { params })
+    );
+  }
+
+  updateBookingCallLink(id: string, payload: {
+    provider: string;
+    externalJoinUrl: string;
+    externalHostUrl?: string;
+    externalProviderName?: string;
+  }) {
+    return this.request<{ bookingId: string; videoCall: AdminBooking['videoCall'] }>(
+      () => this.client.patch(`/admin/bookings/${id}/call-link`, payload)
+    );
   }
 
   // ── Counsellors ─────────────────────────────────────────────────────────────

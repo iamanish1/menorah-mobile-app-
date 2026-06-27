@@ -124,6 +124,14 @@ export interface Booking {
   canBeCancelled?: boolean;
   canBeRescheduled?: boolean;
   videoCall?: {
+    provider?: CallProvider;
+    joinMode?: CallJoinMode;
+    externalProviderName?: string;
+    externalJoinUrl?: string;
+    externalHostUrl?: string;
+    region?: 'IN' | 'AE' | 'UNKNOWN';
+    status?: CallStatus;
+    policyReason?: string;
     roomId?: string;
     roomUrl?: string;
   };
@@ -166,16 +174,33 @@ export interface ChatMessage {
 }
 
 // ─── Video ────────────────────────────────────────────────────────────────────
+export type CallProvider = 'livekit' | 'vsee' | 'doxy' | 'zoom' | 'google_meet' | 'teams' | 'disabled';
+export type CallJoinMode = 'in_app' | 'external_link' | 'disabled';
+export type CallStatus = 'not_configured' | 'scheduled' | 'ready' | 'started' | 'ended' | 'cancelled' | 'disabled';
+
 export interface VideoRoom {
-  roomId: string;
-  livekitUrl: string;
-  livekitToken: string;
+  provider?: CallProvider;
+  joinMode?: CallJoinMode;
+  region?: 'IN' | 'AE' | 'UNKNOWN';
+  bookingId?: string;
+  roomName?: string;
+  roomId?: string;
+  livekitUrl?: string;
+  token?: string;
+  livekitToken?: string;
+  joinUrl?: string;
+  externalJoinUrl?: string;
+  hostUrl?: string;
+  externalHostUrl?: string;
+  providerName?: string;
+  externalProviderName?: string;
   sessionType: SessionType;
   counsellorName: string;
   userName: string;
   scheduledAt: string;
   duration: number;
-  status: BookingStatus;
+  status: BookingStatus | CallStatus;
+  message?: string;
 }
 
 // ─── Subscription ─────────────────────────────────────────────────────────────

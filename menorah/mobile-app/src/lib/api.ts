@@ -97,17 +97,30 @@ export interface Booking {
 }
 
 export interface VideoRoomSession {
-  roomId: string;
-  livekitUrl: string;
-  livekitToken: string;
+  provider?: 'livekit' | 'vsee' | 'doxy' | 'zoom' | 'google_meet' | 'teams' | 'disabled';
+  joinMode?: 'in_app' | 'external_link' | 'disabled';
+  region?: 'IN' | 'AE' | 'UNKNOWN';
+  bookingId?: string;
+  roomName?: string;
+  roomId?: string;
+  livekitUrl?: string;
+  livekitToken?: string;
+  token?: string;
   roomUrl?: string;
   jitsiToken?: string;
+  joinUrl?: string;
+  externalJoinUrl?: string;
+  hostUrl?: string;
+  externalHostUrl?: string;
+  providerName?: string;
+  externalProviderName?: string;
   sessionType: string;
   counsellorName: string;
   userName: string;
   scheduledAt: string;
   duration: number;
   status?: string;
+  message?: string;
 }
 
 export interface ChatRoom {
