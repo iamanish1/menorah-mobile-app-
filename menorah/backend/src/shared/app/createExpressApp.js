@@ -56,7 +56,15 @@ const createExpressApp = ({ serviceName, getHealthState }) => {
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   app.use(compression());
   if (process.env.NODE_ENV !== 'test') {
-    app.use(process.env.NODE_ENV === 'development' ? morgan('dev') : morgan('combined'));
+    const isHealthRequest = (req) => (
+      req.path === '/health'
+      || req.path === '/health/live'
+      || req.path === '/health/ready'
+      || req.path === '/health/deep'
+    );
+    app.use(process.env.NODE_ENV === 'development'
+      ? morgan('dev')
+      : morgan('combined', { skip: isHealthRequest }));
   }
   app.use('/uploads', express.static(path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads')));
 

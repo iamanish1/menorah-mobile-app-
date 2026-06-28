@@ -85,7 +85,7 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
       }
     },
-    "production": {
+    "production-do-not-use-base": {
       "distribution": "store",
       "channel": "production",
       "android": {
@@ -101,7 +101,7 @@
       }
     },
     "production-ios": {
-      "extends": "production",
+      "extends": "production-do-not-use-base",
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
@@ -112,7 +112,7 @@
       }
     },
     "production-android": {
-      "extends": "production",
+      "extends": "production-do-not-use-base",
       "android": {
         "buildType": "app-bundle"
       },

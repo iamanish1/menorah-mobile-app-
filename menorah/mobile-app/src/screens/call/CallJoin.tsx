@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ActivityIndicator,
   Alert, Platform, PermissionsAndroid, StyleSheet, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-import { palettes } from '@/theme/colors';
-import { useThemeMode } from '@/theme/ThemeProvider';
 import { ENV } from '@/lib/env';
 import { api } from '@/lib/api';
 
@@ -40,39 +38,12 @@ export default function CallJoin({ navigation, route }: any) {
     userName,
   } = (route.params || {}) as RouteParams;
 
-  const { scheme } = useThemeMode();
-  const C = palettes[scheme];
-
   const [loading,            setLoading]            = useState(true);
   const [error,              setError]              = useState<string | null>(null);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const webViewRef = useRef<WebView>(null);
 
-  useEffect(() => {
-    if (joinMode === 'external_link') {
-      const externalUrl = joinUrl || externalJoinUrl;
-      if (externalUrl) {
-        Linking.openURL(externalUrl).catch(() => setError('Could not open the external session link.'));
-      } else {
-        setError('External session link is not configured yet.');
-      }
-      setLoading(false);
-      return;
-    }
-    if (joinMode === 'disabled' || provider === 'disabled') {
-      setError('Video calling is not available until your region is verified.');
-      setLoading(false);
-      return;
-    }
-    if (!livekitToken || !livekitUrl) {
-      setError('Missing session information. Please go back and try again.');
-      setLoading(false);
-    } else {
-      requestPermissions();
-    }
-  }, [provider, joinMode, joinUrl, externalJoinUrl, livekitToken, livekitUrl]);
-
-  const requestPermissions = async () => {
+  const requestPermissions = useCallback(async () => {
     if (Platform.OS !== 'android') {
       setPermissionsGranted(true);
       return;
@@ -98,7 +69,7 @@ export default function CallJoin({ navigation, route }: any) {
               text: 'Open Settings',
               onPress: () => Alert.alert(
                 'Enable in Settings',
-                'Settings → Apps → Menorah Health → Permissions → Enable Camera & Microphone',
+                'Settings -> Apps -> Menorah Health -> Permissions -> Enable Camera & Microphone',
                 [{ text: 'OK' }]
               ),
             },
@@ -106,13 +77,38 @@ export default function CallJoin({ navigation, route }: any) {
         );
         setPermissionsGranted(false);
       }
-    } catch {
+    } catch (permissionError) {
+      console.warn('Could not request call permissions:', permissionError);
       Alert.alert('Permission Error', 'Could not request permissions. Please enable them in app settings.', [
         { text: 'Go Back', onPress: () => navigation.goBack() },
       ]);
       setPermissionsGranted(false);
     }
-  };
+  }, [navigation]);
+
+  useEffect(() => {
+    if (joinMode === 'external_link') {
+      const externalUrl = joinUrl || externalJoinUrl;
+      if (externalUrl) {
+        Linking.openURL(externalUrl).catch(() => setError('Could not open the external session link.'));
+      } else {
+        setError('External session link is not configured yet.');
+      }
+      setLoading(false);
+      return;
+    }
+    if (joinMode === 'disabled' || provider === 'disabled') {
+      setError('Video calling is not available until your region is verified.');
+      setLoading(false);
+      return;
+    }
+    if (!livekitToken || !livekitUrl) {
+      setError('Missing session information. Please go back and try again.');
+      setLoading(false);
+    } else {
+      requestPermissions();
+    }
+  }, [provider, joinMode, joinUrl, externalJoinUrl, livekitToken, livekitUrl, requestPermissions]);
 
   const handleLeave = () => {
     Alert.alert(
@@ -124,7 +120,11 @@ export default function CallJoin({ navigation, route }: any) {
           text: 'Leave',
           style: 'destructive',
           onPress: async () => {
-            try { if (bookingId) await api.leaveVideoRoom(bookingId); } catch {}
+            try {
+              if (bookingId) await api.leaveVideoRoom(bookingId);
+            } catch (leaveError) {
+              console.warn('Failed to leave video room:', leaveError);
+            }
             navigation.goBack();
           },
         },
@@ -138,7 +138,9 @@ export default function CallJoin({ navigation, route }: any) {
       if (data.action === 'leave' || data.action === 'session_ended') {
         api.leaveVideoRoom(bookingId).catch(() => {}).finally(() => navigation.goBack());
       }
-    } catch {}
+    } catch (parseError) {
+      console.warn('Ignoring invalid call WebView message:', parseError);
+    }
   };
 
   // ── Error screen ─────────────────────────────────────────────────────────

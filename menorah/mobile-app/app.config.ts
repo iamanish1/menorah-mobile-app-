@@ -98,8 +98,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         'android.permission.MODIFY_AUDIO_SETTINGS',
         'android.permission.INTERNET',
         'android.permission.ACCESS_NETWORK_STATE',
-        'android.permission.READ_EXTERNAL_STORAGE',
-        'android.permission.WRITE_EXTERNAL_STORAGE'
+        'android.permission.VIBRATE'
       ],
       statusBar: {
         barStyle: 'light-content',

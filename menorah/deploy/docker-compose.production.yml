@@ -397,7 +397,7 @@ services:
   mongo-restore-test:
     image: mongo:7
     profiles: ["restore-test"]
-    restart: unless-stopped
+    restart: "no"
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}

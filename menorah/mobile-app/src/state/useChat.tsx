@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { socketService, ChatMessage, TypingIndicator, UserStatus, MessageReadReceipt, SessionStartedData, BookingStatusData, BookingConfirmedData, BookingRescheduledData } from '@/lib/socket';
-import { api, ChatRoom, Message } from '@/lib/api';
+import { api, ChatRoom } from '@/lib/api';
 import { useAuth } from './useAuth';
 
 interface ChatContextType {
@@ -75,60 +75,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
 
-  // Initialize socket connection
-  useEffect(() => {
-    if (user) {
-      initializeSocket();
-    }
-
-    return () => {
-      socketService.disconnect();
-    };
-  }, [user]);
-
-  const initializeSocket = async () => {
-    try {
-      console.log('Initializing Socket.IO connection...');
-      await socketService.connect();
-
-      // Socket is now connected — sync state and join any room that was requested
-      // before the connection was ready (common when ChatThread mounts first)
-      setIsConnected(true);
-      if (currentRoomRef.current) {
-        socketService.joinRoom(currentRoomRef.current);
-      }
-
-      // Set up event listeners
-      const unsubscribeMessage = socketService.onMessage(handleNewMessage);
-      const unsubscribeTyping = socketService.onTyping(handleTyping);
-      const unsubscribeStatus = socketService.onStatusChange(handleStatusChange);
-      const unsubscribeReadReceipt = socketService.onReadReceipt(handleReadReceipt);
-      const unsubscribeConnection = socketService.onConnectionChange(handleConnectionChange);
-      const unsubscribeSessionStarted = socketService.onSessionStarted(handleSessionStarted);
-      const unsubscribeBookingStatus = socketService.onBookingStatusChanged(handleBookingStatus);
-      const unsubscribeBookingConfirmed = socketService.onBookingConfirmed(handleBookingConfirmed);
-      const unsubscribeBookingRescheduled = socketService.onBookingRescheduled(handleBookingRescheduled);
-
-      console.log('Socket.IO event listeners set up successfully');
-
-      return () => {
-        unsubscribeMessage();
-        unsubscribeTyping();
-        unsubscribeStatus();
-        unsubscribeReadReceipt();
-        unsubscribeConnection();
-        unsubscribeSessionStarted();
-        unsubscribeBookingStatus();
-        unsubscribeBookingConfirmed();
-        unsubscribeBookingRescheduled();
-      };
-    } catch (error) {
-      console.error('Failed to initialize socket:', error);
-      // Don't throw error, let the app continue without real-time features
-      setIsConnected(false);
-    }
-  };
-
   // Event handlers
   const handleNewMessage = useCallback((message: ChatMessage) => {
     const roomId = message.roomId;
@@ -166,7 +112,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       return;
     }
     // Ignore own typing events
-    if (user && typing.userId === user.id) return;
+    if (user?.id && typing.userId === user.id) return;
 
     setTypingUsers(prev => {
       const roomTyping = prev[roomId] || [];
@@ -184,7 +130,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         };
       }
     });
-  }, []);
+  }, [user?.id]);
 
   const handleStatusChange = useCallback((status: UserStatus) => {
     setOnlineUsers(prev => ({
@@ -250,6 +196,81 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const handleBookingRescheduled = useCallback((data: BookingRescheduledData) => {
     console.log('Booking rescheduled:', data);
   }, []);
+
+  const initializeSocket = useCallback(async () => {
+    try {
+      console.log('Initializing Socket.IO connection...');
+      await socketService.connect();
+
+      // Socket is now connected — sync state and join any room that was requested
+      // before the connection was ready (common when ChatThread mounts first)
+      setIsConnected(true);
+      if (currentRoomRef.current) {
+        socketService.joinRoom(currentRoomRef.current);
+      }
+
+      // Set up event listeners
+      const unsubscribeMessage = socketService.onMessage(handleNewMessage);
+      const unsubscribeTyping = socketService.onTyping(handleTyping);
+      const unsubscribeStatus = socketService.onStatusChange(handleStatusChange);
+      const unsubscribeReadReceipt = socketService.onReadReceipt(handleReadReceipt);
+      const unsubscribeConnection = socketService.onConnectionChange(handleConnectionChange);
+      const unsubscribeSessionStarted = socketService.onSessionStarted(handleSessionStarted);
+      const unsubscribeBookingStatus = socketService.onBookingStatusChanged(handleBookingStatus);
+      const unsubscribeBookingConfirmed = socketService.onBookingConfirmed(handleBookingConfirmed);
+      const unsubscribeBookingRescheduled = socketService.onBookingRescheduled(handleBookingRescheduled);
+
+      console.log('Socket.IO event listeners set up successfully');
+
+      return () => {
+        unsubscribeMessage();
+        unsubscribeTyping();
+        unsubscribeStatus();
+        unsubscribeReadReceipt();
+        unsubscribeConnection();
+        unsubscribeSessionStarted();
+        unsubscribeBookingStatus();
+        unsubscribeBookingConfirmed();
+        unsubscribeBookingRescheduled();
+      };
+    } catch (error) {
+      console.error('Failed to initialize socket:', error);
+      // Don't throw error, let the app continue without real-time features
+      setIsConnected(false);
+    }
+  }, [
+    handleBookingConfirmed,
+    handleBookingRescheduled,
+    handleBookingStatus,
+    handleConnectionChange,
+    handleNewMessage,
+    handleReadReceipt,
+    handleSessionStarted,
+    handleStatusChange,
+    handleTyping,
+  ]);
+
+  // Initialize socket connection
+  useEffect(() => {
+    let cancelled = false;
+    let cleanupListeners: (() => void) | undefined;
+
+    if (user) {
+      initializeSocket().then((cleanup) => {
+        if (cancelled) {
+          if (cleanup) cleanup();
+          return;
+        }
+        if (cleanup) cleanupListeners = cleanup;
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      cleanupListeners?.();
+      socketService.disconnect();
+    };
+  }, [initializeSocket, user]);
 
   // Chat room management
   const fetchChatRooms = useCallback(async () => {
@@ -369,7 +390,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       console.error('Failed to send message:', error);
       throw error;
     }
-  }, [user, isConnected]);
+  }, [user]);
 
   const deleteMessage = useCallback(async (roomId: string, messageId: string) => {
     if (!user) return;

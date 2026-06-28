@@ -11,7 +11,7 @@
  *   Chat rooms                  → 0      (always fresh — driven by socket events)
  */
 
-import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Counsellor, Booking, ChatRoom } from '@/lib/api';
 
 // ── Query keys ─────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ActivityIndicator,
   Alert, ScrollView, Platform, PermissionsAndroid, StyleSheet, Linking,
@@ -28,25 +28,8 @@ export default function PreCallCheck({ navigation, route }: any) {
   const [sessionDuration,      setSessionDuration]      = useState(0);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    checkNetwork();
-    requestPermissions();
-    fetchBookingInfo();
-    return () => { if (pollTimerRef.current) clearTimeout(pollTimerRef.current); };
-  }, [bookingId]);
-
-  // Auto-join when counsellor starts the session via socket
-  useEffect(() => {
+  const fetchBookingInfo = useCallback(async () => {
     if (!bookingId) return;
-    const unsub = socketService.onSessionStarted((data) => {
-      if (data.bookingId !== bookingId) return;
-      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
-      attemptJoin();
-    });
-    return () => unsub();
-  }, [bookingId]);
-
-  const fetchBookingInfo = async () => {
     try {
       const res = await api.getBooking(bookingId);
       if (res.success && res.data?.booking) {
@@ -54,10 +37,12 @@ export default function PreCallCheck({ navigation, route }: any) {
         setCounsellorName(b.counsellorName || '');
         setSessionDuration(b.sessionDuration || 0);
       }
-    } catch {}
-  };
+    } catch (error) {
+      console.warn('Failed to fetch booking info:', error);
+    }
+  }, [bookingId]);
 
-  const requestPermissions = async () => {
+  const requestPermissions = useCallback(async () => {
     if (Platform.OS === 'android') {
       try {
         const granted = await PermissionsAndroid.requestMultiple([
@@ -75,7 +60,8 @@ export default function PreCallCheck({ navigation, route }: any) {
             [{ text: 'OK' }]
           );
         }
-      } catch {
+      } catch (permissionError) {
+        console.warn('Failed to request pre-call permissions:', permissionError);
         setMicPermission(false);
         setCameraPermission(false);
       }
@@ -83,20 +69,21 @@ export default function PreCallCheck({ navigation, route }: any) {
       setMicPermission(true);
       setCameraPermission(true);
     }
-  };
+  }, []);
 
-  const checkNetwork = async () => {
+  const checkNetwork = useCallback(async () => {
     try {
       const state = await NetInfo.fetch();
       setNetworkOk(Boolean(state.isConnected && (state.type === 'wifi' || state.type === 'cellular')));
-    } catch {
+    } catch (networkError) {
+      console.warn('Failed to check network before call:', networkError);
       setNetworkOk(false);
     } finally {
       setChecking(false);
     }
-  };
+  }, []);
 
-  const attemptJoin = async (): Promise<boolean> => {
+  const attemptJoin = useCallback(async (): Promise<boolean> => {
     try {
       const res = await api.joinVideoRoom(bookingId);
       if (res.success && res.data) {
@@ -150,7 +137,25 @@ export default function PreCallCheck({ navigation, route }: any) {
       Alert.alert('Cannot Join', msg || 'Failed to join session. Please try again.');
       return true;
     }
-  };
+  }, [bookingId, navigation]);
+
+  useEffect(() => {
+    checkNetwork();
+    requestPermissions();
+    fetchBookingInfo();
+    return () => { if (pollTimerRef.current) clearTimeout(pollTimerRef.current); };
+  }, [checkNetwork, fetchBookingInfo, requestPermissions]);
+
+  // Auto-join when counsellor starts the session via socket
+  useEffect(() => {
+    if (!bookingId) return;
+    const unsub = socketService.onSessionStarted((data) => {
+      if (data.bookingId !== bookingId) return;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      attemptJoin();
+    });
+    return () => unsub();
+  }, [attemptJoin, bookingId]);
 
   const schedulePoll = () => {
     pollTimerRef.current = setTimeout(async () => {
@@ -202,7 +207,7 @@ export default function PreCallCheck({ navigation, route }: any) {
             <ActivityIndicator size="small" color="#3d9470" style={{ marginBottom: 12 }} />
             <Text style={styles.waitingCardTitle}>Waiting for counsellor to start</Text>
             <Text style={styles.waitingCardSub}>
-              You'll be connected automatically once your counsellor begins the session.
+              {'You\'ll be connected automatically once your counsellor begins the session.'}
             </Text>
           </View>
 

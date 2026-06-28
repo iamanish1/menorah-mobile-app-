@@ -1,20 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  ActivityIndicator, Alert, Dimensions,
+  ActivityIndicator, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import {
   ArrowLeft, Star, MessageCircle, CalendarDays, Heart, Share2,
-  IndianRupee, BadgeCheck, ShieldCheck, Brain, Users, Lock,
+  IndianRupee, BadgeCheck, ShieldCheck, Brain, Users,
 } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { api } from '@/lib/api';
 import { useCounsellor } from '@/hooks/useQueries';
 
-const { width } = Dimensions.get('window');
 const HERO_GREEN = '#2d5c3e';
 
 function generateDates(n = 30): Date[] {
@@ -109,12 +108,12 @@ export default function CounsellorProfile({ navigation, route }: any) {
   }, [counsellor?.id, counsellor?.sessionDuration, selectedDate]);
 
   // Navigate back if the profile fails to load
-  useMemo(() => {
+  useEffect(() => {
     if (isError) {
       Alert.alert('Error', 'Failed to load profile.');
       navigation.goBack();
     }
-  }, [isError]);
+  }, [isError, navigation]);
 
   const handleBook = () => {
     if (!selectedTime) { Alert.alert('Select Time', 'Please pick a time slot first.'); return; }

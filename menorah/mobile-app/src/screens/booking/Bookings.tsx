@@ -11,7 +11,7 @@ import {
 import { Image } from "expo-image";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
-import { api, Booking } from "@/lib/api";
+import { Booking } from "@/lib/api";
 import { socketService } from "@/lib/socket";
 import { useBookings, useInvalidateBookings } from "@/hooks/useQueries";
 
@@ -38,7 +38,7 @@ export default function Bookings({ navigation }: any) {
     const u2 = socketService.onBookingRescheduled(invalidateBookings);
     const u3 = socketService.onBookingStatusChanged(invalidateBookings);
     return () => { u1(); u2(); u3(); };
-  }, []);
+  }, [invalidateBookings]);
 
   const onRefresh = () => { refetch(); };
 
