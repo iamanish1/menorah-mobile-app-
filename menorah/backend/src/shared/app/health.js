@@ -31,12 +31,16 @@ const redactedProviderStatus = () => ({
   resend: {
     configured: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM)
   },
-  msg91Sms: {
-    configured: Boolean(
-      process.env.MSG91_AUTH_KEY &&
-      process.env.MSG91_OTP_TEMPLATE_ID &&
-      process.env.MSG91_SMS_TEMPLATE_ID
-    )
+  socialAuth: {
+    google: {
+      webConfigured: Boolean(process.env.GOOGLE_WEB_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID),
+      iosConfigured: Boolean(process.env.GOOGLE_IOS_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID),
+      androidConfigured: Boolean(process.env.GOOGLE_ANDROID_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID)
+    },
+    apple: {
+      iosConfigured: Boolean(process.env.APPLE_IOS_BUNDLE_ID),
+      webConfigured: Boolean(process.env.APPLE_WEB_SERVICE_ID)
+    }
   },
   luxand: {
     configured: Boolean(process.env.LUXAND_API_TOKEN)

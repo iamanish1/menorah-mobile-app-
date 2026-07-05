@@ -74,9 +74,6 @@ Admin panel:
 - `ALLOWED_ORIGINS`
 - `RESEND_API_KEY`
 - `EMAIL_FROM`
-- `MSG91_AUTH_KEY`
-- `MSG91_OTP_TEMPLATE_ID`
-- `MSG91_SMS_TEMPLATE_ID`
 - `RAZORPAY_KEY_ID`
 - `RAZORPAY_KEY_SECRET`
 - `RAZORPAY_WEBHOOK_SECRET`
@@ -192,12 +189,6 @@ Admin panel:
 - `RESEND_API_KEY`
 - `EMAIL_FROM`
 
-### MSG91 SMS
-
-- `MSG91_AUTH_KEY`
-- `MSG91_OTP_TEMPLATE_ID`
-- `MSG91_SMS_TEMPLATE_ID`
-
 ### Luxand
 
 - `LUXAND_API_TOKEN`
@@ -242,7 +233,6 @@ Create or update these files in the private export directory before migrating tr
 - `atlas.mongodb-uri.txt`
 - `cloudinary.env`
 - `razorpay.env`
-- `msg91.env`
 - `luxand.env`
 - `livekit.env`
 - `eas-production.env`

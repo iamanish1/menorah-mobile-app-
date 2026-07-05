@@ -1,83 +1,15 @@
-const axios = require('axios');
+const SMS_DISABLED_MESSAGE = 'SMS is disabled; Menorah uses Resend email for production verification and notifications.';
 
-const MSG91_BASE = 'https://control.msg91.com/api/v5';
-const AUTH_KEY = () => process.env.MSG91_AUTH_KEY;
-const OTP_TEMPLATE_ID = () => process.env.MSG91_OTP_TEMPLATE_ID;
-const SMS_TEMPLATE_ID = () => process.env.MSG91_SMS_TEMPLATE_ID;
+const disabledSmsResult = async () => ({
+  success: false,
+  error: SMS_DISABLED_MESSAGE,
+  disabled: true,
+});
 
-// MSG91 generates, sends, and manages phone OTP expiry.
-const sendOTP = async (mobile) => {
-  if (!AUTH_KEY() || !OTP_TEMPLATE_ID()) {
-    console.warn('MSG91 not configured. OTP not sent.');
-    return { success: false, error: 'MSG91 not configured' };
-  }
-
-  try {
-    const { data } = await axios.post(
-      `${MSG91_BASE}/otp?template_id=${OTP_TEMPLATE_ID()}&mobile=${mobile}&authkey=${AUTH_KEY()}`,
-      {},
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-    return { success: data.type === 'success', raw: data };
-  } catch (err) {
-    console.error('MSG91 sendOTP error:', err.response?.data ?? err.message);
-    return { success: false, error: err.message };
-  }
-};
-
-const verifyOTP = async (mobile, otp) => {
-  if (!AUTH_KEY()) return { success: false, error: 'MSG91 not configured' };
-
-  try {
-    const { data } = await axios.post(
-      `${MSG91_BASE}/otp/verify?mobile=${mobile}&otp=${otp}&authkey=${AUTH_KEY()}`,
-      {},
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-    return { success: data.type === 'success', raw: data };
-  } catch (err) {
-    console.error('MSG91 verifyOTP error:', err.response?.data ?? err.message);
-    return { success: false, error: err.message };
-  }
-};
-
-const resendOTP = async (mobile, retrytype = 'text') => {
-  if (!AUTH_KEY()) return { success: false, error: 'MSG91 not configured' };
-
-  try {
-    const { data } = await axios.post(
-      `${MSG91_BASE}/otp/retry?mobile=${mobile}&authkey=${AUTH_KEY()}&retrytype=${retrytype}`,
-      {},
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-    return { success: data.type === 'success', raw: data };
-  } catch (err) {
-    console.error('MSG91 resendOTP error:', err.response?.data ?? err.message);
-    return { success: false, error: err.message };
-  }
-};
-
-const sendSMS = async (to, message) => {
-  if (!AUTH_KEY()) {
-    console.warn('MSG91 not configured. SMS not sent.');
-    return { success: false, error: 'MSG91 not configured' };
-  }
-
-  try {
-    const { data } = await axios.post(
-      `${MSG91_BASE}/flow/`,
-      {
-        template_id: SMS_TEMPLATE_ID(),
-        recipients: [{ mobiles: to, message }],
-      },
-      { headers: { authkey: AUTH_KEY(), 'Content-Type': 'application/json' } }
-    );
-    return { success: true, raw: data };
-  } catch (err) {
-    console.error('MSG91 sendSMS error:', err.response?.data ?? err.message);
-    return { success: false, error: err.message };
-  }
-};
+const sendOTP = disabledSmsResult;
+const verifyOTP = disabledSmsResult;
+const resendOTP = disabledSmsResult;
+const sendSMS = disabledSmsResult;
 
 const sendVerificationSMS = (phone) => sendOTP(phone);
 

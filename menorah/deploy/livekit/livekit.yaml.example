@@ -12,6 +12,9 @@
 #   443/tcp            Browser HTTPS/WSS through Caddy
 #   7881/tcp           LiveKit TCP fallback media
 #   50000-50100/udp    LiveKit UDP media
+#
+# If automatic external IP detection fails, set LIVEKIT_NODE_IP in
+# deploy/env/production.env. Compose passes it to LiveKit as NODE_IP.
 
 port: 7880
 
@@ -19,9 +22,10 @@ rtc:
   tcp_port: 7881
   port_range_start: 50000
   port_range_end: 50100
-  use_external_ip: true
+  use_external_ip: false
+  skip_external_ip_validation: true
   # If automatic external IP detection is unreliable on Hostinger, set:
-  # node_ip: REPLACE_WITH_HOSTINGER_PUBLIC_IPV4
+  # LIVEKIT_NODE_IP=REPLACE_WITH_HOSTINGER_PUBLIC_IPV4 in production.env
 
 keys:
   REPLACE_WITH_LIVEKIT_API_KEY: REPLACE_WITH_LIVEKIT_API_SECRET

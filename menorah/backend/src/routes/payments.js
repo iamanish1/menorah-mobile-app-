@@ -115,7 +115,7 @@ router.post('/create-checkout-session', [
     booking.orderCreatedAt = new Date();
     await booking.save();
 
-    const returnUrl = process.env.CHECKOUT_RETURN_URL || 'https://menorahhealth.app/checkout/return';
+    const returnUrl = process.env.CHECKOUT_RETURN_URL || 'https://app.menorah.me/checkout/return';
     const isLocalDev = process.env.NODE_ENV === 'development';
     const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
 
@@ -468,7 +468,7 @@ router.post('/create-subscription-checkout', [
       notes: { userId: userIdStr, subscriptionType, type: 'subscription' },
     });
 
-    const returnUrl = process.env.CHECKOUT_RETURN_URL || 'https://menorahhealth.app/checkout/return';
+    const returnUrl = process.env.CHECKOUT_RETURN_URL || 'https://app.menorah.me/checkout/return';
     const isLocalDev = process.env.NODE_ENV === 'development';
     const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
 

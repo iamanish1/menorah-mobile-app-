@@ -14,8 +14,8 @@ const {
 const router = express.Router();
 
 // ── LiveKit client (server-to-server API calls) ────────────────────────────
-// LIVEKIT_API_URL  = https://livekit.menorahhealth.app  (HTTP, for room management)
-// LIVEKIT_URL      = wss://livekit.menorahhealth.app    (WebSocket, returned to clients)
+// LIVEKIT_API_URL  = https://calls.menorah.me  (HTTP, for room management)
+// LIVEKIT_URL      = wss://calls.menorah.me    (WebSocket, returned to clients)
 const getLivekitClient = () => {
   const apiUrl    = process.env.LIVEKIT_API_URL;
   const apiKey    = process.env.LIVEKIT_API_KEY;
@@ -252,7 +252,7 @@ router.post('/create-room', [
     }
 
     const roomName   = `menorah-${booking._id}`;
-    const livekitUrl = process.env.LIVEKIT_URL || 'wss://livekit.menorahhealth.app';
+    const livekitUrl = process.env.LIVEKIT_URL || 'wss://calls.menorah.me';
 
     try {
       await ensureLivekitRoom(booking, roomName);
@@ -323,7 +323,7 @@ router.get('/room/:bookingId', [
       return res.status(404).json({ success: false, message: 'Video room not created yet' });
     }
 
-    const livekitUrl   = process.env.LIVEKIT_URL || 'wss://livekit.menorahhealth.app';
+    const livekitUrl   = process.env.LIVEKIT_URL || 'wss://calls.menorah.me';
     const displayName  = isUser
       ? `${booking.user.firstName} ${booking.user.lastName}`
       : `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`;
@@ -442,7 +442,7 @@ router.post('/room/:bookingId/join', [
       }
     }
 
-    const livekitUrl = process.env.LIVEKIT_URL || 'wss://livekit.menorahhealth.app';
+    const livekitUrl = process.env.LIVEKIT_URL || 'wss://calls.menorah.me';
 
     if (booking.status === 'in-progress' && !booking.videoCall.roomId && booking.sessionType === 'video' && isCounsellor) {
       const roomName = `menorah-${booking._id}`;

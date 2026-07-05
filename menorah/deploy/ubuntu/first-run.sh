@@ -84,7 +84,10 @@ if [[ "${PAYMENTS_ENABLED:-true}" == "true" ]]; then
   require_env RAZORPAY_WEBHOOK_SECRET
 fi
 
-warn_optional_env MSG91_AUTH_KEY
+warn_optional_env GOOGLE_WEB_CLIENT_ID
+warn_optional_env GOOGLE_IOS_CLIENT_ID
+warn_optional_env GOOGLE_ANDROID_CLIENT_ID
+warn_optional_env APPLE_IOS_BUNDLE_ID
 warn_optional_env LUXAND_API_TOKEN
 warn_optional_env OPENAI_API_KEY
 warn_optional_env CLOUDINARY_CLOUD_NAME

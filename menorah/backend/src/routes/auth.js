@@ -32,7 +32,7 @@ const generateToken = (userId, role = 'user') => {
 // ── Pending registration helpers (Redis-backed) ────────────────────────────
 // Registration data is stored in Redis instead of process memory so the
 // flow works correctly across multiple PM2 workers and Cloud Run instances.
-const PENDING_TTL   = 10 * 60;          // 10 min — matches MSG91 OTP expiry
+const PENDING_TTL   = 10 * 60;          // 10 min email OTP expiry
 const MAX_OTP_TRIES = 5;
 
 const storePendingReg = async (email, data) => {
@@ -628,24 +628,10 @@ router.post('/verify-phone', [
       return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
     }
 
-    const { phone, otp } = req.body;
-    const { verifyOTP } = require('../utils/sms');
-    const result = await verifyOTP(phone, otp);
-
-    if (!result.success) {
-      return res.status(400).json({ success: false, message: result.message || 'Invalid or expired OTP' });
-    }
-
-    const user = await User.findOneAndUpdate(
-      { phone },
-      { isPhoneVerified: true, $unset: { phoneVerificationToken: 1 } },
-      { new: true }
-    );
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    res.json({ success: true, message: 'Phone number verified successfully' });
+    return res.status(410).json({
+      success: false,
+      message: 'Phone SMS verification is disabled. Please use email verification.',
+    });
   } catch (error) {
     console.error('Phone verification error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -708,7 +694,7 @@ router.post('/forgot-password', [
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 // Allowed redirect destination hostnames — prevents open redirect if env var is misconfigured
-const ALLOWED_REDIRECT_HOSTS = new Set(['menorah.me', 'menorahhealth.app', 'www.menorah.me', 'www.menorahhealth.app', 'localhost:3002']);
+const ALLOWED_REDIRECT_HOSTS = new Set(['menorah.me', 'www.menorah.me', 'app.menorah.me', 'localhost:3002']);
 
 const safeWebAppUrl = () => {
   const raw = (process.env.WEB_APP_URL || 'https://menorah.me').trim();

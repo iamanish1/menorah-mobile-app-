@@ -37,7 +37,7 @@
     "date-fns-tz": "^3.2.0",
     "events": "^3.3.0",
     "expo": "~54.0.35",
-    "expo-apple-authentication": "^56.0.4",
+    "expo-apple-authentication": "~8.0.8",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.21",
     "expo-image": "~3.0.11",
@@ -87,5 +87,14 @@
     "react-refresh": "^0.18.0",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "react-native-razorpay"
+        ]
+      }
+    }
+  }
 }

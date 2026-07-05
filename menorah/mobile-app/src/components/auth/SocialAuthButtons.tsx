@@ -24,18 +24,14 @@ export function SocialAuthButtons({ mode, onSuccess }: SocialAuthButtonsProps) {
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'apple' | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
 
-  const googleConfigured = Boolean(
-    ENV.GOOGLE_WEB_CLIENT_ID ||
-    ENV.GOOGLE_IOS_CLIENT_ID ||
-    ENV.GOOGLE_ANDROID_CLIENT_ID
-  );
+  const googleConfigured = ENV.SOCIAL_GOOGLE_CONFIGURED;
 
   useEffect(() => {
     if (!googleConfigured || ENV.IS_EXPO_GO) return;
 
     GoogleSignin.configure({
       webClientId: ENV.GOOGLE_WEB_CLIENT_ID,
-      iosClientId: ENV.GOOGLE_IOS_CLIENT_ID,
+      iosClientId: Platform.OS === 'ios' ? ENV.GOOGLE_IOS_CLIENT_ID : undefined,
       offlineAccess: false,
       forceCodeForRefreshToken: false
     });

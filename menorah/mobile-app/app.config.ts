@@ -28,6 +28,15 @@ const detectLocalIp = () => {
   return undefined;
 };
 
+const googleIosUrlSchemeFromClientId = (clientId?: string) => {
+  const normalized = clientId?.trim();
+  const suffix = '.apps.googleusercontent.com';
+  if (!normalized) return undefined;
+  if (normalized.startsWith('com.googleusercontent.apps.')) return normalized;
+  if (!normalized.endsWith(suffix)) return undefined;
+  return `com.googleusercontent.apps.${normalized.slice(0, -suffix.length)}`;
+};
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const isDev = process.env.NODE_ENV !== 'production';
   const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
@@ -37,6 +46,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
   const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim();
+  const googleIosUrlScheme =
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME?.trim() ||
+    googleIosUrlSchemeFromClientId(googleIosClientId);
   const configuredLocalIp = process.env.EXPO_PUBLIC_LOCAL_IP?.trim();
   const detectedLocalIp = detectLocalIp();
 
@@ -54,6 +66,28 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const devApiProtocol = devApiUrl.protocol;
   
   const EAS_PROJECT_ID = 'd7fb6e65-3440-4a79-b4b2-6746d2582fa7';
+  const plugins: NonNullable<ExpoConfig['plugins']> = [
+    [
+      'expo-image-picker',
+      {
+        photosPermission: 'Allow Menorah Health to access your photos so you can update your profile picture.',
+      }
+    ],
+    [
+      'expo-updates',
+      {
+        username: 'menorahsoftware'
+      }
+    ],
+    'expo-apple-authentication'
+  ];
+
+  if (googleIosUrlScheme) {
+    plugins.splice(2, 0, [
+      '@react-native-google-signin/google-signin',
+      { iosUrlScheme: googleIosUrlScheme }
+    ]);
+  }
 
   return {
     ...config,
@@ -83,7 +117,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.menorah.health.app',
-      usesAppleSignIn: true
+      usesAppleSignIn: true,
+      infoPlist: {
+        CFBundleAllowMixedLocalizations: true
+      }
     },
     android: ({
       adaptiveIcon: {
@@ -99,38 +136,23 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         'android.permission.INTERNET',
         'android.permission.ACCESS_NETWORK_STATE',
         'android.permission.VIBRATE'
-      ],
-      statusBar: {
-        barStyle: 'light-content',
-        backgroundColor: '#2d7a5c',
-        translucent: false
-      },
-      navigationBar: {
-        visible: 'leanback',
-        backgroundColor: '#ffffff',
-        barStyle: 'dark-content'
-      }
-    } as any),
+      ]
+    }),
+    androidStatusBar: {
+      barStyle: 'light-content',
+      backgroundColor: '#2d7a5c',
+      translucent: false
+    },
+    androidNavigationBar: {
+      visible: 'leanback',
+      backgroundColor: '#ffffff',
+      barStyle: 'dark-content'
+    },
     web: {
       favicon: './assets/favicon.png',
       bundler: 'metro'
     },
-    plugins: [
-      [
-        'expo-image-picker',
-        {
-          photosPermission: 'Allow Menorah Health to access your photos so you can update your profile picture.',
-        }
-      ],
-      [
-        'expo-updates',
-        {
-          username: 'menorahsoftware'
-        }
-      ],
-      '@react-native-google-signin/google-signin',
-      'expo-apple-authentication'
-    ],
+    plugins,
     scheme: 'menorah-health',
     extra: {
       // In Expo Go on a phone, localhost points to the phone itself.
@@ -146,7 +168,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Public web URL used as the canonical article fallback in native clients.
       WEB_BASE_URL: configuredWebBaseUrl
         ? configuredWebBaseUrl.replace(/\/+$/, '')
-        : 'https://menorahhealth.app',
+        : 'https://app.menorah.me',
 
       // Checkout Return URL
       CHECKOUT_RETURN_URL: process.env.EXPO_PUBLIC_CHECKOUT_RETURN_URL?.trim()
@@ -159,6 +181,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       GOOGLE_WEB_CLIENT_ID: googleWebClientId,
       GOOGLE_IOS_CLIENT_ID: googleIosClientId,
       GOOGLE_ANDROID_CLIENT_ID: googleAndroidClientId,
+      GOOGLE_IOS_URL_SCHEME: googleIosUrlScheme,
       
       // EAS project configuration
       eas: {

@@ -12,23 +12,18 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
       }
     },
     "development-ios": {
       "extends": "development",
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": ""
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
       }
     },
     "development-android": {
@@ -38,11 +33,11 @@
       },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "873291355021-soma7nima003rvq9usj8fqj0t9kbjm6a.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "873291355021-bi43pprpqlks9hvpjdto7kt0ekcbefr8.apps.googleusercontent.com"
       }
     },
     "preview": {
@@ -52,23 +47,18 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
       }
     },
     "preview-ios": {
       "extends": "preview",
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": ""
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
       }
     },
     "preview-android": {
@@ -78,11 +68,11 @@
       },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "873291355021-soma7nima003rvq9usj8fqj0t9kbjm6a.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "873291355021-bi43pprpqlks9hvpjdto7kt0ekcbefr8.apps.googleusercontent.com"
       }
     },
     "production-do-not-use-base": {
@@ -92,23 +82,18 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
       }
     },
     "production-ios": {
       "extends": "production-do-not-use-base",
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": ""
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
       }
     },
     "production-android": {
@@ -118,11 +103,11 @@
       },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
-        "EXPO_PUBLIC_WEB_BASE_URL": "https://menorahhealth.app",
+        "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": ""
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "873291355021-soma7nima003rvq9usj8fqj0t9kbjm6a.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "873291355021-bi43pprpqlks9hvpjdto7kt0ekcbefr8.apps.googleusercontent.com"
       }
     }
   }

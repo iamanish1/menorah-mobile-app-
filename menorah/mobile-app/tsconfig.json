@@ -15,5 +15,10 @@
     "**/*.ts",
     "**/*.tsx",
     "global.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "node_modules.root-owned-*",
+    "node_modules.root-owned-*/**/*"
   ]
 }

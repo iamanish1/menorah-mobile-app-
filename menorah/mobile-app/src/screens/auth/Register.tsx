@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import { Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react-native';
 import Input from '@/components/ui/Input';
 import { useThemeMode } from "@/theme/ThemeProvider";
@@ -54,8 +53,6 @@ export default function Register({ navigation }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const isDark = scheme === 'dark';
-  const brandSurface = isDark ? colors.primaryDark : '#2d5c3e';
-  const brandAccent = isDark ? colors.primary : '#2d5c3e';
   const primaryActionText = isDark ? colors.primaryDark : 'white';
   const { register } = useAuth();
 
@@ -265,29 +262,6 @@ export default function Register({ navigation }: any) {
         >
         {/* Header */}
         <View style={{ alignItems: 'center', marginBottom: 32 }}>
-          <View style={{
-            width: 100, height: 100, borderRadius: 50,
-            backgroundColor: colors.card,
-            alignItems: 'center', justifyContent: 'center',
-            marginBottom: 20,
-            shadowColor: brandAccent,
-            shadowOffset: { width: 0, height: 5 },
-            shadowOpacity: 0.15, shadowRadius: 14, elevation: 8,
-            padding: 4,
-          }}>
-            <View style={{
-              width: 92, height: 92, borderRadius: 46,
-              backgroundColor: brandSurface,
-              alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden',
-            }}>
-              <Image
-                source={require('../../../assets/brand/menorah-logo-no-bg.png')}
-                style={{ width: 70, height: 70 }}
-                contentFit="contain"
-              />
-            </View>
-          </View>
           <Text style={{
             fontSize: 28,
             fontWeight: '700',

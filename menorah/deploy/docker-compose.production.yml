@@ -61,9 +61,6 @@ x-backend-env: &backend-env
   RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
   RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
   EMAIL_FROM: "${EMAIL_FROM:-Menorah Health <noreply@menorah.me>}"
-  MSG91_AUTH_KEY: ${MSG91_AUTH_KEY:-}
-  MSG91_OTP_TEMPLATE_ID: ${MSG91_OTP_TEMPLATE_ID:-}
-  MSG91_SMS_TEMPLATE_ID: ${MSG91_SMS_TEMPLATE_ID:-}
   LUXAND_API_TOKEN: ${LUXAND_API_TOKEN:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
@@ -113,6 +110,8 @@ services:
     image: livekit/livekit-server:latest
     restart: unless-stopped
     command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      NODE_IP: ${LIVEKIT_NODE_IP:-}
     volumes:
       - ${LIVEKIT_CONFIG_FILE:-./livekit/livekit.yaml}:/etc/livekit.yaml:ro
     ports:

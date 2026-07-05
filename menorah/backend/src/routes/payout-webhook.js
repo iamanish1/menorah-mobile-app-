@@ -6,32 +6,12 @@
 
 const express = require('express');
 const crypto  = require('crypto');
-const axios   = require('axios');
 const Payout  = require('../models/Payout');
 
 const router = express.Router();
 
-// ── SMS helper (same as admin.js) ──────────────────────────────────────────
-async function sendPayoutSms(phone, firstName, amountRupees, payoutId, status) {
-  const key = process.env.MSG91_AUTH_KEY;
-  if (!key || !phone) return;
-  try {
-    const message = status === 'processed'
-      ? `Dear ${firstName}, your payout of Rs.${amountRupees} has been credited to your bank account. Payout ID: ${payoutId}. Thank you - Menorah Health.`
-      : `Dear ${firstName}, your payout of Rs.${amountRupees} could not be processed. Payout ID: ${payoutId}. Please contact support@menorah.me - Menorah Health.`;
-
-    await axios.post('https://api.msg91.com/api/sendhttp.php', null, {
-      params: {
-        authkey: key,
-        mobiles: phone.replace(/^\+/, ''),
-        message,
-        sender: 'MENRH',
-        route: 4
-      }
-    });
-  } catch (err) {
-    console.error('Payout SMS error:', err.message);
-  }
+async function sendPayoutSms() {
+  return false;
 }
 
 // POST /api/payouts/webhook

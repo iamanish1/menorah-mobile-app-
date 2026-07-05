@@ -1,5 +1,11 @@
 {
   "extends": ["next/core-web-vitals"],
+  "ignorePatterns": [
+    "node_modules.root-owned-*",
+    "node_modules.root-owned-*/**/*",
+    ".next.root-owned-*",
+    ".next.root-owned-*/**/*"
+  ],
   "rules": {
     "@typescript-eslint/no-explicit-any": "off",
     "react/no-unescaped-entities": "off"

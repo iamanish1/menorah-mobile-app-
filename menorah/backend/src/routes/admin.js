@@ -1100,20 +1100,8 @@ router.get('/revenue/counsellors/:id', [
 
 const Payout = require('../models/Payout');
 
-// SMS helper — notify counsellor of payout status
-async function sendPayoutSms(phone, firstName, amountRupees, payoutId, status) {
-  const key = process.env.MSG91_AUTH_KEY;
-  if (!key || !phone) return;
-  try {
-    const message = status === 'initiated'
-      ? `Dear ${firstName}, a payout of Rs.${amountRupees} has been initiated by Menorah Health. ID: ${payoutId}. Expected within 1-2 business days.`
-      : `Dear ${firstName}, your payout of Rs.${amountRupees} was processed successfully. ID: ${payoutId}. Thank you - Menorah Health.`;
-    await axios.post('https://api.msg91.com/api/sendhttp.php', null, {
-      params: { authkey: key, mobiles: phone.replace(/^\+/, ''), message, sender: 'MENRH', route: 4 }
-    });
-  } catch (err) {
-    console.error('Payout SMS notification error:', err.message);
-  }
+async function sendPayoutSms() {
+  return false;
 }
 
 // POST /api/admin/payouts/:counsellorId — Initiate payout

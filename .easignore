@@ -1,7 +1,21 @@
 # Exclude everything except the mobile app
+menorah/admin-panel
+menorah/backend
+menorah/deploy
+menorah/docs
+menorah/scripts
+menorah/user-web-app
+menorah/web-app
 Menorah/backend
 Menorah/user-web-app
 Menorah/web-app
+data
+data/**
+backups
+backups/**
+next-root-owned-backups-*
+**/.next.root-owned-*
+**/node_modules.root-owned-*
 **/.git
 **/node_modules
 **/.env
