@@ -31,10 +31,11 @@ export default function RootLayout({
             __html: `
               try {
                 const stored = localStorage.getItem('menorah-theme');
-                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                if (stored === 'dark' || (!stored && prefersDark)) {
-                  document.documentElement.classList.add('dark');
-                }
+                const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                const theme = stored === 'dark' || stored === 'light' ? stored : systemTheme;
+                document.documentElement.classList.toggle('dark', theme === 'dark');
+                document.documentElement.dataset.theme = theme;
+                document.documentElement.style.colorScheme = theme;
               } catch {}
             `,
           }}

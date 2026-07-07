@@ -1,5 +1,7 @@
 /* Design System - CSS Custom Properties */
 :root {
+  color-scheme: light;
+
   /* Colors - Brand */
   --color-primary: #2d7a5c;
   --color-primary-dark: #25624a;
@@ -22,6 +24,26 @@
   --color-bg-subtle: #f0f9f4;
   --color-bg-surface: #ffffff;
   --color-bg-invert: #0e241c;
+  --color-auth-panel-bg: linear-gradient(145deg, #123629 0%, #1b4a39 58%, #17392d 100%);
+  --color-auth-panel-text: #f8fcf9;
+  --color-auth-panel-muted: rgba(248, 252, 249, 0.76);
+  --color-auth-panel-faint: rgba(248, 252, 249, 0.52);
+  --color-auth-panel-subtle: rgba(248, 252, 249, 0.36);
+  --color-auth-panel-rule: rgba(248, 252, 249, 0.24);
+  --color-auth-panel-edge: rgba(12, 31, 24, 0.2);
+  --color-auth-panel-deco-strong: rgba(255, 255, 255, 0.07);
+  --color-auth-panel-deco-soft: rgba(255, 255, 255, 0.05);
+  --color-auth-form-bg: linear-gradient(180deg, #fbfcfa 0%, #f3f8f4 100%);
+  --color-auth-form-text: #071812;
+  --color-auth-form-muted: #5f7068;
+  --color-auth-field-bg: #ffffff;
+  --color-auth-field-border: #d8e5dd;
+  --color-auth-field-hover: rgba(45, 122, 92, 0.36);
+  --color-auth-divider: #dfe9e2;
+  --color-auth-link: #1f7a58;
+  --color-auth-button-bg: #2d7a5c;
+  --color-auth-button-hover: #236148;
+  --color-auth-focus-ring: rgba(215, 119, 72, 0.18);
 
   /* Colors - Status */
   --color-success: #16a34a;
@@ -114,10 +136,30 @@ html.dark {
   --color-text-base: #f9fafb;
   --color-text-muted: #9ca3af;
   --color-text-invert: #ffffff;
-  --color-bg-base: #1c4133;
+  --color-bg-base: #153528;
   --color-bg-subtle: #143326;
   --color-bg-surface: #1c4133;
   --color-bg-invert: #f9fafb;
+  --color-auth-panel-bg: linear-gradient(145deg, #f7faf7 0%, #e8f1ec 100%);
+  --color-auth-panel-text: #0b2119;
+  --color-auth-panel-muted: #31483f;
+  --color-auth-panel-faint: #62786f;
+  --color-auth-panel-subtle: #7d9389;
+  --color-auth-panel-rule: rgba(27, 74, 57, 0.24);
+  --color-auth-panel-edge: rgba(255, 255, 255, 0.1);
+  --color-auth-panel-deco-strong: rgba(18, 54, 41, 0.14);
+  --color-auth-panel-deco-soft: rgba(18, 54, 41, 0.1);
+  --color-auth-form-bg: linear-gradient(180deg, #081a14 0%, #0d241c 100%);
+  --color-auth-form-text: #f7fbf8;
+  --color-auth-form-muted: #9fb3aa;
+  --color-auth-field-bg: #173b2e;
+  --color-auth-field-border: #28634d;
+  --color-auth-field-hover: rgba(95, 176, 142, 0.42);
+  --color-auth-divider: rgba(159, 179, 170, 0.18);
+  --color-auth-link: #7bc6a2;
+  --color-auth-button-bg: #49a078;
+  --color-auth-button-hover: #5fb08e;
+  --color-auth-focus-ring: rgba(215, 119, 72, 0.22);
   --color-border: #25624a;
   --color-border-light: rgba(143, 205, 176, 0.16);
   --color-success-light: rgba(22, 163, 74, 0.18);
