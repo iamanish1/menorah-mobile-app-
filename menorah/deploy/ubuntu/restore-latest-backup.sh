@@ -92,6 +92,17 @@ echo "mongorestore --uri=<redacted> --archive=/backups/${REL_ARCHIVE} --gzip --d
 compose_cmd run --rm --no-deps backup-runner bash -lc \
   "mongorestore --uri=\"${RESTORE_URI}\" --archive=\"/backups/${REL_ARCHIVE}\" --gzip --drop ${RESTORE_ARGS[*]}"
 
+if [[ "${MODE}" == "restore-test" ]]; then
+  mkdir -p "${MENORAH_BACKUP_ROOT}/restore-tests"
+  cat > "${MENORAH_BACKUP_ROOT}/restore-tests/latest-success.json" <<JSON
+{
+  "timestamp": "$(date -u +%Y%m%dT%H%M%SZ)",
+  "archive": "${LATEST_ARCHIVE}",
+  "mode": "${MODE}"
+}
+JSON
+fi
+
 if [[ "${MODE}" == "production" && "${RESTORE_UPLOADS:-false}" == "true" ]]; then
   LATEST_UPLOADS="$(find "${MENORAH_BACKUP_ROOT}" -type f \( -name 'uploads-*.tar.gz' -o -name 'uploads-*.tar.gz.enc' \) | sort | tail -n 1 || true)"
   if [[ -n "${LATEST_UPLOADS}" ]]; then

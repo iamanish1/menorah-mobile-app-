@@ -151,6 +151,7 @@ export interface ServerUsage {
     release: string;
     uptimeSeconds: number;
   };
+  server?: HostUsage;
   cpu: {
     usagePercent: number;
     loadAverage: number[];
@@ -172,6 +173,7 @@ export interface ServerUsage {
     root: DiskUsage;
     uploads: DiskUsage;
   };
+  backup?: BackupUsage;
   network: {
     rxBytes: number;
     txBytes: number;
@@ -186,6 +188,89 @@ export interface ServerUsage {
       external: number;
       arrayBuffers: number;
     };
+  };
+}
+
+export interface BackupSnapshot {
+  type: string;
+  timestamp: string;
+  ageHours: number | null;
+  encrypted: boolean;
+  checksumPresent: boolean;
+  sizeBytes: number;
+}
+
+export interface BackupUsage {
+  status: 'ok' | 'warning' | 'critical';
+  headline: string;
+  message: string;
+  backupRoot: string;
+  mounted: boolean;
+  automationEnabled: boolean;
+  volume: DiskUsage;
+  latest: BackupSnapshot | null;
+  byType: Record<string, BackupSnapshot | null>;
+  restoreTest: {
+    ok: boolean;
+    timestamp: string | null;
+    ageHours: number | null;
+    mode: string | null;
+    message: string;
+  };
+  raid: {
+    configured: boolean;
+    ok: boolean;
+    device: string | null;
+    activeDevices: number | null;
+    totalDevices: number | null;
+    mirrorState: string | null;
+    resyncPercent: number | null;
+    message: string;
+  };
+  coldStorage: {
+    mode: 'manual';
+    label: string;
+    message: string;
+  };
+  schedule: {
+    daily: string;
+    weekly: string;
+    restoreTest: string;
+    monthly: string;
+    healthCheck: string;
+  };
+  retention: {
+    sixHourlyDays: number;
+    dailyDays: number;
+    weeklyDays: number;
+    monthlyDays: number;
+  };
+  issues: string[];
+}
+
+export interface HostUsage {
+  label: string;
+  hostname: string;
+  platform: string;
+  release: string;
+  uptimeSeconds: number;
+  cpu: {
+    usagePercent: number;
+    loadAverage: number[];
+  };
+  memory: {
+    total: number;
+    used: number;
+    free: number;
+    usagePercent: number;
+  };
+  disk: {
+    root: DiskUsage;
+    data: DiskUsage;
+  };
+  network: {
+    rxBytes: number;
+    txBytes: number;
   };
 }
 

@@ -3,8 +3,10 @@
 Production backups live under:
 
 ```text
-MENORAH_BACKUP_ROOT=/opt/menorah/backups
+MENORAH_BACKUP_ROOT=/mnt/menorah-backups
 ```
+
+For production, `/mnt/menorah-backups` should be a RAID1 mirror across the two backup HDDs, encrypted with LUKS and mounted by UUID.
 
 Directory layout:
 
@@ -30,42 +32,121 @@ Secrets are not written into git or normal logs. Env/secrets are represented as 
 
 Set `BACKUP_ENCRYPTION_PASSWORD` in the host-only `production.env` before copying backups off-host.
 
-If encryption is not enabled, the backup script writes `ENCRYPTION-BLOCKER.txt`. Treat that as a production blocker for off-host upload.
+For production, set:
+
+```env
+BACKUP_REQUIRE_MOUNT=true
+BACKUP_REQUIRE_ENCRYPTION=true
+BACKUP_EXPECT_RAID=true
+```
+
+If encryption is not enabled, the backup script writes `ENCRYPTION-BLOCKER.txt`. Treat that as a production blocker.
+
+## Prepare The Backup HDDs
+
+Confirm the two intended backup disks before running the destructive setup:
+
+```bash
+lsblk -o NAME,SIZE,FSTYPE,TYPE,MOUNTPOINTS,MODEL,SERIAL,UUID
+```
+
+Then run the guarded setup script with stable `/dev/disk/by-id/...` paths:
+
+```bash
+cd /opt/menorah/menorah
+sudo BACKUP_DISK_CONFIRM=WIPE_THESE_DISKS \
+  bash deploy/ubuntu/setup-backup-raid-luks.sh \
+  /dev/disk/by-id/<first-backup-hdd> \
+  /dev/disk/by-id/<second-backup-hdd>
+```
+
+The script refuses to run without two explicit disk paths and the confirmation value. It creates:
+
+- RAID1 array: `/dev/md/menorah-backups`
+- LUKS mapper: `/dev/mapper/menorah-backups-crypt`
+- Mount point: `/mnt/menorah-backups`
+- LUKS key file: `/opt/menorah/secrets/backup-luks.key`
 
 ## Manual Backup
 
 ```bash
-bash menorah/deploy/ubuntu/backup-now.sh daily
+cd /opt/menorah/menorah
+bash deploy/ubuntu/backup-now.sh daily
 ```
 
 Other accepted labels:
 
 ```bash
-bash menorah/deploy/ubuntu/backup-now.sh six-hourly
-bash menorah/deploy/ubuntu/backup-now.sh weekly
-bash menorah/deploy/ubuntu/backup-now.sh monthly
+bash deploy/ubuntu/backup-now.sh six-hourly
+bash deploy/ubuntu/backup-now.sh weekly
+bash deploy/ubuntu/backup-now.sh monthly
 ```
 
-## Minimum Schedule
+## Schedule
 
-Install cron entries on the Ubuntu host:
+Install systemd timers on the Ubuntu host:
 
-```cron
-0 */6 * * * cd /opt/menorah/menorah-mobile-app- && bash menorah/deploy/ubuntu/backup-now.sh six-hourly >> /opt/menorah/logs/backup.log 2>&1
-30 2 * * * cd /opt/menorah/menorah-mobile-app- && bash menorah/deploy/ubuntu/backup-now.sh daily >> /opt/menorah/logs/backup.log 2>&1
-0 3 * * 0 cd /opt/menorah/menorah-mobile-app- && bash menorah/deploy/ubuntu/backup-now.sh weekly >> /opt/menorah/logs/backup.log 2>&1
-0 4 1 * * cd /opt/menorah/menorah-mobile-app- && bash menorah/deploy/ubuntu/backup-now.sh monthly >> /opt/menorah/logs/backup.log 2>&1
-0 5 */14 * * cd /opt/menorah/menorah-mobile-app- && bash menorah/deploy/ubuntu/restore-latest-backup.sh restore-test >> /opt/menorah/logs/restore-test.log 2>&1
+```bash
+cd /opt/menorah/menorah
+sudo bash deploy/ubuntu/install-backup-schedule.sh
 ```
 
-Do not silently delete backups until a written retention policy exists and is approved.
+This installs timers for:
+
+- Daily backup: `02:30 UTC`
+- Weekly backup: Sunday `03:00 UTC`
+- Monthly backup: first day of month `04:00 UTC`
+- Weekly restore-test: Sunday `05:00 UTC`
+- Daily pruning: `06:00 UTC`
+- Hourly backup health checks
+
+Logs are written under `/opt/menorah/logs/` and rotated weekly.
+
+## Retention Policy
+
+Default retention:
+
+- Six-hourly: 7 days
+- Daily: 30 days
+- Weekly: 84 days
+- Monthly: 366 days
+
+The pruning script never deletes the newest backup in each category.
+
+```bash
+bash deploy/ubuntu/prune-backups.sh
+```
+
+## Backup Health Check
+
+Run manually:
+
+```bash
+bash deploy/ubuntu/check-backup-health.sh
+```
+
+The check verifies:
+
+- Backup root is mounted when required.
+- Latest daily backup is under `BACKUP_MAX_AGE_HOURS`.
+- Latest archive is above `BACKUP_MIN_SIZE_BYTES`.
+- Checksum exists and validates.
+- Backup disk usage is below `BACKUP_DISK_USAGE_MAX_PERCENT`.
+- RAID1 device is healthy when expected.
+- Restore-test marker is fresh.
+
+Optional Uptime Kuma push monitoring:
+
+```env
+BACKUP_HEALTH_PUSH_URL=https://<uptime-kuma-private-url>/api/push/<token>
+```
 
 ## Restore Test
 
 Default restore target is the test database/container:
 
 ```bash
-bash menorah/deploy/ubuntu/restore-latest-backup.sh restore-test
+bash deploy/ubuntu/restore-latest-backup.sh restore-test
 ```
 
 This starts the `mongo-restore-test` service and restores the latest MongoDB archive into `menorah_restore_test`.
@@ -77,7 +158,7 @@ Production restore is destructive and uses `--drop`.
 It is blocked unless explicitly confirmed:
 
 ```bash
-RESTORE_CONFIRM_PRODUCTION=true bash menorah/deploy/ubuntu/restore-latest-backup.sh production
+RESTORE_CONFIRM_PRODUCTION=true bash deploy/ubuntu/restore-latest-backup.sh production
 ```
 
 Before production restore:
@@ -91,8 +172,8 @@ Before production restore:
 
 After production restore:
 
-- [ ] Run `bash menorah/deploy/ubuntu/health-check.sh`.
-- [ ] Run `CHECK_PUBLIC=true bash menorah/deploy/ubuntu/health-check.sh`.
+- [ ] Run `bash deploy/ubuntu/health-check.sh`.
+- [ ] Run `CHECK_PUBLIC=true bash deploy/ubuntu/health-check.sh`.
 - [ ] Verify login, articles, bookings, chat, and admin.
 
 ## Weekly And Monthly Off-Host Copies

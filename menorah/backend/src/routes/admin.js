@@ -136,6 +136,42 @@ const getDiskUsage = (targetPath) => {
   }
 };
 
+const getMemoryUsage = () => {
+  const total = os.totalmem();
+  const free = os.freemem();
+  const used = Math.max(0, total - free);
+  return {
+    total,
+    used,
+    free,
+    usagePercent: total > 0 ? Math.round((used / total) * 1000) / 10 : 0
+  };
+};
+
+const createHostUsageSnapshot = ({ label, cpuUsagePercent, diskPath }) => {
+  const roundedCpuUsage = Math.round(cpuUsagePercent * 10) / 10;
+  const rootDisk = getDiskUsage('/');
+  const dataDisk = diskPath ? getDiskUsage(diskPath) : rootDisk;
+
+  return {
+    label,
+    hostname: os.hostname(),
+    platform: os.platform(),
+    release: os.release(),
+    uptimeSeconds: Math.round(os.uptime()),
+    cpu: {
+      usagePercent: roundedCpuUsage,
+      loadAverage: os.loadavg()
+    },
+    memory: getMemoryUsage(),
+    disk: {
+      root: rootDisk,
+      data: dataDisk
+    },
+    network: getNetworkStats()
+  };
+};
+
 const readNumberFile = (filePath) => {
   try {
     const raw = fs.readFileSync(filePath, 'utf8').trim();
@@ -173,6 +209,241 @@ const getNetworkStats = () => {
   } catch {
     return { rxBytes: 0, txBytes: 0 };
   }
+};
+
+const isTrue = (value) => ['1', 'true', 'yes', 'y'].includes(String(value || '').toLowerCase());
+
+const safeReadJson = (filePath) => {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+};
+
+const parseBackupTimestamp = (timestamp) => {
+  if (!timestamp || typeof timestamp !== 'string') return null;
+  const compactMatch = timestamp.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/);
+  if (compactMatch) {
+    const [, year, month, day, hour, minute, second] = compactMatch.map(Number);
+    return new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  }
+  const parsed = new Date(timestamp);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const hoursSince = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  return Math.max(0, Math.round(((Date.now() - date.getTime()) / 36e5) * 10) / 10);
+};
+
+const isPathMounted = (targetPath) => {
+  try {
+    const resolvedTarget = path.resolve(targetPath);
+    const mountInfo = fs.readFileSync('/proc/self/mountinfo', 'utf8');
+    return mountInfo.split('\n').some((line) => {
+      const fields = line.split(' ');
+      const mountPoint = fields[4]?.replace(/\\040/g, ' ');
+      return mountPoint === resolvedTarget;
+    });
+  } catch {
+    return false;
+  }
+};
+
+const findLatestArchive = (backupRoot, backupType) => {
+  const typeRoot = path.join(backupRoot, backupType);
+  const archives = [];
+
+  const visit = (directory, depth = 0) => {
+    if (depth > 4) return;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(fullPath, depth + 1);
+      } else if (entry.isFile() && /\.archive\.gz(\.enc)?$/.test(entry.name)) {
+        try {
+          const stat = fs.statSync(fullPath);
+          archives.push({ path: fullPath, sizeBytes: stat.size, modifiedAt: stat.mtime });
+        } catch {
+          // Ignore files that disappear while the directory is being scanned.
+        }
+      }
+    });
+  };
+
+  visit(typeRoot);
+  return archives.sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime())[0] || null;
+};
+
+const getBackupEntry = (backupRoot, backupType) => {
+  const metadata = safeReadJson(path.join(backupRoot, 'metadata', `latest-success-${backupType}.json`));
+  const archiveFromMetadata = metadata?.mongoArchive && fs.existsSync(metadata.mongoArchive)
+    ? metadata.mongoArchive
+    : null;
+  const archive = archiveFromMetadata
+    ? {
+        path: archiveFromMetadata,
+        sizeBytes: fs.statSync(archiveFromMetadata).size,
+        modifiedAt: fs.statSync(archiveFromMetadata).mtime
+      }
+    : findLatestArchive(backupRoot, backupType);
+
+  if (!archive) return null;
+
+  const timestamp = parseBackupTimestamp(metadata?.timestamp) || archive.modifiedAt;
+  const checksumPath = `${archive.path}.sha256`;
+
+  return {
+    type: backupType,
+    timestamp: timestamp.toISOString(),
+    ageHours: hoursSince(timestamp),
+    encrypted: archive.path.endsWith('.enc') || metadata?.encrypted === true,
+    checksumPresent: fs.existsSync(checksumPath),
+    sizeBytes: archive.sizeBytes
+  };
+};
+
+const getRaidStatus = () => {
+  const configured = isTrue(process.env.BACKUP_EXPECT_RAID);
+  try {
+    const mdstat = fs.readFileSync('/proc/mdstat', 'utf8');
+    const activeLine = mdstat.split('\n').find((line) => /active\s+raid1/.test(line));
+    const healthLine = mdstat.split('\n').find((line) => /\[\d+\/\d+\]\s+\[[U_]+\]/.test(line));
+    const healthMatch = healthLine?.match(/\[(\d+)\/(\d+)\]\s+\[([U_]+)\]/);
+    const resyncMatch = mdstat.match(/resync\s*=\s*([0-9.]+)%/);
+    const deviceName = activeLine?.split(':')[0]?.trim() || null;
+    const activeDevices = healthMatch ? Number(healthMatch[1]) : null;
+    const totalDevices = healthMatch ? Number(healthMatch[2]) : null;
+    const mirrorState = healthMatch?.[3] || null;
+    const healthy = Boolean(mirrorState && !mirrorState.includes('_') && activeDevices === totalDevices);
+
+    return {
+      configured,
+      ok: healthy,
+      device: deviceName,
+      activeDevices,
+      totalDevices,
+      mirrorState,
+      resyncPercent: resyncMatch ? Number(resyncMatch[1]) : null,
+      message: healthy
+        ? 'Both backup drives are healthy and mirrored.'
+        : 'The backup drive mirror needs attention.'
+    };
+  } catch {
+    return {
+      configured,
+      ok: !configured,
+      device: null,
+      activeDevices: null,
+      totalDevices: null,
+      mirrorState: null,
+      resyncPercent: null,
+      message: configured ? 'RAID mirror status is not readable.' : 'RAID mirror is not configured for this environment.'
+    };
+  }
+};
+
+const getBackupStatus = () => {
+  const backupRoot = process.env.MENORAH_BACKUP_ROOT || '/opt/menorah/backups';
+  const maxDailyAgeHours = Number(process.env.BACKUP_MAX_AGE_HOURS) || 30;
+  const maxRestoreAgeHours = Number(process.env.BACKUP_RESTORE_TEST_MAX_AGE_HOURS) || 192;
+  const diskUsageLimit = Number(process.env.BACKUP_DISK_USAGE_MAX_PERCENT) || 80;
+  const automationEnabled = isTrue(process.env.BACKUP_AUTOMATION_ENABLED);
+  const rootExists = fs.existsSync(backupRoot);
+  const mounted = isPathMounted(backupRoot);
+  const volume = rootExists ? getDiskUsage(backupRoot) : {
+    path: backupRoot,
+    total: 0,
+    used: 0,
+    free: 0,
+    usagePercent: 0
+  };
+  const backupTypes = ['six-hourly', 'daily', 'weekly', 'monthly'];
+  const entries = backupTypes.reduce((acc, type) => {
+    acc[type] = rootExists ? getBackupEntry(backupRoot, type) : null;
+    return acc;
+  }, {});
+  const latest = Object.values(entries)
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0] || null;
+
+  const restoreMarker = rootExists
+    ? safeReadJson(path.join(backupRoot, 'restore-tests', 'latest-success.json'))
+    : null;
+  const restoreTimestamp = parseBackupTimestamp(restoreMarker?.timestamp);
+  const restoreAgeHours = hoursSince(restoreTimestamp);
+  const restoreTest = {
+    ok: Boolean(restoreMarker && restoreTimestamp && restoreAgeHours <= maxRestoreAgeHours),
+    timestamp: restoreTimestamp ? restoreTimestamp.toISOString() : null,
+    ageHours: restoreAgeHours,
+    mode: restoreMarker?.mode || null,
+    message: restoreMarker
+      ? 'Latest restore test completed successfully.'
+      : 'No successful restore test marker found yet.'
+  };
+
+  const daily = entries.daily;
+  const raid = getRaidStatus();
+  const issues = [];
+  if (!rootExists) issues.push('Backup storage is not visible.');
+  if (backupRoot.startsWith('/mnt/') && !mounted) issues.push('Backup storage is not mounted.');
+  if (!latest) issues.push('No backup archive has been found.');
+  if (daily && daily.ageHours !== null && daily.ageHours > maxDailyAgeHours) issues.push('The latest daily backup is older than expected.');
+  if (daily && !daily.encrypted) issues.push('The latest daily backup is not encrypted.');
+  if (daily && !daily.checksumPresent) issues.push('The latest daily backup checksum is missing.');
+  if (volume.usagePercent >= diskUsageLimit) issues.push('Backup storage is getting full.');
+  if (raid.configured && !raid.ok) issues.push('The backup drive mirror is not healthy.');
+  if (!restoreTest.ok) issues.push('The weekly restore test needs attention.');
+
+  const status = issues.length === 0 ? 'ok' : issues.some((issue) => (
+    issue.includes('not visible')
+    || issue.includes('not mounted')
+    || issue.includes('not healthy')
+    || issue.includes('not encrypted')
+  )) ? 'critical' : 'warning';
+
+  return {
+    status,
+    headline: status === 'ok' ? 'Protected' : status === 'warning' ? 'Needs review' : 'Action needed',
+    message: status === 'ok'
+      ? 'Backups are encrypted, the mirror is healthy, and the latest restore test passed.'
+      : issues[0],
+    backupRoot,
+    mounted,
+    automationEnabled,
+    volume,
+    latest,
+    byType: entries,
+    restoreTest,
+    raid,
+    coldStorage: {
+      mode: 'manual',
+      label: process.env.BACKUP_COLD_STORAGE_LABEL || '2 TB cold storage HDD',
+      message: 'Plug in weekly, copy encrypted backups, verify checksums, then disconnect.'
+    },
+    schedule: {
+      daily: 'Daily at 02:30 UTC',
+      weekly: 'Sunday at 03:00 UTC',
+      restoreTest: 'Sunday at 05:00 UTC',
+      monthly: 'First day of each month at 04:00 UTC',
+      healthCheck: 'Every hour'
+    },
+    retention: {
+      sixHourlyDays: Number(process.env.SIX_HOURLY_RETENTION_DAYS) || 7,
+      dailyDays: Number(process.env.DAILY_RETENTION_DAYS) || 30,
+      weeklyDays: Number(process.env.WEEKLY_RETENTION_DAYS) || 84,
+      monthlyDays: Number(process.env.MONTHLY_RETENTION_DAYS) || 366
+    },
+    issues
+  };
 };
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
@@ -295,43 +566,40 @@ router.get('/stats/users', async (req, res) => {
 router.get('/server-usage', async (_req, res) => {
   try {
     const cpuUsagePercent = await getCpuSample();
-    const totalMemory = os.totalmem();
-    const freeMemory = os.freemem();
-    const usedMemory = Math.max(0, totalMemory - freeMemory);
-    const rootDisk = getDiskUsage('/');
     const uploadPath = path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads');
-    const uploadDisk = getDiskUsage(uploadPath);
+    const serverDiskPath = process.env.SERVER_USAGE_PATH
+      ? path.resolve(process.env.SERVER_USAGE_PATH)
+      : uploadPath;
+    const server = createHostUsageSnapshot({
+      label: process.env.SERVER_USAGE_LABEL || 'On-prem server',
+      cpuUsagePercent,
+      diskPath: serverDiskPath
+    });
     const cgroupMemory = getCgroupMemory();
-    const network = getNetworkStats();
+    const host = {
+      hostname: server.hostname,
+      platform: server.platform,
+      release: server.release,
+      uptimeSeconds: server.uptimeSeconds
+    };
 
     res.json({
       success: true,
       data: {
         sampledAt: new Date().toISOString(),
-        host: {
-          hostname: os.hostname(),
-          platform: os.platform(),
-          release: os.release(),
-          uptimeSeconds: Math.round(os.uptime())
-        },
-        cpu: {
-          usagePercent: Math.round(cpuUsagePercent * 10) / 10,
-          loadAverage: os.loadavg()
-        },
-        memory: {
-          total: totalMemory,
-          used: usedMemory,
-          free: freeMemory,
-          usagePercent: totalMemory > 0 ? Math.round((usedMemory / totalMemory) * 1000) / 10 : 0
-        },
+        host,
+        server,
+        cpu: server.cpu,
+        memory: server.memory,
         container: {
           memory: cgroupMemory
         },
         disk: {
-          root: rootDisk,
-          uploads: uploadDisk
+          root: server.disk.root,
+          uploads: getDiskUsage(uploadPath)
         },
-        network,
+        backup: getBackupStatus(),
+        network: server.network,
         process: {
           pid: process.pid,
           uptimeSeconds: Math.round(process.uptime()),

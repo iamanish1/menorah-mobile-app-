@@ -37,11 +37,30 @@ const makeRateLimitStore = (redisReady) =>
     ? { store: new RedisStore({ sendCommand: (...args) => getRedisClient().sendCommand(args) }) }
     : {};
 
+const firstHeaderValue = (value) => {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return String(rawValue || '')
+    .split(',')
+    .map((item) => item.trim())
+    .find(Boolean) || '';
+};
+
+const getRateLimitClientIp = (req) => (
+  firstHeaderValue(req.headers['cf-connecting-ip'])
+  || firstHeaderValue(req.headers['x-forwarded-for'])
+  || req.ip
+  || req.socket?.remoteAddress
+  || 'unknown'
+);
+
+const rateLimitKeyGenerator = (req) => rateLimit.ipKeyGenerator(getRateLimitClientIp(req));
+
 const mountRateLimiters = (app, { redisReady }) => {
   const authLimiter = rateLimit({
     ...makeRateLimitStore(redisReady),
     windowMs: 15 * 60 * 1000,
     max: parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10) || 30,
+    keyGenerator: rateLimitKeyGenerator,
     message: 'Too many requests, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -52,6 +71,7 @@ const mountRateLimiters = (app, { redisReady }) => {
     ...makeRateLimitStore(redisReady),
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
     max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 1000,
+    keyGenerator: rateLimitKeyGenerator,
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -166,5 +186,6 @@ const startService = async ({
 module.exports = {
   startService,
   createServiceState,
+  getRateLimitClientIp,
   mountRateLimiters
 };

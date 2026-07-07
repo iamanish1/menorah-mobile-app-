@@ -123,22 +123,46 @@ Deploy state is stored under `/opt/menorah/deploy-state`.
 
 ## 8. Back Up And Restore
 
+Prepare the encrypted RAID1 HDD backup volume after both backup disks are installed:
+
+```bash
+cd /opt/menorah/menorah
+sudo BACKUP_DISK_CONFIRM=WIPE_THESE_DISKS \
+  bash deploy/ubuntu/setup-backup-raid-luks.sh \
+  /dev/disk/by-id/<first-backup-hdd> \
+  /dev/disk/by-id/<second-backup-hdd>
+```
+
+Install backup, restore-test, pruning, and health-check timers:
+
+```bash
+cd /opt/menorah/menorah
+sudo bash deploy/ubuntu/install-backup-schedule.sh
+```
+
 Manual backup:
 
 ```bash
-bash menorah/deploy/ubuntu/backup-now.sh daily
+cd /opt/menorah/menorah
+bash deploy/ubuntu/backup-now.sh daily
 ```
 
 Restore latest backup into the restore-test database:
 
 ```bash
-bash menorah/deploy/ubuntu/restore-latest-backup.sh restore-test
+bash deploy/ubuntu/restore-latest-backup.sh restore-test
+```
+
+Check backup health:
+
+```bash
+bash deploy/ubuntu/check-backup-health.sh
 ```
 
 Production restore is blocked unless explicitly confirmed:
 
 ```bash
-RESTORE_CONFIRM_PRODUCTION=true bash menorah/deploy/ubuntu/restore-latest-backup.sh production
+RESTORE_CONFIRM_PRODUCTION=true bash deploy/ubuntu/restore-latest-backup.sh production
 ```
 
 See [backup restore runbook](../../docs/production-backup-restore-runbook.md).
