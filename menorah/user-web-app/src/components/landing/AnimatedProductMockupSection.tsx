@@ -186,7 +186,7 @@ export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef:
     <div
       data-product-dashboard
       data-menorah-landing-theme="source"
-      className="absolute left-1/2 top-1/2 z-20 w-[min(1320px,calc(100vw-var(--mockup-x-inset)-var(--mockup-x-inset)))] [--mockup-x-inset:clamp(0.75rem,4vw,5.5rem)] [--mockup-y-inset:clamp(1rem,5svh,5rem)]"
+      className="absolute left-1/2 top-1/2 z-20 w-[var(--landing-dashboard-width)] [--mockup-y-inset:clamp(1rem,5svh,5rem)]"
       style={dashboardStyle}
     >
       <DashboardMockup
@@ -236,10 +236,10 @@ function DashboardMockup({
       />
 
       <div
-        className="relative z-10 flex h-full flex-col overflow-hidden rounded-lg border border-primary-100 bg-white text-gray-950 shadow-[0_34px_120px_rgba(45,122,92,0.18),0_0_0_1px_rgba(45,122,92,0.08)]"
+        className="relative z-10 flex h-full flex-col overflow-hidden rounded-[var(--landing-radius-md)] border border-primary-100 bg-white text-gray-950 shadow-[0_34px_120px_rgba(45,122,92,0.18),0_0_0_1px_rgba(45,122,92,0.08)]"
         style={frameStyle}
       >
-        <div className="flex h-12 items-center justify-between border-b border-primary-100 bg-primary-50/95 px-3 sm:h-14 sm:px-5">
+        <div className="flex h-[clamp(3rem,3.6vw,4rem)] items-center justify-between border-b border-primary-100 bg-primary-50/95 px-[clamp(0.75rem,1.3vw,1.5rem)]">
           <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-red-300" />
             <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
@@ -258,9 +258,9 @@ function DashboardMockup({
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[clamp(3.25rem,12vw,4rem)_minmax(0,1fr)] sm:grid-cols-[clamp(10.5rem,18vw,13.25rem)_minmax(0,1fr)]" style={contentStyle}>
-          <aside className="border-r border-primary-100 bg-white/95 px-2 py-3 text-gray-950 shadow-[0_22px_60px_-34px_rgba(17,24,39,0.55)] sm:px-3 sm:py-4">
-            <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-2xl bg-primary-600 text-white sm:mx-0 sm:h-11 sm:w-11">
+        <div className="grid min-h-0 flex-1 grid-cols-[clamp(3.25rem,12vw,4.4rem)_minmax(0,1fr)] sm:grid-cols-[clamp(10.5rem,18vw,14.5rem)_minmax(0,1fr)]" style={contentStyle}>
+          <aside className="border-r border-primary-100 bg-white/95 px-[clamp(0.5rem,0.8vw,1rem)] py-[clamp(0.75rem,1.1vw,1.25rem)] text-gray-950 shadow-[0_22px_60px_-34px_rgba(17,24,39,0.55)]">
+            <div className="mx-auto flex h-[clamp(2.25rem,2.8vw,3.1rem)] w-[clamp(2.25rem,2.8vw,3.1rem)] items-center justify-center rounded-2xl bg-primary-600 text-white sm:mx-0">
               <HeartPulse className="h-5 w-5" aria-hidden="true" />
             </div>
             <p className="mt-3 hidden text-lg font-black text-gray-950 sm:block">Menorah</p>
@@ -279,9 +279,9 @@ function DashboardMockup({
             </nav>
           </aside>
 
-          <main className="min-w-0 overflow-hidden bg-[var(--app-bg)] p-[clamp(0.65rem,1.8vw,1.25rem)]">
+          <main className="min-w-0 overflow-hidden bg-[var(--app-bg)] p-[clamp(0.65rem,1.8vw,1.45rem)]">
             <div className="flex min-h-0 h-full flex-col">
-              <div className="mb-3 flex flex-col gap-3 rounded-[1.75rem] border border-primary-100 bg-primary-50 px-5 py-4 shadow-[0_14px_32px_-26px_rgba(45,122,92,0.5)] sm:flex-row sm:items-center sm:justify-between">
+              <div className="mb-[clamp(0.6rem,1vw,1rem)] flex flex-col gap-[clamp(0.6rem,1vw,1rem)] rounded-[var(--landing-radius-lg)] border border-primary-100 bg-primary-50 px-[clamp(0.85rem,1.6vw,1.5rem)] py-[clamp(0.85rem,1.3vw,1.25rem)] shadow-[0_14px_32px_-26px_rgba(45,122,92,0.5)] sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-primary-700">
                     <ActiveIcon className="h-3.5 w-3.5" aria-hidden="true" />

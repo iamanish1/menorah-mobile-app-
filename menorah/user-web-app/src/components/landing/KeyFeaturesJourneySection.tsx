@@ -2,7 +2,6 @@
 
 import type { CSSProperties, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { BookOpen, CheckCircle2, HeartPulse, LockKeyhole, MessageCircle, ShieldCheck, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -84,20 +83,26 @@ export function KeyFeaturesJourneySection() {
   const scrollProgress = useScrollProgress(sectionRef);
   const reducedMotion = usePrefersReducedMotion();
   const compactViewport = useMediaQuery("(max-width: 767px)");
-  const journeyProgress = reducedMotion ? 0 : scrollProgress * (features.length - 1);
+  const journeyProgress = reducedMotion ? 0 : Math.min(scrollProgress / 0.86, 1) * (features.length - 1);
+  const stackExitProgress = reducedMotion ? 0 : smoothstep(0.9, 0.98, scrollProgress);
+  const stackStyle: CSSProperties = {
+    opacity: 1 - stackExitProgress,
+    transform: `translate3d(0, ${lerp(0, -140, stackExitProgress)}px, 0) scale(${lerp(1, 0.97, stackExitProgress)})`,
+    pointerEvents: stackExitProgress > 0.96 ? "none" : undefined,
+    willChange: reducedMotion ? undefined : "transform, opacity"
+  };
   const activeIndex = reducedMotion ? 0 : Math.min(features.length - 1, Math.max(0, Math.round(journeyProgress)));
 
   useFadingVideoLoop(videoRef, compactViewport);
 
   if (compactViewport) {
     return (
-      <section className="relative overflow-hidden bg-background px-4 pb-16 pt-28 text-foreground sm:px-6">
-        <FeatureTransitionGlow />
+      <section className="relative overflow-hidden bg-background px-[var(--landing-page-x)] pb-[var(--landing-section-y-tight)] pt-[clamp(4.75rem,13vw,6.5rem)] text-foreground">
         <FeatureBackgroundVideo videoRef={videoRef} />
         <div className="relative z-10">
           <Header />
         </div>
-        <div className="relative z-10 mx-auto mt-10 flex max-w-xl flex-col gap-4">
+        <div className="relative z-10 mx-auto mt-[var(--landing-stack-gap)] flex max-w-xl flex-col gap-[clamp(0.85rem,3vw,1.25rem)]">
           {features.map((feature, index) => (
             <MobileFeatureCard key={feature.title} feature={feature} index={index} reducedMotion={reducedMotion} />
           ))}
@@ -107,14 +112,16 @@ export function KeyFeaturesJourneySection() {
   }
 
   return (
-    <section ref={sectionRef} className="relative min-h-[340vh] bg-background text-foreground">
-      <FeatureTransitionGlow />
-      <div className="sticky top-0 flex h-screen overflow-hidden px-6 pb-6 pt-[clamp(7rem,13vh,9rem)] lg:px-10">
+    <section ref={sectionRef} data-feature-journey className="relative min-h-[420vh] bg-background text-foreground">
+      <div className="landing-feature-sticky sticky top-0 flex h-screen overflow-hidden px-[var(--landing-page-x)] pb-[clamp(1rem,2.2vw,2rem)] pt-[clamp(4.75rem,8vh,6.75rem)]">
         <FeatureBackgroundVideo videoRef={videoRef} />
-        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-col items-center">
+        <div className="relative z-10 mx-auto flex w-[var(--landing-container)] flex-col items-center">
           <Header />
 
-          <div className="relative mt-8 h-[630px] w-full max-w-[920px]">
+          <div
+            className="landing-feature-stack relative mt-[clamp(1.5rem,2.4vw,2.5rem)] h-[clamp(34rem,47vw,45rem)] w-full max-w-[clamp(58rem,64vw,72rem)]"
+            style={stackStyle}
+          >
             {features.map((feature, index) => {
               const delta = reducedMotion ? index : index - journeyProgress;
               const distance = Math.abs(delta);
@@ -154,17 +161,6 @@ export function KeyFeaturesJourneySection() {
   );
 }
 
-function FeatureTransitionGlow() {
-  return (
-    <div
-      className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-48 -translate-y-20 overflow-hidden sm:h-56 sm:-translate-y-24"
-      aria-hidden="true"
-    >
-      <div className="feature-transition-glow absolute inset-x-[-12%] top-10 h-28 sm:h-36" />
-    </div>
-  );
-}
-
 function FeatureBackgroundVideo({ videoRef }: { videoRef: RefObject<HTMLVideoElement | null> }) {
   return (
     <>
@@ -185,23 +181,13 @@ function FeatureBackgroundVideo({ videoRef }: { videoRef: RefObject<HTMLVideoEle
 
 function Header() {
   return (
-    <div className="mx-auto max-w-4xl text-center">
-      <p className="font-body text-xs font-semibold uppercase tracking-[0.18em] text-menorah-olive">
+    <div className="landing-feature-header mx-auto max-w-[min(56rem,92vw)] text-center">
+      <p className="font-body text-[length:var(--landing-kicker)] font-semibold uppercase tracking-[0.18em] text-menorah-olive">
         Menorah features
       </p>
-      <h2 className="mt-2 font-display text-4xl leading-tight text-foreground md:text-[2.75rem]">
+      <h2 className="landing-feature-heading mt-[clamp(0.45rem,0.8vw,0.75rem)] font-display text-[length:var(--landing-h2)] leading-tight text-foreground">
         Key features across your mental wellness journey.
       </h2>
-      <p className="mx-auto mt-3 max-w-3xl text-base leading-7 text-foreground/70">
-        From private support to self-help tools and India-focused mental-health articles, Menorah gives men a safe space
-        to understand themselves, connect with others, and take the next step with clarity.
-      </p>
-      <Link
-        href="/articles"
-        className="mt-5 inline-flex min-h-11 items-center justify-center rounded-full border border-menorah-green/15 bg-background/80 px-5 text-sm font-semibold text-menorah-green shadow-sm transition hover:border-menorah-green/35 hover:text-menorah-olive"
-      >
-        Explore mental-health articles
-      </Link>
     </div>
   );
 }
@@ -228,20 +214,20 @@ function StackedFeatureCard({
   return (
     <article
       className={cn(
-        "absolute left-1/2 top-0 grid h-[455px] w-full grid-cols-[1fr_0.92fr] overflow-hidden rounded-[30px] border p-10 shadow-[0_24px_70px_rgba(35,45,36,0.12)] transition-colors duration-300",
+        "landing-feature-card absolute left-1/2 top-0 grid h-[var(--landing-feature-card-height)] w-full grid-cols-[1fr_0.92fr] overflow-hidden rounded-[var(--landing-radius-xl)] border p-[var(--landing-card-pad-lg)] shadow-[0_24px_70px_rgba(35,45,36,0.12)] transition-colors duration-300",
         isActive ? "border-menorah-green/35" : "border-menorah-green/10"
       )}
       style={{ ...style, background: feature.surface }}
     >
       <div className="relative z-10 flex max-w-[360px] flex-col justify-center">
-        <div className="flex items-center gap-3">
-          <div className={cn("flex h-11 w-11 items-center justify-center rounded-lg shadow-sm", feature.accent)}>
+        <div className="flex items-center gap-[clamp(0.65rem,1vw,0.95rem)]">
+          <div className={cn("flex h-[var(--landing-icon-sm)] w-[var(--landing-icon-sm)] items-center justify-center rounded-[var(--landing-radius-sm)] shadow-sm", feature.accent)}>
             <Icon className="h-5 w-5" aria-hidden="true" />
           </div>
-          <span className="text-sm font-semibold uppercase tracking-[0.18em] text-menorah-olive">0{index + 1}</span>
+          <span className="text-[length:var(--landing-kicker)] font-semibold uppercase tracking-[0.18em] text-menorah-olive">0{index + 1}</span>
         </div>
-        <h3 className="mt-7 text-3xl font-semibold leading-tight text-foreground">{feature.title}</h3>
-        <ul className="mt-6 space-y-4 text-[15px] leading-6 text-foreground/75">
+        <h3 className="landing-feature-card-title mt-[clamp(1.25rem,2vw,2rem)] text-[length:var(--landing-h3)] font-semibold leading-tight text-foreground">{feature.title}</h3>
+        <ul className="landing-feature-card-list mt-[clamp(1rem,1.8vw,1.6rem)] space-y-[clamp(0.75rem,1.1vw,1.1rem)] text-[length:var(--landing-body-sm)] leading-[1.6] text-foreground/75">
           {feature.points.map((point) => (
             <li key={point} className="flex gap-3">
               <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-menorah-green" aria-hidden="true" />
@@ -250,7 +236,7 @@ function StackedFeatureCard({
           ))}
         </ul>
         {feature.title === "Privacy & Security" ? (
-          <div className="mt-6 flex w-fit items-center gap-2 rounded-md border border-menorah-green/10 bg-white/70 px-3 py-2 text-xs font-semibold text-menorah-green">
+          <div className="landing-feature-privacy-badge mt-[clamp(1rem,1.6vw,1.5rem)] flex w-fit items-center gap-2 rounded-[var(--landing-radius-sm)] border border-menorah-green/10 bg-white/70 px-3 py-2 text-[length:var(--landing-kicker)] font-semibold text-menorah-green">
             <LockKeyhole className="h-4 w-4" aria-hidden="true" />
             User-controlled privacy
           </div>
@@ -267,17 +253,17 @@ function StackedFeatureCard({
 function FeatureVisual({ index }: { index: number }) {
   if (index === 0) {
     return (
-      <div className="relative h-[250px] w-[310px] rounded-[26px] bg-white/70 p-5 shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
-        <div className="absolute -left-7 top-8 rounded-lg border border-menorah-green/10 bg-white px-4 py-3 text-sm font-semibold text-menorah-green shadow-dashboard">
+      <div className="landing-feature-visual-panel relative h-[var(--landing-feature-visual-h)] w-[var(--landing-feature-visual-w)] rounded-[var(--landing-radius-lg)] bg-white/70 p-[var(--landing-card-pad)] shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
+        <div className="absolute left-[clamp(-1.75rem,-2vw,-0.75rem)] top-[14%] rounded-[var(--landing-radius-sm)] border border-menorah-green/10 bg-white px-[clamp(0.75rem,1vw,1rem)] py-[clamp(0.55rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-semibold text-menorah-green shadow-dashboard">
           Private chat
         </div>
-        <div className="ml-auto h-16 w-52 rounded-2xl bg-menorah-green px-4 py-3 text-sm font-medium text-white">
+        <div className="ml-auto min-h-[clamp(3.25rem,4vw,4.2rem)] w-[68%] rounded-[var(--landing-radius-md)] bg-menorah-green px-[clamp(0.75rem,1vw,1rem)] py-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-medium text-white">
           I need someone to talk to.
         </div>
-        <div className="mt-5 h-16 w-56 rounded-2xl bg-menorah-cream px-4 py-3 text-sm font-medium text-foreground/80">
+        <div className="mt-[clamp(0.85rem,1.4vw,1.25rem)] min-h-[clamp(3.25rem,4vw,4.2rem)] w-[72%] rounded-[var(--landing-radius-md)] bg-menorah-cream px-[clamp(0.75rem,1vw,1rem)] py-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-medium text-foreground/80">
           You are in a confidential space.
         </div>
-        <div className="absolute bottom-5 right-6 flex h-12 w-12 items-center justify-center rounded-full bg-menorah-green text-white">
+        <div className="absolute bottom-[8%] right-[8%] flex h-[var(--landing-icon-md)] w-[var(--landing-icon-md)] items-center justify-center rounded-full bg-menorah-green text-white">
           <MessageCircle className="h-5 w-5" aria-hidden="true" />
         </div>
       </div>
@@ -286,20 +272,20 @@ function FeatureVisual({ index }: { index: number }) {
 
   if (index === 1) {
     return (
-      <div className="relative h-[250px] w-[310px] rounded-[26px] bg-white/70 p-6 shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
+      <div className="landing-feature-visual-panel relative h-[var(--landing-feature-visual-h)] w-[var(--landing-feature-visual-w)] rounded-[var(--landing-radius-lg)] bg-white/70 p-[var(--landing-card-pad)] shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
         {["15-18", "19-24", "25-35"].map((label, itemIndex) => (
           <div
             key={label}
-            className="absolute flex h-24 w-24 items-center justify-center rounded-full border border-menorah-green/15 bg-menorah-cream text-sm font-semibold text-menorah-green shadow-sm"
+            className="absolute flex h-[clamp(4.9rem,7vw,6.5rem)] w-[clamp(4.9rem,7vw,6.5rem)] items-center justify-center rounded-full border border-menorah-green/15 bg-menorah-cream text-[length:var(--landing-body-sm)] font-semibold text-menorah-green shadow-sm"
             style={{
-              left: `${34 + itemIndex * 72}px`,
-              top: `${42 + Math.abs(itemIndex - 1) * 48}px`
+              left: `${11 + itemIndex * 23}%`,
+              top: `${17 + Math.abs(itemIndex - 1) * 19}%`
             }}
           >
             {label}
           </div>
         ))}
-        <div className="absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-menorah-olive shadow-dashboard">
+        <div className="absolute bottom-[13%] left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-white px-[clamp(0.85rem,1vw,1.1rem)] py-[clamp(0.45rem,0.7vw,0.65rem)] text-[length:var(--landing-body-sm)] font-semibold text-menorah-olive shadow-dashboard">
           <Users className="h-4 w-4" aria-hidden="true" />
           Man2Man
         </div>
@@ -309,10 +295,10 @@ function FeatureVisual({ index }: { index: number }) {
 
   if (index === 2) {
     return (
-      <div className="relative h-[250px] w-[310px] rounded-[26px] bg-white/70 p-6 shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
+      <div className="landing-feature-visual-panel relative h-[var(--landing-feature-visual-h)] w-[var(--landing-feature-visual-w)] rounded-[var(--landing-radius-lg)] bg-white/70 p-[var(--landing-card-pad)] shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
         {["Breathe", "Ground", "Reflect"].map((label, itemIndex) => (
-          <div key={label} className="mb-4 rounded-lg border border-menorah-green/10 bg-white px-4 py-3 shadow-sm">
-            <div className="flex items-center justify-between text-sm font-semibold text-foreground">
+          <div key={label} className="mb-[clamp(0.75rem,1vw,1rem)] rounded-[var(--landing-radius-sm)] border border-menorah-green/10 bg-white px-[clamp(0.75rem,1vw,1rem)] py-[clamp(0.6rem,0.8vw,0.8rem)] shadow-sm">
+            <div className="flex items-center justify-between text-[length:var(--landing-body-sm)] font-semibold text-foreground">
               <span>{label}</span>
               <HeartPulse className="h-4 w-4 text-menorah-green" aria-hidden="true" />
             </div>
@@ -327,16 +313,16 @@ function FeatureVisual({ index }: { index: number }) {
 
   if (index === 3) {
     return (
-      <div className="relative h-[250px] w-[310px] rounded-[26px] bg-white/70 p-6 shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
-        <div className="h-28 rounded-2xl bg-slate-900 p-4 text-white">
+      <div className="landing-feature-visual-panel relative h-[var(--landing-feature-visual-h)] w-[var(--landing-feature-visual-w)] rounded-[var(--landing-radius-lg)] bg-white/70 p-[var(--landing-card-pad)] shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
+        <div className="h-[42%] rounded-[var(--landing-radius-md)] bg-slate-900 p-[clamp(0.75rem,1vw,1rem)] text-white">
           <div className="flex h-full items-center justify-center rounded-xl border border-white/15">
             <BookOpen className="h-8 w-8" aria-hidden="true" />
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="rounded-lg bg-menorah-cream p-3 text-sm font-semibold text-menorah-green">Articles</div>
-          <div className="rounded-lg bg-menorah-cream p-3 text-sm font-semibold text-menorah-green">Videos</div>
-          <div className="col-span-2 rounded-lg bg-white p-3 text-sm font-semibold text-menorah-olive shadow-sm">
+        <div className="mt-[clamp(0.75rem,1vw,1rem)] grid grid-cols-2 gap-[clamp(0.6rem,0.8vw,0.8rem)]">
+          <div className="rounded-[var(--landing-radius-sm)] bg-menorah-cream p-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-semibold text-menorah-green">Articles</div>
+          <div className="rounded-[var(--landing-radius-sm)] bg-menorah-cream p-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-semibold text-menorah-green">Videos</div>
+          <div className="col-span-2 rounded-[var(--landing-radius-sm)] bg-white p-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-semibold text-menorah-olive shadow-sm">
             Men&apos;s mental health resources
           </div>
         </div>
@@ -345,13 +331,13 @@ function FeatureVisual({ index }: { index: number }) {
   }
 
   return (
-    <div className="relative h-[250px] w-[310px] rounded-[26px] bg-white/70 p-6 shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
-      <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-full bg-menorah-green text-white shadow-dashboard">
-        <ShieldCheck className="h-12 w-12" aria-hidden="true" />
+    <div className="landing-feature-visual-panel landing-feature-privacy-visual relative h-[var(--landing-feature-visual-h)] w-[var(--landing-feature-visual-w)] rounded-[var(--landing-radius-lg)] bg-white/70 p-[var(--landing-card-pad)] shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
+      <div className="landing-feature-privacy-orb mx-auto flex h-[clamp(5.5rem,8vw,7.4rem)] w-[clamp(5.5rem,8vw,7.4rem)] items-center justify-center rounded-full bg-menorah-green text-white shadow-dashboard">
+        <ShieldCheck className="landing-feature-privacy-icon h-12 w-12" aria-hidden="true" />
       </div>
-      <div className="mt-6 space-y-3">
+      <div className="landing-feature-privacy-options mt-[clamp(1rem,1.8vw,1.55rem)] space-y-[clamp(0.6rem,0.9vw,0.8rem)]">
         {["Anonymous mode", "Encrypted data", "Privacy controls"].map((label) => (
-          <div key={label} className="flex items-center justify-between rounded-lg bg-white px-4 py-3 text-sm font-semibold text-foreground shadow-sm">
+          <div key={label} className="landing-feature-privacy-option flex items-center justify-between rounded-[var(--landing-radius-sm)] bg-white px-[clamp(0.75rem,1vw,1rem)] py-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-semibold text-foreground shadow-sm">
             {label}
             <LockKeyhole className="h-4 w-4 text-menorah-green" aria-hidden="true" />
           </div>
@@ -385,19 +371,19 @@ function MobileFeatureCard({
   return (
     <article
       ref={cardRef}
-      className="rounded-lg border border-menorah-green/10 p-5 shadow-dashboard backdrop-blur-[2px] transition duration-500 ease-out"
+      className="rounded-[var(--landing-radius-md)] border border-menorah-green/10 p-[var(--landing-card-pad)] shadow-dashboard backdrop-blur-[2px] transition duration-500 ease-out"
       style={cardStyle}
     >
       <div className="flex items-start gap-4">
-        <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-lg", feature.accent)}>
+        <div className={cn("flex h-[var(--landing-icon-sm)] w-[var(--landing-icon-sm)] shrink-0 items-center justify-center rounded-[var(--landing-radius-sm)]", feature.accent)}>
           <Icon className="h-5 w-5" aria-hidden="true" />
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-menorah-olive">0{index + 1}</p>
-          <h3 className="mt-1 text-xl font-semibold leading-tight text-foreground">{feature.title}</h3>
+          <p className="text-[length:var(--landing-kicker)] font-semibold uppercase tracking-[0.18em] text-menorah-olive">0{index + 1}</p>
+          <h3 className="mt-1 text-[length:var(--landing-card-title)] font-semibold leading-tight text-foreground">{feature.title}</h3>
         </div>
       </div>
-      <ul className="mt-5 space-y-3 text-sm leading-6 text-foreground/75">
+      <ul className="mt-[clamp(1rem,3vw,1.35rem)] space-y-[clamp(0.6rem,2vw,0.9rem)] text-[length:var(--landing-body-sm)] leading-[1.6] text-foreground/75">
         {feature.points.map((point) => (
           <li key={point} className="flex gap-2.5">
             <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-menorah-green" aria-hidden="true" />

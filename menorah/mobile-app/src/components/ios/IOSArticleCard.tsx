@@ -20,7 +20,7 @@ export default function IOSArticleCard({ item, onPress }: IOSArticleCardProps) {
       style={[
         {
           width: 238,
-          height: 264,
+          height: 224,
           borderRadius: iosTheme.radius.xl,
           backgroundColor: iosTheme.colors.surface,
           overflow: 'hidden',
@@ -49,11 +49,8 @@ export default function IOSArticleCard({ item, onPress }: IOSArticleCardProps) {
           </Text>
           <BookOpen size={16} color={iosTheme.colors.primaryMuted} strokeWidth={2.4} />
         </View>
-        <Text style={{ color: iosTheme.colors.text, fontSize: 16, lineHeight: 21, fontWeight: '900', marginBottom: iosTheme.spacing.sm }} numberOfLines={2}>
+        <Text style={{ color: iosTheme.colors.text, fontSize: 17, lineHeight: 23, fontWeight: '900' }} numberOfLines={3}>
           {item.title}
-        </Text>
-        <Text style={{ color: iosTheme.colors.textSecondary, fontSize: 13, lineHeight: 19 }} numberOfLines={3}>
-          {item.excerpt || item.readTime || 'Read the latest from Menorah.'}
         </Text>
         <Text style={{ color: iosTheme.colors.textMuted, fontSize: 12, lineHeight: 16, fontWeight: '800', marginTop: 'auto', paddingTop: iosTheme.spacing.sm }}>
           {item.readTime || 'Read now'}

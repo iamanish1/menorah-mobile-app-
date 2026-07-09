@@ -1,166 +1,29 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { BookOpen, HeartPulse, MessageCircle, Play, Search, ShieldCheck, Users } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { cn, formatCurrency } from "@/lib/utils";
+import type { Counsellor } from "@/types";
+
+type DirectoryFilter = "All" | "Consultant Psychologist" | "Clinical Psychologist" | "Sexual Health" | "Psychiatrist";
+type DirectoryCategory = Exclude<DirectoryFilter, "All">;
 
 type DirectoryProfile = {
   id: string;
   name: string;
-  role: "Consultant Psychologist" | "Clinical Psychologist" | "Sexual Health" | "Psychiatrist";
+  role: string;
+  category: DirectoryCategory;
   specialties: string[];
   language: string;
   hours: string;
   feeLabel: string;
+  feeUnit: string;
   availability: string;
   initials: string;
+  searchableText: string;
 };
-
-const profiles: DirectoryProfile[] = [
-  {
-    id: "ramu",
-    name: "Ramu",
-    role: "Consultant Psychologist",
-    specialties: ["Work stress", "Self-esteem", "Anxiety support"],
-    language: "English",
-    hours: "250+",
-    feeLabel: "Free",
-    availability: "Today at 7:30 PM",
-    initials: "R"
-  },
-  {
-    id: "damu",
-    name: "Damu",
-    role: "Clinical Psychologist",
-    specialties: ["Mood concerns", "Trauma support", "Life transitions"],
-    language: "Malayalam",
-    hours: "420+",
-    feeLabel: "Free",
-    availability: "Tomorrow at 9:00 AM",
-    initials: "D"
-  },
-  {
-    id: "shamu",
-    name: "Shamu",
-    role: "Consultant Psychologist",
-    specialties: ["Relationships", "Personal growth", "Men's wellness"],
-    language: "Hindi",
-    hours: "310+",
-    feeLabel: "Free",
-    availability: "Tomorrow at 11:30 AM",
-    initials: "S"
-  },
-  {
-    id: "liju",
-    name: "Liju",
-    role: "Psychiatrist",
-    specialties: ["Sleep support", "Stress care", "Medication guidance"],
-    language: "Malayalam",
-    hours: "600+",
-    feeLabel: "Free",
-    availability: "Tomorrow at 1:00 PM",
-    initials: "L"
-  },
-  {
-    id: "fatima",
-    name: "Fatima",
-    role: "Sexual Health",
-    specialties: ["Identity support", "Confidence", "Private guidance"],
-    language: "English",
-    hours: "500+",
-    feeLabel: "Free",
-    availability: "Tomorrow at 2:30 PM",
-    initials: "F"
-  },
-  {
-    id: "khadija",
-    name: "Khadija",
-    role: "Clinical Psychologist",
-    specialties: ["Depression support", "Burnout", "Family stress"],
-    language: "Arabic",
-    hours: "700+",
-    feeLabel: "Free",
-    availability: "Tomorrow at 4:00 PM",
-    initials: "K"
-  },
-  {
-    id: "alex",
-    name: "Alex",
-    role: "Consultant Psychologist",
-    specialties: ["Career pressure", "Peer support", "Mindfulness"],
-    language: "English",
-    hours: "340+",
-    feeLabel: "Free",
-    availability: "Friday at 10:00 AM",
-    initials: "A"
-  },
-  {
-    id: "thomas",
-    name: "Thomas",
-    role: "Psychiatrist",
-    specialties: ["Attention support", "Mood care", "Sleep routines"],
-    language: "English",
-    hours: "860+",
-    feeLabel: "Free",
-    availability: "Friday at 12:30 PM",
-    initials: "T"
-  },
-  {
-    id: "vijay",
-    name: "Vijay",
-    role: "Consultant Psychologist",
-    specialties: ["Academic pressure", "Self-worth", "Social anxiety"],
-    language: "Hindi",
-    hours: "280+",
-    feeLabel: "Free",
-    availability: "Friday at 5:30 PM",
-    initials: "V"
-  },
-  {
-    id: "lakshya",
-    name: "Lakshya",
-    role: "Clinical Psychologist",
-    specialties: ["Habits", "Anger support", "Confidence"],
-    language: "English",
-    hours: "390+",
-    feeLabel: "Free",
-    availability: "Saturday at 8:30 AM",
-    initials: "L"
-  },
-  {
-    id: "virat",
-    name: "Virat",
-    role: "Consultant Psychologist",
-    specialties: ["Performance stress", "Leadership", "Resilience"],
-    language: "Hindi",
-    hours: "540+",
-    feeLabel: "Free",
-    availability: "Saturday at 1:30 PM",
-    initials: "V"
-  },
-  {
-    id: "sanjana",
-    name: "Sanjana",
-    role: "Sexual Health",
-    specialties: ["Confidential support", "Body image", "Boundaries"],
-    language: "English",
-    hours: "470+",
-    feeLabel: "Free",
-    availability: "Saturday at 6:00 PM",
-    initials: "S"
-  },
-  {
-    id: "irene",
-    name: "Irene",
-    role: "Clinical Psychologist",
-    specialties: ["Grief support", "Emotional regulation", "Connection"],
-    language: "English",
-    hours: "760+",
-    feeLabel: "Free",
-    availability: "Sunday at 9:30 AM",
-    initials: "I"
-  }
-];
 
 const filterOptions = [
   { label: "All support", value: "All", icon: Users },
@@ -171,39 +34,99 @@ const filterOptions = [
 ] as const;
 
 const waveformBars = [14, 24, 32, 18, 28, 38, 22, 34, 26, 42, 30, 20, 36, 44, 24, 34, 28, 40, 22, 32, 38, 26, 30, 18];
+const skeletonCards = [0, 1, 2, 3, 4, 5];
 const INITIAL_PROFILE_COUNT = 6;
 const LOAD_MORE_COUNT = 3;
+const DIRECTORY_PROFILE_LIMIT = 50;
+const DAY_ORDER = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 export function SupportDirectoryPreviewSection() {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<(typeof filterOptions)[number]["value"]>("All");
   const [visibleCount, setVisibleCount] = useState(INITIAL_PROFILE_COUNT);
+  const [profiles, setProfiles] = useState<DirectoryProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadProductionCounsellors() {
+      setIsLoading(true);
+      setErrorMessage(null);
+
+      const response = await api.getCounsellors({
+        page: 1,
+        limit: DIRECTORY_PROFILE_LIMIT,
+        sortBy: "rating",
+        sortOrder: "desc"
+      });
+
+      if (!isCurrent) {
+        return;
+      }
+
+      if (!response.success) {
+        setProfiles([]);
+        setErrorMessage(response.message || "Unable to load production support profiles.");
+        setIsLoading(false);
+        return;
+      }
+
+      setProfiles((response.data?.counsellors ?? []).map(mapCounsellorToDirectoryProfile));
+      setIsLoading(false);
+    }
+
+    loadProductionCounsellors().catch((error: unknown) => {
+      if (!isCurrent) {
+        return;
+      }
+
+      setProfiles([]);
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load production support profiles.");
+      setIsLoading(false);
+    });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   const visibleProfiles = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = normalizeText(query);
 
     return profiles.filter((profile) => {
-      const matchesFilter = activeFilter === "All" || profile.role === activeFilter;
-      const searchableText = [profile.name, profile.role, profile.language, ...profile.specialties].join(" ").toLowerCase();
-      return matchesFilter && (!normalizedQuery || searchableText.includes(normalizedQuery));
+      const matchesFilter =
+        activeFilter === "All" ||
+        profile.category === activeFilter ||
+        normalizeText(profile.role).includes(normalizeText(activeFilter));
+      const matchesSearch = !normalizedQuery || profile.searchableText.includes(normalizedQuery);
+      return matchesFilter && matchesSearch;
     });
-  }, [activeFilter, query]);
+  }, [activeFilter, profiles, query]);
+
   const displayedProfiles = visibleProfiles.slice(0, visibleCount);
   const remainingProfiles = Math.max(visibleProfiles.length - displayedProfiles.length, 0);
+  const hasActiveRefinement = Boolean(query.trim()) || activeFilter !== "All";
+  const emptyMessage = errorMessage
+    ? "Unable to load production support profiles right now."
+    : hasActiveRefinement
+      ? "No matching support profiles found."
+      : "No production support profiles are available yet.";
 
   return (
     <section
       id="support-directory"
       aria-labelledby="support-directory-title"
-      className="relative min-h-screen overflow-hidden bg-[#fbfbfa] px-4 py-14 text-[#0f172a] sm:px-6 lg:px-10"
+      className="relative min-h-screen overflow-hidden bg-[#fbfbfa] px-[var(--landing-page-x)] py-[var(--landing-section-y-tight)] text-[#0f172a]"
     >
       <h2 id="support-directory-title" className="sr-only">
         Menorah support directory preview
       </h2>
 
-      <div className="mx-auto max-w-7xl">
-        <div className="flex flex-col gap-2 rounded-2xl border border-[#dde1da] bg-[#fff] p-2 shadow-[0_18px_60px_rgba(35,45,36,0.08)] lg:flex-row lg:items-center">
-          <label className="relative min-w-0 lg:w-[340px] lg:flex-none" htmlFor="support-directory-search">
+      <div className="mx-auto w-[var(--landing-container)]">
+        <div className="flex flex-col gap-[clamp(0.5rem,1vw,0.8rem)] rounded-[var(--landing-radius-md)] border border-[#dde1da] bg-[#fff] p-[clamp(0.45rem,0.7vw,0.75rem)] shadow-[0_18px_60px_rgba(35,45,36,0.08)] lg:flex-row lg:items-center">
+          <label className="relative min-w-0 lg:w-[clamp(19rem,24vw,25rem)] lg:flex-none" htmlFor="support-directory-search">
             <span className="sr-only">Search by support name or specialty</span>
             <Search
               className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#5f6871]"
@@ -218,11 +141,11 @@ export function SupportDirectoryPreviewSection() {
                 setVisibleCount(INITIAL_PROFILE_COUNT);
               }}
               placeholder="Search by support name"
-              className="h-11 w-full rounded-xl border border-[#d9ddd6] bg-[#fff] pl-12 pr-4 text-sm font-medium text-[#0f172a] outline-none transition placeholder:text-[#a2a9ad] focus:border-menorah-green/45 focus:ring-4 focus:ring-menorah-green/10"
+              className="h-[var(--landing-button-h)] w-full rounded-[var(--landing-radius-sm)] border border-[#d9ddd6] bg-[#fff] pl-12 pr-4 text-[length:var(--landing-button-text)] font-medium text-[#0f172a] outline-none transition placeholder:text-[#a2a9ad] focus:border-menorah-green/45 focus:ring-4 focus:ring-menorah-green/10"
             />
           </label>
 
-          <div className="flex gap-2 overflow-x-auto pb-1 lg:overflow-visible lg:pb-0" aria-label="Directory filters">
+          <div className="flex gap-[clamp(0.45rem,0.8vw,0.75rem)] overflow-x-auto pb-1 lg:overflow-visible lg:pb-0" aria-label="Directory filters">
             {filterOptions.map((filter) => {
               const Icon = filter.icon;
               const selected = activeFilter === filter.value;
@@ -236,7 +159,7 @@ export function SupportDirectoryPreviewSection() {
                     setVisibleCount(INITIAL_PROFILE_COUNT);
                   }}
                   className={cn(
-                    "flex h-11 shrink-0 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition focus:outline-none focus:ring-4 focus:ring-menorah-green/12",
+                    "flex h-[var(--landing-button-h)] shrink-0 items-center gap-2 rounded-[var(--landing-radius-sm)] border px-[var(--landing-button-x)] text-[length:var(--landing-button-text)] font-semibold transition focus:outline-none focus:ring-4 focus:ring-menorah-green/12",
                     selected
                       ? "border-menorah-green bg-menorah-green text-white shadow-[0_12px_28px_rgba(46,72,46,0.18)]"
                       : "border-[#d9ddd6] bg-[#fff] text-[#1f2937] hover:border-menorah-green/35 hover:bg-menorah-green/5"
@@ -251,21 +174,21 @@ export function SupportDirectoryPreviewSection() {
           </div>
         </div>
 
-        <div id="support-directory-results" className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {displayedProfiles.map((profile) => (
-            <DirectoryCard key={profile.id} profile={profile} />
-          ))}
+        <div id="support-directory-results" className="mt-[var(--landing-stack-gap)] grid grid-cols-1 gap-[clamp(1rem,1.6vw,1.5rem)] md:grid-cols-2 xl:grid-cols-3">
+          {isLoading
+            ? skeletonCards.map((index) => <DirectoryCardSkeleton key={index} />)
+            : displayedProfiles.map((profile) => <DirectoryCard key={profile.id} profile={profile} />)}
         </div>
 
-        {visibleProfiles.length > 0 ? (
-          <div className="mt-9 flex justify-center">
+        {!isLoading && visibleProfiles.length > 0 ? (
+          <div className="mt-[clamp(1.75rem,3vw,2.75rem)] flex justify-center">
             {remainingProfiles > 0 ? (
               <button
                 type="button"
                 aria-controls="support-directory-results"
                 aria-label="Load more consultants"
                 onClick={() => setVisibleCount((count) => count + LOAD_MORE_COUNT)}
-                className="inline-flex min-h-12 items-center justify-center rounded-full bg-menorah-green px-8 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(46,72,46,0.18)] transition hover:scale-[1.02] hover:bg-menorah-olive focus:outline-none focus:ring-4 focus:ring-menorah-green/15"
+                className="inline-flex min-h-[var(--landing-button-h)] items-center justify-center rounded-full bg-menorah-green px-[clamp(1.35rem,1.35vw,2.6rem)] text-[length:var(--landing-button-text)] font-semibold text-white shadow-[0_14px_32px_rgba(46,72,46,0.18)] transition hover:scale-[1.02] hover:bg-menorah-olive focus:outline-none focus:ring-4 focus:ring-menorah-green/15"
               >
                 Load More
               </button>
@@ -273,9 +196,9 @@ export function SupportDirectoryPreviewSection() {
           </div>
         ) : null}
 
-        {visibleProfiles.length === 0 ? (
-          <div className="mt-10 rounded-2xl border border-menorah-green/12 bg-[#fff] p-8 text-center text-sm font-medium text-[#4b5563]">
-            No matching support profiles found.
+        {!isLoading && visibleProfiles.length === 0 ? (
+          <div className="mt-[var(--landing-stack-gap)] rounded-[var(--landing-radius-md)] border border-menorah-green/12 bg-[#fff] p-[var(--landing-card-pad-lg)] text-center text-[length:var(--landing-body-sm)] font-medium text-[#4b5563]">
+            {emptyMessage}
           </div>
         ) : null}
       </div>
@@ -285,65 +208,94 @@ export function SupportDirectoryPreviewSection() {
 
 function DirectoryCard({ profile }: { profile: DirectoryProfile }) {
   return (
-    <article className="group overflow-hidden rounded-2xl border border-[#dfe3dd] bg-[#fff] shadow-[0_14px_45px_rgba(35,45,36,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_rgba(35,45,36,0.12)]">
-      <div className="directory-wave-header relative h-28 overflow-hidden px-4 pt-5 sm:h-32">
+    <article className="group overflow-hidden rounded-[var(--landing-radius-md)] border border-[#dfe3dd] bg-[#fff] shadow-[0_14px_45px_rgba(35,45,36,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_rgba(35,45,36,0.12)]">
+      <div className="directory-wave-header relative h-[clamp(7rem,8.5vw,9.5rem)] overflow-hidden px-[var(--landing-card-pad)] pt-[clamp(1rem,1.5vw,1.4rem)]">
         <div className="relative z-10 max-w-[68%]">
-          <h3 className="text-lg font-semibold leading-tight text-white">{profile.name}</h3>
-          <p className="mt-1 text-xs font-medium text-white/86">{profile.role}</p>
+          <h3 className="text-[length:var(--landing-card-title)] font-semibold leading-tight text-white">{profile.name}</h3>
+          <p className="mt-1 text-[length:var(--landing-kicker)] font-medium text-white/86">{profile.role}</p>
         </div>
-        <div className="absolute bottom-4 right-4 z-10 flex h-20 w-20 items-center justify-center rounded-full border border-white/35 bg-[#ffffff]/25 text-2xl font-semibold text-menorah-green shadow-[0_14px_35px_rgba(0,0,0,0.12)] sm:h-24 sm:w-24">
+        <div className="absolute bottom-[clamp(0.85rem,1.2vw,1.25rem)] right-[var(--landing-card-pad)] z-10 flex h-[clamp(5rem,6.5vw,6.75rem)] w-[clamp(5rem,6.5vw,6.75rem)] items-center justify-center rounded-full border border-white/35 bg-[#ffffff]/25 text-[clamp(1.35rem,1.7vw,2rem)] font-semibold text-menorah-green shadow-[0_14px_35px_rgba(0,0,0,0.12)]">
           {profile.initials}
         </div>
       </div>
 
-      <div className="-mt-4 rounded-t-[22px] bg-[#fff] px-4 pb-4 pt-5">
+      <div className="-mt-4 rounded-t-[var(--landing-radius-md)] bg-[#fff] px-[var(--landing-card-pad)] pb-[var(--landing-card-pad)] pt-[clamp(1rem,1.5vw,1.4rem)]">
         <div className="flex gap-2 overflow-hidden border-b border-[#e3e7e0] pb-4">
           {profile.specialties.map((specialty) => (
             <span
               key={specialty}
-              className="shrink-0 rounded-lg border border-[#d9ddd6] bg-[#fff] px-3 py-2 text-[11px] font-medium text-[#0f172a] shadow-[0_4px_12px_rgba(15,23,42,0.04)]"
+              className="shrink-0 rounded-[var(--landing-radius-sm)] border border-[#d9ddd6] bg-[#fff] px-[clamp(0.65rem,0.8vw,0.9rem)] py-[clamp(0.45rem,0.6vw,0.65rem)] text-[clamp(0.68rem,calc(0.18vw_+_0.62rem),0.8rem)] font-medium text-[#0f172a] shadow-[0_4px_12px_rgba(15,23,42,0.04)]"
             >
               {specialty}
             </span>
           ))}
         </div>
 
-        <div className="mt-4 flex items-center gap-3 border-b border-[#e3e7e0] pb-4">
+        <div className="mt-[clamp(0.9rem,1.2vw,1.15rem)] flex items-center gap-[clamp(0.65rem,1vw,0.9rem)] border-b border-[#e3e7e0] pb-[clamp(0.9rem,1.2vw,1.15rem)]">
           <button
             type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1f2933] text-white transition hover:scale-105"
+            className="flex h-[var(--landing-icon-sm)] w-[var(--landing-icon-sm)] shrink-0 items-center justify-center rounded-full bg-[#1f2933] text-white transition hover:scale-105"
             aria-label={`Play ${profile.name} voice intro`}
           >
             <Play className="h-5 w-5 fill-current" aria-hidden="true" />
           </button>
-          <div className="flex h-12 min-w-0 flex-1 items-center gap-1 rounded-xl border border-[#d9ddd6] bg-[#fafafa] px-3">
+          <div className="flex h-[clamp(2.75rem,3.2vw,3.4rem)] min-w-0 flex-1 items-center gap-1 rounded-[var(--landing-radius-sm)] border border-[#d9ddd6] bg-[#fafafa] px-[clamp(0.65rem,0.9vw,0.9rem)]">
             <Waveform />
           </div>
-          <button
-            type="button"
-            className="h-11 shrink-0 rounded-full border border-[#0f172a] bg-[#fff] px-4 text-xs font-semibold text-[#0f172a] transition hover:bg-[#0f172a] hover:text-white"
+          <Link
+            href={`/counsellor/${profile.id}`}
+            className="inline-flex h-[var(--landing-button-h)] shrink-0 items-center justify-center rounded-full border border-[#0f172a] bg-[#fff] px-[var(--landing-button-x)] text-[length:var(--landing-kicker)] font-semibold text-[#0f172a] transition hover:bg-[#0f172a] hover:text-white"
           >
             View Profile
-          </button>
+          </Link>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-1.5">
+        <div className="mt-[clamp(0.9rem,1.2vw,1.15rem)] grid grid-cols-3 gap-[clamp(0.4rem,0.6vw,0.6rem)]">
           <StatBlock label="Therapy hrs" value={profile.hours} />
           <StatBlock label="Languages" value={profile.language} />
-          <StatBlock label="Per session" value={profile.feeLabel} />
+          <StatBlock label={profile.feeUnit} value={profile.feeLabel} />
         </div>
 
-        <div className="mt-4 flex items-end justify-between gap-4 border-t border-[#e3e7e0] pt-4">
+        <div className="mt-[clamp(0.9rem,1.2vw,1.15rem)] flex items-end justify-between gap-[clamp(0.85rem,1.2vw,1.2rem)] border-t border-[#e3e7e0] pt-[clamp(0.9rem,1.2vw,1.15rem)]">
           <div className="min-w-0">
-            <p className="text-xs text-[#a1a8ad]">Next available in</p>
-            <p className="mt-1 truncate text-sm font-semibold text-[#0f172a]">{profile.availability}</p>
+            <p className="text-[length:var(--landing-kicker)] text-[#a1a8ad]">Next available in</p>
+            <p className="mt-1 truncate text-[length:var(--landing-body-sm)] font-semibold text-[#0f172a]">{profile.availability}</p>
           </div>
-          <button
-            type="button"
-            className="h-11 shrink-0 rounded-full bg-menorah-green px-7 text-xs font-semibold uppercase tracking-[0.08em] text-white transition hover:scale-[1.03] hover:bg-menorah-olive focus:outline-none focus:ring-4 focus:ring-menorah-green/15"
+          <Link
+            href={`/bookings/new?counsellorId=${profile.id}`}
+            className="inline-flex h-[var(--landing-button-h)] shrink-0 items-center justify-center rounded-full bg-menorah-green px-[clamp(1.1rem,1.15vw,2rem)] text-[length:var(--landing-kicker)] font-semibold uppercase tracking-[0.08em] text-white transition hover:scale-[1.03] hover:bg-menorah-olive focus:outline-none focus:ring-4 focus:ring-menorah-green/15"
           >
             Book Now
-          </button>
+          </Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function DirectoryCardSkeleton() {
+  return (
+    <article className="animate-pulse overflow-hidden rounded-[var(--landing-radius-md)] border border-[#dfe3dd] bg-[#fff] shadow-[0_14px_45px_rgba(35,45,36,0.08)]" aria-hidden="true">
+      <div className="directory-wave-header relative h-[clamp(7rem,8.5vw,9.5rem)] overflow-hidden px-[var(--landing-card-pad)] pt-[clamp(1rem,1.5vw,1.4rem)] opacity-70">
+        <div className="h-7 w-1/2 rounded-full bg-white/60" />
+        <div className="mt-3 h-3 w-2/5 rounded-full bg-white/45" />
+        <div className="absolute bottom-[clamp(0.85rem,1.2vw,1.25rem)] right-[var(--landing-card-pad)] h-[clamp(5rem,6.5vw,6.75rem)] w-[clamp(5rem,6.5vw,6.75rem)] rounded-full bg-white/30" />
+      </div>
+      <div className="-mt-4 rounded-t-[var(--landing-radius-md)] bg-[#fff] px-[var(--landing-card-pad)] pb-[var(--landing-card-pad)] pt-[clamp(1rem,1.5vw,1.4rem)]">
+        <div className="flex gap-2 border-b border-[#e3e7e0] pb-4">
+          <span className="h-10 w-24 rounded-[var(--landing-radius-sm)] bg-[#edf0ec]" />
+          <span className="h-10 w-28 rounded-[var(--landing-radius-sm)] bg-[#edf0ec]" />
+          <span className="h-10 w-24 rounded-[var(--landing-radius-sm)] bg-[#edf0ec]" />
+        </div>
+        <div className="mt-[clamp(0.9rem,1.2vw,1.15rem)] flex items-center gap-[clamp(0.65rem,1vw,0.9rem)] border-b border-[#e3e7e0] pb-[clamp(0.9rem,1.2vw,1.15rem)]">
+          <span className="h-[var(--landing-icon-sm)] w-[var(--landing-icon-sm)] rounded-full bg-[#edf0ec]" />
+          <span className="h-[clamp(2.75rem,3.2vw,3.4rem)] flex-1 rounded-[var(--landing-radius-sm)] bg-[#edf0ec]" />
+          <span className="h-[var(--landing-button-h)] w-28 rounded-full bg-[#edf0ec]" />
+        </div>
+        <div className="mt-[clamp(0.9rem,1.2vw,1.15rem)] grid grid-cols-3 gap-[clamp(0.4rem,0.6vw,0.6rem)]">
+          <span className="h-20 rounded-[var(--landing-radius-sm)] bg-[#edf0ec]" />
+          <span className="h-20 rounded-[var(--landing-radius-sm)] bg-[#edf0ec]" />
+          <span className="h-20 rounded-[var(--landing-radius-sm)] bg-[#edf0ec]" />
         </div>
       </div>
     </article>
@@ -366,9 +318,167 @@ function Waveform() {
 
 function StatBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-xl bg-[#f7f7f6] px-3 py-3">
-      <p className="truncate text-sm font-semibold text-[#0f172a]">{value}</p>
-      <p className="mt-1 truncate text-[11px] text-[#334155]">{label}</p>
+    <div className="min-w-0 rounded-[var(--landing-radius-sm)] bg-[#f7f7f6] px-[clamp(0.65rem,0.9vw,0.9rem)] py-[clamp(0.65rem,0.9vw,0.9rem)]">
+      <p className="truncate text-[length:var(--landing-body-sm)] font-semibold text-[#0f172a]">{value}</p>
+      <p className="mt-1 truncate text-[length:var(--landing-kicker)] text-[#334155]">{label}</p>
     </div>
   );
+}
+
+function mapCounsellorToDirectoryProfile(counsellor: Counsellor): DirectoryProfile {
+  const name = counsellor.name?.trim() || "Menorah Counsellor";
+  const category = inferDirectoryCategory(counsellor);
+  const role = counsellor.specialization?.trim() || category;
+  const specialties = getSpecialtyTags(counsellor);
+  const language = getPrimaryLanguage(counsellor);
+  const fee = getFeeCopy(counsellor);
+  const searchableText = normalizeText(
+    [
+      name,
+      role,
+      category,
+      language,
+      counsellor.bio,
+      ...(Array.isArray(counsellor.specializations) ? counsellor.specializations : []),
+      ...specialties
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  return {
+    id: counsellor.id,
+    name,
+    role,
+    category,
+    specialties,
+    language,
+    hours: getTherapyHours(counsellor),
+    feeLabel: fee.label,
+    feeUnit: fee.unit,
+    availability: getNextAvailability(counsellor),
+    initials: getProfileInitials(name),
+    searchableText
+  };
+}
+
+function inferDirectoryCategory(counsellor: Counsellor): DirectoryCategory {
+  const source = normalizeText([
+    counsellor.specialization,
+    ...(Array.isArray(counsellor.specializations) ? counsellor.specializations : [])
+  ].join(" "));
+
+  if (hasAnyKeyword(source, ["psychiatrist", "psychiatric", "medication", "pharmacology"])) {
+    return "Psychiatrist";
+  }
+
+  if (hasAnyKeyword(source, ["sexual", "intimacy", "identity", "body image", "boundaries"])) {
+    return "Sexual Health";
+  }
+
+  if (hasAnyKeyword(source, ["clinical", "trauma", "ptsd", "depression", "anxiety", "cbt", "emdr", "adhd", "grief", "addiction", "substance"])) {
+    return "Clinical Psychologist";
+  }
+
+  return "Consultant Psychologist";
+}
+
+function getSpecialtyTags(counsellor: Counsellor) {
+  const directTags = Array.isArray(counsellor.specializations) ? counsellor.specializations : [];
+  const splitTags = counsellor.specialization?.split(/[,/|&]+/) ?? [];
+  const tags = [...directTags, ...splitTags]
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .filter((tag, index, allTags) => allTags.findIndex((item) => item.toLowerCase() === tag.toLowerCase()) === index);
+
+  return (tags.length ? tags : ["Mental wellness"]).slice(0, 3);
+}
+
+function getPrimaryLanguage(counsellor: Counsellor) {
+  const languages = Array.isArray(counsellor.languages) ? counsellor.languages.map((language) => language.trim()).filter(Boolean) : [];
+  return languages[0] || "English";
+}
+
+function getTherapyHours(counsellor: Counsellor) {
+  const totalSessions = toFiniteNumber(counsellor.totalSessions);
+  const experienceHours = toFiniteNumber(counsellor.experience) * 120;
+  const source = totalSessions > 0 ? totalSessions : experienceHours;
+  const rounded = Math.max(50, Math.round(source / 10) * 10);
+  return `${rounded}+`;
+}
+
+function getFeeCopy(counsellor: Counsellor) {
+  const hourlyRate = toFiniteNumber(counsellor.hourlyRate);
+
+  if (hourlyRate <= 0) {
+    return { label: "Free", unit: "Per session" };
+  }
+
+  try {
+    return { label: formatCurrency(hourlyRate, counsellor.currency || "INR"), unit: "Per hour" };
+  } catch {
+    return { label: `${counsellor.currency || "INR"} ${hourlyRate}`, unit: "Per hour" };
+  }
+}
+
+function getNextAvailability(counsellor: Counsellor) {
+  if (!counsellor.availability) {
+    return counsellor.isAvailable ? "Today at 7:30 PM" : "On request";
+  }
+
+  const now = new Date();
+  const today = now.getDay();
+
+  for (let offset = 0; offset < DAY_ORDER.length; offset += 1) {
+    const key = DAY_ORDER[(today + offset) % DAY_ORDER.length];
+    const slot = counsellor.availability[key];
+
+    if (slot?.isAvailable && slot.start) {
+      const dayLabel = offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : toTitleCase(key);
+      return `${dayLabel} at ${formatAvailabilityTime(slot.start)}`;
+    }
+  }
+
+  return "On request";
+}
+
+function formatAvailabilityTime(value: string) {
+  const [rawHours, rawMinutes = "0"] = value.split(":");
+  const hours = Number(rawHours);
+  const minutes = Number(rawMinutes);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return value;
+  }
+
+  const period = hours >= 12 ? "PM" : "AM";
+  const hour12 = hours % 12 || 12;
+  return `${hour12}:${minutes.toString().padStart(2, "0")} ${period}`;
+}
+
+function getProfileInitials(name: string) {
+  const initials = name
+    .split(/\s+/)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  return initials || "M";
+}
+
+function hasAnyKeyword(source: string, keywords: string[]) {
+  return keywords.some((keyword) => source.includes(keyword));
+}
+
+function normalizeText(value: string) {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function toFiniteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function toTitleCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
