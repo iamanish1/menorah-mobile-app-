@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { BookOpen, HeartPulse, MessageCircle, Play, Search, ShieldCheck, Users } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { BookOpen, HeartPulse, MessageCircle, Pause, Play, Search, ShieldCheck, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Counsellor } from "@/types";
@@ -22,6 +22,9 @@ type DirectoryProfile = {
   feeUnit: string;
   availability: string;
   initials: string;
+  profileImage?: string;
+  voiceIntroUrl?: string;
+  voiceIntroDurationSeconds?: number;
   searchableText: string;
 };
 
@@ -207,6 +210,27 @@ export function SupportDirectoryPreviewSection() {
 }
 
 function DirectoryCard({ profile }: { profile: DirectoryProfile }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const hasVoiceIntro = Boolean(profile.voiceIntroUrl);
+
+  const toggleVoiceIntro = async () => {
+    if (!hasVoiceIntro || !audioRef.current) return;
+
+    try {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+        return;
+      }
+
+      await audioRef.current.play();
+      setIsPlaying(true);
+    } catch {
+      setIsPlaying(false);
+    }
+  };
+
   return (
     <article className="group overflow-hidden rounded-[var(--landing-radius-md)] border border-[#dfe3dd] bg-[#fff] shadow-[0_14px_45px_rgba(35,45,36,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_rgba(35,45,36,0.12)]">
       <div className="directory-wave-header relative h-[clamp(7rem,8.5vw,9.5rem)] overflow-hidden px-[var(--landing-card-pad)] pt-[clamp(1rem,1.5vw,1.4rem)]">
@@ -214,8 +238,12 @@ function DirectoryCard({ profile }: { profile: DirectoryProfile }) {
           <h3 className="text-[length:var(--landing-card-title)] font-semibold leading-tight text-white">{profile.name}</h3>
           <p className="mt-1 text-[length:var(--landing-kicker)] font-medium text-white/86">{profile.role}</p>
         </div>
-        <div className="absolute bottom-[clamp(0.85rem,1.2vw,1.25rem)] right-[var(--landing-card-pad)] z-10 flex h-[clamp(5rem,6.5vw,6.75rem)] w-[clamp(5rem,6.5vw,6.75rem)] items-center justify-center rounded-full border border-white/35 bg-[#ffffff]/25 text-[clamp(1.35rem,1.7vw,2rem)] font-semibold text-menorah-green shadow-[0_14px_35px_rgba(0,0,0,0.12)]">
-          {profile.initials}
+        <div className="absolute bottom-[clamp(0.85rem,1.2vw,1.25rem)] right-[var(--landing-card-pad)] z-10 flex h-[clamp(5rem,6.5vw,6.75rem)] w-[clamp(5rem,6.5vw,6.75rem)] items-center justify-center overflow-hidden rounded-full border border-white/35 bg-[#ffffff]/25 text-[clamp(1.35rem,1.7vw,2rem)] font-semibold text-menorah-green shadow-[0_14px_35px_rgba(0,0,0,0.12)]">
+          {profile.profileImage ? (
+            <img src={profile.profileImage} alt="" className="h-full w-full object-cover" />
+          ) : (
+            profile.initials
+          )}
         </div>
       </div>
 
@@ -234,11 +262,20 @@ function DirectoryCard({ profile }: { profile: DirectoryProfile }) {
         <div className="mt-[clamp(0.9rem,1.2vw,1.15rem)] flex items-center gap-[clamp(0.65rem,1vw,0.9rem)] border-b border-[#e3e7e0] pb-[clamp(0.9rem,1.2vw,1.15rem)]">
           <button
             type="button"
-            className="flex h-[var(--landing-icon-sm)] w-[var(--landing-icon-sm)] shrink-0 items-center justify-center rounded-full bg-[#1f2933] text-white transition hover:scale-105"
-            aria-label={`Play ${profile.name} voice intro`}
+            className="flex h-[var(--landing-icon-sm)] w-[var(--landing-icon-sm)] shrink-0 items-center justify-center rounded-full bg-[#1f2933] text-white transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={toggleVoiceIntro}
+            disabled={!hasVoiceIntro}
+            aria-label={hasVoiceIntro ? `${isPlaying ? "Pause" : "Play"} ${profile.name} voice intro` : `${profile.name} has no voice intro`}
           >
-            <Play className="h-5 w-5 fill-current" aria-hidden="true" />
+            {isPlaying ? (
+              <Pause className="h-5 w-5 fill-current" aria-hidden="true" />
+            ) : (
+              <Play className="h-5 w-5 fill-current" aria-hidden="true" />
+            )}
           </button>
+          {hasVoiceIntro && (
+            <audio ref={audioRef} src={profile.voiceIntroUrl} preload="none" onEnded={() => setIsPlaying(false)} />
+          )}
           <div className="flex h-[clamp(2.75rem,3.2vw,3.4rem)] min-w-0 flex-1 items-center gap-1 rounded-[var(--landing-radius-sm)] border border-[#d9ddd6] bg-[#fafafa] px-[clamp(0.65rem,0.9vw,0.9rem)]">
             <Waveform />
           </div>
@@ -358,6 +395,9 @@ function mapCounsellorToDirectoryProfile(counsellor: Counsellor): DirectoryProfi
     feeUnit: fee.unit,
     availability: getNextAvailability(counsellor),
     initials: getProfileInitials(name),
+    profileImage: counsellor.profileImage,
+    voiceIntroUrl: counsellor.voiceIntroUrl,
+    voiceIntroDurationSeconds: counsellor.voiceIntroDurationSeconds,
     searchableText
   };
 }

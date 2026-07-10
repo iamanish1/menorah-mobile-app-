@@ -41,7 +41,7 @@ export function ContactMessageForm() {
 
       form.reset();
       setState("success");
-      setMessage(result.emailDelivery?.sent ? "Your message has been sent." : "Your message has been saved. Email delivery needs SMTP setup.");
+      setMessage(result.emailDelivery?.sent ? "Your message has been sent." : "Your message has been saved. Email delivery is not configured yet.");
     } catch {
       setState("error");
       setMessage("Something went wrong. Please try again.");

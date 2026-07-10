@@ -172,6 +172,8 @@ export default function DashboardPage() {
       colorClass: styles.statSuccess,
     },
   ];
+  const profileMediaReady = Boolean(counsellorStatus?.profileMediaComplete);
+  const effectiveAvailability = Boolean(counsellorStatus?.isAvailable && profileMediaReady);
 
   return (
     <AppLayout>
@@ -206,21 +208,44 @@ export default function DashboardPage() {
       </div>
 
       {counsellorStatus && (
-        <div className={counsellorStatus.isAvailable ? styles.availabilityBannerGreen : styles.availabilityBannerOrange}>
+        <div className={effectiveAvailability ? styles.availabilityBannerGreen : styles.availabilityBannerOrange}>
           <div className={styles.availabilityBannerLeft}>
-            <span className={counsellorStatus.isAvailable ? styles.availabilityDotGreen : styles.availabilityDotOrange} />
+            <span className={effectiveAvailability ? styles.availabilityDotGreen : styles.availabilityDotOrange} />
             <span className={styles.availabilityBannerText}>
-              {counsellorStatus.isAvailable ? 'You are available to accept bookings' : 'You are currently unavailable — counsellors won\'t see you as available'}
+              {effectiveAvailability
+                ? 'You are available to accept bookings'
+                : counsellorStatus.message || 'Complete your profile setup before going live'}
             </span>
           </div>
           <Button
-            variant={counsellorStatus.isAvailable ? 'outline' : 'primary'}
+            variant={effectiveAvailability ? 'outline' : 'primary'}
             size="sm"
             onClick={handleToggleAvailability}
             isLoading={statusToggling}
+            disabled={statusToggling || (!profileMediaReady && !counsellorStatus.isAvailable)}
           >
-            {counsellorStatus.isAvailable ? 'Set Unavailable' : 'Set Available'}
+            {effectiveAvailability
+              ? 'Set Unavailable'
+              : profileMediaReady
+              ? 'Set Available'
+              : counsellorStatus.isAvailable
+              ? 'Set Unavailable'
+              : 'Complete Profile First'}
           </Button>
+        </div>
+      )}
+
+      {counsellorStatus && !profileMediaReady && (
+        <div className={styles.profileMediaBanner}>
+          <div>
+            <h2 className={styles.profileMediaTitle}>Finish your public profile</h2>
+            <p className={styles.profileMediaText}>
+              Add your mandatory selfie and voice intro so users can see you on Menorah.
+            </p>
+          </div>
+          <Link href="/profile">
+            <Button variant="primary" size="sm">Complete Profile</Button>
+          </Link>
         </div>
       )}
 

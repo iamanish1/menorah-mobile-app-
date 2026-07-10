@@ -53,6 +53,11 @@ router.get('/me', auth, async (req, res) => {
           availability:      c.availability,
           isVerified:        c.isVerified,
           isActive:          c.isActive,
+          profileImage:      c.profileImage || null,
+          voiceIntroUrl:     c.voiceIntroUrl || null,
+          voiceIntroDurationSeconds: c.voiceIntroDurationSeconds || null,
+          profileMediaCompletedAt: c.profileMediaCompletedAt || null,
+          profileMediaComplete: Boolean(c.profileImage && c.voiceIntroUrl),
           // commissionRate omitted — internal business metric
           bankDetails:       maskedBank,
         };

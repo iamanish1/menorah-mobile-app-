@@ -37,6 +37,18 @@ const uploadBuffer = (buffer, options = {}) =>
     streamifier.createReadStream(buffer).pipe(uploadStream);
   });
 
+const deleteResource = (publicId, options = {}) =>
+  new Promise((resolve, reject) => {
+    if (!publicId) return resolve(null);
+    ensureConfigured();
+
+    cloudinary.uploader.destroy(publicId, options, (error, result) => {
+      if (error) return reject(error);
+      resolve(result);
+    });
+  });
+
 module.exports = {
   uploadBuffer,
+  deleteResource,
 };

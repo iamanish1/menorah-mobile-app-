@@ -56,6 +56,8 @@ export interface Counsellor {
   hourlyRate: number;
   currency: string;
   profileImage?: string;
+  voiceIntroUrl?: string;
+  voiceIntroDurationSeconds?: number;
   bio?: string;
   education?: Array<{
     degree: string;

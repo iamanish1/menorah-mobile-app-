@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Pla
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react-native';
 import Input from '@/components/ui/Input';
+import CountryPhoneInput from '@/components/ui/CountryPhoneInput';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from '@/state/useAuth';
@@ -334,31 +335,17 @@ export default function Register({ navigation }: any) {
           />
 
           {/* Phone */}
-          <View style={{ marginBottom: 16 }}>
-            <Input
-              label="Phone Number"
-              placeholder="+1234567890"
-              value={phone}
-              onChangeText={(text) => {
-                const formatted = text.length > 0 && !text.startsWith('+') ? `+${text}` : text;
-                setPhone(formatted);
-                validateField('phone', formatted);
-              }}
-              keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'phone-pad'}
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="telephoneNumber"
-              error={errors.phone}
-            />
-            <Text style={{
-              fontSize: 12,
-              color: colors.muted,
-              marginTop: 4,
-              marginLeft: 4
-            }}>
-              Include country code (e.g., +1 for US, +44 for UK)
-            </Text>
-          </View>
+          <CountryPhoneInput
+            label="Phone Number"
+            value={phone}
+            onChangeText={(nextPhone) => {
+              setPhone(nextPhone);
+              validateField('phone', nextPhone);
+            }}
+            error={errors.phone}
+            hint="Choose a country code, then enter the local number."
+            required
+          />
 
           {/* Date of Birth */}
           <View style={{ marginBottom: 16 }}>

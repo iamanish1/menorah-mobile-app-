@@ -22,7 +22,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <Topbar />
 
-        <main className="min-h-screen pb-24 lg:pb-0 lg:pl-8">
+        <main className="min-h-screen pb-24 lg:pb-0 lg:pl-28">
           {children}
         </main>
 

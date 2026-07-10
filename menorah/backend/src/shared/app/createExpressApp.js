@@ -6,6 +6,20 @@ const morgan = require('morgan');
 const compression = require('compression');
 const { mountHealthEndpoints } = require('./health');
 
+const SAFE_INLINE_UPLOAD_EXTENSIONS = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.gif',
+  '.mp3',
+  '.m4a',
+  '.mp4',
+  '.webm',
+  '.ogg',
+  '.wav',
+]);
+
 const getAllowedOrigins = () =>
   (process.env.ALLOWED_ORIGINS || '')
     .split(',')
@@ -66,7 +80,21 @@ const createExpressApp = ({ serviceName, getHealthState }) => {
       ? morgan('dev')
       : morgan('combined', { skip: isHealthRequest }));
   }
-  app.use('/uploads', express.static(path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads')));
+  app.use('/uploads', express.static(
+    path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads'),
+    {
+      fallthrough: false,
+      setHeaders: (res, filePath) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+        if (!SAFE_INLINE_UPLOAD_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
+          res.setHeader('Content-Type', 'application/octet-stream');
+          res.setHeader('Content-Disposition', 'attachment');
+        }
+      }
+    }
+  ));
 
   mountHealthEndpoints(app, { getState: getHealthState });
   app.get('/api/welcome', (_req, res) =>

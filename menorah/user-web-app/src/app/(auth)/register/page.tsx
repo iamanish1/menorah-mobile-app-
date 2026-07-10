@@ -3,11 +3,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Eye, EyeOff, Mail, Lock, User, Phone, Calendar } from 'lucide-react';
-import { Button, Input, Select } from '@/components/ui';
+import { Eye, EyeOff, Mail, Lock, User, Calendar } from 'lucide-react';
+import { Button, CountryPhoneInput, Input, Select } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 
@@ -38,7 +38,7 @@ export default function RegisterPage() {
   const [showPwd, setShowPwd]         = useState(false);
   const [serverError, setServerError] = useState('');
 
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { control, register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
   });
 
@@ -104,14 +104,19 @@ export default function RegisterPage() {
           {...register('email')}
         />
 
-        <Input
-          label="Phone number"
-          type="tel"
-          placeholder="+971501234567"
-          hint="Include country code, no spaces (e.g. +971501234567)"
-          leftIcon={<Phone className="w-4 h-4" />}
-          error={errors.phone?.message}
-          {...register('phone')}
+        <Controller
+          name="phone"
+          control={control}
+          render={({ field }) => (
+            <CountryPhoneInput
+              label="Phone number"
+              value={field.value}
+              onChange={field.onChange}
+              error={errors.phone?.message}
+              hint="Choose a country code, then enter the local number."
+              required
+            />
+          )}
         />
 
         <Input

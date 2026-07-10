@@ -24,6 +24,28 @@ export interface BankDetails {
   bankName?: string;
 }
 
+export interface CounsellorEducation {
+  degree?: string;
+  institution?: string;
+  year?: number;
+  description?: string;
+}
+
+export interface CounsellorCertification {
+  name?: string;
+  issuingBody?: string;
+  year?: number;
+  expiryDate?: string;
+}
+
+export interface CounsellorAvailabilityDay {
+  start?: string;
+  end?: string;
+  isAvailable?: boolean;
+}
+
+export type CounsellorAvailability = Record<string, CounsellorAvailabilityDay>;
+
 export interface CounsellorStats {
   totalEarnings: number;
   monthlyEarnings: number;
@@ -35,9 +57,13 @@ export interface CounsellorStats {
 export interface Counsellor {
   id: string;
   _id?: string;
+  isPendingApplication?: boolean;
   user: CounsellorUser;
+  dateOfBirth?: string;
+  gender?: string;
   licenseNumber: string;
   specialization: string;
+  specializations?: string[];
   experience: number;
   hourlyRate: number;
   currency: string;
@@ -45,11 +71,16 @@ export interface Counsellor {
   reviewCount: number;
   bio?: string;
   languages?: string[];
+  education?: CounsellorEducation[];
+  certifications?: CounsellorCertification[];
+  availability?: CounsellorAvailability;
   status: 'pending' | 'approved' | 'rejected';
   isActive: boolean;
   isVerified: boolean;
   approvedBy?: { firstName: string; lastName: string; email: string };
   approvedAt?: string;
+  reviewedBy?: { firstName: string; lastName: string; email: string };
+  reviewedAt?: string;
   rejectionReason?: string;
   blockedAt?: string;
   blockedReason?: string;

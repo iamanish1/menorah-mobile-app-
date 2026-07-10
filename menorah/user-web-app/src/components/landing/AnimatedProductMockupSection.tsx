@@ -1,13 +1,15 @@
 "use client";
 
 import type { CSSProperties, RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Bell,
   BookOpen,
   CalendarDays,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Clock,
   HeartPulse,
@@ -96,6 +98,24 @@ const chatRooms = [
 ] as const;
 
 const waveformBars = [14, 24, 32, 18, 28, 38, 22, 34, 26, 42, 30, 20, 36, 44, 24, 34];
+
+const demoFilterControls = [
+  {
+    label: "Specialization",
+    initialValue: "Stress",
+    options: ["All specializations", "Stress", "Sleep", "Relationships", "Work pressure"]
+  },
+  {
+    label: "Language",
+    initialValue: "English",
+    options: ["Any language", "English", "Hindi", "Arabic", "Malayalam"]
+  },
+  {
+    label: "Minimum Rating",
+    initialValue: "4.5 stars & above",
+    options: ["5 stars & above", "4.5 stars & above", "4 stars & above", "Any rating"]
+  }
+] as const;
 
 export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef: RefObject<HTMLElement | null> }) {
   const scrollProgress = useScrollProgress(scrollRootRef);
@@ -583,16 +603,13 @@ function WebFeaturePanel({
               <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
               Filters
             </div>
-            {["Specialization", "Language", "Minimum Rating"].map((label, index) => (
-              <label key={label} className="block space-y-1.5 text-sm font-semibold text-gray-700">
-                <span>{label}</span>
-                <select className="input-field h-10 py-0 text-sm" defaultValue={index === 0 ? "Stress" : ""}>
-                  <option value="">{index === 0 ? "All specializations" : "Any"}</option>
-                  <option value="Stress">Stress</option>
-                  <option value="English">English</option>
-                  <option value="4.5">4.5 stars & above</option>
-                </select>
-              </label>
+            {demoFilterControls.map((control) => (
+              <DemoFilterControl
+                key={control.label}
+                label={control.label}
+                initialValue={control.initialValue}
+                options={control.options}
+              />
             ))}
             <Button fullWidth size="sm">Apply Filters</Button>
           </div>
@@ -607,6 +624,105 @@ function WebFeaturePanel({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function DemoFilterControl({
+  label,
+  initialValue,
+  options
+}: {
+  label: string;
+  initialValue: string;
+  options: readonly string[];
+}) {
+  const id = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative block space-y-1.5 text-sm font-semibold text-gray-700">
+      <span id={`${id}-label`}>{label}</span>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-labelledby={`${id}-label ${id}-value`}
+        className={cn(
+          "group flex h-10 w-full items-center justify-between gap-2 rounded-2xl border border-primary-100 bg-white px-3 text-left text-xs font-black text-gray-950 shadow-[0_10px_22px_-20px_rgba(17,24,39,0.46)] transition duration-200",
+          "hover:-translate-y-0.5 hover:border-primary-300 hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2",
+          open && "border-primary-400 bg-primary-50 shadow-[0_16px_34px_-26px_rgba(45,122,92,0.62)]"
+        )}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span id={`${id}-value`} className="min-w-0 truncate">{value}</span>
+        <ChevronDown
+          className={cn("h-3.5 w-3.5 shrink-0 text-primary-600 transition-transform duration-200", open && "rotate-180")}
+          aria-hidden="true"
+        />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-labelledby={`${id}-label`}
+          className="absolute left-0 right-0 z-40 mt-2 origin-top overflow-hidden rounded-2xl border border-primary-100 bg-white/[0.98] p-1.5 shadow-[0_22px_60px_-30px_rgba(17,24,39,0.65)] backdrop-blur-xl animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-200"
+        >
+          {options.map((option, index) => {
+            const selected = value === option;
+
+            return (
+              <button
+                key={option}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                className={cn(
+                  "group/option flex min-h-9 w-full items-center justify-between gap-2 rounded-xl px-2.5 py-1.5 text-left text-xs font-black transition duration-200 animate-in fade-in slide-in-from-top-1",
+                  "hover:-translate-y-0.5 hover:bg-primary-50 hover:shadow-[0_12px_22px_-20px_rgba(45,122,92,0.62)] focus-visible:bg-primary-50 focus-visible:outline-none",
+                  selected && "bg-primary-100 text-primary-950"
+                )}
+                style={{ animationDelay: `${index * 24}ms`, animationFillMode: "both" }}
+                onClick={() => {
+                  setValue(option);
+                  setOpen(false);
+                }}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    className={cn(
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition duration-200",
+                      selected ? "border-primary-600 bg-primary-600 text-white" : "border-primary-100 bg-primary-50 text-primary-600"
+                    )}
+                  >
+                    <span className={cn("h-1.5 w-1.5 rounded-full bg-current transition-transform duration-200", selected ? "scale-100" : "scale-0")} />
+                  </span>
+                  <span className="min-w-0 truncate">{option}</span>
+                </span>
+                <Check className={cn("h-3.5 w-3.5 shrink-0 text-primary-700 transition duration-200", selected ? "scale-100 opacity-100" : "scale-75 opacity-0")} aria-hidden="true" />
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

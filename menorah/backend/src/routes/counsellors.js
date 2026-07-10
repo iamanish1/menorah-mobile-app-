@@ -54,6 +54,11 @@ const emailNormalizationOptions = {
   yahoo_remove_subaddress: false,
   icloud_remove_subaddress: false,
 };
+const publicReadyCounsellorQuery = {
+  isActive: true,
+  profileImage: { $type: 'string', $ne: '' },
+  voiceIntroUrl: { $type: 'string', $ne: '' },
+};
 
 // @route   GET /api/counsellors
 // @desc    Get all counsellors with filtering and search
@@ -93,10 +98,22 @@ router.get('/', [
       sortOrder = 'desc'
     } = req.query;
 
+    const parsedMinPrice = minPrice !== undefined ? parseFloat(minPrice) : undefined;
+    const parsedMaxPrice = maxPrice !== undefined ? parseFloat(maxPrice) : undefined;
+
+    if (
+      parsedMinPrice !== undefined &&
+      parsedMaxPrice !== undefined &&
+      parsedMinPrice > parsedMaxPrice
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Minimum price cannot be greater than maximum price'
+      });
+    }
+
     // Build query
-    const query = {
-      isActive: true,
-    };
+    const query = { ...publicReadyCounsellorQuery };
 
     // Collect top-level $or conditions to combine later
     const orConditions = [];
@@ -150,22 +167,27 @@ router.get('/', [
     }
 
     // Filter by price
-    if (minPrice || maxPrice) {
+    if (parsedMinPrice !== undefined || parsedMaxPrice !== undefined) {
       query.hourlyRate = {};
-      if (minPrice) query.hourlyRate.$gte = parseFloat(minPrice);
-      if (maxPrice) query.hourlyRate.$lte = parseFloat(maxPrice);
+      if (parsedMinPrice !== undefined) query.hourlyRate.$gte = parsedMinPrice;
+      if (parsedMaxPrice !== undefined) query.hourlyRate.$lte = parsedMaxPrice;
     }
 
     // Build sort object — map frontend sort keys to actual MongoDB field names
     const sortFieldMap = { rating: 'rating', price: 'hourlyRate', experience: 'experience' };
+    const sortDirection = sortOrder === 'asc' ? 1 : -1;
     const sort = {};
     if (sortBy === 'name') {
-      sort['user.firstName'] = sortOrder === 'asc' ? 1 : -1;
-      sort['user.lastName']  = sortOrder === 'asc' ? 1 : -1;
+      sort['user.firstName'] = sortDirection;
+      sort['user.lastName']  = sortDirection;
     } else {
       const field = sortFieldMap[sortBy] || 'rating';
-      sort[field] = sortOrder === 'asc' ? 1 : -1;
+      sort[field] = sortDirection;
     }
+    sort.rating = sort.rating || -1;
+    sort.reviewCount = -1;
+    sort.totalSessions = -1;
+    sort._id = 1;
 
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -199,6 +221,8 @@ router.get('/', [
         hourlyRate: counsellor.hourlyRate,
         currency: counsellor.currency,
         profileImage: counsellor.profileImage || counsellor.user.profileImage,
+        voiceIntroUrl: counsellor.voiceIntroUrl,
+        voiceIntroDurationSeconds: counsellor.voiceIntroDurationSeconds,
         bio: counsellor.bio,
         isAvailable: counsellor.isAvailable,
         totalSessions: counsellor.totalSessions,
@@ -237,8 +261,8 @@ router.get('/specializations', async (req, res) => {
   try {
     const specializations = await withCache('counsellors:specializations', CACHE_TTL.STATIC_LOOKUPS, async () => {
       const [singular, plural] = await Promise.all([
-        Counsellor.distinct('specialization'),
-        Counsellor.distinct('specializations'),
+        Counsellor.distinct('specialization', publicReadyCounsellorQuery),
+        Counsellor.distinct('specializations', publicReadyCounsellorQuery),
       ]);
       const seen = new Set();
       return [...singular, ...plural.flat()]
@@ -266,7 +290,7 @@ router.get('/specializations', async (req, res) => {
 router.get('/languages', async (req, res) => {
   try {
     const languages = await withCache('counsellors:languages', CACHE_TTL.STATIC_LOOKUPS, async () => {
-      const raw = await Counsellor.distinct('languages');
+      const raw = await Counsellor.distinct('languages', publicReadyCounsellorQuery);
       const seen = new Set();
       return raw.flat()
         .map(l => l.trim())
@@ -361,6 +385,13 @@ router.get('/:id', [
       });
     }
 
+    if (!counsellor.profileImage || !counsellor.voiceIntroUrl) {
+      return res.status(404).json({
+        success: false,
+        message: 'Counsellor profile is not available yet'
+      });
+    }
+
     // Format response
     const formattedCounsellor = {
       id: counsellor._id,
@@ -374,6 +405,8 @@ router.get('/:id', [
       hourlyRate: counsellor.hourlyRate,
       currency: counsellor.currency,
       profileImage: counsellor.profileImage || counsellor.user.profileImage,
+      voiceIntroUrl: counsellor.voiceIntroUrl,
+      voiceIntroDurationSeconds: counsellor.voiceIntroDurationSeconds,
       bio: counsellor.bio,
       education: counsellor.education,
       certifications: counsellor.certifications,

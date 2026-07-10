@@ -85,6 +85,9 @@ export interface VideoRoom {
 export interface CounsellorStatus {
   isActive: boolean;
   isAvailable: boolean;
+  profileMediaComplete?: boolean;
+  profileImage?: string | null;
+  voiceIntroUrl?: string | null;
   message: string;
 }
 

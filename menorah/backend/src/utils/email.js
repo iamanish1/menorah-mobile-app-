@@ -101,6 +101,34 @@ const buildPasswordResetUrl = (token) => {
   return `${scheme}${sep}token=${encodeURIComponent(token)}`;
 };
 
+const normalizeBaseUrl = (value) => {
+  if (!value) return null;
+  try {
+    const url = new URL(value.trim());
+    return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return null;
+  }
+};
+
+const localUrlFromPort = (value, fallbackPort) => {
+  const port = String(value || '').match(/:(\d+)$/)?.[1] || fallbackPort;
+  return port ? `http://localhost:${port}` : null;
+};
+
+const buildCounsellorAppUrl = (path = '/login') => {
+  const base =
+    normalizeBaseUrl(process.env.FRONTEND_COUNSELLOR_URL) ||
+    normalizeBaseUrl(process.env.COUNSELLOR_WEB_BASE_URL) ||
+    normalizeBaseUrl(process.env.COUNSELLOR_APP_URL) ||
+    (process.env.COUNSELLOR_DOMAIN ? `https://${process.env.COUNSELLOR_DOMAIN}` : null) ||
+    localUrlFromPort(process.env.WEB_APP_LOCAL_PORT) ||
+    (process.env.NODE_ENV !== 'production' ? localUrlFromPort(process.env.WEB_APP_LOCAL_PORT, '18086') : null) ||
+    'https://counsellor.menorah.me';
+
+  return new URL(path, `${base.replace(/\/+$/, '')}/`).toString();
+};
+
 const layout = (content) => `
 <!DOCTYPE html>
 <html>
@@ -214,6 +242,50 @@ const sendPasswordResetEmail = async (email, token) => {
   return sendEmail(email, 'Reset Your Menorah Health Password', html);
 };
 
+const sendCounsellorApprovalEmail = async ({ email, name = '', password }) => {
+  const loginUrl = buildCounsellorAppUrl('/login');
+  const changePasswordUrl = buildCounsellorAppUrl('/profile#password');
+  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  const safeLoginUrl = escapeHtml(loginUrl);
+  const safeChangePasswordUrl = escapeHtml(changePasswordUrl);
+
+  const html = layout(`
+    <h2 style="color:#111827;margin:0 0 16px;">${greeting}</h2>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 20px;">
+      Your Menorah counsellor application has been approved. Use the temporary credentials below to sign in to your counsellor account.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin:0 0 24px;">
+      <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+        <span style="color:#9ca3af;font-size:13px;">Email</span><br>
+        <strong style="color:#111827;">${escapeHtml(email)}</strong>
+      </td></tr>
+      <tr><td style="padding:16px 20px;">
+        <span style="color:#9ca3af;font-size:13px;">Temporary password</span><br>
+        <strong style="color:#111827;font-family:'Courier New',monospace;word-break:break-all;">${escapeHtml(password)}</strong>
+      </td></tr>
+    </table>
+    <div style="text-align:center;margin:28px 0 18px;">
+      <a href="${safeLoginUrl}"
+         style="background:#2d7a5c;color:#ffffff;text-decoration:none;border-radius:8px;padding:14px 24px;display:inline-block;font-weight:700;">
+        Sign in to counsellor portal
+      </a>
+    </div>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;">
+      For your security, change this password after signing in. You can use the profile password section here:
+      <a href="${safeChangePasswordUrl}" style="color:#2d7a5c;">Change password</a>.
+    </p>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;word-break:break-word;">
+      If the button does not work, open this link: <a href="${safeLoginUrl}" style="color:#2d7a5c;">${safeLoginUrl}</a>
+    </p>
+    <p style="color:#9ca3af;font-size:13px;margin:0;">
+      If you were not expecting this email, contact Menorah support.
+    </p>
+  `);
+
+  return sendEmail(email, 'Your Menorah counsellor account is approved', html);
+};
+
 const sendBookingConfirmationEmail = async (email, bookingDetails) => {
   const { scheduledAt, sessionDuration, sessionType, counsellorName } = bookingDetails;
   const date = new Date(scheduledAt);
@@ -302,9 +374,11 @@ const sendSessionReminderEmail = async (email, sessionDetails) => {
 
 module.exports = {
   buildPasswordResetUrl,
+  buildCounsellorAppUrl,
   sendOTPEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
+  sendCounsellorApprovalEmail,
   sendBookingConfirmationEmail,
   sendSessionReminderEmail,
 };

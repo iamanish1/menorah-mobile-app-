@@ -129,6 +129,35 @@ const counsellorSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  profileImagePublicId: {
+    type: String,
+    default: null
+  },
+  profileImageLocalPath: {
+    type: String,
+    default: null
+  },
+  voiceIntroUrl: {
+    type: String,
+    default: null
+  },
+  voiceIntroPublicId: {
+    type: String,
+    default: null
+  },
+  voiceIntroLocalPath: {
+    type: String,
+    default: null
+  },
+  voiceIntroDurationSeconds: {
+    type: Number,
+    default: null,
+    min: 0
+  },
+  profileMediaCompletedAt: {
+    type: Date,
+    default: null
+  },
   gallery: [{
     url: String,
     caption: String,

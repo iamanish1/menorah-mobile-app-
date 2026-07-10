@@ -1,13 +1,66 @@
 const express = require('express');
 const { param, query, body, validationResult } = require('express-validator');
+const fs = require('fs/promises');
+const path = require('path');
+const crypto = require('crypto');
+const multer = require('multer');
+const rateLimit = require('express-rate-limit');
+const sharp = require('sharp');
 const moment = require('moment-timezone');
 const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
+const User = require('../models/User');
 const { counsellorAuth } = require('../middleware/auth');
+const { getRedisClient } = require('../config/redis');
+const { uploadBuffer, deleteResource } = require('../utils/cloudinary');
 
 const SERVER_TZ = process.env.SERVER_TZ || 'Asia/Kolkata';
 
 const router = express.Router();
+const MAX_COUNSELLOR_MEDIA_BYTES = parseInt(process.env.COUNSELLOR_MEDIA_MAX_FILE_SIZE, 10) || 12 * 1024 * 1024;
+const SAFE_IMAGE_FORMATS = new Set(['jpeg', 'png', 'webp']);
+const SAFE_AUDIO_KINDS = new Map([
+  ['webm', { extension: '.webm', mimeType: 'audio/webm' }],
+  ['ogg', { extension: '.ogg', mimeType: 'audio/ogg' }],
+  ['mp3', { extension: '.mp3', mimeType: 'audio/mpeg' }],
+  ['mp4', { extension: '.m4a', mimeType: 'audio/mp4' }],
+  ['wav', { extension: '.wav', mimeType: 'audio/wav' }],
+]);
+const PROFILE_BACKGROUND_REMOVAL_ENABLED = process.env.COUNSELLOR_PROFILE_BACKGROUND_REMOVAL !== 'false';
+const PROFILE_BACKGROUND_THRESHOLD = parseInt(process.env.COUNSELLOR_PROFILE_BACKGROUND_THRESHOLD, 10) || 58;
+const PROFILE_BACKGROUND_MIN_RETAINED_RATIO =
+  parseFloat(process.env.COUNSELLOR_PROFILE_BACKGROUND_MIN_RETAINED_RATIO) || 0.08;
+
+const profileMediaUploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: parseInt(process.env.COUNSELLOR_MEDIA_RATE_LIMIT_MAX, 10) || 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many profile media uploads. Please try again later.',
+  },
+});
+
+const mediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_COUNSELLOR_MEDIA_BYTES,
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.fieldname === 'profileImage' && file.mimetype?.startsWith('image/')) {
+      return cb(null, true);
+    }
+
+    const isVoiceIntro =
+      file.fieldname === 'voiceIntro' &&
+      (file.mimetype?.startsWith('audio/') || file.mimetype === 'video/webm');
+
+    if (isVoiceIntro) return cb(null, true);
+
+    cb(new Error('Profile media must include an image selfie or an audio voice intro'));
+  },
+});
 
 const formatVideoCall = (videoCall = {}) => ({
   provider: videoCall.provider,
@@ -27,6 +80,530 @@ const formatVideoCall = (videoCall = {}) => ({
 const getCounsellorFromUser = async (userId) => {
   return await Counsellor.findOne({ user: userId });
 };
+
+const normalizeTagList = (tags, { limit = 20 } = {}) => {
+  const seen = new Set();
+  const normalized = [];
+
+  for (const raw of Array.isArray(tags) ? tags : []) {
+    if (typeof raw !== 'string') continue;
+    const tag = raw.trim().replace(/\s+/g, ' ');
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(tag);
+    if (normalized.length >= limit) break;
+  }
+
+  return normalized;
+};
+
+const invalidateCounsellorDiscoveryCache = async () => {
+  try {
+    const redis = getRedisClient();
+    const keys = ['counsellors:specializations', 'counsellors:languages'];
+    let cursor = '0';
+
+    do {
+      const result = await redis.scan(cursor, { MATCH: 'counsellors:list:*', COUNT: 100 });
+      const nextCursor = Array.isArray(result) ? result[0] : result.cursor;
+      const foundKeys = Array.isArray(result) ? result[1] : result.keys;
+      cursor = String(nextCursor);
+      keys.push(...(foundKeys || []));
+    } while (cursor !== '0');
+
+    if (keys.length > 0) await redis.del(keys);
+  } catch (error) {
+    console.warn('Counsellor discovery cache invalidation failed:', error.message);
+  }
+};
+
+const hasCompletedProfileMedia = (counsellor) => Boolean(counsellor?.profileImage && counsellor?.voiceIntroUrl);
+
+const stripApiPath = (rawUrl) => {
+  if (!rawUrl) return null;
+  try {
+    const parsed = new URL(rawUrl);
+    parsed.pathname = parsed.pathname.replace(/\/api\/?$/, '') || '/';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return null;
+  }
+};
+
+const getConfiguredPublicBaseUrl = (req) => {
+  const configured =
+    stripApiPath(process.env.MEDIA_PUBLIC_BASE_URL) ||
+    stripApiPath(process.env.FRONTEND_API_WEB_URL) ||
+    stripApiPath(process.env.API_PUBLIC_URL) ||
+    stripApiPath(process.env.NEXT_PUBLIC_API_URL);
+
+  if (configured) return configured;
+  if (process.env.API_WEB_DOMAIN) return `https://${process.env.API_WEB_DOMAIN}`;
+  return `${req.protocol}://${req.get('host')}`;
+};
+
+const isWithinPath = (parent, candidate) => {
+  const relative = path.relative(parent, candidate);
+  return relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+};
+
+const detectAudioKind = (buffer) => {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
+  if (buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WAVE') return 'wav';
+  if (buffer.subarray(0, 4).toString('ascii') === 'OggS') return 'ogg';
+  if (buffer.subarray(0, 3).toString('ascii') === 'ID3') return 'mp3';
+  if (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0) return 'mp3';
+  if (buffer.subarray(4, 8).toString('ascii') === 'ftyp') return 'mp4';
+  if (buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) return 'webm';
+  return null;
+};
+
+const colorDistance = (a, b) => {
+  const red = a[0] - b[0];
+  const green = a[1] - b[1];
+  const blue = a[2] - b[2];
+  return Math.sqrt(red * red + green * green + blue * blue);
+};
+
+const averagePatchColor = (data, width, height, startX, startY, size = 12) => {
+  const color = [0, 0, 0];
+  let count = 0;
+
+  for (let y = startY; y < Math.min(height, startY + size); y += 1) {
+    for (let x = startX; x < Math.min(width, startX + size); x += 1) {
+      const index = (y * width + x) * 4;
+      color[0] += data[index];
+      color[1] += data[index + 1];
+      color[2] += data[index + 2];
+      count += 1;
+    }
+  }
+
+  return count ? color.map((channel) => channel / count) : color;
+};
+
+const addPaletteColor = (palette, color, mergeThreshold = 22, maxColors = 56) => {
+  const existing = palette.find((candidate) => colorDistance(candidate, color) <= mergeThreshold);
+  if (existing) {
+    existing[0] = (existing[0] * 0.8) + (color[0] * 0.2);
+    existing[1] = (existing[1] * 0.8) + (color[1] * 0.2);
+    existing[2] = (existing[2] * 0.8) + (color[2] * 0.2);
+    return;
+  }
+
+  if (palette.length < maxColors) {
+    palette.push(color);
+  }
+};
+
+const buildEdgeBackgroundPalette = (data, width, height) => {
+  const palette = [];
+  const shortestSide = Math.min(width, height);
+  const patchSize = Math.max(6, Math.round(shortestSide * 0.018));
+  const cornerSize = Math.max(8, Math.round(shortestSide * 0.035));
+  const xStep = Math.max(1, Math.round(width / 36));
+  const yStep = Math.max(1, Math.round(height / 36));
+
+  [
+    [0, 0, cornerSize],
+    [Math.max(0, width - cornerSize), 0, cornerSize],
+    [0, Math.max(0, height - cornerSize), cornerSize],
+    [Math.max(0, width - cornerSize), Math.max(0, height - cornerSize), cornerSize],
+  ].forEach(([x, y, size]) => {
+    addPaletteColor(palette, averagePatchColor(data, width, height, x, y, size));
+  });
+
+  for (let x = 0; x < width; x += xStep) {
+    addPaletteColor(palette, averagePatchColor(data, width, height, x, 0, patchSize));
+    addPaletteColor(palette, averagePatchColor(data, width, height, x, Math.max(0, height - patchSize), patchSize));
+  }
+
+  for (let y = 0; y < height; y += yStep) {
+    addPaletteColor(palette, averagePatchColor(data, width, height, 0, y, patchSize));
+    addPaletteColor(palette, averagePatchColor(data, width, height, Math.max(0, width - patchSize), y, patchSize));
+  }
+
+  return palette;
+};
+
+const removeProfileBackground = async (inputBuffer) => {
+  const { data, info } = await sharp(inputBuffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { width, height } = info;
+  const backgroundColors = buildEdgeBackgroundPalette(data, width, height);
+
+  const totalPixels = width * height;
+  const background = new Uint8Array(totalPixels);
+  const queue = [];
+  const threshold = PROFILE_BACKGROUND_THRESHOLD;
+  const edgeThreshold = threshold + 12;
+
+  const isBackgroundLike = (pixelIndex, multiplier = 1) => {
+    const dataIndex = pixelIndex * 4;
+    const color = [data[dataIndex], data[dataIndex + 1], data[dataIndex + 2]];
+    return backgroundColors.some((candidate) => colorDistance(color, candidate) <= threshold * multiplier);
+  };
+
+  const enqueueIfBackground = (x, y, multiplier = 1) => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return;
+    const pixelIndex = y * width + x;
+    if (background[pixelIndex]) return;
+    if (!isBackgroundLike(pixelIndex, multiplier)) return;
+    background[pixelIndex] = 1;
+    queue.push(pixelIndex);
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    enqueueIfBackground(x, 0, edgeThreshold / threshold);
+    enqueueIfBackground(x, height - 1, edgeThreshold / threshold);
+  }
+
+  for (let y = 0; y < height; y += 1) {
+    enqueueIfBackground(0, y, edgeThreshold / threshold);
+    enqueueIfBackground(width - 1, y, edgeThreshold / threshold);
+  }
+
+  for (let head = 0; head < queue.length; head += 1) {
+    const pixelIndex = queue[head];
+    const x = pixelIndex % width;
+    const y = Math.floor(pixelIndex / width);
+    enqueueIfBackground(x + 1, y);
+    enqueueIfBackground(x - 1, y);
+    enqueueIfBackground(x, y + 1);
+    enqueueIfBackground(x, y - 1);
+  }
+
+  const rgb = Buffer.alloc(totalPixels * 3);
+  const alpha = Buffer.alloc(totalPixels);
+  let retainedPixels = 0;
+
+  for (let pixelIndex = 0; pixelIndex < totalPixels; pixelIndex += 1) {
+    const sourceIndex = pixelIndex * 4;
+    const rgbIndex = pixelIndex * 3;
+    rgb[rgbIndex] = data[sourceIndex];
+    rgb[rgbIndex + 1] = data[sourceIndex + 1];
+    rgb[rgbIndex + 2] = data[sourceIndex + 2];
+    if (background[pixelIndex]) {
+      alpha[pixelIndex] = 0;
+    } else {
+      retainedPixels += 1;
+      alpha[pixelIndex] = data[sourceIndex + 3];
+    }
+  }
+
+  if (retainedPixels / totalPixels < PROFILE_BACKGROUND_MIN_RETAINED_RATIO) {
+    return null;
+  }
+
+  const softenedAlpha = await sharp(alpha, {
+    raw: { width, height, channels: 1 },
+  })
+    .blur(0.8)
+    .toBuffer();
+
+  return sharp(rgb, {
+    raw: { width, height, channels: 3 },
+  })
+    .joinChannel(softenedAlpha, { raw: { width, height, channels: 1 } })
+    .png({ compressionLevel: 9, adaptiveFiltering: true })
+    .toBuffer();
+};
+
+const sanitizeProfileImage = async (file) => {
+  try {
+    const image = sharp(file.buffer, {
+      failOn: 'warning',
+      limitInputPixels: 16_000_000,
+    });
+    const metadata = await image.metadata();
+
+    if (!metadata.format || !SAFE_IMAGE_FORMATS.has(metadata.format)) {
+      const error = new Error('Profile selfie must be a JPEG, PNG, or WebP image');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const buffer = await image
+      .rotate()
+      .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 86, mozjpeg: true })
+      .toBuffer();
+
+    if (PROFILE_BACKGROUND_REMOVAL_ENABLED) {
+      const transparentBuffer = await removeProfileBackground(buffer);
+
+      if (transparentBuffer) {
+        return {
+          buffer: transparentBuffer,
+          mimetype: 'image/png',
+          safeExtension: '.png',
+        };
+      }
+    }
+
+    return {
+      buffer,
+      mimetype: 'image/jpeg',
+      safeExtension: '.jpg',
+    };
+  } catch (error) {
+    if (error.statusCode) throw error;
+    const validationError = new Error('Profile selfie could not be validated as a safe image');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+};
+
+const validateVoiceIntro = async (file) => {
+  const kind = detectAudioKind(file.buffer);
+  const audioConfig = kind ? SAFE_AUDIO_KINDS.get(kind) : null;
+
+  if (!audioConfig) {
+    const error = new Error('Voice intro must be a valid WebM, OGG, MP3, M4A, or WAV audio file');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  try {
+    const { parseBuffer } = await import('music-metadata');
+    const metadata = await parseBuffer(file.buffer, audioConfig.mimeType, { duration: true });
+    const duration = metadata.format.duration;
+
+    return {
+      buffer: file.buffer,
+      mimetype: audioConfig.mimeType,
+      safeExtension: audioConfig.extension,
+      durationSeconds: Number.isFinite(duration) ? Math.round(duration * 10) / 10 : null,
+    };
+  } catch (error) {
+    if (error.statusCode) throw error;
+    const validationError = new Error('Voice intro could not be validated as a safe audio file');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+};
+
+const storeCounsellorMediaFile = async (req, file, { kind, folder, resourceType, publicIdPrefix }) => {
+  const forceLocal = process.env.COUNSELLOR_MEDIA_STORAGE === 'local';
+  const publicId = `${publicIdPrefix}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+
+  if (!forceLocal) {
+    try {
+      const result = await uploadBuffer(file.buffer, {
+        folder,
+        resource_type: resourceType,
+        public_id: publicId,
+      });
+      return {
+        url: result.secure_url,
+        publicId: result.public_id || `${folder}/${publicId}`,
+        localPath: null,
+      };
+    } catch (error) {
+      const mustUseCloudinary = process.env.NODE_ENV === 'production' && process.env.SERVICE_RUNTIME !== 'home';
+      if (mustUseCloudinary) throw error;
+      console.warn(`Falling back to local ${kind} storage:`, error.message);
+    }
+  }
+
+  const uploadRoot = path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads');
+  const relativeDir = path.join('counsellor-media', kind);
+  const targetDir = path.join(uploadRoot, relativeDir);
+  await fs.mkdir(targetDir, { recursive: true });
+  const filename = `${publicId}${file.safeExtension}`;
+  const fullPath = path.join(targetDir, filename);
+  await fs.writeFile(fullPath, file.buffer, { mode: 0o600 });
+  const publicRelativePath = `${relativeDir.replace(/\\/g, '/')}/${filename}`;
+  return {
+    url: `${getConfiguredPublicBaseUrl(req)}/uploads/${publicRelativePath}`,
+    publicId: null,
+    localPath: publicRelativePath,
+  };
+};
+
+const deleteLocalMedia = async (storedPathOrUrl) => {
+  if (!storedPathOrUrl) return;
+
+  const uploadRoot = path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads');
+  let relativePath = storedPathOrUrl;
+
+  try {
+    const parsed = new URL(storedPathOrUrl);
+    const marker = '/uploads/';
+    const markerIndex = parsed.pathname.indexOf(marker);
+    if (markerIndex === -1) return;
+    relativePath = decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+  } catch {
+    // storedPathOrUrl may already be a relative upload path.
+  }
+
+  if (!relativePath.startsWith('counsellor-media/')) return;
+
+  const fullPath = path.resolve(uploadRoot, relativePath);
+  if (!isWithinPath(uploadRoot, fullPath)) return;
+
+  await fs.unlink(fullPath).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+};
+
+const deleteStoredCounsellorMedia = async ({ url, publicId, localPath, resourceType }) => {
+  try {
+    if (publicId) {
+      await deleteResource(publicId, { resource_type: resourceType });
+      return;
+    }
+
+    await deleteLocalMedia(localPath || url);
+  } catch (error) {
+    console.warn('Old counsellor media cleanup failed:', error.message);
+  }
+};
+
+const uploadProfileMedia = (req, res, next) => {
+  mediaUpload.fields([
+    { name: 'profileImage', maxCount: 1 },
+    { name: 'voiceIntro', maxCount: 1 },
+  ])(req, res, (error) => {
+    if (!error) return next();
+    const isTooLarge = error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE';
+    return res.status(400).json({
+      success: false,
+      message: isTooLarge
+        ? 'Profile media file is too large'
+        : error.message || 'Profile media could not be uploaded',
+    });
+  });
+};
+
+// @route   PUT /api/counsellors/me/profile-media
+// @desc    Upload mandatory counsellor selfie and voice intro
+// @access  Private (Counsellor)
+router.put('/me/profile-media', profileMediaUploadLimiter, counsellorAuth, uploadProfileMedia, async (req, res) => {
+  let uploadedProfileImage = null;
+  let uploadedVoiceIntro = null;
+
+  try {
+    const counsellor = await getCounsellorFromUser(req.user._id);
+    if (!counsellor) {
+      return res.status(404).json({
+        success: false,
+        message: 'Counsellor profile not found'
+      });
+    }
+
+    const profileImage = req.files?.profileImage?.[0];
+    const voiceIntro = req.files?.voiceIntro?.[0];
+
+    if (!profileImage && !voiceIntro) {
+      return res.status(400).json({
+        success: false,
+        message: 'Upload a selfie and a voice intro to complete onboarding'
+      });
+    }
+
+    const previousProfileImage = {
+      url: counsellor.profileImage,
+      publicId: counsellor.profileImagePublicId,
+      localPath: counsellor.profileImageLocalPath,
+      resourceType: 'image',
+    };
+    const previousVoiceIntro = {
+      url: counsellor.voiceIntroUrl,
+      publicId: counsellor.voiceIntroPublicId,
+      localPath: counsellor.voiceIntroLocalPath,
+      resourceType: 'video',
+    };
+
+    let nextProfileImage = null;
+    let nextVoiceIntro = null;
+
+    if (profileImage) {
+      const safeProfileImage = await sanitizeProfileImage(profileImage);
+      nextProfileImage = await storeCounsellorMediaFile(req, safeProfileImage, {
+        kind: 'selfies',
+        folder: 'menorah/counsellor-selfies',
+        resourceType: 'image',
+        publicIdPrefix: `counsellor_${counsellor._id}_selfie`,
+      });
+      uploadedProfileImage = { ...nextProfileImage, resourceType: 'image' };
+      counsellor.profileImage = nextProfileImage.url;
+      counsellor.profileImagePublicId = nextProfileImage.publicId;
+      counsellor.profileImageLocalPath = nextProfileImage.localPath;
+    }
+
+    if (voiceIntro) {
+      const safeVoiceIntro = await validateVoiceIntro(voiceIntro);
+      nextVoiceIntro = await storeCounsellorMediaFile(req, safeVoiceIntro, {
+        kind: 'voice-intros',
+        folder: 'menorah/counsellor-voice-intros',
+        resourceType: 'video',
+        publicIdPrefix: `counsellor_${counsellor._id}_voice`,
+      });
+      uploadedVoiceIntro = { ...nextVoiceIntro, resourceType: 'video' };
+      counsellor.voiceIntroUrl = nextVoiceIntro.url;
+      counsellor.voiceIntroPublicId = nextVoiceIntro.publicId;
+      counsellor.voiceIntroLocalPath = nextVoiceIntro.localPath;
+      counsellor.voiceIntroDurationSeconds = safeVoiceIntro.durationSeconds;
+    }
+
+    if (counsellor.profileImage && counsellor.voiceIntroUrl) {
+      counsellor.profileMediaCompletedAt = counsellor.profileMediaCompletedAt || new Date();
+    }
+
+    await counsellor.save();
+    uploadedProfileImage = null;
+    uploadedVoiceIntro = null;
+    if (nextProfileImage) {
+      await User.findByIdAndUpdate(req.user._id, { profileImage: nextProfileImage.url }).catch((error) => {
+        console.warn('Failed to mirror counsellor profile image to user record:', error.message);
+      });
+      await deleteStoredCounsellorMedia(previousProfileImage);
+    }
+    if (nextVoiceIntro) {
+      await deleteStoredCounsellorMedia(previousVoiceIntro);
+    }
+    await invalidateCounsellorDiscoveryCache();
+
+    return res.json({
+      success: true,
+      message: counsellor.profileImage && counsellor.voiceIntroUrl
+        ? 'Profile media completed.'
+        : 'Profile media saved. Add the remaining required item to go live.',
+      data: {
+        counsellorProfile: {
+          profileImage: counsellor.profileImage || null,
+          voiceIntroUrl: counsellor.voiceIntroUrl || null,
+          voiceIntroDurationSeconds: counsellor.voiceIntroDurationSeconds || null,
+          profileMediaCompletedAt: counsellor.profileMediaCompletedAt || null,
+          profileMediaComplete: Boolean(counsellor.profileImage && counsellor.voiceIntroUrl),
+        }
+      }
+    });
+  } catch (error) {
+    if (uploadedProfileImage) await deleteStoredCounsellorMedia(uploadedProfileImage);
+    if (uploadedVoiceIntro) await deleteStoredCounsellorMedia(uploadedVoiceIntro);
+
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    console.error('Upload counsellor profile media error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to upload profile media'
+    });
+  }
+});
 
 // @route   GET /api/counsellors/me/bookings/pending
 // @desc    Get unassigned bookings available for acceptance
@@ -60,6 +637,13 @@ router.get('/me/bookings/pending', [
       return res.status(400).json({
         success: false,
         message: 'Counsellor profile is not active'
+      });
+    }
+
+    if (!hasCompletedProfileMedia(counsellor)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Complete your mandatory selfie and voice intro before viewing new pending assignments.'
       });
     }
 
@@ -399,6 +983,13 @@ router.post('/me/bookings/:id/accept', [
       return res.status(400).json({
         success: false,
         message: 'Counsellor account is not active'
+      });
+    }
+
+    if (!hasCompletedProfileMedia(counsellor)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Complete your mandatory selfie and voice intro before accepting bookings.'
       });
     }
 
@@ -743,8 +1334,9 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
       });
     }
 
-    // Check if counselor is available - only available counselors can see unassigned bookings
-    const isCounsellorAvailable = counsellor.isActive && counsellor.isAvailable;
+    const profileMediaComplete = hasCompletedProfileMedia(counsellor);
+    // Only active, available counselors with public-ready profile media can see unassigned bookings.
+    const isCounsellorAvailable = counsellor.isActive && counsellor.isAvailable && profileMediaComplete;
 
     const now = new Date();
     const nowLocal = moment.tz(now, SERVER_TZ);
@@ -854,8 +1446,13 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
         counsellorStatus: {
           isActive: counsellor.isActive,
           isAvailable: counsellor.isAvailable,
+          profileMediaComplete,
+          profileImage: counsellor.profileImage || null,
+          voiceIntroUrl: counsellor.voiceIntroUrl || null,
           message: !counsellor.isActive
             ? 'Your account is not active. Please contact support.'
+            : !profileMediaComplete
+            ? 'Complete your mandatory selfie and voice intro before your profile goes live.'
             : !counsellor.isAvailable
             ? 'You are currently unavailable. Toggle your status to start accepting bookings.'
             : 'You are available to accept new bookings.'
@@ -916,10 +1513,12 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
 router.put('/me/profile', [
   body('specialization').optional().trim().isLength({ min: 2, max: 100 }),
   body('specializations').optional().isArray(),
+  body('specializations.*').optional().isString().trim().isLength({ min: 2, max: 50 }),
   body('experience').optional().isInt({ min: 0, max: 80 }),
   body('hourlyRate').optional().isFloat({ min: 0 }),
   body('bio').optional().trim().isLength({ max: 1000 }),
   body('languages').optional().isArray(),
+  body('languages.*').optional().isString().trim().isLength({ min: 2, max: 50 }),
   body('licenseNumber').optional().trim(),
   body('availability').optional().isObject(),
 ], counsellorAuth, async (req, res) => {
@@ -936,12 +1535,37 @@ router.put('/me/profile', [
 
     const { specialization, specializations, experience, hourlyRate, bio, languages, licenseNumber, availability } = req.body;
 
-    if (specialization !== undefined) counsellor.specialization = specialization;
-    if (specializations !== undefined) counsellor.specializations = specializations;
+    if (specializations !== undefined || specialization !== undefined) {
+      const nextSpecializations = normalizeTagList(
+        specializations !== undefined ? specializations : [specialization]
+      );
+
+      if (nextSpecializations.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'At least one specialization is required'
+        });
+      }
+
+      counsellor.specializations = nextSpecializations;
+      counsellor.specialization = nextSpecializations[0];
+    }
+
     if (experience !== undefined) counsellor.experience = experience;
     if (hourlyRate !== undefined) counsellor.hourlyRate = hourlyRate;
     if (bio !== undefined) counsellor.bio = bio;
-    if (languages !== undefined) counsellor.languages = languages;
+    if (languages !== undefined) {
+      const nextLanguages = normalizeTagList(languages);
+
+      if (nextLanguages.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'At least one language is required'
+        });
+      }
+
+      counsellor.languages = nextLanguages;
+    }
     if (licenseNumber !== undefined) counsellor.licenseNumber = licenseNumber;
     if (availability !== undefined) {
       const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -953,6 +1577,7 @@ router.put('/me/profile', [
     }
 
     await counsellor.save();
+    await invalidateCounsellorDiscoveryCache();
 
     res.json({
       success: true,
@@ -980,13 +1605,24 @@ router.put('/me/status', counsellorAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'isAvailable must be a boolean' });
     }
 
+    if (isAvailable && !hasCompletedProfileMedia(counsellor)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Complete your mandatory selfie and voice intro before setting yourself available.'
+      });
+    }
+
     counsellor.isAvailable = isAvailable;
     await counsellor.save();
 
     res.json({
       success: true,
       message: isAvailable ? 'You are now available to accept bookings' : 'You are now marked as unavailable',
-      data: { isAvailable: counsellor.isAvailable, isActive: counsellor.isActive }
+      data: {
+        isAvailable: counsellor.isAvailable,
+        isActive: counsellor.isActive,
+        profileMediaComplete: hasCompletedProfileMedia(counsellor)
+      }
     });
   } catch (error) {
     console.error('Update counsellor status error:', error);

@@ -18,6 +18,7 @@ const {
   providerDisplayName,
   resolveCallPolicy
 } = require('../services/callPolicyService');
+const { sendCounsellorApprovalEmail } = require('../utils/email');
 
 const router = express.Router();
 
@@ -788,7 +789,64 @@ router.get('/counsellors/:id', [
       .populate('approvedBy', 'firstName lastName email')
       .lean();
 
-    if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
+    if (!counsellor) {
+      const application = await PendingApplication.findById(req.params.id)
+        .populate('reviewedBy', 'firstName lastName email')
+        .lean();
+
+      if (!application) return res.status(404).json({ success: false, message: 'Counsellor not found' });
+
+      const formattedApplication = {
+        id: application._id,
+        _id: application._id,
+        isPendingApplication: true,
+        user: {
+          firstName: application.firstName,
+          lastName: application.lastName,
+          email: application.email,
+          phone: application.phone,
+          isActive: false,
+          createdAt: application.createdAt
+        },
+        dateOfBirth: application.dateOfBirth,
+        gender: application.gender,
+        licenseNumber: application.licenseNumber,
+        specialization: application.specialization,
+        specializations: application.specializations || [],
+        experience: application.experience,
+        bio: application.bio,
+        languages: application.languages || [],
+        hourlyRate: application.hourlyRate,
+        currency: application.currency || 'INR',
+        education: application.education || [],
+        certifications: application.certifications || [],
+        availability: application.availability || {},
+        status: application.status,
+        isActive: false,
+        isVerified: false,
+        rating: 0,
+        reviewCount: 0,
+        commissionRate: 0,
+        rejectionReason: application.rejectionReason,
+        reviewedBy: application.reviewedBy || null,
+        reviewedAt: application.reviewedAt || null,
+        createdAt: application.createdAt,
+        updatedAt: application.updatedAt
+      };
+
+      return res.json({
+        success: true,
+        data: {
+          counsellor: formattedApplication,
+          bookingStats: {
+            allTime: { total: 0, completed: 0, cancelled: 0, revenue: 0 },
+            today: { total: 0, completed: 0, cancelled: 0 },
+            thisWeek: { total: 0, revenue: 0 },
+            thisMonth: { total: 0, revenue: 0 }
+          }
+        }
+      });
+    }
 
     // Booking stats (all time + today)
     const { todayStart, weekStart, monthStart } = dateRanges();
@@ -913,10 +971,28 @@ router.put('/counsellors/:id/approve', [
 
     await PendingApplication.findByIdAndDelete(application._id);
 
+    const credentialEmailSent = await sendCounsellorApprovalEmail({
+      email: user.email,
+      name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      password: plainPassword
+    }).catch((error) => {
+      console.error('Counsellor approval credential email error:', error.message);
+      return false;
+    });
+
     res.json({
       success: true,
-      message: 'Counsellor approved. Credentials generated — share them now, the password will not be shown again.',
-      data: { counsellorId: counsellor._id, status: 'approved', username: user.email, password: plainPassword }
+      message: credentialEmailSent
+        ? 'Counsellor approved. Credentials were emailed and are shown below once.'
+        : 'Counsellor approved. Credentials were generated, but the email was not sent. Share them now; the password will not be shown again.',
+      data: {
+        counsellorId: counsellor._id,
+        status: 'approved',
+        username: user.email,
+        password: plainPassword,
+        credentialEmailSent,
+        credentialEmailRecipient: user.email
+      }
     });
   } catch (error) {
     console.error('Admin approve counsellor error:', error);

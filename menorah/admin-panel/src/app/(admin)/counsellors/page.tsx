@@ -32,7 +32,13 @@ function CounsellorsContent() {
   // Modals
   const [rejectModal, setRejectModal] = useState<{ open: boolean; id: string; name: string }>({ open: false, id: '', name: '' });
   const [blockModal, setBlockModal] = useState<{ open: boolean; id: string; name: string; isBlocked: boolean }>({ open: false, id: '', name: '', isBlocked: false });
-  const [credModal, setCredModal] = useState<{ open: boolean; username: string; password: string }>({ open: false, username: '', password: '' });
+  const [credModal, setCredModal] = useState<{
+    open: boolean;
+    username: string;
+    password: string;
+    emailSent?: boolean;
+    emailRecipient?: string;
+  }>({ open: false, username: '', password: '' });
   const [reason, setReason] = useState('');
   const [actionLoading, setActionLoading] = useState('');
   const [copied, setCopied] = useState('');
@@ -56,7 +62,13 @@ function CounsellorsContent() {
     setActionLoading('');
     if (res.success && res.data) {
       toast.success(`${name} approved`);
-      setCredModal({ open: true, username: res.data.username, password: res.data.password });
+      setCredModal({
+        open: true,
+        username: res.data.username,
+        password: res.data.password,
+        emailSent: res.data.credentialEmailSent,
+        emailRecipient: res.data.credentialEmailRecipient
+      });
       load();
     } else {
       toast.error(res.message || 'Failed to approve');
@@ -243,6 +255,8 @@ function CounsellorsContent() {
                     )}
                     <button
                       onClick={() => router.push(`/counsellors/${c.id}`)}
+                      aria-label={`View ${c.user?.firstName ?? 'counsellor'} ${c.user?.lastName ?? ''} details`}
+                      title="View details"
                       className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                       <ChevronRight size={16} />
@@ -319,8 +333,12 @@ function CounsellorsContent() {
       {/* Credentials Modal */}
       <Modal open={credModal.open} onClose={() => setCredModal({ open: false, username: '', password: '' })} title="Counsellor Login Credentials" size="sm">
         <div className="space-y-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
-            Share these credentials with the counsellor. The password will not be shown again.
+          <div className={`border rounded-xl px-4 py-3 text-sm ${credModal.emailSent === true ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+            {credModal.emailSent === true
+              ? `Credentials were emailed to ${credModal.emailRecipient || credModal.username}. The password is also shown here once.`
+              : credModal.emailSent === false
+                ? 'Credentials were generated, but the email was not sent. Share these credentials now; the password will not be shown again.'
+                : 'Share these credentials with the counsellor. The password will not be shown again.'}
           </div>
           {[{ label: 'Username (Email)', value: credModal.username, key: 'user' }, { label: 'Password', value: credModal.password, key: 'pass' }].map(({ label, value, key }) => (
             <div key={key}>

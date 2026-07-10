@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import CountryPhoneInput from '@/components/ui/CountryPhoneInput';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 import styles from './page.module.css';
 
@@ -103,6 +104,8 @@ export default function RegisterPage() {
   const {
     register,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
@@ -111,6 +114,7 @@ export default function RegisterPage() {
       languages: ['English'],
     },
   });
+  const phoneValue = watch('phone') || '';
 
   const addLanguage = () => {
     setLanguages([...languages, '']);
@@ -427,22 +431,18 @@ export default function RegisterPage() {
                 </div>
 
                 <div className={styles.formGroup}>
-                  <label className={styles.label}>Phone (with country code)</label>
-                  <input
-                    {...register('phone')}
-                    type="tel"
-                    placeholder="+1234567890"
-                    className={`${styles.input} ${(fieldErrors.phone || errors.phone) ? styles.inputError : ''}`}
+                  <input type="hidden" {...register('phone')} />
+                  <CountryPhoneInput
+                    label="Phone"
+                    value={phoneValue}
+                    onChange={(nextPhone) => {
+                      setValue('phone', nextPhone, { shouldDirty: true, shouldValidate: true });
+                      if (fieldErrors.phone) setFieldErrors((current) => ({ ...current, phone: '' }));
+                    }}
+                    error={errors.phone?.message || fieldErrors.phone}
+                    hint="Choose a country code, then enter the local number."
+                    required
                   />
-                  <p className={styles.helpText}>Format: +[country code][number], e.g., +911234567890</p>
-                  {(errors.phone || fieldErrors.phone) && (
-                    <p className={styles.errorMessage}>
-                      <svg className={styles.errorIconSmall} fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      {errors.phone?.message || fieldErrors.phone}
-                    </p>
-                  )}
                 </div>
 
                 <div className={styles.formRow}>

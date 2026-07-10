@@ -152,6 +152,11 @@ services:
     environment:
       PORT: "3002"
       NODE_ENV: production
+      MONGODB_URI: ${MONGODB_URI:-}
+      MONGO_DATABASE: ${MONGO_DATABASE:-menorah}
+      RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
+      EMAIL_FROM: "${EMAIL_FROM:-Menorah Health <noreply@menorah.me>}"
+      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:-menorahenquiries@gmail.com}
       NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
       NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
       NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
@@ -161,6 +166,10 @@ services:
     networks:
       - local_probe_net
       - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
 
   user-web-app:
     build:
@@ -180,6 +189,11 @@ services:
     environment:
       PORT: "3002"
       NODE_ENV: production
+      MONGODB_URI: ${MONGODB_URI:-}
+      MONGO_DATABASE: ${MONGO_DATABASE:-menorah}
+      RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
+      EMAIL_FROM: "${EMAIL_FROM:-Menorah Health <noreply@menorah.me>}"
+      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:-menorahenquiries@gmail.com}
       NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
       NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
       NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
@@ -189,6 +203,10 @@ services:
     networks:
       - local_probe_net
       - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
 
   web-app:
     build:

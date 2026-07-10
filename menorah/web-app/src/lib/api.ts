@@ -66,14 +66,16 @@ class ApiClient {
       sessionStorage.setItem('auth_token', token);
       // Mirror to cookie so Next.js middleware can verify server-side
       const maxAge = 7 * 24 * 60 * 60;
-      document.cookie = `mn_counsellor_auth=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Strict; Secure`;
+      const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `mn_counsellor_auth=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Strict${secureFlag}`;
     }
   }
 
   public clearToken(): void {
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('auth_token');
-      document.cookie = 'mn_counsellor_auth=; path=/; max-age=0; SameSite=Strict; Secure';
+      const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `mn_counsellor_auth=; path=/; max-age=0; SameSite=Strict${secureFlag}`;
     }
   }
 
@@ -542,6 +544,75 @@ class ApiClient {
         success: false,
         message: error.response?.data?.message || error.message || 'Failed to update profile',
         errors: error.response?.data?.errors || [],
+      };
+    }
+  }
+
+  async getSpecializations(): Promise<ApiResponse<{ specializations: string[] }>> {
+    try {
+      const response = await this.client.get('/counsellors/specializations');
+      return response.data;
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to load specializations',
+        errors: error.response?.data?.errors || [],
+      };
+    }
+  }
+
+  async getLanguages(): Promise<ApiResponse<{ languages: string[] }>> {
+    try {
+      const response = await this.client.get('/counsellors/languages');
+      return response.data;
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to load languages',
+        errors: error.response?.data?.errors || [],
+      };
+    }
+  }
+
+  async updateCounsellorProfileMedia(formData: FormData): Promise<ApiResponse<{
+    counsellorProfile: {
+      profileImage?: string | null;
+      voiceIntroUrl?: string | null;
+      voiceIntroDurationSeconds?: number | null;
+      profileMediaCompletedAt?: string | null;
+      profileMediaComplete: boolean;
+    };
+  }>> {
+    try {
+      const token = this.getToken();
+      const response = await fetch(`${this.baseURL.replace(/\/$/, '')}/counsellors/me/profile-media`, {
+        method: 'PUT',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: formData,
+      });
+      const data = await response.json().catch(() => null);
+
+      if (response.status === 401) {
+        this.clearToken();
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
+      }
+
+      if (!response.ok) {
+        return {
+          success: false,
+          message: data?.message || 'Failed to update profile media',
+          errors: data?.errors || [],
+        };
+      }
+
+      return data;
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error.message || 'Failed to update profile media',
+        errors: [],
       };
     }
   }
