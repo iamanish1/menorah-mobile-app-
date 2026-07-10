@@ -557,14 +557,14 @@ function WebFeaturePanel({
         <div className="grid h-full min-h-0 gap-3 md:grid-cols-[0.9fr_1fr]">
           <div className="card flex items-center gap-5 bg-primary-600 p-6 text-white">
           <div className="flex items-center gap-4">
-              <Avatar name="Tej Raj" size="xl" className="border-2 border-white/70 rounded-full" />
+              <Avatar name="John Doe" size="xl" className="border-2 border-white/70 rounded-full" />
             <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="truncate text-xl font-black text-white">Tej Raj</h4>
+                  <h4 className="truncate text-xl font-black text-white">John Doe</h4>
                   <Badge variant="success">Free</Badge>
                 </div>
-              <p className="mt-1 truncate text-sm text-white/75">demo@menorah.health</p>
-                <p className="mt-0.5 text-xs text-white/65">+971 50 000 0000</p>
+              <p className="mt-1 truncate text-sm text-white/75">john.doe@example.com</p>
+                <p className="mt-0.5 text-xs text-white/65">+1 555 013 2048</p>
                 <div className="mt-2 flex gap-2">
                   <Badge variant="success">Email verified</Badge>
                   <Badge variant="success">Phone verified</Badge>

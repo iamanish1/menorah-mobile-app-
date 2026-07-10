@@ -27,8 +27,10 @@ type BackendValidationError = {
 };
 
 const validGenders = ['male', 'female', 'other', 'prefer-not-to-say'];
+const passwordRuleMessage = 'Password must be at least 8 characters and include uppercase, lowercase, and a number';
 
 const normalizePhone = (value: string) => value.trim().replace(/[\s()-]/g, '');
+const isValidPassword = (value: string) => value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value);
 
 const sanitizeRegisterPayload = (payload: RegisterPayload) => ({
   ...payload,
@@ -78,10 +80,10 @@ export default function Register({ navigation }: any) {
     if (password.length === 0) return { strength: 0, label: '', color: colors.muted };
     if (password.length < 6) return { strength: 1, label: 'Weak', color: '#EF4444' };
     if (password.length < 8) return { strength: 2, label: 'Fair', color: '#F59E0B' };
-    if (password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password)) {
+    if (isValidPassword(password)) {
       return { strength: 3, label: 'Strong', color: '#10B981' };
     }
-    return { strength: 2, label: 'Good', color: '#10B981' };
+    return { strength: 2, label: 'Needs Aa and 1', color: '#F59E0B' };
   };
 
   const validateField = (field: string, value: string) => {
@@ -115,8 +117,8 @@ export default function Register({ navigation }: any) {
         }
         break;
       case 'password':
-        if (value && value.length < 8) {
-          newErrors.password = 'Password must be at least 8 characters';
+        if (value && !isValidPassword(value)) {
+          newErrors.password = passwordRuleMessage;
         }
         break;
       case 'confirmPassword':
@@ -194,14 +196,14 @@ export default function Register({ navigation }: any) {
     if (!validGenders.includes(payload.gender)) newErrors.gender = 'Please select a valid gender';
 
     if (!payload.password) newErrors.password = 'Password is required';
-    else if (payload.password.length < 8) newErrors.password = 'Password must be at least 8 characters';
+    else if (!isValidPassword(payload.password)) newErrors.password = passwordRuleMessage;
 
     if (!confirmPassword) newErrors.confirmPassword = 'Please confirm your password';
     else if (payload.password !== confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      Alert.alert('Validation Error', 'Please fill in all fields correctly');
+      Alert.alert('Registration needs attention', Object.values(newErrors)[0] || 'Please fix the highlighted field and try again.');
       return;
     }
 

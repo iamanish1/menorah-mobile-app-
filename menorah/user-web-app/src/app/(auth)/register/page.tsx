@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Eye, EyeOff, Mail, Lock, User, Calendar } from 'lucide-react';
@@ -16,6 +16,8 @@ import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 // - dateOfBirth must be ISO8601 (required)
 // - gender must be exactly: 'male' | 'female' | 'other' | 'prefer-not-to-say' (hyphens)
 
+const passwordRuleMessage = 'Password must be at least 8 characters and include uppercase, lowercase, and a number';
+
 const schema = z.object({
   firstName:       z.string().min(2, 'First name must be at least 2 characters'),
   lastName:        z.string().min(2, 'Last name must be at least 2 characters'),
@@ -23,7 +25,7 @@ const schema = z.object({
   phone:           z.string().regex(/^\+[1-9]\d{1,14}$/, 'Use E.164 format e.g. +971501234567'),
   dateOfBirth:     z.string().min(1, 'Date of birth is required'),
   gender:          z.literal('male'),
-  password:        z.string().min(8, 'Password must be at least 8 characters'),
+  password:        z.string().min(8, passwordRuleMessage).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/, passwordRuleMessage),
   confirmPassword: z.string(),
 }).refine((d) => d.password === d.confirmPassword, {
   message: 'Passwords do not match',
@@ -31,6 +33,26 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
+
+const getFirstFormError = (errors: FieldErrors<FormValues>) => {
+  const fieldOrder: Array<keyof FormValues> = [
+    'firstName',
+    'lastName',
+    'email',
+    'phone',
+    'dateOfBirth',
+    'gender',
+    'password',
+    'confirmPassword',
+  ];
+
+  for (const field of fieldOrder) {
+    const message = errors[field]?.message;
+    if (typeof message === 'string') return message;
+  }
+
+  return 'Please fix the highlighted field and try again.';
+};
 
 export default function RegisterPage() {
   const { register: registerUser } = useAuth();
@@ -55,6 +77,10 @@ export default function RegisterPage() {
     }
   };
 
+  const onInvalid = (formErrors: FieldErrors<FormValues>) => {
+    setServerError(getFirstFormError(formErrors));
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -63,7 +89,7 @@ export default function RegisterPage() {
       </div>
 
       {serverError && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">
+        <div role="alert" aria-live="polite" className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">
           {serverError}
         </div>
       )}
@@ -76,7 +102,7 @@ export default function RegisterPage() {
         <span className="h-px flex-1 bg-gray-200 dark:bg-primary-800" />
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Input
             label="First name"
@@ -138,7 +164,7 @@ export default function RegisterPage() {
         <Input
           label="Password"
           type={showPwd ? 'text' : 'password'}
-          placeholder="Min 8 characters"
+          placeholder="8+ chars with Aa and 1"
           autoComplete="new-password"
           leftIcon={<Lock className="w-4 h-4" />}
           rightIcon={

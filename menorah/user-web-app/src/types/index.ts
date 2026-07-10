@@ -292,7 +292,7 @@ export interface ApiResponse<T = unknown> {
   success: boolean;
   message?: string;
   data?: T;
-  errors?: Array<{ field?: string; message: string }>;
+  errors?: Array<{ field?: string; path?: string; param?: string; message?: string; msg?: string }>;
   pagination?: {
     page: number;
     limit: number;

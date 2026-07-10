@@ -88,7 +88,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { success: true };
     }
-    return { success: false, message: res.message };
+    const firstValidationMessage = res.errors?.map((error) => error.message || error.msg).find(Boolean);
+    return { success: false, message: firstValidationMessage || res.message };
   };
 
   const logout = async () => {
