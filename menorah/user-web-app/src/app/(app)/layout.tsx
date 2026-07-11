@@ -3,6 +3,7 @@ import { AuthGuard } from '@/components/auth/AuthGuard';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { BottomNav } from '@/components/layout/BottomNav';
+import { FirstLoginTour } from '@/components/onboarding/FirstLoginTour';
 
 export const metadata: Metadata = {
   robots: {
@@ -27,6 +28,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </main>
 
         <BottomNav />
+        <FirstLoginTour />
       </div>
     </AuthGuard>
   );

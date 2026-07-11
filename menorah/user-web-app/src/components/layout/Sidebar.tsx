@@ -15,13 +15,13 @@ import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
 
 const navItems = [
-  { href: '/discover',      label: 'Discover',       icon: Search },
-  { href: '/bookings',      label: 'My Bookings',    icon: CalendarDays },
-  { href: '/chat',          label: 'Chat',           icon: MessageCircle },
-  { href: '/subscription',  label: 'Subscription',   icon: CreditCard },
-  { href: '/notifications', label: 'Notifications',  icon: Bell },
-  { href: '/learn',         label: 'Articles',       icon: Newspaper },
-  { href: '/profile',       label: 'Profile',        icon: User },
+  { href: '/discover',      label: 'Discover',       icon: Search,       tourId: 'discover' },
+  { href: '/bookings',      label: 'My Bookings',    icon: CalendarDays, tourId: 'bookings' },
+  { href: '/chat',          label: 'Chat',           icon: MessageCircle, tourId: 'chat' },
+  { href: '/subscription',  label: 'Subscription',   icon: CreditCard,    tourId: 'subscription' },
+  { href: '/notifications', label: 'Notifications',  icon: Bell,          tourId: 'notifications' },
+  { href: '/learn',         label: 'Articles',       icon: Newspaper,     tourId: 'learn' },
+  { href: '/profile',       label: 'Profile',        icon: User,          tourId: 'profile' },
 ];
 
 export function Sidebar() {
@@ -59,7 +59,7 @@ export function Sidebar() {
             priority
             className="h-10 w-10 shrink-0 rounded-full object-cover"
           />
-          <span className="ml-3 whitespace-nowrap text-xl font-black tracking-tight opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
+          <span data-sidebar-reveal className="ml-3 whitespace-nowrap text-xl font-black tracking-tight opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
             Menorah
           </span>
         </Link>
@@ -67,7 +67,7 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 space-y-1 overflow-x-hidden overflow-y-auto px-3 py-4">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {navItems.map(({ href, label, icon: Icon, tourId }) => {
           const active = pathname.startsWith(href);
           const isNotif = href === '/notifications';
           const badgeText = unreadCount > 9 ? '9+' : unreadCount;
@@ -77,6 +77,7 @@ export function Sidebar() {
               href={href}
               aria-label={label}
               aria-current={active ? 'page' : undefined}
+              data-tour-id={tourId}
               className={cn(
                 'relative flex min-h-12 items-center rounded-2xl px-2 text-sm font-bold transition-colors duration-150',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-primary-950',
@@ -91,16 +92,16 @@ export function Sidebar() {
                   className={cn('h-[19px] w-[19px] shrink-0', active ? 'text-white' : 'text-gray-400 dark:text-primary-200/65')}
                 />
                 {isNotif && unreadCount > 0 && (
-                  <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-black leading-none text-white ring-2 ring-white group-hover/sidebar:hidden group-focus-within/sidebar:hidden dark:ring-primary-950">
+                  <span data-sidebar-compact-badge className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-black leading-none text-white ring-2 ring-white group-hover/sidebar:hidden group-focus-within/sidebar:hidden dark:ring-primary-950">
                     {badgeText}
                   </span>
                 )}
               </span>
-              <span className="ml-2 min-w-0 flex-1 whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
+              <span data-sidebar-reveal className="ml-2 min-w-0 flex-1 whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
                 {label}
               </span>
               {isNotif && unreadCount > 0 && (
-                <span className="opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
+                <span data-sidebar-reveal className="opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
                   <Badge variant="danger" size="sm">{badgeText}</Badge>
                 </span>
               )}
@@ -121,16 +122,16 @@ export function Sidebar() {
             )}
           >
             <Avatar src={user.profileImage} name={`${user.firstName} ${user.lastName}`} size="md" />
-            <div className="ml-3 min-w-0 flex-1 opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
+            <div data-sidebar-reveal className="ml-3 min-w-0 flex-1 opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
               <p className="truncate text-sm font-bold leading-tight text-gray-950 dark:text-primary-50">
                 {user.firstName} {user.lastName}
               </p>
               <p className="text-xs text-gray-500 dark:text-primary-100/60 truncate">{user.email}</p>
             </div>
           </Link>
-          <div className="flex min-h-12 items-center rounded-2xl px-2">
+          <div data-tour-id="theme" className="flex min-h-12 items-center rounded-2xl px-2">
             <ThemeToggle className="h-10 w-10 shrink-0" />
-            <span className="ml-3 whitespace-nowrap text-sm font-semibold text-gray-500 opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100 dark:text-primary-100/60">
+            <span data-sidebar-reveal className="ml-3 whitespace-nowrap text-sm font-semibold text-gray-500 opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100 dark:text-primary-100/60">
               Theme
             </span>
           </div>
@@ -138,6 +139,7 @@ export function Sidebar() {
             onClick={logout}
             type="button"
             aria-label="Sign out"
+            data-tour-id="signout"
             className={cn(
               'flex min-h-12 w-full items-center rounded-2xl px-2 text-sm font-semibold text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 dark:text-primary-100/60 dark:hover:bg-red-950 dark:hover:text-red-200 dark:focus-visible:ring-offset-primary-950'
@@ -146,7 +148,7 @@ export function Sidebar() {
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
               <LogOut aria-hidden="true" className="h-[18px] w-[18px]" />
             </span>
-            <span className="ml-2 whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
+            <span data-sidebar-reveal className="ml-2 whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
               Sign out
             </span>
           </button>

@@ -98,6 +98,15 @@ html.dark {
     box-shadow: var(--app-shadow);
     @apply rounded-3xl border;
   }
+  .menorah-tour-active .app-sidebar-glass {
+    width: 248px;
+  }
+  .menorah-tour-active .app-sidebar-glass [data-sidebar-reveal] {
+    opacity: 1;
+  }
+  .menorah-tour-active .app-sidebar-glass [data-sidebar-compact-badge] {
+    display: none;
+  }
   .btn-primary {
     @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-full
            px-5 py-3 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
@@ -130,7 +139,11 @@ html.dark {
     border: 1px solid var(--app-border);
     border-radius: 1rem;
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(249, 250, 251, 0.92)),
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--app-card) 96%, white),
+        color-mix(in srgb, var(--app-card) 92%, var(--app-sand))
+      ),
       var(--app-card);
     color: var(--app-text);
     padding: 0.72rem 2.75rem 0.72rem 1rem;
@@ -178,16 +191,18 @@ html.dark {
     color: var(--app-muted);
     font-size: 0.875rem;
     font-weight: 800;
-    transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+    transition: background-color 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
   }
   .app-segmented-option:hover {
     color: var(--app-text);
     background: color-mix(in srgb, var(--app-primary) 10%, transparent);
+    transform: translateY(-1px);
   }
   .app-segmented-option[data-active="true"] {
     background: var(--app-primary);
     color: #fff;
     box-shadow: 0 16px 30px -20px rgba(45, 122, 92, 0.78);
+    transform: translateY(-1px) scale(1.02);
   }
   .app-segmented-option:focus-visible {
     outline: none;

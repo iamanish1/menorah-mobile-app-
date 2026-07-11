@@ -26,11 +26,13 @@ export function Topbar() {
       </div>
 
       <div className="flex items-center gap-3">
-        <ThemeToggle className="h-10 w-10" />
-        <Link href="/learn" className="relative p-2.5 rounded-full bg-white text-gray-700 shadow-sm hover:bg-primary-100 transition-colors dark:bg-primary-900 dark:text-primary-100 dark:hover:bg-primary-800" aria-label="Open articles">
+        <span data-tour-id="theme">
+          <ThemeToggle className="h-10 w-10" />
+        </span>
+        <Link data-tour-id="learn" href="/learn" className="relative p-2.5 rounded-full bg-white text-gray-700 shadow-sm hover:bg-primary-100 transition-colors dark:bg-primary-900 dark:text-primary-100 dark:hover:bg-primary-800" aria-label="Open articles">
           <Newspaper className="w-5 h-5" />
         </Link>
-        <Link href="/notifications" className="relative p-2.5 rounded-full bg-white text-gray-700 shadow-sm hover:bg-primary-100 transition-colors dark:bg-primary-900 dark:text-primary-100 dark:hover:bg-primary-800">
+        <Link data-tour-id="notifications" href="/notifications" className="relative p-2.5 rounded-full bg-white text-gray-700 shadow-sm hover:bg-primary-100 transition-colors dark:bg-primary-900 dark:text-primary-100 dark:hover:bg-primary-800">
           <Bell className="w-5 h-5" />
           {unreadCount > 0 && (
             <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[9px] font-bold">
@@ -38,7 +40,7 @@ export function Topbar() {
             </span>
           )}
         </Link>
-        <Link href="/profile">
+        <Link data-tour-id="profile" href="/profile">
           <Avatar src={user.profileImage} name={`${user.firstName} ${user.lastName}`} size="sm" />
         </Link>
       </div>
