@@ -4,7 +4,14 @@ import { NextRequest, NextResponse } from 'next/server';
 const PROTECTED_PREFIXES = ['/discover', '/bookings', '/profile', '/chat', '/subscription', '/learn'];
 
 // Routes accessible only when NOT authenticated
-const AUTH_ROUTES = ['/login', '/register', '/verify-otp', '/forgot-password', '/reset-password'];
+const AUTH_ROUTES = ['/login', '/register', '/verify-otp', '/verify-email', '/forgot-password', '/reset-password'];
+
+function noStore(response: NextResponse) {
+  response.headers.set('Cache-Control', 'no-store, no-cache, max-age=0, must-revalidate');
+  response.headers.set('Pragma', 'no-cache');
+  response.headers.set('Expires', '0');
+  return response;
+}
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -22,10 +29,16 @@ export function middleware(request: NextRequest) {
 
   // Authenticated user trying to access auth routes → app
   if (isAuthRoute && token) {
-    return NextResponse.redirect(new URL('/discover', request.url));
+    return noStore(NextResponse.redirect(new URL('/discover', request.url)));
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+
+  if (isAuthRoute) {
+    return noStore(response);
+  }
+
+  return response;
 }
 
 export const config = {
@@ -39,6 +52,7 @@ export const config = {
     '/login',
     '/register',
     '/verify-otp',
+    '/verify-email',
     '/forgot-password',
     '/reset-password',
   ],
