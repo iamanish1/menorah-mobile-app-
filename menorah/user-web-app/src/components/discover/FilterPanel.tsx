@@ -10,6 +10,8 @@ interface FilterPanelProps {
   filters: CounsellorFilters;
   specializations: string[];
   languages: string[];
+  specializationsLoading?: boolean;
+  languagesLoading?: boolean;
   onChange: (filters: CounsellorFilters) => void;
 }
 
@@ -149,7 +151,7 @@ function FilterDropdown({ label, value, options, onChange }: FilterDropdownProps
         onClick={() => setOpen((current) => !current)}
         onKeyDown={handleKeyDown}
       >
-        <span id={`${id}-value`} className="min-w-0 flex-1 truncate">
+        <span id={`${id}-value`} className="min-w-0 flex-1 break-words leading-5">
           {selectedOption?.label ?? 'Select'}
         </span>
         <ChevronDown
@@ -164,7 +166,7 @@ function FilterDropdown({ label, value, options, onChange }: FilterDropdownProps
           role="listbox"
           aria-labelledby={`${id}-label`}
         >
-          <div className="max-h-64 overflow-y-auto p-2">
+          <div className="max-h-[65vh] overflow-y-auto overscroll-contain p-2 pr-1.5 touch-pan-y [scrollbar-gutter:stable] md:max-h-80">
             {options.map((option, index) => {
               const selected = option.value === value;
               const active = index === activeIndex;
@@ -177,7 +179,7 @@ function FilterDropdown({ label, value, options, onChange }: FilterDropdownProps
                   aria-selected={selected}
                   disabled={option.disabled}
                   className={cn(
-                    'group/option flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-bold transition duration-200 animate-in fade-in slide-in-from-top-1',
+                    'group/option flex min-h-11 w-full items-start justify-between gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-bold transition duration-200 animate-in fade-in slide-in-from-top-1',
                     'disabled:cursor-not-allowed disabled:opacity-55',
                     'hover:-translate-y-0.5 hover:bg-primary-50 hover:shadow-[0_14px_28px_-24px_rgba(45,122,92,0.65)] focus-visible:-translate-y-0.5 focus-visible:bg-primary-50 focus-visible:outline-none',
                     'dark:hover:bg-primary-900/80 dark:focus-visible:bg-primary-900/80',
@@ -199,7 +201,7 @@ function FilterDropdown({ label, value, options, onChange }: FilterDropdownProps
                     >
                       <span className={cn('h-1.5 w-1.5 rounded-full bg-current transition-transform duration-200', selected ? 'scale-100' : 'scale-0')} />
                     </span>
-                    <span className="min-w-0 truncate">{option.label}</span>
+                    <span className="min-w-0 break-words leading-5">{option.label}</span>
                   </span>
                   <Check
                     className={cn('h-4 w-4 shrink-0 text-primary-700 transition duration-200 dark:text-primary-100', selected ? 'scale-100 opacity-100' : 'scale-75 opacity-0')}
@@ -220,7 +222,14 @@ const parseSortValue = (combined: string): Pick<CounsellorFilters, 'sortBy' | 's
   return { sortBy: field, sortOrder: order };
 };
 
-export function FilterPanel({ filters, specializations, languages, onChange }: FilterPanelProps) {
+export function FilterPanel({
+  filters,
+  specializations,
+  languages,
+  specializationsLoading = false,
+  languagesLoading = false,
+  onChange,
+}: FilterPanelProps) {
   const [local, setLocal] = useState<CounsellorFilters>(filters);
 
   useEffect(() => {
@@ -243,14 +252,22 @@ export function FilterPanel({ filters, specializations, languages, onChange }: F
   const specializationOptions: DropdownOption[] = [
     { value: '', label: 'All specializations' },
     ...(specializations.length === 0
-      ? [{ value: '__loading_specializations', label: 'Loading...', disabled: true }]
+      ? [{
+        value: '__specializations_empty',
+        label: specializationsLoading ? 'Loading...' : 'No specializations available',
+        disabled: true,
+      }]
       : specializations.map((specialization) => ({ value: specialization, label: specialization }))),
   ];
 
   const languageOptions: DropdownOption[] = [
     { value: '', label: 'Any language' },
     ...(languages.length === 0
-      ? [{ value: '__loading_languages', label: 'Loading...', disabled: true }]
+      ? [{
+        value: '__languages_empty',
+        label: languagesLoading ? 'Loading...' : 'No languages available',
+        disabled: true,
+      }]
       : languages.map((language) => ({ value: language, label: language }))),
   ];
 

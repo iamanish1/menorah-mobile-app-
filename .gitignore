@@ -118,3 +118,6 @@ temp/
 # Debug files
 *.log
 debug.log
+
+# Performance-test artifacts
+menorah/scripts/performance/results/

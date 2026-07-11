@@ -109,8 +109,10 @@ class ApiClient {
     return res;
   }
 
-  async verifyEmail(code: string): Promise<ApiResponse<{ user: User }>> {
-    return this.post<{ user: User }>('/auth/verify-email', { code });
+  async verifyEmail(code: string): Promise<ApiResponse<{ token: string }>> {
+    const res = await this.post<{ token: string }>('/auth/verify-email', { code });
+    if (res.success && res.data?.token) authStorage.setToken(res.data.token);
+    return res;
   }
 
   async resendOTP(phone: string): Promise<ApiResponse<void>> {
@@ -129,6 +131,10 @@ class ApiClient {
 
   async resendEmailOTP(email: string): Promise<ApiResponse<void>> {
     return this.post<void>('/auth/resend-email-otp', { email });
+  }
+
+  async resendEmailVerification(email: string): Promise<ApiResponse<void>> {
+    return this.post<void>('/auth/resend-email-verification', { email });
   }
 
   async forgotPassword(email: string): Promise<ApiResponse<void>> {

@@ -24,13 +24,13 @@ export default function DiscoverPage() {
     queryFn: () => api.getCounsellors(filters),
   });
 
-  const { data: specsData } = useQuery({
+  const { data: specsData, isLoading: isSpecializationsLoading } = useQuery({
     queryKey: ['specializations'],
     queryFn: () => api.getSpecializations(),
     staleTime: Infinity,
   });
 
-  const { data: langsData } = useQuery({
+  const { data: langsData, isLoading: isLanguagesLoading } = useQuery({
     queryKey: ['languages'],
     queryFn: () => api.getLanguages(),
     staleTime: Infinity,
@@ -118,6 +118,8 @@ export default function DiscoverPage() {
               filters={filters}
               specializations={specializations}
               languages={languages}
+              specializationsLoading={isSpecializationsLoading}
+              languagesLoading={isLanguagesLoading}
               onChange={(f) => setFilters((prev) => ({ ...prev, ...f }))}
             />
           </div>
@@ -129,6 +131,8 @@ export default function DiscoverPage() {
               filters={filters}
               specializations={specializations}
               languages={languages}
+              specializationsLoading={isSpecializationsLoading}
+              languagesLoading={isLanguagesLoading}
               onChange={(f) => setFilters((prev) => ({ ...prev, ...f }))}
             />
           </div>

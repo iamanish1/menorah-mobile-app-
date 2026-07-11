@@ -56,9 +56,9 @@ const emailNormalizationOptions = {
 };
 const publicReadyCounsellorQuery = {
   isActive: true,
-  profileImage: { $type: 'string', $ne: '' },
-  voiceIntroUrl: { $type: 'string', $ne: '' },
+  status: 'approved',
 };
+const CACHE_VERSION = 'v3';
 
 // @route   GET /api/counsellors
 // @desc    Get all counsellors with filtering and search
@@ -195,7 +195,7 @@ router.get('/', [
     // Build a deterministic cache key from the query params.
     // Skip cache for free-text searches (too many unique keys, low reuse value).
     const cacheKey = !search
-      ? `counsellors:list:${JSON.stringify({ specialization, language, minRating, minPrice, maxPrice, page, limit, sortBy, sortOrder })}`
+      ? `counsellors:${CACHE_VERSION}:list:${JSON.stringify({ specialization, language, minRating, minPrice, maxPrice, page, limit, sortBy, sortOrder })}`
       : null;
 
     const fetchFromDB = async () => {
@@ -259,13 +259,10 @@ router.get('/', [
 // @access  Public
 router.get('/specializations', async (req, res) => {
   try {
-    const specializations = await withCache('counsellors:specializations', CACHE_TTL.STATIC_LOOKUPS, async () => {
-      const [singular, plural] = await Promise.all([
-        Counsellor.distinct('specialization', publicReadyCounsellorQuery),
-        Counsellor.distinct('specializations', publicReadyCounsellorQuery),
-      ]);
+    const specializations = await withCache(`counsellors:${CACHE_VERSION}:specializations`, CACHE_TTL.STATIC_LOOKUPS, async () => {
+      const plural = await Counsellor.distinct('specializations', publicReadyCounsellorQuery);
       const seen = new Set();
-      return [...singular, ...plural.flat()]
+      return plural.flat()
         .map(s => s.trim())
         .filter(s => {
           if (!s) return false;
@@ -289,7 +286,7 @@ router.get('/specializations', async (req, res) => {
 // @access  Public
 router.get('/languages', async (req, res) => {
   try {
-    const languages = await withCache('counsellors:languages', CACHE_TTL.STATIC_LOOKUPS, async () => {
+    const languages = await withCache(`counsellors:${CACHE_VERSION}:languages`, CACHE_TTL.STATIC_LOOKUPS, async () => {
       const raw = await Counsellor.distinct('languages', publicReadyCounsellorQuery);
       const seen = new Set();
       return raw.flat()
@@ -378,17 +375,10 @@ router.get('/:id', [
       });
     }
 
-    if (!counsellor.isActive) {
+    if (!counsellor.isActive || counsellor.status !== 'approved') {
       return res.status(404).json({
         success: false,
         message: 'Counsellor not available'
-      });
-    }
-
-    if (!counsellor.profileImage || !counsellor.voiceIntroUrl) {
-      return res.status(404).json({
-        success: false,
-        message: 'Counsellor profile is not available yet'
       });
     }
 

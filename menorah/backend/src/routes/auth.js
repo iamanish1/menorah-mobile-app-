@@ -32,22 +32,31 @@ const generateToken = (userId, role = 'user') => {
 // ── Pending registration helpers (Redis-backed) ────────────────────────────
 // Registration data is stored in Redis instead of process memory so the
 // flow works correctly across multiple PM2 workers and Cloud Run instances.
-const PENDING_TTL   = 10 * 60;          // 10 min email OTP expiry
-const MAX_OTP_TRIES = 5;
+const PENDING_TTL          = 10 * 60;  // 10 min email OTP expiry
+const OTP_RESEND_COOLDOWN  = 60;       // Prevent duplicate delivery from retries/double-clicks
+const MAX_OTP_TRIES        = 5;
 
-const storePendingReg = async (email, data) => {
+const pendingRegistrationKey = (email) => `pending:reg:${email}`;
+const pendingResendKey = (email) => `pending:reg:resend:${email}`;
+const emailVerificationResendKey = (email) => `pending:email-verification:resend:${email}`;
+
+const storePendingReg = async (email, data, { onlyIfAbsent = false } = {}) => {
   const redis   = getRedisClient();
   const otpHash = crypto.createHash('sha256').update(data.otp).digest('hex');
   // Hash the password now so plaintext never touches Redis
   const passwordHash = await bcrypt.hash(data.password, parseInt(process.env.BCRYPT_ROUNDS) || 12);
   const entry = { ...data, otp: otpHash, password: passwordHash, attempts: 0 };
-  await redis.setEx(`pending:reg:${email}`, PENDING_TTL, JSON.stringify(entry));
+  if (onlyIfAbsent) {
+    return redis.set(pendingRegistrationKey(email), JSON.stringify(entry), { EX: PENDING_TTL, NX: true });
+  }
+  await redis.setEx(pendingRegistrationKey(email), PENDING_TTL, JSON.stringify(entry));
+  return 'OK';
 };
 
 const getPendingReg = async (email) => {
   try {
     const redis = getRedisClient();
-    const raw = await redis.get(`pending:reg:${email}`);
+    const raw = await redis.get(pendingRegistrationKey(email));
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 };
@@ -57,13 +66,28 @@ const updatePendingReg = async (email, updates) => {
     const redis   = getRedisClient();
     const pending = await getPendingReg(email);
     if (!pending) return;
-    const ttl = await redis.ttl(`pending:reg:${email}`);
-    await redis.setEx(`pending:reg:${email}`, Math.max(ttl, 1), JSON.stringify({ ...pending, ...updates }));
+    const ttl = await redis.ttl(pendingRegistrationKey(email));
+    await redis.setEx(pendingRegistrationKey(email), Math.max(ttl, 1), JSON.stringify({ ...pending, ...updates }));
   } catch {}
 };
 
 const deletePendingReg = async (email) => {
-  try { await getRedisClient().del(`pending:reg:${email}`); } catch {}
+  try {
+    const redis = getRedisClient();
+    await Promise.all([
+      redis.del(pendingRegistrationKey(email)),
+      redis.del(pendingResendKey(email)),
+    ]);
+  } catch {}
+};
+
+const acquireOtpResendCooldown = async (key) => {
+  const result = await getRedisClient().set(key, '1', { EX: OTP_RESEND_COOLDOWN, NX: true });
+  return result === 'OK';
+};
+
+const releaseOtpResendCooldown = async (key) => {
+  try { await getRedisClient().del(key); } catch {}
 };
 
 const getGoogleClientIds = () => [
@@ -316,7 +340,21 @@ router.post('/register', [
     }
 
     const otp = crypto.randomInt(100000, 999999).toString();
-    await storePendingReg(email, { firstName, lastName, email, phone, password, dateOfBirth, gender, otp });
+    const stored = await storePendingReg(
+      email,
+      { firstName, lastName, email, phone, password, dateOfBirth, gender, otp },
+      { onlyIfAbsent: true }
+    );
+
+    if (!stored) {
+      return res.status(200).json({
+        success: true,
+        message: 'A verification code was already sent. Check your inbox or wait before requesting another code.',
+        data: { email },
+      });
+    }
+
+    await getRedisClient().setEx(pendingResendKey(email), OTP_RESEND_COOLDOWN, '1');
 
     const emailSent = await sendOTPEmail(email, otp, `${firstName} ${lastName}`);
     if (!emailSent) {
@@ -425,12 +463,25 @@ router.post('/resend-email-otp', [
       return res.status(400).json({ success: false, message: 'Registration session expired. Please register again.' });
     }
 
+    const resendKey = pendingResendKey(email);
+    if (!await acquireOtpResendCooldown(resendKey)) {
+      return res.status(429).json({
+        success: false,
+        message: `Please wait ${OTP_RESEND_COOLDOWN} seconds before requesting another code.`,
+      });
+    }
+
     const newOtp    = crypto.randomInt(100000, 999999).toString();
     const newOtpHash = crypto.createHash('sha256').update(newOtp).digest('hex');
     await updatePendingReg(email, { otp: newOtpHash, attempts: 0 });
 
     const emailSent = await sendOTPEmail(email, newOtp);
-    res.json({ success: emailSent, message: emailSent ? 'OTP resent successfully' : 'Failed to resend OTP' });
+    if (!emailSent) {
+      await releaseOtpResendCooldown(resendKey);
+      return res.status(500).json({ success: false, message: 'Failed to resend OTP' });
+    }
+
+    res.json({ success: true, message: 'OTP resent successfully' });
   } catch (error) {
     console.error('Resend email OTP error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -650,11 +701,17 @@ router.post('/resend-email-verification', [
     const { email } = req.body;
     const user = await User.findOne({ email, isEmailVerified: false });
     if (user) {
+      const resendKey = emailVerificationResendKey(email);
+      if (!await acquireOtpResendCooldown(resendKey)) {
+        return res.json({ success: true, message: 'If an unverified account exists for that email, a code is already on its way.' });
+      }
+
       const code = crypto.randomInt(100000, 999999).toString();
       user.emailVerificationToken = code;
       await user.save();
       const { sendVerificationEmail } = require('../utils/email');
-      await sendVerificationEmail(email, code).catch(() => {});
+      const emailSent = await sendVerificationEmail(email, code);
+      if (!emailSent) await releaseOtpResendCooldown(resendKey);
     }
   } catch (error) {
     console.error('Resend email verification error:', error.message);

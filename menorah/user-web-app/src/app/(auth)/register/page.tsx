@@ -226,6 +226,7 @@ export default function RegisterPage() {
     if (res.success) {
       // Store email in sessionStorage — not in URL (avoids browser history / server log exposure)
       sessionStorage.setItem('pending_verify_email', data.email);
+      sessionStorage.setItem('pending_verification_mode', 'registration');
       router.push('/verify-otp');
     } else {
       setServerError(res.message || 'Registration failed. Please try again.');
@@ -249,8 +250,16 @@ export default function RegisterPage() {
       </div>
 
       {serverError && (
-        <div role="alert" aria-live="polite" className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">
-          {serverError}
+        <div role="alert" aria-live="polite" className="space-y-1 bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">
+          <p>{serverError}</p>
+          {serverError === 'User with this email or phone number already exists' && (
+            <p>
+              Already registered?{' '}
+              <Link href="/login" className="font-bold underline underline-offset-2">
+                Sign in instead
+              </Link>
+            </p>
+          )}
         </div>
       )}
 

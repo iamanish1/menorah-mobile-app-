@@ -63,6 +63,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(res.data.user);
       const u = res.data.user;
       if (!u.isEmailVerified) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pending_verify_email', email);
+          sessionStorage.setItem('pending_verification_mode', 'account');
+        }
         return { success: true, needsVerification: true, message: 'Please verify your email address.' };
       }
       return { success: true };
@@ -120,7 +124,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await api.verifyEmailOTP(email, otp);
     if (res.success && res.data?.user) {
       setUser(res.data.user);
-      if (typeof window !== 'undefined') sessionStorage.removeItem('pendingEmail');
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pendingEmail');
+        sessionStorage.removeItem('pending_verify_email');
+        sessionStorage.removeItem('pending_verification_mode');
+      }
       return { success: true };
     }
     return { success: false, message: res.message };
