@@ -93,7 +93,7 @@ const serializeAdmin = (user) => ({
   profileImage: user.profileImage || null,
 });
 
-router.post('/login', [
+router.post(['/login', '/admin/login'], [
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty(),
 ], async (req, res) => {
@@ -157,7 +157,7 @@ router.post('/login', [
   }
 });
 
-router.post('/login/mfa', [
+router.post(['/login/mfa', '/admin/login/mfa'], [
   body('challengeId').isUUID(),
   body('otp').matches(/^\d{6}$/),
 ], async (req, res) => {
@@ -227,7 +227,7 @@ router.get('/me', adminAuth, async (req, res) => {
   }
 });
 
-router.post('/logout', adminAuth, async (req, res) => {
+router.post(['/logout', '/admin/logout'], adminAuth, async (req, res) => {
   try {
     const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
     if (token) await blockToken(token);
