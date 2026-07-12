@@ -554,25 +554,39 @@ function WebFeaturePanel({
   if (feature === "profile") {
     return (
       <div className="page-container h-full max-w-none overflow-hidden !px-0 !py-0">
-        <div className="grid h-full min-h-0 gap-3 md:grid-cols-[0.9fr_1fr]">
-          <div className="card flex items-center gap-5 bg-primary-600 p-6 text-white">
-          <div className="flex items-center gap-4">
-              <Avatar name="John Doe" size="xl" className="border-2 border-white/70 rounded-full" />
-            <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="truncate text-xl font-black text-white">John Doe</h4>
-                  <Badge variant="success">Free</Badge>
+        <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[0.92fr_1fr]">
+          <div className="flex min-h-0 flex-col justify-between overflow-hidden rounded-3xl border border-primary-500/20 p-5 text-white shadow-[0_18px_50px_-30px_rgba(45,122,92,0.8)] [background:linear-gradient(135deg,#2d7a5c_0%,#24654c_58%,#1d4f3c_100%)]">
+            <div className="flex min-w-0 items-center gap-4">
+              <Avatar name="John Doe" size="xl" className="rounded-full border-2 border-white/70 shadow-[0_12px_30px_-20px_rgba(0,0,0,0.55)]" />
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h4 className="min-w-0 truncate text-xl font-black text-white">John Doe</h4>
+                  <Badge variant="success" className="shrink-0 bg-white/[0.92] text-primary-700">Free</Badge>
                 </div>
-              <p className="mt-1 truncate text-sm text-white/75">john.doe@example.com</p>
-                <p className="mt-0.5 text-xs text-white/65">+1 555 013 2048</p>
-                <div className="mt-2 flex gap-2">
-                  <Badge variant="success">Email verified</Badge>
-                  <Badge variant="success">Phone verified</Badge>
+                <p className="mt-1 truncate text-sm font-medium text-white/[0.82]">john.doe@example.com</p>
+                <p className="mt-0.5 text-xs text-white/[0.65]">+1 555 013 2048</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant="success" className="bg-white/[0.92] text-primary-700">Email verified</Badge>
+                  <Badge variant="success" className="bg-white/[0.92] text-primary-700">Phone verified</Badge>
                 </div>
               </div>
             </div>
+
+            <div className="mt-6 grid grid-cols-3 gap-2">
+              {[
+                ["Plan", "Free"],
+                ["Sessions", "Ready"],
+                ["Status", "Verified"]
+              ].map(([label, value]) => (
+                <div key={label} className="min-w-0 rounded-2xl bg-white/[0.14] px-3 py-2 ring-1 ring-white/[0.12]">
+                  <p className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-white/[0.62]">{label}</p>
+                  <p className="mt-1 truncate text-sm font-black text-white">{value}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="space-y-4">
+
+          <div className="min-h-0 space-y-3 overflow-hidden">
             <ProfileMenuSection
               title="Account"
               items={[
