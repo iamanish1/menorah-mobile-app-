@@ -1,11 +1,12 @@
 const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
-const jwt = require('jsonwebtoken');
+const User = require('../../models/User');
 const Counsellor = require('../../models/Counsellor');
 const Message = require('../../models/Message');
 const ChatRoom = require('../../models/ChatRoom');
 const chatRoutes = require('../../routes/chat');
 const { getPubClient, getSubClient } = require('../../config/redis');
+const { verifyUserToken } = require('../../utils/authTokens');
 
 const SOCKET_ENABLED_SERVICES = new Set(['api-ios', 'api-android', 'api-web']);
 
@@ -41,22 +42,48 @@ const resolveSocketRuntime = ({ serviceName, enableSocketsDefault = false } = {}
   };
 };
 
+const isRoomParticipant = (room, userId) => {
+  const id = userId.toString();
+  const isUser = room.user?.toString() === id;
+  const isCounsellor = room.counsellor?.user?.toString() === id;
+  return isUser || isCounsellor;
+};
+
+const loadAuthorizedRoom = async (roomId, userId) => {
+  const room = await ChatRoom.findById(roomId).populate('counsellor', 'user').lean();
+  if (!room || !isRoomParticipant(room, userId)) return null;
+  return room;
+};
+
+const emitPresenceToJoinedChatRooms = (socket, event) => {
+  for (const room of socket.rooms) {
+    if (typeof room === 'string' && room.startsWith('chat_')) {
+      socket.to(room).emit('user_status_changed', event);
+    }
+  }
+};
+
 const attachSocketHandlers = (io) => {
   io.use(async (socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication error: Token required'));
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+      const decoded = verifyUserToken(token);
       const { isTokenBlocked } = require('../../middleware/auth');
 
       if (await isTokenBlocked(token)) {
         return next(new Error('Authentication error: Token revoked'));
       }
 
+      const user = await User.findById(decoded.userId).select('firstName lastName role isActive sessionVersion').lean();
+      if (!user || !user.isActive || (decoded.sessionVersion || 0) !== (user.sessionVersion || 0)) {
+        return next(new Error('Authentication error: Invalid token'));
+      }
+
       socket.userId = decoded.userId;
-      socket.userRole = decoded.role || 'user';
-      socket.userName = '';
+      socket.userRole = user.role || 'user';
+      socket.userName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
       return next();
     } catch {
       return next(new Error('Authentication error: Invalid token'));
@@ -64,23 +91,8 @@ const attachSocketHandlers = (io) => {
   });
 
   io.on('connection', async (socket) => {
-    try {
-      const { default: mongoose } = await import('mongoose');
-      const User = mongoose.model('User');
-      const user = await User.findById(socket.userId).select('firstName lastName').lean();
-      if (user) socket.userName = `${user.firstName} ${user.lastName}`;
-    } catch {
-      // Display names are non-critical for socket startup.
-    }
-
     socket.join(`user_${socket.userId}`);
     chatRoutes.setUserOnline(socket.userId, socket.userName);
-
-    socket.broadcast.emit('user_status_changed', {
-      userId: socket.userId,
-      isOnline: true,
-      timestamp: new Date().toISOString()
-    });
 
     if (socket.userRole === 'counsellor' || socket.userRole === 'admin') {
       Counsellor.findOne({ user: socket.userId, isActive: true })
@@ -97,13 +109,10 @@ const attachSocketHandlers = (io) => {
     socket.on('join_room', async (roomId) => {
       try {
         if (!roomId) return;
-        const room = await ChatRoom.findById(roomId).populate('counsellor', 'user').lean();
+        const room = await loadAuthorizedRoom(roomId, socket.userId);
         if (!room) return;
 
         const userId = socket.userId.toString();
-        const isUser = room.user?.toString() === userId;
-        const isCounsellor = room.counsellor?.user?.toString() === userId;
-        if (!isUser && !isCounsellor) return;
 
         socket.join(`chat_${roomId}`);
         socket.to(`chat_${roomId}`).emit('user_joined', {
@@ -131,6 +140,7 @@ const attachSocketHandlers = (io) => {
         const { roomId, content, type = 'text' } = data;
         if (!roomId || !content) return;
         if (!socket.rooms.has(`chat_${roomId}`)) return;
+        if (!await loadAuthorizedRoom(roomId, socket.userId)) return;
 
         const safeContent = String(content).slice(0, 5000).replace(/<[^>]*>/g, '');
         const msg = await Message.create({
@@ -170,18 +180,21 @@ const attachSocketHandlers = (io) => {
       }
     });
 
-    socket.on('typing_start', (roomId) => {
+    socket.on('typing_start', async (roomId) => {
       if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
+      if (!await loadAuthorizedRoom(roomId, socket.userId)) return;
       socket.to(`chat_${roomId}`).emit('user_typing', { userId: socket.userId, isTyping: true });
     });
 
-    socket.on('typing_stop', (roomId) => {
+    socket.on('typing_stop', async (roomId) => {
       if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
+      if (!await loadAuthorizedRoom(roomId, socket.userId)) return;
       socket.to(`chat_${roomId}`).emit('user_typing', { userId: socket.userId, isTyping: false });
     });
 
-    socket.on('mark_read', ({ roomId, messageId }) => {
+    socket.on('mark_read', async ({ roomId, messageId }) => {
       if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
+      if (!await loadAuthorizedRoom(roomId, socket.userId)) return;
       socket.to(`chat_${roomId}`).emit('message_read', {
         messageId,
         readBy: socket.userId,
@@ -190,7 +203,7 @@ const attachSocketHandlers = (io) => {
     });
 
     socket.on('set_online_status', (isOnline) =>
-      socket.broadcast.emit('user_status_changed', {
+      emitPresenceToJoinedChatRooms(socket, {
         userId: socket.userId,
         isOnline,
         timestamp: new Date().toISOString()
@@ -199,7 +212,7 @@ const attachSocketHandlers = (io) => {
 
     socket.on('disconnect', () => {
       chatRoutes.setUserOffline(socket.userId);
-      socket.broadcast.emit('user_status_changed', {
+      emitPresenceToJoinedChatRooms(socket, {
         userId: socket.userId,
         isOnline: false,
         timestamp: new Date().toISOString()

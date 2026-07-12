@@ -4,7 +4,6 @@ const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
 const PendingApplication = require('../models/PendingApplication');
 const { optionalAuth } = require('../middleware/auth');
-const jwt = require('jsonwebtoken');
 const { getRedisClient } = require('../config/redis');
 const Booking = require('../models/Booking');
 const {
@@ -36,12 +35,6 @@ const CACHE_TTL = {
   STATIC_LOOKUPS: 30 * 60,  // 30 min — specializations + languages (rarely change)
 };
 
-// Generate JWT Token (same as in auth.js)
-const generateToken = (userId, role = 'user', fullName = '') => {
-  return jwt.sign({ userId, role, fullName }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
-  });
-};
 const crypto = require('crypto');
 const { sendVerificationEmail } = require('../utils/email');
 const { sendSMS } = require('../utils/sms');

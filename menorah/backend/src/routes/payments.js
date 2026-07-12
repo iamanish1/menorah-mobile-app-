@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { body, param, validationResult } = require('express-validator');
 const Razorpay = require('razorpay');
 const Booking = require('../models/Booking');
+const PaymentReceipt = require('../models/PaymentReceipt');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
 const {
@@ -31,6 +32,31 @@ const getRazorpayClient = () => {
     }
   }
   return razorpayClient;
+};
+
+const createPaymentReceipt = async ({ paymentId, orderId, purpose, user, booking = null, amount, currency }) => {
+  try {
+    return {
+      created: true,
+      receipt: await PaymentReceipt.create({
+        paymentId,
+        orderId,
+        purpose,
+        user,
+        booking,
+        amount,
+        currency,
+      }),
+    };
+  } catch (error) {
+    if (error.code === 11000) {
+      return {
+        created: false,
+        receipt: await PaymentReceipt.findOne({ paymentId }),
+      };
+    }
+    throw error;
+  }
 };
 
 // @route   POST /api/payments/create-checkout-session
@@ -248,7 +274,7 @@ router.post('/verify-razorpay', [
     }
 
     // Order ID validation — prevent payment-replay across different bookings
-    if (booking.razorpayOrderId && booking.razorpayOrderId !== razorpay_order_id) {
+    if (!booking.razorpayOrderId || booking.razorpayOrderId !== razorpay_order_id) {
       return res.status(400).json({ success: false, message: 'Order ID does not match booking' });
     }
 
@@ -283,26 +309,54 @@ router.post('/verify-razorpay', [
 
     // Verify amount and capture status with Razorpay API
     const razorpay = getRazorpayClient();
-    if (razorpay) {
-      try {
-        const [order, payment] = await Promise.all([
-          razorpay.orders.fetch(razorpay_order_id),
-          razorpay.payments.fetch(razorpay_payment_id),
-        ]);
+    if (!razorpay) {
+      return res.status(500).json({ success: false, message: 'Razorpay is not configured' });
+    }
 
-        const expectedAmount = Math.round(booking.amount * 100);
-        if (order.amount !== expectedAmount) {
-          return res.status(400).json({ success: false, message: 'Payment amount mismatch' });
-        }
+    let order;
+    let payment;
+    try {
+      [order, payment] = await Promise.all([
+        razorpay.orders.fetch(razorpay_order_id),
+        razorpay.payments.fetch(razorpay_payment_id),
+      ]);
 
-        if (payment.status !== 'captured' && payment.status !== 'authorized') {
-          return res.status(400).json({ success: false, message: 'Payment verification failed' });
-        }
-      } catch (err) {
-        console.error('Error fetching Razorpay order/payment:', err);
-        // Return 503 — don't silently skip amount verification
-        return res.status(503).json({ success: false, message: 'Unable to verify payment with Razorpay. Please try again.' });
+      const expectedAmount = Math.round(booking.amount * 100);
+      if (order.amount !== expectedAmount || payment.amount !== expectedAmount) {
+        return res.status(400).json({ success: false, message: 'Payment amount mismatch' });
       }
+
+      if (payment.order_id !== razorpay_order_id) {
+        return res.status(400).json({ success: false, message: 'Payment does not belong to this order' });
+      }
+
+      if (String(order.notes?.bookingId || '') !== booking._id.toString() || String(order.notes?.userId || '') !== req.user._id.toString()) {
+        return res.status(400).json({ success: false, message: 'Order does not belong to this booking' });
+      }
+
+      if (payment.status !== 'captured' && payment.status !== 'authorized') {
+        return res.status(400).json({ success: false, message: 'Payment verification failed' });
+      }
+    } catch (err) {
+      console.error('Error fetching Razorpay order/payment:', err);
+      return res.status(503).json({ success: false, message: 'Unable to verify payment with Razorpay. Please try again.' });
+    }
+
+    const paymentReceipt = await createPaymentReceipt({
+      paymentId: razorpay_payment_id,
+      orderId: razorpay_order_id,
+      purpose: 'booking',
+      user: req.user._id,
+      booking: booking._id,
+      amount: payment.amount,
+      currency: payment.currency,
+    });
+
+    if (!paymentReceipt.created) {
+      if (booking.paymentStatus === 'paid' && booking.paymentId === razorpay_payment_id) {
+        return res.json({ success: true, message: 'Payment already verified' });
+      }
+      return res.status(409).json({ success: false, message: 'Payment has already been used' });
     }
 
     booking.paymentStatus = 'paid';
@@ -544,30 +598,66 @@ router.post('/verify-subscription-payment', [
 
     // Verify amount and capture status
     const razorpay = getRazorpayClient();
-    if (razorpay) {
-      try {
-        const [order, payment] = await Promise.all([
-          razorpay.orders.fetch(razorpay_order_id),
-          razorpay.payments.fetch(razorpay_payment_id),
-        ]);
+    if (!razorpay) {
+      return res.status(500).json({ success: false, message: 'Razorpay is not configured' });
+    }
 
-        const expectedAmount = Math.round(SUBSCRIPTION_PRICES[subscriptionType] * 100);
-        if (order.amount !== expectedAmount) {
-          return res.status(400).json({ success: false, message: 'Payment amount mismatch' });
-        }
+    let order;
+    let payment;
+    try {
+      [order, payment] = await Promise.all([
+        razorpay.orders.fetch(razorpay_order_id),
+        razorpay.payments.fetch(razorpay_payment_id),
+      ]);
 
-        if (payment.status !== 'captured') {
-          return res.status(400).json({ success: false, message: 'Payment not captured' });
-        }
-      } catch (err) {
-        console.error('Error verifying subscription payment with Razorpay:', err);
-        return res.status(400).json({ success: false, message: 'Failed to verify payment with Razorpay' });
+      const expectedAmount = Math.round(SUBSCRIPTION_PRICES[subscriptionType] * 100);
+      if (order.amount !== expectedAmount || payment.amount !== expectedAmount) {
+        return res.status(400).json({ success: false, message: 'Payment amount mismatch' });
       }
+
+      if (
+        payment.order_id !== razorpay_order_id ||
+        String(order.notes?.userId || '') !== req.user._id.toString() ||
+        order.notes?.type !== 'subscription' ||
+        order.notes?.subscriptionType !== subscriptionType
+      ) {
+        return res.status(400).json({ success: false, message: 'Order does not belong to this subscription' });
+      }
+
+      if (payment.status !== 'captured') {
+        return res.status(400).json({ success: false, message: 'Payment not captured' });
+      }
+    } catch (err) {
+      console.error('Error verifying subscription payment with Razorpay:', err);
+      return res.status(400).json({ success: false, message: 'Failed to verify payment with Razorpay' });
     }
 
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const paymentReceipt = await createPaymentReceipt({
+      paymentId: razorpay_payment_id,
+      orderId: razorpay_order_id,
+      purpose: 'subscription',
+      user: user._id,
+      amount: payment.amount,
+      currency: payment.currency,
+    });
+
+    if (!paymentReceipt.created) {
+      return res.json({
+        success: true,
+        message: 'Subscription payment already verified',
+        data: {
+          subscriptionType: user.subscription?.subscriptionType,
+          startDate: user.subscription?.startDate,
+          endDate: user.subscription?.endDate,
+          isActive: user.subscription?.isActive === true,
+          alreadyProcessed: true,
+        },
+      });
     }
 
     const now = new Date();

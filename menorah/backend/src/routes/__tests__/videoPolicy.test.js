@@ -180,8 +180,9 @@ describe('video route call policy gates', () => {
       provider: 'zoom',
       joinMode: 'external_link',
       joinUrl: 'https://zoom.example/session/user',
-      hostUrl: 'https://zoom.example/session/host',
     });
+    expect(res.body.hostUrl).toBeUndefined();
+    expect(res.body.externalHostUrl).toBeUndefined();
     expect(res.body.livekitToken).toBeUndefined();
     expect(AccessToken).not.toHaveBeenCalled();
   });

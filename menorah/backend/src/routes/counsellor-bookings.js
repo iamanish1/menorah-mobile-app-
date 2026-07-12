@@ -1125,31 +1125,51 @@ router.post('/me/bookings/:id/accept', [
       }
     }
 
-    // Assign counsellor to booking
-    booking.counsellor = counsellor._id;
-    booking.assignedAt = new Date();
-    booking.status = 'confirmed';
+    const assignedAt = new Date();
+    const bookingUpdates = {
+      counsellor: counsellor._id,
+      assignedAt,
+      status: 'confirmed'
+    };
     
     // Update amount based on counsellor's rate if not already set
     if (!booking.amount || booking.amount === 0) {
-      booking.amount = (counsellor.hourlyRate / 60) * booking.sessionDuration;
-      booking.currency = counsellor.currency;
+      bookingUpdates.amount = (counsellor.hourlyRate / 60) * booking.sessionDuration;
+      bookingUpdates.currency = counsellor.currency;
     }
 
-    await booking.save();
+    const acceptedBooking = await Booking.findOneAndUpdate(
+      {
+        _id: booking._id,
+        status: { $in: ['pending', 'confirmed'] },
+        $or: [
+          { counsellor: { $exists: false } },
+          { counsellor: null }
+        ]
+      },
+      { $set: bookingUpdates },
+      { new: true, runValidators: true }
+    ).populate('user', 'firstName lastName email phone');
+
+    if (!acceptedBooking) {
+      return res.status(409).json({
+        success: false,
+        message: 'Booking was already accepted by another counsellor'
+      });
+    }
 
     // Emit Socket.IO event (will be handled in server.js)
-    if (req.app.get('io') && booking.user) {
+    if (req.app.get('io') && acceptedBooking.user) {
       const io = req.app.get('io');
       io.to(`counsellor_${counsellor._id}`).emit('booking_assigned', {
-        bookingId: booking._id,
-        userId: booking.user._id,
-        scheduledAt: booking.scheduledAt
+        bookingId: acceptedBooking._id,
+        userId: acceptedBooking.user._id,
+        scheduledAt: acceptedBooking.scheduledAt
       });
       
       // Notify user
-      io.to(`user_${booking.user._id}`).emit('booking_confirmed', {
-        bookingId: booking._id,
+      io.to(`user_${acceptedBooking.user._id}`).emit('booking_confirmed', {
+        bookingId: acceptedBooking._id,
         counsellorName: `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim() || 'Counsellor'
       });
     }
@@ -1159,9 +1179,9 @@ router.post('/me/bookings/:id/accept', [
       message: 'Booking accepted successfully',
       data: {
         booking: {
-          id: booking._id,
-          status: booking.status,
-          assignedAt: booking.assignedAt
+          id: acceptedBooking._id,
+          status: acceptedBooking.status,
+          assignedAt: acceptedBooking.assignedAt
         }
       }
     });
@@ -1533,7 +1553,14 @@ router.put('/me/profile', [
       return res.status(404).json({ success: false, message: 'Counsellor profile not found' });
     }
 
-    const { specialization, specializations, experience, hourlyRate, bio, languages, licenseNumber, availability } = req.body;
+    if (req.body.licenseNumber !== undefined || req.body.hourlyRate !== undefined) {
+      return res.status(403).json({
+        success: false,
+        message: 'License number and session rate are admin-controlled. Contact support to request changes.'
+      });
+    }
+
+    const { specialization, specializations, experience, bio, languages, availability } = req.body;
 
     if (specializations !== undefined || specialization !== undefined) {
       const nextSpecializations = normalizeTagList(
@@ -1552,7 +1579,6 @@ router.put('/me/profile', [
     }
 
     if (experience !== undefined) counsellor.experience = experience;
-    if (hourlyRate !== undefined) counsellor.hourlyRate = hourlyRate;
     if (bio !== undefined) counsellor.bio = bio;
     if (languages !== undefined) {
       const nextLanguages = normalizeTagList(languages);
@@ -1566,7 +1592,6 @@ router.put('/me/profile', [
 
       counsellor.languages = nextLanguages;
     }
-    if (licenseNumber !== undefined) counsellor.licenseNumber = licenseNumber;
     if (availability !== undefined) {
       const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
       days.forEach((day) => {

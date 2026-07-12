@@ -45,12 +45,24 @@ const createCorsOptions = (corsOrigin) => ({
   maxAge: 86400
 });
 
+const getTrustProxySetting = () => {
+  const raw = process.env.TRUST_PROXY;
+  if (raw === undefined || raw === null || raw === '') return 1;
+
+  const value = String(raw).trim().toLowerCase();
+  if (['false', '0', 'off', 'no'].includes(value)) return false;
+  if (['true', 'on', 'yes'].includes(value)) return true;
+
+  const hops = Number.parseInt(value, 10);
+  return Number.isFinite(hops) && hops >= 0 ? hops : raw;
+};
+
 const createExpressApp = ({ serviceName, getHealthState }) => {
   const app = express();
   const corsOrigin = createCorsOrigin();
   const corsOptions = createCorsOptions(corsOrigin);
 
-  app.set('trust proxy', 1);
+  app.set('trust proxy', getTrustProxySetting());
   app.set('serviceName', serviceName);
 
   app.use(cors(corsOptions));
@@ -113,5 +125,6 @@ module.exports = {
   createExpressApp,
   createCorsOrigin,
   createCorsOptions,
-  getAllowedOrigins
+  getAllowedOrigins,
+  getTrustProxySetting
 };

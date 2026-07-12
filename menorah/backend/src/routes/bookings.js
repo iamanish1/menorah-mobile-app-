@@ -25,20 +25,27 @@ const FREE_CONSULTATION_PROMO_CODE = 'MENORAHFREECALL';
 const SLOT_TAKEN_MESSAGE = 'This time slot was just booked by someone else. Please choose another available slot.';
 
 const normalizePromoCode = (value) => String(value || '').trim().toUpperCase();
-const formatVideoCall = (videoCall = {}) => ({
-  provider: videoCall.provider,
-  joinMode: videoCall.joinMode,
-  externalProviderName: videoCall.externalProviderName,
-  externalJoinUrl: videoCall.externalJoinUrl,
-  externalHostUrl: videoCall.externalHostUrl,
-  region: videoCall.region,
-  status: videoCall.status,
-  policyReason: videoCall.policyReason,
-  lastPolicyCheckAt: videoCall.lastPolicyCheckAt,
-  configuredAt: videoCall.configuredAt,
-  roomId: videoCall.roomId,
-  roomUrl: videoCall.roomUrl
-});
+const formatVideoCall = (videoCall = {}, { includeHostUrl = false } = {}) => {
+  const payload = {
+    provider: videoCall.provider,
+    joinMode: videoCall.joinMode,
+    externalProviderName: videoCall.externalProviderName,
+    externalJoinUrl: videoCall.externalJoinUrl,
+    region: videoCall.region,
+    status: videoCall.status,
+    policyReason: videoCall.policyReason,
+    lastPolicyCheckAt: videoCall.lastPolicyCheckAt,
+    configuredAt: videoCall.configuredAt,
+    roomId: videoCall.roomId,
+    roomUrl: videoCall.roomUrl
+  };
+
+  if (includeHostUrl) {
+    payload.externalHostUrl = videoCall.externalHostUrl;
+  }
+
+  return payload;
+};
 
 // @route   POST /api/bookings
 // @desc    Create a new booking
@@ -550,7 +557,7 @@ router.get('/:id', [
         code: booking.promo.code,
         discountAmount: booking.promo.discountAmount || 0
       } : undefined,
-      videoCall: formatVideoCall(booking.videoCall),
+      videoCall: formatVideoCall(booking.videoCall, { includeHostUrl: isCounsellor }),
       canBeCancelled: booking.canBeCancelled,
       canBeRescheduled: booking.canBeRescheduled,
       createdAt: booking.createdAt,
@@ -633,7 +640,7 @@ router.patch('/:id/call-link', [
       message: 'External session link saved.',
       data: {
         bookingId: booking._id,
-        videoCall: formatVideoCall(booking.videoCall)
+        videoCall: formatVideoCall(booking.videoCall, { includeHostUrl: true })
       }
     });
   } catch (error) {

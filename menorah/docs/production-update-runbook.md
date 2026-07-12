@@ -24,6 +24,14 @@ The script:
 - Runs health checks.
 - Rolls back automatically if health checks fail.
 
+For security migrations, run the backend migration step after pulling the intended commit and before exposing the updated services:
+
+```bash
+cd /opt/menorah/menorah-mobile-app-/menorah/backend
+npm ci
+npm run migrate
+```
+
 Deploy state:
 
 ```text
@@ -55,6 +63,7 @@ The rollback script:
 - [ ] No active incident is in progress.
 - [ ] Branch has the intended commit.
 - [ ] No production env files are changed by git.
+- [ ] `ADMIN_MFA_REQUIRED=true`, `ADMIN_JWT_EXPIRES_IN=30m`, `JWT_ISSUER=menorah-api`, and `TRUST_PROXY=1` are present in production env.
 - [ ] If LiveKit config changed, `deploy/livekit/livekit.yaml` was updated on the Hostinger VPS outside git.
 - [ ] Hostinger firewall still allows LiveKit media ports `7881/tcp` and `50000-50100/udp`.
 - [ ] Hybrid calling policy is reviewed: non-blocked countries use LiveKit, countries in `LIVEKIT_BLOCKED_COUNTRIES` use approved external links.
@@ -70,8 +79,9 @@ The rollback script:
 - [ ] `livekit` container is running.
 - [ ] iOS subscription payment routes still return 404.
 - [ ] Admin auth is still protected.
-- [ ] User login works.
-- [ ] Admin login works.
+- [ ] User login works and cannot mint an admin token.
+- [ ] Admin login requires the `/auth/admin/login` MFA flow and receives an admin-purpose token.
+- [ ] Email verification requires both email and code; code-only legacy verification fails.
 - [ ] Article list loads.
 - [ ] Booking flow smoke test passes.
 - [ ] Video session smoke test joins from counsellor and user clients.

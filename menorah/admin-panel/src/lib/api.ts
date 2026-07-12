@@ -49,13 +49,19 @@ class AdminApiClient {
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   login(email: string, password: string) {
-    return this.request<{ user: User; token: string }>(() =>
-      this.client.post('/auth/login', { email, password })
+    return this.request<{ user?: User; token?: string; mfaRequired?: boolean; challengeId?: string }>(() =>
+      this.client.post('/auth/admin/login', { email, password })
+    );
+  }
+
+  verifyMfa(challengeId: string, otp: string) {
+    return this.request<{ user: User; token: string; mfaRequired?: boolean }>(() =>
+      this.client.post('/auth/admin/login/mfa', { challengeId, otp })
     );
   }
 
   logout() {
-    return this.request<void>(() => this.client.post('/auth/logout'));
+    return this.request<void>(() => this.client.post('/auth/admin/logout'));
   }
 
   // ── Stats ───────────────────────────────────────────────────────────────────
@@ -109,7 +115,6 @@ class AdminApiClient {
       counsellorId: string;
       status: string;
       username: string;
-      password: string;
       credentialEmailSent?: boolean;
       credentialEmailRecipient?: string;
     }>(

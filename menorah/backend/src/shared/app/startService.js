@@ -1,5 +1,6 @@
 const rateLimit = require('express-rate-limit');
 const { RedisStore } = require('rate-limit-redis');
+const net = require('net');
 require('dotenv').config();
 
 const connectDB = require('../../config/database');
@@ -39,10 +40,11 @@ const makeRateLimitStore = (redisReady) =>
 
 const firstHeaderValue = (value) => {
   const rawValue = Array.isArray(value) ? value[0] : value;
-  return String(rawValue || '')
+  const candidate = String(rawValue || '')
     .split(',')
     .map((item) => item.trim())
     .find(Boolean) || '';
+  return net.isIP(candidate) ? candidate : '';
 };
 
 const getRateLimitClientIp = (req) => (
@@ -79,6 +81,10 @@ const mountRateLimiters = (app, { redisReady }) => {
   });
 
   app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/admin/login', authLimiter);
+  app.use('/api/auth/admin/login/mfa', authLimiter);
+  app.use('/api/auth/google', authLimiter);
+  app.use('/api/auth/apple', authLimiter);
   app.use('/api/auth/register', authLimiter);
   app.use('/api/auth/forgot-password', authLimiter);
   app.use('/api/auth/reset-password', authLimiter);

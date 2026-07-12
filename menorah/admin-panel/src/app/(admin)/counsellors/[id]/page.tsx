@@ -198,7 +198,7 @@ export default function CounsellorDetailPage() {
   const [credModal, setCredModal] = useState<{
     open: boolean;
     username: string;
-    password: string;
+    password?: string;
     emailSent?: boolean;
     emailRecipient?: string;
   }>({ open: false, username: '', password: '' });
@@ -250,7 +250,7 @@ export default function CounsellorDetailPage() {
       setCredModal({
         open: true,
         username: res.data.username,
-        password: res.data.password,
+        password: '',
         emailSent: res.data.credentialEmailSent,
         emailRecipient: res.data.credentialEmailRecipient
       });
@@ -578,12 +578,15 @@ export default function CounsellorDetailPage() {
         <div className="space-y-4">
           <div className={`rounded-xl border px-4 py-3 text-sm ${credModal.emailSent === true ? 'border-green-200 bg-green-50 text-green-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
             {credModal.emailSent === true
-              ? `Credentials were emailed to ${credModal.emailRecipient || credModal.username}. The password is also shown here once.`
+              ? `Credentials were emailed to ${credModal.emailRecipient || credModal.username}.`
               : credModal.emailSent === false
-                ? 'Credentials were generated, but the email was not sent. Share these credentials now; the password will not be shown again.'
+                ? 'Credentials were generated, but the email was not sent. Generate a password reset before sharing access.'
                 : 'Share these with the counsellor. Password shown only once.'}
           </div>
-          {[{ label: 'Username', value: credModal.username }, { label: 'Password', value: credModal.password }].map(({ label, value }) => (
+          {[
+            { label: 'Username', value: credModal.username },
+            ...(credModal.password ? [{ label: 'Password', value: credModal.password }] : [])
+          ].map(({ label, value }) => (
             <div key={label}>
               <label className="mb-1 block text-xs font-medium text-gray-500">{label}</label>
               <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">

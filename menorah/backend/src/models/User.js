@@ -20,7 +20,8 @@ const userSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Password is required'],
-    minlength: [8, 'Password must be at least 8 characters long']
+    minlength: [8, 'Password must be at least 8 characters long'],
+    select: false
   },
   isEmailVerified: {
     type: Boolean,
@@ -30,9 +31,9 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  emailVerificationToken: String,
-  passwordResetToken: String,
-  passwordResetExpires: Date,
+  emailVerificationToken: { type: String, select: false },
+  passwordResetToken: { type: String, select: false },
+  passwordResetExpires: { type: Date, select: false },
 
   // Profile information
   firstName: {
@@ -103,7 +104,12 @@ const userSchema = new mongoose.Schema({
   },
   lockUntil: {
     type: Date,
-    default: null
+    default: null,
+    select: false
+  },
+  sessionVersion: {
+    type: Number,
+    default: 0
   },
 
   // Subscription and billing
@@ -151,15 +157,11 @@ const userSchema = new mongoose.Schema({
   socialAuth: {
     googleSub: {
       type: String,
-      default: null,
-      index: true,
-      sparse: true
+      default: null
     },
     appleSub: {
       type: String,
-      default: null,
-      index: true,
-      sparse: true
+      default: null
     },
     appleEmailPrivateRelay: {
       type: Boolean,
@@ -206,6 +208,8 @@ userSchema.index({ 'kyc.status': 1 });
 // Sparse indexes on token fields — speeds up password-reset and email-verify lookups
 userSchema.index({ passwordResetToken:     1 }, { sparse: true });
 userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
+userSchema.index({ 'socialAuth.googleSub': 1 }, { unique: true, sparse: true });
+userSchema.index({ 'socialAuth.appleSub': 1 }, { unique: true, sparse: true });
 
 // Pre-save middleware to hash password
 userSchema.pre('save', async function(next) {

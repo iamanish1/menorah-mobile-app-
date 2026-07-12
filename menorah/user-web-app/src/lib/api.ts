@@ -109,8 +109,8 @@ class ApiClient {
     return res;
   }
 
-  async verifyEmail(code: string): Promise<ApiResponse<{ token: string }>> {
-    const res = await this.post<{ token: string }>('/auth/verify-email', { code });
+  async verifyEmail(email: string, code: string): Promise<ApiResponse<{ token: string }>> {
+    const res = await this.post<{ token: string }>('/auth/verify-email', { email, code });
     if (res.success && res.data?.token) authStorage.setToken(res.data.token);
     return res;
   }

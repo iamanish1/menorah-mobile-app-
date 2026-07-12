@@ -5,7 +5,7 @@ const COOKIE_NAME = 'mn_admin_auth';
 function setCookie(value: string) {
   if (typeof document === 'undefined') return;
   // Admin sessions are shorter — 8 hours
-  const maxAge = 8 * 60 * 60;
+  const maxAge = 30 * 60;
   document.cookie = `${COOKIE_NAME}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Strict; Secure`;
 }
 

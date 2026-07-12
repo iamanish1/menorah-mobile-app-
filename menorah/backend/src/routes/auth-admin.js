@@ -5,15 +5,68 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { adminAuth } = require('../middleware/auth');
 const { getRedisClient } = require('../config/redis');
+const { sendOTPEmail } = require('../utils/email');
+const { signAdminToken } = require('../utils/authTokens');
 
 const router = express.Router();
 
-const generateToken = (userId, role = 'admin') => {
-  return jwt.sign(
-    { userId, role },
-    process.env.JWT_SECRET,
-    { algorithm: 'HS256', expiresIn: process.env.ADMIN_JWT_EXPIRES_IN || '8h' }
+const ADMIN_MFA_TTL_SECONDS = 10 * 60;
+const MAX_ADMIN_MFA_ATTEMPTS = 5;
+const adminMfaKey = (challengeId) => `pending:admin-mfa:${challengeId}`;
+
+const hashOtp = (otp) => crypto.createHash('sha256').update(otp).digest('hex');
+
+const checkOtp = (storedHash, otp) => {
+  try {
+    return crypto.timingSafeEqual(Buffer.from(storedHash, 'hex'), Buffer.from(hashOtp(otp), 'hex'));
+  } catch {
+    return false;
+  }
+};
+
+const isAdminMfaRequired = () =>
+  process.env.ADMIN_MFA_REQUIRED === 'true' ||
+  (process.env.NODE_ENV === 'production' && process.env.ADMIN_MFA_REQUIRED !== 'false');
+
+const createAdminMfaChallenge = async (user) => {
+  const challengeId = crypto.randomUUID();
+  const otp = crypto.randomInt(100000, 999999).toString();
+
+  await getRedisClient().setEx(
+    adminMfaKey(challengeId),
+    ADMIN_MFA_TTL_SECONDS,
+    JSON.stringify({
+      userId: user._id.toString(),
+      otp: hashOtp(otp),
+      attempts: 0,
+    })
   );
+
+  const sent = await sendOTPEmail(user.email, otp, `${user.firstName} ${user.lastName}`);
+  if (!sent) {
+    await getRedisClient().del(adminMfaKey(challengeId));
+    throw new Error('Failed to send admin MFA code');
+  }
+
+  return challengeId;
+};
+
+const readAdminMfaChallenge = async (challengeId) => {
+  try {
+    const raw = await getRedisClient().get(adminMfaKey(challengeId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const updateAdminMfaChallenge = async (challengeId, updates) => {
+  try {
+    const current = await readAdminMfaChallenge(challengeId);
+    if (!current) return;
+    const ttl = await getRedisClient().ttl(adminMfaKey(challengeId));
+    await getRedisClient().setEx(adminMfaKey(challengeId), Math.max(ttl, 1), JSON.stringify({ ...current, ...updates }));
+  } catch {}
 };
 
 const blockToken = async (token) => {
@@ -51,7 +104,7 @@ router.post('/login', [
     }
 
     const { email, password } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password +lockUntil');
 
     if (!user || !user.isActive) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -74,8 +127,20 @@ router.post('/login', [
       return res.status(403).json({ success: false, message: 'Access denied. Admin accounts only.' });
     }
 
+    if (isAdminMfaRequired()) {
+      const challengeId = await createAdminMfaChallenge(user);
+      return res.json({
+        success: true,
+        message: 'MFA verification required',
+        data: {
+          mfaRequired: true,
+          challengeId,
+        },
+      });
+    }
+
     await user.resetLoginAttempts();
-    const token = generateToken(user._id, user.role);
+    const token = signAdminToken(user);
 
     return res.json({
       success: true,
@@ -83,10 +148,64 @@ router.post('/login', [
       data: {
         user: serializeAdmin(user),
         token,
+        mfaRequired: false,
       },
     });
   } catch (error) {
     console.error('Admin login error:', error.message);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+router.post('/login/mfa', [
+  body('challengeId').isUUID(),
+  body('otp').matches(/^\d{6}$/),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const { challengeId, otp } = req.body;
+    const challenge = await readAdminMfaChallenge(challengeId);
+    if (!challenge) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired MFA challenge' });
+    }
+
+    if (challenge.attempts >= MAX_ADMIN_MFA_ATTEMPTS) {
+      await getRedisClient().del(adminMfaKey(challengeId));
+      return res.status(401).json({ success: false, message: 'Invalid or expired MFA challenge' });
+    }
+
+    if (!checkOtp(challenge.otp, otp)) {
+      await updateAdminMfaChallenge(challengeId, { attempts: challenge.attempts + 1 });
+      return res.status(401).json({ success: false, message: 'Invalid or expired MFA challenge' });
+    }
+
+    const user = await User.findById(challenge.userId).select('+lockUntil');
+    if (!user || !user.isActive || user.role !== 'admin') {
+      await getRedisClient().del(adminMfaKey(challengeId));
+      return res.status(401).json({ success: false, message: 'Invalid or expired MFA challenge' });
+    }
+
+    await Promise.all([
+      user.resetLoginAttempts(),
+      getRedisClient().del(adminMfaKey(challengeId)),
+    ]);
+
+    const token = signAdminToken(user);
+    return res.json({
+      success: true,
+      message: 'Login successful',
+      data: {
+        user: serializeAdmin(user),
+        token,
+        mfaRequired: false,
+      },
+    });
+  } catch (error) {
+    console.error('Admin MFA login error:', error.message);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
@@ -110,7 +229,7 @@ router.get('/me', adminAuth, async (req, res) => {
 
 router.post('/logout', adminAuth, async (req, res) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
     if (token) await blockToken(token);
     return res.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {

@@ -12,8 +12,7 @@ const COOKIE_NAME = 'mn_auth';
 
 function setCookie(value: string) {
   if (typeof document === 'undefined') return;
-  const maxAge = 7 * 24 * 60 * 60; // 7 days
-  document.cookie = `${COOKIE_NAME}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Strict; Secure`;
+  document.cookie = `${COOKIE_NAME}=${encodeURIComponent(value)}; path=/; SameSite=Strict; Secure`;
 }
 
 function clearCookie() {
@@ -26,8 +25,8 @@ export const authStorage = {
     if (typeof window === 'undefined') return null;
     const sessionToken = sessionStorage.getItem(TOKEN_KEY);
     if (sessionToken) return sessionToken;
-    // Fall back to cookie so the session survives new tabs / browser restarts.
-    // The cookie carries the same token with a 7-day max-age.
+    // Fall back to the session cookie so route middleware and same-browser tabs
+    // can share the session without persisting the token across browser restarts.
     const match = document.cookie.match(/(?:^|;\s*)mn_auth=([^;]+)/);
     if (match) {
       const token = decodeURIComponent(match[1]);

@@ -129,7 +129,7 @@ const baseCallPayload = ({ booking, policy }) => ({
   duration: booking.sessionDuration
 });
 
-const externalPayload = ({ booking, policy }) => {
+const externalPayload = ({ booking, policy, includeHostUrl = false }) => {
   const provider = booking.videoCall?.provider || policy.provider;
   const payload = {
     ...baseCallPayload({ booking, policy: { ...policy, provider, joinMode: 'external_link' } }),
@@ -137,10 +137,13 @@ const externalPayload = ({ booking, policy }) => {
     providerName: booking.videoCall?.externalProviderName || providerDisplayName(provider),
     externalProviderName: booking.videoCall?.externalProviderName || providerDisplayName(provider),
     joinUrl: booking.videoCall?.externalJoinUrl,
-    hostUrl: booking.videoCall?.externalHostUrl,
-    externalJoinUrl: booking.videoCall?.externalJoinUrl,
-    externalHostUrl: booking.videoCall?.externalHostUrl
+    externalJoinUrl: booking.videoCall?.externalJoinUrl
   };
+
+  if (includeHostUrl) {
+    payload.hostUrl = booking.videoCall?.externalHostUrl;
+    payload.externalHostUrl = booking.videoCall?.externalHostUrl;
+  }
 
   if (!payload.joinUrl) {
     return {
@@ -243,7 +246,7 @@ router.post('/create-room', [
     await updateBookingPolicy(booking, policy);
     if (policy.joinMode === 'external_link') {
       await booking.save();
-      const payload = externalPayload({ booking, policy });
+      const payload = externalPayload({ booking, policy, includeHostUrl: isCounsellor });
       return respondWithCallPayload(res, payload, payload.success ? 200 : 409);
     }
     if (policy.joinMode === 'disabled') {
@@ -310,7 +313,7 @@ router.get('/room/:bookingId', [
     await updateBookingPolicy(booking, policy);
     if (policy.joinMode === 'external_link') {
       await booking.save();
-      const payload = externalPayload({ booking, policy });
+      const payload = externalPayload({ booking, policy, includeHostUrl: isCounsellor });
       return respondWithCallPayload(res, payload, payload.success ? 200 : 409);
     }
     if (policy.joinMode === 'disabled') {
@@ -403,7 +406,7 @@ router.post('/room/:bookingId/join', [
         });
       }
 
-      const payload = externalPayload({ booking, policy });
+      const payload = externalPayload({ booking, policy, includeHostUrl: isCounsellor });
       return respondWithCallPayload(res, payload, payload.success ? 200 : 409);
     }
 

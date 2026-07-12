@@ -35,7 +35,7 @@ function CounsellorsContent() {
   const [credModal, setCredModal] = useState<{
     open: boolean;
     username: string;
-    password: string;
+    password?: string;
     emailSent?: boolean;
     emailRecipient?: string;
   }>({ open: false, username: '', password: '' });
@@ -65,7 +65,7 @@ function CounsellorsContent() {
       setCredModal({
         open: true,
         username: res.data.username,
-        password: res.data.password,
+        password: '',
         emailSent: res.data.credentialEmailSent,
         emailRecipient: res.data.credentialEmailRecipient
       });
@@ -335,12 +335,15 @@ function CounsellorsContent() {
         <div className="space-y-4">
           <div className={`border rounded-xl px-4 py-3 text-sm ${credModal.emailSent === true ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
             {credModal.emailSent === true
-              ? `Credentials were emailed to ${credModal.emailRecipient || credModal.username}. The password is also shown here once.`
+              ? `Credentials were emailed to ${credModal.emailRecipient || credModal.username}.`
               : credModal.emailSent === false
-                ? 'Credentials were generated, but the email was not sent. Share these credentials now; the password will not be shown again.'
+                ? 'Credentials were generated, but the email was not sent. Generate a password reset before sharing access.'
                 : 'Share these credentials with the counsellor. The password will not be shown again.'}
           </div>
-          {[{ label: 'Username (Email)', value: credModal.username, key: 'user' }, { label: 'Password', value: credModal.password, key: 'pass' }].map(({ label, value, key }) => (
+          {[
+            { label: 'Username (Email)', value: credModal.username, key: 'user' },
+            ...(credModal.password ? [{ label: 'Password', value: credModal.password, key: 'pass' }] : [])
+          ].map(({ label, value, key }) => (
             <div key={key}>
               <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
               <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">

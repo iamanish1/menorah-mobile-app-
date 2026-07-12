@@ -132,7 +132,7 @@ router.put('/profile', auth, upload.single('profileImage'), [
       timezone
     } = req.body;
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).select('+password');
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -377,6 +377,7 @@ router.put('/change-password', [
 
     // Update password
     user.password = newPassword;
+    user.sessionVersion = (user.sessionVersion || 0) + 1;
     await user.save();
 
     res.json({
@@ -411,7 +412,7 @@ router.delete('/account', [
 
     const { password } = req.body;
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).select('+password');
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -430,6 +431,7 @@ router.delete('/account', [
 
     // Soft delete - mark account as inactive
     user.isActive = false;
+    user.sessionVersion = (user.sessionVersion || 0) + 1;
     await user.save();
 
     res.json({

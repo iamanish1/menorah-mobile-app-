@@ -921,6 +921,13 @@ router.put('/counsellors/:id/approve', [
     }
 
     const existingUser = existingByEmail || existingByPhone;
+    if (existingUser && existingUser.role !== 'user') {
+      return res.status(400).json({
+        success: false,
+        message: 'Existing privileged accounts cannot be converted through counsellor application approval.'
+      });
+    }
+
     if (existingUser) {
       const existingCounsellor = await Counsellor.findOne({ user: existingUser._id });
       if (existingCounsellor) {
@@ -945,6 +952,7 @@ router.put('/counsellors/:id/approve', [
     user.isActive = true;
     user.isEmailVerified = true;
     user.isPhoneVerified = true;
+    user.sessionVersion = (user.sessionVersion || 0) + 1;
     await user.save();
 
     const counsellor = new Counsellor({
@@ -983,13 +991,12 @@ router.put('/counsellors/:id/approve', [
     res.json({
       success: true,
       message: credentialEmailSent
-        ? 'Counsellor approved. Credentials were emailed and are shown below once.'
-        : 'Counsellor approved. Credentials were generated, but the email was not sent. Share them now; the password will not be shown again.',
+        ? 'Counsellor approved. Credentials were emailed to the counsellor.'
+        : 'Counsellor approved, but the credential email was not sent. Generate a password reset before sharing access.',
       data: {
         counsellorId: counsellor._id,
         status: 'approved',
         username: user.email,
-        password: plainPassword,
         credentialEmailSent,
         credentialEmailRecipient: user.email
       }

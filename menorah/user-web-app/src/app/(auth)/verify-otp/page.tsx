@@ -81,7 +81,7 @@ function VerifyOtpForm() {
     setLoading(true);
     setError('');
     const res = verificationMode === 'account'
-      ? await verifyEmail(code)
+      ? await verifyEmail(pendingEmail, code)
       : await verifyEmailOTP(pendingEmail, code);
     setLoading(false);
     if (!res.success) {
