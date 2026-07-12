@@ -131,6 +131,10 @@
   margin: 0;
 }
 
+.profileMediaAnchor {
+  scroll-margin-top: 6rem;
+}
+
 .requiredMediaCard {
   border-color: rgba(245, 158, 11, 0.35);
   box-shadow: 0 16px 44px rgba(73, 59, 31, 0.08);

@@ -103,6 +103,10 @@ export default function DashboardPage() {
 
   const handleToggleAvailability = async () => {
     if (!counsellorStatus || statusToggling) return;
+    if (!profileMediaReady) {
+      router.push('/profile#profile-media');
+      return;
+    }
     const newStatus = !counsellorStatus.isAvailable;
     setStatusToggling(true);
     // Optimistic update — show change immediately, then re-validate from server
@@ -222,15 +226,13 @@ export default function DashboardPage() {
             size="sm"
             onClick={handleToggleAvailability}
             isLoading={statusToggling}
-            disabled={statusToggling || (!profileMediaReady && !counsellorStatus.isAvailable)}
+            disabled={statusToggling}
           >
-            {effectiveAvailability
+            {!profileMediaReady
+              ? 'Complete Profile Setup'
+              : effectiveAvailability
               ? 'Set Unavailable'
-              : profileMediaReady
-              ? 'Set Available'
-              : counsellorStatus.isAvailable
-              ? 'Set Unavailable'
-              : 'Complete Profile First'}
+              : 'Set Available'}
           </Button>
         </div>
       )}

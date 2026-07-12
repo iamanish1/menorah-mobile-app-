@@ -883,131 +883,133 @@ export default function ProfilePage() {
 
         {/* Info Cards */}
         <div className={styles.infoSection}>
-          <Card padding="lg" className={`${styles.infoCard} ${!profileMediaComplete ? styles.requiredMediaCard : ''}`}>
-            <div className={styles.cardHeaderRow}>
-              <div className={styles.cardHeaderLeft}>
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className={styles.cardIcon}>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.55-2.28A1 1 0 0121 8.62v6.76a1 1 0 01-1.45.9L15 14M4 6h8a3 3 0 013 3v6a3 3 0 01-3 3H4a2 2 0 01-2-2V8a2 2 0 012-2z" />
-                </svg>
-                <div>
-                  <h3 className={styles.cardTitle}>Required Profile Media</h3>
-                  <p className={styles.mediaSubtitle}>Add a clear selfie and a short voice intro before your profile appears to users.</p>
-                </div>
-              </div>
-              <Badge variant={profileMediaComplete ? 'success' : 'warning'} size="sm">
-                {profileMediaComplete ? 'Complete' : 'Required'}
-              </Badge>
-            </div>
-
-            {!profileMediaComplete && (
-              <div className={styles.mediaNotice}>
-                Your account is approved, but your public profile stays hidden until both media items are saved.
-              </div>
-            )}
-
-            <div className={styles.mediaGrid}>
-              <div className={styles.mediaPanel}>
-                <div className={styles.mediaPanelHeader}>
-                  <p className={styles.mediaPanelTitle}>Profile selfie</p>
-                  <span className={currentProfileImage ? styles.mediaStatusDone : styles.mediaStatusMissing}>
-                    {currentProfileImage ? 'Added' : 'Missing'}
-                  </span>
-                </div>
-                <div className={styles.selfiePreviewBox}>
-                  {currentProfileImage ? (
-                    <img src={currentProfileImage} alt="Counsellor profile selfie preview" className={styles.selfiePreviewImage} />
-                  ) : (
-                    <div className={styles.selfiePreviewEmpty}>
-                      <span>
-                        {(profile?.firstName?.charAt(0) || 'C').toUpperCase()}
-                        {(profile?.lastName?.charAt(0) || '').toUpperCase()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <p className={styles.mediaHelper}>Use a well-lit, front-facing photo. This becomes your public profile image.</p>
-                <input
-                  ref={selfieInputRef}
-                  type="file"
-                  accept="image/*"
-                  className={styles.hiddenFileInput}
-                  onChange={handleSelfieChange}
-                />
-                <Button variant="outline" size="sm" onClick={() => selfieInputRef.current?.click()}>
-                  {currentProfileImage ? 'Replace selfie' : 'Add selfie'}
-                </Button>
-                {selfieFile && (
-                  <p className={styles.mediaHelper}>Background cleanup happens after you save.</p>
-                )}
-              </div>
-
-              <div className={styles.mediaPanel}>
-                <div className={styles.mediaPanelHeader}>
-                  <p className={styles.mediaPanelTitle}>Voice intro</p>
-                  <span className={currentVoiceIntroUrl ? styles.mediaStatusDone : styles.mediaStatusMissing}>
-                    {currentVoiceIntroUrl ? 'Added' : 'Missing'}
-                  </span>
-                </div>
-                <div className={styles.voiceRecorderBox}>
-                  {currentVoiceIntroUrl ? (
-                    <audio className={styles.voiceAudio} src={currentVoiceIntroUrl} controls />
-                  ) : (
-                    <div className={styles.voiceEmpty}>Introduce your approach in a calm, short message.</div>
-                  )}
-                  <div className={styles.recordingMeter} aria-hidden="true">
-                    <span style={{ width: isRecordingVoice ? '100%' : '0%' }} />
+          <div id="profile-media" className={styles.profileMediaAnchor}>
+            <Card padding="lg" className={`${styles.infoCard} ${!profileMediaComplete ? styles.requiredMediaCard : ''}`}>
+              <div className={styles.cardHeaderRow}>
+                <div className={styles.cardHeaderLeft}>
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className={styles.cardIcon}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.55-2.28A1 1 0 0121 8.62v6.76a1 1 0 01-1.45.9L15 14M4 6h8a3 3 0 013 3v6a3 3 0 01-3 3H4a2 2 0 01-2-2V8a2 2 0 012-2z" />
+                  </svg>
+                  <div>
+                    <h3 className={styles.cardTitle}>Required Profile Media</h3>
+                    <p className={styles.mediaSubtitle}>Add a clear selfie and a short voice intro before your profile appears to users.</p>
                   </div>
-                  <p className={styles.mediaHelper}>
-                    {isRecordingVoice
-                      ? `Recording ${recordingSeconds}s`
-                      : voiceIntroDuration
-                      ? `Recorded ${voiceIntroDuration.toFixed(1)}s`
-                      : 'Record your intro, then stop when finished.'}
-                  </p>
                 </div>
-                <input
-                  ref={voiceInputRef}
-                  type="file"
-                  accept="audio/*,.webm,.ogg,.mp3,.m4a,.wav"
-                  className={styles.hiddenFileInput}
-                  onChange={handleVoiceIntroFileChange}
-                />
-                <div className={styles.voiceActions}>
-                  <Button
-                    variant={isRecordingVoice ? 'danger' : 'outline'}
-                    size="sm"
-                    onClick={isRecordingVoice ? stopVoiceRecording : startVoiceRecording}
-                    disabled={savingMedia}
-                  >
-                    {isRecordingVoice ? 'Stop recording' : currentVoiceIntroUrl ? 'Record again' : 'Record intro'}
+                <Badge variant={profileMediaComplete ? 'success' : 'warning'} size="sm">
+                  {profileMediaComplete ? 'Complete' : 'Required'}
+                </Badge>
+              </div>
+
+              {!profileMediaComplete && (
+                <div className={styles.mediaNotice}>
+                  Your account is approved, but your public profile stays hidden until both media items are saved.
+                </div>
+              )}
+
+              <div className={styles.mediaGrid}>
+                <div className={styles.mediaPanel}>
+                  <div className={styles.mediaPanelHeader}>
+                    <p className={styles.mediaPanelTitle}>Profile selfie</p>
+                    <span className={currentProfileImage ? styles.mediaStatusDone : styles.mediaStatusMissing}>
+                      {currentProfileImage ? 'Added' : 'Missing'}
+                    </span>
+                  </div>
+                  <div className={styles.selfiePreviewBox}>
+                    {currentProfileImage ? (
+                      <img src={currentProfileImage} alt="Counsellor profile selfie preview" className={styles.selfiePreviewImage} />
+                    ) : (
+                      <div className={styles.selfiePreviewEmpty}>
+                        <span>
+                          {(profile?.firstName?.charAt(0) || 'C').toUpperCase()}
+                          {(profile?.lastName?.charAt(0) || '').toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <p className={styles.mediaHelper}>Use a well-lit, front-facing photo. This becomes your public profile image.</p>
+                  <input
+                    ref={selfieInputRef}
+                    type="file"
+                    accept="image/*"
+                    className={styles.hiddenFileInput}
+                    onChange={handleSelfieChange}
+                  />
+                  <Button variant="outline" size="sm" onClick={() => selfieInputRef.current?.click()}>
+                    {currentProfileImage ? 'Replace selfie' : 'Add selfie'}
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => voiceInputRef.current?.click()}
-                    disabled={savingMedia || isRecordingVoice}
-                  >
-                    Upload audio
-                  </Button>
+                  {selfieFile && (
+                    <p className={styles.mediaHelper}>Background cleanup happens after you save.</p>
+                  )}
+                </div>
+
+                <div className={styles.mediaPanel}>
+                  <div className={styles.mediaPanelHeader}>
+                    <p className={styles.mediaPanelTitle}>Voice intro</p>
+                    <span className={currentVoiceIntroUrl ? styles.mediaStatusDone : styles.mediaStatusMissing}>
+                      {currentVoiceIntroUrl ? 'Added' : 'Missing'}
+                    </span>
+                  </div>
+                  <div className={styles.voiceRecorderBox}>
+                    {currentVoiceIntroUrl ? (
+                      <audio className={styles.voiceAudio} src={currentVoiceIntroUrl} controls />
+                    ) : (
+                      <div className={styles.voiceEmpty}>Introduce your approach in a calm, short message.</div>
+                    )}
+                    <div className={styles.recordingMeter} aria-hidden="true">
+                      <span style={{ width: isRecordingVoice ? '100%' : '0%' }} />
+                    </div>
+                    <p className={styles.mediaHelper}>
+                      {isRecordingVoice
+                        ? `Recording ${recordingSeconds}s`
+                        : voiceIntroDuration
+                        ? `Recorded ${voiceIntroDuration.toFixed(1)}s`
+                        : 'Record your intro, then stop when finished.'}
+                    </p>
+                  </div>
+                  <input
+                    ref={voiceInputRef}
+                    type="file"
+                    accept="audio/*,.webm,.ogg,.mp3,.m4a,.wav"
+                    className={styles.hiddenFileInput}
+                    onChange={handleVoiceIntroFileChange}
+                  />
+                  <div className={styles.voiceActions}>
+                    <Button
+                      variant={isRecordingVoice ? 'danger' : 'outline'}
+                      size="sm"
+                      onClick={isRecordingVoice ? stopVoiceRecording : startVoiceRecording}
+                      disabled={savingMedia}
+                    >
+                      {isRecordingVoice ? 'Stop recording' : currentVoiceIntroUrl ? 'Record again' : 'Record intro'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => voiceInputRef.current?.click()}
+                      disabled={savingMedia || isRecordingVoice}
+                    >
+                      Upload audio
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className={styles.mediaActions}>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={saveProfileMedia}
-                disabled={!hasPendingProfileMediaChanges || !canSaveProfileMedia || isRecordingVoice}
-                isLoading={savingMedia}
-              >
-                Save profile media
-              </Button>
-              <span className={styles.mediaSaveHint}>
-                {hasPendingProfileMediaChanges ? 'Save to update your public profile.' : 'No unsaved media changes.'}
-              </span>
-            </div>
-          </Card>
+              <div className={styles.mediaActions}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={saveProfileMedia}
+                  disabled={!hasPendingProfileMediaChanges || !canSaveProfileMedia || isRecordingVoice}
+                  isLoading={savingMedia}
+                >
+                  Save profile media
+                </Button>
+                <span className={styles.mediaSaveHint}>
+                  {hasPendingProfileMediaChanges ? 'Save to update your public profile.' : 'No unsaved media changes.'}
+                </span>
+              </div>
+            </Card>
+          </div>
 
           {/* ── Personal Information ── */}
           <Card padding="lg" className={styles.infoCard}>
