@@ -51,7 +51,59 @@ const publicReadyCounsellorQuery = {
   isActive: true,
   status: 'approved',
 };
-const CACHE_VERSION = 'v3';
+const DEFAULT_SPECIALIZATIONS = Object.freeze([
+  'Stress',
+  'Sleep',
+  'Relationships',
+  'Work pressure',
+  'Anxiety',
+  'Depression',
+  'Burnout',
+  'Self-esteem',
+  'Trauma',
+  'Grief',
+  'Addiction',
+  'Career',
+  'Family conflict',
+]);
+const DEFAULT_LANGUAGES = Object.freeze([
+  'English',
+  'Hindi',
+  'Arabic',
+  'Malayalam',
+  'Tamil',
+  'Telugu',
+  'Kannada',
+  'Marathi',
+  'Bengali',
+  'Gujarati',
+  'Punjabi',
+  'Urdu',
+]);
+const CACHE_VERSION = 'v4';
+
+const normalizeLookupValues = (values) => {
+  const seen = new Set();
+  return values.flat()
+    .map(value => (typeof value === 'string' ? value.trim() : ''))
+    .filter(value => {
+      if (!value) return false;
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const mergeLookupCatalog = (defaults, dbValues) => {
+  const normalizedDefaults = normalizeLookupValues(defaults);
+  const defaultKeys = new Set(normalizedDefaults.map(value => value.toLowerCase()));
+  const extras = normalizeLookupValues(dbValues)
+    .filter(value => !defaultKeys.has(value.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+
+  return [...normalizedDefaults, ...extras];
+};
 
 // @route   GET /api/counsellors
 // @desc    Get all counsellors with filtering and search
@@ -254,17 +306,8 @@ router.get('/specializations', async (req, res) => {
   try {
     const specializations = await withCache(`counsellors:${CACHE_VERSION}:specializations`, CACHE_TTL.STATIC_LOOKUPS, async () => {
       const plural = await Counsellor.distinct('specializations', publicReadyCounsellorQuery);
-      const seen = new Set();
-      return plural.flat()
-        .map(s => s.trim())
-        .filter(s => {
-          if (!s) return false;
-          const key = s.toLowerCase();
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .sort();
+      const singular = await Counsellor.distinct('specialization', publicReadyCounsellorQuery);
+      return mergeLookupCatalog(DEFAULT_SPECIALIZATIONS, [...plural, ...singular]);
     });
 
     res.json({ success: true, data: { specializations } });
@@ -281,17 +324,7 @@ router.get('/languages', async (req, res) => {
   try {
     const languages = await withCache(`counsellors:${CACHE_VERSION}:languages`, CACHE_TTL.STATIC_LOOKUPS, async () => {
       const raw = await Counsellor.distinct('languages', publicReadyCounsellorQuery);
-      const seen = new Set();
-      return raw.flat()
-        .map(l => l.trim())
-        .filter(l => {
-          if (!l) return false;
-          const key = l.toLowerCase();
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .sort();
+      return mergeLookupCatalog(DEFAULT_LANGUAGES, raw);
     });
 
     res.json({ success: true, data: { languages } });
