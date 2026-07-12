@@ -19,6 +19,22 @@ compose_cmd() {
     "$@"
 }
 
+run_backend_migrations() {
+  set -a
+  # shellcheck disable=SC1090
+  source "${ENV_FILE}"
+  if [[ -f "${CLOUDFLARE_ENV}" ]]; then
+    # shellcheck disable=SC1090
+    source "${CLOUDFLARE_ENV}"
+  fi
+  set +a
+
+  pushd "${REPO_ROOT}/menorah/backend" >/dev/null
+  npm ci
+  npm run migrate
+  popd >/dev/null
+}
+
 mkdir -p "${STATE_DIR}"
 
 if [[ -n "$(git -C "${REPO_ROOT}" status --porcelain --untracked-files=no)" ]]; then
@@ -43,6 +59,9 @@ printf '%s\n' "${NEW_SHA}" > "${STATE_DIR}/current-sha"
   echo "previous=${PREVIOUS_SHA}"
   echo "new=${NEW_SHA}"
 } >> "${LOG_FILE}"
+
+echo "Running backend migrations..."
+run_backend_migrations
 
 echo "Building and restarting services..."
 compose_cmd up -d --build

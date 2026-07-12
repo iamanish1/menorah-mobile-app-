@@ -20,17 +20,12 @@ The script:
 - Checks out the configured branch.
 - Pulls with `--ff-only`.
 - Records previous and new commit SHAs.
+- Runs backend migrations using the configured production environment.
 - Rebuilds and restarts Docker services.
 - Runs health checks.
 - Rolls back automatically if health checks fail.
 
-For security migrations, run the backend migration step after pulling the intended commit and before exposing the updated services:
-
-```bash
-cd /opt/menorah/menorah-mobile-app-/menorah/backend
-npm ci
-npm run migrate
-```
+Security migrations are run before services are rebuilt and restarted.
 
 Deploy state:
 
