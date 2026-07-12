@@ -157,11 +157,11 @@ const userSchema = new mongoose.Schema({
   socialAuth: {
     googleSub: {
       type: String,
-      default: null
+      default: undefined
     },
     appleSub: {
       type: String,
-      default: null
+      default: undefined
     },
     appleEmailPrivateRelay: {
       type: Boolean,
@@ -205,11 +205,16 @@ userSchema.index({ firstName: 1, lastName: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ 'kyc.status': 1 });
 
+const uniqueStringIndex = (field) => ({
+  unique: true,
+  partialFilterExpression: { [field]: { $type: 'string' } },
+});
+
 // Sparse indexes on token fields — speeds up password-reset and email-verify lookups
 userSchema.index({ passwordResetToken:     1 }, { sparse: true });
 userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
-userSchema.index({ 'socialAuth.googleSub': 1 }, { unique: true, sparse: true });
-userSchema.index({ 'socialAuth.appleSub': 1 }, { unique: true, sparse: true });
+userSchema.index({ 'socialAuth.googleSub': 1 }, uniqueStringIndex('socialAuth.googleSub'));
+userSchema.index({ 'socialAuth.appleSub': 1 }, uniqueStringIndex('socialAuth.appleSub'));
 
 // Pre-save middleware to hash password
 userSchema.pre('save', async function(next) {
