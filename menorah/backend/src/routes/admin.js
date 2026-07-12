@@ -10,7 +10,7 @@ const Counsellor = require('../models/Counsellor');
 const Booking = require('../models/Booking');
 const PendingApplication = require('../models/PendingApplication');
 const KycVerification = require('../models/KycVerification');
-const { adminAuth, auth } = require('../middleware/auth');
+const { adminAuth } = require('../middleware/auth');
 const {
   isAllowedExternalProvider,
   isSafeHttpsUrl,
@@ -22,8 +22,8 @@ const { sendCounsellorApprovalEmail } = require('../utils/email');
 
 const router = express.Router();
 
-// All routes require auth + admin role
-router.use(auth, adminAuth);
+// All routes require an admin-scoped token.
+router.use(adminAuth);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
