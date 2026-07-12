@@ -36,6 +36,13 @@
 	}
 }
 
+(payment_disabled) {
+	header Cache-Control "no-store, no-cache, max-age=0, must-revalidate"
+	header Pragma "no-cache"
+	header X-Content-Type-Options "nosniff"
+	respond "Payments are temporarily disabled for final testing." 503
+}
+
 http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN} {
 	import security_headers
 	encode gzip zstd
@@ -78,7 +85,13 @@ http://{$COUNSELLOR_DOMAIN} {
 
 http://{$API_IOS_DOMAIN} {
 	import api_proxy
-	reverse_proxy api-ios:8080
+	@payment path /api/payments* /api/payouts/webhook*
+	handle @payment {
+		import payment_disabled
+	}
+	handle {
+		reverse_proxy api-ios:8080
+	}
 	log {
 		output file /var/log/caddy/api-ios-access.log
 		format json
@@ -87,7 +100,13 @@ http://{$API_IOS_DOMAIN} {
 
 http://{$API_ANDROID_DOMAIN} {
 	import api_proxy
-	reverse_proxy api-android:8080
+	@payment path /api/payments* /api/payouts/webhook*
+	handle @payment {
+		import payment_disabled
+	}
+	handle {
+		reverse_proxy api-android:8080
+	}
 	log {
 		output file /var/log/caddy/api-android-access.log
 		format json
@@ -96,7 +115,13 @@ http://{$API_ANDROID_DOMAIN} {
 
 http://{$API_WEB_DOMAIN} {
 	import api_proxy
-	reverse_proxy api-web:8080
+	@payment path /api/payments* /api/payouts/webhook*
+	handle @payment {
+		import payment_disabled
+	}
+	handle {
+		reverse_proxy api-web:8080
+	}
 	log {
 		output file /var/log/caddy/api-web-access.log
 		format json
