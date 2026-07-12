@@ -38,6 +38,7 @@ const SCRIPT_ID = 'google-identity-services';
 interface GoogleAuthButtonProps {
   mode: 'signin' | 'signup';
   onError: (message: string) => void;
+  onRoleRedirect?: (redirect: { redirectUrl?: string; redirectLabel?: string }) => void;
 }
 
 const loadGoogleScript = () =>
@@ -62,7 +63,7 @@ const loadGoogleScript = () =>
     document.head.appendChild(script);
   });
 
-export function GoogleAuthButton({ mode, onError }: GoogleAuthButtonProps) {
+export function GoogleAuthButton({ mode, onError, onRoleRedirect }: GoogleAuthButtonProps) {
   const router = useRouter();
   const { loginWithGoogle } = useAuth();
   const buttonRef = useRef<HTMLDivElement | null>(null);
@@ -96,6 +97,10 @@ export function GoogleAuthButton({ mode, onError }: GoogleAuthButtonProps) {
               router.push('/discover');
               return;
             }
+            if (result.roleRedirect) {
+              onRoleRedirect?.(result.roleRedirect);
+              return;
+            }
             onError(result.message || 'Google sign-in failed. Please try again.');
           }
         });
@@ -119,7 +124,7 @@ export function GoogleAuthButton({ mode, onError }: GoogleAuthButtonProps) {
     return () => {
       cancelled = true;
     };
-  }, [loginWithGoogle, mode, onError, router]);
+  }, [loginWithGoogle, mode, onError, onRoleRedirect, router]);
 
   if (!isConfigured) {
     return (

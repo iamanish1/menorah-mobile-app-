@@ -13,12 +13,38 @@ function noStore(response: NextResponse) {
   return response;
 }
 
+function getTokenRole(token?: string) {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = JSON.parse(atob(normalized));
+    const role = String(decoded.role || 'user').toLowerCase();
+    return role === 'counselor' ? 'counsellor' : role;
+  } catch {
+    return null;
+  }
+}
+
+function clearAuthCookie(response: NextResponse) {
+  response.cookies.set('mn_auth', '', { path: '/', maxAge: 0 });
+  return response;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('mn_auth')?.value;
+  const tokenRole = getTokenRole(token);
 
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   const isAuthRoute = AUTH_ROUTES.some((p) => pathname.startsWith(p));
+
+  if (token && tokenRole && tokenRole !== 'user') {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('account', tokenRole);
+    return clearAuthCookie(noStore(NextResponse.redirect(loginUrl)));
+  }
 
   // Unauthenticated user trying to access protected route → login
   if (isProtected && !token) {

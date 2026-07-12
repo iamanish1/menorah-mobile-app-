@@ -5,12 +5,27 @@ import { api } from '@/lib/api';
 import { authStorage } from '@/lib/auth';
 import type { User } from '@/types';
 
+type RoleRedirect = {
+  actualRole?: string;
+  expectedRole?: string;
+  redirectUrl?: string;
+  redirectLabel?: string;
+};
+
+type AuthResult = {
+  success: boolean;
+  message?: string;
+  needsVerification?: boolean;
+  isNewUser?: boolean;
+  roleRedirect?: RoleRedirect;
+};
+
 interface AuthContextValue {
   user: User | null;
   isAuthed: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; needsVerification?: boolean }>;
-  loginWithGoogle: (credential: string) => Promise<{ success: boolean; message?: string; isNewUser?: boolean }>;
+  login: (email: string, password: string) => Promise<AuthResult>;
+  loginWithGoogle: (credential: string) => Promise<AuthResult>;
   register: (data: RegisterData) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
   verifyEmail: (code: string) => Promise<{ success: boolean; message?: string }>;
@@ -33,6 +48,20 @@ interface RegisterData {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const COUNSELLOR_LOGIN_URL = process.env.NEXT_PUBLIC_COUNSELLOR_APP_URL || 'https://counsellor.menorah.me/login';
+
+const isUserRole = (role?: string) => String(role || 'user').toLowerCase() === 'user';
+
+const getRoleRedirect = (res: { code?: string; data?: unknown }): RoleRedirect | undefined => {
+  if (res.code !== 'ROLE_MISMATCH') return undefined;
+  const data = (res.data || {}) as RoleRedirect;
+  return {
+    actualRole: data.actualRole,
+    expectedRole: data.expectedRole,
+    redirectUrl: data.redirectUrl || COUNSELLOR_LOGIN_URL,
+    redirectLabel: data.redirectLabel || 'Open counsellor portal',
+  };
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]       = useState<User | null>(null);
@@ -45,6 +74,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     const res = await api.getCurrentUser();
     if (res.success && res.data?.user) {
+      if (!isUserRole(res.data.user.role)) {
+        const actualRole = res.data.user.role || 'counsellor';
+        authStorage.clearToken();
+        setUser(null);
+        setIsLoading(false);
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.replace(`/login?account=${encodeURIComponent(actualRole)}`);
+        }
+        return;
+      }
       setUser(res.data.user);
     } else {
       authStorage.clearToken();
@@ -60,6 +99,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     const res = await api.login(email, password);
     if (res.success && res.data?.user) {
+      if (!isUserRole(res.data.user.role)) {
+        authStorage.clearToken();
+        return {
+          success: false,
+          message: 'This looks like a counsellor account. Please sign in through the counsellor portal.',
+          roleRedirect: {
+            actualRole: res.data.user.role,
+            expectedRole: 'user',
+            redirectUrl: COUNSELLOR_LOGIN_URL,
+            redirectLabel: 'Open counsellor portal',
+          },
+        };
+      }
       setUser(res.data.user);
       const u = res.data.user;
       if (!u.isEmailVerified) {
@@ -71,16 +123,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { success: true };
     }
-    return { success: false, message: res.message };
+    return { success: false, message: res.message, roleRedirect: getRoleRedirect(res) };
   };
 
   const loginWithGoogle = async (credential: string) => {
     const res = await api.loginWithGoogle(credential);
     if (res.success && res.data?.user) {
+      if (!isUserRole(res.data.user.role)) {
+        authStorage.clearToken();
+        return {
+          success: false,
+          message: 'This looks like a counsellor account. Please sign in through the counsellor portal.',
+          roleRedirect: {
+            actualRole: res.data.user.role,
+            expectedRole: 'user',
+            redirectUrl: COUNSELLOR_LOGIN_URL,
+            redirectLabel: 'Open counsellor portal',
+          },
+        };
+      }
       setUser(res.data.user);
       return { success: true, isNewUser: res.data.isNewUser };
     }
-    return { success: false, message: res.message };
+    return { success: false, message: res.message, roleRedirect: getRoleRedirect(res) };
   };
 
   const register = async (data: RegisterData) => {

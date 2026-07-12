@@ -82,7 +82,7 @@ class ApiClient {
   // Auth methods
   async login(email: string, password: string): Promise<ApiResponse<{ user: any; token: string }>> {
     try {
-      const response = await this.client.post('/auth/login', { email, password });
+      const response = await this.client.post('/auth/login', { email, password, intendedRole: 'counsellor' });
       if (response.data.success && response.data.data.token) {
         this.setToken(response.data.data.token);
       }
@@ -93,6 +93,7 @@ class ApiClient {
         if (process.env.NODE_ENV === "development") console.error('Login API error:', errorResponse);
       }
       return {
+        ...errorResponse,
         success: false,
         message: errorResponse?.message || error.message || 'Login failed',
         errors: errorResponse?.errors || [],

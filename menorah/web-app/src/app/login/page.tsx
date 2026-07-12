@@ -17,11 +17,18 @@ const loginSchema = z.object({
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
+type RoleRedirect = {
+  redirectUrl?: string;
+  redirectLabel?: string;
+};
+
+const USER_APP_LOGIN_URL = process.env.NEXT_PUBLIC_USER_APP_URL || 'https://app.menorah.me/login';
 
 export default function LoginPage() {
   const router = useRouter();
   const { login, isAuthenticated, isLoading } = useAuth();
   const [error,        setError]        = useState<string | null>(null);
+  const [roleRedirect, setRoleRedirect] = useState<RoleRedirect | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
@@ -34,15 +41,29 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, isLoading, router]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const account = params.get('account')?.toLowerCase();
+    if (account === 'user') {
+      setError('This looks like a regular user account. Please sign in through the user app.');
+      setRoleRedirect({
+        redirectUrl: USER_APP_LOGIN_URL,
+        redirectLabel: 'Open user app',
+      });
+    }
+  }, []);
+
   const onSubmit = async (data: LoginForm) => {
     try {
       setIsSubmitting(true);
       setError(null);
-      const success = await login(data.email, data.password);
-      if (success) {
+      setRoleRedirect(null);
+      const result = await login(data.email, data.password);
+      if (result.success) {
         router.push('/dashboard');
       } else {
-        setError('Invalid email or password');
+        setError(result.message || 'Invalid email or password');
+        setRoleRedirect(result.roleRedirect ?? null);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -119,7 +140,14 @@ export default function LoginPage() {
                 <svg className={styles.errorIcon} fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
-                <p className={styles.errorText}>{error}</p>
+                <div>
+                  <p className={styles.errorText}>{error}</p>
+                  {roleRedirect?.redirectUrl && (
+                    <a href={roleRedirect.redirectUrl} className={styles.portalRedirectButton}>
+                      {roleRedirect.redirectLabel || 'Open correct portal'}
+                    </a>
+                  )}
+                </div>
               </div>
             )}
 

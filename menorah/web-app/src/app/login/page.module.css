@@ -220,6 +220,25 @@
   margin: 0;
 }
 
+.portalRedirectButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--color-danger);
+  color: #fff;
+  font-size: 12px;
+  font-weight: var(--font-weight-bold);
+  text-decoration: none;
+  transition: opacity var(--transition-fast);
+}
+
+.portalRedirectButton:hover {
+  opacity: 0.9;
+}
+
 /* Form fields */
 .formGroup {
   margin-bottom: var(--spacing-lg);

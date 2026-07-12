@@ -143,6 +143,73 @@ const serializeAuthUser = (user) => ({
   kyc: user.kyc,
 });
 
+const normalizeAuthRole = (role) => {
+  const value = String(role || 'user').trim().toLowerCase();
+  if (value === 'counselor') return 'counsellor';
+  if (['user', 'counsellor', 'admin'].includes(value)) return value;
+  return 'user';
+};
+
+const portalUrl = (envName, fallbackDomain) => {
+  const value = String(process.env[envName] || fallbackDomain).trim().replace(/\/+$/, '');
+  if (/^https?:\/\//i.test(value)) return value;
+  return `https://${value}`;
+};
+
+const getRolePortal = (role) => {
+  const normalizedRole = normalizeAuthRole(role);
+  if (normalizedRole === 'counsellor') {
+    return {
+      role: 'counsellor',
+      redirectUrl: `${portalUrl('COUNSELLOR_DOMAIN', 'counsellor.menorah.me')}/login`,
+      redirectLabel: 'Open counsellor portal',
+    };
+  }
+  if (normalizedRole === 'admin') {
+    return {
+      role: 'admin',
+      redirectUrl: `${portalUrl('ADMIN_DOMAIN', 'admin.menorah.me')}/login`,
+      redirectLabel: 'Open admin portal',
+    };
+  }
+  return {
+    role: 'user',
+    redirectUrl: `${portalUrl('APP_DOMAIN', 'app.menorah.me')}/login`,
+    redirectLabel: 'Open user app',
+  };
+};
+
+const getRoleMismatchMessage = (actualRole, expectedRole) => {
+  if (expectedRole === 'user' && actualRole === 'counsellor') {
+    return 'This looks like a counsellor account. Please sign in through the counsellor portal.';
+  }
+  if (expectedRole === 'counsellor' && actualRole === 'user') {
+    return 'This looks like a regular user account. Please sign in through the user app.';
+  }
+  return 'This account belongs to a different Menorah portal.';
+};
+
+const rejectRoleMismatch = (req, res, user) => {
+  if (!req.body?.intendedRole) return false;
+  const expectedRole = normalizeAuthRole(req.body.intendedRole);
+  const actualRole = normalizeAuthRole(user.role);
+  if (actualRole === expectedRole) return false;
+
+  const portal = getRolePortal(actualRole);
+  res.status(403).json({
+    success: false,
+    code: 'ROLE_MISMATCH',
+    message: getRoleMismatchMessage(actualRole, expectedRole),
+    data: {
+      actualRole,
+      expectedRole,
+      redirectUrl: portal.redirectUrl,
+      redirectLabel: portal.redirectLabel,
+    },
+  });
+  return true;
+};
+
 const verifyGoogleCredential = async (credential) => {
   const clientIds = getGoogleClientIds();
   if (clientIds.length === 0) {
@@ -336,6 +403,21 @@ router.post('/register', [
 
     const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
     if (existingUser) {
+      const existingRole = normalizeAuthRole(existingUser.role);
+      if (existingRole === 'counsellor') {
+        const portal = getRolePortal(existingRole);
+        return res.status(400).json({
+          success: false,
+          code: 'ROLE_MISMATCH',
+          message: 'This email or phone number is already registered as a counsellor. Please sign in through the counsellor portal.',
+          data: {
+            actualRole: existingRole,
+            expectedRole: 'user',
+            redirectUrl: portal.redirectUrl,
+            redirectLabel: portal.redirectLabel,
+          },
+        });
+      }
       return res.status(400).json({ success: false, message: 'User with this email or phone number already exists' });
     }
 
@@ -495,6 +577,7 @@ router.post('/resend-email-otp', [
 router.post('/login', [
   body('email').isEmail().normalizeEmail(emailNormalizationOptions),
   body('password').notEmpty(),
+  body('intendedRole').optional().isIn(['user', 'counsellor', 'counselor']),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -524,6 +607,8 @@ router.post('/login', [
     }
 
     await user.resetLoginAttempts();
+    if (rejectRoleMismatch(req, res, user)) return;
+
     const token = generateToken(user._id, user.role || 'user');
 
     res.json({
@@ -552,7 +637,8 @@ router.post('/login', [
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/google', [
-  body('credential').isString().trim().isLength({ min: 20 })
+  body('credential').isString().trim().isLength({ min: 20 }),
+  body('intendedRole').optional().isIn(['user', 'counsellor', 'counselor']),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -570,6 +656,8 @@ router.post('/google', [
       lastName,
       profileImage: googleUser.picture || null
     });
+
+    if (rejectRoleMismatch(req, res, user)) return;
 
     const token = generateToken(user._id, user.role || 'user');
     return res.json({
@@ -597,7 +685,8 @@ router.post('/google', [
 router.post('/apple', [
   body('identityToken').isString().trim().isLength({ min: 20 }),
   body('email').optional().isEmail().normalizeEmail(emailNormalizationOptions),
-  body('fullName').optional().isString().trim().isLength({ max: 120 })
+  body('fullName').optional().isString().trim().isLength({ max: 120 }),
+  body('intendedRole').optional().isIn(['user', 'counsellor', 'counselor']),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -616,6 +705,8 @@ router.post('/apple', [
       lastName,
       privateRelay: /privaterelay\.appleid\.com$/i.test(tokenEmail)
     });
+
+    if (rejectRoleMismatch(req, res, user)) return;
 
     const token = generateToken(user._id, user.role || 'user');
     return res.json({

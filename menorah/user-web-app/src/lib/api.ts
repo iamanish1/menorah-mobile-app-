@@ -82,10 +82,19 @@ class ApiClient {
 
   private handleError<T>(err: unknown, fallback: string): ApiResponse<T> {
     const e = err as { response?: { data?: ApiResponse<T>; status?: number } };
+    if (e.response?.data) {
+      return {
+        ...e.response.data,
+        success: false,
+        message: e.response.data.message || fallback,
+        errors: e.response.data.errors || [],
+      };
+    }
+
     return {
       success: false,
-      message: e.response?.data?.message || fallback,
-      errors:  e.response?.data?.errors  || [],
+      message: fallback,
+      errors:  [],
     };
   }
 
@@ -98,13 +107,13 @@ class ApiClient {
   }
 
   async login(email: string, password: string): Promise<ApiResponse<{ user: User; token: string }>> {
-    const res = await this.post<{ user: User; token: string }>('/auth/login', { email, password });
+    const res = await this.post<{ user: User; token: string }>('/auth/login', { email, password, intendedRole: 'user' });
     if (res.success && res.data?.token) authStorage.setToken(res.data.token);
     return res;
   }
 
   async loginWithGoogle(credential: string): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
-    const res = await this.post<{ user: User; token: string; isNewUser?: boolean }>('/auth/google', { credential });
+    const res = await this.post<{ user: User; token: string; isNewUser?: boolean }>('/auth/google', { credential, intendedRole: 'user' });
     if (res.success && res.data?.token) authStorage.setToken(res.data.token);
     return res;
   }

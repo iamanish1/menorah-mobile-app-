@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -17,19 +17,39 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
+type RoleRedirect = {
+  redirectUrl?: string;
+  redirectLabel?: string;
+};
+
+const COUNSELLOR_LOGIN_URL = process.env.NEXT_PUBLIC_COUNSELLOR_APP_URL || 'https://counsellor.menorah.me/login';
 
 export default function LoginPage() {
   const { login } = useAuth();
   const router    = useRouter();
   const [showPwd, setShowPwd] = useState(false);
   const [serverError, setServerError] = useState('');
+  const [roleRedirect, setRoleRedirect] = useState<RoleRedirect | null>(null);
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
   });
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const account = params.get('account')?.toLowerCase();
+    if (account === 'counsellor' || account === 'counselor') {
+      setServerError('This looks like a counsellor account. Please sign in through the counsellor portal.');
+      setRoleRedirect({
+        redirectUrl: COUNSELLOR_LOGIN_URL,
+        redirectLabel: 'Open counsellor portal',
+      });
+    }
+  }, []);
+
   const onSubmit = async (data: FormValues) => {
     setServerError('');
+    setRoleRedirect(null);
     const res = await login(data.email, data.password);
     if (res.success) {
       if (res.needsVerification) {
@@ -41,6 +61,7 @@ export default function LoginPage() {
       }
     } else {
       setServerError(res.message || 'Login failed. Please try again.');
+      setRoleRedirect(res.roleRedirect ?? null);
     }
   };
 
@@ -53,11 +74,29 @@ export default function LoginPage() {
 
       {serverError && (
         <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">
-          {serverError}
+          <p>{serverError}</p>
+          {roleRedirect?.redirectUrl && (
+            <a
+              href={roleRedirect.redirectUrl}
+              className="mt-3 inline-flex rounded-full bg-red-600 px-4 py-2 text-xs font-black text-white transition hover:bg-red-700"
+            >
+              {roleRedirect.redirectLabel || 'Open correct portal'}
+            </a>
+          )}
         </div>
       )}
 
-      <GoogleAuthButton mode="signin" onError={setServerError} />
+      <GoogleAuthButton
+        mode="signin"
+        onError={(message) => {
+          setServerError(message);
+          setRoleRedirect(null);
+        }}
+        onRoleRedirect={(redirect) => {
+          setRoleRedirect(redirect);
+          setServerError('This looks like a counsellor account. Please sign in through the counsellor portal.');
+        }}
+      />
 
       <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-primary-100/45">
         <span className="h-px flex-1 bg-gray-200 dark:bg-primary-800" />
