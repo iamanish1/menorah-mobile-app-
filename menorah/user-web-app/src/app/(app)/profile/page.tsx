@@ -3,11 +3,12 @@
 import Link from 'next/link';
 import {
   User, MapPin, Phone, Shield, Bell, Lock,
-  CreditCard, HeartPulse, ChevronRight, LogOut
+  CreditCard, HeartPulse, ChevronRight, LogOut, PlayCircle
 } from 'lucide-react';
 import { Avatar, Badge } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { getSubscriptionBadgeColor } from '@/lib/utils';
+import { restartUserTour } from '@/lib/userTour';
 
 const sections = [
   {
@@ -37,6 +38,7 @@ export default function ProfilePage() {
   if (!user) return null;
 
   const plan = user.subscription?.plan ?? 'free';
+  const isRegularUser = user.role === 'user';
 
   return (
     <div className="page-container max-w-xl">
@@ -80,6 +82,21 @@ export default function ProfilePage() {
                   <ChevronRight className="w-4 h-4 text-gray-400" />
                 </Link>
               ))}
+              {section.title === 'Preferences' && isRegularUser && (
+                <button
+                  type="button"
+                  onClick={restartUserTour}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-primary-50 group dark:hover:bg-primary-900"
+                >
+                  <div className="w-8 h-8 bg-primary-50 rounded-2xl flex items-center justify-center shrink-0 dark:bg-primary-800">
+                    <PlayCircle className="w-4 h-4 text-primary-600" />
+                  </div>
+                  <span className="flex-1 text-sm font-bold text-gray-700 group-hover:text-gray-950 dark:text-primary-100 dark:group-hover:text-primary-50">
+                    Replay App Tutorial
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </button>
+              )}
             </div>
           </div>
         ))}

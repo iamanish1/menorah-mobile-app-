@@ -4,13 +4,18 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'r
 import { ArrowLeft, ArrowRight, CheckCircle2, X } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { USER_TOUR_RESTART_EVENT, USER_TOUR_STORAGE_KEY } from '@/lib/userTour';
 
-const TOUR_STORAGE_KEY = 'menorah-user-tour-v1';
+type TourAction = {
+  label: string;
+  description: string;
+};
 
 type TourStep = {
   target: string;
   title: string;
   body: string;
+  actions?: TourAction[];
 };
 
 type TourRect = {
@@ -23,24 +28,128 @@ type TourRect = {
 };
 
 const desktopSteps: TourStep[] = [
-  { target: 'discover', title: 'Discover counsellors', body: 'Browse available counsellors and open the right profile when you are ready.' },
-  { target: 'bookings', title: 'Track bookings', body: 'See upcoming, completed, and payment-pending sessions in one place.' },
-  { target: 'chat', title: 'Continue conversations', body: 'Open your counselling chats and keep the support thread easy to find.' },
-  { target: 'subscription', title: 'Manage access', body: 'Review your plan and subscription details before booking care.' },
-  { target: 'notifications', title: 'Stay updated', body: 'Important booking, article, and account updates appear here.' },
-  { target: 'learn', title: 'Read articles', body: 'Use the article library for practical mental health guidance between sessions.' },
-  { target: 'profile', title: 'Update profile', body: 'Edit your profile, account settings, support links, and privacy details.' },
+  {
+    target: 'discover',
+    title: 'Discover counsellors',
+    body: 'Browse available counsellors and compare who feels like the right fit before you book.',
+    actions: [
+      { label: 'View Profile', description: 'Open a counsellor profile to check experience, focus areas, languages, and availability.' },
+      { label: 'Book Now', description: 'Jump straight into choosing session type, time, and payment for that counsellor.' },
+    ],
+  },
+  {
+    target: 'bookings',
+    title: 'Track bookings',
+    body: 'See upcoming, pending, completed, and cancelled sessions in one place.',
+    actions: [
+      { label: 'Book Session', description: 'Start a fresh booking from the bookings page header or empty state.' },
+      { label: 'Booking Card', description: 'Open a session to join calls, continue chat, cancel, or finish a pending payment.' },
+    ],
+  },
+  {
+    target: 'chat',
+    title: 'Continue conversations',
+    body: 'Use messages to start quick support chats and return to existing counselling threads.',
+    actions: [
+      { label: 'Chat', description: 'Start a conversation with an available counsellor from the top list.' },
+      { label: 'Recent Conversation', description: 'Reopen an existing room and continue where you left off.' },
+    ],
+  },
+  {
+    target: 'subscription',
+    title: 'Manage access',
+    body: 'Review plans and subscribe before booking care through a plan.',
+    actions: [
+      { label: 'Plan Selector', description: 'Switch between weekly, monthly, and yearly plans to compare included sessions.' },
+      { label: 'Subscribe', description: 'Open secure payment for the selected plan and activate subscription access.' },
+    ],
+  },
+  {
+    target: 'notifications',
+    title: 'Stay updated',
+    body: 'Important booking, article, message, and account updates appear here.',
+    actions: [
+      { label: 'Mark All Read', description: 'Clear the unread state without deleting your notifications.' },
+      { label: 'Clear All', description: 'Remove old notifications once you no longer need them.' },
+    ],
+  },
+  {
+    target: 'learn',
+    title: 'Read articles',
+    body: 'Use the article library for practical mental health guidance between sessions.',
+    actions: [
+      { label: 'Search', description: 'Find articles by topic, concern, or keyword.' },
+      { label: 'Read', description: 'Open an article card for the full guide and related context.' },
+    ],
+  },
+  {
+    target: 'profile',
+    title: 'Update profile',
+    body: 'Edit account details, notification settings, billing links, and support resources.',
+    actions: [
+      { label: 'Edit Profile', description: 'Update your name, phone, avatar, and basic account details.' },
+      { label: 'Preferences', description: 'Manage notification settings, password, subscription, and crisis-help links.' },
+    ],
+  },
   { target: 'theme', title: 'Switch theme', body: 'Move between light and dark mode whenever it feels easier on your eyes.' },
   { target: 'signout', title: 'Sign out safely', body: 'Use this when you are done, especially on shared devices.' },
 ];
 
 const mobileSteps: TourStep[] = [
-  { target: 'discover', title: 'Discover counsellors', body: 'Start here to find counsellors and open their profiles.' },
-  { target: 'bookings', title: 'Track bookings', body: 'Your upcoming and past sessions stay in this tab.' },
-  { target: 'chat', title: 'Continue conversations', body: 'Open counselling chats from the bottom bar.' },
-  { target: 'notifications', title: 'Stay updated', body: 'Booking and account updates appear here.' },
-  { target: 'learn', title: 'Read articles', body: 'Open practical mental health articles from the top bar.' },
-  { target: 'profile', title: 'Update profile', body: 'Your profile, settings, and support links live here.' },
+  {
+    target: 'discover',
+    title: 'Discover counsellors',
+    body: 'Start here to find counsellors and compare who feels like the right fit.',
+    actions: [
+      { label: 'View Profile', description: 'Check experience, focus areas, languages, and availability.' },
+      { label: 'Book Now', description: 'Choose session type, time, and payment for that counsellor.' },
+    ],
+  },
+  {
+    target: 'bookings',
+    title: 'Track bookings',
+    body: 'Your upcoming, pending, and past sessions stay in this tab.',
+    actions: [
+      { label: 'Book Session', description: 'Start a fresh booking when you need a new session.' },
+      { label: 'Booking Card', description: 'Open details, join calls, continue chat, or complete payment.' },
+    ],
+  },
+  {
+    target: 'chat',
+    title: 'Continue conversations',
+    body: 'Open counselling chats from the bottom bar.',
+    actions: [
+      { label: 'Chat', description: 'Start a conversation with an available counsellor.' },
+      { label: 'Recent Conversation', description: 'Return to an existing support thread.' },
+    ],
+  },
+  {
+    target: 'notifications',
+    title: 'Stay updated',
+    body: 'Booking, message, article, and account updates appear here.',
+    actions: [
+      { label: 'Mark All Read', description: 'Clear unread badges while keeping the notifications.' },
+      { label: 'Clear All', description: 'Remove notifications you no longer need.' },
+    ],
+  },
+  {
+    target: 'learn',
+    title: 'Read articles',
+    body: 'Open practical mental health articles from the top bar.',
+    actions: [
+      { label: 'Search', description: 'Find articles by topic, concern, or keyword.' },
+      { label: 'Read', description: 'Open an article card for the full guide.' },
+    ],
+  },
+  {
+    target: 'profile',
+    title: 'Update profile',
+    body: 'Your profile, settings, billing links, and support links live here.',
+    actions: [
+      { label: 'Edit Profile', description: 'Update your account and contact details.' },
+      { label: 'Preferences', description: 'Manage notifications, password, subscription, and support links.' },
+    ],
+  },
   { target: 'theme', title: 'Switch theme', body: 'Tap this to change between light and dark mode.' },
 ];
 
@@ -66,21 +175,23 @@ const toTourRect = (rect: DOMRect): TourRect => ({
 });
 
 const getBubbleStyle = (rect: TourRect, viewport: { width: number; height: number }): CSSProperties => {
-  const bubbleWidth = Math.min(320, viewport.width - 32);
+  const bubbleWidth = Math.min(380, viewport.width - 32);
 
   if (viewport.width < 1024) {
     const showAbove = rect.top > viewport.height / 2;
+    const maxTop = Math.max(16, viewport.height - 320);
     return {
       width: bubbleWidth,
       left: clamp(rect.left + rect.width / 2 - bubbleWidth / 2, 16, viewport.width - bubbleWidth - 16),
-      top: showAbove ? clamp(rect.top - 220, 16, viewport.height - 236) : clamp(rect.bottom + 14, 16, viewport.height - 236),
+      top: showAbove ? clamp(rect.top - 304, 16, maxTop) : clamp(rect.bottom + 14, 16, maxTop),
     };
   }
 
+  const maxTop = Math.max(24, viewport.height - 328);
   return {
     width: bubbleWidth,
     left: clamp(rect.right + 18, 24, viewport.width - bubbleWidth - 24),
-    top: clamp(rect.top - 12, 24, viewport.height - 244),
+    top: clamp(rect.top - 12, 24, maxTop),
   };
 };
 
@@ -96,12 +207,25 @@ export function FirstLoginTour() {
 
   const dismiss = useCallback(() => {
     try {
-      window.localStorage.setItem(TOUR_STORAGE_KEY, new Date().toISOString());
+      window.localStorage.setItem(USER_TOUR_STORAGE_KEY, new Date().toISOString());
     } catch {
       // If storage is unavailable, closing for this page view is still better than trapping the user.
     }
     setOpen(false);
   }, []);
+
+  const goBack = useCallback(() => {
+    setStepIndex((value) => Math.max(0, value - 1));
+  }, []);
+
+  const goNext = useCallback(() => {
+    if (lastStep) {
+      dismiss();
+      return;
+    }
+
+    setStepIndex((value) => value + 1);
+  }, [dismiss, lastStep]);
 
   const updatePosition = useCallback(() => {
     if (!currentStep) return;
@@ -113,13 +237,23 @@ export function FirstLoginTour() {
   useEffect(() => {
     setViewport({ width: window.innerWidth, height: window.innerHeight });
     try {
-      if (window.localStorage.getItem(TOUR_STORAGE_KEY)) return;
+      if (window.localStorage.getItem(USER_TOUR_STORAGE_KEY)) return;
     } catch {
       return;
     }
 
     const timer = window.setTimeout(() => setOpen(true), 700);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const restart = () => {
+      setStepIndex(0);
+      setOpen(true);
+    };
+
+    window.addEventListener(USER_TOUR_RESTART_EVENT, restart);
+    return () => window.removeEventListener(USER_TOUR_RESTART_EVENT, restart);
   }, []);
 
   useEffect(() => {
@@ -148,11 +282,13 @@ export function FirstLoginTour() {
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') dismiss();
+      if (event.key === 'ArrowLeft') goBack();
+      if (event.key === 'ArrowRight') goNext();
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [dismiss, open]);
+  }, [dismiss, goBack, goNext, open]);
 
   useEffect(() => {
     if (stepIndex >= steps.length) setStepIndex(steps.length - 1);
@@ -203,6 +339,24 @@ export function FirstLoginTour() {
 
         <p className="text-sm leading-6 text-gray-600 dark:text-primary-100/72">{currentStep.body}</p>
 
+        {currentStep.actions?.length ? (
+          <div className="mt-4 rounded-[1.15rem] border border-primary-100 bg-primary-50 p-3 dark:border-primary-800 dark:bg-primary-900">
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-primary-700 dark:text-primary-100/70">
+              Main buttons on this tab
+            </p>
+            <div className="space-y-2">
+              {currentStep.actions.slice(0, 2).map((action) => (
+                <div key={action.label} className="grid grid-cols-[6.5rem_1fr] items-start gap-2 text-xs leading-5">
+                  <span className="inline-flex min-h-9 min-w-0 items-center justify-center rounded-full bg-white px-2.5 text-center font-black text-primary-700 shadow-sm dark:bg-primary-950 dark:text-primary-100">
+                    {action.label}
+                  </span>
+                  <span className="text-gray-600 dark:text-primary-100/70">{action.description}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-primary-50 dark:bg-primary-900">
           <div
             className="h-full rounded-full bg-primary-600 transition-all duration-300 dark:bg-primary-300"
@@ -220,7 +374,7 @@ export function FirstLoginTour() {
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => setStepIndex((value) => Math.max(0, value - 1))}
+                onClick={goBack}
                 className="px-3"
               >
                 <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -230,10 +384,7 @@ export function FirstLoginTour() {
             <Button
               type="button"
               size="sm"
-              onClick={() => {
-                if (lastStep) dismiss();
-                else setStepIndex((value) => value + 1);
-              }}
+              onClick={goNext}
               className={cn(lastStep && 'bg-primary-700 hover:bg-primary-800')}
             >
               {lastStep ? (
