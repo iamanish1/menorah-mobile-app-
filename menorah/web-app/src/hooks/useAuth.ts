@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { authStore, auth, AuthContextType } from '@/lib/auth';
-import { User } from '@/types';
 
 export function useAuth(): AuthContextType {
   const [state, setState] = useState(authStore.getState());

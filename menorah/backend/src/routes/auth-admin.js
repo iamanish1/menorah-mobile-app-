@@ -7,6 +7,11 @@ const { adminAuth } = require('../middleware/auth');
 const { getRedisClient } = require('../config/redis');
 const { sendOTPEmail } = require('../utils/email');
 const { signAdminToken } = require('../utils/authTokens');
+const {
+  clearMappedSessionCookie,
+  isCookieTransportRequested,
+  setSessionCookieForRequest,
+} = require('../config/webSessions');
 
 const router = express.Router();
 
@@ -80,6 +85,28 @@ const blockToken = async (token) => {
   } catch {}
 };
 
+const sendAdminSessionResponse = (req, res, { message, token, user }) => {
+  const data = {
+    user: serializeAdmin(user),
+    mfaRequired: false,
+  };
+
+  if (isCookieTransportRequested(req)) {
+    const sessionResult = setSessionCookieForRequest(req, res, { role: 'admin', token });
+    if (!sessionResult.ok) {
+      return res.status(sessionResult.status).json({ success: false, message: sessionResult.message });
+    }
+  } else {
+    data.token = token;
+  }
+
+  return res.json({
+    success: true,
+    message,
+    data,
+  });
+};
+
 const serializeAdmin = (user) => ({
   _id: user._id.toString(),
   id: user._id.toString(),
@@ -142,14 +169,10 @@ router.post(['/login', '/admin/login'], [
     await user.resetLoginAttempts();
     const token = signAdminToken(user);
 
-    return res.json({
-      success: true,
+    return sendAdminSessionResponse(req, res, {
       message: 'Login successful',
-      data: {
-        user: serializeAdmin(user),
-        token,
-        mfaRequired: false,
-      },
+      token,
+      user,
     });
   } catch (error) {
     console.error('Admin login error:', error.message);
@@ -195,14 +218,10 @@ router.post(['/login/mfa', '/admin/login/mfa'], [
     ]);
 
     const token = signAdminToken(user);
-    return res.json({
-      success: true,
+    return sendAdminSessionResponse(req, res, {
       message: 'Login successful',
-      data: {
-        user: serializeAdmin(user),
-        token,
-        mfaRequired: false,
-      },
+      token,
+      user,
     });
   } catch (error) {
     console.error('Admin MFA login error:', error.message);
@@ -231,6 +250,7 @@ router.post(['/logout', '/admin/logout'], adminAuth, async (req, res) => {
   try {
     const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
     if (token) await blockToken(token);
+    clearMappedSessionCookie(req, res);
     return res.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
     console.error('Admin logout error:', error.message);

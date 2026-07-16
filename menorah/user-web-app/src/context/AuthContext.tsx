@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { authStorage } from '@/lib/auth';
 import type { User } from '@/types';
 
 interface AuthContextValue {
@@ -39,15 +38,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshUser = useCallback(async () => {
-    if (!authStorage.getToken()) {
-      setIsLoading(false);
-      return;
-    }
     const res = await api.getCurrentUser();
     if (res.success && res.data?.user) {
       setUser(res.data.user);
     } else {
-      authStorage.clearToken();
       setUser(null);
     }
     setIsLoading(false);

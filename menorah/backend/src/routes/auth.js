@@ -10,6 +10,11 @@ const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
 const { getRedisClient } = require('../config/redis');
 const { signUserToken } = require('../utils/authTokens');
 const { serializeAuthUser, serializeUserProfile } = require('../serializers/userSerializer');
+const {
+  clearMappedSessionCookie,
+  isCookieTransportRequested,
+  setSessionCookieForRequest,
+} = require('../config/webSessions');
 
 const router = express.Router();
 const emailNormalizationOptions = {
@@ -327,6 +332,25 @@ const blockToken = async (token) => {
   } catch {}
 };
 
+const sendAuthSessionResponse = (req, res, { message, token, role, data = {}, status = 200 }) => {
+  const responseData = { ...data };
+
+  if (isCookieTransportRequested(req)) {
+    const sessionResult = setSessionCookieForRequest(req, res, { role, token });
+    if (!sessionResult.ok) {
+      return res.status(sessionResult.status).json({ success: false, message: sessionResult.message });
+    }
+  } else {
+    responseData.token = token;
+  }
+
+  return res.status(status).json({
+    success: true,
+    message,
+    data: responseData,
+  });
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/register
 // @access  Public
@@ -435,12 +459,12 @@ router.post('/verify-email-otp', [
     await deletePendingReg(email);
 
     const token = signUserToken(user);
-    res.json({
-      success: true,
+    return sendAuthSessionResponse(req, res, {
       message: 'Email verified. Registration complete.',
+      token,
+      role: user.role || 'user',
       data: {
         user: serializeAuthUser(user),
-        token,
       },
     });
   } catch (error) {
@@ -536,12 +560,12 @@ router.post('/login', [
     await user.resetLoginAttempts();
     const token = signUserToken(user);
 
-    res.json({
-      success: true,
+    return sendAuthSessionResponse(req, res, {
       message: 'Login successful',
+      token,
+      role: user.role || 'user',
       data: {
         user: serializeAuthUser(user),
-        token,
       },
     });
   } catch (error) {
@@ -576,14 +600,14 @@ router.post('/google', [
     });
 
     const token = signUserToken(user);
-    return res.json({
-      success: true,
+    return sendAuthSessionResponse(req, res, {
       message: existingUser ? 'Login successful' : 'Account created successfully',
+      token,
+      role: user.role || 'user',
       data: {
         user: {
           ...serializeAuthUser(user),
         },
-        token,
         isNewUser: !existingUser,
       },
     });
@@ -625,12 +649,12 @@ router.post('/apple', [
     });
 
     const token = signUserToken(user);
-    return res.json({
-      success: true,
+    return sendAuthSessionResponse(req, res, {
       message: existingUser ? 'Login successful' : 'Account created successfully',
+      token,
+      role: user.role || 'user',
       data: {
         user: serializeAuthUser(user),
-        token,
         isNewUser: !existingUser,
       },
     });
@@ -690,7 +714,11 @@ router.post('/verify-email', [
     }
 
     const token = signUserToken(user);
-    return res.json({ success: true, message: 'Email verified successfully', data: { token } });
+    return sendAuthSessionResponse(req, res, {
+      message: 'Email verified successfully',
+      token,
+      role: user.role || 'user',
+    });
   } catch (error) {
     console.error('Email verification error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -918,6 +946,7 @@ router.post('/logout', auth, async (req, res) => {
   try {
     const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
     if (token) await blockToken(token);
+    clearMappedSessionCookie(req, res);
     res.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error.message);
@@ -932,6 +961,7 @@ router.post('/logout-all', auth, async (req, res) => {
 
     const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
     if (token) await blockToken(token);
+    clearMappedSessionCookie(req, res);
 
     res.json({ success: true, message: 'All sessions have been logged out successfully' });
   } catch (error) {

@@ -12,21 +12,8 @@ class ApiClient {
       headers: {
         'Content-Type': 'application/json',
       },
+      withCredentials: true,
     });
-
-    // Add request interceptor to include auth token
-    this.client.interceptors.request.use(
-      (config) => {
-        const token = this.getToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => {
-        return Promise.reject(error);
-      }
-    );
 
     // Add response interceptor for error handling
     this.client.interceptors.response.use(
@@ -35,8 +22,6 @@ class ApiClient {
         // Only redirect on 401, but don't log other errors here
         // Let individual methods handle their own errors
         if (error.response?.status === 401) {
-          // Token expired or invalid
-          this.clearToken();
           if (typeof window !== 'undefined') {
             window.location.href = '/login';
           }
@@ -47,45 +32,14 @@ class ApiClient {
     );
   }
 
-  private getToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    const sessionToken = sessionStorage.getItem('auth_token');
-    if (sessionToken) return sessionToken;
-    // Fall back to cookie so session survives new tabs / browser restarts
-    const match = document.cookie.match(/(?:^|;\s*)mn_counsellor_auth=([^;]+)/);
-    if (match) {
-      const token = decodeURIComponent(match[1]);
-      sessionStorage.setItem('auth_token', token);
-      return token;
-    }
-    return null;
-  }
-
-  private setToken(token: string): void {
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('auth_token', token);
-      // Mirror to cookie so Next.js middleware can verify server-side
-      const maxAge = 7 * 24 * 60 * 60;
-      const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
-      document.cookie = `mn_counsellor_auth=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Strict${secureFlag}`;
-    }
-  }
-
   public clearToken(): void {
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('auth_token');
-      const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
-      document.cookie = `mn_counsellor_auth=; path=/; max-age=0; SameSite=Strict${secureFlag}`;
-    }
+    // Browser sessions are server-issued HttpOnly cookies.
   }
 
   // Auth methods
-  async login(email: string, password: string): Promise<ApiResponse<{ user: any; token: string }>> {
+  async login(email: string, password: string): Promise<ApiResponse<{ user: any }>> {
     try {
-      const response = await this.client.post('/auth/login', { email, password });
-      if (response.data.success && response.data.data.token) {
-        this.setToken(response.data.data.token);
-      }
+      const response = await this.client.post('/auth/login', { email, password, transport: 'cookie' });
       return response.data;
     } catch (error: any) {
       const errorResponse = error.response?.data;
@@ -117,12 +71,23 @@ class ApiClient {
     }
   }
 
-  async registerCounsellor(data: any): Promise<ApiResponse<{ user: any; counsellor: any; token: string }>> {
+  async logout(): Promise<ApiResponse<void>> {
+    try {
+      const response = await this.client.post('/auth/logout');
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        message: errorResponse?.message || error.message || 'Logout failed',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async registerCounsellor(data: any): Promise<ApiResponse<{ user: any; counsellor: any }>> {
     try {
       const response = await this.client.post('/counsellors/register', data);
-      if (response.data.success && response.data.data.token) {
-        this.setToken(response.data.data.token);
-      }
       return response.data;
     } catch (error: any) {
       const errorResponse = error.response?.data;
@@ -584,16 +549,14 @@ class ApiClient {
     };
   }>> {
     try {
-      const token = this.getToken();
       const response = await fetch(`${this.baseURL.replace(/\/$/, '')}/counsellors/me/profile-media`, {
         method: 'PUT',
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        credentials: 'include',
         body: formData,
       });
       const data = await response.json().catch(() => null);
 
       if (response.status === 401) {
-        this.clearToken();
         if (typeof window !== 'undefined') {
           window.location.href = '/login';
         }

@@ -6,7 +6,11 @@ const Message = require('../../models/Message');
 const ChatRoom = require('../../models/ChatRoom');
 const chatRoutes = require('../../routes/chat');
 const { getPubClient, getSubClient } = require('../../config/redis');
-const { verifyUserToken } = require('../../utils/authTokens');
+const { verifyAdminToken, verifyUserToken } = require('../../utils/authTokens');
+const {
+  getCookieToken,
+  getWebSessionForRequest,
+} = require('../../config/webSessions');
 
 const SOCKET_ENABLED_SERVICES = new Set(['api-ios', 'api-android', 'api-web']);
 
@@ -63,13 +67,25 @@ const emitPresenceToJoinedChatRooms = (socket, event) => {
   }
 };
 
+const getSocketWebSession = (socket) => getWebSessionForRequest({
+  headers: socket.handshake.headers || {},
+  get(name) {
+    return this.headers[String(name || '').toLowerCase()];
+  },
+});
+
 const attachSocketHandlers = (io) => {
   io.use(async (socket, next) => {
-    const token = socket.handshake.auth.token;
+    const webSession = getSocketWebSession(socket);
+    const token = webSession
+      ? getCookieToken({ headers: socket.handshake.headers || {} }, webSession.cookieName)
+      : socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication error: Token required'));
 
     try {
-      const decoded = verifyUserToken(token);
+      const decoded = webSession?.role === 'admin'
+        ? verifyAdminToken(token)
+        : verifyUserToken(token);
       const { isTokenBlocked } = require('../../middleware/auth');
 
       if (await isTokenBlocked(token)) {
@@ -80,10 +96,14 @@ const attachSocketHandlers = (io) => {
       if (!user || !user.isActive || (decoded.sessionVersion || 0) !== (user.sessionVersion || 0)) {
         return next(new Error('Authentication error: Invalid token'));
       }
+      if (webSession && user.role !== webSession.role) {
+        return next(new Error('Authentication error: Invalid session origin'));
+      }
 
       socket.userId = decoded.userId;
       socket.userRole = user.role || 'user';
       socket.userName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+      socket.authTransport = webSession ? 'cookie' : 'bearer';
       return next();
     } catch {
       return next(new Error('Authentication error: Invalid token'));
@@ -236,7 +256,7 @@ const createSocketServer = ({ server, corsOrigin, serviceName, enableSocketsDefa
       origin: corsOrigin,
       credentials: true,
       methods: ['GET', 'POST'],
-      allowedHeaders: ['Content-Type', 'Authorization']
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Auth-Transport']
     },
     path: '/socket.io/',
     transports: ['websocket', 'polling']

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { api } from '@/lib/api';
-import { getToken, setToken, clearToken, getStoredUser, setStoredUser } from '@/lib/auth';
+import { clearStoredUser, getStoredUser, setStoredUser } from '@/lib/auth';
 import type { AdminUser, User } from '@/types';
 
 interface AuthContextValue {
@@ -20,18 +20,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const token = getToken();
-    const stored = getStoredUser();
-    if (token && stored?.role === 'admin') {
-      setUser(stored);
-    }
-    setIsLoading(false);
+    let mounted = true;
+
+    const hydrate = async () => {
+      const stored = getStoredUser();
+      if (stored?.role === 'admin') {
+        setUser(stored);
+      }
+
+      const res = await api.me();
+      if (!mounted) return;
+
+      if (res.success && res.data?.user?.role === 'admin') {
+        const u = res.data.user;
+        const adminUser = { id: u._id, firstName: u.firstName, lastName: u.lastName, email: u.email, role: 'admin' as const };
+        setStoredUser(adminUser);
+        setUser(adminUser);
+      } else {
+        clearStoredUser();
+        setUser(null);
+      }
+      setIsLoading(false);
+    };
+
+    hydrate().catch(() => {
+      if (!mounted) return;
+      clearStoredUser();
+      setUser(null);
+      setIsLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const persistAdminSession = useCallback((u: User, token: string) => {
+  const persistAdminSession = useCallback((u: User) => {
     if (u.role !== 'admin') return { success: false, message: 'Access denied. Admin accounts only.' };
 
-    setToken(token);
     const adminUser = { id: u._id, firstName: u.firstName, lastName: u.lastName, email: u.email, role: 'admin' as const };
     setStoredUser(adminUser);
     setUser(adminUser);
@@ -51,22 +77,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    const { user: u, token } = res.data;
-    if (!u || !token) return { success: false, message: 'Login failed' };
-    return persistAdminSession(u, token);
+    const { user: u } = res.data;
+    if (!u) return { success: false, message: 'Login failed' };
+    return persistAdminSession(u);
   }, [persistAdminSession]);
 
   const completeMfa = useCallback(async (challengeId: string, otp: string) => {
     const res = await api.verifyMfa(challengeId, otp);
-    if (!res.success || !res.data?.user || !res.data?.token) {
+    if (!res.success || !res.data?.user) {
       return { success: false, message: res.message || 'MFA verification failed' };
     }
-    return persistAdminSession(res.data.user, res.data.token);
+    return persistAdminSession(res.data.user);
   }, [persistAdminSession]);
 
   const logout = useCallback(async () => {
     await api.logout();
-    clearToken();
+    clearStoredUser();
     setUser(null);
     window.location.href = '/login';
   }, []);
