@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-import { ENV } from '@/lib/env';
 import { api } from '@/lib/api';
 
 const WebViewWithPermissions = WebView as any;
@@ -15,6 +14,7 @@ interface RouteParams {
   roomId:         string;
   livekitUrl:     string;
   livekitToken:   string;
+  meetUrl?:       string;
   provider?:      string;
   joinMode?:      string;
   joinUrl?:       string;
@@ -28,14 +28,13 @@ export default function CallJoin({ navigation, route }: any) {
   const {
     bookingId,
     livekitUrl,
-    livekitToken,
+    meetUrl,
     provider,
     joinMode,
     joinUrl,
     externalJoinUrl,
     sessionType,
     counsellorName,
-    userName,
   } = (route.params || {}) as RouteParams;
 
   const [loading,            setLoading]            = useState(true);
@@ -102,13 +101,13 @@ export default function CallJoin({ navigation, route }: any) {
       setLoading(false);
       return;
     }
-    if (!livekitToken || !livekitUrl) {
+    if (!meetUrl || !livekitUrl) {
       setError('Missing session information. Please go back and try again.');
       setLoading(false);
     } else {
       requestPermissions();
     }
-  }, [provider, joinMode, joinUrl, externalJoinUrl, livekitToken, livekitUrl, requestPermissions]);
+  }, [provider, joinMode, joinUrl, externalJoinUrl, meetUrl, livekitUrl, requestPermissions]);
 
   const handleLeave = () => {
     Alert.alert(
@@ -172,12 +171,7 @@ export default function CallJoin({ navigation, route }: any) {
   }
 
   // ── Build meet URL ───────────────────────────────────────────────────────
-  const apiBase = ENV.API_ORIGIN || ENV.API_BASE_URL.replace(/\/api\/?$/, '');
-  const meetUrl = `${apiBase}/api/video/meet`
-    + `?token=${encodeURIComponent(livekitToken)}`
-    + `&url=${encodeURIComponent(livekitUrl)}`
-    + `&name=${encodeURIComponent(userName || 'Participant')}`
-    + `&type=${sessionType === 'video' ? 'video' : 'audio'}`;
+  const sessionMeetUrl = meetUrl;
 
   // ── Full-screen call view ─────────────────────────────────────────────────
 
@@ -206,7 +200,7 @@ export default function CallJoin({ navigation, route }: any) {
 
       <WebViewWithPermissions
         ref={webViewRef}
-        source={{ uri: meetUrl }}
+        source={{ uri: sessionMeetUrl }}
         onLoad={() => setLoading(false)}
         onError={() => {
           setError('Failed to load video session. Please check your connection and try again.');

@@ -9,6 +9,7 @@ const { auth } = require('../middleware/auth');
 const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
 const { getRedisClient } = require('../config/redis');
 const { signUserToken } = require('../utils/authTokens');
+const { serializeAuthUser, serializeUserProfile } = require('../serializers/userSerializer');
 
 const router = express.Router();
 const emailNormalizationOptions = {
@@ -150,19 +151,6 @@ const splitDisplayName = (fullName, fallbackFirst = 'Menorah', fallbackLast = 'U
     lastName: parts.slice(1).join(' ') || fallbackLast
   };
 };
-
-const serializeAuthUser = (user) => ({
-  id: user._id.toString(),
-  firstName: user.firstName,
-  lastName: user.lastName,
-  email: user.email,
-  phone: user.phone,
-  isEmailVerified: user.isEmailVerified,
-  isPhoneVerified: user.isPhoneVerified,
-  profileImage: user.profileImage,
-  role: user.role || 'user',
-  kyc: user.kyc,
-});
 
 const verifyGoogleCredential = async (credential) => {
   const clientIds = getGoogleClientIds();
@@ -451,16 +439,7 @@ router.post('/verify-email-otp', [
       success: true,
       message: 'Email verified. Registration complete.',
       data: {
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          phone: user.phone,
-          isEmailVerified: true,
-          isPhoneVerified: user.isPhoneVerified,
-          kyc: user.kyc,
-        },
+        user: serializeAuthUser(user),
         token,
       },
     });
@@ -561,13 +540,7 @@ router.post('/login', [
       success: true,
       message: 'Login successful',
       data: {
-        user: {
-          id: user._id, firstName: user.firstName, lastName: user.lastName,
-          email: user.email, phone: user.phone,
-          isEmailVerified: user.isEmailVerified, isPhoneVerified: user.isPhoneVerified,
-          profileImage: user.profileImage, role: user.role || 'user',
-          kyc: user.kyc,
-        },
+        user: serializeAuthUser(user),
         token,
       },
     });
@@ -922,30 +895,12 @@ router.post('/reset-password', [
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select(
-      '-password -emailVerificationToken -passwordResetToken -passwordResetExpires -loginAttempts -lockUntil'
-    ).lean();
+    const user = await User.findById(req.user._id).lean();
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    // Return same shape as login/register so user.id is always a string on the frontend
     res.json({
       success: true,
       data: {
-        user: {
-          id: user._id.toString(),
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          phone: user.phone,
-          isEmailVerified: user.isEmailVerified,
-          isPhoneVerified: user.isPhoneVerified,
-          role: user.role,
-          profileImage: user.profileImage || null,
-          dateOfBirth: user.dateOfBirth,
-          gender: user.gender,
-          kyc: user.kyc,
-          subscription: user.subscription,
-          notificationPreferences: user.notificationPreferences,
-        }
+        user: serializeUserProfile(user)
       }
     });
   } catch (error) {

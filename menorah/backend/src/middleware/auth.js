@@ -74,6 +74,46 @@ const authenticateWithVerifier = async (req, res, verifyToken, { optional = fals
   return user;
 };
 
+const authenticateAny = async (req, res, { optional = false } = {}) => {
+  const token = extractBearerToken(req);
+
+  if (!token) {
+    if (optional) return null;
+    res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
+    return false;
+  }
+
+  for (const verifyToken of [verifyUserToken, verifyAdminToken]) {
+    try {
+      const decoded = verifyToken(token);
+      if (await isTokenBlocked(token)) {
+        if (optional) return null;
+        res.status(401).json({ success: false, message: 'Invalid token.' });
+        return false;
+      }
+
+      const user = await loadActiveUserForToken(decoded);
+      if (!user) {
+        if (optional) return null;
+        res.status(401).json({ success: false, message: 'Invalid token.' });
+        return false;
+      }
+
+      req.user = user;
+      req.auth = { token, decoded };
+      return user;
+    } catch (error) {
+      if (error.name !== 'JsonWebTokenError' && error.name !== 'TokenExpiredError') {
+        throw error;
+      }
+    }
+  }
+
+  if (optional) return null;
+  res.status(401).json({ success: false, message: 'Invalid token.' });
+  return false;
+};
+
 const auth = async (req, res, next) => {
   try {
     const user = await authenticateWithVerifier(req, res, verifyUserToken);
@@ -81,6 +121,17 @@ const auth = async (req, res, next) => {
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+};
+
+const authAny = async (req, res, next) => {
+  try {
+    const user = await authenticateAny(req, res);
+    if (!user) return;
+    next();
+  } catch (error) {
+    console.error('Auth-any middleware error:', error);
     res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 };
@@ -124,6 +175,7 @@ module.exports = {
   optionalAuth,
   adminAuth,
   counsellorAuth,
+  authAny,
   isTokenBlocked,
   extractBearerToken,
 };

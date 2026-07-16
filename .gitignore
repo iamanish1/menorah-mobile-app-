@@ -16,7 +16,16 @@ pnpm-debug.log*
 menorah/deploy/env/*.env
 !menorah/deploy/env/*.env.example
 menorah/deploy/env/production.env
+menorah/deploy/env/production.env.*
+!menorah/deploy/env/production.env.example
+menorah/deploy/env/production.env.pre-clean-slate-*
 menorah/deploy/env/cloudflare.env
+deploy/env/production.env
+deploy/env/production.env.*
+deploy/env/production.env.pre-clean-slate-*
+deploy-state/
+menorah/deploy-state/
+menorah/deploy/deploy-state/
 menorah/deploy/livekit/livekit.yaml
 menorah/**/*.bak*
 menorah/deploy/env/*.bak*

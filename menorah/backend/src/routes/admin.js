@@ -1211,7 +1211,7 @@ router.get('/users', [
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [users, total] = await Promise.all([
       User.find(userQuery)
-        .select('-password -passwordResetToken -passwordResetExpires -emailVerificationToken')
+        .select('firstName lastName email phone role isEmailVerified isPhoneVerified profileImage kyc subscription isActive lastLogin createdAt updatedAt')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
