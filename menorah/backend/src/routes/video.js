@@ -115,6 +115,31 @@ const buildMeetUrl = (req, ticket, type = 'video') => {
   return url.toString();
 };
 
+const originFromUrl = (value) => {
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+};
+
+const getMeetPageConnectSrc = () => {
+  const origins = new Set(["'self'"]);
+  [process.env.LIVEKIT_URL, process.env.LIVEKIT_API_URL].forEach((value) => {
+    const origin = originFromUrl(value);
+    if (origin) origins.add(origin);
+  });
+
+  const callsDomain = process.env.CALLS_DOMAIN;
+  if (callsDomain) {
+    origins.add(`https://${callsDomain}`);
+    origins.add(`wss://${callsDomain}`);
+  }
+
+  return Array.from(origins);
+};
+
 // ── Helper: load and authorise booking ────────────────────────────────────
 const loadBooking = async (bookingId, requestUserId) => {
   const booking = await Booking.findById(bookingId)
@@ -713,6 +738,7 @@ router.get('/meet', [
   // Sanitise values — they go into JS string literals
   const safeTicket = String(ticket).replace(/['"<>]/g, '').slice(0, 128);
   const safeName  = 'Participant';
+  const cspNonce = crypto.randomBytes(16).toString('base64');
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -720,7 +746,7 @@ router.get('/meet', [
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Menorah Session</title>
-  <style>
+  <style nonce="${cspNonce}">
     *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
     html,body{width:100%;height:100vh;background:#0a0f1e;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;overflow:hidden;touch-action:manipulation}
     #app{position:fixed;inset:0;display:flex;flex-direction:column}
@@ -847,6 +873,8 @@ router.get('/meet', [
     @keyframes spin{to{transform:rotate(360deg)}}
     .conn-title{font-size:18px;font-weight:600;color:#fff}
     .conn-sub{font-size:14px;color:rgba(255,255,255,0.5)}
+    .conn-sub.centered{text-align:center;margin-top:4px}
+    #ic-mic-off,#ic-cam-off{display:none}
 
     /* Error overlay */
     #error-screen{
@@ -872,7 +900,7 @@ router.get('/meet', [
     <div class="spinner"></div>
     <div>
       <div class="conn-title">Joining session…</div>
-      <div class="conn-sub" style="text-align:center;margin-top:4px">Setting up your connection</div>
+      <div class="conn-sub centered">Setting up your connection</div>
     </div>
   </div>
 
@@ -881,7 +909,7 @@ router.get('/meet', [
     <div class="err-icon">📵</div>
     <div class="err-title">Connection Failed</div>
     <div class="err-msg" id="err-msg">Unable to connect to the session. Please check your connection and try again.</div>
-    <button class="err-btn" onclick="notifyNative('leave')">Go Back</button>
+    <button id="err-leave" class="err-btn">Go Back</button>
   </div>
 
   <!-- Video area -->
@@ -919,7 +947,7 @@ router.get('/meet', [
   </div>
 
   <!-- Controls -->
-  <div id="controls" style="position:absolute;bottom:0;left:0;right:0">
+  <div id="controls">
     <!-- Mic -->
     <button id="btn-mic" class="ctrl-btn active" title="Mute microphone">
       <svg id="ic-mic" width="22" height="22" viewBox="0 0 24 24" fill="white">
@@ -928,7 +956,7 @@ router.get('/meet', [
         <line x1="12" y1="17" x2="12" y2="21" stroke="white" stroke-width="2" stroke-linecap="round"/>
         <line x1="9" y1="21" x2="15" y2="21" stroke="white" stroke-width="2" stroke-linecap="round"/>
       </svg>
-      <svg id="ic-mic-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" style="display:none">
+      <svg id="ic-mic-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
         <line x1="1" y1="1" x2="23" y2="23"/>
         <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
         <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2"/>
@@ -948,7 +976,7 @@ router.get('/meet', [
       <svg id="ic-cam" width="22" height="22" viewBox="0 0 24 24" fill="white">
         <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
       </svg>
-      <svg id="ic-cam-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" style="display:none">
+      <svg id="ic-cam-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
         <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/>
         <line x1="1" y1="1" x2="23" y2="23"/>
       </svg>
@@ -956,8 +984,8 @@ router.get('/meet', [
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
-<script>
+<script nonce="${cspNonce}" src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<script nonce="${cspNonce}">
 (async () => {
   const MEET_TICKET = '${safeTicket}';
   let TOKEN    = '';
@@ -988,6 +1016,8 @@ router.get('/meet', [
       window.ReactNativeWebView.postMessage(JSON.stringify({ action }));
     }
   }
+
+  document.getElementById('err-leave')?.addEventListener('click', () => notifyNative('leave'));
 
   function setConnected(on) {
     connDot.className = on ? 'live' : '';
@@ -1193,6 +1223,20 @@ router.get('/meet', [
 </html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'none'",
+    `script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net`,
+    `style-src 'nonce-${cspNonce}'`,
+    "img-src 'self' data:",
+    "media-src 'self' blob:",
+    `connect-src ${getMeetPageConnectSrc().join(' ')}`,
+    "font-src 'none'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+    "worker-src 'none'",
+  ].join('; '));
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Content-Type-Options', 'nosniff');

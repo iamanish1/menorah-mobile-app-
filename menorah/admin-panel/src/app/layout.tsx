@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { Toaster } from 'react-hot-toast';
@@ -8,9 +9,14 @@ export const metadata: Metadata = {
   description: 'Admin control panel for Menorah Health platform'
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+
   return (
     <html lang="en">
+      <head>
+        {nonce ? <meta name="csp-nonce" content={nonce} /> : null}
+      </head>
       <body>
         <AuthProvider>
           {children}

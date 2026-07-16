@@ -1,20 +1,45 @@
-# Cloudflare Tunnel Setup
+# Cloudflare Production Ingress
 
-Cloudflare Tunnel is the only intended public ingress for the Ubuntu production host. MongoDB and Redis must never be exposed publicly.
+Production ingress uses Cloudflare proxied hostnames with SSL/TLS encryption mode set to **Full (strict)**. Caddy terminates HTTPS on the origin with a Cloudflare Origin CA certificate/key mounted from host-only secret files. MongoDB and Redis must never be exposed publicly.
+
+Create the Origin CA certificate in Cloudflare with SAN coverage for:
+
+```text
+menorah.me
+*.menorah.me
+```
+
+Store the files outside git:
+
+```text
+/opt/menorah/secrets/cloudflare-origin.pem
+/opt/menorah/secrets/cloudflare-origin-key.pem
+```
+
+Set these paths in `menorah/deploy/env/production.env`:
+
+```env
+CLOUDFLARE_ORIGIN_CERT_PATH=/opt/menorah/secrets/cloudflare-origin.pem
+CLOUDFLARE_ORIGIN_KEY_PATH=/opt/menorah/secrets/cloudflare-origin-key.pem
+```
+
+In Cloudflare, set SSL/TLS mode to **Full (strict)** before sending production traffic. Cloudflare's Full (strict) mode requires an unexpired origin certificate issued by a publicly trusted CA or Cloudflare Origin CA, with a hostname match. Cloudflare Origin CA certificates are compatible with Strict SSL mode.
 
 ## Hostname Map
 
-Use these public hostnames:
+Use proxied DNS records for these public hostnames, pointing to the Ubuntu origin that exposes Caddy on ports 80 and 443:
 
 ```text
-www.menorah.me          -> http://reverse-proxy:80
-app.menorah.me          -> http://reverse-proxy:80
-admin.menorah.me        -> http://reverse-proxy:80
-api-ios.menorah.me      -> http://reverse-proxy:80
-api-android.menorah.me  -> http://reverse-proxy:80
-api-web.menorah.me      -> http://reverse-proxy:80
-api-admin.menorah.me    -> http://reverse-proxy:80
-calls.menorah.me        -> http://reverse-proxy:80
+menorah.me
+www.menorah.me
+app.menorah.me
+admin.menorah.me
+counsellor.menorah.me
+api-ios.menorah.me
+api-android.menorah.me
+api-web.menorah.me
+api-admin.menorah.me
+calls.menorah.me
 ```
 
 `calls.menorah.me` is proxied by Caddy to `LIVEKIT_UPSTREAM`. For same-VPS Hostinger LiveKit, use:
@@ -23,11 +48,15 @@ calls.menorah.me        -> http://reverse-proxy:80
 LIVEKIT_UPSTREAM=http://livekit:7880
 ```
 
-Cloudflare Tunnel/HTTP proxying is only for HTTPS/WSS signaling. LiveKit media still needs Hostinger firewall/NAT access to the configured RTC ports, normally `7881/tcp` and `50000-50100/udp`, or clients must rely on LiveKit TCP fallback.
+Cloudflare HTTP proxying is only for HTTPS/WSS signaling. LiveKit media still needs Hostinger firewall/NAT access to the configured RTC ports, normally `7881/tcp` and `50000-50100/udp`, or clients must rely on LiveKit TCP fallback.
 
-## Mode A: Dashboard-Managed Token
+## Optional Tunnel Connector
 
-This is preferred for first go-live.
+The direct proxied-DNS path above is the production Full (strict) path. If a Cloudflare Tunnel connector is used later, configure each public hostname to reach `https://reverse-proxy:443`, not `http://reverse-proxy:80`, and make the connector trust the Cloudflare Origin CA certificate. Mapping tunnel traffic to port 80 will loop because Caddy redirects HTTP to HTTPS.
+
+## Optional Mode A: Dashboard-Managed Tunnel Token
+
+Use this only if the direct proxied-DNS path is unavailable. The Cloudflare public hostname service target must be `https://reverse-proxy:443` with Origin CA trust configured in Cloudflare Zero Trust.
 
 1. In Cloudflare Zero Trust, create a tunnel for the Ubuntu host.
 2. Choose Docker as the connector type.
@@ -57,7 +86,7 @@ docker compose \
   up -d --build
 ```
 
-## Mode B: Locally Managed Config File
+## Optional Mode B: Locally Managed Tunnel Config File
 
 Use this only after the token-based setup is understood.
 

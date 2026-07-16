@@ -79,6 +79,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         username: 'menorahsoftware'
       }
     ],
+    'expo-image',
+    'expo-localization',
+    'expo-secure-store',
+    'expo-status-bar',
     'expo-apple-authentication'
   ];
 
@@ -106,11 +110,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // ─────────────────────────────────────────────────────────────────────────
     icon: './assets/brand/menorah_logo.png',
     userInterfaceStyle: 'light',
-    splash: {
-      image: './assets/splash.png',
-      resizeMode: 'contain',
-      backgroundColor: '#f0f9f4'
-    },
     assetBundlePatterns: [
       '**/*'
     ],
@@ -143,14 +142,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       backgroundColor: '#2d7a5c',
       translucent: false
     },
-    androidNavigationBar: {
-      visible: 'leanback',
-      backgroundColor: '#ffffff',
-      barStyle: 'dark-content'
-    },
     web: {
       favicon: './assets/favicon.png',
-      bundler: 'metro'
+      bundler: 'metro',
+      splash: {
+        image: './assets/splash.png',
+        resizeMode: 'contain',
+        backgroundColor: '#f0f9f4'
+      }
     },
     plugins,
     scheme: 'menorah-health',

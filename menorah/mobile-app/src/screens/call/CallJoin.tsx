@@ -33,7 +33,6 @@ export default function CallJoin({ navigation, route }: any) {
     joinMode,
     joinUrl,
     externalJoinUrl,
-    sessionType,
     counsellorName,
   } = (route.params || {}) as RouteParams;
 
@@ -236,7 +235,7 @@ const styles = StyleSheet.create({
 
   // Loading overlay
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#0a0f1e',
     alignItems: 'center',
     justifyContent: 'center',

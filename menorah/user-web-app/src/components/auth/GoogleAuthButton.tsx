@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { getCspNonce } from '@/lib/cspNonce';
 
 declare global {
   interface Window {
@@ -54,6 +55,7 @@ const loadGoogleScript = () =>
 
     const script = document.createElement('script');
     script.id = SCRIPT_ID;
+    script.nonce = getCspNonce() || '';
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;

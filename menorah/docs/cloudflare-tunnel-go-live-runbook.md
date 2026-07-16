@@ -1,8 +1,19 @@
-# Cloudflare Tunnel Go-Live Runbook
+# Cloudflare Go-Live Runbook
 
-Cloudflare Tunnel is the production public ingress. The Ubuntu host should not expose MongoDB, Redis, Prometheus, Grafana, Loki, or Uptime Kuma to public DNS.
+The production ingress target is Cloudflare proxied DNS with SSL/TLS mode set to **Full (strict)**. Caddy listens on 80 and 443, redirects HTTP to HTTPS, and serves every production hostname over TLS with a Cloudflare Origin CA certificate mounted from host-only secret files. The Ubuntu host should not expose MongoDB, Redis, Prometheus, Grafana, Loki, or Uptime Kuma to public DNS.
 
-## Dashboard-Managed Tunnel
+Required host-only files:
+
+```text
+/opt/menorah/secrets/cloudflare-origin.pem
+/opt/menorah/secrets/cloudflare-origin-key.pem
+```
+
+Create the certificate in Cloudflare with SANs for `menorah.me` and `*.menorah.me`, store the certificate/key at those paths, and set Cloudflare SSL/TLS mode to **Full (strict)** before sending traffic.
+
+## Optional Dashboard-Managed Tunnel
+
+Use this only if direct proxied DNS to the Ubuntu origin is unavailable. Configure Cloudflare public hostname services to `https://reverse-proxy:443` with Origin CA trust. Do not target `http://reverse-proxy:80`; Caddy will redirect that traffic back to HTTPS.
 
 1. Open Cloudflare Zero Trust.
 2. Create a tunnel for the production Ubuntu host.
@@ -34,18 +45,19 @@ docker compose \
 
 ## Public Hostname Mapping
 
-Create these public hostnames in Cloudflare:
+Create these proxied public hostnames in Cloudflare. For direct DNS, point them to the Ubuntu origin IP. For an optional tunnel, point each service to `https://reverse-proxy:443`.
 
 ```text
-www.menorah.me          -> http://reverse-proxy:80
-app.menorah.me          -> http://reverse-proxy:80
-admin.menorah.me        -> http://reverse-proxy:80
-counsellor.menorah.me   -> http://reverse-proxy:80
-api-ios.menorah.me      -> http://reverse-proxy:80
-api-android.menorah.me  -> http://reverse-proxy:80
-api-web.menorah.me      -> http://reverse-proxy:80
-api-admin.menorah.me    -> http://reverse-proxy:80
-calls.menorah.me        -> http://reverse-proxy:80
+menorah.me
+www.menorah.me
+app.menorah.me
+admin.menorah.me
+counsellor.menorah.me
+api-ios.menorah.me
+api-android.menorah.me
+api-web.menorah.me
+api-admin.menorah.me
+calls.menorah.me
 ```
 
 `calls.menorah.me` is routed by Caddy to `LIVEKIT_UPSTREAM`. For same-VPS Hostinger LiveKit, set `LIVEKIT_UPSTREAM=http://livekit:7880` in `production.env`.

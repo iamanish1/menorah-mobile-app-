@@ -7,6 +7,7 @@ import { Video, MessageCircle, Headphones, ChevronRight, ArrowLeft, Calendar, Cl
 import { api } from '@/lib/api';
 import { Avatar, Button, SegmentedControl, Spinner } from '@/components/ui';
 import { formatCurrency } from '@/lib/utils';
+import { getCspNonce } from '@/lib/cspNonce';
 import type { SessionType } from '@/types';
 
 declare global {
@@ -19,6 +20,7 @@ function loadRazorpay(): Promise<boolean> {
   return new Promise((resolve) => {
     if (typeof window !== 'undefined' && window.Razorpay) { resolve(true); return; }
     const script = document.createElement('script');
+    script.nonce = getCspNonce() || '';
     script.src    = 'https://checkout.razorpay.com/v1/checkout.js';
     script.onload  = () => resolve(true);
     script.onerror = () => resolve(false);

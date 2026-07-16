@@ -74,7 +74,25 @@ const createExpressApp = ({ serviceName, getHealthState }) => {
     helmet({
       crossOriginResourcePolicy: { policy: 'cross-origin' },
       crossOriginEmbedderPolicy: false,
-      contentSecurityPolicy: false
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'none'"],
+          baseUri: ["'none'"],
+          connectSrc: ["'none'"],
+          fontSrc: ["'none'"],
+          formAction: ["'none'"],
+          frameAncestors: ["'none'"],
+          frameSrc: ["'none'"],
+          imgSrc: ["'self'", 'data:'],
+          mediaSrc: ["'none'"],
+          objectSrc: ["'none'"],
+          scriptSrc: ["'none'"],
+          styleSrc: ["'none'"],
+          workerSrc: ["'none'"],
+          upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
+        }
+      }
     })
   );
 
