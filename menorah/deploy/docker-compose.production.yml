@@ -126,7 +126,7 @@ services:
       - api-admin
 
   livekit:
-    image: livekit/livekit-server:v1.9.1@sha256:c039a1bfa154c8479ac369c380665638e92a7e9531e69664549c0c0d3eb65e63
+    image: livekit/livekit-server:v1.13.3@sha256:483b8b7b5b0654f91f1e8bdc7b46fcd37fd9911612ecf627f97e3185a89825bd
     restart: unless-stopped
     command: ["--config", "/etc/livekit.yaml"]
     environment:
