@@ -109,6 +109,7 @@ services:
       - public_net
       - app_net
       - monitoring_net
+      - mentle_internal
     depends_on:
       - landing-page
       - user-web-app
@@ -548,3 +549,5 @@ networks:
     internal: true
   monitoring_net:
     internal: true
+  mentle_internal:
+    external: true

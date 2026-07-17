@@ -146,3 +146,99 @@ http://{$CALLS_DOMAIN} {
 		format json
 	}
 }
+
+http://mentle.org, http://www.mentle.org, http://mentle.mentle.org {
+	import security_headers
+	encode gzip zstd
+	reverse_proxy mentle-landing-web:3101
+	log {
+		output file /var/log/caddy/mentle-www-access.log
+		format json
+	}
+}
+
+http://app.mentle.org {
+	import browser_call_security_headers
+	encode gzip zstd
+	reverse_proxy mentle-consumer-web:3100
+	log {
+		output file /var/log/caddy/mentle-app-access.log
+		format json
+	}
+}
+
+http://business.mentle.org {
+	import security_headers
+	encode gzip zstd
+	reverse_proxy mentle-business-portal:3102
+	log {
+		output file /var/log/caddy/mentle-business-access.log
+		format json
+	}
+}
+
+http://admin.mentle.org {
+	import security_headers
+	encode gzip zstd
+	reverse_proxy mentle-admin-panel:3103
+	log {
+		output file /var/log/caddy/mentle-admin-access.log
+		format json
+	}
+}
+
+http://counsellor.mentle.org {
+	import browser_call_security_headers
+	encode gzip zstd
+	reverse_proxy mentle-counsellor-portal:3104
+	log {
+		output file /var/log/caddy/mentle-counsellor-access.log
+		format json
+	}
+}
+
+http://api.mentle.org {
+	import api_proxy
+	reverse_proxy mentle-api-consumer:4100
+	log {
+		output file /var/log/caddy/mentle-api-access.log
+		format json
+	}
+}
+
+http://api-business.mentle.org {
+	import api_proxy
+	reverse_proxy mentle-api-business:4101
+	log {
+		output file /var/log/caddy/mentle-api-business-access.log
+		format json
+	}
+}
+
+http://api-admin.mentle.org {
+	import api_proxy
+	reverse_proxy mentle-api-admin:4102
+	log {
+		output file /var/log/caddy/mentle-api-admin-access.log
+		format json
+	}
+}
+
+http://api-counsellor.mentle.org {
+	import api_proxy
+	reverse_proxy mentle-api-counsellor:4103
+	log {
+		output file /var/log/caddy/mentle-api-counsellor-access.log
+		format json
+	}
+}
+
+http://calls.mentle.org {
+	import browser_call_security_headers
+	encode gzip zstd
+	reverse_proxy {$LIVEKIT_UPSTREAM}
+	log {
+		output file /var/log/caddy/mentle-calls-access.log
+		format json
+	}
+}
