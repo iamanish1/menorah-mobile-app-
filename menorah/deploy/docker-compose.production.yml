@@ -255,7 +255,7 @@ services:
       context: ../backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["npm", "run", "start:api-ios"]
+    command: ["node", "src/services/api-ios/server.js"]
     environment:
       <<: *backend-env
       SERVICE_NAME: api-ios
@@ -278,7 +278,7 @@ services:
       context: ../backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["npm", "run", "start:api-android"]
+    command: ["node", "src/services/api-android/server.js"]
     environment:
       <<: *backend-env
       SERVICE_NAME: api-android
@@ -301,7 +301,7 @@ services:
       context: ../backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["npm", "run", "start:api-web"]
+    command: ["node", "src/services/api-web/server.js"]
     environment:
       <<: *backend-env
       SERVICE_NAME: api-web
@@ -324,7 +324,7 @@ services:
       context: ../backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["npm", "run", "start:api-admin"]
+    command: ["node", "src/services/api-admin/server.js"]
     environment:
       <<: *backend-env
       SERVICE_NAME: api-admin
@@ -350,7 +350,7 @@ services:
       context: ../backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["npm", "run", "start:worker"]
+    command: ["node", "src/services/worker/worker.js"]
     environment:
       <<: *backend-env
       SERVICE_NAME: worker

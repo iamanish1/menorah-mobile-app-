@@ -1,18 +1,22 @@
 # ── Stage 1: install production deps ──────────────────────────────────────
-FROM node:20-alpine AS deps
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS deps
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 # ci = clean install, exact versions, no dev deps
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # ── Stage 2: final runtime image ───────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS runner
 
 # Fonts are required by Sharp/libvips when rendering SVG text for Social Studio
 # Instagram images. Without them, production renders letters as square glyphs.
 RUN apk add --no-cache fontconfig ttf-dejavu ttf-liberation && fc-cache -f
+
+# Build tooling is not needed at runtime and carries an avoidable dependency tree.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn* \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
 # Security: run as non-root user
 RUN addgroup -S menorah && adduser -S menorah -G menorah
@@ -44,4 +48,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "require('http').get('http://localhost:'+process.env.PORT+'/health/live',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 
-CMD ["npm", "run", "start:api-web"]
+CMD ["node", "src/services/api-web/server.js"]

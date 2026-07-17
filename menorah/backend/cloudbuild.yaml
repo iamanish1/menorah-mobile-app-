@@ -122,7 +122,7 @@ steps:
 
         deploy_backend_service() {
           local service="$$1"
-          local script="$$2"
+          local entrypoint="$$2"
 
           gcloud run deploy "$$service" \
             --image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-api:$COMMIT_SHA \
@@ -130,8 +130,8 @@ steps:
             --platform=managed \
             --allow-unauthenticated \
             --port=8080 \
-            --command=npm \
-            --args=run,"$$script" \
+            --command=node \
+            --args="$$entrypoint" \
             --min-instances=0 \
             --max-instances=10 \
             --memory=512Mi \
@@ -144,10 +144,10 @@ steps:
             --set-env-vars="$$BACKEND_ENV"
         }
 
-        deploy_backend_service menorah-api-ios start:api-ios
-        deploy_backend_service menorah-api-android start:api-android
-        deploy_backend_service menorah-api-web start:api-web
-        deploy_backend_service menorah-api-admin start:api-admin
+        deploy_backend_service menorah-api-ios src/services/api-ios/server.js
+        deploy_backend_service menorah-api-android src/services/api-android/server.js
+        deploy_backend_service menorah-api-web src/services/api-web/server.js
+        deploy_backend_service menorah-api-admin src/services/api-admin/server.js
 
         gcloud run deploy menorah-worker \
           --image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-api:$COMMIT_SHA \
@@ -155,8 +155,8 @@ steps:
           --platform=managed \
           --no-allow-unauthenticated \
           --port=8080 \
-          --command=npm \
-          --args=run,start:worker \
+          --command=node \
+          --args=src/services/worker/worker.js \
           --min-instances=0 \
           --max-instances=1 \
           --memory=512Mi \

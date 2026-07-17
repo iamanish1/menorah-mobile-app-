@@ -94,7 +94,8 @@ jobs:
           docker run --rm
           -v /var/run/docker.sock:/var/run/docker.sock
           aquasec/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e
-          image --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL
+          image --scanners vuln --exit-code 1 --ignore-unfixed
+          --severity HIGH,CRITICAL --skip-version-check
           "menorah-${{ matrix.name }}:${GITHUB_SHA}"
       - name: Generate CycloneDX SBOM
         run: >-
