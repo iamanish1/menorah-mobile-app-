@@ -201,7 +201,7 @@ if [[ "${CHECK_PUBLIC:-false}" == "true" ]]; then
   require_code GET "https://${CALLS_DOMAIN:-calls.menorah.me}" 200 >/dev/null
   require_code_or_redirect GET "https://${WWW_DOMAIN:-www.menorah.me}" "^https://${ROOT_DOMAIN:-menorah.me}/?$" 200 >/dev/null
   require_code GET "https://${APP_DOMAIN:-app.menorah.me}" 200 >/dev/null
-  require_code_or_redirect GET "https://${ADMIN_DOMAIN:-admin.menorah.me}" "^https://${ADMIN_DOMAIN:-admin.menorah.me}/login|^/login" 200 >/dev/null
+  require_code_or_redirect GET "https://${ADMIN_DOMAIN:-admin.menorah.me}" "^https://${ADMIN_DOMAIN:-admin.menorah.me}/(dashboard|login)|^/(dashboard|login)" 200 >/dev/null
   require_code_or_redirect GET "https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}" "^https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}/(dashboard|login)|^/(dashboard|login)" 200 >/dev/null
 else
   echo "Skipping public HTTPS checks. Re-run with CHECK_PUBLIC=true after Cloudflare hostnames are live."
