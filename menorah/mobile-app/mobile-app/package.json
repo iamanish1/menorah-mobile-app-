@@ -3,7 +3,7 @@
     "babel-plugin-module-resolver": "^5.0.2"
   },
   "dependencies": {
-    "expo": "^54.0.22",
+    "expo": "^57.0.6",
     "menorah-health-app": "file:.."
   }
 }

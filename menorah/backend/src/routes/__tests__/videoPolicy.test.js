@@ -6,6 +6,21 @@ const mockAddGrant = jest.fn();
 const mockToJwt = jest.fn();
 const mockCreateRoom = jest.fn();
 const mockDeleteRoom = jest.fn();
+const mockRedisStore = new Map();
+const mockSetEx = jest.fn((key, _ttl, value) => {
+  mockRedisStore.set(key, value);
+  return Promise.resolve('OK');
+});
+const mockGetDel = jest.fn((key) => {
+  const value = mockRedisStore.get(key) || null;
+  mockRedisStore.delete(key);
+  return Promise.resolve(value);
+});
+const mockGet = jest.fn((key) => Promise.resolve(mockRedisStore.get(key) || null));
+const mockDel = jest.fn((key) => {
+  mockRedisStore.delete(key);
+  return Promise.resolve(1);
+});
 
 jest.mock('../../middleware/auth', () => ({
   auth: (req, _res, next) => {
@@ -27,6 +42,15 @@ jest.mock('livekit-server-sdk', () => ({
 
 jest.mock('../../models/Booking', () => ({
   findById: jest.fn(),
+}));
+
+jest.mock('../../config/redis', () => ({
+  getRedisClient: () => ({
+    setEx: mockSetEx,
+    getDel: mockGetDel,
+    get: mockGet,
+    del: mockDel,
+  }),
 }));
 
 const Booking = require('../../models/Booking');
@@ -115,6 +139,11 @@ describe('video route call policy gates', () => {
     mockToJwt.mockReset().mockResolvedValue('signed-livekit-token');
     mockCreateRoom.mockReset().mockResolvedValue(undefined);
     mockDeleteRoom.mockReset().mockResolvedValue(undefined);
+    mockRedisStore.clear();
+    mockSetEx.mockClear();
+    mockGetDel.mockClear();
+    mockGet.mockClear();
+    mockDel.mockClear();
     AccessToken.mockClear();
     Booking.findById.mockReset();
   });
@@ -202,6 +231,9 @@ describe('video route call policy gates', () => {
       livekitUrl: 'wss://calls.example.com',
       livekitToken: 'signed-livekit-token',
     });
+    expect(res.body.meetUrl).toMatch(/\/api\/video\/meet\?ticket=/);
+    expect(res.body.meetUrl).not.toContain('signed-livekit-token');
+    expect(mockSetEx).toHaveBeenCalledTimes(1);
     expect(AccessToken).toHaveBeenCalledTimes(1);
     expect(mockAddGrant).toHaveBeenCalledWith(expect.objectContaining({
       roomJoin: true,
@@ -241,6 +273,8 @@ describe('video route call policy gates', () => {
       region: 'US',
       livekitToken: 'signed-livekit-token',
     });
+    expect(res.body.meetUrl).toMatch(/\/api\/video\/meet\?ticket=/);
+    expect(res.body.meetUrl).not.toContain('signed-livekit-token');
     expect(AccessToken).toHaveBeenCalledTimes(1);
   });
 
@@ -270,5 +304,39 @@ describe('video route call policy gates', () => {
     });
     expect(res.body.livekitToken).toBeUndefined();
     expect(AccessToken).not.toHaveBeenCalled();
+  });
+
+  test('redeems a generated meet ticket once only', async () => {
+    const ticket = await videoRouter._private.createMeetTicket({
+      livekitToken: 'signed-livekit-token',
+      livekitUrl: 'wss://calls.example.com',
+      name: 'Asha User',
+      type: 'video',
+    });
+
+    const first = await request(buildApp())
+      .post('/api/video/meet/redeem')
+      .send({ ticket })
+      .expect(200);
+
+    expect(first.body).toMatchObject({
+      success: true,
+      livekitUrl: 'wss://calls.example.com',
+      livekitToken: 'signed-livekit-token',
+      name: 'Asha User',
+      type: 'video',
+    });
+
+    await request(buildApp())
+      .post('/api/video/meet/redeem')
+      .send({ ticket })
+      .expect(410);
+  });
+
+  test('rejects expired or unknown meet tickets', async () => {
+    await request(buildApp())
+      .post('/api/video/meet/redeem')
+      .send({ ticket: 'expired-ticket-value-that-is-long-enough' })
+      .expect(410);
   });
 });

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "../styles/globals.css";
 import Providers from "./providers";
@@ -18,15 +19,21 @@ export const metadata: Metadata = {
   description: "Professional counseling booking management platform for counselors",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {nonce ? <meta name="csp-nonce" content={nonce} /> : null}
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `
               try {

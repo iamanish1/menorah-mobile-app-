@@ -14,7 +14,7 @@ class SocketClient {
     }
   }
 
-  connect(token: string): Socket {
+  connect(): Socket {
     if (this.socket?.connected) {
       return this.socket;
     }
@@ -26,7 +26,7 @@ class SocketClient {
     }
 
     this.socket = io(this.socketURL, {
-      auth: { token },
+      withCredentials: true,
       // WebSocket first — polling is fallback only (matches server config)
       transports: ['websocket', 'polling'],
       reconnection: true,

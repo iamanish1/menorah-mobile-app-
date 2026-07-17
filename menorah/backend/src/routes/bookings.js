@@ -4,7 +4,7 @@ const moment = require('moment');
 const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
-const { auth } = require('../middleware/auth');
+const { auth, authAny } = require('../middleware/auth');
 const { sendBookingConfirmationEmail, sendSessionReminderEmail } = require('../utils/email');
 const { sendBookingConfirmationSMS, sendSessionReminderSMS, sendCancellationSMS } = require('../utils/sms');
 const {
@@ -45,6 +45,13 @@ const formatVideoCall = (videoCall = {}, { includeHostUrl = false } = {}) => {
   }
 
   return payload;
+};
+
+const canManageSessionState = (booking, user) => {
+  if (user?.role === 'admin') return true;
+  const counsellorUserId = booking.counsellor?.user?._id?.toString?.()
+    || booking.counsellor?.user?.toString?.();
+  return Boolean(counsellorUserId && counsellorUserId === user?._id?.toString());
 };
 
 // @route   POST /api/bookings
@@ -731,7 +738,7 @@ router.put('/:id/cancel', [
 // @access  Private
 router.put('/:id/start', [
   param('id').isMongoId().withMessage('Invalid booking ID')
-], auth, async (req, res) => {
+], authAny, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -755,14 +762,10 @@ router.put('/:id/start', [
       });
     }
 
-    // Check if user can start this session
-    const isUser = booking.user._id.toString() === req.user._id.toString();
-    const isCounsellor = booking.counsellor.user._id.toString() === req.user._id.toString();
-
-    if (!isUser && !isCounsellor) {
+    if (!canManageSessionState(booking, req.user)) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'Only the assigned counsellor or an administrator can start this session.'
       });
     }
 
@@ -899,7 +902,7 @@ router.put('/:id/start', [
 // @access  Private
 router.put('/:id/complete', [
   param('id').isMongoId().withMessage('Invalid booking ID')
-], auth, async (req, res) => {
+], authAny, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -923,14 +926,10 @@ router.put('/:id/complete', [
       });
     }
 
-    // Check if user can complete this session
-    const isUser = booking.user._id.toString() === req.user._id.toString();
-    const isCounsellor = booking.counsellor.user._id.toString() === req.user._id.toString();
-
-    if (!isUser && !isCounsellor) {
+    if (!canManageSessionState(booking, req.user)) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'Only the assigned counsellor or an administrator can complete this session.'
       });
     }
 

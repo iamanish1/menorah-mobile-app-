@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { Button, Badge, SegmentedControl } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency } from '@/lib/utils';
+import { getCspNonce } from '@/lib/cspNonce';
 
 interface Plan {
   id: string;
@@ -85,6 +86,7 @@ function loadRazorpay(): Promise<boolean> {
   return new Promise((resolve) => {
     if (typeof window !== 'undefined' && window.Razorpay) { resolve(true); return; }
     const s = document.createElement('script');
+    s.nonce = getCspNonce() || '';
     s.src = 'https://checkout.razorpay.com/v1/checkout.js';
     s.onload  = () => resolve(true);
     s.onerror = () => resolve(false);

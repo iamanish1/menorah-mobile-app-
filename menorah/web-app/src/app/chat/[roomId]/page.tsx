@@ -36,8 +36,7 @@ export default function ChatThreadPage() {
   const [userImage, setUserImage] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
-  const { on, off, emit } = useSocket(token);
+  const { on, off, emit } = useSocket(isAuthenticated);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -59,7 +58,7 @@ export default function ChatThreadPage() {
   }, [roomId, isAuthenticated]);
 
   useEffect(() => {
-    if (!token || !roomId) return;
+    if (!isAuthenticated || !roomId) return;
 
     const handleNewMessage = (data: any) => {
       if (data.roomId === roomId) {
@@ -94,7 +93,7 @@ export default function ChatThreadPage() {
       off('new_message', handleNewMessage);
       off('message_read', handleMessageRead);
     };
-  }, [token, roomId, on, off]);
+  }, [isAuthenticated, roomId, on, off]);
 
   useEffect(() => {
     scrollToBottom();

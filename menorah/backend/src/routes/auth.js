@@ -9,6 +9,12 @@ const { auth } = require('../middleware/auth');
 const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
 const { getRedisClient } = require('../config/redis');
 const { signUserToken } = require('../utils/authTokens');
+const { serializeAuthUser, serializeUserProfile } = require('../serializers/userSerializer');
+const {
+  clearMappedSessionCookie,
+  isCookieTransportRequested,
+  setSessionCookieForRequest,
+} = require('../config/webSessions');
 
 const router = express.Router();
 const emailNormalizationOptions = {
@@ -150,19 +156,6 @@ const splitDisplayName = (fullName, fallbackFirst = 'Menorah', fallbackLast = 'U
     lastName: parts.slice(1).join(' ') || fallbackLast
   };
 };
-
-const serializeAuthUser = (user) => ({
-  id: user._id.toString(),
-  firstName: user.firstName,
-  lastName: user.lastName,
-  email: user.email,
-  phone: user.phone,
-  isEmailVerified: user.isEmailVerified,
-  isPhoneVerified: user.isPhoneVerified,
-  profileImage: user.profileImage,
-  role: user.role || 'user',
-  kyc: user.kyc,
-});
 
 const verifyGoogleCredential = async (credential) => {
   const clientIds = getGoogleClientIds();
@@ -339,6 +332,25 @@ const blockToken = async (token) => {
   } catch {}
 };
 
+const sendAuthSessionResponse = (req, res, { message, token, role, data = {}, status = 200 }) => {
+  const responseData = { ...data };
+
+  if (isCookieTransportRequested(req)) {
+    const sessionResult = setSessionCookieForRequest(req, res, { role, token });
+    if (!sessionResult.ok) {
+      return res.status(sessionResult.status).json({ success: false, message: sessionResult.message });
+    }
+  } else {
+    responseData.token = token;
+  }
+
+  return res.status(status).json({
+    success: true,
+    message,
+    data: responseData,
+  });
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/register
 // @access  Public
@@ -447,21 +459,12 @@ router.post('/verify-email-otp', [
     await deletePendingReg(email);
 
     const token = signUserToken(user);
-    res.json({
-      success: true,
+    return sendAuthSessionResponse(req, res, {
       message: 'Email verified. Registration complete.',
+      token,
+      role: user.role || 'user',
       data: {
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          phone: user.phone,
-          isEmailVerified: true,
-          isPhoneVerified: user.isPhoneVerified,
-          kyc: user.kyc,
-        },
-        token,
+        user: serializeAuthUser(user),
       },
     });
   } catch (error) {
@@ -557,18 +560,12 @@ router.post('/login', [
     await user.resetLoginAttempts();
     const token = signUserToken(user);
 
-    res.json({
-      success: true,
+    return sendAuthSessionResponse(req, res, {
       message: 'Login successful',
+      token,
+      role: user.role || 'user',
       data: {
-        user: {
-          id: user._id, firstName: user.firstName, lastName: user.lastName,
-          email: user.email, phone: user.phone,
-          isEmailVerified: user.isEmailVerified, isPhoneVerified: user.isPhoneVerified,
-          profileImage: user.profileImage, role: user.role || 'user',
-          kyc: user.kyc,
-        },
-        token,
+        user: serializeAuthUser(user),
       },
     });
   } catch (error) {
@@ -603,14 +600,14 @@ router.post('/google', [
     });
 
     const token = signUserToken(user);
-    return res.json({
-      success: true,
+    return sendAuthSessionResponse(req, res, {
       message: existingUser ? 'Login successful' : 'Account created successfully',
+      token,
+      role: user.role || 'user',
       data: {
         user: {
           ...serializeAuthUser(user),
         },
-        token,
         isNewUser: !existingUser,
       },
     });
@@ -652,12 +649,12 @@ router.post('/apple', [
     });
 
     const token = signUserToken(user);
-    return res.json({
-      success: true,
+    return sendAuthSessionResponse(req, res, {
       message: existingUser ? 'Login successful' : 'Account created successfully',
+      token,
+      role: user.role || 'user',
       data: {
         user: serializeAuthUser(user),
-        token,
         isNewUser: !existingUser,
       },
     });
@@ -717,7 +714,11 @@ router.post('/verify-email', [
     }
 
     const token = signUserToken(user);
-    return res.json({ success: true, message: 'Email verified successfully', data: { token } });
+    return sendAuthSessionResponse(req, res, {
+      message: 'Email verified successfully',
+      token,
+      role: user.role || 'user',
+    });
   } catch (error) {
     console.error('Email verification error:', error.message);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -922,30 +923,12 @@ router.post('/reset-password', [
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select(
-      '-password -emailVerificationToken -passwordResetToken -passwordResetExpires -loginAttempts -lockUntil'
-    ).lean();
+    const user = await User.findById(req.user._id).lean();
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    // Return same shape as login/register so user.id is always a string on the frontend
     res.json({
       success: true,
       data: {
-        user: {
-          id: user._id.toString(),
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          phone: user.phone,
-          isEmailVerified: user.isEmailVerified,
-          isPhoneVerified: user.isPhoneVerified,
-          role: user.role,
-          profileImage: user.profileImage || null,
-          dateOfBirth: user.dateOfBirth,
-          gender: user.gender,
-          kyc: user.kyc,
-          subscription: user.subscription,
-          notificationPreferences: user.notificationPreferences,
-        }
+        user: serializeUserProfile(user)
       }
     });
   } catch (error) {
@@ -963,6 +946,7 @@ router.post('/logout', auth, async (req, res) => {
   try {
     const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
     if (token) await blockToken(token);
+    clearMappedSessionCookie(req, res);
     res.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error.message);
@@ -977,6 +961,7 @@ router.post('/logout-all', auth, async (req, res) => {
 
     const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
     if (token) await blockToken(token);
+    clearMappedSessionCookie(req, res);
 
     res.json({ success: true, message: 'All sessions have been logged out successfully' });
   } catch (error) {

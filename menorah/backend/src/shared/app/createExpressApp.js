@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
 const { mountHealthEndpoints } = require('./health');
+const { csrfProtection, getTrustedWebOrigins } = require('../../config/webSessions');
 
 const SAFE_INLINE_UPLOAD_EXTENSIONS = new Set([
   '.jpg',
@@ -20,11 +21,13 @@ const SAFE_INLINE_UPLOAD_EXTENSIONS = new Set([
   '.wav',
 ]);
 
-const getAllowedOrigins = () =>
-  (process.env.ALLOWED_ORIGINS || '')
+const getAllowedOrigins = () => {
+  const configuredOrigins = (process.env.ALLOWED_ORIGINS || '')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+  return Array.from(new Set([...configuredOrigins, ...getTrustedWebOrigins()]));
+};
 
 const createCorsOrigin = () => {
   const allowedOrigins = getAllowedOrigins();
@@ -40,7 +43,7 @@ const createCorsOptions = (corsOrigin) => ({
   origin: corsOrigin,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Auth-Transport'],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
   maxAge: 86400
 });
@@ -71,12 +74,31 @@ const createExpressApp = ({ serviceName, getHealthState }) => {
     helmet({
       crossOriginResourcePolicy: { policy: 'cross-origin' },
       crossOriginEmbedderPolicy: false,
-      contentSecurityPolicy: false
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'none'"],
+          baseUri: ["'none'"],
+          connectSrc: ["'none'"],
+          fontSrc: ["'none'"],
+          formAction: ["'none'"],
+          frameAncestors: ["'none'"],
+          frameSrc: ["'none'"],
+          imgSrc: ["'self'", 'data:'],
+          mediaSrc: ["'none'"],
+          objectSrc: ["'none'"],
+          scriptSrc: ["'none'"],
+          styleSrc: ["'none'"],
+          workerSrc: ["'none'"],
+          upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
+        }
+      }
     })
   );
 
   app.use('/api/video/livekit-webhook', express.raw({ type: '*/*', limit: '1mb' }));
   app.use('/api/payments/razorpay-webhook', express.raw({ type: 'application/json', limit: '1mb' }));
+  app.use(csrfProtection);
 
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));

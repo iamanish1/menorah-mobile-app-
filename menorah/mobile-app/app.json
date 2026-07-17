@@ -6,11 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/brand/menorah_logo.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/brand/menorah_logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#f0f9f4"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -31,14 +26,14 @@
       "backgroundColor": "#314830",
       "translucent": false
     },
-    "androidNavigationBar": {
-      "visible": "leanback",
-      "backgroundColor": "#ffffff",
-      "barStyle": "dark-content"
-    },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "splash": {
+        "image": "./assets/brand/menorah_logo.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#f0f9f4"
+      }
     },
     "plugins": [],
     "updates": {

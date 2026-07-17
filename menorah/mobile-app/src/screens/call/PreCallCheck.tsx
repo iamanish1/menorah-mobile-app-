@@ -100,7 +100,7 @@ export default function PreCallCheck({ navigation, route }: any) {
           Alert.alert('Calling Unavailable', res.data.message || 'Video calling is not available until your region is verified.');
           return true;
         }
-        if (res.data.provider !== 'livekit' || res.data.joinMode !== 'in_app' || !res.data.livekitUrl || !(res.data.livekitToken || res.data.token)) {
+        if (res.data.provider !== 'livekit' || res.data.joinMode !== 'in_app' || !res.data.meetUrl) {
           Alert.alert('Cannot Join', res.data.message || 'Session connection details are not ready yet.');
           return true;
         }
@@ -109,6 +109,7 @@ export default function PreCallCheck({ navigation, route }: any) {
           roomId:         res.data.roomId,
           livekitUrl:     res.data.livekitUrl,
           livekitToken:   res.data.livekitToken || res.data.token,
+          meetUrl:        res.data.meetUrl,
           sessionType:    res.data.sessionType,
           counsellorName: res.data.counsellorName,
           userName:       res.data.userName,

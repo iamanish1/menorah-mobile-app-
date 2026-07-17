@@ -1,5 +1,4 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import { authStorage } from './auth';
 import type {
   ApiResponse, User, Counsellor, CounsellorFilters,
   Booking, ChatRoom, ChatMessage, VideoRoom,
@@ -13,19 +12,13 @@ class ApiClient {
     this.client = axios.create({
       baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
       headers: { 'Content-Type': 'application/json' },
-    });
-
-    this.client.interceptors.request.use((config) => {
-      const token = authStorage.getToken();
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-      return config;
+      withCredentials: true,
     });
 
     this.client.interceptors.response.use(
       (res) => res,
       (error) => {
         if (error.response?.status === 401) {
-          authStorage.clearToken();
           if (typeof window !== 'undefined') window.location.href = '/login';
         }
         return Promise.reject(error);
@@ -97,22 +90,16 @@ class ApiClient {
     return this.post<{ email: string }>('/auth/register', data);
   }
 
-  async login(email: string, password: string): Promise<ApiResponse<{ user: User; token: string }>> {
-    const res = await this.post<{ user: User; token: string }>('/auth/login', { email, password });
-    if (res.success && res.data?.token) authStorage.setToken(res.data.token);
-    return res;
+  async login(email: string, password: string): Promise<ApiResponse<{ user: User }>> {
+    return this.post<{ user: User }>('/auth/login', { email, password, transport: 'cookie' });
   }
 
-  async loginWithGoogle(credential: string): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
-    const res = await this.post<{ user: User; token: string; isNewUser?: boolean }>('/auth/google', { credential });
-    if (res.success && res.data?.token) authStorage.setToken(res.data.token);
-    return res;
+  async loginWithGoogle(credential: string): Promise<ApiResponse<{ user: User; isNewUser?: boolean }>> {
+    return this.post<{ user: User; isNewUser?: boolean }>('/auth/google', { credential, transport: 'cookie' });
   }
 
-  async verifyEmail(email: string, code: string): Promise<ApiResponse<{ token: string }>> {
-    const res = await this.post<{ token: string }>('/auth/verify-email', { email, code });
-    if (res.success && res.data?.token) authStorage.setToken(res.data.token);
-    return res;
+  async verifyEmail(email: string, code: string): Promise<ApiResponse<void>> {
+    return this.post<void>('/auth/verify-email', { email, code, transport: 'cookie' });
   }
 
   async resendOTP(phone: string): Promise<ApiResponse<void>> {
@@ -123,10 +110,8 @@ class ApiClient {
     return this.post<{ user: User }>('/auth/verify-phone', { phone, otp });
   }
 
-  async verifyEmailOTP(email: string, otp: string): Promise<ApiResponse<{ user: User; token: string }>> {
-    const res = await this.post<{ user: User; token: string }>('/auth/verify-email-otp', { email, otp });
-    if (res.success && res.data?.token) authStorage.setToken(res.data.token);
-    return res;
+  async verifyEmailOTP(email: string, otp: string): Promise<ApiResponse<{ user: User }>> {
+    return this.post<{ user: User }>('/auth/verify-email-otp', { email, otp, transport: 'cookie' });
   }
 
   async resendEmailOTP(email: string): Promise<ApiResponse<void>> {
@@ -151,7 +136,6 @@ class ApiClient {
 
   async logout(): Promise<void> {
     try { await this.client.post('/auth/logout'); } catch { /* ignore */ }
-    authStorage.clearToken();
   }
 
   // ─── Users ─────────────────────────────────────────────────────────────────

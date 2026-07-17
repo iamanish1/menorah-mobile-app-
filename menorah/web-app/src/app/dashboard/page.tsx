@@ -20,8 +20,7 @@ export default function DashboardPage() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [statusToggling, setStatusToggling] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
-  const { on, off } = useSocket(token);
+  const { on, off } = useSocket(isAuthenticated);
   const queryClient = useQueryClient();
 
   // ── React Query — replaces manual useState + fetchDashboard ─────────────
@@ -75,7 +74,7 @@ export default function DashboardPage() {
 
   // Socket events → invalidate dashboard cache (React Query re-fetches once, not on every event)
   useEffect(() => {
-    if (!token || !isAuthenticated) return;
+    if (!isAuthenticated) return;
     const invalidate = () => queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     on('new_booking_available', invalidate);
     on('booking_assigned',      invalidate);
@@ -87,7 +86,7 @@ export default function DashboardPage() {
       off('booking_scheduled',     invalidate);
       off('booking_status_changed', invalidate);
     };
-  }, [token, isAuthenticated, on, off, queryClient]);
+  }, [isAuthenticated, on, off, queryClient]);
 
 
   if (isLoading) {

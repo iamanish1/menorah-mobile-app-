@@ -5,6 +5,10 @@ const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
 const { auth } = require('../middleware/auth');
 const { uploadBuffer } = require('../utils/cloudinary');
+const {
+  serializePublicUser,
+  serializeUserProfile,
+} = require('../serializers/userSerializer');
 
 const router = express.Router();
 const upload = multer({
@@ -25,7 +29,13 @@ const upload = multer({
 // @access  Private
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password').lean();
+    const user = await User.findById(req.user._id).lean();
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
 
     let counsellorProfile = null;
     if (user.role === 'counsellor') {
@@ -66,7 +76,7 @@ router.get('/me', auth, async (req, res) => {
 
     res.json({
       success: true,
-      data: { user: { ...user, counsellorProfile } }
+      data: { user: serializeUserProfile(user, { counsellorProfile }) }
     });
 
   } catch (error) {
@@ -83,14 +93,17 @@ router.get('/me', auth, async (req, res) => {
 // @access  Private
 router.get('/profile', auth, async (req, res) => {
   try {
-    // Exclude internal/sensitive fields from profile response
-    const user = await User.findById(req.user._id).select(
-      '-password -emailVerificationToken -passwordResetToken -passwordResetExpires -loginAttempts -lockUntil'
-    );
+    const user = await User.findById(req.user._id).lean();
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
 
     res.json({
       success: true,
-      data: { user }
+      data: { user: serializeUserProfile(user) }
     });
 
   } catch (error) {
@@ -132,7 +145,7 @@ router.put('/profile', auth, upload.single('profileImage'), [
       timezone
     } = req.body;
 
-    const user = await User.findById(req.user._id).select('+password');
+    const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -171,7 +184,7 @@ router.put('/profile', auth, upload.single('profileImage'), [
     res.json({
       success: true,
       message: 'Profile updated successfully',
-      data: { user }
+      data: { user: serializeUserProfile(user) }
     });
 
   } catch (error) {
@@ -479,7 +492,7 @@ router.get('/:id', [
 
     res.json({
       success: true,
-      data: { user }
+      data: { user: serializePublicUser(user) }
     });
 
   } catch (error) {

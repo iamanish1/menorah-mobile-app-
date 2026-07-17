@@ -29,8 +29,7 @@ export default function ChatListPage() {
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
-  const { on, off, isConnected } = useSocket(token);
+  const { on, off, isConnected } = useSocket(isAuthenticated);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -62,7 +61,7 @@ export default function ChatListPage() {
 
   // ── Socket-driven updates — no polling ────────────────────────────────────
   useEffect(() => {
-    if (!token || !isAuthenticated) return;
+    if (!isAuthenticated) return;
 
     // New message in any room → update that room's preview + unread count
     const handleNewMessage = (data: any) => {
@@ -114,7 +113,7 @@ export default function ChatListPage() {
         off('reconnect',          handleReconnect);
       } catch { }
     };
-  }, [token, on, off, isAuthenticated, fetchChatRooms]);
+  }, [on, off, isAuthenticated, fetchChatRooms]);
 
   const formatTime = (timestamp: string) => {
     try {

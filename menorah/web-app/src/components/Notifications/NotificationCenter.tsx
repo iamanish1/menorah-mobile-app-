@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSocket } from '@/hooks/useSocket';
+import { useAuth } from '@/hooks/useAuth';
 import Badge from '@/components/ui/Badge';
 import styles from './NotificationCenter.module.css';
 
@@ -14,11 +15,11 @@ interface Notification {
 
 export default function NotificationCenter() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
-  const { on, off } = useSocket(token);
+  const { isAuthenticated } = useAuth();
+  const { on, off } = useSocket(isAuthenticated);
 
   useEffect(() => {
-    if (!token) return;
+    if (!isAuthenticated) return;
 
     const handleNewBooking = (data: any) => {
       addNotification({
@@ -67,7 +68,7 @@ export default function NotificationCenter() {
       off('booking_scheduled', handleBookingScheduled);
       off('booking_status_changed', handleStatusChanged);
     };
-  }, [token, on, off]);
+  }, [isAuthenticated, on, off]);
 
   const addNotification = (notification: Notification) => {
     setNotifications((prev) => [notification, ...prev].slice(0, 10));

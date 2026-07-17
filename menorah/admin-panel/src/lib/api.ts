@@ -1,5 +1,4 @@
 import axios, { AxiosInstance } from 'axios';
-import { getToken, clearToken } from './auth';
 import type {
   ApiResponse, PlatformStats, Counsellor, CounsellorRevenue,
   RevenueData, User, Pagination, PayoutRecord, PayoutSummary, PayoutStatus,
@@ -16,20 +15,14 @@ class AdminApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    this.client.interceptors.request.use((config) => {
-      const token = getToken();
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-      return config;
+      headers: { 'Content-Type': 'application/json' },
+      withCredentials: true
     });
 
     this.client.interceptors.response.use(
       (res) => res,
       (err) => {
         if (err.response?.status === 401 || err.response?.status === 403) {
-          clearToken();
           if (typeof window !== 'undefined') window.location.href = '/login';
         }
         return Promise.reject(err);
@@ -49,15 +42,19 @@ class AdminApiClient {
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   login(email: string, password: string) {
-    return this.request<{ user?: User; token?: string; mfaRequired?: boolean; challengeId?: string }>(() =>
-      this.client.post('/auth/admin/login', { email, password })
+    return this.request<{ user?: User; mfaRequired?: boolean; challengeId?: string }>(() =>
+      this.client.post('/auth/admin/login', { email, password, transport: 'cookie' })
     );
   }
 
   verifyMfa(challengeId: string, otp: string) {
-    return this.request<{ user: User; token: string; mfaRequired?: boolean }>(() =>
-      this.client.post('/auth/admin/login/mfa', { challengeId, otp })
+    return this.request<{ user: User; mfaRequired?: boolean }>(() =>
+      this.client.post('/auth/admin/login/mfa', { challengeId, otp, transport: 'cookie' })
     );
+  }
+
+  me() {
+    return this.request<{ user: User }>(() => this.client.get('/auth/me'));
   }
 
   logout() {

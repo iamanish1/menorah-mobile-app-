@@ -13,6 +13,10 @@ Do not merge to `main` or send production traffic until this checklist passes on
 - [ ] `LIVEKIT_BLOCKED_COUNTRIES` contains countries that require external-provider fallback, currently `AE`.
 - [ ] `BLOCKED_COUNTRY_CALL_PROVIDER` is set to the approved fallback provider, currently `zoom`.
 - [ ] `menorah/deploy/env/cloudflare.env` is filled on host.
+- [ ] Cloudflare SSL/TLS mode is **Full (strict)**.
+- [ ] Cloudflare Origin CA certificate covers `menorah.me` and `*.menorah.me`.
+- [ ] Origin certificate exists at `/opt/menorah/secrets/cloudflare-origin.pem`.
+- [ ] Origin private key exists at `/opt/menorah/secrets/cloudflare-origin-key.pem`.
 - [ ] `menorah/deploy/livekit/livekit.yaml` exists on host, copied from `livekit.yaml.example`, with real LiveKit key/secret filled outside git.
 - [ ] No real secrets are committed to git.
 - [ ] MongoDB keyfile exists at `/opt/menorah/secrets/mongo-keyfile`.
@@ -27,8 +31,7 @@ Do not merge to `main` or send production traffic until this checklist passes on
 - [ ] `backup-now.sh daily` completes successfully.
 - [ ] Latest backup restore-test completed successfully.
 - [ ] Backup encryption is enabled before any off-host upload, or off-host upload is blocked.
-- [ ] Cloudflare Tunnel container is connected.
-- [ ] Public hostnames route to the tunnel.
+- [ ] Public Cloudflare hostnames route to the Ubuntu origin on HTTPS/443, or an optional tunnel targets `https://reverse-proxy:443` with Origin CA trust.
 - [ ] `calls.menorah.me` DNS points to the Hostinger VPS path used for LiveKit signaling.
 - [ ] Hostinger firewall allows `443/tcp`, `7881/tcp`, and `50000-50100/udp` for LiveKit media.
 - [ ] Cloudflare proxy/tunnel behavior is understood: WebRTC UDP media is not carried by normal HTTP proxying, so LiveKit media ports must be reachable directly or calls must fall back to LiveKit TCP.
@@ -40,7 +43,7 @@ Do not merge to `main` or send production traffic until this checklist passes on
 
 ## Go-Live
 
-- [ ] Point Cloudflare public hostnames to the production tunnel.
+- [ ] Point Cloudflare public hostnames to the production origin with proxied DNS and Full (strict).
 - [ ] Verify `https://www.menorah.me`.
 - [ ] Verify `https://app.menorah.me`.
 - [ ] Verify `https://admin.menorah.me`.

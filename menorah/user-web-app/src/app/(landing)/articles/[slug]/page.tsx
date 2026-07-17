@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, BookOpen, CalendarDays, CheckCircle2, Quote, ShieldCheck, Tag } from "lucide-react";
@@ -67,12 +68,13 @@ export default async function ArticleDetailPage({ params }: ArticlePageProps) {
 
   const articleJsonLd = buildArticleJsonLd(article);
   const breadcrumbJsonLd = buildBreadcrumbJsonLd(article);
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
     <div className="min-h-screen bg-menorah-page text-foreground">
       <MenorahNavbar elevated />
       <main className="px-6 pb-16 pt-10 md:px-10 lg:px-20">
-        <JsonLdScript data={[articleJsonLd, breadcrumbJsonLd]} />
+        <JsonLdScript data={[articleJsonLd, breadcrumbJsonLd]} nonce={nonce} />
         <article className="mx-auto max-w-4xl">
           <Link href="/articles" className="inline-flex items-center gap-2 text-sm font-semibold text-menorah-green transition hover:text-menorah-olive">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -170,9 +172,10 @@ function ArticleSupportCta() {
   );
 }
 
-function JsonLdScript({ data }: { data: unknown }) {
+function JsonLdScript({ data, nonce }: { data: unknown; nonce?: string }) {
   return (
     <script
+      nonce={nonce}
       type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, "\\u003c") }}
     />

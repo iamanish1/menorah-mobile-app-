@@ -1,10 +1,12 @@
 const express = require('express');
+const crypto = require('crypto');
 const { body, param, query, validationResult } = require('express-validator');
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 // Note: VideoGrant was removed in livekit-server-sdk v2. Grant options are passed
 // as a plain object to token.addGrant() instead.
 const Booking = require('../models/Booking');
 const { auth } = require('../middleware/auth');
+const { getRedisClient } = require('../config/redis');
 const {
   assertLiveKitAllowed,
   providerDisplayName,
@@ -12,6 +14,7 @@ const {
 } = require('../services/callPolicyService');
 
 const router = express.Router();
+const MEET_TICKET_TTL_SECONDS = parseInt(process.env.VIDEO_MEET_TICKET_TTL_SECONDS, 10) || 120;
 
 // ── LiveKit client (server-to-server API calls) ────────────────────────────
 // LIVEKIT_API_URL  = https://calls.menorah.me  (HTTP, for room management)
@@ -60,6 +63,81 @@ const generateLivekitToken = async (identity, name, roomName, isModerator = fals
   });
 
   return token.toJwt();   // async in v2 — returns Promise<string>
+};
+
+const hashMeetTicket = (ticket) =>
+  crypto.createHash('sha256').update(ticket).digest('hex');
+
+const meetTicketKey = (ticket) => `video:meet-ticket:${hashMeetTicket(ticket)}`;
+
+const createMeetTicket = async ({ livekitToken, livekitUrl, name, type }) => {
+  const ticket = crypto.randomBytes(32).toString('base64url');
+  const payload = {
+    livekitToken,
+    livekitUrl,
+    name: String(name || 'Participant').slice(0, 80),
+    type: type === 'audio' ? 'audio' : 'video',
+    createdAt: new Date().toISOString(),
+  };
+
+  await getRedisClient().setEx(meetTicketKey(ticket), MEET_TICKET_TTL_SECONDS, JSON.stringify(payload));
+  return ticket;
+};
+
+const redeemMeetTicket = async (ticket) => {
+  if (!ticket || typeof ticket !== 'string') return null;
+  const redis = getRedisClient();
+  const key = meetTicketKey(ticket);
+  let raw = null;
+
+  if (typeof redis.getDel === 'function') {
+    raw = await redis.getDel(key);
+  } else {
+    raw = await redis.get(key);
+    if (raw) await redis.del(key);
+  }
+
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const buildMeetUrl = (req, ticket, type = 'video') => {
+  const origin = process.env.PUBLIC_API_ORIGIN
+    || `${req.protocol}://${req.get('host')}`;
+  const url = new URL('/api/video/meet', origin);
+  url.searchParams.set('ticket', ticket);
+  url.searchParams.set('type', type === 'audio' ? 'audio' : 'video');
+  return url.toString();
+};
+
+const originFromUrl = (value) => {
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+};
+
+const getMeetPageConnectSrc = () => {
+  const origins = new Set(["'self'"]);
+  [process.env.LIVEKIT_URL, process.env.LIVEKIT_API_URL].forEach((value) => {
+    const origin = originFromUrl(value);
+    if (origin) origins.add(origin);
+  });
+
+  const callsDomain = process.env.CALLS_DOMAIN;
+  if (callsDomain) {
+    origins.add(`https://${callsDomain}`);
+    origins.add(`wss://${callsDomain}`);
+  }
+
+  return Array.from(origins);
 };
 
 // ── Helper: load and authorise booking ────────────────────────────────────
@@ -168,24 +246,35 @@ const disabledPayload = ({ booking, policy }) => ({
   message: 'Video calling is not available until your region is verified.'
 });
 
-const livekitPayload = ({ booking, roomName, livekitUrl, livekitToken, policy }) => ({
-  success: true,
-  provider: 'livekit',
-  joinMode: 'in_app',
-  region: policy.region,
-  livekitUrl,
-  token: livekitToken,
-  livekitToken,
-  roomName,
-  roomId: roomName,
-  bookingId: booking._id.toString(),
-  sessionType: booking.sessionType,
-  counsellorName: `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`,
-  userName: `${booking.user.firstName} ${booking.user.lastName}`,
-  scheduledAt: booking.scheduledAt,
-  duration: booking.sessionDuration,
-  status: booking.status
-});
+const livekitPayload = async ({ req, booking, roomName, livekitUrl, livekitToken, policy, displayName }) => {
+  const ticket = await createMeetTicket({
+    livekitToken,
+    livekitUrl,
+    name: displayName,
+    type: booking.sessionType === 'audio' ? 'audio' : 'video',
+  });
+
+  return {
+    success: true,
+    provider: 'livekit',
+    joinMode: 'in_app',
+    region: policy.region,
+    livekitUrl,
+    token: livekitToken,
+    livekitToken,
+    meetTicket: ticket,
+    meetUrl: buildMeetUrl(req, ticket, booking.sessionType === 'audio' ? 'audio' : 'video'),
+    roomName,
+    roomId: roomName,
+    bookingId: booking._id.toString(),
+    sessionType: booking.sessionType,
+    counsellorName: `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`,
+    userName: `${booking.user.firstName} ${booking.user.lastName}`,
+    scheduledAt: booking.scheduledAt,
+    duration: booking.sessionDuration,
+    status: booking.status
+  };
+};
 
 const respondWithCallPayload = (res, payload, statusCode = 200) =>
   res.status(statusCode).json({
@@ -284,7 +373,15 @@ router.post('/create-room', [
     booking.videoCall.status   = booking.status === 'in-progress' ? 'started' : 'scheduled';
     await booking.save();
 
-    return respondWithCallPayload(res, livekitPayload({ booking, roomName, livekitUrl, livekitToken, policy }));
+    return respondWithCallPayload(res, await livekitPayload({
+      req,
+      booking,
+      roomName,
+      livekitUrl,
+      livekitToken,
+      policy,
+      displayName
+    }));
   } catch (err) {
     console.error('Create video room error:', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
@@ -341,12 +438,14 @@ router.get('/room/:bookingId', [
 
     await booking.save();
 
-    return respondWithCallPayload(res, livekitPayload({
+    return respondWithCallPayload(res, await livekitPayload({
+      req,
       booking,
       roomName: booking.videoCall.roomId,
       livekitUrl,
       livekitToken,
-      policy
+      policy,
+      displayName
     }));
   } catch (err) {
     console.error('Get video room error:', err);
@@ -480,13 +579,15 @@ router.post('/room/:bookingId/join', [
     );
 
     return respondWithCallPayload(res, {
-      ...livekitPayload({
+      ...(await livekitPayload({
+        req,
         booking,
         roomName: booking.videoCall.roomId,
         livekitUrl,
         livekitToken,
-        policy
-      }),
+        policy,
+        displayName
+      })),
       message: 'Joined video room successfully'
     });
   } catch (err) {
@@ -581,30 +682,63 @@ router.post('/room/:bookingId/recording', [
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/video/meet/redeem
+// @desc    Redeem a short-lived one-time ticket for LiveKit connection details
+// @access  Public (ticket is one-time and expires quickly)
+router.post('/meet/redeem', [
+  body('ticket').isString().trim().isLength({ min: 20, max: 128 }).withMessage('ticket is required'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, message: 'Invalid video session ticket' });
+  }
+
+  try {
+    const session = await redeemMeetTicket(req.body.ticket);
+    if (!session) {
+      return res.status(410).json({ success: false, message: 'Video session ticket expired or already used' });
+    }
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    return res.json({
+      success: true,
+      livekitUrl: session.livekitUrl,
+      livekitToken: session.livekitToken,
+      token: session.livekitToken,
+      name: session.name,
+      type: session.type,
+    });
+  } catch (error) {
+    console.error('Redeem video meet ticket error:', error.message);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // @route   GET /api/video/meet
 // @desc    Serve the LiveKit meet HTML page for mobile WebView
-// @access  Public (token carries all auth)
+// @access  Public (short-lived ticket must be redeemed by POST)
 // @query   token     — LiveKit participant JWT
 //          url       — LiveKit WebSocket URL (wss://...)
 //          name      — display name for the participant
 //          type      — session type: 'video' | 'audio'
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/meet', [
-  query('token').notEmpty().withMessage('token is required'),
-  query('url').notEmpty().withMessage('url is required'),
+  query('ticket').isString().trim().isLength({ min: 20, max: 128 }).withMessage('ticket is required'),
+  query('type').optional().isIn(['video', 'audio']),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).send('<h1>Missing required parameters: token and url</h1>');
+    return res.status(400).send('<h1>Missing or invalid video session ticket</h1>');
   }
 
-  const { token, url, name = 'Participant', type = 'video' } = req.query;
+  const { ticket, type = 'video' } = req.query;
   const videoOnly = type === 'video';
 
   // Sanitise values — they go into JS string literals
-  const safeToken = String(token).replace(/['"<>]/g, '');
-  const safeUrl   = String(url).replace(/['"<>]/g, '');
-  const safeName  = String(name).replace(/['"<>]/g, '').slice(0, 50);
+  const safeTicket = String(ticket).replace(/['"<>]/g, '').slice(0, 128);
+  const safeName  = 'Participant';
+  const cspNonce = crypto.randomBytes(16).toString('base64');
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -612,7 +746,7 @@ router.get('/meet', [
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Menorah Session</title>
-  <style>
+  <style nonce="${cspNonce}">
     *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
     html,body{width:100%;height:100vh;background:#0a0f1e;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;overflow:hidden;touch-action:manipulation}
     #app{position:fixed;inset:0;display:flex;flex-direction:column}
@@ -739,6 +873,8 @@ router.get('/meet', [
     @keyframes spin{to{transform:rotate(360deg)}}
     .conn-title{font-size:18px;font-weight:600;color:#fff}
     .conn-sub{font-size:14px;color:rgba(255,255,255,0.5)}
+    .conn-sub.centered{text-align:center;margin-top:4px}
+    #ic-mic-off,#ic-cam-off{display:none}
 
     /* Error overlay */
     #error-screen{
@@ -764,7 +900,7 @@ router.get('/meet', [
     <div class="spinner"></div>
     <div>
       <div class="conn-title">Joining session…</div>
-      <div class="conn-sub" style="text-align:center;margin-top:4px">Setting up your connection</div>
+      <div class="conn-sub centered">Setting up your connection</div>
     </div>
   </div>
 
@@ -773,7 +909,7 @@ router.get('/meet', [
     <div class="err-icon">📵</div>
     <div class="err-title">Connection Failed</div>
     <div class="err-msg" id="err-msg">Unable to connect to the session. Please check your connection and try again.</div>
-    <button class="err-btn" onclick="notifyNative('leave')">Go Back</button>
+    <button id="err-leave" class="err-btn">Go Back</button>
   </div>
 
   <!-- Video area -->
@@ -811,7 +947,7 @@ router.get('/meet', [
   </div>
 
   <!-- Controls -->
-  <div id="controls" style="position:absolute;bottom:0;left:0;right:0">
+  <div id="controls">
     <!-- Mic -->
     <button id="btn-mic" class="ctrl-btn active" title="Mute microphone">
       <svg id="ic-mic" width="22" height="22" viewBox="0 0 24 24" fill="white">
@@ -820,7 +956,7 @@ router.get('/meet', [
         <line x1="12" y1="17" x2="12" y2="21" stroke="white" stroke-width="2" stroke-linecap="round"/>
         <line x1="9" y1="21" x2="15" y2="21" stroke="white" stroke-width="2" stroke-linecap="round"/>
       </svg>
-      <svg id="ic-mic-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" style="display:none">
+      <svg id="ic-mic-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
         <line x1="1" y1="1" x2="23" y2="23"/>
         <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
         <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2"/>
@@ -840,7 +976,7 @@ router.get('/meet', [
       <svg id="ic-cam" width="22" height="22" viewBox="0 0 24 24" fill="white">
         <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
       </svg>
-      <svg id="ic-cam-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" style="display:none">
+      <svg id="ic-cam-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
         <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/>
         <line x1="1" y1="1" x2="23" y2="23"/>
       </svg>
@@ -848,13 +984,14 @@ router.get('/meet', [
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
-<script>
+<script nonce="${cspNonce}" src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<script nonce="${cspNonce}">
 (async () => {
-  const TOKEN    = '${safeToken}';
-  const WS_URL   = '${safeUrl}';
-  const IS_VIDEO = ${videoOnly ? 'true' : 'false'};
-  const MY_NAME  = '${safeName}';
+  const MEET_TICKET = '${safeTicket}';
+  let TOKEN    = '';
+  let WS_URL   = '';
+  let IS_VIDEO = ${videoOnly ? 'true' : 'false'};
+  let MY_NAME  = '${safeName}';
 
   // ── Elements ──────────────────────────────────────────────────────────────
   const remoteTile   = document.getElementById('remote-tile');
@@ -879,6 +1016,8 @@ router.get('/meet', [
       window.ReactNativeWebView.postMessage(JSON.stringify({ action }));
     }
   }
+
+  document.getElementById('err-leave')?.addEventListener('click', () => notifyNative('leave'));
 
   function setConnected(on) {
     connDot.className = on ? 'live' : '';
@@ -998,6 +1137,23 @@ router.get('/meet', [
 
   // ── Connect ───────────────────────────────────────────────────────────────
   try {
+    const redeemResponse = await fetch('/api/video/meet/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      referrerPolicy: 'no-referrer',
+      cache: 'no-store',
+      body: JSON.stringify({ ticket: MEET_TICKET }),
+    });
+    const redeemed = await redeemResponse.json().catch(() => null);
+    if (!redeemResponse.ok || !redeemed || !redeemed.success) {
+      throw new Error(redeemed?.message || 'Video session ticket is invalid');
+    }
+    TOKEN = redeemed.livekitToken || redeemed.token;
+    WS_URL = redeemed.livekitUrl;
+    IS_VIDEO = redeemed.type === 'audio' ? false : IS_VIDEO;
+    MY_NAME = redeemed.name || MY_NAME;
+    localInit.textContent = initial(MY_NAME);
+
     await room.connect(WS_URL, TOKEN, { autoSubscribe: true });
 
     // Fade out the connecting overlay
@@ -1067,7 +1223,23 @@ router.get('/meet', [
 </html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'none'",
+    `script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net`,
+    `style-src 'nonce-${cspNonce}'`,
+    "img-src 'self' data:",
+    "media-src 'self' blob:",
+    `connect-src ${getMeetPageConnectSrc().join(' ')}`,
+    "font-src 'none'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+    "worker-src 'none'",
+  ].join('; '));
   res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   return res.send(html);
 });
 
@@ -1117,7 +1289,10 @@ router.post('/livekit-webhook', async (req, res) => {
 
 router._private = {
   generateLivekitToken,
-  getCallPolicy
+  getCallPolicy,
+  createMeetTicket,
+  redeemMeetTicket,
+  buildMeetUrl
 };
 
 module.exports = router;

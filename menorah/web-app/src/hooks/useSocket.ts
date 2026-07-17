@@ -3,19 +3,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { socketClient } from '@/lib/socket';
 
-export function useSocket(token: string | null) {
+export function useSocket(enabled: boolean) {
   const socketRef = useRef<ReturnType<typeof socketClient.getSocket>>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    if (!token) {
+    if (!enabled) {
       socketClient.disconnect();
       setIsConnected(false);
       return;
     }
 
     try {
-      const socket = socketClient.connect(token);
+      const socket = socketClient.connect();
       socketRef.current = socket;
 
       // Update connection status
@@ -60,7 +60,7 @@ export function useSocket(token: string | null) {
       socketClient.disconnect();
       setIsConnected(false);
     };
-  }, [token]);
+  }, [enabled]);
 
   return {
     socket: socketRef.current,

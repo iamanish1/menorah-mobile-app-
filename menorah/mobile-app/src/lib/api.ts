@@ -106,6 +106,8 @@ export interface VideoRoomSession {
   livekitUrl?: string;
   livekitToken?: string;
   token?: string;
+  meetUrl?: string;
+  meetTicket?: string;
   roomUrl?: string;
   jitsiToken?: string;
   joinUrl?: string;
