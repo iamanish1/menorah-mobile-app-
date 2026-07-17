@@ -17,6 +17,18 @@ api-android.menorah.me
 api-web.menorah.me
 api-admin.menorah.me
 calls.menorah.me
+mentle.org
+www.mentle.org
+mentle.mentle.org
+app.mentle.org
+business.mentle.org
+admin.mentle.org
+counsellor.mentle.org
+api.mentle.org
+api-business.mentle.org
+api-admin.mentle.org
+api-counsellor.mentle.org
+calls.mentle.org
 ```
 
 `calls.menorah.me` is proxied by Caddy to `LIVEKIT_UPSTREAM`. For same-VPS Hostinger LiveKit, use:
@@ -33,21 +45,36 @@ The Cloudflare public hostname service target must remain `http://reverse-proxy:
 
 1. In Cloudflare Zero Trust, create a tunnel for the Ubuntu host.
 2. Choose Docker as the connector type.
-3. Copy the tunnel token.
-4. On the host:
+3. Rotate the tunnel token before this deployment because the previous Compose
+   command exposed it through container inspection.
+4. Write only the rotated token to an untracked root-owned file:
+
+```bash
+sudo install -d -m 0700 /opt/menorah/secrets
+sudo install -m 0400 /dev/null /opt/menorah/secrets/cloudflare-tunnel-token
+sudoedit /opt/menorah/secrets/cloudflare-tunnel-token
+```
+
+5. On the host:
 
 ```bash
 cp menorah/deploy/env/cloudflare.env.example menorah/deploy/env/cloudflare.env
 nano menorah/deploy/env/cloudflare.env
 ```
 
-5. Set:
+6. Set the non-secret file path:
 
 ```env
-TUNNEL_TOKEN=your_real_token
+CLOUDFLARE_TUNNEL_TOKEN_FILE=/opt/menorah/secrets/cloudflare-tunnel-token
 ```
 
-6. Start the combined stack:
+The connector receives only `TUNNEL_TOKEN_FILE=/run/secrets/cloudflare_tunnel_token`.
+The token itself is not placed in the container command line or environment.
+
+7. In the Tunnel dashboard, configure every hostname above with the service
+   target `http://reverse-proxy:80`. A missing Mentle hostname produces a
+   Cloudflare 404 before the request reaches Caddy.
+8. Start the combined stack:
 
 ```bash
 cd menorah/deploy
@@ -113,6 +140,9 @@ CHECK_PUBLIC=true bash ubuntu/health-check.sh
 After the first connector is stable, a second `cloudflared` replica can be added on another machine with the same tunnel token. Do not scale replicas on the same host until resource and routing behavior are verified.
 
 ## Safety
+
+The `cloudflared` image is version- and digest-pinned. Review Cloudflare release
+notes and update both values together during planned maintenance.
 
 Do not create public Cloudflare records for:
 

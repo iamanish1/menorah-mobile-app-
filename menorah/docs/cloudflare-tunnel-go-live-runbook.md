@@ -9,18 +9,24 @@ Configure every Cloudflare public hostname service as `http://reverse-proxy:80`.
 1. Open Cloudflare Zero Trust.
 2. Create a tunnel for the production Ubuntu host.
 3. Choose Docker connector.
-4. Copy the tunnel token.
-5. On the host, put the token in:
+4. Rotate the tunnel token. The former command-line token must be treated as
+   exposed because it was readable through container inspection.
+5. Write only the rotated token to a root-owned host file:
 
 ```text
-menorah/deploy/env/cloudflare.env
+/opt/menorah/secrets/cloudflare-tunnel-token
 ```
 
-Example:
+Use mode `0400`; do not place the token in Git, Compose YAML, a command argument,
+or an environment file. In `menorah/deploy/env/cloudflare.env`, configure only
+the file path:
 
 ```env
-TUNNEL_TOKEN=your_real_token
+CLOUDFLARE_TUNNEL_TOKEN_FILE=/opt/menorah/secrets/cloudflare-tunnel-token
 ```
+
+The container consumes the token through `TUNNEL_TOKEN_FILE` and a read-only
+Compose secret mount.
 
 6. Start the stack:
 
@@ -49,6 +55,18 @@ api-android.menorah.me
 api-web.menorah.me
 api-admin.menorah.me
 calls.menorah.me
+mentle.org
+www.mentle.org
+mentle.mentle.org
+app.mentle.org
+business.mentle.org
+admin.mentle.org
+counsellor.mentle.org
+api.mentle.org
+api-business.mentle.org
+api-admin.mentle.org
+api-counsellor.mentle.org
+calls.mentle.org
 ```
 
 `calls.menorah.me` is routed by Caddy to `LIVEKIT_UPSTREAM`. For same-VPS Hostinger LiveKit, set `LIVEKIT_UPSTREAM=http://livekit:7880` in `production.env`.

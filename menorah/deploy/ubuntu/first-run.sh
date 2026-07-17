@@ -71,7 +71,6 @@ required=(
   REDIS_URL
   RESEND_API_KEY
   EMAIL_FROM
-  TUNNEL_TOKEN
 )
 
 for key in "${required[@]}"; do
@@ -98,6 +97,7 @@ MENORAH_DATA_ROOT="${MENORAH_DATA_ROOT:-/opt/menorah/data}"
 MENORAH_BACKUP_ROOT="${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}"
 MENORAH_SECRETS_ROOT="${MENORAH_SECRETS_ROOT:-/opt/menorah/secrets}"
 MONGO_KEYFILE_PATH="${MONGO_KEYFILE_PATH:-${MENORAH_SECRETS_ROOT}/mongo-keyfile}"
+CLOUDFLARE_TUNNEL_TOKEN_FILE="${CLOUDFLARE_TUNNEL_TOKEN_FILE:-${MENORAH_SECRETS_ROOT}/cloudflare-tunnel-token}"
 
 mkdir -p \
   "${MENORAH_DATA_ROOT}/mongo/primary" \
@@ -119,6 +119,13 @@ else
   chmod 0400 "${MONGO_KEYFILE_PATH}"
   echo "MongoDB keyfile already exists at ${MONGO_KEYFILE_PATH}"
 fi
+
+if [[ ! -s "${CLOUDFLARE_TUNNEL_TOKEN_FILE}" ]]; then
+  echo "Missing Cloudflare Tunnel token file: ${CLOUDFLARE_TUNNEL_TOKEN_FILE}" >&2
+  echo "Rotate the tunnel token, write only the new token to this file, and set mode 0400." >&2
+  exit 1
+fi
+chmod 0400 "${CLOUDFLARE_TUNNEL_TOKEN_FILE}"
 
 echo "Validating Docker Compose configuration..."
 compose_cmd config >/dev/null

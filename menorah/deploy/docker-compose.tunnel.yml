@@ -1,9 +1,17 @@
 services:
   cloudflared:
-    image: cloudflare/cloudflared:2025.6.1
+    image: cloudflare/cloudflared:2026.5.2@sha256:12ff5c6992a9863db4da270746af7c244bcaee49353039af8104268a18d6c4f0
     restart: unless-stopped
-    command: ["tunnel", "--no-autoupdate", "run", "--token", "${TUNNEL_TOKEN}"]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN_FILE: /run/secrets/cloudflare_tunnel_token
+    secrets:
+      - cloudflare_tunnel_token
     networks:
       - public_net
     depends_on:
       - reverse-proxy
+
+secrets:
+  cloudflare_tunnel_token:
+    file: ${CLOUDFLARE_TUNNEL_TOKEN_FILE:-/opt/menorah/secrets/cloudflare-tunnel-token}
