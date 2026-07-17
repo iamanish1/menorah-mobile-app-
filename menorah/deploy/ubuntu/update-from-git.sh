@@ -20,19 +20,9 @@ compose_cmd() {
 }
 
 run_backend_migrations() {
-  set -a
-  # shellcheck disable=SC1090
-  source "${ENV_FILE}"
-  if [[ -f "${CLOUDFLARE_ENV}" ]]; then
-    # shellcheck disable=SC1090
-    source "${CLOUDFLARE_ENV}"
-  fi
-  set +a
-
-  pushd "${REPO_ROOT}/menorah/backend" >/dev/null
-  npm ci
-  npm run migrate
-  popd >/dev/null
+  # Database hostnames are private to the Compose app network, so migrations
+  # must run in a backend container rather than on the Ubuntu host.
+  compose_cmd run --rm --no-deps --build api-web npm run migrate
 }
 
 mkdir -p "${STATE_DIR}"
