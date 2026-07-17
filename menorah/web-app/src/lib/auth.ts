@@ -7,6 +7,7 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
   checkAuth: () => Promise<void>;
 }
 
@@ -73,6 +74,14 @@ export const auth = {
 
   async logout(): Promise<void> {
     await api.logout().catch(() => {});
+    authStore.setState({ user: null, isLoading: false });
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
+  },
+
+  async logoutAll(): Promise<void> {
+    await api.logoutAll().catch(() => {});
     authStore.setState({ user: null, isLoading: false });
     if (typeof window !== 'undefined') {
       window.location.href = '/login';

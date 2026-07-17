@@ -24,7 +24,7 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout, logoutAll } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const NavContent = () => (
@@ -75,6 +75,20 @@ export default function Sidebar() {
             <p className="text-slate-400 text-xs truncate">{user?.email}</p>
           </div>
         </div>
+        <button
+          onClick={() => {
+            if (window.confirm('Sign out every admin browser and device connected to this account?')) {
+              void logoutAll();
+            }
+          }}
+          title="Sign Out All Devices"
+          className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 hover:text-amber-200"
+        >
+          <ShieldCheck size={19} strokeWidth={1.9} className="flex-shrink-0" />
+          <span className="min-w-0 overflow-hidden whitespace-nowrap">
+            Sign Out All Devices
+          </span>
+        </button>
         <button
           onClick={logout}
           title="Sign Out"

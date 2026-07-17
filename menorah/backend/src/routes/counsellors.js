@@ -334,20 +334,21 @@ router.get('/languages', async (req, res) => {
   }
 });
 
-// @route   GET /api/counsellors/application-status?email=xxx
-// @desc    Check counsellor application status by email (public — used by registration page)
-// @access  Public
+// @route   GET /api/counsellors/application-status?ticket=xxx
+// @desc    Check counsellor application status with an opaque applicant ticket
+// @access  Ticket protected
 router.get('/application-status', [
-  query('email').isEmail().normalizeEmail().withMessage('Valid email required')
+  query('ticket').isHexadecimal().isLength({ min: 64, max: 64 }).withMessage('Valid status ticket required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Valid email is required' });
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Valid status ticket is required' });
 
-    const emailQuery = req.query.email;
+    const ticketHash = crypto.createHash('sha256').update(req.query.ticket).digest('hex');
 
-    // Check pending/rejected applications first
-    const pending = await PendingApplication.findOne({ email: emailQuery }).select('status rejectionReason').lean();
+    const pending = await PendingApplication.findOne({ statusLookupTokenHash: ticketHash })
+      .select('status rejectionReason')
+      .lean();
     if (pending) {
       return res.json({
         success: true,
@@ -355,16 +356,14 @@ router.get('/application-status', [
       });
     }
 
-    // Check approved counsellors (application was approved and User/Counsellor were created)
-    const user = await User.findOne({ email: emailQuery, role: 'counsellor' }).select('_id isActive').lean();
-    if (!user) return res.status(404).json({ success: false, message: 'No application found for this email' });
-
-    const counsellor = await Counsellor.findOne({ user: user._id }).select('status').lean();
-    if (!counsellor) return res.status(404).json({ success: false, message: 'No application found' });
+    const counsellor = await Counsellor.findOne({ applicationStatusTokenHash: ticketHash })
+      .select('status isActive')
+      .lean();
+    if (!counsellor) return res.status(404).json({ success: false, message: 'Application status not found' });
 
     res.json({
       success: true,
-      data: { status: counsellor.status, rejectionReason: null, isActive: user.isActive }
+      data: { status: counsellor.status, rejectionReason: null, isActive: counsellor.isActive }
     });
   } catch (error) {
     console.error('Application status check error:', error);
@@ -654,6 +653,7 @@ router.post('/register', [
       sunday:    { start: '09:00', end: '17:00', isAvailable: false }
     };
 
+    const statusTicket = crypto.randomBytes(32).toString('hex');
     const application = new PendingApplication({
       firstName, lastName, email, phone, dateOfBirth, gender,
       licenseNumber, specialization,
@@ -663,6 +663,7 @@ router.post('/register', [
       education: education || [],
       certifications: certifications || [],
       availability: defaultAvailability,
+      statusLookupTokenHash: crypto.createHash('sha256').update(statusTicket).digest('hex'),
       status: 'pending'
     });
 
@@ -671,7 +672,7 @@ router.post('/register', [
     res.status(201).json({
       success: true,
       message: 'Registration submitted successfully. Your profile is under review by our admin team. You will receive your login credentials once approved.',
-      data: { applicationId: application._id, email: application.email }
+      data: { applicationId: application._id, email: application.email, statusTicket }
     });
 
   } catch (error) {

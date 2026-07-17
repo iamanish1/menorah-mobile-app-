@@ -45,8 +45,8 @@ export default function ChangePasswordPage() {
           <CheckCircle className="w-8 h-8 text-green-600" />
         </div>
         <h2 className="text-xl font-bold text-gray-900">Password changed!</h2>
-        <p className="text-gray-500 text-sm">Your password has been updated successfully.</p>
-        <Button onClick={() => router.back()}>Go Back</Button>
+        <p className="text-gray-500 text-sm">Your password was updated and every session was signed out.</p>
+        <Button onClick={() => window.location.replace('/login')}>Sign In Again</Button>
       </div>
     );
   }

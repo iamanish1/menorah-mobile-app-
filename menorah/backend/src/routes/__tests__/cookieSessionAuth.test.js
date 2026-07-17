@@ -59,8 +59,8 @@ describe('browser cookie session authentication', () => {
       NODE_ENV: 'test',
       JWT_SECRET: 'x'.repeat(64),
       WEB_SESSION_ORIGINS: 'https://app.example.com=user,https://admin.example.com=admin',
-      SESSION_COOKIE_DOMAIN: '.example.com',
     };
+    delete process.env.SESSION_COOKIE_DOMAIN;
     mockFindOne.mockReset();
     mockFindById.mockReset();
   });
@@ -83,11 +83,12 @@ describe('browser cookie session authentication', () => {
     expect(res.body.data.token).toBeUndefined();
 
     const cookie = res.headers['set-cookie']?.join('; ') || '';
-    expect(cookie).toContain('mn_auth=');
+    expect(cookie).toContain('__Host-menorah-user=');
     expect(cookie).toContain('HttpOnly');
     expect(cookie).toContain('Secure');
     expect(cookie).toContain('SameSite=Strict');
-    expect(cookie).toContain('Domain=.example.com');
+    expect(cookie).toContain('Path=/');
+    expect(cookie).not.toContain('Domain=');
   });
 
   test('bearer auth remains valid for non-browser clients', async () => {
@@ -119,7 +120,7 @@ describe('browser cookie session authentication', () => {
     await request(buildCsrfApp())
       .post('/api/users/profile')
       .set('Origin', 'https://evil.example.com')
-      .set('Cookie', 'mn_auth=opaque-session-token')
+      .set('Cookie', '__Host-menorah-user=opaque-session-token')
       .expect(403);
   });
 
@@ -127,7 +128,7 @@ describe('browser cookie session authentication', () => {
     await request(buildCsrfApp())
       .post('/api/users/profile')
       .set('Origin', 'https://app.example.com')
-      .set('Cookie', 'mn_auth=opaque-session-token')
+      .set('Cookie', '__Host-menorah-user=opaque-session-token')
       .expect(200);
   });
 });

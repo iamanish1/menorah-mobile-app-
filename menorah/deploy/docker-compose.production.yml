@@ -52,7 +52,6 @@ x-backend-env: &backend-env
   APPLE_WEB_SERVICE_ID: ${APPLE_WEB_SERVICE_ID:-}
   ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
   WEB_SESSION_ORIGINS: ${WEB_SESSION_ORIGINS:-https://${WWW_DOMAIN:-www.menorah.me}=user,https://${APP_DOMAIN:-app.menorah.me}=user,https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}=counsellor,https://${ADMIN_DOMAIN:-admin.menorah.me}=admin}
-  SESSION_COOKIE_DOMAIN: ${SESSION_COOKIE_DOMAIN:-.menorah.me}
   ENABLE_SOCKET_IO: ${ENABLE_SOCKET_IO:-true}
   ENABLE_SOCKET_ADAPTER: ${ENABLE_SOCKET_ADAPTER:-true}
   WORKER_MODE: ${WORKER_MODE:-standby}
@@ -528,6 +527,7 @@ services:
     volumes:
       - ./logging/promtail-config.yml:/etc/promtail/config.yml:ro
       - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/logs:/var/log/menorah:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
     command: ["-config.file=/etc/promtail/config.yml"]
     networks:
       - monitoring_net

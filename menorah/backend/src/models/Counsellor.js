@@ -2,6 +2,13 @@ const mongoose = require('mongoose');
 
 const counsellorSchema = new mongoose.Schema({
   // Basic information
+  applicationStatusTokenHash: {
+    type: String,
+    select: false,
+    index: true,
+    unique: true,
+    sparse: true
+  },
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

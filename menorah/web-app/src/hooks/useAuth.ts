@@ -25,6 +25,7 @@ export function useAuth(): AuthContextType {
     isAuthenticated: !!state.user && state.user.role === 'counsellor',
     login: auth.login,
     logout: auth.logout,
+    logoutAll: auth.logoutAll,
     checkAuth: auth.checkAuth,
   };
 }

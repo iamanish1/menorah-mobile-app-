@@ -11,6 +11,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string; mfaRequired?: boolean; challengeId?: string }>;
   completeMfa: (challengeId: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -97,7 +98,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = '/login';
   }, []);
 
-  return <AuthContext.Provider value={{ user, isLoading, login, completeMfa, logout }}>{children}</AuthContext.Provider>;
+  const logoutAll = useCallback(async () => {
+    await api.logoutAll();
+    clearStoredUser();
+    setUser(null);
+    window.location.href = '/login';
+  }, []);
+
+  return <AuthContext.Provider value={{ user, isLoading, login, completeMfa, logout, logoutAll }}>{children}</AuthContext.Provider>;
 }
 
 export const useAuth = () => {

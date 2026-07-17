@@ -21,9 +21,11 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
       requireEnv(key, errors)
     );
 
-    ['WEB_SESSION_ORIGINS', 'SESSION_COOKIE_DOMAIN'].forEach((key) =>
-      requireEnv(key, errors)
-    );
+    requireEnv('WEB_SESSION_ORIGINS', errors);
+
+    if (process.env.SESSION_COOKIE_DOMAIN) {
+      errors.push('SESSION_COOKIE_DOMAIN must be unset for host-only __Host- session cookies');
+    }
 
     const webSessionRoles = new Set(getTrustedWebSessionOrigins().values());
     ['user', 'counsellor', 'admin'].forEach((role) => {

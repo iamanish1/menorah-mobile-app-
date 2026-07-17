@@ -61,6 +61,10 @@ class AdminApiClient {
     return this.request<void>(() => this.client.post('/auth/admin/logout'));
   }
 
+  logoutAll() {
+    return this.request<void>(() => this.client.post('/auth/admin/logout-all'));
+  }
+
   // ── Stats ───────────────────────────────────────────────────────────────────
   getStats() {
     return this.request<PlatformStats>(() => this.client.get('/admin/stats'));

@@ -7,6 +7,7 @@ const { adminAuth } = require('../middleware/auth');
 const { getRedisClient } = require('../config/redis');
 const { sendOTPEmail } = require('../utils/email');
 const { signAdminToken } = require('../utils/authTokens');
+const { revokeAllSessions } = require('../utils/sessionLifecycle');
 const {
   clearMappedSessionCookie,
   isCookieTransportRequested,
@@ -91,14 +92,20 @@ const sendAdminSessionResponse = (req, res, { message, token, user }) => {
     mfaRequired: false,
   };
 
+  let transport = 'bearer';
   if (isCookieTransportRequested(req)) {
     const sessionResult = setSessionCookieForRequest(req, res, { role: 'admin', token });
     if (!sessionResult.ok) {
       return res.status(sessionResult.status).json({ success: false, message: sessionResult.message });
     }
+    transport = 'cookie';
   } else {
     data.token = token;
   }
+
+  res.locals.securityActor = user;
+  res.locals.securitySessionCreated = true;
+  res.locals.securitySessionTransport = transport;
 
   return res.json({
     success: true,
@@ -254,6 +261,21 @@ router.post(['/logout', '/admin/logout'], adminAuth, async (req, res) => {
     return res.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
     console.error('Admin logout error:', error.message);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+router.post(['/logout-all', '/admin/logout-all'], adminAuth, async (req, res) => {
+  try {
+    revokeAllSessions(req.user);
+    await req.user.save();
+
+    const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
+    if (token) await blockToken(token);
+    clearMappedSessionCookie(req, res);
+    return res.json({ success: true, message: 'All sessions have been logged out successfully' });
+  } catch (error) {
+    console.error('Admin logout all error:', error.message);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });

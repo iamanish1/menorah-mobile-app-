@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// All dashboard routes require counsellor authentication
-const PROTECTED_PREFIXES = ['/dashboard', '/bookings', '/chat', '/articles', '/profile', '/settings'];
-const AUTH_ROUTES = ['/login', '/register'];
-
 function createNonce() {
   return crypto.randomUUID().replace(/-/g, '');
 }
@@ -72,23 +68,8 @@ function nextWithSecurityHeaders(request: NextRequest, nonce: string, csp: strin
 }
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const token = request.cookies.get('mn_counsellor_auth')?.value;
   const nonce = createNonce();
   const csp = buildCsp(nonce);
-
-  const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
-  const isAuthRoute = AUTH_ROUTES.some((p) => pathname.startsWith(p));
-
-  if (isProtected && !token) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return withSecurityHeaders(NextResponse.redirect(loginUrl), csp);
-  }
-
-  if (isAuthRoute && token) {
-    return withSecurityHeaders(NextResponse.redirect(new URL('/dashboard', request.url)), csp);
-  }
 
   return nextWithSecurityHeaders(request, nonce, csp);
 }

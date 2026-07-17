@@ -364,7 +364,7 @@ function RateEditor({ currentRate, currency, onSave }: {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, logoutAll } = useAuth();
 
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -802,7 +802,7 @@ export default function ProfilePage() {
     if (res.success) {
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setEditingPassword(false);
-      showSuccess('Password changed successfully.');
+      window.location.replace('/login');
     } else {
       setError(res.message || 'Password change failed');
     }
@@ -1509,7 +1509,22 @@ export default function ProfilePage() {
                 </div>
               </>
             ) : (
-              <p className={styles.securityText}>Update your password to keep your account secure.</p>
+              <>
+                <p className={styles.securityText}>Update your password to keep your account secure.</p>
+                <div className={styles.formActions}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (window.confirm('Sign out every browser and device connected to this account?')) {
+                        void logoutAll();
+                      }
+                    }}
+                  >
+                    Sign Out All Devices
+                  </Button>
+                </div>
+              </>
             )}
           </Card>
 

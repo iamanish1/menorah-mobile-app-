@@ -19,6 +19,7 @@ const {
   resolveCallPolicy
 } = require('../services/callPolicyService');
 const { sendCounsellorApprovalEmail } = require('../utils/email');
+const { revokeAllSessions } = require('../utils/sessionLifecycle');
 
 const router = express.Router();
 
@@ -896,7 +897,7 @@ router.put('/counsellors/:id/approve', [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid ID' });
 
-    const application = await PendingApplication.findById(req.params.id);
+    const application = await PendingApplication.findById(req.params.id).select('+statusLookupTokenHash');
     if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
     if (application.status !== 'pending') return res.status(400).json({ success: false, message: 'Application is not pending' });
 
@@ -952,8 +953,10 @@ router.put('/counsellors/:id/approve', [
     user.isActive = true;
     user.isEmailVerified = true;
     user.isPhoneVerified = true;
-    user.sessionVersion = (user.sessionVersion || 0) + 1;
+    revokeAllSessions(user, { passwordChanged: true });
     await user.save();
+    res.locals.securitySessionRevoked = user;
+    res.locals.securitySessionRevocationAction = 'counsellor_approved';
 
     const counsellor = new Counsellor({
       user: user._id,
@@ -974,6 +977,7 @@ router.put('/counsellors/:id/approve', [
       isAvailable: true,
       approvedBy: req.user._id,
       approvedAt: new Date(),
+      applicationStatusTokenHash: application.statusLookupTokenHash,
     });
     await counsellor.save();
 
@@ -1054,10 +1058,13 @@ router.post('/counsellors/:id/generate-password', [
     const user = await User.findById(counsellor.user._id);
     user.password = plainPassword;
     user.isActive = true;
+    revokeAllSessions(user, { passwordChanged: true });
     counsellor.isActive = true;
     counsellor.isAvailable = true;
 
     await Promise.all([user.save(), counsellor.save()]);
+    res.locals.securitySessionRevoked = user;
+    res.locals.securitySessionRevocationAction = 'password_generated';
 
     res.json({
       success: true,
@@ -1095,8 +1102,11 @@ router.put('/counsellors/:id/block', [
 
     const user = await User.findById(counsellor.user._id);
     user.isActive = false;
+    revokeAllSessions(user);
 
     await Promise.all([counsellor.save(), user.save()]);
+    res.locals.securitySessionRevoked = user;
+    res.locals.securitySessionRevocationAction = 'account_blocked';
 
     res.json({ success: true, message: 'Counsellor blocked. They cannot receive new bookings or log in.', data: { counsellorId: counsellor._id } });
   } catch (error) {
@@ -1121,8 +1131,11 @@ router.put('/counsellors/:id/unblock', [
 
     const user = await User.findById(counsellor.user._id);
     user.isActive = true;
+    revokeAllSessions(user);
 
     await Promise.all([counsellor.save(), user.save()]);
+    res.locals.securitySessionRevoked = user;
+    res.locals.securitySessionRevocationAction = 'account_unblocked';
 
     res.json({ success: true, message: 'Counsellor unblocked. They can now receive bookings.', data: { counsellorId: counsellor._id } });
   } catch (error) {
@@ -1591,7 +1604,10 @@ router.post('/payouts/:counsellorId', [
     });
   } catch (error) {
     const rzpErr = error.response?.data;
-    console.error('Admin payout error:', rzpErr || error.message);
+    console.error('Admin payout error:', {
+      status: error.response?.status,
+      code: rzpErr?.error?.code,
+    });
     res.status(500).json({
       success: false,
       message: rzpErr?.error?.description || 'Payout failed. Please verify Razorpay X is activated and credentials are correct.'

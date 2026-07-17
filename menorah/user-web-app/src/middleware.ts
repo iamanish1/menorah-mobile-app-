@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Routes that require authentication
-const PROTECTED_PREFIXES = ['/discover', '/bookings', '/profile', '/chat', '/subscription', '/learn'];
-
-// Routes accessible only when NOT authenticated
 const AUTH_ROUTES = ['/login', '/register', '/verify-otp', '/verify-email', '/forgot-password', '/reset-password'];
 
 function createNonce() {
@@ -85,24 +81,10 @@ function noStore(response: NextResponse) {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const token = request.cookies.get('mn_auth')?.value;
   const nonce = createNonce();
   const csp = buildCsp(nonce);
 
-  const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   const isAuthRoute = AUTH_ROUTES.some((p) => pathname.startsWith(p));
-
-  // Unauthenticated user trying to access protected route → login
-  if (isProtected && !token) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return withSecurityHeaders(NextResponse.redirect(loginUrl), csp);
-  }
-
-  // Authenticated user trying to access auth routes → app
-  if (isAuthRoute && token) {
-    return noStore(withSecurityHeaders(NextResponse.redirect(new URL('/discover', request.url)), csp));
-  }
 
   const response = nextWithSecurityHeaders(request, nonce, csp);
 

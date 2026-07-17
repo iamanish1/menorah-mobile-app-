@@ -1,12 +1,13 @@
 const ROLE_COOKIE_NAMES = Object.freeze({
-  user: 'mn_auth',
-  counsellor: 'mn_counsellor_auth',
-  admin: 'mn_admin_auth',
+  user: '__Host-menorah-user',
+  counsellor: '__Host-menorah-counsellor',
+  admin: '__Host-menorah-admin',
 });
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const VALID_ROLES = new Set(Object.keys(ROLE_COOKIE_NAMES));
 const SESSION_TRANSPORT_HEADER = 'x-auth-transport';
+const { recordSecurityEvent } = require('../utils/securityAudit');
 
 const DEFAULT_USER_SESSION_SECONDS = 7 * 24 * 60 * 60;
 const DEFAULT_ADMIN_SESSION_SECONDS = 30 * 60;
@@ -165,11 +166,6 @@ const getSessionCookieRoles = (req) => {
     .map(([role]) => role);
 };
 
-const getCookieDomain = () => {
-  const domain = String(process.env.SESSION_COOKIE_DOMAIN || '').trim();
-  return domain || undefined;
-};
-
 const getSessionMaxAgeSeconds = (role) => {
   if (role === 'admin') {
     return parseDurationSeconds(process.env.ADMIN_JWT_EXPIRES_IN, DEFAULT_ADMIN_SESSION_SECONDS);
@@ -186,8 +182,6 @@ const buildSessionCookieOptions = (role) => {
     maxAge: getSessionMaxAgeSeconds(role) * 1000,
   };
 
-  const domain = getCookieDomain();
-  if (domain) options.domain = domain;
   return options;
 };
 
@@ -261,6 +255,13 @@ const validateCsrfRequest = (req) => {
 const csrfProtection = (req, res, next) => {
   const result = validateCsrfRequest(req);
   if (!result.ok) {
+    res.locals.securityAuthorizationLogged = true;
+    recordSecurityEvent('csrf_blocked', {
+      req,
+      user: req.user,
+      outcome: 'failure',
+      statusCode: result.status,
+    });
     return res.status(result.status).json({ success: false, message: result.message });
   }
   return next();

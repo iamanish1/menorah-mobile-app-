@@ -12,6 +12,7 @@ interface AuthContextValue {
   loginWithGoogle: (credential: string) => Promise<{ success: boolean; message?: string; isNewUser?: boolean }>;
   register: (data: RegisterData) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<{ success: boolean; message?: string }>;
   verifyPhone: (phone: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   verifyEmailOTP: (email: string, otp: string) => Promise<{ success: boolean; message?: string }>;
@@ -96,6 +97,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.replace('/');
   };
 
+  const logoutAll = async () => {
+    await api.logoutAll();
+    setUser(null);
+    window.location.replace('/login');
+  };
+
   const verifyEmail = async (email: string, code: string) => {
     const res = await api.verifyEmail(email, code);
     if (res.success) {
@@ -143,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, isAuthed: !!user, isLoading,
-      login, loginWithGoogle, register, logout,
+      login, loginWithGoogle, register, logout, logoutAll,
       verifyEmail, verifyPhone, verifyEmailOTP,
       forgotPassword, resetPassword,
       updateUser, refreshUser,

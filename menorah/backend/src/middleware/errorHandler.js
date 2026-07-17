@@ -57,7 +57,7 @@ const errorHandler = (err, req, res, next) => {
     console.error('Error:', {
       message: err.message,
       stack: err.stack,
-      url: req.url,
+      path: req.path,
       method: req.method,
       ip: req.ip,
       userAgent: req.get('User-Agent')

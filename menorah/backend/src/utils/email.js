@@ -209,14 +209,7 @@ const sendPasswordResetEmail = async (email, token) => {
   const resetUrl = buildPasswordResetUrl(token);
 
   if (isDev) {
-    const encodedToken = encodeURIComponent(token);
-    const apkLink = `menorah-health://reset-password?token=${encodedToken}`;
-    const expoGoLink = `exp+menorah-health-app://reset-password?token=${encodedToken}`;
-    console.log('\n[DEV PASSWORD RESET]');
-    console.log(`Email: ${email}`);
-    console.log(`If using APK: ${apkLink}`);
-    console.log(`If using Expo Go: ${expoGoLink}`);
-    console.log(`Resolved reset URL: ${resetUrl}\n`);
+    console.log('[DEV PASSWORD RESET] Reset link generated; destination and token suppressed.');
   }
 
   const safeResetUrl = escapeHtml(resetUrl);

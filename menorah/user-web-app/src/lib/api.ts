@@ -138,6 +138,10 @@ class ApiClient {
     try { await this.client.post('/auth/logout'); } catch { /* ignore */ }
   }
 
+  async logoutAll(): Promise<void> {
+    await this.client.post('/auth/logout-all');
+  }
+
   // ─── Users ─────────────────────────────────────────────────────────────────
   async updateProfile(data: Partial<User>): Promise<ApiResponse<{ user: User }>> {
     return this.put<{ user: User }>('/users/profile', data);

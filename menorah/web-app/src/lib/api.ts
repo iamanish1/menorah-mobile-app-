@@ -85,7 +85,21 @@ class ApiClient {
     }
   }
 
-  async registerCounsellor(data: any): Promise<ApiResponse<{ user: any; counsellor: any }>> {
+  async logoutAll(): Promise<ApiResponse<void>> {
+    try {
+      const response = await this.client.post('/auth/logout-all');
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        message: errorResponse?.message || error.message || 'Failed to sign out all devices',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async registerCounsellor(data: any): Promise<ApiResponse<{ applicationId: string; email: string; statusTicket: string }>> {
     try {
       const response = await this.client.post('/counsellors/register', data);
       return response.data;

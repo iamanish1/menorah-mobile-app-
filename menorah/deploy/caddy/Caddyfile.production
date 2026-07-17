@@ -33,6 +33,8 @@
 (api_proxy) {
 	import security_headers
 	encode gzip zstd
+	@private_metrics path /metrics/*
+	respond @private_metrics 404
 	request_body {
 		max_size 20MB
 	}

@@ -9,6 +9,7 @@ const { auth } = require('../middleware/auth');
 const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
 const { getRedisClient } = require('../config/redis');
 const { signUserToken } = require('../utils/authTokens');
+const { revokeAllSessions } = require('../utils/sessionLifecycle');
 const { serializeAuthUser, serializeUserProfile } = require('../serializers/userSerializer');
 const {
   clearMappedSessionCookie,
@@ -334,15 +335,21 @@ const blockToken = async (token) => {
 
 const sendAuthSessionResponse = (req, res, { message, token, role, data = {}, status = 200 }) => {
   const responseData = { ...data };
+  let transport = 'bearer';
 
   if (isCookieTransportRequested(req)) {
     const sessionResult = setSessionCookieForRequest(req, res, { role, token });
     if (!sessionResult.ok) {
       return res.status(sessionResult.status).json({ success: false, message: sessionResult.message });
     }
+    transport = 'cookie';
   } else {
     responseData.token = token;
   }
+
+  res.locals.securityActor = data.user;
+  res.locals.securitySessionCreated = true;
+  res.locals.securitySessionTransport = transport;
 
   return res.status(status).json({
     success: true,
@@ -907,8 +914,9 @@ router.post('/reset-password', [
     user.password             = password;
     user.passwordResetToken   = undefined;
     user.passwordResetExpires = undefined;
-    user.sessionVersion       = (user.sessionVersion || 0) + 1;
+    revokeAllSessions(user, { passwordChanged: true });
     await user.save();
+    clearMappedSessionCookie(req, res);
 
     res.json({ success: true, message: 'Password reset successfully' });
   } catch (error) {
@@ -956,7 +964,7 @@ router.post('/logout', auth, async (req, res) => {
 
 router.post('/logout-all', auth, async (req, res) => {
   try {
-    req.user.sessionVersion = (req.user.sessionVersion || 0) + 1;
+    revokeAllSessions(req.user);
     await req.user.save();
 
     const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');

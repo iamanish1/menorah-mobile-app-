@@ -18,6 +18,7 @@ const pendingApplicationSchema = new mongoose.Schema({
   education:      { type: mongoose.Schema.Types.Mixed, default: [] },
   certifications: { type: mongoose.Schema.Types.Mixed, default: [] },
   availability:   { type: mongoose.Schema.Types.Mixed },
+  statusLookupTokenHash: { type: String, select: false, index: true, unique: true, sparse: true },
   status:         { type: String, enum: ['pending', 'rejected'], default: 'pending', index: true },
   rejectionReason:{ type: String, default: null },
   reviewedBy:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

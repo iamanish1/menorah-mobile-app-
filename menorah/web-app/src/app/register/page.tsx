@@ -13,7 +13,7 @@ import CountryPhoneInput from '@/components/ui/CountryPhoneInput';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 import styles from './page.module.css';
 
-const STORAGE_KEY = 'menorah_counsellor_application_email';
+const STORAGE_KEY = 'menorah_counsellor_application_status_ticket';
 
 const registerSchema = z.object({
   firstName: z.string().min(2, 'First name must be at least 2 characters').max(50),
@@ -48,13 +48,13 @@ export default function RegisterPage() {
   const [appStatus, setAppStatus] = useState<AppStatus>('idle');
   const [rejectionReason, setRejectionReason] = useState<string | null>(null);
 
-  // On mount: if a pending application email is stored, check its status
+  // On mount: if an applicant status ticket is stored, check its status.
   useEffect(() => {
-    const savedEmail = sessionStorage.getItem(STORAGE_KEY);
-    if (!savedEmail) return;
+    const statusTicket = sessionStorage.getItem(STORAGE_KEY);
+    if (!statusTicket) return;
 
     setAppStatus('checking');
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/counsellors/application-status?email=${encodeURIComponent(savedEmail)}`)
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/counsellors/application-status?ticket=${encodeURIComponent(statusTicket)}`)
       .then(r => r.json())
       .then(data => {
         if (!data.success) {
@@ -69,7 +69,7 @@ export default function RegisterPage() {
         } else if (status === 'rejected') {
           setAppStatus('rejected');
           setRejectionReason(reason);
-          localStorage.removeItem(STORAGE_KEY);
+          sessionStorage.removeItem(STORAGE_KEY);
         } else {
           // pending
           setAppStatus('pending');
@@ -150,7 +150,8 @@ export default function RegisterPage() {
       if (result.success) {
         setError(null);
         setFieldErrors({});
-        sessionStorage.setItem(STORAGE_KEY, registrationData.email);
+        if (!result.data?.statusTicket) throw new Error('Application status ticket was not returned');
+        sessionStorage.setItem(STORAGE_KEY, result.data.statusTicket);
         setSubmitted(true);
         setAppStatus('pending');
       } else {
@@ -224,7 +225,7 @@ export default function RegisterPage() {
               <Button
                 variant="primary"
                 size="lg"
-                onClick={() => { localStorage.removeItem(STORAGE_KEY); router.push('/login'); }}
+                onClick={() => { sessionStorage.removeItem(STORAGE_KEY); router.push('/login'); }}
                 style={{ width: '100%', maxWidth: 320 }}
               >
                 Go to Login →
@@ -239,7 +240,7 @@ export default function RegisterPage() {
   // Rejected
   if (appStatus === 'rejected') {
     const handleReapply = () => {
-      localStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(STORAGE_KEY);
       setAppStatus('idle');
       setRejectionReason(null);
       setCurrentStep(1);

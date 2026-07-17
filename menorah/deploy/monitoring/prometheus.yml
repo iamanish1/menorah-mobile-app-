@@ -27,6 +27,17 @@ scrape_configs:
           - api-admin:8080
           - worker:8080
 
+  - job_name: security-events
+    metrics_path: /metrics/security
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - api-ios:8080
+          - api-android:8080
+          - api-web:8080
+          - api-admin:8080
+          - worker:8080
+
   - job_name: cadvisor
     static_configs:
       - targets:

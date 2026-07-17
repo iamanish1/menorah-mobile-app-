@@ -111,6 +111,16 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  lastSessionRevokedAt: {
+    type: Date,
+    default: null,
+    select: false
+  },
+  lastPasswordChangeAt: {
+    type: Date,
+    default: null,
+    select: false
+  },
 
   // Subscription and billing
   subscription: {

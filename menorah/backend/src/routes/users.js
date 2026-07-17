@@ -5,6 +5,8 @@ const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
 const { auth } = require('../middleware/auth');
 const { uploadBuffer } = require('../utils/cloudinary');
+const { clearMappedSessionCookie } = require('../config/webSessions');
+const { revokeAllSessions } = require('../utils/sessionLifecycle');
 const {
   serializePublicUser,
   serializeUserProfile,
@@ -390,8 +392,9 @@ router.put('/change-password', [
 
     // Update password
     user.password = newPassword;
-    user.sessionVersion = (user.sessionVersion || 0) + 1;
+    revokeAllSessions(user, { passwordChanged: true });
     await user.save();
+    clearMappedSessionCookie(req, res);
 
     res.json({
       success: true,
@@ -444,8 +447,9 @@ router.delete('/account', [
 
     // Soft delete - mark account as inactive
     user.isActive = false;
-    user.sessionVersion = (user.sessionVersion || 0) + 1;
+    revokeAllSessions(user);
     await user.save();
+    clearMappedSessionCookie(req, res);
 
     res.json({
       success: true,

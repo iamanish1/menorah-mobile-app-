@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Every route except /login is an admin-only route
-const PUBLIC_ROUTES = ['/login'];
-
 function createNonce() {
   return crypto.randomUUID().replace(/-/g, '');
 }
@@ -66,24 +63,8 @@ function nextWithSecurityHeaders(request: NextRequest, nonce: string, csp: strin
 }
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const token = request.cookies.get('mn_admin_auth')?.value;
   const nonce = createNonce();
   const csp = buildCsp(nonce);
-
-  const isPublic = PUBLIC_ROUTES.some((p) => pathname.startsWith(p));
-
-  // All non-public routes require admin token
-  if (!isPublic && !token) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return withSecurityHeaders(NextResponse.redirect(loginUrl), csp);
-  }
-
-  // Authenticated admin hitting /login → dashboard
-  if (isPublic && token) {
-    return withSecurityHeaders(NextResponse.redirect(new URL('/', request.url)), csp);
-  }
 
   return nextWithSecurityHeaders(request, nonce, csp);
 }

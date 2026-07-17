@@ -6,6 +6,7 @@ const morgan = require('morgan');
 const compression = require('compression');
 const { mountHealthEndpoints } = require('./health');
 const { csrfProtection, getTrustedWebOrigins } = require('../../config/webSessions');
+const { renderSecurityMetrics, securityAuditTrail } = require('../../utils/securityAudit');
 
 const SAFE_INLINE_UPLOAD_EXTENSIONS = new Set([
   '.jpg',
@@ -68,6 +69,8 @@ const createExpressApp = ({ serviceName, getHealthState }) => {
   app.set('trust proxy', getTrustProxySetting());
   app.set('serviceName', serviceName);
 
+  app.use(securityAuditTrail);
+
   app.use(cors(corsOptions));
   app.options('*', cors(corsOptions));
   app.use(
@@ -110,9 +113,10 @@ const createExpressApp = ({ serviceName, getHealthState }) => {
       || req.path === '/health/ready'
       || req.path === '/health/deep'
     );
+    morgan.token('safe-path', (req) => String(req.originalUrl || req.url || '/').split('?')[0]);
     app.use(process.env.NODE_ENV === 'development'
-      ? morgan('dev')
-      : morgan('combined', { skip: isHealthRequest }));
+      ? morgan(':method :safe-path :status :response-time ms')
+      : morgan(':remote-addr :method :safe-path :status :res[content-length] :response-time ms', { skip: isHealthRequest }));
   }
   app.use('/uploads', express.static(
     path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads'),
@@ -131,6 +135,9 @@ const createExpressApp = ({ serviceName, getHealthState }) => {
   ));
 
   mountHealthEndpoints(app, { getState: getHealthState });
+  app.get('/metrics/security', (_req, res) => {
+    res.type('text/plain; version=0.0.4').send(renderSecurityMetrics());
+  });
   app.get('/api/welcome', (_req, res) =>
     res.json({ success: true, message: 'Welcome to Menorah Health API', version: '1.0.0' })
   );
