@@ -22,7 +22,7 @@ compose_cmd() {
 run_backend_migrations() {
   # Database hostnames are private to the Compose app network, so migrations
   # must run in a backend container rather than on the Ubuntu host.
-  compose_cmd run --rm --no-deps --build api-web npm run migrate
+  compose_cmd run --rm --no-deps --build api-web src/database/migrate.js
 }
 
 mkdir -p "${STATE_DIR}"
