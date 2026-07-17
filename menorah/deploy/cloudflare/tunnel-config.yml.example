@@ -6,48 +6,21 @@ credentials-file: /etc/cloudflared/menorah-production.json
 
 ingress:
   - hostname: www.menorah.me
-    service: https://reverse-proxy:443
-    originRequest:
-      originServerName: www.menorah.me
-      caPool: /etc/cloudflared/cloudflare-origin-ca.pem
+    service: http://reverse-proxy:80
   - hostname: app.menorah.me
-    service: https://reverse-proxy:443
-    originRequest:
-      originServerName: app.menorah.me
-      caPool: /etc/cloudflared/cloudflare-origin-ca.pem
+    service: http://reverse-proxy:80
   - hostname: admin.menorah.me
-    service: https://reverse-proxy:443
-    originRequest:
-      originServerName: admin.menorah.me
-      caPool: /etc/cloudflared/cloudflare-origin-ca.pem
+    service: http://reverse-proxy:80
   - hostname: counsellor.menorah.me
-    service: https://reverse-proxy:443
-    originRequest:
-      originServerName: counsellor.menorah.me
-      caPool: /etc/cloudflared/cloudflare-origin-ca.pem
+    service: http://reverse-proxy:80
   - hostname: api-ios.menorah.me
-    service: https://reverse-proxy:443
-    originRequest:
-      originServerName: api-ios.menorah.me
-      caPool: /etc/cloudflared/cloudflare-origin-ca.pem
+    service: http://reverse-proxy:80
   - hostname: api-android.menorah.me
-    service: https://reverse-proxy:443
-    originRequest:
-      originServerName: api-android.menorah.me
-      caPool: /etc/cloudflared/cloudflare-origin-ca.pem
+    service: http://reverse-proxy:80
   - hostname: api-web.menorah.me
-    service: https://reverse-proxy:443
-    originRequest:
-      originServerName: api-web.menorah.me
-      caPool: /etc/cloudflared/cloudflare-origin-ca.pem
+    service: http://reverse-proxy:80
   - hostname: api-admin.menorah.me
-    service: https://reverse-proxy:443
-    originRequest:
-      originServerName: api-admin.menorah.me
-      caPool: /etc/cloudflared/cloudflare-origin-ca.pem
+    service: http://reverse-proxy:80
   - hostname: calls.menorah.me
-    service: https://reverse-proxy:443
-    originRequest:
-      originServerName: calls.menorah.me
-      caPool: /etc/cloudflared/cloudflare-origin-ca.pem
+    service: http://reverse-proxy:80
   - service: http_status:404

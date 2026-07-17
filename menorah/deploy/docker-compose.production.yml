@@ -102,15 +102,10 @@ services:
       API_WEB_DOMAIN: ${API_WEB_DOMAIN:-api-web.menorah.me}
       API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN:-api-admin.menorah.me}
       CALLS_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
-      CLOUDFLARE_ORIGIN_CERT_FILE: ${CLOUDFLARE_ORIGIN_CERT_FILE:-/run/secrets/cloudflare_origin_cert.pem}
-      CLOUDFLARE_ORIGIN_KEY_FILE: ${CLOUDFLARE_ORIGIN_KEY_FILE:-/run/secrets/cloudflare_origin_key.pem}
     ports:
-      - "${CADDY_HTTP_PORT:-80}:80"
-      - "${CADDY_HTTPS_PORT:-443}:443"
+      - "${CADDY_HTTP_PORT:-127.0.0.1:8080}:80"
     volumes:
       - ./caddy/Caddyfile.production:/etc/caddy/Caddyfile:ro
-      - ${CLOUDFLARE_ORIGIN_CERT_PATH:-/opt/menorah/secrets/cloudflare-origin.pem}:${CLOUDFLARE_ORIGIN_CERT_FILE:-/run/secrets/cloudflare_origin_cert.pem}:ro
-      - ${CLOUDFLARE_ORIGIN_KEY_PATH:-/opt/menorah/secrets/cloudflare-origin-key.pem}:${CLOUDFLARE_ORIGIN_KEY_FILE:-/run/secrets/cloudflare_origin_key.pem}:ro
       - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/caddy/data:/data
       - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/caddy/config:/config
       - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/logs/caddy:/var/log/caddy

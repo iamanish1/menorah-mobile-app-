@@ -57,13 +57,6 @@ Never commit `production.env` or `cloudflare.env`.
 
 Create the Cloudflare Origin CA certificate/key as host-only secret files before starting production:
 
-```text
-/opt/menorah/secrets/cloudflare-origin.pem
-/opt/menorah/secrets/cloudflare-origin-key.pem
-```
-
-The certificate should cover `menorah.me` and `*.menorah.me`. Keep Cloudflare SSL/TLS mode set to **Full (strict)** for production traffic.
-
 ## 3. First Run
 
 Start the production stack and Cloudflare Tunnel:
@@ -104,13 +97,12 @@ The script checks API health, deep health secret leakage, iOS Razorpay subscript
 
 ## 5. Cloudflare Ingress
 
-Preferred production ingress is Cloudflare proxied DNS to the Ubuntu origin on ports 80 and 443 with SSL/TLS mode **Full (strict)**.
+Production ingress uses a Cloudflare Tunnel. Cloudflare handles public HTTPS and the connector uses its encrypted outbound tunnel to Caddy on the private Docker network.
 
-1. Add proxied DNS records for `menorah.me`, `www`, `app`, `admin`, `counsellor`, `api-ios`, `api-android`, `api-web`, `api-admin`, and `calls`.
-2. Point each hostname to the Ubuntu origin.
-3. Keep ports 80 and 443 open to Cloudflare. Port 80 is redirect-only; HTTPS is served on port 443 with the Origin CA certificate.
-4. If a Cloudflare Tunnel is used instead, configure every public hostname to `https://reverse-proxy:443` with Origin CA trust. Do not use `http://reverse-proxy:80`.
-5. Start with `first-run.sh` or the compose command above.
+1. Add public hostnames for `menorah.me`, `www`, `app`, `admin`, `counsellor`, `api-ios`, `api-android`, `api-web`, `api-admin`, and `calls`.
+2. Set every service target to `http://reverse-proxy:80`.
+3. Keep the host's Caddy port bound to loopback; the Tunnel connector is the only public ingress.
+4. Start with `first-run.sh` or the compose command above.
 
 See [Cloudflare README](../cloudflare/README.md).
 

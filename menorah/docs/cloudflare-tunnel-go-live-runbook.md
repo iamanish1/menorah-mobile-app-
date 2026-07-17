@@ -1,19 +1,10 @@
 # Cloudflare Go-Live Runbook
 
-The production ingress target is Cloudflare proxied DNS with SSL/TLS mode set to **Full (strict)**. Caddy listens on 80 and 443, redirects HTTP to HTTPS, and serves every production hostname over TLS with a Cloudflare Origin CA certificate mounted from host-only secret files. The Ubuntu host should not expose MongoDB, Redis, Prometheus, Grafana, Loki, or Uptime Kuma to public DNS.
+Production ingress uses a Cloudflare Tunnel. Cloudflare handles public HTTPS and `cloudflared` carries traffic over its encrypted outbound tunnel to Caddy on the private Docker network. The Ubuntu host should not expose MongoDB, Redis, Prometheus, Grafana, Loki, or Uptime Kuma to public DNS.
 
-Required host-only files:
+## Dashboard-Managed Tunnel
 
-```text
-/opt/menorah/secrets/cloudflare-origin.pem
-/opt/menorah/secrets/cloudflare-origin-key.pem
-```
-
-Create the certificate in Cloudflare with SANs for `menorah.me` and `*.menorah.me`, store the certificate/key at those paths, and set Cloudflare SSL/TLS mode to **Full (strict)** before sending traffic.
-
-## Optional Dashboard-Managed Tunnel
-
-Use this only if direct proxied DNS to the Ubuntu origin is unavailable. Configure Cloudflare public hostname services to `https://reverse-proxy:443` with Origin CA trust. Do not target `http://reverse-proxy:80`; Caddy will redirect that traffic back to HTTPS.
+Configure every Cloudflare public hostname service as `http://reverse-proxy:80`. Do not change the service to `https://reverse-proxy:443` unless a separate Origin-CA Caddy configuration and certificate mount are deployed together.
 
 1. Open Cloudflare Zero Trust.
 2. Create a tunnel for the production Ubuntu host.
@@ -45,7 +36,7 @@ docker compose \
 
 ## Public Hostname Mapping
 
-Create these proxied public hostnames in Cloudflare. For direct DNS, point them to the Ubuntu origin IP. For an optional tunnel, point each service to `https://reverse-proxy:443`.
+Create these public hostnames in Cloudflare and point each service to `http://reverse-proxy:80`.
 
 ```text
 menorah.me

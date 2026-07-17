@@ -1,12 +1,11 @@
 {
 	email {$PUBLIC_EMAIL}
+	# Cloudflare Tunnel terminates public TLS and connects to Caddy over the
+	# private Docker network. Do not redirect this origin hop to HTTPS.
+	auto_https off
 	servers {
 		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
 	}
-}
-
-(cloudflare_origin_tls) {
-	tls {$CLOUDFLARE_ORIGIN_CERT_FILE} {$CLOUDFLARE_ORIGIN_KEY_FILE}
 }
 
 (security_headers) {
@@ -46,12 +45,7 @@
 	respond "Payments are temporarily disabled for final testing." 503
 }
 
-http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN}, http://{$APP_DOMAIN}, http://{$ADMIN_DOMAIN}, http://{$COUNSELLOR_DOMAIN}, http://{$API_IOS_DOMAIN}, http://{$API_ANDROID_DOMAIN}, http://{$API_WEB_DOMAIN}, http://{$API_ADMIN_DOMAIN}, http://{$CALLS_DOMAIN} {
-	redir https://{host}{uri} permanent
-}
-
-{$ROOT_DOMAIN}, {$WWW_DOMAIN} {
-	import cloudflare_origin_tls
+http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN} {
 	import security_headers
 	encode gzip zstd
 	reverse_proxy landing-page:3002
@@ -61,8 +55,7 @@ http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN}, http://{$APP_DOMAIN}, http://{$ADMI
 	}
 }
 
-{$APP_DOMAIN} {
-	import cloudflare_origin_tls
+http://{$APP_DOMAIN} {
 	import browser_call_security_headers
 	encode gzip zstd
 	reverse_proxy user-web-app:3002
@@ -72,8 +65,7 @@ http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN}, http://{$APP_DOMAIN}, http://{$ADMI
 	}
 }
 
-{$ADMIN_DOMAIN} {
-	import cloudflare_origin_tls
+http://{$ADMIN_DOMAIN} {
 	import security_headers
 	encode gzip zstd
 	reverse_proxy admin-panel:3003
@@ -83,8 +75,7 @@ http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN}, http://{$APP_DOMAIN}, http://{$ADMI
 	}
 }
 
-{$COUNSELLOR_DOMAIN} {
-	import cloudflare_origin_tls
+http://{$COUNSELLOR_DOMAIN} {
 	import browser_call_security_headers
 	encode gzip zstd
 	reverse_proxy web-app:3001
@@ -94,8 +85,7 @@ http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN}, http://{$APP_DOMAIN}, http://{$ADMI
 	}
 }
 
-{$API_IOS_DOMAIN} {
-	import cloudflare_origin_tls
+http://{$API_IOS_DOMAIN} {
 	import api_proxy
 	@payment path /api/payments* /api/payouts/webhook*
 	handle @payment {
@@ -110,8 +100,7 @@ http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN}, http://{$APP_DOMAIN}, http://{$ADMI
 	}
 }
 
-{$API_ANDROID_DOMAIN} {
-	import cloudflare_origin_tls
+http://{$API_ANDROID_DOMAIN} {
 	import api_proxy
 	@payment path /api/payments* /api/payouts/webhook*
 	handle @payment {
@@ -126,8 +115,7 @@ http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN}, http://{$APP_DOMAIN}, http://{$ADMI
 	}
 }
 
-{$API_WEB_DOMAIN} {
-	import cloudflare_origin_tls
+http://{$API_WEB_DOMAIN} {
 	import api_proxy
 	@payment path /api/payments* /api/payouts/webhook*
 	handle @payment {
@@ -142,8 +130,7 @@ http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN}, http://{$APP_DOMAIN}, http://{$ADMI
 	}
 }
 
-{$API_ADMIN_DOMAIN} {
-	import cloudflare_origin_tls
+http://{$API_ADMIN_DOMAIN} {
 	import api_proxy
 	reverse_proxy api-admin:8080
 	log {
@@ -152,8 +139,7 @@ http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN}, http://{$APP_DOMAIN}, http://{$ADMI
 	}
 }
 
-{$CALLS_DOMAIN} {
-	import cloudflare_origin_tls
+http://{$CALLS_DOMAIN} {
 	import browser_call_security_headers
 	encode gzip zstd
 	reverse_proxy {$LIVEKIT_UPSTREAM}
