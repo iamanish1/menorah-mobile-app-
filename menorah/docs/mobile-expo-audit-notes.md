@@ -1,6 +1,6 @@
 # Mobile Expo Audit Notes
 
-Last reviewed: 2026-07-16.
+Last reviewed: 2026-07-17.
 
 ## Expo SDK 57 Production Audit Constraint
 
@@ -14,6 +14,8 @@ The mobile app has been upgraded with Expo's supported path to Expo `57.0.6` and
 
 Track this until Expo publishes a compatible `@expo/config-plugins`/`xcode` chain that depends on a patched `uuid`.
 
-## Expo Doctor Constraint
+CI permits only this exact moderate advisory and only for the reviewed Expo dependency packages. The exception expires on 2026-10-31; any new package, advisory, severity, or an expired exception fails the production audit gate.
 
-`npx expo-doctor` passes 19 of 20 checks. The remaining check is the bare-workflow warning that native folders exist while `app.config.ts` still contains native configuration fields. Those fields do not automatically sync into `ios/` and `android/` unless the project moves back to Continuous Native Generation or the native projects are manually synchronized.
+## Expo Doctor Bare-Workflow Configuration
+
+This is an intentional bare-workflow project: native folders are authoritative while `app.config.ts` also supplies Expo runtime and build metadata. Expo's supported `appConfigFieldsNotSyncedCheck` is disabled in `package.json` so diagnostics can gate all applicable checks. Native changes to orientation, icons, appearance, platform settings, status bar, plugins, or scheme must still be synchronized manually in `ios/` and `android/`; changing only `app.config.ts` does not update tracked native projects.

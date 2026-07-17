@@ -16,7 +16,7 @@ const getEncryptionKey = () => {
 
 const encryptToken = (token) => {
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', getEncryptionKey(), iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', getEncryptionKey(), iv, { authTagLength: 16 });
   const encrypted = Buffer.concat([cipher.update(String(token), 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   return [iv.toString('base64'), tag.toString('base64'), encrypted.toString('base64')].join(':');
@@ -27,8 +27,13 @@ const decryptToken = (encryptedValue) => {
   if (!ivRaw || !tagRaw || !encryptedRaw) {
     throw new Error('Stored Instagram token is invalid');
   }
-  const decipher = crypto.createDecipheriv('aes-256-gcm', getEncryptionKey(), Buffer.from(ivRaw, 'base64'));
-  decipher.setAuthTag(Buffer.from(tagRaw, 'base64'));
+  const iv = Buffer.from(ivRaw, 'base64');
+  const tag = Buffer.from(tagRaw, 'base64');
+  if (iv.length !== 12 || tag.length !== 16) {
+    throw new Error('Stored Instagram token is invalid');
+  }
+  const decipher = crypto.createDecipheriv('aes-256-gcm', getEncryptionKey(), iv, { authTagLength: 16 });
+  decipher.setAuthTag(tag);
   const decrypted = Buffer.concat([
     decipher.update(Buffer.from(encryptedRaw, 'base64')),
     decipher.final()
