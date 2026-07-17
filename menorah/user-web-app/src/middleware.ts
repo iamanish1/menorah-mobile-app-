@@ -60,6 +60,8 @@ function withSecurityHeaders(response: NextResponse, csp: string) {
   response.headers.set('Content-Security-Policy', csp);
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('X-Content-Type-Options', 'nosniff');
+  // Fixed literal policy on NextResponse, not user-controlled Express input.
+  // nosemgrep: javascript.express.security.x-frame-options-misconfiguration.x-frame-options-misconfiguration
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
   return response;

@@ -1,0 +1,38 @@
+name: Quarterly security review
+
+on:
+  schedule:
+    - cron: '5 8 5 1,4,7,10 *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  schedule-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Open review issue when none is active
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh label create security-review \
+            --color B60205 \
+            --description "Scheduled security assurance work" \
+            --force
+          OPEN_COUNT="$(gh issue list \
+            --label security-review \
+            --state open \
+            --json number \
+            --jq 'length')"
+          if [[ "$OPEN_COUNT" == "0" ]]; then
+            gh issue create \
+              --title "Quarterly ASVS Level 2 review and authenticated penetration test" \
+              --label security-review \
+              --body-file .github/security/quarterly-security-review.md
+          fi

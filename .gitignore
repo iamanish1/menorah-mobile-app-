@@ -26,6 +26,12 @@ deploy/env/production.env.pre-clean-slate-*
 deploy-state/
 menorah/deploy-state/
 menorah/deploy/deploy-state/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
 menorah/deploy/livekit/livekit.yaml
 menorah/**/*.bak*
 menorah/deploy/env/*.bak*
