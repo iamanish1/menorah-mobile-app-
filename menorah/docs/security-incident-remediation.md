@@ -30,8 +30,8 @@ cd menorah-history-clean.git
 git filter-repo --path menorah/mobile-app/credentials.json --invert-paths --force
 git log --all -- menorah/mobile-app/credentials.json
 gitleaks git . --redact --no-banner
-git push --force --all origin
-git push --force --tags origin
+git remote add origin <REPOSITORY_URL>
+git push --force --mirror origin
 ```
 
 After the push, ask GitHub Support to purge cached commit/blob views where required, invalidate affected Actions artifacts and caches, and have fork owners remove the file from their histories. Every contributor must delete or archive the old clone and clone the rewritten repository again. Remove the two incident fingerprints from `.gitleaksignore` only after all active branches and tags use the rewritten history and the all-history scan passes.
