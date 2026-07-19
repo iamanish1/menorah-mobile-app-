@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { getRedisClient } = require('../config/redis');
 const { verifyUserToken, verifyAdminToken } = require('../utils/authTokens');
+const { isRecentAdminMfa } = require('../services/payoutPolicy');
 const {
   clearSessionCookie,
   getCookieToken,
@@ -224,6 +225,16 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
+const requireRecentAdminMfa = (req, res, next) => {
+  if (!isRecentAdminMfa(req.auth?.decoded)) {
+    return res.status(403).json({
+      success: false,
+      message: 'A fresh multi-factor authenticated admin session is required for this action.',
+    });
+  }
+  return next();
+};
+
 const counsellorAuth = async (req, res, next) => {
   await auth(req, res, () => {
     if (req.user?.role !== 'counsellor' && req.user?.role !== 'admin') {
@@ -237,6 +248,7 @@ module.exports = {
   auth,
   optionalAuth,
   adminAuth,
+  requireRecentAdminMfa,
   counsellorAuth,
   authAny,
   isTokenBlocked,

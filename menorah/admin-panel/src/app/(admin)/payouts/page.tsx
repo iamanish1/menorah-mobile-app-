@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 
 const STATUS_OPTIONS: { value: PayoutStatus | ''; label: string }[] = [
   { value: '',           label: 'All Statuses' },
+  { value: 'awaiting_approval', label: 'Awaiting Approval' },
   { value: 'processing', label: 'Processing'   },
   { value: 'queued',     label: 'Queued'        },
   { value: 'pending',    label: 'Pending'       },
@@ -20,10 +21,13 @@ const STATUS_OPTIONS: { value: PayoutStatus | ''; label: string }[] = [
   { value: 'reversed',   label: 'Reversed'      },
   { value: 'cancelled',  label: 'Cancelled'     },
   { value: 'failed',     label: 'Failed'        },
+  { value: 'rejected',   label: 'Rejected'      },
+  { value: 'expired',    label: 'Expired'       },
 ];
 
 function statusMeta(status: PayoutStatus) {
   switch (status) {
+    case 'awaiting_approval': return { color: 'bg-amber-100 text-amber-800', icon: Clock, dot: 'bg-amber-500' };
     case 'processed':  return { color: 'bg-green-100 text-green-700',  icon: CheckCircle2, dot: 'bg-green-500'  };
     case 'processing': return { color: 'bg-blue-100 text-blue-700',    icon: Clock,        dot: 'bg-blue-500'   };
     case 'queued':     return { color: 'bg-blue-100 text-blue-700',    icon: Clock,        dot: 'bg-blue-400'   };
@@ -44,6 +48,7 @@ export default function PayoutsPage() {
   const [total, setTotal]         = useState(0);
   const [statusFilter, setStatusFilter] = useState<PayoutStatus | ''>('');
   const [expandedId, setExpandedId]    = useState<string | null>(null);
+  const [approvalLoading, setApprovalLoading] = useState<string | null>(null);
 
   // Summary stats
   const [stats, setStats] = useState({
@@ -69,8 +74,8 @@ export default function PayoutsPage() {
       const all = res.data.payouts;
       setStats({
         totalProcessed: all.filter(p => p.status === 'processed').reduce((s, p) => s + p.amountRupees, 0),
-        totalInFlight:  all.filter(p => ['processing','queued','pending','on_hold'].includes(p.status)).reduce((s, p) => s + p.amountRupees, 0),
-        totalFailed:    all.filter(p => ['failed','reversed','cancelled'].includes(p.status)).reduce((s, p) => s + p.amountRupees, 0),
+        totalInFlight:  all.filter(p => ['awaiting_approval','processing','queued','pending','on_hold'].includes(p.status)).reduce((s, p) => s + p.amountRupees, 0),
+        totalFailed:    all.filter(p => ['failed','reversed','cancelled','rejected','expired'].includes(p.status)).reduce((s, p) => s + p.amountRupees, 0),
         count: res.data.pagination.total,
       });
     } else {
@@ -80,6 +85,18 @@ export default function PayoutsPage() {
   }, [page, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  const approvePayout = async (payoutId: string) => {
+    setApprovalLoading(payoutId);
+    const res = await api.approvePayout(payoutId);
+    setApprovalLoading(null);
+    if (res.success) {
+      toast.success('Payout approved and submitted.');
+      load();
+    } else {
+      toast.error(res.message || 'Payout approval failed. Sign in again if MFA is no longer fresh.');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -184,7 +201,7 @@ export default function PayoutsPage() {
                     {/* Counsellor */}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
-                      <p className="text-xs text-gray-400 truncate font-mono">{p.razorpayPayoutId}</p>
+                      <p className="text-xs text-gray-400 truncate font-mono">{p.razorpayPayoutId || p.referenceId || p._id}</p>
                     </div>
 
                     {/* Amount */}
@@ -198,6 +215,17 @@ export default function PayoutsPage() {
                       <StatusIcon size={11} />
                       {p.status.replace('_', ' ')}
                     </span>
+
+                    {p.status === 'awaiting_approval' && (
+                      <button
+                        type="button"
+                        onClick={(event) => { event.stopPropagation(); approvePayout(p._id); }}
+                        disabled={approvalLoading === p._id}
+                        className="rounded-lg bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+                      >
+                        {approvalLoading === p._id ? 'Approving...' : 'Approve'}
+                      </button>
+                    )}
 
                     <ChevronDown
                       size={16}
@@ -241,6 +269,12 @@ export default function PayoutsPage() {
                         <p className="text-xs text-gray-500 mb-0.5">Initiated by</p>
                         <p className="text-xs text-gray-700">
                           {p.initiatedBy ? `${p.initiatedBy.firstName} ${p.initiatedBy.lastName}` : '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-0.5">Approved by</p>
+                        <p className="text-xs text-gray-700">
+                          {p.approvedBy ? `${p.approvedBy.firstName} ${p.approvedBy.lastName}` : 'Awaiting independent approval'}
                         </p>
                       </div>
                       <div>

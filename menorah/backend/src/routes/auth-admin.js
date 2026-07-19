@@ -224,7 +224,7 @@ router.post(['/login/mfa', '/admin/login/mfa'], [
       getRedisClient().del(adminMfaKey(challengeId)),
     ]);
 
-    const token = signAdminToken(user);
+    const token = signAdminToken(user, { mfaAuthenticatedAt: Date.now() });
     return sendAdminSessionResponse(req, res, {
       message: 'Login successful',
       token,

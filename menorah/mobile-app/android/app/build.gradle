@@ -80,6 +80,37 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
  * this variant is about 6MiB larger per architecture than default.
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+def releaseSigningProperty = { String name ->
+    return project.findProperty(name) ?: System.getenv(name)
+}
+def releaseSigningNames = [
+    'ANDROID_KEYSTORE_FILE',
+    'ANDROID_KEYSTORE_PASSWORD',
+    'ANDROID_KEY_ALIAS',
+    'ANDROID_KEY_PASSWORD',
+]
+def releaseSigningValues = releaseSigningNames.collectEntries { name ->
+    [(name): releaseSigningProperty(name)]
+}
+def releaseBuildRequested = gradle.startParameter.taskNames.any {
+    it.toLowerCase().contains('release')
+}
+def releaseSigningPartiallyConfigured = releaseSigningValues.values().any {
+    it != null && !it.toString().trim().isEmpty()
+}
+if (releaseBuildRequested || releaseSigningPartiallyConfigured) {
+    def missingReleaseSigningNames = releaseSigningNames.findAll {
+        def value = releaseSigningValues[it]
+        value == null || value.toString().trim().isEmpty()
+    }
+    if (!missingReleaseSigningNames.isEmpty()) {
+        throw new GradleException("Release signing is incomplete; missing: ${missingReleaseSigningNames.join(', ')}")
+    }
+    if (!file(releaseSigningValues['ANDROID_KEYSTORE_FILE']).isFile()) {
+        throw new GradleException('ANDROID_KEYSTORE_FILE does not identify a readable file')
+    }
+}
+def releaseKeystoreFile = releaseSigningValues['ANDROID_KEYSTORE_FILE']
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -105,11 +136,11 @@ android {
             keyPassword 'android'
         }
         release {
-            if (project.hasProperty('ANDROID_KEYSTORE_FILE')) {
-                storeFile file(ANDROID_KEYSTORE_FILE)
-                storePassword project.property('ANDROID_KEYSTORE_PASSWORD')
-                keyAlias project.property('ANDROID_KEY_ALIAS')
-                keyPassword project.property('ANDROID_KEY_PASSWORD')
+            if (releaseKeystoreFile) {
+                storeFile file(releaseKeystoreFile)
+                storePassword releaseSigningValues['ANDROID_KEYSTORE_PASSWORD']
+                keyAlias releaseSigningValues['ANDROID_KEY_ALIAS']
+                keyPassword releaseSigningValues['ANDROID_KEY_PASSWORD']
             }
         }
     }
@@ -118,7 +149,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig project.hasProperty('ANDROID_KEYSTORE_FILE') ? signingConfigs.release : null
+            signingConfig releaseKeystoreFile ? signingConfigs.release : null
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

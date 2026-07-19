@@ -195,8 +195,17 @@ class AdminApiClient {
 
   // ── Payouts ─────────────────────────────────────────────────────────────────
   initiatePayout(counsellorId: string, amount: number, notes?: string) {
-    return this.request<{ payoutId: string; payoutRecordId: string; status: string; amount: number }>(
-      () => this.client.post(`/admin/payouts/${counsellorId}`, { amount, notes })
+    const idempotencyKey = crypto.randomUUID();
+    return this.request<{ payoutRecordId: string; status: PayoutStatus; amount: number; approvalExpiresAt: string }>(
+      () => this.client.post(`/admin/payouts/${counsellorId}`, { amount, notes, idempotencyKey }, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+      })
+    );
+  }
+
+  approvePayout(payoutId: string) {
+    return this.request<{ payoutRecordId: string; status: PayoutStatus; amount: number }>(
+      () => this.client.post(`/admin/payouts/${payoutId}/approve`)
     );
   }
 

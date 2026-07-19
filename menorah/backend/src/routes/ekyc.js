@@ -7,6 +7,23 @@ const { auth } = require('../middleware/auth');
 
 const router = express.Router();
 const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/heic', 'image/heif']);
+
+const getKycRetentionExpiry = () => {
+  const raw = String(process.env.KYC_RETENTION_DAYS || '').trim();
+  const days = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  if (!Number.isSafeInteger(days) || days < 365 || days > 36500) {
+    throw new Error('KYC_RETENTION_DAYS must contain an approved retention period');
+  }
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+};
+
+const getKycConsentVersion = () => {
+  const version = String(process.env.KYC_CONSENT_VERSION || '').trim();
+  if (!version || /^REPLACE/i.test(version) || version.length > 64) {
+    throw new Error('KYC_CONSENT_VERSION must identify the approved consent text');
+  }
+  return version;
+};
 const DEFAULT_MAX_FILE_SIZE = 15 * 1024 * 1024;
 const maxFileSize = parseInt(process.env.EKYC_MAX_FILE_SIZE, 10) || DEFAULT_MAX_FILE_SIZE;
 
@@ -216,7 +233,6 @@ const submitToLuxand = async (file) => {
     error.statusCode = response.status >= 500 ? 502 : response.status;
     error.code = `EKYC_PROVIDER_${response.status}`;
     error.publicMessage = providerFailureMessage(response.status, providerMessage);
-    error.providerResponse = payload;
     throw error;
   }
 
@@ -285,6 +301,9 @@ router.post('/submit', auth, uploadSelfie, async (req, res) => {
       user: user._id,
       status,
       consentAccepted: true,
+      consentVersion: getKycConsentVersion(),
+      consentAcceptedAt: new Date(),
+      retentionExpiresAt: getKycRetentionExpiry(),
       verifiedAt: status === 'verified' ? new Date() : undefined,
       failureReason,
       faceCheck: {
@@ -322,14 +341,8 @@ router.post('/submit', auth, uploadSelfie, async (req, res) => {
   } catch (error) {
     console.error('KYC submit error:', {
       code: error?.code,
-      message: error?.message,
       statusCode: error?.statusCode,
-      providerResponse: error?.providerResponse,
-      file: req.file ? {
-        mimetype: req.file.mimetype,
-        size: req.file.size,
-        originalname: req.file.originalname,
-      } : null,
+      fileReceived: Boolean(req.file),
     });
 
     res.status(error?.statusCode || 500).json({

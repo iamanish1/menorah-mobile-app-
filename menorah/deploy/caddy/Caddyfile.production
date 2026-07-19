@@ -33,8 +33,6 @@
 (api_proxy) {
 	import security_headers
 	encode gzip zstd
-	@private_metrics path /metrics/*
-	respond @private_metrics 404
 	request_body {
 		max_size 20MB
 	}
@@ -89,11 +87,15 @@ http://{$COUNSELLOR_DOMAIN} {
 
 http://{$API_IOS_DOMAIN} {
 	import api_proxy
-	@payment path /api/payments* /api/payouts/webhook*
-	handle @payment {
-		import payment_disabled
-	}
-	handle {
+	@reset_link path /api/auth/reset-password
+	log_skip @reset_link
+	route {
+		@private_diagnostics path /metrics/* /health/deep
+		respond @private_diagnostics 404
+		@payment path /api/payments* /api/payouts/webhook*
+		handle @payment {
+			import payment_disabled
+		}
 		reverse_proxy api-ios:8080
 	}
 	log {
@@ -104,11 +106,15 @@ http://{$API_IOS_DOMAIN} {
 
 http://{$API_ANDROID_DOMAIN} {
 	import api_proxy
-	@payment path /api/payments* /api/payouts/webhook*
-	handle @payment {
-		import payment_disabled
-	}
-	handle {
+	@reset_link path /api/auth/reset-password
+	log_skip @reset_link
+	route {
+		@private_diagnostics path /metrics/* /health/deep
+		respond @private_diagnostics 404
+		@payment path /api/payments* /api/payouts/webhook*
+		handle @payment {
+			import payment_disabled
+		}
 		reverse_proxy api-android:8080
 	}
 	log {
@@ -119,11 +125,15 @@ http://{$API_ANDROID_DOMAIN} {
 
 http://{$API_WEB_DOMAIN} {
 	import api_proxy
-	@payment path /api/payments* /api/payouts/webhook*
-	handle @payment {
-		import payment_disabled
-	}
-	handle {
+	@reset_link path /api/auth/reset-password
+	log_skip @reset_link
+	route {
+		@private_diagnostics path /metrics/* /health/deep
+		respond @private_diagnostics 404
+		@payment path /api/payments* /api/payouts/webhook*
+		handle @payment {
+			import payment_disabled
+		}
 		reverse_proxy api-web:8080
 	}
 	log {
@@ -134,7 +144,13 @@ http://{$API_WEB_DOMAIN} {
 
 http://{$API_ADMIN_DOMAIN} {
 	import api_proxy
-	reverse_proxy api-admin:8080
+	@reset_link path /api/auth/reset-password
+	log_skip @reset_link
+	route {
+		@private_diagnostics path /metrics/* /health/deep
+		respond @private_diagnostics 404
+		reverse_proxy api-admin:8080
+	}
 	log {
 		output file /var/log/caddy/api-admin-access.log
 		format json
@@ -203,7 +219,11 @@ http://counsellor.mentle.org {
 
 http://api.mentle.org {
 	import api_proxy
-	reverse_proxy mentle-api-consumer:4100
+	route {
+		@private_diagnostics path /metrics/* /health/deep
+		respond @private_diagnostics 404
+		reverse_proxy mentle-api-consumer:4100
+	}
 	log {
 		output file /var/log/caddy/mentle-api-access.log
 		format json
@@ -212,7 +232,11 @@ http://api.mentle.org {
 
 http://api-business.mentle.org {
 	import api_proxy
-	reverse_proxy mentle-api-business:4101
+	route {
+		@private_diagnostics path /metrics/* /health/deep
+		respond @private_diagnostics 404
+		reverse_proxy mentle-api-business:4101
+	}
 	log {
 		output file /var/log/caddy/mentle-api-business-access.log
 		format json
@@ -221,7 +245,11 @@ http://api-business.mentle.org {
 
 http://api-admin.mentle.org {
 	import api_proxy
-	reverse_proxy mentle-api-admin:4102
+	route {
+		@private_diagnostics path /metrics/* /health/deep
+		respond @private_diagnostics 404
+		reverse_proxy mentle-api-admin:4102
+	}
 	log {
 		output file /var/log/caddy/mentle-api-admin-access.log
 		format json
@@ -230,7 +258,11 @@ http://api-admin.mentle.org {
 
 http://api-counsellor.mentle.org {
 	import api_proxy
-	reverse_proxy mentle-api-counsellor:4103
+	route {
+		@private_diagnostics path /metrics/* /health/deep
+		respond @private_diagnostics 404
+		reverse_proxy mentle-api-counsellor:4103
+	}
 	log {
 		output file /var/log/caddy/mentle-api-counsellor-access.log
 		format json

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -22,18 +23,43 @@ if [[ -f "${ENV_FILE}" ]]; then
 fi
 
 MENORAH_BACKUP_ROOT="${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}"
-LATEST_ARCHIVE="$(
-  find "${MENORAH_BACKUP_ROOT}" \
-    \( -path "${MENORAH_BACKUP_ROOT}/restore-tests/decrypted" -o -path "${MENORAH_BACKUP_ROOT}/restore-tests/mongo-data" \) -prune \
-    -o -type f \( -name '*.archive.gz' -o -name '*.archive.gz.enc' \) -print 2>/dev/null \
-    | sort \
-    | tail -n 1 || true
-)"
+REQUESTED_ARCHIVE="${RESTORE_ARCHIVE:-}"
+
+if [[ -n "${REQUESTED_ARCHIVE}" ]]; then
+  BACKUP_ROOT_REAL="$(realpath -e -- "${MENORAH_BACKUP_ROOT}")"
+  LATEST_ARCHIVE="$(realpath -e -- "${REQUESTED_ARCHIVE}" 2>/dev/null || true)"
+  case "${LATEST_ARCHIVE}" in
+    "${BACKUP_ROOT_REAL}"/restore-tests/*|"")
+      echo "RESTORE_ARCHIVE must identify a backup archive outside restore-tests." >&2
+      exit 1
+      ;;
+    "${BACKUP_ROOT_REAL}"/*) ;;
+    *)
+      echo "RESTORE_ARCHIVE must be contained by MENORAH_BACKUP_ROOT." >&2
+      exit 1
+      ;;
+  esac
+  if [[ ! -f "${LATEST_ARCHIVE}" || ( "${LATEST_ARCHIVE}" != *.archive.gz && "${LATEST_ARCHIVE}" != *.archive.gz.enc ) ]]; then
+    echo "RESTORE_ARCHIVE is not a supported MongoDB backup archive." >&2
+    exit 1
+  fi
+else
+  LATEST_ARCHIVE="$(
+    find "${MENORAH_BACKUP_ROOT}" \
+      \( -path "${MENORAH_BACKUP_ROOT}/restore-tests/decrypted" -o -path "${MENORAH_BACKUP_ROOT}/restore-tests/mongo-data" \) -prune \
+      -o -type f \( -name '*.archive.gz' -o -name '*.archive.gz.enc' \) -printf '%T@ %p\n' 2>/dev/null \
+      | sort -nr \
+      | head -n 1 \
+      | cut -d' ' -f2- || true
+  )"
+fi
 
 if [[ -z "${LATEST_ARCHIVE}" ]]; then
   echo "No MongoDB backup archive found under ${MENORAH_BACKUP_ROOT}" >&2
   exit 1
 fi
+
+BACKUP_ROOT_REAL="$(realpath -e -- "${MENORAH_BACKUP_ROOT}")"
 
 compose_cmd() {
   docker compose \
@@ -56,7 +82,15 @@ if [[ "${LATEST_ARCHIVE}" == *.enc ]]; then
     -pass env:BACKUP_ENCRYPTION_PASSWORD
 fi
 
-REL_ARCHIVE="${ARCHIVE_FOR_RESTORE#${MENORAH_BACKUP_ROOT}/}"
+ARCHIVE_FOR_RESTORE_REAL="$(realpath -e -- "${ARCHIVE_FOR_RESTORE}")"
+case "${ARCHIVE_FOR_RESTORE_REAL}" in
+  "${BACKUP_ROOT_REAL}"/*) ;;
+  *)
+    echo "Resolved restore archive is outside MENORAH_BACKUP_ROOT." >&2
+    exit 1
+    ;;
+esac
+REL_ARCHIVE="${ARCHIVE_FOR_RESTORE_REAL#${BACKUP_ROOT_REAL}/}"
 
 case "${MODE}" in
   restore-test)
@@ -67,7 +101,7 @@ case "${MODE}" in
       echo "MONGODB_RESTORE_TEST_URI must start with mongodb:// or mongodb+srv://." >&2
       exit 1
     fi
-    RESTORE_ARGS=(--nsInclude='menorah.*' --nsFrom='menorah.*' --nsTo='menorah_restore_test.*')
+    RESTORE_MODE="restore-test"
     ;;
   production)
     if [[ "${RESTORE_CONFIRM_PRODUCTION:-false}" != "true" ]]; then
@@ -79,7 +113,7 @@ case "${MODE}" in
       echo "MONGODB_URI must start with mongodb:// or mongodb+srv://." >&2
       exit 1
     fi
-    RESTORE_ARGS=()
+    RESTORE_MODE="production"
     ;;
   *)
     echo "Usage: restore-latest-backup.sh [restore-test|production]" >&2
@@ -89,8 +123,23 @@ esac
 
 echo "Restoring ${ARCHIVE_FOR_RESTORE} into ${MODE} target."
 echo "mongorestore --uri=<redacted> --archive=/backups/${REL_ARCHIVE} --gzip --drop"
-compose_cmd run --rm --no-deps backup-runner bash -lc \
-  "mongorestore --uri=\"${RESTORE_URI}\" --archive=\"/backups/${REL_ARCHIVE}\" --gzip --drop ${RESTORE_ARGS[*]}"
+compose_cmd run --rm --no-deps \
+  -e "MENORAH_RESTORE_MODE=${RESTORE_MODE}" \
+  backup-runner bash -lc '
+    set -euo pipefail
+    case "$MENORAH_RESTORE_MODE" in
+      restore-test)
+        restore_uri="${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}"
+        namespace_args=(--nsInclude="menorah.*" --nsFrom="menorah.*" --nsTo="menorah_restore_test.*")
+        ;;
+      production)
+        restore_uri="${MONGODB_URI:?MONGODB_URI is required}"
+        namespace_args=()
+        ;;
+      *) exit 2 ;;
+    esac
+    mongorestore --uri="$restore_uri" --archive="$1" --gzip --drop "${namespace_args[@]}"
+  ' -- "/backups/${REL_ARCHIVE}"
 
 if [[ "${MODE}" == "restore-test" ]]; then
   mkdir -p "${MENORAH_BACKUP_ROOT}/restore-tests"

@@ -517,12 +517,12 @@ export default function CounsellorDetailPage() {
         </>
       )}
 
-      {counsellor.bankDetails?.accountNumber && (
+      {counsellor.bankDetails?.configured && (
         <SectionCard title="Bank Details" icon={IndianRupee}>
           <div className="grid gap-4 sm:grid-cols-2">
             <DetailField label="Account holder" value={counsellor.bankDetails.accountHolderName} />
             <DetailField label="Bank name" value={counsellor.bankDetails.bankName} />
-            <DetailField label="Account number" value={counsellor.bankDetails.accountNumber} />
+            <DetailField label="Account number" value={counsellor.bankDetails.accountNumberMasked} />
             <DetailField label="IFSC code" value={counsellor.bankDetails.ifscCode} />
           </div>
         </SectionCard>

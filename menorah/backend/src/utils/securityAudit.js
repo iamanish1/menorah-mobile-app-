@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const SAFE_DETAIL_KEYS = new Set([
@@ -13,6 +14,19 @@ const SAFE_DETAIL_KEYS = new Set([
   'transport',
 ]);
 const counters = new Map();
+let auditChainHead = null;
+
+const serializeIntegrityPayload = (entry) => JSON.stringify(Object.fromEntries(
+  Object.entries(entry).filter(([key, value]) =>
+    key !== 'integrityHash' && key !== 'previousIntegrityHash' && value !== undefined
+  )
+));
+
+const calculateIntegrityHash = ({ entry, previousIntegrityHash = null, signingKey }) =>
+  crypto
+    .createHmac('sha256', signingKey)
+    .update(`${previousIntegrityHash || ''}\n${serializeIntegrityPayload(entry)}`)
+    .digest('hex');
 
 const sanitizeLabel = (value, fallback = 'unknown') => {
   const normalized = String(value || '')
@@ -52,6 +66,51 @@ const incrementCounter = (event, outcome, service) => {
   counters.set(key, (counters.get(key) || 0) + 1);
 };
 
+const signAuditEntry = (entry) => {
+  const signingKey = String(process.env.AUDIT_LOG_SIGNING_KEY || '').trim();
+  if (!signingKey) return entry;
+
+  const previousIntegrityHash = auditChainHead;
+  const integrityHash = calculateIntegrityHash({ entry, previousIntegrityHash, signingKey });
+
+  auditChainHead = integrityHash;
+  return {
+    ...entry,
+    ...(previousIntegrityHash ? { previousIntegrityHash } : {}),
+    integrityHash,
+  };
+};
+
+const verifyAuditChain = (entries, {
+  signingKey = process.env.AUDIT_LOG_SIGNING_KEY,
+  previousIntegrityHash = null,
+} = {}) => {
+  const key = String(signingKey || '').trim();
+  if (!key) return { valid: false, index: 0, reason: 'missing_signing_key' };
+
+  let expectedPreviousHash = previousIntegrityHash;
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index] || {};
+    const actualPreviousHash = entry.previousIntegrityHash || null;
+    if (actualPreviousHash !== expectedPreviousHash) {
+      return { valid: false, index, reason: 'chain_link_mismatch' };
+    }
+
+    const expectedHash = calculateIntegrityHash({
+      entry,
+      previousIntegrityHash: expectedPreviousHash,
+      signingKey: key,
+    });
+    const actualHash = String(entry.integrityHash || '');
+    const hashesMatch = actualHash.length === expectedHash.length
+      && crypto.timingSafeEqual(Buffer.from(actualHash), Buffer.from(expectedHash));
+    if (!hashesMatch) return { valid: false, index, reason: 'integrity_hash_mismatch' };
+    expectedPreviousHash = actualHash;
+  }
+
+  return { valid: true, head: expectedPreviousHash };
+};
+
 const appendAuditFile = (line) => {
   const directory = String(process.env.SECURITY_AUDIT_LOG_DIR || '').trim();
   if (!directory || process.env.NODE_ENV === 'test') return;
@@ -79,7 +138,7 @@ const recordSecurityEvent = (eventName, {
   const actorRole = sanitizeLabel(user?.role || details.actorRole, 'anonymous');
   const safeDetails = sanitizeDetails(details);
 
-  const entry = {
+  const entry = signAuditEntry({
     timestamp: new Date().toISOString(),
     category: 'security',
     event,
@@ -92,7 +151,7 @@ const recordSecurityEvent = (eventName, {
     actorRole,
     sourceIp: String(req?.ip || req?.socket?.remoteAddress || '').slice(0, 128) || undefined,
     ...safeDetails,
-  };
+  });
 
   const line = JSON.stringify(Object.fromEntries(Object.entries(entry).filter(([, value]) => value !== undefined)));
   incrementCounter(event, normalizedOutcome, service);
@@ -176,6 +235,16 @@ const securityAuditTrail = (req, res, next) => {
       });
     }
 
+    if (method === 'PUT' && requestPath === '/api/counsellors/me/bank-details') {
+      recordSecurityEvent('bank_details_changed', {
+        req,
+        user,
+        outcome,
+        statusCode,
+        details: { resource: 'counsellor_bank_details' },
+      });
+    }
+
     if ((statusCode === 401 || statusCode === 403) && !authEvent && !res.locals.securityAuthorizationLogged) {
       recordSecurityEvent('authorization_denied', { req, user, outcome: 'failure', statusCode });
     }
@@ -199,7 +268,10 @@ const renderSecurityMetrics = () => {
   return `${lines.join('\n')}\n`;
 };
 
-const resetSecurityMetricsForTests = () => counters.clear();
+const resetSecurityMetricsForTests = () => {
+  counters.clear();
+  auditChainHead = null;
+};
 
 module.exports = {
   recordSecurityEvent,
@@ -207,4 +279,5 @@ module.exports = {
   resetSecurityMetricsForTests,
   sanitizeDetails,
   securityAuditTrail,
+  verifyAuditChain,
 };

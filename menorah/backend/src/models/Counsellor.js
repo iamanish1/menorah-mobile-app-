@@ -238,7 +238,10 @@ const counsellorSchema = new mongoose.Schema({
     max: 100
   },
   bankDetails: {
-    accountNumber: String,
+    // Legacy plaintext is selected only by the one-time migration that removes it.
+    accountNumber: { type: String, select: false },
+    accountNumberEncrypted: { type: String, select: false },
+    accountNumberLast4: { type: String, maxlength: 4 },
     ifscCode: String,
     accountHolderName: String,
     bankName: String

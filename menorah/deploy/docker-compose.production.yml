@@ -44,7 +44,7 @@ x-backend-env: &backend-env
   JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-}
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
   JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
-  ADMIN_JWT_EXPIRES_IN: ${ADMIN_JWT_EXPIRES_IN:-8h}
+  ADMIN_JWT_EXPIRES_IN: ${ADMIN_JWT_EXPIRES_IN:-30m}
   GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:-${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}}
   GOOGLE_IOS_CLIENT_ID: ${GOOGLE_IOS_CLIENT_ID:-${EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID:-}}
   GOOGLE_ANDROID_CLIENT_ID: ${GOOGLE_ANDROID_CLIENT_ID:-${EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:-}}
@@ -83,6 +83,23 @@ x-backend-env: &backend-env
   CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
   CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
   BACKUP_ENCRYPTION_PASSWORD: ${BACKUP_ENCRYPTION_PASSWORD:-}
+  DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:-}
+  AUDIT_LOG_SIGNING_KEY: ${AUDIT_LOG_SIGNING_KEY:-}
+  MAX_PAYOUT_AMOUNT_PAISE: ${MAX_PAYOUT_AMOUNT_PAISE:-}
+  KYC_CONSENT_VERSION: ${KYC_CONSENT_VERSION:-}
+  KYC_RETENTION_DAYS: ${KYC_RETENTION_DAYS:-}
+
+x-api-security: &api-security
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 256
+  mem_limit: 1g
+  cpus: "1.00"
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
 
 services:
   reverse-proxy:
@@ -251,6 +268,7 @@ services:
       - app_net
 
   api-ios:
+    <<: *api-security
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -259,6 +277,9 @@ services:
     environment:
       <<: *backend-env
       SERVICE_NAME: api-ios
+      MONGODB_BACKUP_URI: ""
+      MONGODB_RESTORE_TEST_URI: ""
+      BACKUP_ENCRYPTION_PASSWORD: ""
     ports:
       - "${API_IOS_LOCAL_PORT:-127.0.0.1:18080}:8080"
     volumes:
@@ -274,6 +295,7 @@ services:
         condition: service_started
 
   api-android:
+    <<: *api-security
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -282,6 +304,9 @@ services:
     environment:
       <<: *backend-env
       SERVICE_NAME: api-android
+      MONGODB_BACKUP_URI: ""
+      MONGODB_RESTORE_TEST_URI: ""
+      BACKUP_ENCRYPTION_PASSWORD: ""
     ports:
       - "${API_ANDROID_LOCAL_PORT:-127.0.0.1:18084}:8080"
     volumes:
@@ -297,6 +322,7 @@ services:
         condition: service_started
 
   api-web:
+    <<: *api-security
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -305,6 +331,9 @@ services:
     environment:
       <<: *backend-env
       SERVICE_NAME: api-web
+      MONGODB_BACKUP_URI: ""
+      MONGODB_RESTORE_TEST_URI: ""
+      BACKUP_ENCRYPTION_PASSWORD: ""
     ports:
       - "${API_WEB_LOCAL_PORT:-127.0.0.1:18082}:8080"
     volumes:
@@ -320,6 +349,7 @@ services:
         condition: service_started
 
   api-admin:
+    <<: *api-security
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -330,6 +360,9 @@ services:
       SERVICE_NAME: api-admin
       ENABLE_SOCKET_IO: "false"
       ENABLE_SOCKET_ADAPTER: "false"
+      MONGODB_BACKUP_URI: ""
+      MONGODB_RESTORE_TEST_URI: ""
+      BACKUP_ENCRYPTION_PASSWORD: ""
     ports:
       - "${API_ADMIN_LOCAL_PORT:-127.0.0.1:18083}:8080"
     volumes:
@@ -346,6 +379,7 @@ services:
         condition: service_started
 
   worker:
+    <<: *api-security
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -355,6 +389,10 @@ services:
       <<: *backend-env
       SERVICE_NAME: worker
       WORKER_MODE: ${WORKER_MODE:-active}
+      MONGODB_BACKUP_URI: ""
+      MONGODB_RESTORE_TEST_URI: ""
+      BACKUP_ENCRYPTION_PASSWORD: ""
+      DATA_ENCRYPTION_KEY: ""
     ports:
       - "${WORKER_LOCAL_PORT:-127.0.0.1:18090}:8080"
     volumes:

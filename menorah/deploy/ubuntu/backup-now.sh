@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -76,7 +77,7 @@ mkdir -p "${OUT_DIR}/mongo" "${OUT_DIR}/uploads" "${OUT_DIR}/metadata"
 
 echo "Creating MongoDB backup: ${MONGO_ARCHIVE}"
 compose_cmd run --rm --no-deps backup-runner bash -lc \
-  "mongodump --uri=\"\$MONGODB_BACKUP_URI\" --archive=\"/backups/${BACKUP_TYPE}/${STAMP}/mongo/$(basename "${MONGO_ARCHIVE}")\" --gzip"
+  "umask 077; mongodump --uri=\"\$MONGODB_BACKUP_URI\" --archive=\"/backups/${BACKUP_TYPE}/${STAMP}/mongo/$(basename "${MONGO_ARCHIVE}")\" --gzip"
 
 if [[ -d "${MENORAH_DATA_ROOT}/uploads" ]]; then
   echo "Creating uploads backup: ${UPLOAD_ARCHIVE}"

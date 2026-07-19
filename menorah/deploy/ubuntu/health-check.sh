@@ -143,7 +143,12 @@ assert_no_secret_leak() {
   fi
 
   local key value
-  for key in JWT_SECRET JWT_REFRESH_SECRET MONGODB_URI MONGODB_BACKUP_URI REDIS_URL RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET RESEND_API_KEY APPLE_PRIVATE_KEY LUXAND_API_TOKEN OPENAI_API_KEY CLOUDINARY_API_SECRET BACKUP_ENCRYPTION_PASSWORD; do
+  for key in \
+    JWT_SECRET JWT_REFRESH_SECRET \
+    MONGODB_URI MONGODB_BACKUP_URI MONGODB_RESTORE_TEST_URI REDIS_URL \
+    RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET RAZORPAY_X_KEY_SECRET RAZORPAY_X_WEBHOOK_SECRET \
+    RESEND_API_KEY APPLE_PRIVATE_KEY LUXAND_API_TOKEN OPENAI_API_KEY CLOUDINARY_API_SECRET \
+    LIVEKIT_API_SECRET BACKUP_ENCRYPTION_PASSWORD DATA_ENCRYPTION_KEY AUDIT_LOG_SIGNING_KEY; do
     value="${!key:-}"
     if [[ ${#value} -ge 12 && "${value}" != replace_with_* ]] && grep -Fq "${value}" "${body_file}"; then
       echo "FAIL ${label} exposes ${key}" >&2
@@ -172,14 +177,20 @@ for container in \
   require_container_probe "${container}"
 done
 
-ios_deep_body="$(require_code GET "${API_IOS_BASE}/health/deep" 200)"
-assert_no_secret_leak "${ios_deep_body}" "api-ios /health/deep"
-
-require_code GET "${API_IOS_BASE}/health/live" 200 >/dev/null
-require_code GET "${API_IOS_BASE}/health/ready" 200 >/dev/null
-require_code GET "${API_ANDROID_BASE}/health/ready" 200 >/dev/null
-require_code GET "${API_WEB_BASE}/health/ready" 200 >/dev/null
-require_code GET "${API_ADMIN_BASE}/health/ready" 200 >/dev/null
+for entry in \
+  "api-ios|${API_IOS_BASE}" \
+  "api-android|${API_ANDROID_BASE}" \
+  "api-web|${API_WEB_BASE}" \
+  "api-admin|${API_ADMIN_BASE}"; do
+  api_name="${entry%%|*}"
+  api_base="${entry#*|}"
+  deep_body="$(require_code GET "${api_base}/health/deep" 200)"
+  metrics_body="$(require_code GET "${api_base}/metrics/security" 200)"
+  assert_no_secret_leak "${deep_body}" "${api_name} /health/deep"
+  assert_no_secret_leak "${metrics_body}" "${api_name} /metrics/security"
+  require_code GET "${api_base}/health/live" 200 >/dev/null
+  require_code GET "${api_base}/health/ready" 200 >/dev/null
+done
 require_code GET "${WORKER_BASE}/health/ready" 200 >/dev/null
 
 require_code POST "${API_IOS_BASE}/api/payments/create-subscription-checkout" 404 >/dev/null
@@ -198,11 +209,38 @@ if [[ "${CHECK_PUBLIC:-false}" == "true" ]]; then
   require_code GET "https://${API_ANDROID_DOMAIN:-api-android.menorah.me}/health/ready" 200 >/dev/null
   require_code GET "https://${API_WEB_DOMAIN:-api-web.menorah.me}/health/ready" 200 >/dev/null
   require_code GET "https://${API_ADMIN_DOMAIN:-api-admin.menorah.me}/health/ready" 200 >/dev/null
+  for api_domain in \
+    "${API_IOS_DOMAIN:-api-ios.menorah.me}" \
+    "${API_ANDROID_DOMAIN:-api-android.menorah.me}" \
+    "${API_WEB_DOMAIN:-api-web.menorah.me}" \
+    "${API_ADMIN_DOMAIN:-api-admin.menorah.me}"; do
+    require_code GET "https://${api_domain}/health/deep" 404 >/dev/null
+    require_code GET "https://${api_domain}/metrics/security" 404 >/dev/null
+  done
   require_code GET "https://${CALLS_DOMAIN:-calls.menorah.me}" 200 >/dev/null
   require_code_or_redirect GET "https://${WWW_DOMAIN:-www.menorah.me}" "^https://${ROOT_DOMAIN:-menorah.me}/?$" 200 >/dev/null
   require_code GET "https://${APP_DOMAIN:-app.menorah.me}" 200 >/dev/null
   require_code_or_redirect GET "https://${ADMIN_DOMAIN:-admin.menorah.me}" "^https://${ADMIN_DOMAIN:-admin.menorah.me}/(dashboard|login)|^/(dashboard|login)" 200 >/dev/null
   require_code_or_redirect GET "https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}" "^https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}/(dashboard|login)|^/(dashboard|login)" 200 >/dev/null
+
+  for mentle_web_domain in \
+    mentle.org \
+    www.mentle.org \
+    mentle.mentle.org \
+    app.mentle.org \
+    business.mentle.org \
+    admin.mentle.org \
+    counsellor.mentle.org; do
+    require_code_any GET "https://${mentle_web_domain}" 200 301 302 307 308 >/dev/null
+  done
+  for mentle_api_domain in \
+    api.mentle.org \
+    api-business.mentle.org \
+    api-admin.mentle.org \
+    api-counsellor.mentle.org; do
+    require_code GET "https://${mentle_api_domain}/health/ready" 200 >/dev/null
+  done
+  require_code GET "https://calls.mentle.org" 200 >/dev/null
 else
   echo "Skipping public HTTPS checks. Re-run with CHECK_PUBLIC=true after Cloudflare hostnames are live."
 fi

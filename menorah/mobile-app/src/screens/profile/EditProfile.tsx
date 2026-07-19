@@ -11,7 +11,7 @@ import { useAuth } from "@/state/useAuth";
 import { api } from "@/lib/api";
 
 export default function EditProfile({ navigation }: any) {
-  const { user, updateUser, logout } = useAuth();
+  const { user, updateUser } = useAuth();
   const [selectedImage, setSelectedImage] = useState<{
     uri: string;
     name?: string;
@@ -89,52 +89,7 @@ export default function EditProfile({ navigation }: any) {
   };
 
   const handleDeleteAccount = () => {
-    Alert.alert(
-      'Delete Account',
-      'This will request deletion of your account and personal data. Some records may be retained if required for legal, safety, payment, or dispute obligations.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Request Deletion',
-          style: 'destructive',
-          onPress: async () => {
-            setLoading(true);
-            try {
-              const response = await api.requestAccountDeletion();
-              if (response.success) {
-                Alert.alert(
-                  'Request Submitted',
-                  'Your account deletion request has been submitted. You will be signed out now.',
-                  [
-                    {
-                      text: 'OK',
-                      onPress: async () => {
-                        await logout();
-                        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
-                      },
-                    },
-                  ]
-                );
-              } else {
-                Alert.alert(
-                  'Request Not Submitted',
-                  response.message ||
-                    'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
-                );
-              }
-            } catch (error) {
-              console.error('Account deletion request error:', error);
-              Alert.alert(
-                'Request Not Submitted',
-                'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
-              );
-            } finally {
-              setLoading(false);
-            }
-          },
-        }
-      ]
-    );
+    navigation.navigate('Settings');
   };
 
   const handlePickImage = async () => {

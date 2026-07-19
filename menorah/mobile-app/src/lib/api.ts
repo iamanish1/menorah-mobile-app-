@@ -1077,24 +1077,16 @@ class ApiClient {
         };
   }
 
-  async requestAccountDeletion(reason?: string): Promise<ApiResponse<void>> {
-    // TODO: Confirm the production account-deletion endpoint path with the backend team.
-    const response = await this.request<void>({
-      method: 'POST',
-      url: '/users/account-deletion-request',
-      data: {
-        reason: reason || 'User requested account deletion from the mobile app.',
-      },
-    });
+  async requestAccountDeletion(password: string): Promise<ApiResponse<void>> {
+    if (!password.trim()) {
+      return { success: false, message: 'Enter your password to confirm account deletion.' };
+    }
 
-    return response.message
-      ? response
-      : {
-          ...response,
-          message: response.success
-            ? 'Account deletion request submitted.'
-            : 'Account deletion endpoint is not connected yet. Please contact support so the team can process this manually.',
-        };
+    return this.request<void>({
+      method: 'DELETE',
+      url: '/users/account',
+      data: { password },
+    });
   }
 
   // Health check

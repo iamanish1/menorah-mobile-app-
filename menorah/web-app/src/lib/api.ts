@@ -621,6 +621,7 @@ class ApiClient {
     ifscCode: string;
     accountHolderName: string;
     bankName: string;
+    currentPassword: string;
   }): Promise<ApiResponse<{ bankDetails: { accountHolderName: string; bankName: string; ifscCode: string; accountNumberMasked: string } }>> {
     try {
       const response = await this.client.put('/counsellors/me/bank-details', data);

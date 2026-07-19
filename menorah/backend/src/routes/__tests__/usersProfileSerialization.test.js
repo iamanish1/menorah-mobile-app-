@@ -3,6 +3,8 @@ const request = require('supertest');
 
 const mockUserId = '64f000000000000000000001';
 const mockFindById = jest.fn();
+const mockDeletionFindOneAndUpdate = jest.fn();
+const mockClearMappedSessionCookie = jest.fn();
 
 jest.mock('../../middleware/auth', () => ({
   auth: (req, _res, next) => {
@@ -17,6 +19,14 @@ jest.mock('../../models/User', () => ({
 
 jest.mock('../../models/Counsellor', () => ({
   findOne: jest.fn(),
+}));
+
+jest.mock('../../models/DataDeletionRequest', () => ({
+  findOneAndUpdate: (...args) => mockDeletionFindOneAndUpdate(...args),
+}));
+
+jest.mock('../../config/webSessions', () => ({
+  clearMappedSessionCookie: (...args) => mockClearMappedSessionCookie(...args),
 }));
 
 jest.mock('../../utils/cloudinary', () => ({
@@ -71,6 +81,9 @@ const flattenKeys = (value, keys = []) => {
 describe('user profile serialization', () => {
   beforeEach(() => {
     mockFindById.mockReset();
+    mockDeletionFindOneAndUpdate.mockReset();
+    mockDeletionFindOneAndUpdate.mockResolvedValue({});
+    mockClearMappedSessionCookie.mockReset();
   });
 
   test('PUT /api/users/profile never exposes password, token, reset, or lock fields', async () => {
@@ -99,5 +112,55 @@ describe('user profile serialization', () => {
       firstName: 'Mira',
       email: 'asha@example.com',
     });
+  });
+
+  test('DELETE /api/users/account records the review request before deactivation is saved', async () => {
+    const callOrder = [];
+    const user = makeUserDocument();
+    user.comparePassword = jest.fn().mockResolvedValue(true);
+    user.save = jest.fn().mockImplementation(async () => {
+      callOrder.push('save');
+    });
+    mockDeletionFindOneAndUpdate.mockImplementation(async () => {
+      callOrder.push('request');
+      return {};
+    });
+    mockFindById.mockReturnValue({
+      select: jest.fn().mockResolvedValue(user),
+    });
+
+    await request(buildApp())
+      .delete('/api/users/account')
+      .send({ password: 'correct-password' })
+      .expect(200);
+
+    expect(callOrder).toEqual(['request', 'save']);
+    expect(user.isActive).toBe(false);
+    expect(user.sessionVersion).toBe(8);
+    expect(mockDeletionFindOneAndUpdate).toHaveBeenCalledWith(
+      { user: user._id },
+      expect.objectContaining({
+        $setOnInsert: expect.objectContaining({ status: 'pending' }),
+      }),
+      expect.objectContaining({ upsert: true })
+    );
+    expect(mockClearMappedSessionCookie).toHaveBeenCalledTimes(1);
+  });
+
+  test('DELETE /api/users/account does not change state for a wrong password', async () => {
+    const user = makeUserDocument();
+    user.comparePassword = jest.fn().mockResolvedValue(false);
+    mockFindById.mockReturnValue({
+      select: jest.fn().mockResolvedValue(user),
+    });
+
+    await request(buildApp())
+      .delete('/api/users/account')
+      .send({ password: 'wrong-password' })
+      .expect(400);
+
+    expect(mockDeletionFindOneAndUpdate).not.toHaveBeenCalled();
+    expect(user.save).not.toHaveBeenCalled();
+    expect(mockClearMappedSessionCookie).not.toHaveBeenCalled();
   });
 });

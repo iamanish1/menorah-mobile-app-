@@ -16,11 +16,12 @@ const getSecret = () => {
   return secret;
 };
 
-const buildTokenPayload = (user, { audience, purpose }) => ({
+const buildTokenPayload = (user, { audience, purpose, mfaAuthenticatedAt = null }) => ({
   userId: user._id?.toString?.() || user.id?.toString?.() || user.toString(),
   role: user.role || 'user',
   purpose,
   sessionVersion: user.sessionVersion || 0,
+  ...(mfaAuthenticatedAt ? { mfaAuthenticatedAt } : {}),
 });
 
 const signUserToken = (user) => jwt.sign(
@@ -34,8 +35,8 @@ const signUserToken = (user) => jwt.sign(
   }
 );
 
-const signAdminToken = (user) => jwt.sign(
-  buildTokenPayload(user, { audience: ADMIN_AUDIENCE, purpose: ADMIN_PURPOSE }),
+const signAdminToken = (user, { mfaAuthenticatedAt = null } = {}) => jwt.sign(
+  buildTokenPayload(user, { audience: ADMIN_AUDIENCE, purpose: ADMIN_PURPOSE, mfaAuthenticatedAt }),
   getSecret(),
   {
     algorithm: 'HS256',

@@ -7,6 +7,8 @@
 const express = require('express');
 const crypto  = require('crypto');
 const Payout  = require('../models/Payout');
+const Counsellor = require('../models/Counsellor');
+const { getPermittedPriorPayoutStatuses } = require('../services/payoutPolicy');
 
 const router = express.Router();
 
@@ -55,21 +57,34 @@ router.post('/', express.raw({ type: '*/*' }), async (req, res) => {
 
     // Acknowledge immediately for events we don't process
     if (!payoutData?.id) {
-      console.log(`Payout webhook: unhandled event ${event?.event}`);
+      console.log('Payout webhook ignored an event without a payout entity.');
       return res.status(200).json({ success: true });
     }
 
-    const TERMINAL_STATUSES = ['processed', 'reversed', 'cancelled', 'failed'];
+    const TERMINAL_STATUSES = ['processed', 'reversed', 'cancelled', 'failed', 'rejected'];
     const newStatus = payoutData.status;
+    const permittedPriorStatuses = getPermittedPriorPayoutStatuses(newStatus);
+    if (!permittedPriorStatuses) {
+      console.warn('Payout webhook ignored an unsupported provider status.');
+      return res.status(200).json({ success: true });
+    }
 
+    // Razorpay normally supplies an event ID. Hashing the signed raw body gives
+    // retries without one the same idempotency protection without storing it.
+    const webhookEventId = event.id || crypto.createHash('sha256').update(rawBody).digest('hex');
+    const webhookMatch = {
+      razorpayPayoutId: payoutData.id,
+      webhookEventId: { $ne: webhookEventId },
+      status: { $in: permittedPriorStatuses },
+    };
     const payoutRecord = await Payout.findOneAndUpdate(
-      { razorpayPayoutId: payoutData.id },
+      webhookMatch,
       {
         status:         newStatus,
         utr:            payoutData.utr || null,
         failureReason:  payoutData.failure_reason || null,
         lastWebhookAt:  new Date(),
-        webhookEventId: event.id || null,
+        webhookEventId,
       },
       { new: true }
     ).populate({
@@ -79,9 +94,33 @@ router.post('/', express.raw({ type: '*/*' }), async (req, res) => {
     });
 
     if (!payoutRecord) {
-      console.warn(`Payout webhook: no record for razorpayPayoutId=${payoutData.id}`);
-      return res.status(200).json({ success: true }); // still acknowledge
+      // Duplicate delivery is expected from payment providers. It is safe to
+      // acknowledge it without repeating customer notifications or accounting.
+      return res.status(200).json({ success: true });
     }
+
+    // Keep the denormalized display counters consistent with the immutable
+    // payout ledger. Recalculation makes retries and status corrections safe.
+    const [settlement] = await Payout.aggregate([
+      { $match: { counsellor: payoutRecord.counsellor._id, status: 'processed' } },
+      { $sort: { updatedAt: -1 } },
+      {
+        $group: {
+          _id: null,
+          totalPaidOut: { $sum: '$amountRupees' },
+          lastPayoutAt: { $first: '$updatedAt' },
+          lastPayoutAmount: { $first: '$amountRupees' },
+        },
+      },
+    ]);
+    const counsellorUpdate = {
+      totalPaidOut: settlement?.totalPaidOut || 0,
+      lastPayoutAt: settlement?.lastPayoutAt || null,
+      lastPayoutAmount: settlement?.lastPayoutAmount || 0,
+    };
+    await Counsellor.findByIdAndUpdate(payoutRecord.counsellor._id, {
+      $set: counsellorUpdate,
+    });
 
     // Send SMS on terminal status
     if (TERMINAL_STATUSES.includes(newStatus) && payoutRecord.counsellor?.user) {
@@ -90,7 +129,7 @@ router.post('/', express.raw({ type: '*/*' }), async (req, res) => {
       await sendPayoutSms(phone, firstName, payoutRecord.amountRupees, payoutData.id, smsStatus);
     }
 
-    console.log(`Payout webhook processed: ${payoutData.id} → ${newStatus}${payoutData.utr ? ` (UTR: ${payoutData.utr})` : ''}`);
+    console.log(`Payout webhook processed with status: ${newStatus}`);
     res.status(200).json({ success: true });
 
   } catch (error) {

@@ -1,4 +1,4 @@
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, getStateFromPath, type LinkingOptions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, ActivityIndicator } from 'react-native';
 import { useEffect, useRef } from 'react';
@@ -50,7 +50,7 @@ export default function RootNavigator() {
   const colors = palettes[scheme];
   const prevIsAuthedRef = useRef<boolean | null>(null);
   const prevIsLoadingRef = useRef<boolean>(true);
-  const linking = {
+  const linking: LinkingOptions<any> = {
     prefixes: [
       Linking.createURL('/'),
       'menorah-health://',
@@ -74,6 +74,27 @@ export default function RootNavigator() {
         ArticleList: 'articles',
         ArticleDetail: 'articles/:slug',
       },
+    },
+    getStateFromPath: (path, options) => {
+      const [pathname, fragment = ''] = path.split('#', 2);
+      const state = getStateFromPath(pathname, options);
+      const token = new URLSearchParams(fragment).get('token');
+      const resetRoute = state?.routes?.[0];
+
+      // App Links retain a URL fragment locally. Add it to the route only after
+      // React Navigation has matched the trusted reset-password path.
+      if (token && state && resetRoute?.name === 'ResetPassword') {
+        return {
+          ...state,
+          routes: state.routes.map((route, index) => (
+            index === 0
+              ? { ...route, params: { ...(route.params || {}), token } }
+              : route
+          )),
+        };
+      }
+
+      return state;
     },
   };
 

@@ -27,6 +27,17 @@ const kycVerificationSchema = new mongoose.Schema({
     type: Boolean,
     required: true,
   },
+  consentVersion: {
+    type: String,
+    required: true,
+    default: 'legacy',
+    maxlength: 64,
+  },
+  consentAcceptedAt: {
+    type: Date,
+    required: true,
+    default: Date.now,
+  },
   submittedAt: {
     type: Date,
     default: Date.now,
@@ -45,6 +56,20 @@ const kycVerificationSchema = new mongoose.Schema({
     threshold: Number,
   },
   providerRequestId: String,
+  // KYC records are retained only for the approved policy period. A scheduled
+  // deletion workflow must honour legal holds before purging these records.
+  retentionExpiresAt: {
+    type: Date,
+    required: true,
+    index: true,
+  },
+  legalHold: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  legalHoldSetAt: { type: Date, default: null },
+  legalHoldReason: { type: String, default: '', maxlength: 500 },
   metadata: {
     selfieMimeType: String,
     originalSelfieMimeType: String,
@@ -59,5 +84,5 @@ const kycVerificationSchema = new mongoose.Schema({
 
 kycVerificationSchema.index({ user: 1, createdAt: -1 });
 kycVerificationSchema.index({ status: 1, createdAt: -1 });
-
+kycVerificationSchema.index({ legalHold: 1, retentionExpiresAt: 1 });
 module.exports = mongoose.model('KycVerification', kycVerificationSchema);

@@ -3,10 +3,12 @@ const { body, param, validationResult } = require('express-validator');
 const multer = require('multer');
 const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
+const DataDeletionRequest = require('../models/DataDeletionRequest');
 const { auth } = require('../middleware/auth');
 const { uploadBuffer } = require('../utils/cloudinary');
 const { clearMappedSessionCookie } = require('../config/webSessions');
 const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const { getMaskedBankAccountNumber } = require('../utils/bankAccountEncryption');
 const {
   serializePublicUser,
   serializeUserProfile,
@@ -48,9 +50,7 @@ router.get('/me', auth, async (req, res) => {
           accountHolderName: c.bankDetails.accountHolderName,
           bankName:          c.bankDetails.bankName,
           ifscCode:          c.bankDetails.ifscCode,
-          accountNumberMasked: c.bankDetails.accountNumber
-            ? `****${String(c.bankDetails.accountNumber).slice(-4)}`
-            : null,
+          accountNumberMasked: getMaskedBankAccountNumber(c.bankDetails),
         } : null;
 
         counsellorProfile = {
@@ -445,15 +445,35 @@ router.delete('/account', [
       });
     }
 
-    // Soft delete - mark account as inactive
+    // Immediately revoke access, then route erasure through the controlled
+    // retention workflow rather than claiming records vanished instantly.
     user.isActive = false;
     revokeAllSessions(user);
+    const accountDeactivatedAt = new Date();
+    // Queue immediate human review; legal/privacy owners determine retention
+    // from the approved schedule instead of application code inventing a term.
+    const retentionReviewAfter = new Date(accountDeactivatedAt);
+
+    // Record the review obligation before disabling access. If deactivation
+    // then fails, the pending request remains visible for operator follow-up.
+    await DataDeletionRequest.findOneAndUpdate(
+      { user: user._id },
+      {
+        $setOnInsert: {
+          user: user._id,
+          accountDeactivatedAt,
+          retentionReviewAfter,
+          status: 'pending',
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
     await user.save();
     clearMappedSessionCookie(req, res);
 
     res.json({
       success: true,
-      message: 'Account deleted successfully'
+      message: 'Account access has been disabled and your deletion request has been recorded for the retention review process.'
     });
 
   } catch (error) {

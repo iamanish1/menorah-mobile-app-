@@ -7,6 +7,7 @@ jest.mock('../../middleware/auth', () => ({
     next();
   },
   adminAuth: (_req, _res, next) => next(),
+  requireRecentAdminMfa: (_req, _res, next) => next(),
 }));
 
 const adminRouter = require('../admin');

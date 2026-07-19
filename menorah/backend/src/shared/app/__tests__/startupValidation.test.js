@@ -14,6 +14,11 @@ describe('startup validation', () => {
       REDIS_URL: 'redis://redis:6379',
       RESEND_API_KEY: 'resend-key',
       EMAIL_FROM: 'Menorah <noreply@example.com>',
+      DATA_ENCRYPTION_KEY: 'x'.repeat(64),
+      AUDIT_LOG_SIGNING_KEY: 'y'.repeat(64),
+      MAX_PAYOUT_AMOUNT_PAISE: '1000000',
+      KYC_CONSENT_VERSION: 'test-2026-07',
+      KYC_RETENTION_DAYS: '2557',
       RAZORPAY_KEY_ID: 'razorpay-key',
       RAZORPAY_KEY_SECRET: 'razorpay-secret',
       RAZORPAY_WEBHOOK_SECRET: 'razorpay-webhook',
@@ -21,6 +26,8 @@ describe('startup validation', () => {
       LIVEKIT_API_URL: 'https://calls.example.com',
       LIVEKIT_API_KEY: 'livekit-key',
       LIVEKIT_API_SECRET: 'livekit-secret',
+      ADMIN_MFA_REQUIRED: 'true',
+      ADMIN_JWT_EXPIRES_IN: '30m',
     };
     delete process.env.SESSION_COOKIE_DOMAIN;
   });
@@ -35,6 +42,36 @@ describe('startup validation', () => {
     expect(() => validateStartupEnv({ serviceName: 'api-web' })).toThrow(/LIVEKIT_API_URL is missing/);
   });
 
+  test('requires the bank-account encryption key for API services', () => {
+    delete process.env.DATA_ENCRYPTION_KEY;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/DATA_ENCRYPTION_KEY must contain at least 32/);
+  });
+
+  test('requires explicit finance and privacy policy settings in production', () => {
+    delete process.env.MAX_PAYOUT_AMOUNT_PAISE;
+    delete process.env.KYC_CONSENT_VERSION;
+    delete process.env.KYC_RETENTION_DAYS;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/MAX_PAYOUT_AMOUNT_PAISE.*KYC_RETENTION_DAYS.*KYC_CONSENT_VERSION/);
+  });
+
+  test('rejects weak production integrity keys', () => {
+    process.env.AUDIT_LOG_SIGNING_KEY = 'too-short';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/AUDIT_LOG_SIGNING_KEY must contain at least 32/);
+  });
+
+  test('requires distinct encryption and audit signing keys', () => {
+    process.env.AUDIT_LOG_SIGNING_KEY = process.env.DATA_ENCRYPTION_KEY;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/DATA_ENCRYPTION_KEY and AUDIT_LOG_SIGNING_KEY must be distinct/);
+  });
+
   test('requires trusted browser origins for every browser role in production', () => {
     process.env.WEB_SESSION_ORIGINS = 'https://app.example.com=user';
 
@@ -47,6 +84,20 @@ describe('startup validation', () => {
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' }))
       .toThrow(/SESSION_COOKIE_DOMAIN must be unset/);
+  });
+
+  test('rejects a production admin session longer than 30 minutes', () => {
+    process.env.ADMIN_JWT_EXPIRES_IN = '8h';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-admin' }))
+      .toThrow(/ADMIN_JWT_EXPIRES_IN must be a duration of 30m or less/);
+  });
+
+  test('requires admin MFA in production', () => {
+    process.env.ADMIN_MFA_REQUIRED = 'false';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-admin' }))
+      .toThrow(/ADMIN_MFA_REQUIRED must be true/);
   });
 
   test('passes with redacted provider configuration present', () => {

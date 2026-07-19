@@ -128,6 +128,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
       package: 'com.menorah.healthmobile',
       versionCode: 14,
+      intentFilters: [
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          data: [{ scheme: 'https', host: 'app.menorah.me', pathPrefix: '/reset-password' }],
+          category: ['BROWSABLE', 'DEFAULT']
+        }
+      ],
       permissions: [
         'android.permission.CAMERA',
         'android.permission.RECORD_AUDIO',

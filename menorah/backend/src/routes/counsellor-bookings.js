@@ -10,9 +10,12 @@ const moment = require('moment-timezone');
 const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
+const Payout = require('../models/Payout');
 const { counsellorAuth } = require('../middleware/auth');
 const { getRedisClient } = require('../config/redis');
 const { uploadBuffer, deleteResource } = require('../utils/cloudinary');
+const { encryptBankAccountNumber } = require('../utils/bankAccountEncryption');
+const { payoutInFlightStatuses } = require('../services/payoutPolicy');
 
 const SERVER_TZ = process.env.SERVER_TZ || 'Asia/Kolkata';
 
@@ -1659,8 +1662,9 @@ router.put('/me/status', counsellorAuth, async (req, res) => {
 // @desc    Update counsellor bank account details for payouts
 // @access  Private (Counsellor)
 router.put('/me/bank-details', [
-  body('accountNumber').trim().notEmpty().withMessage('Account number is required')
-    .isLength({ min: 9, max: 18 }).withMessage('Account number must be 9–18 digits'),
+  body('currentPassword').notEmpty().withMessage('Current password is required')
+    .isLength({ max: 128 }).withMessage('Current password is invalid'),
+  body('accountNumber').trim().matches(/^\d{9,18}$/).withMessage('Account number must be 9–18 digits'),
   body('ifscCode').trim().notEmpty().withMessage('IFSC code is required')
     .matches(/^[A-Z]{4}0[A-Z0-9]{6}$/i).withMessage('Invalid IFSC code (e.g. HDFC0001234)'),
   body('accountHolderName').trim().notEmpty().withMessage('Account holder name is required')
@@ -1679,10 +1683,27 @@ router.put('/me/bank-details', [
       return res.status(404).json({ success: false, message: 'Counsellor profile not found' });
     }
 
+    const accountUser = await User.findById(req.user._id).select('+password');
+    if (!accountUser || !await accountUser.comparePassword(req.body.currentPassword)) {
+      return res.status(403).json({ success: false, message: 'Current password is incorrect.' });
+    }
+
+    const activePayout = await Payout.exists({
+      counsellor: counsellor._id,
+      status: { $in: payoutInFlightStatuses },
+    });
+    if (activePayout) {
+      return res.status(409).json({
+        success: false,
+        message: 'Bank details cannot be changed while a payout request is awaiting approval or processing.',
+      });
+    }
+
     const { accountNumber, ifscCode, accountHolderName, bankName } = req.body;
 
     counsellor.bankDetails = {
-      accountNumber: accountNumber.trim(),
+      accountNumberEncrypted: encryptBankAccountNumber(accountNumber),
+      accountNumberLast4: accountNumber.trim().slice(-4),
       ifscCode: ifscCode.trim().toUpperCase(),
       accountHolderName: accountHolderName.trim(),
       bankName: bankName.trim(),

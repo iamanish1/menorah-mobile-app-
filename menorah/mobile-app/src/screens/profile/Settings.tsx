@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Switch, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   AlertTriangle,
@@ -59,6 +59,8 @@ export default function Settings({ navigation }: any) {
   const [emailUpdates, setEmailUpdates] = useState(true);
   const [loading, setLoading] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deletionPassword, setDeletionPassword] = useState('');
+  const [showDeletionConfirmation, setShowDeletionConfirmation] = useState(false);
 
   const { scheme, toggle } = useThemeMode();
   const colors = palettes[scheme];
@@ -169,40 +171,79 @@ export default function Settings({ navigation }: any) {
         {
           text: 'Request Deletion',
           style: 'destructive',
-          onPress: async () => {
-            setDeletingAccount(true);
-            try {
-              const response = await api.requestAccountDeletion();
-              if (response.success) {
-                Alert.alert(
-                  'Request Submitted',
-                  'Your account deletion request has been submitted. You will be signed out now.',
-                  [{ text: 'OK', onPress: resetToLogin }]
-                );
-              } else {
-                Alert.alert(
-                  'Request Not Submitted',
-                  response.message ||
-                    'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
-                );
-              }
-            } catch (error) {
-              console.error('Account deletion request error:', error);
-              Alert.alert(
-                'Request Not Submitted',
-                'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
-              );
-            } finally {
-              setDeletingAccount(false);
-            }
-          },
+          onPress: () => setShowDeletionConfirmation(true),
         },
       ]
     );
   };
 
+  const submitAccountDeletion = async () => {
+    setDeletingAccount(true);
+    try {
+      const response = await api.requestAccountDeletion(deletionPassword);
+      if (response.success) {
+        setShowDeletionConfirmation(false);
+        setDeletionPassword('');
+        Alert.alert(
+          'Request Submitted',
+          'Your account access has been disabled and your deletion request is queued for retention review. You will be signed out now.',
+          [{ text: 'OK', onPress: resetToLogin }]
+        );
+      } else {
+        Alert.alert('Request Not Submitted', response.message || 'We could not submit your deletion request.');
+      }
+    } catch {
+      console.error('Account deletion request failed.');
+      Alert.alert('Request Not Submitted', 'We could not submit your deletion request.');
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <Modal
+        visible={showDeletionConfirmation}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !deletingAccount && setShowDeletionConfirmation(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+          <View style={{ backgroundColor: colors.card, borderRadius: 12, padding: 20 }}>
+            <Text style={{ color: colors.cardText, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Confirm deletion request</Text>
+            <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginBottom: 16 }}>
+              Enter your password to disable account access and submit the deletion request for review.
+            </Text>
+            <TextInput
+              value={deletionPassword}
+              onChangeText={setDeletionPassword}
+              placeholder="Current password"
+              placeholderTextColor={colors.muted}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!deletingAccount}
+              style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, color: colors.text, paddingHorizontal: 12, paddingVertical: 12 }}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 20 }}>
+              <TouchableOpacity
+                disabled={deletingAccount}
+                onPress={() => { setDeletionPassword(''); setShowDeletionConfirmation(false); }}
+                style={{ paddingHorizontal: 12, paddingVertical: 10 }}
+              >
+                <Text style={{ color: colors.muted, fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={deletingAccount || !deletionPassword}
+                onPress={submitAccountDeletion}
+                style={{ backgroundColor: colors.error, borderRadius: 8, minWidth: 98, paddingHorizontal: 14, paddingVertical: 10, alignItems: 'center', opacity: deletingAccount || !deletionPassword ? 0.6 : 1 }}
+              >
+                {deletingAccount ? <ActivityIndicator color="white" size="small" /> : <Text style={{ color: 'white', fontWeight: '700' }}>Confirm</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       {/* Header */}
       <View style={{
         backgroundColor: headerBg,

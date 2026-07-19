@@ -77,28 +77,28 @@ const sendEmail = async (to, subject, html) => {
 
 const buildPasswordResetUrl = (token) => {
   const template = process.env.PASSWORD_RESET_URL_TEMPLATE?.trim();
-  const base = process.env.PASSWORD_RESET_BASE_URL?.trim();
-  const apiBase = process.env.API_BASE_URL?.trim();
-  const scheme = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
+  const base = process.env.PASSWORD_RESET_BASE_URL?.trim() || process.env.WEB_APP_URL?.trim() || 'https://menorah.me';
+  const resetBase = template ? template.replace(/\{token\}/g, '') : base;
+  return buildPasswordResetUrlFromBase(resetBase, token);
+};
 
-  if (template) {
-    return template.includes('{token}')
-      ? template.replace('{token}', encodeURIComponent(token))
-      : `${template.replace(/\/+$/, '')}?token=${encodeURIComponent(token)}`;
+// URL fragments are never sent in the HTTP request, keeping reset tokens out
+// of reverse-proxy, CDN, and application access logs.
+const buildPasswordResetUrlFromBase = (base, token) => {
+  let parsedBase;
+  try {
+    parsedBase = new URL(base);
+  } catch {
+    parsedBase = new URL('https://menorah.me');
+  }
+  if (process.env.NODE_ENV === 'production' && parsedBase.protocol !== 'https:') {
+    parsedBase = new URL('https://menorah.me');
   }
 
-  if (base) {
-    const sep = base.includes('?') ? '&' : '?';
-    return `${base}${sep}token=${encodeURIComponent(token)}`;
-  }
-
-  if (apiBase && !/localhost|127\.0\.0\.1/i.test(apiBase)) {
-    const cleanBase = apiBase.replace(/\/+$/, '').replace(/\/api$/i, '');
-    return `${cleanBase}/api/auth/reset-password?token=${encodeURIComponent(token)}`;
-  }
-
-  const sep = scheme.includes('?') ? '&' : '?';
-  return `${scheme}${sep}token=${encodeURIComponent(token)}`;
+  const url = new URL('/reset-password', parsedBase);
+  url.searchParams.delete('token');
+  url.hash = `token=${encodeURIComponent(token)}`;
+  return url.toString();
 };
 
 const normalizeBaseUrl = (value) => {
@@ -235,48 +235,34 @@ const sendPasswordResetEmail = async (email, token) => {
   return sendEmail(email, 'Reset Your Menorah Health Password', html);
 };
 
-const sendCounsellorApprovalEmail = async ({ email, name = '', password }) => {
-  const loginUrl = buildCounsellorAppUrl('/login');
-  const changePasswordUrl = buildCounsellorAppUrl('/profile#password');
+const sendCounsellorApprovalEmail = async ({ email, name = '', activationToken }) => {
+  const activationUrl = buildPasswordResetUrl(activationToken);
   const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
-  const safeLoginUrl = escapeHtml(loginUrl);
-  const safeChangePasswordUrl = escapeHtml(changePasswordUrl);
+  const safeActivationUrl = escapeHtml(activationUrl);
 
   const html = layout(`
     <h2 style="color:#111827;margin:0 0 16px;">${greeting}</h2>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 20px;">
-      Your Menorah counsellor application has been approved. Use the temporary credentials below to sign in to your counsellor account.
+      Your Menorah counsellor application has been approved. Set a password using the secure, one-time link below.
     </p>
-    <table width="100%" cellpadding="0" cellspacing="0"
-           style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin:0 0 24px;">
-      <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
-        <span style="color:#9ca3af;font-size:13px;">Email</span><br>
-        <strong style="color:#111827;">${escapeHtml(email)}</strong>
-      </td></tr>
-      <tr><td style="padding:16px 20px;">
-        <span style="color:#9ca3af;font-size:13px;">Temporary password</span><br>
-        <strong style="color:#111827;font-family:'Courier New',monospace;word-break:break-all;">${escapeHtml(password)}</strong>
-      </td></tr>
-    </table>
     <div style="text-align:center;margin:28px 0 18px;">
-      <a href="${safeLoginUrl}"
+      <a href="${safeActivationUrl}"
          style="background:#2d7a5c;color:#ffffff;text-decoration:none;border-radius:8px;padding:14px 24px;display:inline-block;font-weight:700;">
-        Sign in to counsellor portal
+        Set Password
       </a>
     </div>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;">
-      For your security, change this password after signing in. You can use the profile password section here:
-      <a href="${safeChangePasswordUrl}" style="color:#2d7a5c;">Change password</a>.
+      This link expires soon and can only be used once. Your sign-in email is ${escapeHtml(email)}.
     </p>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;word-break:break-word;">
-      If the button does not work, open this link: <a href="${safeLoginUrl}" style="color:#2d7a5c;">${safeLoginUrl}</a>
+      If the button does not work, open this link: <a href="${safeActivationUrl}" style="color:#2d7a5c;">${safeActivationUrl}</a>
     </p>
     <p style="color:#9ca3af;font-size:13px;margin:0;">
       If you were not expecting this email, contact Menorah support.
     </p>
   `);
 
-  return sendEmail(email, 'Your Menorah counsellor account is approved', html);
+  return sendEmail(email, 'Set up your Menorah counsellor account', html);
 };
 
 const sendBookingConfirmationEmail = async (email, bookingDetails) => {

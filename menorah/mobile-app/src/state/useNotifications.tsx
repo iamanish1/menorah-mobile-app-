@@ -1,5 +1,4 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { socketService, SessionStartedData, BookingStatusData, BookingConfirmedData, BookingRescheduledData, ChatMessage } from '@/lib/socket';
 import { useAuth } from '@/state/useAuth';
 import { navigate } from '@/services/navigationService';
@@ -40,51 +39,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
-  const storageKey = useMemo(
-    () => (user?.id ? `notifications_${user.id}` : null),
-    [user?.id]
-  );
-
   useEffect(() => {
-    if (!storageKey) {
-      setNotifications([]);
-      return;
-    }
-
-    let isMounted = true;
-
-    const loadNotifications = async () => {
-      try {
-        const stored = await AsyncStorage.getItem(storageKey);
-        if (stored && isMounted) {
-          setNotifications(JSON.parse(stored));
-        } else if (isMounted) {
-          setNotifications([]);
-        }
-      } catch (error) {
-        console.error('Failed to load notifications:', error);
-        if (isMounted) {
-          setNotifications([]);
-        }
-      }
-    };
-
-    loadNotifications();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [storageKey]);
-
-  useEffect(() => {
-    if (!storageKey) {
-      return;
-    }
-
-    AsyncStorage.setItem(storageKey, JSON.stringify(notifications)).catch((error) => {
-      console.error('Failed to persist notifications:', error);
-    });
-  }, [notifications, storageKey]);
+    // Notifications deliberately remain memory-only and are never shared
+    // between accounts on the same device.
+    setNotifications([]);
+  }, [user?.id]);
 
   const addNotification = useCallback((notification: Omit<AppNotification, 'id' | 'createdAt' | 'read'> & Partial<Pick<AppNotification, 'read'>>) => {
     setNotifications((prev) => {
@@ -208,12 +167,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
       addNotification({
         type: 'message',
-        title: message.senderName || 'New message',
-        body: message.content || 'You received a new message.',
+        title: 'New message',
+        body: 'Open Menorah to view your message.',
         actionLabel: 'Open Chat',
         data: {
           roomId: message.roomId,
-          counsellorName: message.senderName,
         },
       });
     });

@@ -22,7 +22,7 @@ interface AvailabilityDay {
 }
 
 interface BankDetails {
-  accountNumber?: string;
+  accountNumberMasked?: string;
   ifscCode?: string;
   accountHolderName?: string;
   bankName?: string;
@@ -411,7 +411,7 @@ export default function ProfilePage() {
 
   // Bank details state
   const [editingBank, setEditingBank] = useState(false);
-  const [bankForm, setBankForm] = useState({ accountNumber: '', ifscCode: '', accountHolderName: '', bankName: '' });
+  const [bankForm, setBankForm] = useState({ accountNumber: '', ifscCode: '', accountHolderName: '', bankName: '', currentPassword: '' });
   const [savingBank, setSavingBank] = useState(false);
 
   // Password state
@@ -756,16 +756,19 @@ export default function ProfilePage() {
   const startEditBank = () => {
     const bd = cp?.bankDetails;
     setBankForm({
-      accountNumber: bd?.accountNumber ?? '',
+      // A stored account number is deliberately never returned. Re-entering it
+      // is required when changing any bank details.
+      accountNumber: '',
       ifscCode: bd?.ifscCode ?? '',
       accountHolderName: bd?.accountHolderName ?? '',
       bankName: bd?.bankName ?? '',
+      currentPassword: '',
     });
     setEditingBank(true);
   };
 
   const saveBank = async () => {
-    if (!bankForm.accountNumber || !bankForm.ifscCode || !bankForm.accountHolderName || !bankForm.bankName) {
+    if (!bankForm.accountNumber || !bankForm.ifscCode || !bankForm.accountHolderName || !bankForm.bankName || !bankForm.currentPassword) {
       setError('All bank detail fields are required');
       return;
     }
@@ -775,11 +778,17 @@ export default function ProfilePage() {
     setSavingBank(false);
     if (res.success) {
       await fetchProfile();
+      setBankForm((previous) => ({ ...previous, accountNumber: '', currentPassword: '' }));
       setEditingBank(false);
       showSuccess('Bank details updated. They will be used for your next payout.');
     } else {
       setError(res.message || 'Failed to update bank details');
     }
+  };
+
+  const cancelBankEdit = () => {
+    setBankForm((previous) => ({ ...previous, accountNumber: '', currentPassword: '' }));
+    setEditingBank(false);
   };
 
   // ── Password ───────────────────────────────────────────────────────────────
@@ -1365,7 +1374,7 @@ export default function ProfilePage() {
               </div>
               {!editingBank && (
                 <button className={styles.editBtn} onClick={startEditBank}>
-                  {cp?.bankDetails?.accountNumber ? 'Edit' : 'Add Bank Account'}
+                  {cp?.bankDetails?.accountNumberMasked ? 'Edit' : 'Add Bank Account'}
                 </button>
               )}
             </div>
@@ -1414,17 +1423,28 @@ export default function ProfilePage() {
                       maxLength={11}
                     />
                   </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.infoLabel}>Current Password</label>
+                    <input
+                      className={styles.formInput}
+                      type="password"
+                      value={bankForm.currentPassword}
+                      onChange={(e) => setBankForm((p) => ({ ...p, currentPassword: e.target.value }))}
+                      autoComplete="current-password"
+                      maxLength={128}
+                    />
+                  </div>
                 </div>
                 <div className={styles.formActions}>
                   <Button variant="primary" size="sm" onClick={saveBank} disabled={savingBank}>
                     {savingBank ? 'Saving…' : 'Save Bank Details'}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setEditingBank(false)} disabled={savingBank}>
+                  <Button variant="outline" size="sm" onClick={cancelBankEdit} disabled={savingBank}>
                     Cancel
                   </Button>
                 </div>
               </>
-            ) : cp?.bankDetails?.accountNumber ? (
+            ) : cp?.bankDetails?.accountNumberMasked ? (
               <div className={styles.infoGrid}>
                 <div className={styles.infoItem}>
                   <p className={styles.infoLabel}>Account Holder</p>
@@ -1436,7 +1456,7 @@ export default function ProfilePage() {
                 </div>
                 <div className={styles.infoItem}>
                   <p className={styles.infoLabel}>Account Number</p>
-                  <p className={styles.infoValue}>···{cp.bankDetails.accountNumber.slice(-4)}</p>
+                  <p className={styles.infoValue}>{cp.bankDetails.accountNumberMasked}</p>
                 </div>
                 <div className={styles.infoItem}>
                   <p className={styles.infoLabel}>IFSC</p>

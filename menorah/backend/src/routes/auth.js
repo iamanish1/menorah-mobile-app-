@@ -829,9 +829,12 @@ const ALLOWED_REDIRECT_HOSTS = new Set(['menorah.me', 'www.menorah.me', 'app.men
 const safeWebAppUrl = () => {
   const raw = (process.env.WEB_APP_URL || 'https://menorah.me').trim();
   try {
-    const { hostname, port } = new URL(raw);
+    const parsed = new URL(raw);
+    const { hostname, port } = parsed;
     const host = port ? `${hostname}:${port}` : hostname;
-    if (!ALLOWED_REDIRECT_HOSTS.has(host)) {
+    const allowedProtocol = parsed.protocol === 'https:'
+      || (process.env.NODE_ENV !== 'production' && parsed.protocol === 'http:');
+    if (!ALLOWED_REDIRECT_HOSTS.has(host) || !allowedProtocol) {
       return 'https://menorah.me';
     }
     return raw.replace(/\/$/, '');
@@ -841,47 +844,19 @@ const safeWebAppUrl = () => {
 };
 
 router.get('/reset-password', (req, res) => {
-  const token      = req.query.token;
-  const webAppUrl  = safeWebAppUrl();
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  const destination = new URL('/reset-password', `${safeWebAppUrl()}/`);
 
-  if (!token) {
-    return res.redirect(`${webAppUrl}/reset-password?error=missing-token`);
-  }
+  if (token) destination.hash = `token=${encodeURIComponent(token)}`;
+  else destination.searchParams.set('error', 'missing-token');
 
-  const userAgent = req.headers['user-agent'] || '';
-  const isMobile  = /Android|iPhone|iPad|iPod|Expo|React Native/i.test(userAgent);
-
-  if (isMobile) {
-    const appScheme  = (process.env.MOBILE_APP_SCHEME || 'menorah-health://reset-password').trim();
-    const sep        = appScheme.includes('?') ? '&' : '?';
-    // Use JSON.stringify to safely embed URL values into JavaScript string literals
-    // This prevents XSS if the token value ever contains JS metacharacters.
-    const appUrl     = `${appScheme}${sep}token=${encodeURIComponent(token)}`;
-    const webFallback = `${webAppUrl}/reset-password?token=${encodeURIComponent(token)}`;
-
-    return res.status(200).send(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Reset your password</title>
-  <script>
-    window.location.href = ${JSON.stringify(appUrl)};
-    setTimeout(function(){window.location.href=${JSON.stringify(webFallback)};},2000);
-  </script>
-</head>
-<body style="font-family:Arial,sans-serif;background:#f5f3eb;padding:32px;color:#1f2937">
-  <div style="max-width:420px;margin:0 auto;background:white;border-radius:18px;padding:28px">
-    <h1 style="margin-top:0">Open Menorah Health</h1>
-    <p>Opening the app to reset your password...</p>
-    <a href=${JSON.stringify(appUrl)} style="background:#314830;color:white;padding:14px 20px;border-radius:12px;text-decoration:none;font-weight:600;display:inline-block;margin-top:8px">Open the app</a>
-    <p style="margin-top:18px;color:#6b7280;font-size:14px">App not opening? <a href=${JSON.stringify(webFallback)} style="color:#314830">Reset via browser</a></p>
-  </div>
-</body>
-</html>`);
-  }
-
-  return res.redirect(`${webAppUrl}/reset-password?token=${encodeURIComponent(token)}`);
+  // New emails link directly to the web app with a fragment. This compatibility
+  // route only upgrades old query-string links and prevents their caching.
+  return res
+    .status(303)
+    .set('Cache-Control', 'no-store')
+    .set('Referrer-Policy', 'no-referrer')
+    .redirect(destination.toString());
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

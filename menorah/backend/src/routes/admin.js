@@ -10,7 +10,8 @@ const Counsellor = require('../models/Counsellor');
 const Booking = require('../models/Booking');
 const PendingApplication = require('../models/PendingApplication');
 const KycVerification = require('../models/KycVerification');
-const { adminAuth } = require('../middleware/auth');
+const Payout = require('../models/Payout');
+const { adminAuth, requireRecentAdminMfa } = require('../middleware/auth');
 const {
   isAllowedExternalProvider,
   isSafeHttpsUrl,
@@ -20,6 +21,20 @@ const {
 } = require('../services/callPolicyService');
 const { sendCounsellorApprovalEmail } = require('../utils/email');
 const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const {
+  PAYOUT_APPROVAL_TTL_MS,
+  payoutInFlightStatuses,
+  reservedPayoutStatuses,
+  getMaximumPayoutPaise,
+  calculatePayoutAvailability,
+  getProviderPayoutIdempotencyKey,
+  isDefinitiveProviderFailure,
+  isValidPayoutIdempotencyKey,
+} = require('../services/payoutPolicy');
+const {
+  decryptBankAccountNumber,
+  getMaskedBankAccountNumber,
+} = require('../utils/bankAccountEncryption');
 
 const router = express.Router();
 
@@ -64,21 +79,23 @@ const formatAdminBooking = (booking) => ({
   createdAt: booking.createdAt
 });
 
-const generateSecurePassword = () => {
-  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const lower = 'abcdefghjkmnpqrstuvwxyz';
-  const digits = '23456789';
-  const special = '@#$!';
-  const all = upper + lower + digits + special;
-  let password = '';
-  password += upper[crypto.randomInt(upper.length)];
-  password += lower[crypto.randomInt(lower.length)];
-  password += digits[crypto.randomInt(digits.length)];
-  password += special[crypto.randomInt(special.length)];
-  for (let i = 4; i < 12; i++) {
-    password += all[crypto.randomInt(all.length)];
-  }
-  return password.split('').sort(() => Math.random() - 0.5).join('');
+const prepareCounsellorActivation = (user) => {
+  const activationToken = crypto.randomBytes(32).toString('hex');
+  user.password = `${crypto.randomBytes(32).toString('base64url')}Aa1`;
+  user.passwordResetToken = crypto.createHash('sha256').update(activationToken).digest('hex');
+  user.passwordResetExpires = Date.now() + 24 * 60 * 60 * 1000;
+  return activationToken;
+};
+
+const serializeBankDetailsForAdmin = (bankDetails = {}) => {
+  const accountNumberMasked = getMaskedBankAccountNumber(bankDetails);
+  return {
+    configured: Boolean(accountNumberMasked && bankDetails.ifscCode),
+    accountNumberMasked,
+    accountHolderName: bankDetails.accountHolderName || null,
+    bankName: bankDetails.bankName || null,
+    ifscCode: bankDetails.ifscCode || null,
+  };
 };
 
 const dateRanges = () => {
@@ -762,7 +779,7 @@ router.get('/counsellors', [
       blockedAt: c.blockedAt,
       blockedReason: c.blockedReason,
       stats: c.stats,
-      bankDetails: c.bankDetails,
+      bankDetails: serializeBankDetailsForAdmin(c.bankDetails),
       createdAt: c.createdAt,
       bookingStats: statsMap[c._id.toString()] || { total: 0, completed: 0, cancelled: 0, confirmed: 0 }
     }));
@@ -889,7 +906,7 @@ router.get('/counsellors/:id', [
 });
 
 // PUT /api/admin/counsellors/:id/approve
-// Creates User + Counsellor from PendingApplication, generates credentials, deletes pending record.
+// Creates User + Counsellor from PendingApplication and emails a one-time activation link.
 router.put('/counsellors/:id/approve', [
   param('id').isMongoId().withMessage('Invalid ID')
 ], async (req, res) => {
@@ -939,14 +956,12 @@ router.put('/counsellors/:id/approve', [
       }
     }
 
-    const plainPassword = generateSecurePassword();
-
     const user = existingUser || new User();
     user.firstName = application.firstName || user.firstName;
     user.lastName = application.lastName || user.lastName;
     user.email = application.email || user.email;
     user.phone = application.phone || user.phone;
-    user.password = plainPassword;
+    const activationToken = prepareCounsellorActivation(user);
     user.dateOfBirth = application.dateOfBirth || user.dateOfBirth;
     user.gender = application.gender || user.gender || 'male';
     user.role = 'counsellor';
@@ -986,7 +1001,7 @@ router.put('/counsellors/:id/approve', [
     const credentialEmailSent = await sendCounsellorApprovalEmail({
       email: user.email,
       name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-      password: plainPassword
+      activationToken
     }).catch((error) => {
       console.error('Counsellor approval credential email error:', error.message);
       return false;
@@ -995,8 +1010,8 @@ router.put('/counsellors/:id/approve', [
     res.json({
       success: true,
       message: credentialEmailSent
-        ? 'Counsellor approved. Credentials were emailed to the counsellor.'
-        : 'Counsellor approved, but the credential email was not sent. Generate a password reset before sharing access.',
+        ? 'Counsellor approved. A one-time password setup link was emailed to the counsellor.'
+        : 'Counsellor approved, but the activation email was not sent. Resend the password setup link before granting access.',
       data: {
         counsellorId: counsellor._id,
         status: 'approved',
@@ -1042,7 +1057,8 @@ router.put('/counsellors/:id/reject', [
 });
 
 // POST /api/admin/counsellors/:id/generate-password
-// Generates a new password for the counsellor and activates their account. Returns the plain-text password once.
+// Historical route name retained for clients. It now sends a one-time setup link
+// and never returns or emails a plaintext password.
 router.post('/counsellors/:id/generate-password', [
   param('id').isMongoId().withMessage('Invalid counsellor ID')
 ], async (req, res) => {
@@ -1054,9 +1070,8 @@ router.post('/counsellors/:id/generate-password', [
     if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
     if (counsellor.status !== 'approved') return res.status(400).json({ success: false, message: 'Counsellor must be approved before generating credentials' });
 
-    const plainPassword = generateSecurePassword();
     const user = await User.findById(counsellor.user._id);
-    user.password = plainPassword;
+    const activationToken = prepareCounsellorActivation(user);
     user.isActive = true;
     revokeAllSessions(user, { passwordChanged: true });
     counsellor.isActive = true;
@@ -1064,16 +1079,28 @@ router.post('/counsellors/:id/generate-password', [
 
     await Promise.all([user.save(), counsellor.save()]);
     res.locals.securitySessionRevoked = user;
-    res.locals.securitySessionRevocationAction = 'password_generated';
+    res.locals.securitySessionRevocationAction = 'activation_link_generated';
+
+    const activationEmailSent = await sendCounsellorApprovalEmail({
+      email: user.email,
+      name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      activationToken,
+    }).catch((error) => {
+      console.error('Counsellor activation email error:', error.message);
+      return false;
+    });
 
     res.json({
       success: true,
-      message: 'Credentials generated. Share these with the counsellor — the password will not be shown again.',
+      message: activationEmailSent
+        ? 'A one-time password setup link was sent to the counsellor.'
+        : 'The password setup link could not be sent. Retry this action after email delivery is restored.',
       data: {
         username: user.email,
-        password: plainPassword,
         counsellorId: counsellor._id,
-        userId: user._id
+        userId: user._id,
+        activationEmailSent,
+        activationEmailRecipient: user.email,
       }
     });
   } catch (error) {
@@ -1366,7 +1393,7 @@ router.get('/revenue/counsellors', [
           commissionRate: r.counsellor.commissionRate,
           counsellorEarnings: Math.round(r.revenue * (1 - r.counsellor.commissionRate / 100)),
           platformFee: Math.round(r.revenue * (r.counsellor.commissionRate / 100)),
-          bankDetails: r.counsellor.bankDetails,
+          bankDetails: serializeBankDetailsForAdmin(r.counsellor.bankDetails),
           lastPayoutAt: r.counsellor.lastPayoutAt,
           lastPayoutAmount: r.counsellor.lastPayoutAmount,
           totalPaidOut: r.counsellor.totalPaidOut,
@@ -1433,7 +1460,7 @@ router.get('/revenue/counsellors/:id', [
           phone: counsellor.user.phone,
           specialization: counsellor.specialization,
           commissionRate: counsellor.commissionRate,
-          bankDetails: counsellor.bankDetails,
+          bankDetails: serializeBankDetailsForAdmin(counsellor.bankDetails),
           lastPayoutAt: counsellor.lastPayoutAt,
           lastPayoutAmount: counsellor.lastPayoutAmount,
           totalPaidOut: counsellor.totalPaidOut,
@@ -1462,156 +1489,331 @@ router.get('/revenue/counsellors/:id', [
 
 // ─── Payouts ─────────────────────────────────────────────────────────────────
 
-const Payout = require('../models/Payout');
-
 async function sendPayoutSms() {
   return false;
 }
 
-// POST /api/admin/payouts/:counsellorId — Initiate payout
+const getPayoutAvailability = async ({ counsellor, excludePayoutId = null }) => {
+  const [revenue, reservations] = await Promise.all([
+    Booking.aggregate([
+      {
+        $match: {
+          counsellor: counsellor._id,
+          paymentStatus: 'paid',
+          status: 'completed',
+        },
+      },
+      { $group: { _id: null, revenue: { $sum: '$amount' } } },
+    ]),
+    Payout.aggregate([
+      {
+        $match: {
+          counsellor: counsellor._id,
+          status: { $in: [...reservedPayoutStatuses] },
+          ...(excludePayoutId ? { _id: { $ne: excludePayoutId } } : {}),
+        },
+      },
+      { $group: { _id: null, amountPaise: { $sum: '$amountPaise' } } },
+    ]),
+  ]);
+
+  return calculatePayoutAvailability({
+    paidRevenueRupees: revenue[0]?.revenue || 0,
+    commissionRate: counsellor.commissionRate,
+    reservedPaise: reservations[0]?.amountPaise || 0,
+  });
+};
+
+const getPayoutIdempotencyKey = (req) => String(
+  req.get('Idempotency-Key') || req.body.idempotencyKey || ''
+).trim();
+
+const serializePayoutRequest = (payout) => ({
+  payoutRecordId: payout._id,
+  status: payout.status,
+  amount: payout.amountPaise,
+  amountRupees: payout.amountRupees,
+  approvalExpiresAt: payout.approvalExpiresAt,
+});
+
+const createRazorpayPayout = async ({ payout, counsellor }) => {
+  const payoutAccountNumber = process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER;
+  const keyId = process.env.RAZORPAY_X_KEY_ID || process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_X_KEY_SECRET || process.env.RAZORPAY_KEY_SECRET;
+  const accountNumber = decryptBankAccountNumber(counsellor.bankDetails?.accountNumberEncrypted);
+
+  if (!keyId || !keySecret || !payoutAccountNumber) {
+    const error = new Error('Payout service is not configured.');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}`,
+  };
+  let contactId = counsellor.razorpayContactId;
+  let fundAccountId = counsellor.razorpayFundAccountId;
+
+  if (!contactId) {
+    const contactResponse = await axios.post('https://api.razorpay.com/v1/contacts', {
+      name: `${counsellor.user.firstName} ${counsellor.user.lastName}`,
+      email: counsellor.user.email,
+      contact: counsellor.user.phone,
+      type: 'vendor',
+      reference_id: counsellor._id.toString(),
+    }, { headers });
+    contactId = contactResponse.data.id;
+    if (!contactId) throw new Error('Payment provider contact response did not include an identifier');
+    await Counsellor.findByIdAndUpdate(counsellor._id, { razorpayContactId: contactId });
+  }
+
+  if (!fundAccountId) {
+    const fundAccountResponse = await axios.post('https://api.razorpay.com/v1/fund_accounts', {
+      contact_id: contactId,
+      account_type: 'bank_account',
+      bank_account: {
+        name: counsellor.bankDetails.accountHolderName || `${counsellor.user.firstName} ${counsellor.user.lastName}`,
+        ifsc: counsellor.bankDetails.ifscCode,
+        account_number: accountNumber,
+      },
+    }, { headers });
+    fundAccountId = fundAccountResponse.data.id;
+    if (!fundAccountId) throw new Error('Payment provider fund-account response did not include an identifier');
+    await Counsellor.findByIdAndUpdate(counsellor._id, { razorpayFundAccountId: fundAccountId });
+  }
+
+  const payoutResponse = await axios.post('https://api.razorpay.com/v1/payouts', {
+    account_number: payoutAccountNumber,
+    fund_account_id: fundAccountId,
+    amount: payout.amountPaise,
+    currency: 'INR',
+    mode: 'IMPS',
+    purpose: 'payout',
+    queue_if_low_balance: true,
+    reference_id: payout.referenceId,
+    narration: 'Menorah Health counsellor payout',
+    notes: { counsellorId: counsellor._id.toString() },
+  }, {
+    headers: {
+      ...headers,
+      'X-Payout-Idempotency': getProviderPayoutIdempotencyKey(payout),
+    },
+  });
+
+  if (!payoutResponse.data?.id) {
+    throw new Error('Payment provider payout response did not include an identifier');
+  }
+
+  return { payoutResponse: payoutResponse.data, contactId, fundAccountId };
+};
+
+// POST /api/admin/payouts/:counsellorId — request a payout for independent approval
 router.post('/payouts/:counsellorId', [
   param('counsellorId').isMongoId(),
   body('amount').isInt({ min: 100 }).withMessage('Amount must be at least ₹1 (100 paise)'),
-  body('notes').optional().isString().trim()
+  body('notes').optional().isString().trim().isLength({ max: 500 }),
+  body('idempotencyKey').optional().isString().trim().isLength({ min: 16, max: 128 }),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
+    const idempotencyKey = getPayoutIdempotencyKey(req);
+    if (!isValidPayoutIdempotencyKey(idempotencyKey)) {
+      return res.status(400).json({ success: false, message: 'A valid Idempotency-Key is required to request a payout.' });
+    }
+
+    const existingRequest = await Payout.findOne({ idempotencyKey }).lean();
+    if (existingRequest) {
+      const matchesOriginalRequest = String(existingRequest.counsellor) === req.params.counsellorId
+        && String(existingRequest.initiatedBy) === String(req.user._id)
+        && existingRequest.amountPaise === Number(req.body.amount);
+      if (!matchesOriginalRequest) {
+        return res.status(409).json({
+          success: false,
+          message: 'The Idempotency-Key is already associated with a different payout request.',
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        message: 'Existing payout request returned.',
+        data: serializePayoutRequest(existingRequest),
+      });
+    }
+
+    if (req.body.amount > getMaximumPayoutPaise()) {
+      return res.status(400).json({ success: false, message: 'Payout amount exceeds the configured per-payout limit.' });
+    }
+
     const counsellor = await Counsellor.findById(req.params.counsellorId)
+      .select('+bankDetails.accountNumberEncrypted')
       .populate('user', 'firstName lastName email phone').lean();
     if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
 
-    if (!counsellor.bankDetails?.accountNumber || !counsellor.bankDetails?.ifscCode) {
+    if (!counsellor.bankDetails?.accountNumberEncrypted || !counsellor.bankDetails?.ifscCode) {
       return res.status(400).json({ success: false, message: 'Counsellor has no bank details on file.' });
     }
 
-    // ── Idempotency: block if a payout is already in-flight ──────────────────
+    // One unapproved or in-flight request reserves the counsellor balance.
     const inFlight = await Payout.findOne({
       counsellor: counsellor._id,
-      status: { $in: ['processing', 'queued', 'pending', 'on_hold'] }
+      status: { $in: payoutInFlightStatuses },
     }).lean();
     if (inFlight) {
       return res.status(409).json({
         success: false,
-        message: `A payout of ₹${inFlight.amountRupees} is already ${inFlight.status} (ID: ${inFlight.razorpayPayoutId}). Wait for it to complete before initiating another.`,
-        data: { existingPayoutId: inFlight.razorpayPayoutId, status: inFlight.status }
+        message: `A payout request of ₹${inFlight.amountRupees} is already ${inFlight.status}. Resolve it before creating another request.`,
+        data: serializePayoutRequest(inFlight),
       });
     }
 
-    // ── Razorpay X credentials ────────────────────────────────────────────────
-    const RZP_KEY    = process.env.RAZORPAY_X_KEY_ID    || process.env.RAZORPAY_KEY_ID;
-    const RZP_SECRET = process.env.RAZORPAY_X_KEY_SECRET || process.env.RAZORPAY_KEY_SECRET;
-    if (!RZP_KEY || !RZP_SECRET) {
-      return res.status(500).json({ success: false, message: 'Razorpay credentials not configured.' });
-    }
-    if (!process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER) {
-      return res.status(500).json({ success: false, message: 'RAZORPAY_PAYOUT_ACCOUNT_NUMBER not configured.' });
-    }
-
-    const rzpAuth = Buffer.from(`${RZP_KEY}:${RZP_SECRET}`).toString('base64');
-    const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${rzpAuth}` };
-
-    let contactId     = counsellor.razorpayContactId;
-    let fundAccountId = counsellor.razorpayFundAccountId;
-
-    // Step 1: Create or reuse Razorpay Contact
-    if (!contactId) {
-      const res1 = await axios.post('https://api.razorpay.com/v1/contacts', {
-        name: `${counsellor.user.firstName} ${counsellor.user.lastName}`,
-        email: counsellor.user.email,
-        contact: counsellor.user.phone,
-        type: 'vendor',
-        reference_id: counsellor._id.toString()
-      }, { headers });
-      contactId = res1.data.id;
-      await Counsellor.findByIdAndUpdate(counsellor._id, { razorpayContactId: contactId });
+    const availability = await getPayoutAvailability({ counsellor });
+    if (req.body.amount > availability.availablePaise) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payout amount exceeds the counsellor’s completed, paid and unreserved earnings.',
+        data: { availablePaise: availability.availablePaise },
+      });
     }
 
-    // Step 2: Create or reuse Fund Account
-    if (!fundAccountId) {
-      const res2 = await axios.post('https://api.razorpay.com/v1/fund_accounts', {
-        contact_id: contactId,
-        account_type: 'bank_account',
-        bank_account: {
-          name: counsellor.bankDetails.accountHolderName || `${counsellor.user.firstName} ${counsellor.user.lastName}`,
-          ifsc: counsellor.bankDetails.ifscCode,
-          account_number: counsellor.bankDetails.accountNumber
-        }
-      }, { headers });
-      fundAccountId = res2.data.id;
-      await Counsellor.findByIdAndUpdate(counsellor._id, { razorpayFundAccountId: fundAccountId });
-    }
-
-    // Step 3: Initiate Razorpay Payout
-    const referenceId = `menorah_payout_${counsellor._id}_${Date.now()}`;
-    const payoutRes = await axios.post('https://api.razorpay.com/v1/payouts', {
-      account_number:      process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER,
-      fund_account_id:     fundAccountId,
-      amount:              req.body.amount,
-      currency:            'INR',
-      mode:                'IMPS',
-      purpose:             'payout',
-      queue_if_low_balance: true,
-      reference_id:        referenceId,
-      narration:           'Menorah Health counsellor payout',
-      notes: { counsellorId: counsellor._id.toString(), adminNotes: req.body.notes || '' }
-    }, { headers });
-
-    const amountRupees = req.body.amount / 100;
-
-    // Step 4: Persist payout record
     const payoutRecord = await Payout.create({
-      counsellor:        counsellor._id,
-      initiatedBy:       req.user._id,
-      amountPaise:       req.body.amount,
-      amountRupees,
-      razorpayPayoutId:      payoutRes.data.id,
-      razorpayFundAccountId: fundAccountId,
-      razorpayContactId:     contactId,
-      referenceId,
-      status: payoutRes.data.status || 'processing',
+      counsellor: counsellor._id,
+      initiatedBy: req.user._id,
+      amountPaise: req.body.amount,
+      amountRupees: req.body.amount / 100,
+      referenceId: `menorah_payout_request_${crypto.randomUUID()}`,
+      status: 'awaiting_approval',
       bankDetailsSnapshot: {
-        accountNumberMasked: '···' + counsellor.bankDetails.accountNumber.slice(-4),
+        accountNumberMasked: getMaskedBankAccountNumber(counsellor.bankDetails),
         ifscCode:            counsellor.bankDetails.ifscCode,
         accountHolderName:   counsellor.bankDetails.accountHolderName,
         bankName:            counsellor.bankDetails.bankName
       },
-      notes: req.body.notes || ''
+      notes: req.body.notes || '',
+      idempotencyKey,
+      approvalExpiresAt: new Date(Date.now() + PAYOUT_APPROVAL_TTL_MS),
     });
 
-    // Step 5: Update counsellor payout stats
-    await Counsellor.findByIdAndUpdate(counsellor._id, {
-      lastPayoutAt:     new Date(),
-      lastPayoutAmount: amountRupees,
-      $inc: { totalPaidOut: amountRupees }
-    });
-
-    // Step 6: SMS notification to counsellor
-    await sendPayoutSms(counsellor.user.phone, counsellor.user.firstName, amountRupees, payoutRes.data.id, 'initiated');
-
-    res.json({
+    return res.status(201).json({
       success: true,
-      message: `Payout of ₹${amountRupees} initiated successfully.`,
-      data: {
-        payoutId:       payoutRes.data.id,
-        payoutRecordId: payoutRecord._id,
-        status:         payoutRes.data.status,
-        amount:         amountRupees,
-        counsellorId:   counsellor._id,
-        fundAccountId
-      }
+      message: 'Payout request created. A different administrator must approve it with fresh MFA before funds can move.',
+      data: serializePayoutRequest(payoutRecord),
     });
   } catch (error) {
-    const rzpErr = error.response?.data;
-    console.error('Admin payout error:', {
-      status: error.response?.status,
-      code: rzpErr?.error?.code,
-    });
+    if (error?.code === 11000) {
+      return res.status(409).json({ success: false, message: 'A duplicate or concurrent payout request was rejected.' });
+    }
+    console.error('Admin payout request error:', error.message);
     res.status(500).json({
       success: false,
-      message: rzpErr?.error?.description || 'Payout failed. Please verify Razorpay X is activated and credentials are correct.'
+      message: 'Unable to create payout request.',
     });
+  }
+});
+
+// POST /api/admin/payouts/:payoutId/approve — execute a requested payout.
+// The requester cannot approve their own request and the approver must have
+// completed MFA within the last five minutes.
+router.post('/payouts/:payoutId/approve', [
+  param('payoutId').isMongoId(),
+  requireRecentAdminMfa,
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid payout request ID.' });
+
+    const now = new Date();
+    await Payout.updateOne({
+      _id: req.params.payoutId,
+      status: 'awaiting_approval',
+      approvalExpiresAt: { $lte: now },
+    }, {
+      $set: { status: 'expired', failureReason: 'Approval window expired.' },
+    });
+
+    let payout = await Payout.findOneAndUpdate({
+      _id: req.params.payoutId,
+      status: 'awaiting_approval',
+      initiatedBy: { $ne: req.user._id },
+      approvalExpiresAt: { $gt: now },
+    }, {
+      $set: {
+        status: 'processing',
+        approvedBy: req.user._id,
+        approvedAt: now,
+      },
+    }, { new: true });
+
+    if (!payout) {
+      payout = await Payout.findOne({
+        _id: req.params.payoutId,
+        status: 'processing',
+        initiatedBy: { $ne: req.user._id },
+        approvedBy: req.user._id,
+        razorpayPayoutId: null,
+      });
+    }
+
+    if (!payout) {
+      return res.status(409).json({
+        success: false,
+        message: 'Payout request is unavailable, expired, already handled, or cannot be self-approved.',
+      });
+    }
+
+    const counsellor = await Counsellor.findById(payout.counsellor)
+      .select('+bankDetails.accountNumberEncrypted')
+      .populate('user', 'firstName lastName email phone').lean();
+    if (!counsellor?.bankDetails?.accountNumberEncrypted || !counsellor.bankDetails?.ifscCode) {
+      await Payout.findByIdAndUpdate(payout._id, { status: 'failed', failureReason: 'Counsellor bank details are missing.' });
+      return res.status(400).json({ success: false, message: 'Counsellor bank details are missing.' });
+    }
+
+    const availability = await getPayoutAvailability({ counsellor, excludePayoutId: payout._id });
+    if (payout.amountPaise > availability.availablePaise) {
+      await Payout.findByIdAndUpdate(payout._id, { status: 'rejected', failureReason: 'Balance changed before approval.' });
+      return res.status(409).json({ success: false, message: 'Payout request exceeds the available completed earnings after revalidation.' });
+    }
+
+    try {
+      const { payoutResponse, contactId, fundAccountId } = await createRazorpayPayout({ payout, counsellor });
+      const providerStatuses = new Set([
+        'processing', 'queued', 'pending', 'on_hold', 'processed',
+        'reversed', 'cancelled', 'failed', 'rejected',
+      ]);
+      const updatedPayout = await Payout.findByIdAndUpdate(payout._id, {
+        $set: {
+          razorpayPayoutId: payoutResponse.id,
+          razorpayContactId: contactId,
+          razorpayFundAccountId: fundAccountId,
+          status: providerStatuses.has(payoutResponse.status) ? payoutResponse.status : 'processing',
+        },
+      }, { new: true });
+
+      return res.json({
+        success: true,
+        message: 'Payout approved and submitted to the payment provider.',
+        data: serializePayoutRequest(updatedPayout),
+      });
+    } catch (error) {
+      const definitiveFailure = isDefinitiveProviderFailure(error);
+      await Payout.findByIdAndUpdate(payout._id, {
+        $set: definitiveFailure
+          ? { status: 'failed', failureReason: 'Payment provider definitively rejected the payout request.' }
+          : { status: 'processing', failureReason: 'Payment provider outcome requires idempotent retry or reconciliation.' },
+      });
+      console.error('Approved payout submission failed:', { status: error.response?.status, code: error.response?.data?.error?.code });
+      return res.status(error.statusCode || 502).json({
+        success: false,
+        message: definitiveFailure
+          ? 'Payout submission was rejected by the payment provider.'
+          : 'Payout outcome is pending reconciliation. Retry this same approval request; do not create a new payout.',
+      });
+    }
+  } catch (error) {
+    console.error('Approve payout error:', error.message);
+    return res.status(500).json({ success: false, message: 'Unable to approve payout request.' });
   }
 });
 
@@ -1632,10 +1834,11 @@ router.get('/payouts', async (req, res) => {
       Payout.find(filter)
         .populate({
           path: 'counsellor',
-          select: 'bankDetails',
+          select: '_id',
           populate: { path: 'user', select: 'firstName lastName email' }
         })
         .populate('initiatedBy', 'firstName lastName')
+        .populate('approvedBy', 'firstName lastName')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -1666,6 +1869,7 @@ router.get('/payouts/counsellor/:counsellorId', [
 
     const payouts = await Payout.find({ counsellor: req.params.counsellorId })
       .populate('initiatedBy', 'firstName lastName')
+      .populate('approvedBy', 'firstName lastName')
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
@@ -1673,8 +1877,8 @@ router.get('/payouts/counsellor/:counsellorId', [
     const summary = {
       total:        payouts.length,
       totalPaid:    payouts.filter(p => p.status === 'processed').reduce((s, p) => s + p.amountRupees, 0),
-      totalPending: payouts.filter(p => ['processing','queued','pending','on_hold'].includes(p.status)).reduce((s, p) => s + p.amountRupees, 0),
-      totalFailed:  payouts.filter(p => ['failed','reversed','cancelled'].includes(p.status)).reduce((s, p) => s + p.amountRupees, 0)
+      totalPending: payouts.filter(p => ['awaiting_approval', 'processing', 'queued', 'pending', 'on_hold'].includes(p.status)).reduce((s, p) => s + p.amountRupees, 0),
+      totalFailed:  payouts.filter(p => ['failed', 'reversed', 'cancelled', 'rejected', 'expired'].includes(p.status)).reduce((s, p) => s + p.amountRupees, 0)
     };
 
     res.json({ success: true, data: { payouts, summary } });

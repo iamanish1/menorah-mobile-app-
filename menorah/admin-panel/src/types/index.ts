@@ -19,6 +19,8 @@ export interface CounsellorUser {
 
 export interface BankDetails {
   accountNumber?: string;
+  accountNumberMasked?: string | null;
+  configured?: boolean;
   ifscCode?: string;
   accountHolderName?: string;
   bankName?: string;
@@ -665,8 +667,8 @@ export interface ApiResponse<T = unknown> {
 }
 
 export type PayoutStatus =
-  | 'processing' | 'queued' | 'pending' | 'on_hold'
-  | 'processed' | 'reversed' | 'cancelled' | 'failed';
+  | 'awaiting_approval' | 'processing' | 'queued' | 'pending' | 'on_hold'
+  | 'processed' | 'reversed' | 'cancelled' | 'failed' | 'rejected' | 'expired';
 
 export interface PayoutRecord {
   _id: string;
@@ -676,9 +678,12 @@ export interface PayoutRecord {
     bankDetails?: BankDetails;
   };
   initiatedBy: { firstName: string; lastName: string };
+  approvedBy?: { firstName: string; lastName: string } | null;
+  approvedAt?: string | null;
+  approvalExpiresAt?: string | null;
   amountPaise: number;
   amountRupees: number;
-  razorpayPayoutId: string;
+  razorpayPayoutId?: string | null;
   razorpayFundAccountId?: string;
   referenceId?: string;
   status: PayoutStatus;

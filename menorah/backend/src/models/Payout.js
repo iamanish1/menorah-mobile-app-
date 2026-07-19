@@ -13,13 +13,22 @@ const payoutSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  approvedAt: { type: Date, default: null },
+  approvalExpiresAt: { type: Date, default: null },
 
   // Amount
   amountPaise:  { type: Number, required: true },  // in paise (e.g. 100000 = ₹1000)
   amountRupees: { type: Number, required: true },  // in rupees (e.g. 1000)
 
   // Razorpay identifiers
-  razorpayPayoutId:      { type: String, required: true, unique: true },
+  // A payout is first created as an approval request. Razorpay identifiers are
+  // assigned only after a different administrator approves it.
+  razorpayPayoutId:      { type: String, default: null },
   razorpayFundAccountId: { type: String, default: null },
   razorpayContactId:     { type: String, default: null },
   referenceId:           { type: String, index: true },
@@ -27,8 +36,8 @@ const payoutSchema = new mongoose.Schema({
   // Status — mirrors Razorpay payout lifecycle
   status: {
     type: String,
-    enum: ['processing', 'queued', 'pending', 'on_hold', 'processed', 'reversed', 'cancelled', 'failed'],
-    default: 'processing',
+    enum: ['awaiting_approval', 'processing', 'queued', 'pending', 'on_hold', 'processed', 'reversed', 'cancelled', 'failed', 'rejected', 'expired'],
+    default: 'awaiting_approval',
     index: true
   },
 
@@ -43,6 +52,15 @@ const payoutSchema = new mongoose.Schema({
   // Metadata
   notes:         { type: String, default: '' },
   failureReason: { type: String, default: null },
+  idempotencyKey: {
+    type: String,
+    required: true,
+    unique: true,
+    sparse: true,
+    immutable: true,
+    trim: true,
+    maxlength: 128
+  },
 
   // UTR (Unique Transaction Reference) — filled when processed
   utr: { type: String, default: null },
@@ -57,7 +75,23 @@ const payoutSchema = new mongoose.Schema({
 // Compound indexes for common queries
 payoutSchema.index({ counsellor: 1, createdAt: -1 });
 payoutSchema.index({ status: 1, createdAt: -1 });
-payoutSchema.index({ razorpayPayoutId: 1 }, { unique: true });
-payoutSchema.index({ referenceId: 1 });
+payoutSchema.index(
+  { razorpayPayoutId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { razorpayPayoutId: { $type: 'string' } },
+  }
+);
+payoutSchema.index({ approvalExpiresAt: 1, status: 1 });
+payoutSchema.index(
+  { counsellor: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: { $in: ['awaiting_approval', 'processing', 'queued', 'pending', 'on_hold'] },
+    },
+    name: 'one_active_payout_per_counsellor',
+  }
+);
 
 module.exports = mongoose.model('Payout', payoutSchema);
