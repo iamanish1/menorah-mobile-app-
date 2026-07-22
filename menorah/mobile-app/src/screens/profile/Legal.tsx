@@ -11,8 +11,8 @@ export default function Legal({ route, navigation }: any) {
   const isDark = scheme === 'dark';
   const headerBg = isDark ? colors.primaryDark : colors.primary;
 
-  const privacyPolicy = `Privacy Policy
-Menorah Health | Effective: November 11, 2025 | v1.0
+const privacyPolicy = `Privacy Policy
+Menorah Health | Effective: November 11, 2025 | Updated: July 22, 2026 | v1.1
 
 1. About This Policy
 Menorah Health ('Company', 'we', 'us', or 'our') operates a digital men's mental health platform accessible via mobile application and website (collectively, the 'Platform'). This Privacy Policy explains how we collect, use, store, share, and protect your personal data. It also sets out your rights as a user.
@@ -38,6 +38,7 @@ Processing: Any operation on personal data including collection, storage, use, d
 • Session data: audio/video recordings of therapy sessions (only with explicit consent), session notes
 • Payment data: billing details processed via PCI-DSS compliant payment gateways; we do not store card numbers
 • Communications: messages, feedback, support queries
+• Optional face-check data: one selfie, face-detection results, confidence score, consent evidence, submission and review history, and basic image-file metadata
 
 3.2 Data Collected Automatically
 • Device data: device type, OS, app version, unique device identifiers (UDID/IDFA/GAID)
@@ -65,6 +66,8 @@ Legal compliance and audit: Legal obligation under India law; Art. 6(1)(c) – L
 
 Marketing (opt-in only): Consent under India law; Art. 6(1)(a) – Consent under EU/GDPR.
 
+Optional face check: Explicit consent under India law; Art. 9(2)(a) – Explicit Consent under EU/GDPR. The check detects a face for account trust and safety; it does not verify a government-issued identity document.
+
 5. Data Sharing & Disclosure
 
 5.1 With Therapists
@@ -72,6 +75,8 @@ Your session data and health records are shared with the therapist assigned to y
 
 5.2 With Service Providers
 We engage third-party processors (cloud storage, payment gateways, analytics providers) under Data Processing Agreements that restrict them to processing your data only on our instructions.
+
+If you choose the optional face check, your selfie is sent to Luxand, Inc. in the United States for facial analysis. Luxand may generate facial geometry or other biometric information. Review the notice shown before submission and Luxand's privacy policy at https://www.luxand.com/privacy.php.
 
 5.3 Legal Disclosure
 We may disclose data where required by Indian law, court order, or a competent authority. We will notify you where legally permissible before complying with such requests.
@@ -86,6 +91,7 @@ Menorah Health does not sell, rent, or trade your personal data to advertisers o
 • Therapy session notes and clinical records: 7 years from last session (minimum), as recommended under MHCA 2017 guidelines
 • Account data: for the duration of your account, plus 3 years after deletion for legal compliance
 • Payment records: 8 years (as required under Indian tax laws)
+• Optional face-check records: up to 365 days from submission, unless law, a legal hold, fraud investigation, or unresolved security matter requires longer retention
 • Marketing data: until you withdraw consent
 • Anonymised analytics data: indefinitely
 
@@ -95,7 +101,7 @@ We implement the following safeguards:
 • Role-based access control — therapists can only access their own clients' data
 • Multi-factor authentication for all practitioner accounts
 • Regular third-party penetration testing and vulnerability assessments
-• Data localisation: all personal data of Indian users is stored on servers physically located in India
+• Primary application data is hosted on approved infrastructure; specifically disclosed providers may process limited data outside India under contractual and transfer safeguards
 • Data breach notification: we will notify affected users and the Data Protection Board of India within 72 hours of becoming aware of a breach, as required under DPDP Rules 2025
 
 8. Your Rights
@@ -125,7 +131,7 @@ Our web platform uses cookies and similar technologies for authentication, secur
 The Platform is strictly intended for users aged 18 and above. We do not knowingly collect data from minors. If we discover that a minor has provided data without parental consent, we will delete it immediately.
 
 11. International Data Transfers
-If your data is transferred outside India (e.g., for global analytics tools), we ensure equivalent protections via Standard Contractual Clauses (SCCs) under GDPR and comply with data localisation obligations under DPDP Rules 2025 for Indian users' sensitive personal data.
+Some service providers process limited data outside India. In particular, an optional face-check selfie is sent to Luxand, Inc. and its contracted infrastructure providers in the United States. We require appropriate contractual and transfer safeguards and disclose the provider before obtaining explicit consent.
 
 12. Changes to This Policy
 We may update this Policy. Material changes will be notified via email and in-app notification at least 15 days before they take effect. Continued use of the Platform after the effective date constitutes acceptance of the revised Policy.`;

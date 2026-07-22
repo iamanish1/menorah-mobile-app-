@@ -1001,10 +1001,12 @@ class ApiClient {
   async submitKycVerification(payload: {
     selfie: ProfileImageUpload;
     consentAccepted: boolean;
+    consentVersion: string;
   }): Promise<ApiResponse<{ status: KycStatus; verification: KycVerification; kyc: User['kyc'] }>> {
     try {
       const formData = new FormData();
       formData.append('consentAccepted', payload.consentAccepted ? 'true' : 'false');
+      formData.append('consentVersion', payload.consentVersion);
       formData.append('selfie', {
         uri: payload.selfie.uri,
         name: payload.selfie.name || `selfie-${Date.now()}.jpg`,
@@ -1016,27 +1018,27 @@ class ApiClient {
         timeout: 30000,
       });
 
-      this.logDebug('[API] eKYC submit response:', response.data);
+      this.logDebug('[API] face-check submit response:', response.data);
       return response.data;
     } catch (error: any) {
       const errorResponse = error.response?.data;
       const status = error.response?.status;
       if (status === 413 || (typeof errorResponse === 'string' && errorResponse.includes('413 Request Entity Too Large'))) {
         if (__DEV__) {
-          console.error('[API] eKYC submit upload limit error:', this.stringifyForLog({
+          console.error('[API] face-check upload limit error:', this.stringifyForLog({
             status,
             response: errorResponse,
           }));
         }
         return {
           success: false,
-          message: 'The selfie upload is being blocked by the server upload limit. Please try again after the server is updated, or skip eKYC for now.',
+          message: 'The selfie upload is being blocked by the server upload limit. Please try again later or skip the optional face check.',
         };
       }
 
       if (errorResponse) {
         if (__DEV__) {
-          console.error('[API] eKYC submit error:', this.stringifyForLog({
+          console.error('[API] face-check submit error:', this.stringifyForLog({
             status,
             response: errorResponse,
           }));
@@ -1048,8 +1050,8 @@ class ApiClient {
       return {
         success: false,
         message: isNetworkError
-          ? 'Network error: Unable to submit identity verification. Please check your connection and try again.'
-          : error.message || 'Identity verification failed',
+          ? 'Network error: Unable to submit the optional face check. Please check your connection and try again.'
+          : error.message || 'The optional face check failed',
       };
     }
   }

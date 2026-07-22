@@ -14,7 +14,7 @@ const navItems = [
   { href: '/counsellors', label: 'Counsellors',       icon: UserRoundCheck },
   { href: '/users',       label: 'Users',             icon: UsersRound     },
   { href: '/sessions',    label: 'Sessions',          icon: Video          },
-  { href: '/ekyc',        label: 'eKYC Reviews',      icon: ShieldCheck    },
+  { href: '/ekyc',        label: 'Face Check Reviews', icon: ShieldCheck    },
   { href: '/revenue',     label: 'Revenue & Payouts', icon: WalletCards    },
   { href: '/payouts',     label: 'Payout History',    icon: SendHorizontal },
   { href: '/articles',    label: 'Articles',          icon: FileText       },

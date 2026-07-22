@@ -41,7 +41,8 @@ const legalBasisRows = [
   ["Platform safety and crisis intervention", "Legitimate interest / vital interests", "Art. 6(1)(d) - Vital Interests"],
   ["Product improvement (anonymised)", "Legitimate interest", "Art. 6(1)(f) - Legitimate Interest"],
   ["Legal compliance and audit", "Legal obligation", "Art. 6(1)(c) - Legal Obligation"],
-  ["Marketing (opt-in only)", "Consent", "Art. 6(1)(a) - Consent"]
+  ["Marketing (opt-in only)", "Consent", "Art. 6(1)(a) - Consent"],
+  ["Optional face check", "Explicit consent", "Art. 9(2)(a) - Explicit Consent"]
 ] as const;
 
 const privacySections = [
@@ -63,7 +64,8 @@ const privacySections = [
           "Health and wellness data: mood logs, journal entries, symptom check-ins, mental health assessments.",
           "Session data: audio/video recordings of therapy sessions, only with explicit consent, and session notes.",
           "Payment data: billing details processed via PCI-DSS compliant payment gateways; we do not store card numbers.",
-          "Communications: messages, feedback, support queries."
+          "Communications: messages, feedback, support queries.",
+          "Optional face-check data: one selfie, face-detection results, confidence score, consent evidence, submission and review history, and basic image-file metadata."
         ]
       },
       {
@@ -97,7 +99,8 @@ const privacySections = [
       {
         title: "5.2 With Service Providers",
         paragraphs: [
-          "We engage third-party processors, including cloud storage, payment gateways, and analytics providers, under Data Processing Agreements that restrict them to processing your data only on our instructions."
+          "We engage third-party processors, including cloud storage, payment gateways, and analytics providers, under Data Processing Agreements that restrict them to processing your data only on our instructions.",
+          "If you choose the optional face check, your selfie is sent to Luxand, Inc. in the United States for facial analysis. Luxand may generate facial geometry or other biometric information. The in-app notice provides its current retention disclosure and a link to Luxand's privacy policy."
         ]
       },
       {
@@ -126,6 +129,7 @@ const privacySections = [
       "Therapy session notes and clinical records: 7 years from last session, minimum, as recommended under MHCA 2017 guidelines.",
       "Account data: for the duration of your account, plus 3 years after deletion for legal compliance.",
       "Payment records: 8 years, as required under Indian tax laws.",
+      "Optional face-check records: up to 365 days from submission, unless law, a legal hold, fraud investigation, or an unresolved security matter requires longer retention.",
       "Marketing data: until you withdraw consent.",
       "Anonymised analytics data: indefinitely."
     ]
@@ -138,7 +142,7 @@ const privacySections = [
       "Role-based access control: therapists can only access their own clients' data.",
       "Multi-factor authentication for all practitioner accounts.",
       "Regular third-party penetration testing and vulnerability assessments.",
-      "Data localisation: all personal data of Indian users is stored on servers physically located in India.",
+      "Primary application data is hosted on approved infrastructure; specifically disclosed providers may process limited data outside India under contractual and transfer safeguards.",
       "Data breach notification: we will notify affected users and the Data Protection Board of India within 72 hours of becoming aware of a breach, as required under DPDP Rules 2025."
     ]
   },
@@ -189,7 +193,7 @@ const privacySections = [
   {
     title: "11. International Data Transfers",
     paragraphs: [
-      "If your data is transferred outside India, for example for global analytics tools, we ensure equivalent protections via Standard Contractual Clauses (SCCs) under GDPR and comply with data localisation obligations under DPDP Rules 2025 for Indian users' sensitive personal data."
+      "Some service providers process limited data outside India. In particular, an optional face-check selfie is sent to Luxand, Inc. and its contracted infrastructure providers in the United States. We require appropriate contractual and transfer safeguards and disclose the provider before obtaining explicit consent."
     ]
   },
   {
@@ -211,7 +215,7 @@ export default function PrivacyPolicyPage() {
           <article className="mt-12 rounded-[2rem] border border-menorah-cream bg-menorah-page/55 p-6 shadow-dashboard md:p-10">
             <p className="font-brand text-sm uppercase tracking-[0.22em] text-menorah-olive">Menorah Health</p>
             <h1 className="mt-3 font-display text-3xl leading-tight tracking-[0.06em]">Privacy Policy</h1>
-            <p className="mt-3 text-sm font-semibold text-foreground/70">Effective: November 11, 2025 | v1.0</p>
+            <p className="mt-3 text-sm font-semibold text-foreground/70">Effective: November 11, 2025 | Updated: July 22, 2026 | v1.1</p>
 
             <div className="mt-10 space-y-8">
               {privacySections.slice(0, 1).map((section) => (

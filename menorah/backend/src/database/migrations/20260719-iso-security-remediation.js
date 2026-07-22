@@ -3,14 +3,15 @@ const KycVerification = require('../../models/KycVerification');
 const DataDeletionRequest = require('../../models/DataDeletionRequest');
 const Counsellor = require('../../models/Counsellor');
 const { encryptBankAccountNumber } = require('../../utils/bankAccountEncryption');
+const { FACE_CHECK_RETENTION_DAYS } = require('../../config/kyc');
 
 const ACTIVE_PAYOUT_STATUSES = ['awaiting_approval', 'processing', 'queued', 'pending', 'on_hold'];
 
 const getRetentionDays = () => {
   const raw = String(process.env.KYC_RETENTION_DAYS || '').trim();
   const days = /^\d+$/.test(raw) ? Number(raw) : NaN;
-  if (!Number.isSafeInteger(days) || days < 365 || days > 36500) {
-    throw new Error('KYC_RETENTION_DAYS must be explicitly configured before migration');
+  if (!Number.isSafeInteger(days) || days !== FACE_CHECK_RETENTION_DAYS) {
+    throw new Error(`KYC_RETENTION_DAYS must equal ${FACE_CHECK_RETENTION_DAYS} before migration`);
   }
   return days;
 };

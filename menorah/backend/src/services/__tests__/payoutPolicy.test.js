@@ -1,6 +1,7 @@
 const {
   PAYOUT_APPROVAL_TTL_MS,
   RECENT_ADMIN_MFA_MAX_AGE_MS,
+  MAX_SINGLE_PAYOUT_PAISE,
   calculateEarnedPaise,
   calculatePayoutAvailability,
   getProviderPayoutIdempotencyKey,
@@ -30,11 +31,15 @@ describe('payout policy', () => {
     })).toEqual({ earnedPaise: 80_000, reservedPaise: 30_000, availablePaise: 50_000 });
   });
 
-  test('requires an explicitly configured payout cap', () => {
+  test('requires the approved INR 50,000 per-payout cap', () => {
     delete process.env.MAX_PAYOUT_AMOUNT_PAISE;
-    expect(() => getMaximumPayoutPaise()).toThrow('approved payout limit');
-    process.env.MAX_PAYOUT_AMOUNT_PAISE = '500000';
-    expect(getMaximumPayoutPaise()).toBe(500_000);
+    expect(() => getMaximumPayoutPaise()).toThrow(`must equal ${MAX_SINGLE_PAYOUT_PAISE}`);
+
+    process.env.MAX_PAYOUT_AMOUNT_PAISE = '5000001';
+    expect(() => getMaximumPayoutPaise()).toThrow(`must equal ${MAX_SINGLE_PAYOUT_PAISE}`);
+
+    process.env.MAX_PAYOUT_AMOUNT_PAISE = String(MAX_SINGLE_PAYOUT_PAISE);
+    expect(getMaximumPayoutPaise()).toBe(5_000_000);
   });
 
   test('requires MFA verified within the approval window', () => {

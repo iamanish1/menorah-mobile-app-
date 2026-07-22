@@ -142,7 +142,7 @@ const userSchema = new mongoose.Schema({
     }
   },
 
-  // Identity verification status. Biometric/document images are not stored here.
+  // Optional face-check status. Biometric images are not stored here.
   kyc: {
     status: {
       type: String,

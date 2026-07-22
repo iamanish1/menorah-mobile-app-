@@ -1,3 +1,5 @@
+const { MAX_SINGLE_PAYOUT_PAISE } = require('../config/payout');
+
 const PAYOUT_APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 const RECENT_ADMIN_MFA_MAX_AGE_MS = 5 * 60 * 1000;
 const NON_TERMINAL_PROVIDER_STATUSES = ['processing', 'queued', 'pending', 'on_hold'];
@@ -16,8 +18,8 @@ const toNonNegativeInteger = (value) => {
 const getMaximumPayoutPaise = () => {
   const raw = String(process.env.MAX_PAYOUT_AMOUNT_PAISE || '').trim();
   const configured = /^\d+$/.test(raw) ? Number(raw) : NaN;
-  if (!Number.isSafeInteger(configured) || configured < 100) {
-    throw new Error('MAX_PAYOUT_AMOUNT_PAISE must contain an approved payout limit');
+  if (configured !== MAX_SINGLE_PAYOUT_PAISE) {
+    throw new Error(`MAX_PAYOUT_AMOUNT_PAISE must equal ${MAX_SINGLE_PAYOUT_PAISE}`);
   }
   return configured;
 };
@@ -82,6 +84,7 @@ const getPermittedPriorPayoutStatuses = (newStatus) => {
 };
 
 module.exports = {
+  MAX_SINGLE_PAYOUT_PAISE,
   PAYOUT_APPROVAL_TTL_MS,
   RECENT_ADMIN_MFA_MAX_AGE_MS,
   payoutInFlightStatuses,

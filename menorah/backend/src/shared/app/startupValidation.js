@@ -1,6 +1,11 @@
 const MIN_JWT_SECRET_LENGTH = 64;
 const MAX_ADMIN_JWT_SECONDS = 30 * 60;
 const { getTrustedWebSessionOrigins } = require('../../config/webSessions');
+const { MAX_SINGLE_PAYOUT_PAISE } = require('../../config/payout');
+const {
+  FACE_CHECK_CONSENT_VERSION,
+  FACE_CHECK_RETENTION_DAYS,
+} = require('../../config/kyc');
 
 const requireEnv = (key, errors) => {
   if (!process.env[key]) {
@@ -15,11 +20,17 @@ const requireMinimumLength = (key, minimum, errors) => {
   }
 };
 
-const requireIntegerInRange = (key, minimum, maximum, errors) => {
+const requireExactInteger = (key, expected, errors) => {
   const raw = String(process.env[key] || '').trim();
   const value = /^\d+$/.test(raw) ? Number(raw) : NaN;
-  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
-    errors.push(`${key} must be an integer between ${minimum} and ${maximum}`);
+  if (!Number.isSafeInteger(value) || value !== expected) {
+    errors.push(`${key} must equal ${expected}`);
+  }
+};
+
+const requireExactValue = (key, expected, errors) => {
+  if (String(process.env[key] || '').trim() !== expected) {
+    errors.push(`${key} must equal ${expected}`);
   }
 };
 
@@ -44,12 +55,9 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
       requireEnv(key, errors)
     );
     requireMinimumLength('AUDIT_LOG_SIGNING_KEY', 32, errors);
-    requireIntegerInRange('MAX_PAYOUT_AMOUNT_PAISE', 100, Number.MAX_SAFE_INTEGER, errors);
-    requireIntegerInRange('KYC_RETENTION_DAYS', 365, 36500, errors);
-    requireMinimumLength('KYC_CONSENT_VERSION', 1, errors);
-    if (String(process.env.KYC_CONSENT_VERSION || '').trim().length > 64) {
-      errors.push('KYC_CONSENT_VERSION must be 64 characters or fewer');
-    }
+    requireExactInteger('MAX_PAYOUT_AMOUNT_PAISE', MAX_SINGLE_PAYOUT_PAISE, errors);
+    requireExactInteger('KYC_RETENTION_DAYS', FACE_CHECK_RETENTION_DAYS, errors);
+    requireExactValue('KYC_CONSENT_VERSION', FACE_CHECK_CONSENT_VERSION, errors);
 
     if (['api-ios', 'api-android', 'api-web', 'api-admin'].includes(serviceName)) {
       requireMinimumLength('DATA_ENCRYPTION_KEY', 32, errors);

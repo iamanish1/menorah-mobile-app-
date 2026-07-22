@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { api } from '@/lib/api';
+import { api, UNAUTHORIZED_EVENT } from '@/lib/api';
 import type { User } from '@/types';
 
 interface AuthContextValue {
@@ -49,7 +49,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+      setIsLoading(false);
+    };
+
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
     refreshUser();
+
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
   }, [refreshUser]);
 
   const login = async (email: string, password: string) => {

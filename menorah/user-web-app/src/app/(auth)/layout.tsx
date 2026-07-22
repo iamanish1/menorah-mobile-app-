@@ -22,14 +22,14 @@ const trustSignals = [
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex bg-[var(--app-bg)] text-gray-950 dark:text-primary-50">
+    <div className="flex min-h-dvh bg-[var(--app-bg)] text-gray-950 dark:text-primary-50">
       {/* Left — onboarding brand panel */}
-      <div className="relative hidden overflow-hidden bg-[#0b2a20] text-white lg:flex lg:w-[44%]">
+      <div className="relative hidden overflow-hidden bg-[#0b2a20] text-white xl:flex xl:w-[46%] xl:shrink-0">
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,#0b2a20_0%,#123a2d_52%,#092119_100%)]" />
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.38),transparent)]" />
         <div className="pointer-events-none absolute bottom-0 left-0 h-36 w-full bg-[linear-gradient(0deg,rgba(95,176,142,0.18),transparent)]" />
 
-        <div className="relative z-10 flex min-h-screen w-full flex-col justify-between p-12 xl:p-14">
+        <div className="relative z-10 flex min-h-dvh w-full flex-col justify-between gap-10 p-10 2xl:p-14">
           <Link href="/" className="flex w-fit items-center gap-3 rounded-2xl px-1 py-1 transition hover:bg-white/5">
             <span className="relative h-10 w-10 overflow-hidden rounded-2xl bg-white shadow-[0_12px_32px_-20px_rgba(255,255,255,0.7)]">
               <Image src="/logo.png" alt="Menorah" fill sizes="40px" className="object-cover" priority />
@@ -45,7 +45,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               <p className="mb-4 text-[11px] font-black uppercase tracking-[0.2em] text-primary-300">
                 Men&apos;s Mental Wellness
               </p>
-              <h2 className="text-[clamp(2.35rem,3.5vw,4.2rem)] font-black leading-[0.98] tracking-tight">
+              <h2 className="text-4xl font-black leading-[0.98] tracking-tight 2xl:text-5xl">
                 A private space for men to start feeling lighter.
               </h2>
             </div>
@@ -84,12 +84,12 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       </div>
 
       {/* Right — form panel */}
-      <div className="flex-1 flex flex-col bg-white relative dark:bg-primary-950">
-        <div className="absolute right-5 top-5 z-20">
+      <div className="relative flex min-w-0 flex-1 flex-col bg-white dark:bg-primary-950">
+        <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
           <ThemeToggle />
         </div>
-        {/* Mobile logo — only visible below lg */}
-        <div className="px-8 pt-7 lg:hidden">
+        {/* Compact logo — visible whenever the brand panel is hidden. */}
+        <div className="px-5 pt-5 sm:px-8 sm:pt-7 xl:hidden">
           <Link href="/" className="inline-flex items-center gap-2">
             <span className="relative h-8 w-8 overflow-hidden rounded-2xl">
               <Image src="/logo.png" alt="Menorah" fill sizes="32px" className="object-cover" priority />
@@ -98,8 +98,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           </Link>
         </div>
 
-        <div className="flex-1 flex items-center justify-center px-8 py-12">
-          <div className="w-full max-w-sm rounded-[1.75rem] border border-primary-100 bg-white/92 p-7 shadow-[0_18px_48px_-32px_rgba(45,122,92,0.5)] dark:border-primary-800 dark:bg-primary-900/80">
+        <div className="flex flex-1 items-center justify-center px-4 py-10 sm:px-8 sm:py-12">
+          <div className="w-full max-w-sm rounded-[1.75rem] border border-primary-100 bg-white/92 p-5 shadow-[0_18px_48px_-32px_rgba(45,122,92,0.5)] sm:p-7 dark:border-primary-800 dark:bg-primary-900/80">
             {children}
           </div>
         </div>

@@ -19,6 +19,8 @@ const PERIOD_OPTIONS = [
   { key: 'allTime', label: 'All Time' }
 ];
 
+const MAX_PAYOUT_AMOUNT_RUPEES = 50_000;
+
 export default function RevenuePage() {
   const [revenue, setRevenue] = useState<RevenueData | null>(null);
   const [counsellors, setCounsellors] = useState<CounsellorRevenue[]>([]);
@@ -63,7 +65,7 @@ export default function RevenuePage() {
 
   const openPayoutModal = (c: CounsellorRevenue) => {
     setPayoutModal({ open: true, counsellor: c });
-    setPayoutAmount(String(Math.floor(c.counsellorEarnings)));
+    setPayoutAmount(String(Math.min(Math.floor(c.counsellorEarnings), MAX_PAYOUT_AMOUNT_RUPEES)));
     setPayoutNotes('');
     setPayoutResult(null);
   };
@@ -73,6 +75,10 @@ export default function RevenuePage() {
     if (!counsellor) return;
     const amountRupees = parseFloat(payoutAmount);
     if (isNaN(amountRupees) || amountRupees < 1) { toast.error('Enter a valid amount (min ₹1)'); return; }
+    if (amountRupees > MAX_PAYOUT_AMOUNT_RUPEES) {
+      toast.error('The maximum is ₹50,000 per transaction. Split the total into sequential payments of ₹50,000 or less.');
+      return;
+    }
     if (amountRupees > counsellor.counsellorEarnings) { toast.error('Amount exceeds counsellor earnings'); return; }
     if (!counsellor.bankDetails?.configured) { toast.error('Counsellor has no bank details on file'); return; }
 
@@ -99,6 +105,9 @@ export default function RevenuePage() {
   };
 
   const revenueChartData = revenue?.dailyTrend?.slice(-30) || [];
+  const enteredPayoutAmount = Number(payoutAmount);
+  const payoutExceedsTransactionLimit = Number.isFinite(enteredPayoutAmount)
+    && enteredPayoutAmount > MAX_PAYOUT_AMOUNT_RUPEES;
 
   return (
     <div className="space-y-6">
@@ -344,12 +353,12 @@ export default function RevenuePage() {
                         value={payoutAmount}
                         onChange={(e) => setPayoutAmount(e.target.value)}
                         min="1"
-                        max={payoutModal.counsellor.counsellorEarnings}
+                        max={Math.min(payoutModal.counsellor.counsellorEarnings, MAX_PAYOUT_AMOUNT_RUPEES)}
                         className="w-full pl-7 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                         placeholder="0"
                       />
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1">Max {formatCurrency(payoutModal.counsellor.counsellorEarnings)}</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Max {formatCurrency(MAX_PAYOUT_AMOUNT_RUPEES)} per transaction</p>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5">Reference Note</label>
@@ -363,6 +372,15 @@ export default function RevenuePage() {
                     <p className="text-[10px] text-gray-400 mt-1">Optional</p>
                   </div>
                 </div>
+
+                {(payoutModal.counsellor.counsellorEarnings > MAX_PAYOUT_AMOUNT_RUPEES || payoutExceedsTransactionLimit) && (
+                  <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-3">
+                    <AlertCircle size={15} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-blue-800 leading-relaxed">
+                      Payouts are limited to ₹50,000 per transaction. To pay more, split the total into two or more payments of ₹50,000 or less, completing each payout before creating the next.
+                    </p>
+                  </div>
+                )}
 
                 {/* Warning */}
                 <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3">
@@ -383,7 +401,7 @@ export default function RevenuePage() {
                     </button>
                     <button
                       onClick={handlePayout}
-                      disabled={payoutLoading}
+                      disabled={payoutLoading || payoutExceedsTransactionLimit}
                       className="flex-[2] px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-sm font-bold disabled:opacity-60 transition-all shadow-md flex items-center justify-center gap-2"
                     >
                       {payoutLoading

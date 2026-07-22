@@ -5,6 +5,8 @@ import type {
   Article, ArticleFilters, ArticlePagination,
 } from '@/types';
 
+export const UNAUTHORIZED_EVENT = 'menorah:unauthorized';
+
 class ApiClient {
   private client: AxiosInstance;
 
@@ -18,8 +20,8 @@ class ApiClient {
     this.client.interceptors.response.use(
       (res) => res,
       (error) => {
-        if (error.response?.status === 401) {
-          if (typeof window !== 'undefined') window.location.href = '/login';
+        if (error.response?.status === 401 && typeof window !== 'undefined') {
+          window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
         }
         return Promise.reject(error);
       }

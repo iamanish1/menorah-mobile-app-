@@ -101,7 +101,7 @@ export default function DashboardPage() {
           color="amber"
         />
         <StatCard
-          title="KYC Reviews"
+          title="Face Check Reviews"
           value={pendingKycReviews}
           subtitle={`${stats?.kyc?.verified || 0} verified users`}
           icon={ShieldAlert}
@@ -116,7 +116,7 @@ export default function DashboardPage() {
           { label: 'Blocked Counsellors', value: stats?.counsellors.blocked || 0, href: '/counsellors?status=blocked', color: 'text-red-600 bg-red-50', icon: Activity },
           { label: 'Sessions Today', value: stats?.bookings.today || 0, href: '/counsellors', color: 'text-blue-600 bg-blue-50', icon: TrendingUp },
           { label: 'Weekly Revenue', value: formatCurrency(stats?.revenue.weekly || 0), href: '/revenue', color: 'text-green-600 bg-green-50', icon: IndianRupee },
-          { label: 'KYC Reviews', value: pendingKycReviews, href: '/ekyc', color: 'text-red-600 bg-red-50', icon: ShieldAlert }
+          { label: 'Face Check Reviews', value: pendingKycReviews, href: '/ekyc', color: 'text-red-600 bg-red-50', icon: ShieldAlert }
         ].map((item) => (
           <Link key={item.label} href={item.href}
             className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow flex items-center gap-3">

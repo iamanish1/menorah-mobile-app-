@@ -431,9 +431,9 @@ export default function Discover({ navigation }: any) {
       {
         id: 'feature-ekyc',
         badge: 'FEATURE',
-        title: 'Identity verification',
-        subtitle: 'Complete or review optional eKYC verification.',
-        keywords: ['identity', 'verification', 'ekyc', 'e kyc', 'kyc', 'face id', 'selfie', 'verify account'],
+        title: 'Optional face check',
+        subtitle: 'Complete or review your account trust check.',
+        keywords: ['face check', 'selfie', 'trust', 'safety', 'verification'],
         Icon: Shield,
         onPress: () => navigation.navigate('IdentityVerification'),
       },
@@ -666,7 +666,7 @@ export default function Discover({ navigation }: any) {
               <IOSCard>
                 <Text style={iosTheme.typography.cardTitle}>Try searching for</Text>
                 <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.sm }]}>
-                  Basic, premium, pro, subscriptions, Instagram, eKYC, bookings, chat, articles, anxiety, or stress.
+                  Basic, premium, pro, subscriptions, Instagram, face check, bookings, chat, articles, anxiety, or stress.
                 </Text>
               </IOSCard>
             ) : null}

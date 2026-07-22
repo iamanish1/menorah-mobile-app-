@@ -73,7 +73,7 @@ export default function EkycReviewsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">eKYC Reviews</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Face Check Reviews</h1>
           <p className="mt-1 text-sm text-gray-500">Review face checks that require manual admin action.</p>
         </div>
         <button
@@ -134,7 +134,7 @@ export default function EkycReviewsPage() {
                 </tr>
               ) : reviews.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-12 text-center text-sm text-gray-500">No eKYC reviews found.</td>
+                  <td colSpan={5} className="px-5 py-12 text-center text-sm text-gray-500">No face-check reviews found.</td>
                 </tr>
               ) : reviews.map((review) => (
                 <tr key={review.id} className="hover:bg-gray-50">
@@ -203,7 +203,7 @@ export default function EkycReviewsPage() {
       {rejectTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-            <h2 className="text-lg font-bold text-gray-900">Reject eKYC Review</h2>
+            <h2 className="text-lg font-bold text-gray-900">Reject Face Check</h2>
             <p className="mt-1 text-sm text-gray-500">
               Add a short reason for {rejectTarget.user?.firstName} {rejectTarget.user?.lastName}.
             </p>

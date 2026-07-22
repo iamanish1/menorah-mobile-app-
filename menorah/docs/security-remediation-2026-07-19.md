@@ -7,8 +7,8 @@ This change set implements application controls for payout approvals, password r
 1. Put new, distinct, high-entropy `DATA_ENCRYPTION_KEY` and `AUDIT_LOG_SIGNING_KEY` values in the approved encrypted production secret store, then add their references to the host-only `production.env`. Do not commit or print either value. A missing value deliberately prevents production API startup.
 2. Run the deployment only through `deploy/ubuntu/update-from-git.sh`. The script creates and restore-tests a fresh backup, builds the release, stops every API and worker, and then runs the migration once with the new backend image. This maintenance boundary prevents an old API from reading or overwriting bank records after their plaintext fields are removed.
 3. Resolve any migration failure before starting the new build. In particular, the active-payout uniqueness index will refuse to deploy if historic data has more than one active payout for a counsellor. Reconcile the ledger under finance approval; do not delete records to bypass the index.
-4. Set an approved `MAX_PAYOUT_AMOUNT_PAISE` value. The example file deliberately contains only a placeholder because the application must not invent a finance policy limit.
-5. Confirm `KYC_CONSENT_VERSION` and `KYC_RETENTION_DAYS` are approved by privacy/legal and reflected in the published privacy notice and processor agreement.
+4. Set `MAX_PAYOUT_AMOUNT_PAISE=5000000`, the approved INR 50,000 per-transaction payout limit. Larger balances must be paid through sequential payout requests; each prior request must finish before the next is created.
+5. Set `KYC_RETENTION_DAYS=365` and `KYC_CONSENT_VERSION=ordinary-face-check-v1-2026-07-22`. The ordinary-user flow is an optional face-detection trust check, not government-ID verification or full eKYC. The approved notice must remain visible before consent and must match the published privacy policy and Luxand processor agreement.
 
 ## Migration and rollback boundary
 

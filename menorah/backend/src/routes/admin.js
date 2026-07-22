@@ -1643,7 +1643,10 @@ router.post('/payouts/:counsellorId', [
     }
 
     if (req.body.amount > getMaximumPayoutPaise()) {
-      return res.status(400).json({ success: false, message: 'Payout amount exceeds the configured per-payout limit.' });
+      return res.status(400).json({
+        success: false,
+        message: 'The maximum payout is ₹50,000 per transaction. Split larger totals into sequential payouts of ₹50,000 or less.',
+      });
     }
 
     const counsellor = await Counsellor.findById(req.params.counsellorId)
@@ -1888,7 +1891,7 @@ router.get('/payouts/counsellor/:counsellorId', [
   }
 });
 
-// GET /api/admin/ekyc/reviews — list identity verification review records
+// GET /api/admin/ekyc/reviews — list optional face-check review records
 router.get('/ekyc/reviews', [
   query('status').optional().isIn(['manual_review', 'verified', 'rejected', 'pending', 'all']),
   query('page').optional().isInt({ min: 1 }),

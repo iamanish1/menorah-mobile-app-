@@ -61,10 +61,10 @@ const ACCOUNT_ITEMS = [
 ];
 
 const kycSubtitle = (status?: string) => {
-  if (status === 'verified') return 'Verified with eKYC';
+  if (status === 'verified') return 'Optional face check completed';
   if (status === 'manual_review' || status === 'pending') return 'Admin review in progress';
-  if (status === 'rejected') return 'Resubmit clear identity photos';
-  return 'Complete secure identity verification';
+  if (status === 'rejected') return 'Submit a clear selfie to try again';
+  return 'Optional account trust and safety check';
 };
 
 export default function ProfileHome({ navigation }: any) {
@@ -86,7 +86,7 @@ export default function ProfileHome({ navigation }: any) {
   const accountItems = [
     {
       icon: ShieldCheck,
-      label: 'Identity Verification',
+      label: 'Optional Face Check',
       sub: kycSubtitle(kycStatus),
       route: 'IdentityVerification',
       danger: false,
@@ -214,7 +214,7 @@ export default function ProfileHome({ navigation }: any) {
                 >
                   <ShieldCheck size={13} color={iosTheme.colors.inverseText} strokeWidth={2.2} />
                   <Text style={{ color: iosTheme.colors.inverseText, fontSize: 11, lineHeight: 14, fontWeight: '800' }}>
-                    {kycStatus === 'verified' ? 'Identity verified' : memberSince ? `Member since ${memberSince}` : 'Member'}
+                    {kycStatus === 'verified' ? 'Face check complete' : memberSince ? `Member since ${memberSince}` : 'Member'}
                   </Text>
                 </View>
               </View>
@@ -258,9 +258,9 @@ export default function ProfileHome({ navigation }: any) {
           <IOSActionCard
             dark
             icon={ShieldCheck}
-            title={kycStatus === 'manual_review' || kycStatus === 'pending' ? 'Identity under review' : 'Verify identity'}
+            title={kycStatus === 'manual_review' || kycStatus === 'pending' ? 'Face check under review' : 'Optional face check'}
             subtitle={kycSubtitle(kycStatus)}
-            actionLabel={kycStatus === 'manual_review' || kycStatus === 'pending' ? 'View status' : 'Start eKYC'}
+            actionLabel={kycStatus === 'manual_review' || kycStatus === 'pending' ? 'View status' : 'Start check'}
             onPress={() => navigation.navigate('IdentityVerification')}
             style={{ marginTop: iosTheme.spacing.md }}
           />

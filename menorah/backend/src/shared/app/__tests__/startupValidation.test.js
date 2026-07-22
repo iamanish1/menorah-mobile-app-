@@ -1,4 +1,8 @@
 const { validateStartupEnv } = require('../startupValidation');
+const {
+  FACE_CHECK_CONSENT_VERSION,
+  FACE_CHECK_RETENTION_DAYS,
+} = require('../../../config/kyc');
 
 describe('startup validation', () => {
   const originalEnv = process.env;
@@ -16,9 +20,9 @@ describe('startup validation', () => {
       EMAIL_FROM: 'Menorah <noreply@example.com>',
       DATA_ENCRYPTION_KEY: 'x'.repeat(64),
       AUDIT_LOG_SIGNING_KEY: 'y'.repeat(64),
-      MAX_PAYOUT_AMOUNT_PAISE: '1000000',
-      KYC_CONSENT_VERSION: 'test-2026-07',
-      KYC_RETENTION_DAYS: '2557',
+      MAX_PAYOUT_AMOUNT_PAISE: '5000000',
+      KYC_CONSENT_VERSION: FACE_CHECK_CONSENT_VERSION,
+      KYC_RETENTION_DAYS: String(FACE_CHECK_RETENTION_DAYS),
       RAZORPAY_KEY_ID: 'razorpay-key',
       RAZORPAY_KEY_SECRET: 'razorpay-secret',
       RAZORPAY_WEBHOOK_SECRET: 'razorpay-webhook',
@@ -56,6 +60,27 @@ describe('startup validation', () => {
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' }))
       .toThrow(/MAX_PAYOUT_AMOUNT_PAISE.*KYC_RETENTION_DAYS.*KYC_CONSENT_VERSION/);
+  });
+
+  test('rejects a payout limit above the approved INR 50,000 cap', () => {
+    process.env.MAX_PAYOUT_AMOUNT_PAISE = '5000001';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/MAX_PAYOUT_AMOUNT_PAISE must equal 5000000/);
+  });
+
+  test('rejects an unapproved face-check notice version', () => {
+    process.env.KYC_CONSENT_VERSION = 'legacy-notice';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/KYC_CONSENT_VERSION must equal ordinary-face-check-v1-2026-07-22/);
+  });
+
+  test('rejects a face-check retention period other than 365 days', () => {
+    process.env.KYC_RETENTION_DAYS = '366';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/KYC_RETENTION_DAYS must equal 365/);
   });
 
   test('rejects weak production integrity keys', () => {

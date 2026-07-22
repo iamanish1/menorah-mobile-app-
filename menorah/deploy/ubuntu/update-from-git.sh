@@ -93,18 +93,16 @@ if [[ "${DATA_ENCRYPTION_KEY}" == "${AUDIT_LOG_SIGNING_KEY}" ]]; then
   echo "DATA_ENCRYPTION_KEY and AUDIT_LOG_SIGNING_KEY must be distinct." >&2
   exit 1
 fi
-if [[ ! "${MAX_PAYOUT_AMOUNT_PAISE:-}" =~ ^[0-9]+$ ]] \
-  || (( MAX_PAYOUT_AMOUNT_PAISE < 100 || MAX_PAYOUT_AMOUNT_PAISE > 9007199254740991 )); then
-  echo "MAX_PAYOUT_AMOUNT_PAISE must be an approved integer between 100 and 9007199254740991." >&2
+if [[ "${MAX_PAYOUT_AMOUNT_PAISE:-}" != "5000000" ]]; then
+  echo "MAX_PAYOUT_AMOUNT_PAISE must equal the approved INR 50,000 per-transaction limit (5000000 paise)." >&2
   exit 1
 fi
-if [[ -z "${KYC_CONSENT_VERSION:-}" || "${KYC_CONSENT_VERSION}" =~ ^REPLACE || ${#KYC_CONSENT_VERSION} -gt 64 ]]; then
-  echo "KYC_CONSENT_VERSION must be an approved non-empty value no longer than 64 characters." >&2
+if [[ "${KYC_CONSENT_VERSION:-}" != "ordinary-face-check-v1-2026-07-22" ]]; then
+  echo "KYC_CONSENT_VERSION must equal ordinary-face-check-v1-2026-07-22." >&2
   exit 1
 fi
-if [[ ! "${KYC_RETENTION_DAYS:-}" =~ ^[0-9]+$ ]] \
-  || (( KYC_RETENTION_DAYS < 365 || KYC_RETENTION_DAYS > 36500 )); then
-  echo "KYC_RETENTION_DAYS must be an approved integer between 365 and 36500." >&2
+if [[ "${KYC_RETENTION_DAYS:-}" != "365" ]]; then
+  echo "KYC_RETENTION_DAYS must equal the approved 365-day face-check retention period." >&2
   exit 1
 fi
 
