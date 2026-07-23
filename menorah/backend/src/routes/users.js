@@ -10,6 +10,10 @@ const { clearMappedSessionCookie } = require('../config/webSessions');
 const { revokeAllSessions } = require('../utils/sessionLifecycle');
 const { getMaskedBankAccountNumber } = require('../utils/bankAccountEncryption');
 const {
+  PASSWORD_STRENGTH_MESSAGE,
+  PASSWORD_STRENGTH_OPTIONS,
+} = require('../config/passwordPolicy');
+const {
   serializePublicUser,
   serializeUserProfile,
 } = require('../serializers/userSerializer');
@@ -359,7 +363,8 @@ router.put('/notification-preferences', [
 // @access  Private
 router.put('/change-password', [
   body('currentPassword').notEmpty().withMessage('Current password is required'),
-  body('newPassword').isLength({ min: 8 }).withMessage('New password must be at least 8 characters long')
+  body('newPassword').isStrongPassword({ ...PASSWORD_STRENGTH_OPTIONS })
+    .withMessage(PASSWORD_STRENGTH_MESSAGE)
 ], auth, async (req, res) => {
   try {
     const errors = validationResult(req);

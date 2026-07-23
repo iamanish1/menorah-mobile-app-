@@ -147,6 +147,41 @@ describe('user profile serialization', () => {
     expect(mockClearMappedSessionCookie).toHaveBeenCalledTimes(1);
   });
 
+  test('PUT /api/users/change-password rejects a password weaker than registration policy', async () => {
+    await request(buildApp())
+      .put('/api/users/change-password')
+      .send({
+        currentPassword: 'CurrentPass123',
+        newPassword: 'weakpassword1',
+      })
+      .expect(400);
+
+    expect(mockFindById).not.toHaveBeenCalled();
+    expect(mockClearMappedSessionCookie).not.toHaveBeenCalled();
+  });
+
+  test('PUT /api/users/change-password accepts the registration policy and revokes all sessions', async () => {
+    const user = makeUserDocument();
+    user.comparePassword = jest.fn().mockResolvedValue(true);
+    mockFindById.mockReturnValue({
+      select: jest.fn().mockResolvedValue(user),
+    });
+
+    await request(buildApp())
+      .put('/api/users/change-password')
+      .send({
+        currentPassword: 'CurrentPass123',
+        newPassword: 'UpdatedPass123',
+      })
+      .expect(200);
+
+    expect(user.password).toBe('UpdatedPass123');
+    expect(user.sessionVersion).toBe(8);
+    expect(user.lastPasswordChangeAt).toBeInstanceOf(Date);
+    expect(user.save).toHaveBeenCalledTimes(1);
+    expect(mockClearMappedSessionCookie).toHaveBeenCalledTimes(1);
+  });
+
   test('DELETE /api/users/account does not change state for a wrong password', async () => {
     const user = makeUserDocument();
     user.comparePassword = jest.fn().mockResolvedValue(false);

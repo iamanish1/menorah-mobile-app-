@@ -165,6 +165,32 @@ describe('browser cookie session authentication', () => {
     expect(mockSendPasswordResetEmail).not.toHaveBeenCalled();
   });
 
+  test('registration rejects a password below the shared strength policy before account lookup', async () => {
+    await request(buildAuthApp())
+      .post('/api/auth/register')
+      .send({
+        firstName: 'Asha',
+        lastName: 'User',
+        email: 'asha@example.com',
+        phone: '+15551234567',
+        password: 'weakpassword1',
+        dateOfBirth: '1990-01-01',
+        gender: 'female',
+      })
+      .expect(400);
+
+    expect(mockFindOne).not.toHaveBeenCalled();
+  });
+
+  test('password reset rejects a password below the shared strength policy before token lookup', async () => {
+    await request(buildAuthApp())
+      .post('/api/auth/reset-password')
+      .send({ token: 'reset-token', password: 'weakpassword1' })
+      .expect(400);
+
+    expect(mockFindOne).not.toHaveBeenCalled();
+  });
+
   test('a pre-issued reset token cannot mutate an inactive review account', async () => {
     const select = jest.fn().mockResolvedValue(null);
     mockFindOne.mockReturnValue({ select });

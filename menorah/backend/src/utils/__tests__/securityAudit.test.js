@@ -39,6 +39,10 @@ describe('security audit logging', () => {
         method: 'POST',
         originalUrl: '/api/auth/reset-password?token=url-secret',
         ip: '192.0.2.10',
+        headers: {
+          authorization: 'Bearer authorization-secret',
+          cookie: 'session=cookie-header-secret',
+        },
       },
       user: { _id: '64f000000000000000000021', role: 'user' },
       details: {
@@ -58,6 +62,8 @@ describe('security audit logging', () => {
     expect(output).not.toContain('token-secret');
     expect(output).not.toContain('password-secret');
     expect(output).not.toContain('cookie-secret');
+    expect(output).not.toContain('authorization-secret');
+    expect(output).not.toContain('cookie-header-secret');
     expect(output).not.toContain('payment-secret');
   });
 

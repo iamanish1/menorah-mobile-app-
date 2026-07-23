@@ -9,7 +9,9 @@ const { getPubClient, getSubClient } = require('../../config/redis');
 const {
   evaluateAccountAccess: evaluateCounsellorAccountAccess,
 } = require('../../services/counsellorVerificationExpiry');
-const { verifyAdminToken, verifyUserToken } = require('../../utils/authTokens');
+const { verifyUserToken } = require('../../utils/authTokens');
+const { isCurrentSessionToken } = require('../../utils/sessionTokenBinding');
+const { recordSecurityEvent } = require('../../utils/securityAudit');
 const {
   getCookieToken,
   getWebSessionForRequest,
@@ -79,6 +81,86 @@ const getSocketWebSession = (socket) => getWebSessionForRequest({
   },
 });
 
+const authenticateSocketHandshake = async (socket, {
+  UserModel = User,
+  checkTokenBlocked,
+  evaluateCounsellorAccess = evaluateCounsellorAccountAccess,
+} = {}) => {
+  const webSession = getSocketWebSession(socket);
+  const transport = webSession ? 'cookie' : 'bearer';
+  if (webSession && !['user', 'counsellor'].includes(webSession.role)) {
+    return { ok: false, reason: 'unsupported_socket_role', transport };
+  }
+
+  const token = webSession
+    ? getCookieToken({ headers: socket.handshake.headers || {} }, webSession.cookieName)
+    : socket.handshake.auth?.token;
+
+  if (!token) return { ok: false, reason: 'missing_token', transport };
+
+  let decoded;
+  try {
+    decoded = verifyUserToken(token);
+  } catch {
+    return { ok: false, reason: 'invalid_or_expired_token', transport };
+  }
+
+  try {
+    const isBlocked = checkTokenBlocked
+      || require('../../middleware/auth').isTokenBlocked;
+    if (await isBlocked(token)) {
+      return { ok: false, reason: 'revoked_token', transport };
+    }
+
+    const user = await UserModel.findById(decoded.userId)
+      .select('firstName lastName role isActive sessionVersion')
+      .lean();
+    if (!user || !user.isActive || !isCurrentSessionToken(decoded, user)) {
+      return { ok: false, reason: 'account_binding_invalid', transport };
+    }
+    if (webSession && user.role !== webSession.role) {
+      return { ok: false, reason: 'session_origin_role_mismatch', transport };
+    }
+    if (user.role === 'counsellor') {
+      const professionalAccess = await evaluateCounsellorAccess({
+        account: user,
+      });
+      if (!professionalAccess.allowed) {
+        return { ok: false, reason: 'counsellor_access_denied', transport };
+      }
+    }
+
+    return {
+      ok: true,
+      decoded,
+      transport,
+      user,
+    };
+  } catch {
+    return { ok: false, reason: 'authentication_unavailable', transport };
+  }
+};
+
+const recordSocketAuthenticationDenial = (socket, result) => {
+  try {
+    recordSecurityEvent('socket_authentication_denied', {
+      req: {
+        method: 'SOCKET',
+        originalUrl: '/socket.io/auth',
+        ip: socket.handshake.address || socket.conn?.remoteAddress,
+      },
+      outcome: 'failure',
+      statusCode: 401,
+      details: {
+        reason: result.reason,
+        transport: result.transport,
+      },
+    });
+  } catch {
+    console.error('Socket authentication audit failed: SECURITY_AUDIT_UNAVAILABLE');
+  }
+};
+
 const createSocketSessionRevalidator = ({
   UserModel = User,
   evaluateCounsellorAccess = evaluateCounsellorAccountAccess,
@@ -89,8 +171,11 @@ const createSocketSessionRevalidator = ({
   if (
     !user
     || !user.isActive
-    || user.role !== socket.userRole
-    || (socket.sessionVersion || 0) !== (user.sessionVersion || 0)
+    || !isCurrentSessionToken({
+      userId: socket.userId,
+      role: socket.userRole,
+      sessionVersion: socket.sessionVersion,
+    }, user)
   ) {
     return false;
   }
@@ -182,47 +267,19 @@ const attachSocketHandlers = (io) => {
   const revalidateSocket = createSocketSessionRevalidator();
 
   io.use(async (socket, next) => {
-    const webSession = getSocketWebSession(socket);
-    const token = webSession
-      ? getCookieToken({ headers: socket.handshake.headers || {} }, webSession.cookieName)
-      : socket.handshake.auth.token;
-    if (!token) return next(new Error('Authentication error: Token required'));
-
-    try {
-      const decoded = webSession?.role === 'admin'
-        ? verifyAdminToken(token)
-        : verifyUserToken(token);
-      const { isTokenBlocked } = require('../../middleware/auth');
-
-      if (await isTokenBlocked(token)) {
-        return next(new Error('Authentication error: Token revoked'));
-      }
-
-      const user = await User.findById(decoded.userId).select('firstName lastName role isActive sessionVersion').lean();
-      if (!user || !user.isActive || (decoded.sessionVersion || 0) !== (user.sessionVersion || 0)) {
-        return next(new Error('Authentication error: Invalid token'));
-      }
-      if (webSession && user.role !== webSession.role) {
-        return next(new Error('Authentication error: Invalid session origin'));
-      }
-      if (user.role === 'counsellor') {
-        const professionalAccess = await evaluateCounsellorAccountAccess({
-          account: user,
-        });
-        if (!professionalAccess.allowed) {
-          return next(new Error('Authentication error: Counsellor approval unavailable'));
-        }
-      }
-
-      socket.userId = decoded.userId;
-      socket.userRole = user.role || 'user';
-      socket.userName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
-      socket.sessionVersion = decoded.sessionVersion || 0;
-      socket.authTransport = webSession ? 'cookie' : 'bearer';
-      return next();
-    } catch {
+    const authentication = await authenticateSocketHandshake(socket);
+    if (!authentication.ok) {
+      recordSocketAuthenticationDenial(socket, authentication);
       return next(new Error('Authentication error: Invalid token'));
     }
+
+    const { decoded, transport, user } = authentication;
+    socket.userId = decoded.userId;
+    socket.userRole = user.role;
+    socket.userName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    socket.sessionVersion = decoded.sessionVersion;
+    socket.authTransport = transport;
+    return next();
   });
 
   io.on('connection', async (socket) => {
@@ -423,6 +480,7 @@ module.exports = {
   parseBooleanEnv,
   _private: {
     DEFAULT_SOCKET_SESSION_REVALIDATION_INTERVAL_MS,
+    authenticateSocketHandshake,
     createSocketSessionRevalidator,
     readSocketSessionRevalidationInterval,
     revalidateConnectedSockets,

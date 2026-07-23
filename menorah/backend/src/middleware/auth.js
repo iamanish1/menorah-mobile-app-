@@ -4,7 +4,14 @@ const { getRedisClient } = require('../config/redis');
 const {
   evaluateAccountAccess: evaluateCounsellorAccountAccess,
 } = require('../services/counsellorVerificationExpiry');
-const { verifyUserToken, verifyAdminToken } = require('../utils/authTokens');
+const {
+  isTokenVerificationError,
+  verifyAdminToken,
+  verifyAnyAccessToken,
+  verifyUserToken,
+} = require('../utils/authTokens');
+const { isCurrentSessionToken } = require('../utils/sessionTokenBinding');
+const { recordSecurityEvent } = require('../utils/securityAudit');
 const { isRecentAdminMfa } = require('../services/payoutPolicy');
 const {
   clearSessionCookie,
@@ -37,9 +44,7 @@ const loadActiveUserForToken = async (decoded) => {
   const user = await User.findById(decoded.userId);
   if (!user || !user.isActive) return null;
 
-  if ((decoded.sessionVersion || 0) !== (user.sessionVersion || 0)) {
-    return null;
-  }
+  if (!isCurrentSessionToken(decoded, user)) return null;
 
   if (user.role === 'counsellor') {
     try {
@@ -61,9 +66,62 @@ const loadActiveUserForToken = async (decoded) => {
   return user;
 };
 
-const authFailure = (res, { status = 401, message = 'Invalid token.', session } = {}) => {
+const recordAccessDenial = (req, res, {
+  event = 'authentication_denied',
+  reason,
+  session,
+  statusCode,
+} = {}) => {
+  res.locals.securityAuthorizationLogged = true;
+  recordSecurityEvent(event, {
+    req,
+    user: req.user,
+    outcome: 'failure',
+    statusCode,
+    details: {
+      reason,
+      transport: session ? 'cookie' : (req.auth?.transport || 'bearer'),
+    },
+  });
+};
+
+const authFailure = (
+  req,
+  res,
+  {
+    status = 401,
+    message = 'Invalid token.',
+    reason = 'invalid_token',
+    session,
+  } = {}
+) => {
   if (session) clearSessionCookie(res, session.role);
+  recordAccessDenial(req, res, { reason, session, statusCode: status });
   res.status(status).json({ success: false, message });
+  return false;
+};
+
+const authorizationFailure = (
+  req,
+  res,
+  {
+    code,
+    message = 'Access denied.',
+    reason = 'insufficient_role',
+    session,
+  } = {}
+) => {
+  recordAccessDenial(req, res, {
+    event: 'authorization_denied',
+    reason,
+    session,
+    statusCode: 403,
+  });
+  res.status(403).json({
+    success: false,
+    ...(code ? { code } : {}),
+    message,
+  });
   return false;
 };
 
@@ -73,28 +131,29 @@ const authenticateToken = async (req, res, token, verifyToken, { optional = fals
     decoded = verifyToken(token);
   } catch (error) {
     if (optional) return null;
-    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-      return authFailure(res, { session });
+    if (isTokenVerificationError(error)) {
+      return authFailure(req, res, { reason: 'invalid_or_expired_token', session });
     }
     throw error;
   }
 
   if (await isTokenBlocked(token)) {
     if (optional) return null;
-    return authFailure(res, { session });
+    return authFailure(req, res, { reason: 'revoked_token', session });
   }
 
   const user = await loadActiveUserForToken(decoded);
   if (!user) {
     if (optional) return null;
-    return authFailure(res, { session });
+    return authFailure(req, res, { reason: 'account_binding_invalid', session });
   }
 
   if (session && user.role !== session.role) {
     if (optional) return null;
-    return authFailure(res, {
+    return authFailure(req, res, {
       status: 403,
       message: 'Access denied. Session cookie is not valid for this origin.',
+      reason: 'session_origin_role_mismatch',
       session,
     });
   }
@@ -116,17 +175,19 @@ const authenticateWithVerifier = async (req, res, verifyToken, { optional = fals
   if (webSession) {
     if (!['user', 'counsellor'].includes(webSession.role)) {
       if (optional) return null;
-      return authFailure(res, {
-        status: 403,
+      return authorizationFailure(req, res, {
         message: 'Access denied. Browser origin is not allowed for this API.',
+        reason: 'browser_origin_role_mismatch',
+        session: webSession,
       });
     }
 
     const cookieToken = getCookieToken(req, webSession.cookieName);
     if (!cookieToken) {
       if (optional) return null;
-      return authFailure(res, {
+      return authFailure(req, res, {
         message: 'Access denied. No browser session provided.',
+        reason: 'missing_cookie_session',
         session: webSession,
       });
     }
@@ -137,8 +198,10 @@ const authenticateWithVerifier = async (req, res, verifyToken, { optional = fals
   const token = extractBearerToken(req);
   if (!token) {
     if (optional) return null;
-    res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
-    return false;
+    return authFailure(req, res, {
+      message: 'Access denied. No token provided.',
+      reason: 'missing_bearer_token',
+    });
   }
 
   return authenticateToken(req, res, token, verifyToken, { optional });
@@ -150,8 +213,9 @@ const authenticateAny = async (req, res, { optional = false } = {}) => {
     const cookieToken = getCookieToken(req, webSession.cookieName);
     if (!cookieToken) {
       if (optional) return null;
-      return authFailure(res, {
+      return authFailure(req, res, {
         message: 'Access denied. No browser session provided.',
+        reason: 'missing_cookie_session',
         session: webSession,
       });
     }
@@ -164,23 +228,22 @@ const authenticateAny = async (req, res, { optional = false } = {}) => {
 
   if (!token) {
     if (optional) return null;
-    res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
-    return false;
+    return authFailure(req, res, {
+      message: 'Access denied. No token provided.',
+      reason: 'missing_bearer_token',
+    });
   }
 
-  for (const verifyToken of [verifyUserToken, verifyAdminToken]) {
-    try {
-      return await authenticateToken(req, res, token, verifyToken, { optional });
-    } catch (error) {
-      if (error.name !== 'JsonWebTokenError' && error.name !== 'TokenExpiredError') {
-        throw error;
-      }
-    }
-  }
+  // Verification is completed before any response is written, so a
+  // user-audience miss can safely fall through to the admin verifier.
+  return authenticateToken(req, res, token, verifyAnyAccessToken, { optional });
+};
 
-  if (optional) return null;
-  res.status(401).json({ success: false, message: 'Invalid token.' });
-  return false;
+const sendAuthMiddlewareError = (res, label, error) => {
+  console.error(label, error?.code || error?.name || 'AUTH_MIDDLEWARE_FAILURE');
+  if (!res.headersSent) {
+    res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
 };
 
 const auth = async (req, res, next) => {
@@ -189,8 +252,7 @@ const auth = async (req, res, next) => {
     if (!user) return;
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error.' });
+    sendAuthMiddlewareError(res, 'Auth middleware error:', error);
   }
 };
 
@@ -200,8 +262,7 @@ const authAny = async (req, res, next) => {
     if (!user) return;
     next();
   } catch (error) {
-    console.error('Auth-any middleware error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error.' });
+    sendAuthMiddlewareError(res, 'Auth-any middleware error:', error);
   }
 };
 
@@ -218,13 +279,18 @@ const adminAuth = async (req, res, next) => {
   try {
     const webSession = getWebSessionForRequest(req);
     if (webSession && webSession.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Access denied. Admin origin required.' });
+      return authorizationFailure(req, res, {
+        message: 'Access denied. Admin origin required.',
+        reason: 'admin_origin_required',
+        session: webSession,
+      });
     }
 
     const cookieToken = webSession ? getCookieToken(req, webSession.cookieName) : null;
     if (webSession && !cookieToken) {
-      return authFailure(res, {
+      return authFailure(req, res, {
         message: 'Access denied. No browser session provided.',
+        reason: 'missing_cookie_session',
         session: webSession,
       });
     }
@@ -235,22 +301,24 @@ const adminAuth = async (req, res, next) => {
     if (!user) return;
 
     if (user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Access denied. Admin privileges required.' });
+      return authorizationFailure(req, res, {
+        message: 'Access denied. Admin privileges required.',
+        reason: 'admin_role_required',
+      });
     }
 
     next();
   } catch (error) {
-    console.error('Admin auth middleware error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error.' });
+    sendAuthMiddlewareError(res, 'Admin auth middleware error:', error);
   }
 };
 
 const requireRecentAdminMfa = (req, res, next) => {
   if (!isRecentAdminMfa(req.auth?.decoded)) {
-    return res.status(403).json({
-      success: false,
+    return authorizationFailure(req, res, {
       code: 'ADMIN_MFA_FRESHNESS_REQUIRED',
       message: 'A fresh multi-factor authenticated admin session is required for this action.',
+      reason: 'admin_mfa_freshness_required',
     });
   }
   return next();
@@ -258,8 +326,11 @@ const requireRecentAdminMfa = (req, res, next) => {
 
 const counsellorAuth = async (req, res, next) => {
   await auth(req, res, () => {
-    if (req.user?.role !== 'counsellor' && req.user?.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Access denied. Counsellor privileges required.' });
+    if (req.user?.role !== 'counsellor') {
+      return authorizationFailure(req, res, {
+        message: 'Access denied. Counsellor privileges required.',
+        reason: 'counsellor_role_required',
+      });
     }
     next();
   });

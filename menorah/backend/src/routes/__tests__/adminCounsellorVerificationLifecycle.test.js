@@ -31,7 +31,16 @@ jest.mock('../../config/webSessions', () => ({
 }));
 
 jest.mock('../../utils/authTokens', () => ({
-  verifyAdminToken: (...args) => mockVerifyAdminToken(...args),
+  isTokenVerificationError: (error) => [
+    'JsonWebTokenError',
+    'NotBeforeError',
+    'TokenExpiredError',
+  ].includes(error?.name),
+  verifyAdminToken: (...args) => {
+    const decoded = mockVerifyAdminToken(...args);
+    return decoded ? { role: 'admin', ...decoded } : decoded;
+  },
+  verifyAnyAccessToken: jest.fn(),
   verifyUserToken: jest.fn(),
 }));
 
@@ -239,7 +248,7 @@ describe('admin counsellor verification lifecycle routes', () => {
 
   describe.each([
     ['without an admin token', undefined, 401],
-    ['with a non-admin account', 'non-admin', 403],
+    ['with a non-admin account', 'non-admin', 401],
   ])('%s', (_description, token, expectedStatus) => {
     test.each(verificationEndpoints)(
       '$label is isolated by inherited admin authentication',

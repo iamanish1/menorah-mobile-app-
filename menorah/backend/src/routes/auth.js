@@ -12,6 +12,10 @@ const { signUserToken } = require('../utils/authTokens');
 const { revokeAllSessions } = require('../utils/sessionLifecycle');
 const { serializeAuthUser, serializeUserProfile } = require('../serializers/userSerializer');
 const {
+  PASSWORD_STRENGTH_MESSAGE,
+  PASSWORD_STRENGTH_OPTIONS,
+} = require('../config/passwordPolicy');
+const {
   clearMappedSessionCookie,
   isCookieTransportRequested,
   setSessionCookieForRequest,
@@ -367,8 +371,8 @@ router.post('/register', [
   body('lastName').trim().isLength({ min: 2, max: 50 }),
   body('email').isEmail().normalizeEmail(emailNormalizationOptions),
   body('phone').matches(/^\+[1-9]\d{1,14}$/),
-  body('password').isStrongPassword({ minLength: 8, minLowercase: 1, minUppercase: 1, minNumbers: 1, minSymbols: 0 })
-    .withMessage('Password must be at least 8 characters and include uppercase, lowercase, and a number'),
+  body('password').isStrongPassword({ ...PASSWORD_STRENGTH_OPTIONS })
+    .withMessage(PASSWORD_STRENGTH_MESSAGE),
   body('dateOfBirth').isISO8601(),
   body('gender').isIn(['male', 'female', 'other', 'prefer-not-to-say']),
 ], async (req, res) => {
@@ -865,8 +869,8 @@ router.get('/reset-password', (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/reset-password', [
   body('token').notEmpty(),
-  body('password').isStrongPassword({ minLength: 8, minLowercase: 1, minUppercase: 1, minNumbers: 1, minSymbols: 0 })
-    .withMessage('Password must be at least 8 characters and include uppercase, lowercase, and a number'),
+  body('password').isStrongPassword({ ...PASSWORD_STRENGTH_OPTIONS })
+    .withMessage(PASSWORD_STRENGTH_MESSAGE),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
