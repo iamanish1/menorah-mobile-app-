@@ -13,6 +13,7 @@ Apply a repository ruleset to `main` and `release/**`:
 - Require the branch to be current before merge.
 - Require these stable status checks:
   - `Production release readiness`
+  - `Required functional release gates`
   - `Required security gates`
 - Block force pushes and branch deletion.
 - Limit bypass to named emergency maintainers, require a documented incident or

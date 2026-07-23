@@ -15,6 +15,7 @@ deploy, authorize a deployment, or prove that external controls are active.
 ## Required Checks
 
 - `Production release readiness` run:
+- `Required functional release gates` run:
 - `Required security gates` run:
 - Other test evidence:
 - Passing:

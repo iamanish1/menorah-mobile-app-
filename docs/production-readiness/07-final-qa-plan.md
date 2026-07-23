@@ -46,6 +46,19 @@ discard user changes to make this gate pass.
 
 ## Stage 2 — deterministic repository checks
 
+The repository executes this matrix in
+`.github/workflows/functional-release.yml`. Every job checks out the exact
+validated candidate SHA without persisted credentials. The stable
+`Required functional release gates` check fails if candidate identity,
+backend default tests, disposable MongoDB/Redis integration tests, any web
+workspace, mobile, or release/infrastructure validation fails or is skipped.
+The separate `Required security gates` check remains responsible for
+Gitleaks, Semgrep, dependency-policy, Trivy and SBOM evidence.
+
+CI uses only tracked synthetic configuration and disposable service data.
+It does not bind a GitHub environment, consume repository secrets, contact
+live providers, authenticate to infrastructure or deploy.
+
 ### Backend
 
 From `menorah/backend`:
