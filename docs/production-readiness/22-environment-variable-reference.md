@@ -149,6 +149,7 @@ rotate passwords.
 | Variable(s) | Class | Consumer and required format | Secret | Owner and evidence |
 | --- | --- | --- | --- | --- |
 | `RESEND_API_KEY` | R | Resend credential for production email | Yes | `VENDOR ACTION`; delivery/bounce/incident evidence |
+| `RESEND_WEBHOOK_SECRET` | R for `api-web` | Resend/Svix webhook signing secret; at least 24 non-placeholder characters; raw-body signature and replay tests required | Yes | `VENDOR ACTION`, security; signed/invalid/replay callback evidence |
 | `APPLE_SIGN_IN_ENABLED` | R for `api-ios`/worker | Exact `true` in production under startup validation | No | `APPLE ACTION`; auth test |
 | `APPLE_IOS_BUNDLE_ID` | R | Exact approved iOS bundle identifier | No | `APPLE ACTION`; app/store record |
 | `APPLE_TEAM_ID`, `APPLE_KEY_ID` | R | Ten uppercase alphanumeric characters under validation | Sensitive | `APPLE ACTION`; account evidence |

@@ -1,15 +1,17 @@
 # Production go/no-go record
 
-Decision date: 2026-07-23.
+Decision date: 2026-07-24.
 
 ## Verdict
 
 # NOT READY
 
 This verdict applies to public production launch. Repository remediation has
-materially improved control design, but an immutable reviewed release, complete
-cross-stack evidence, live infrastructure proof, approved operating policies,
-independent VAPT, store validation and vendor evidence are not complete.
+materially improved control design and the repository-controlled P0 scope is
+complete at a frozen exact-SHA candidate. Independent review, protected
+repository governance, isolated-staging evidence, live infrastructure proof,
+approved operating policies, independent VAPT, store validation and vendor
+evidence are not complete.
 
 No part of this document authorizes deployment, migration, secret changes,
 provider changes, DNS/Cloudflare changes or store submission.
@@ -20,7 +22,7 @@ provider changes, DNS/Cloudflare changes or store submission.
 | --- | --- | --- | --- |
 | Repository implementation | Candidate code, tests, configuration and runbooks | Intended behavior under covered test conditions | Live configuration, production data safety, operator execution or policy approval |
 | Desktop validation | Unit/lint/config checks run without production access | Local regression status | Linux host behavior, vendor callbacks, DNS, alert delivery, backups or stores |
-| Isolated integration | Some database-dependent suites are gated for disposable databases | Behavior when explicitly executed in the approved isolated environment | They are not passing evidence when skipped |
+| Isolated integration | All 13 backend integration suites ran against disposable MongoDB and Redis; 45/45 tests passed | Covered behavior under the exact workflow fixture | Production data, host behavior or staging completeness |
 | Live proof | Not completed for this candidate | Nothing may be inferred | Required before any public launch |
 | Governance/external proof | Decisions and sign-offs remain pending | Nothing may be inferred | Cannot be replaced by code or a template |
 
@@ -28,16 +30,20 @@ provider changes, DNS/Cloudflare changes or store submission.
 
 | Gate | Current assessment | Required evidence |
 | --- | --- | --- |
-| Immutable candidate | Open | Clean reviewed SHA, remote sync, focused commit list, protected release record |
-| Backend regression | Candidate evidence exists; final release-SHA record still required | Exact pass/fail/skip counts and isolated integration results |
-| Web/admin/counsellor/mobile | Final combined release evidence not recorded here | Lint, type-check, test and production build results per app |
-| Release/recovery scripts | Candidate regression coverage exists | Linux syntax/runtime validation against final SHA |
-| Compose/Caddy/monitoring | Source validation exists | Final config tests plus host interpolation and native validators |
+| Immutable candidate | Repository complete; review required | Runtime SHA `3fb99858c6766a341bb7b7dab2377195427f0ea1`, documentation-head verification, independent review and protected release record |
+| Backend regression | Pass | 112/112 default suites and 1,426/1,426 tests plus 13/13 disposable integration suites and 45/45 tests |
+| Web/admin/counsellor/mobile | Pass for repository automation | Exact-SHA lint/type/build/audit jobs; mobile 20/20 contracts and 19/19 Doctor |
+| Release/recovery scripts | Pass for repository automation | Exact-SHA Linux safety suites, Bash syntax and pinned ShellCheck |
+| Compose/Caddy/monitoring | Pass for repository automation | Clean-archive Compose, Caddy, 14 jobs, 69 rules, 26 coverage records and all 20 P0 mappings; protected-host/live proof remains open |
 | Migrations | Unit/preflight tests exist | Disposable replica-set execution, invariants, ordering and recovery evidence |
-| Dependency/security scans | Scheduled gates exist | Fresh final-SHA results, exceptions, VAPT and closure retest |
+| Dependency/security scans | Exact-SHA automated gates pass | Gitleaks, Semgrep, production dependency policies, four Trivy image gates and SBOMs pass; independent VAPT remains open |
 
-Repository gate decision: **NO-GO** until the immutable evidence pack is
-complete.
+Repository-controlled P0 decision:
+**REPOSITORY REMEDIATION COMPLETE — REVIEW REQUIRED**.
+
+Public-production decision remains **NO-GO** because the external and
+operational evidence below is incomplete. Exact repository results are in
+[the immutable candidate record](./26-immutable-candidate-record.md).
 
 ## Live infrastructure blockers
 
@@ -150,8 +156,8 @@ Vendor decision: **NO-GO**.
 
 ## Minimum sequence to reconsider the verdict
 
-1. Freeze and review one immutable candidate SHA.
-2. Complete every repository and isolated-staging test against that SHA.
+1. Independently review the frozen immutable candidate and documentation-only boundary.
+2. Execute the isolated-staging package against that SHA.
 3. Resolve or explicitly document every result in
    [known issues](./20-known-issues-and-technical-debt.md).
 4. Obtain owner, legal, privacy and clinical decisions.
@@ -171,7 +177,7 @@ Vendor decision: **NO-GO**.
 
 | Role | Current decision | Reason |
 | --- | --- | --- |
-| Engineering | No-go for public launch | Final immutable cross-stack evidence incomplete |
+| Engineering | No-go for public launch; repository remediation complete pending review | Isolated staging, protected governance and external approvals incomplete |
 | Infrastructure | No-go | Live recovery, network, monitoring and log evidence incomplete |
 | Owner/operations | No-go | Policies, roles and risk decisions incomplete |
 | Legal/privacy | No-go | Qualified approvals and operating evidence incomplete |
@@ -180,4 +186,5 @@ Vendor decision: **NO-GO**.
 | Apple/Google | No-go | Store and signed-build evidence incomplete |
 | Vendors | No-go | Provider evidence incomplete |
 
-The only evidence-supported verdict on 2026-07-23 is **NOT READY**.
+The only evidence-supported public-production verdict on 2026-07-24 is
+**NOT READY**.

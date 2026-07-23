@@ -1,6 +1,6 @@
 # Production-readiness executive summary
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-07-24.
 
 ## Verdict
 
@@ -15,6 +15,21 @@ authorize public service.
 No part of this package authorizes deployment, migration, restoration, traffic
 changes, secret changes, provider changes, store submission or production data
 access.
+
+## Repository-remediation status
+
+**REPOSITORY REMEDIATION COMPLETE — REVIEW REQUIRED**
+
+The repository-controlled P0 scope is frozen at runtime SHA
+`3fb99858c6766a341bb7b7dab2377195427f0ea1` on
+`release/final-production-readiness`. Production Release Readiness, the
+exact-SHA functional aggregate and the security aggregate are green for that
+SHA. After the freeze, only `docs/**` and `menorah/docs/**` may change; any
+runtime, configuration, workflow or test change invalidates the candidate.
+
+See [the immutable candidate record](./26-immutable-candidate-record.md) for
+run links, test totals, warnings, skips, the evidence boundary and remaining
+external proof.
 
 ## What this verdict covers
 
@@ -55,13 +70,15 @@ The current candidate includes repository controls for:
   collection; and
 - store-readiness, vendor, ownership, incident and recovery checklists.
 
-These controls are candidate implementation evidence only. Their final
-release-SHA tests, staging behavior and live operation still require evidence.
+These controls and their exact-SHA automated repository results are candidate
+implementation evidence only. Staging behavior and live operation still
+require evidence.
 
 ## Current observability position
 
 Repository validation currently accounts for **14 Prometheus scrape jobs**,
-**53 alert rules** and **26 observability coverage records**. JSON health
+**69 alert rules** and **26 observability coverage records**. The
+machine-validated P0 register covers all 20 required alert gaps. JSON health
 endpoints are probed through blackbox exporter rather than being treated as
 Prometheus metrics.
 
@@ -88,7 +105,7 @@ for the exact evidence required.
 
 | Blocking area | Repository position | Evidence or decision still required |
 | --- | --- | --- |
-| Immutable release | Remediation is preserved as focused release-branch commits, but no owner-approved protected production release record exists | Reviewed clean final SHA, final tests, remote synchronization, protected release record |
+| Immutable release | Runtime SHA `3fb99858c6766a341bb7b7dab2377195427f0ea1` is frozen with exact-SHA release, functional and security gates green | Independent review, final documentation-head record in the draft PR, repository governance and owner-approved protected release record |
 | Configuration | Fail-closed validators and a redacted variable reference exist | `INFRASTRUCTURE ACTION`: validate the actual host configuration without disclosing values |
 | Data and migrations | Ordered migration and preflight controls exist | `INFRASTRUCTURE ACTION`: disposable staging execution, approved maintenance boundary and invariant evidence |
 | Backup and recovery | Signed/encrypted backup and isolated-restore tooling exists | `INFRASTRUCTURE ACTION`: current host backup, off-site copy and successful restore evidence; the newest restore test must be no more than 24 hours old |
@@ -107,8 +124,8 @@ issues and bounded limitations are maintained in
 
 ## Minimum route to reconsideration
 
-1. Freeze and independently review one immutable candidate SHA.
-2. Record every final test, build, scan, skip and exception against that SHA.
+1. Independently review the frozen immutable candidate and its documentation-only boundary.
+2. Preserve the recorded tests, builds, scans, skips and exceptions against that SHA.
 3. Exercise migrations and recovery in an approved disposable environment.
 4. Obtain the outstanding owner, legal, privacy and clinical decisions.
 5. Complete vendor and mobile-store prerequisites.

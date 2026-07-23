@@ -1,6 +1,6 @@
 # Staging go/no-go record
 
-Runtime candidate SHA: `f507fc41eb636e0c4607d6c34bd80354f8ccff2e`
+Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -36,7 +36,7 @@ Complete in the controlled decision record:
 
 | Field | Record |
 | --- | --- |
-| Runtime candidate branch/SHA | `release/final-production-readiness` / `f507fc41eb636e0c4607d6c34bd80354f8ccff2e` |
+| Runtime candidate branch/SHA | `release/final-production-readiness` / `3fb99858c6766a341bb7b7dab2377195427f0ea1` |
 | Docs/PR-head revision | Record the final full `git rev-parse HEAD` externally after the package commit; it cannot be embedded in its own content-addressed commit |
 | Meeting UTC time | TBD |
 | Change/evidence-pack reference | TBD |
@@ -53,15 +53,15 @@ Silence, absence, a template, or a verbal assurance is not approval.
 
 | Gate | Minimum evidence | Accountable decision | Current status |
 | --- | --- | --- | --- |
-| Candidate freeze | Clean/synchronized exact SHA, reviewed commit scope, immutable artifact provenance | Engineering release owner | OPEN / NO-GO |
-| Repository checks | Backend/web/admin/counsellor/mobile lint, type, tests, builds, audits; production QA; Compose/Caddy/shell; scans | Engineering + QA + security | OPEN / NO-GO |
+| Candidate freeze | Clean/synchronized exact SHA, reviewed commit scope, immutable artifact provenance | Engineering release owner | REPOSITORY PASS / REVIEW REQUIRED |
+| Repository checks | Backend/web/admin/counsellor/mobile lint, type, tests, builds, audits; production QA; Compose/Caddy/shell; scans | Engineering + QA + security | PASS at runtime SHA / staging still NO-GO |
 | Staging isolation | Dedicated host/network/domains/Mongo/Redis/storage/providers/alerts; no production route/data/credential | `INFRASTRUCTURE ACTION`; QA data custodian | OPEN / NO-GO |
 | Guarded deployment | Exact-SHA release record, image manifest, health and marker consistency | Engineering + infrastructure | OPEN / NO-GO |
 | Functional QA | All P0 auth, booking, KYC, chat/call, privacy and role cases pass; P1 disposition recorded | QA/product owners | OPEN / NO-GO |
 | Security QA | All P0 adversarial cases pass; outbound email is exact staging-domain-only; no secret/PII leakage; scan findings treated | Security owner | OPEN / NO-GO |
 | Payments/providers | Sandbox order/webhook/refund/payout/reconciliation passes; each enabled provider pack complete | Payment/finance + `VENDOR ACTION` | OPEN / NO-GO |
 | Recovery | Encrypted signed backup, isolated restore, migration, interruption, rollback/resume, media and RPO/RTO rehearsal | Database/recovery + infrastructure | OPEN / NO-GO |
-| Monitoring | Targets/probes, 53 implemented rules, remediation of 20 explicit missing alert rows, controlled firing/delivery/ack/resolved, Uptime Kuma and logging | Infrastructure + on-call owner | BLOCKED / NO-GO |
+| Monitoring | Targets/probes, 69 implemented rules including all 20 required P0 mappings, controlled firing/delivery/ack/resolved, Uptime Kuma and logging | Infrastructure + on-call owner | REPOSITORY PASS; STAGING NOT RUN / NO-GO |
 | Mobile/store preflight | Repository checks, signed candidate builds, physical devices, links, declarations and account ownership | `APPLE ACTION`; `GOOGLE ACTION` | OPEN / NO-GO |
 | Independent VAPT | Immutable staging assessment and critical/high closure retest; residual treatments approved | `VAPT ACTION`; security owner | OPEN / NO-GO |
 | Owner/operations | Named primaries/alternates; product/finance/RPO/RTO/pilot/risk decisions | `OWNER ACTION` | OPEN / NO-GO |

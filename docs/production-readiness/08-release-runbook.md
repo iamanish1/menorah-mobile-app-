@@ -1,6 +1,6 @@
 # Production release runbook
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-07-24.
 
 ## Status and authority
 
@@ -27,6 +27,21 @@ The detailed operator procedure remains
 [the production update runbook](../../menorah/docs/production-update-runbook.md).
 Rollback and recovery are in
 [09-rollback-runbook.md](./09-rollback-runbook.md).
+
+## Current reviewed candidate input
+
+The repository-controlled runtime candidate is
+`3fb99858c6766a341bb7b7dab2377195427f0ea1` on
+`release/final-production-readiness`. Its exact-SHA release-readiness,
+functional aggregate and security aggregate workflows pass. This identity
+does not satisfy the remaining pre-release stop/go items below and does not
+authorize execution.
+
+The draft PR records the final documentation HEAD. The runtime-to-docs diff
+must contain only `docs/**` or `menorah/docs/**`. Any other change invalidates
+the candidate. Use
+[the immutable candidate record](./26-immutable-candidate-record.md) as the
+repository evidence source.
 
 ## Roles
 

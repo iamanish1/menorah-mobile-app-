@@ -1,6 +1,6 @@
 # Known issues and technical debt
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-07-24.
 
 ## Reading this register
 
@@ -23,12 +23,12 @@ evidence.
 
 | ID | Sev. | Issue and current evidence | Required closure | Owner |
 | --- | --- | --- | --- | --- |
-| HO-REL-001 | P0 | Focused remediation commits exist on the release branch, but an owner-approved protected production release record with complete cross-stack evidence has not yet been recorded | Final review/CI, clean final SHA, remote synchronization, protected rules and signed release record | Engineering; `OWNER ACTION` |
+| HO-REL-001 | P0 | Repository runtime SHA `3fb99858c6766a341bb7b7dab2377195427f0ea1` is frozen with exact-SHA release, functional and security aggregate evidence; no owner-approved protected production release record exists | Independent review, documentation-head verification, protected rules and signed release record | Engineering; `OWNER ACTION` |
 | HO-CFG-001 | P0 | Startup and Compose validation are present, but the target host's complete non-placeholder configuration has not been validated in evidence | Secret-safe host validation for every service; approved custody/recovery | `INFRASTRUCTURE ACTION`, `OWNER ACTION` |
 | HO-BKP-001 | P0 | Backup ownership/readability and restore safety are designed and regression-tested; no new live encrypted backup plus isolated restore for this candidate is evidenced | Successful host backup, signature/checksum, off-host copy and isolated DB/media restore | `INFRASTRUCTURE ACTION`, `OWNER ACTION` |
 | HO-DB-001 | P0 | Ordered migrations and tests exist; production data/index preflight and candidate migration have intentionally not run | Backup, isolated staging migration, invariant report, approved production boundary and post-check | `INFRASTRUCTURE ACTION` |
 | HO-OBS-001 | P0 | Prometheus/blackbox/exporters/rules are source-controlled; the committed Alertmanager receiver intentionally has no human destination | Approved external receiver, live targets/probes, controlled delivery/acknowledgement/resolution evidence and rota | `INFRASTRUCTURE ACTION`, `OWNER ACTION` |
-| HO-OBS-002 | P0 | The coverage manifest records unavailable first-class signals for queue backlog, immediate systemd backup failure, general payment-provider failure, email outcomes, call/provider failures, permission changes and separate HTTP status rates | Implement or explicitly compensate each launch-critical signal; test alert paths | `INFRASTRUCTURE ACTION`, engineering |
+| HO-OBS-002 | P0 | All 20 required first-class signals now have bounded producers, rules, firing/recovery fixtures, runbooks and machine-validated coverage; no isolated-staging or human-delivery evidence exists | Validate thresholds, provider callbacks, targets, controlled firing/recovery, protected receiver delivery and human response in isolated staging | `INFRASTRUCTURE ACTION`, engineering |
 | HO-NET-001 | P0 | Caddy and tunnel manifests cover intended domains, but live Cloudflare/DNS/tunnel state is not proved | Read-only comparison, route/TLS tests and change evidence | `INFRASTRUCTURE ACTION` |
 | HO-PAY-001 | P0 | Payment integrity/reconciliation controls exist, but live initiation remains gated and product/finance rules are unresolved | Owner-approved cancellation/refund/promo/late-event rules; provider test-mode end-to-end evidence; reconciliation ownership | `OWNER ACTION`, `VENDOR ACTION` |
 | HO-KYC-001 | P0 | Counsellor verification states and evidence gates exist; qualification sufficiency and clinical/legal policy remain unapproved | Approved qualification/evidence/renewal/suspension policy and staged workflow proof | `CLINICAL ACTION`, `LEGAL ACTION`, `OWNER ACTION` |

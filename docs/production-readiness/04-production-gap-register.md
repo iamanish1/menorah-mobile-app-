@@ -1,6 +1,6 @@
 # Production gap register
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-07-24.
 
 ## Status and relationship to other registers
 
@@ -26,15 +26,21 @@ Priority meanings:
   deferred only through an authorized, bounded decision that does not waive
   law, safety or store requirements.
 
+The repository-controlled portion of `CX-P0-01` through `CX-P0-06` is complete
+at runtime SHA `3fb99858c6766a341bb7b7dab2377195427f0ea1`. This does not close
+the staging, live, owner, legal/privacy, clinical, VAPT, store, vendor or ISO
+rows below. Exact repository evidence is recorded in
+[the immutable candidate record](./26-immutable-candidate-record.md).
+
 ## Repository and release-evidence gaps
 
 | ID | Pri. | Current repository evidence | Missing closure evidence | Owner/action |
 | --- | --- | --- | --- | --- |
-| GAP-REL-001 | P0 | Guarded release, migration, rollback and CI validation exist | Freeze a clean reviewed SHA; record remote parity, focused commits, full pass/fail/skip results, scans, approvals and protected release identity | Engineering; `OWNER ACTION` for repository governance |
-| GAP-QA-001 | P0 | Targeted regression suites cover high-risk security and business paths | Final-SHA cross-stack builds/tests; disposable integration results; production-like web/mobile/API E2E; every skip/failure disposition | Engineering and QA |
+| GAP-REL-001 | P0 | Clean runtime SHA is frozen; focused commits, exact-SHA release/functional/security runs and pass/fail/skip records exist | Independent review, documentation-head verification, approved branch/ruleset governance and protected production release identity | Engineering; `OWNER ACTION` for repository governance |
+| GAP-QA-001 | P0 | Exact-SHA backend default plus disposable integration, three web builds, mobile contracts/Doctor, infrastructure and aggregate results pass | Production-like isolated-staging web/mobile/API E2E, device/provider behavior and reviewer acceptance | Engineering and QA |
 | GAP-DEP-001 | P1 | Dependency audit policy, lockfiles and a bounded Expo transitive exception exist | Fresh production-scope audits and exploitability review for every package at final SHA; supported upgrades/tests and time-bound exceptions | Engineering; security reviewer |
 | GAP-ARC-001 | P1 | Production Compose separates services/networks and hardens containers | Independent architecture/least-privilege review of final rendered model, including web-service DB/email access, external network membership and high-trust components | Engineering; security; `INFRASTRUCTURE ACTION` |
-| GAP-OBS-SIGNAL-001 | P0 | Source has 14 scrape jobs, 53 alert rules and 26 coverage records | Close or explicitly compensate launch-critical unavailable signals: queue backlog, host timer failure, broad payment/email/call outcomes, permission changes and separate HTTP status rates | Engineering; `INFRASTRUCTURE ACTION`; owners named in coverage manifest |
+| GAP-OBS-SIGNAL-001 | P0 | Source has 14 scrape jobs, 69 alert rules, 26 coverage records and machine validation for all 20 required P0 alert gaps | Isolated-staging threshold, firing, recovery, target and provider-callback evidence; approved ownership and live delivery | Engineering; `INFRASTRUCTURE ACTION`; owner placeholders in coverage manifest |
 
 ## Live infrastructure and recovery gaps
 

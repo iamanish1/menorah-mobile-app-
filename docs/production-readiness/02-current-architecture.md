@@ -103,8 +103,9 @@ Docker daemon or external-network inspection.
 
 ## Observability architecture
 
-The candidate monitoring configuration contains **14 scrape jobs**, **53 alert
-rules** and **26 coverage records**.
+The candidate monitoring configuration contains **14 scrape jobs**, **69 alert
+rules** and **26 coverage records**. Its machine-validated P0 register maps all
+20 required alert gaps to bounded producers, rules, fixtures and runbooks.
 
 Prometheus collects native metrics from the application and exporters.
 Blackbox exporter probes JSON health endpoints, TCP dependencies and public TLS

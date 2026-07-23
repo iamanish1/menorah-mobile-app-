@@ -1,6 +1,6 @@
 # Unified production-readiness evidence index
 
-Runtime candidate SHA: `f507fc41eb636e0c4607d6c34bd80354f8ccff2e`
+Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -16,7 +16,7 @@ The runtime SHA identifies the reviewed code, configuration and artifact
 content. The docs/PR-head revision identifies the later evidence-package
 commit and the updater's required remote-tip checkout/marker SHA. Do not
 relabel runtime, VAPT or mobile-build evidence: accept that later head only
-with recorded ancestry and a diff confined to this staging package.
+with recorded ancestry and a diff confined to `docs/**` or `menorah/docs/**`.
 
 ## Field and status rules
 
@@ -39,41 +39,23 @@ affected rows `INVALIDATED` and rerun them for the new SHA.
 
 ## Current repository observation log
 
-The workflow and media-recovery validators, security-preflight web image
-builds, and actionlint were rerun locally on the exact frozen runtime SHA
-`f507fc41eb636e0c4607d6c34bd80354f8ccff2e`. The other results below were
-observed on predecessor runtime SHA
-`4c82121bfa2293a21a831bc490f4101eb4db1213`. Excluding this staging
-documentation package, changes between those SHAs are limited to release QA
-validators/tests and the security-scan workflow; no application source,
-dependency lockfile, migration or deployment runtime changed. The listed
-application results are therefore retained as unaffected diagnostic
-observations under the package impact rule. They are not newly executed or
-durable external evidence. Controlled storage, responsible-party review and
-any required skipped-test disposition remain necessary before a related
-tracker row can become `PASS`.
+The following durable GitHub runs checked out runtime SHA
+`3fb99858c6766a341bb7b7dab2377195427f0ea1` exactly. Repository evidence does
+not convert any staging, live or governance row to `PASS`.
 
-| Command | Most recent local result | Current tracker treatment |
+| Evidence | Exact result | Current tracker treatment |
 | --- | --- | --- |
-| `git rev-parse HEAD` at runtime freeze | `f507fc41eb636e0c4607d6c34bd80354f8ccff2e` | Exact local runtime identity; final docs/PR-head and remote synchronization record still required |
-| `cd menorah/scripts/qa && npm run test:release-workflow` | 62/62 checks passed, including CRLF and non-routable security-build-origin regression coverage | Diagnostic only; durable log and independent review required |
-| `cd menorah/scripts/qa && npm run test:media-recovery` | Passed on the runtime SHA after aligning the validator with the required `MEDIA_PUBLIC_BASE_URL` contract | Diagnostic only; remote exact-head workflow must pass |
-| Security preflight image builds for user and counsellor web | Both passed with exact non-routable `https://calls.security-test.invalid` build origin | Diagnostic only; exact-head Trivy/SBOM jobs must pass remotely |
-| `cd menorah/scripts/qa && npm run test:smoke-safety` | 12/12 checks passed | Diagnostic only; durable log required |
-| `cd menorah/mobile-app && npm run test:release-config` | 20/20 checks passed | Diagnostic only; durable log required |
-| `cd menorah/mobile-app && npm run validate:release-config` | Passed | Diagnostic only; durable log required |
-| Backend lint | Passed | Diagnostic only; durable log required |
-| Default backend Jest run | 108 suites and 1,411 tests passed; 13 suites and 45 tests skipped | Skips require explicit disposition; `REP-002` cannot be `PASS` |
-| Backend production dependency audit | 0 vulnerabilities | Diagnostic only; durable report required |
-| User web lint | 0 errors; 3 warnings | Diagnostic only; warning disposition and durable log required |
-| User web TypeScript check | Passed | Diagnostic only; durable log required |
-| User web email-routing tests | 5/5 checks passed | Diagnostic only; durable log required |
-| User web production build | Passed; 36 pages plus middleware | Diagnostic only; artifact checksum and durable log required |
-| User web production dependency audit | 0 vulnerabilities | Diagnostic only; durable report required |
-| `actionlint` v1.7.12 | Passed | Diagnostic only; pinned-tool durable log required |
-| Production Compose, missing-authoritative-value and home/live-mailbox guards | Passed | Diagnostic only; protected staging render evidence required |
-| Shell staging guards | Passed | Diagnostic only; protected-host execution evidence required |
-| Pinned Gitleaks v8.30.1 full-history scan | 345 commits, approximately 12.15 MB, 0 leaks at docs-head predecessor `8df0c67e3d1003668e288bba1ae4025e128fa3b4` | Local clean result only; rerun after the final docs-head commit and retain the exact report |
+| [Production Release Readiness 30051102484](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30051102484) | PASS: workflow/release invariants, production Compose and shell syntax | Repository evidence for `REP-005`, `REP-006`, `REP-008` and `REP-009` |
+| [Functional release validation 30051102471](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30051102471) | PASS: all 9 jobs including aggregate | Repository evidence for `REP-002` through `REP-006` and `REP-009` |
+| Backend default | 112/112 suites; 1,426/1,426 tests; lint and production audit pass | No skip |
+| Backend disposable integration | 13/13 suites; 45/45 tests against disposable MongoDB/Redis | All locally skipped integration tests executed here; no skip |
+| User/admin/counsellor web | All three lint/type/build/audit jobs pass | Warnings retained in immutable candidate record |
+| Mobile | Lint/type, 20/20 contracts, 19/19 Doctor and dependency policy pass | 11 constrained moderate transitive findings expire 2026-10-31 |
+| Release/infrastructure | 159 TAP tests plus Compose, Caddy, clean archive, Bash and pinned ShellCheck pass | No ignored `home.env`; no skip |
+| Monitoring | 14 scrape jobs, 69 alerts and 26 records; all 20 P0 mappings validate | Live target, threshold and delivery evidence remains `STG-016`/`STG-017` |
+| [Security gates 30051102473 attempt 2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30051102473) | PASS: all 15 jobs including aggregate | Gitleaks, Semgrep, dependency policy, four Trivy image gates and four SBOMs |
+| Security attempt 1 | Backend base-image metadata request timed out before build | Same-SHA failed-job retry passed; retained as a warning, not hidden |
+| Documentation HEAD | Exact draft-PR head; runtime-to-head path diff must satisfy the documentation allowlist | Recorded externally because a commit cannot embed its own SHA |
 
 ## Current external governance snapshot
 
@@ -111,15 +93,15 @@ authorizations to mutate GitHub configuration.
 
 | ID | Requirement | Responsible party | Evidence | Location | Status | Severity | Renewal / expiry | Candidate SHA |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `REP-001` | Exact runtime branch/SHA, docs revision, clean worktree and remote synchronization | Engineering release owner | Git identity, commit inventory and UTC reviewer record | TBD — controlled evidence store | NOT COLLECTED | P0 | Each candidate | Runtime SHA above |
-| `REP-002` | Backend lint, unit/integration/migration tests and production dependency audit | Backend/QA | Commands, versions, counts, isolated DB identity and full logs | TBD — controlled evidence store | NOT COLLECTED | P0 | Each candidate | Runtime SHA above |
-| `REP-003` | User, admin and counsellor web lint/type/build/audit | Web/QA | Per-workspace logs and artifact checksums | TBD — controlled evidence store | NOT COLLECTED | P0 | Each candidate | Runtime SHA above |
-| `REP-004` | Mobile lint/type/contract/config/Doctor/audit | Mobile/QA | Exact-SHA logs, counts and exception register | TBD — controlled evidence store | NOT COLLECTED | P0 | Each candidate | Runtime SHA above |
-| `REP-005` | Release/recovery, Mongo identity, tunnel, media, backup, smoke and monitoring tests | Platform/QA | Exact-SHA QA results including expected counts | TBD — controlled evidence store | NOT COLLECTED | P0 | Each candidate | Runtime SHA above |
-| `REP-006` | Compose/Caddy/shell syntax and fully interpolated staging configuration | Platform/infrastructure | Exact-SHA local logs plus protected-host redacted render proof | TBD — controlled evidence store | NOT COLLECTED | P0 | Each candidate/environment | Runtime SHA above |
-| `REP-007` | Secret history, pinned Gitleaks, SAST, dependency, SBOM, image, container and config scans | Security | Clean exact-SHA reports, finding treatment and expiry | TBD — restricted security store | NOT COLLECTED | P0 | Each candidate/tool update | Runtime SHA above |
-| `REP-008` | Immutable artifacts and deployment workflow governance | Release/security | Candidate image IDs/digests, checksum manifest and read-only CI validation | TBD — controlled evidence store | NOT COLLECTED | P0 | Each candidate | Runtime SHA above |
-| `REP-009` | Adversarial workflow regression suite passes after security fixes | Security/release | Pinned workflow-test log and independent review | TBD — restricted security store | NOT COLLECTED | P0 | Each workflow change | Runtime SHA above |
+| `REP-001` | Exact runtime branch/SHA, docs revision, clean worktree and remote synchronization | Engineering release owner | Git identity, commit inventory and UTC reviewer record | Draft PR plus immutable candidate record | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-002` | Backend lint, unit/integration/migration tests and production dependency audit | Backend/QA | Commands, versions, counts, isolated DB identity and full logs | Functional run 30051102471 | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-003` | User, admin and counsellor web lint/type/build/audit | Web/QA | Per-workspace logs and artifact checksums | Functional run 30051102471 | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-004` | Mobile lint/type/contract/config/Doctor/audit | Mobile/QA | Exact-SHA logs, counts and exception register | Functional run 30051102471 | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-005` | Release/recovery, Mongo identity, tunnel, media, backup, smoke and monitoring tests | Platform/QA | Exact-SHA QA results including expected counts | Functional run 30051102471 | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-006` | Repository Compose/Caddy/clean-checkout/shell validation | Platform/infrastructure | Exact-SHA tracked-fixture render, Caddy and shell logs | Runs 30051102471 and 30051102484 | PASS | P0 | Each candidate | Runtime SHA above; protected-host interpolation remains `STG-002`/`STG-003` |
+| `REP-007` | Secret history, pinned Gitleaks, SAST, dependency, SBOM, image, container and config scans | Security | Clean exact-SHA reports, finding treatment and expiry | Security run 30051102473 attempt 2 | PASS | P0 | Each candidate/tool update | Runtime SHA above |
+| `REP-008` | Read-only deployment workflow and fail-closed legacy-path governance | Release/security | Workflow validation, tombstone tests and immutable candidate record | Runs 30051102471 and 30051102484 | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-009` | Adversarial workflow regression suite passes after security fixes | Security/release | Pinned workflow-test log | Runs 30051102471 and 30051102484 | PASS | P0 | Each workflow change | Runtime SHA above |
 | `REP-010` | Protected `staging-security` environment supports authenticated DAST | `OWNER ACTION`; security | Environment policy, variables/secrets presence and successful run ID | TBD — restricted GitHub evidence | BLOCKED | P0 | Each environment/change | Runtime SHA above |
 | `REP-011` | Android signing is protected-environment, main-HEAD-only and marker-gated | `OWNER ACTION`; `GOOGLE ACTION`; security | Environment protection, secret-scope removal and successful guarded run | TBD — restricted GitHub evidence | BLOCKED | P0 | Each signing/environment change | Runtime SHA above |
 | `REP-012` | Branch protections/rulesets enforce the approved release policy | `OWNER ACTION`; security/release | Read-only before/after protection and bypass inventory | TBD — restricted GitHub evidence | BLOCKED | P0 | Each governance change | Runtime SHA above |
@@ -138,7 +120,7 @@ authorizations to mutate GitHub configuration.
 | `STG-013` | Encrypted backup, cryptographic health, approved off-host transfer/retrieval and isolated restore | Recovery/infrastructure | `REC-001`–`REC-004`, `REC-017`, source/custody/retrieved archive and media digests, signed metadata and invariants | TBD — restricted recovery store | NOT COLLECTED | P0 | Each deploy/approved age | Runtime SHA above |
 | `STG-014` | Migration, locks, interruption, rollback/resume and artifact retention | Recovery/release | `REC-005`–`REC-013`, phases, markers, images and invariants | TBD — restricted recovery store | NOT COLLECTED | P0 | Each candidate | Runtime SHA above |
 | `STG-015` | Independently target-bound synthetic restore and RPO/RTO drill | Recovery/owner | `REC-014`–`REC-016`, review, acknowledgement and timings | TBD — restricted recovery store | NOT COLLECTED | P0 | Approved recurring exercise | Runtime SHA above |
-| `STG-016` | Monitoring targets/probes, all 53 implemented rules, remediation of 20 explicit missing alert rows and sensitive-data logging checks | Infrastructure/security | 14 jobs, 53 implemented rule rows, 20 blocked/missing rows, 26-signal coverage register and canary pack | TBD — restricted monitoring store | BLOCKED | P0 | Each candidate/config change | Runtime SHA above; required alert signals absent |
+| `STG-016` | Monitoring targets/probes, all 69 implemented rules, all 20 required P0 alert mappings and sensitive-data logging checks | Infrastructure/security | 14 jobs, 69 rules, 26-signal coverage register, provider callbacks and controlled canary pack | TBD — restricted monitoring store | NOT COLLECTED | P0 | Each candidate/config change | Runtime SHA above; repository rules complete, isolated-staging proof absent |
 | `STG-017` | Alertmanager/Uptime Kuma firing, delivery, acknowledgement and resolution | Infrastructure/on-call owner | Controlled real-rule and synthetic receiver-side timestamps | TBD — restricted monitoring store | NOT COLLECTED | P0 | Each route/receiver change | Runtime SHA above |
 | `STG-018` | Performance, accessibility and supported-browser results | QA/product | Thresholds, reports and browser/device matrix | TBD — controlled QA store | NOT COLLECTED | P1 | Each material runtime/UI change | Runtime SHA above |
 | `LIVE-001` | Target host, network, Tunnel, DNS, TLS and firewall proof | `INFRASTRUCTURE ACTION` | Read-only production evidence without values | TBD — restricted infrastructure store | NOT COLLECTED | P0 | Each production change | Runtime SHA above |

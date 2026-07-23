@@ -1,6 +1,6 @@
 # Production monitoring and alerting runbook
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-07-24.
 
 ## Current verdict
 
@@ -19,7 +19,7 @@ were not tested while preparing this document.
 
 The detailed rule-by-rule response source is
 [the monitoring alert runbook](../../menorah/docs/monitoring-alert-runbook.md).
-The 53 alert annotations currently bind to that file on the protected release
+The 69 alert annotations currently bind to that file on the protected release
 branch because it is absent from `main`; retain a local checked-out copy for
 provider/GitHub outages and update the URLs plus validator atomically after an
 approved stable merge.
@@ -122,12 +122,12 @@ Use the rule-specific instructions in the source runbook.
 
 | Domain | Alerts currently represented |
 | --- | --- |
-| Availability/TLS | `BlackboxExporterDown`, `BlackboxProbeCoverageIncomplete`, `InternalApiProbeFailed`, `InternalFrontendProbeFailed`, `WorkerReadinessProbeFailed`, `CallServiceProbeFailed`, `DatastoreTcpProbeFailed`, `PublicEndpointProbeFailed`, `TlsCertificateExpiringSoon`, security-metrics scrape/coverage |
+| Availability/TLS | `BlackboxExporterDown`, `BlackboxProbeCoverageIncomplete`, `InternalApiProbeFailed`, `InternalFrontendProbeFailed`, separate user/admin/counsellor frontend failures, `WorkerReadinessProbeFailed`, `CallServiceProbeFailed`, `DatastoreTcpProbeFailed`, `PublicEndpointProbeFailed`, `TlsCertificateExpiringSoon`, security-metrics scrape/coverage |
 | MongoDB/Redis | exporter down, unavailable, metrics missing, non-primary replica, Redis memory pressure and rejected connections |
 | Host/containers | `NodeExporterDown`, disk space, CPU, memory, container metrics/coverage, restart loop and near-memory-limit |
-| Backup/recovery | metrics stale, six-hourly age, daily missing/age, weekly/monthly age and restore-test age |
-| Security | audit-integrity failure, pending/write failures, authentication/MFA/admin-MFA spikes, authorization denials, admin permission denial, privileged-action failure and admin-change burst |
-| Payment/finance/calls | bank details changed, payout action failed, payment-webhook reconciliation blocked and call-authorization denial spike |
+| Backup/recovery | immediate `BackupJobFailed`, metrics stale, six-hourly age, daily missing/age, weekly/monthly age and restore-test age |
+| Security | audit-integrity failure, pending/write failures, separate user/counsellor/admin-MFA authentication spikes, HTTP 401/403/429/500 rates, authorization denials, admin permission denial, privileged/admin role changes, privileged-action failure and admin-change burst |
+| Queue/payment/email/calls | worker backlog/age/retry/dead-letter/heartbeat, payment provider/webhook failure, email dispatch/delivery failure, call provider/media failure, bank details changed, payout action failed, payment-webhook reconciliation blocked and call-authorization denial spike |
 | Monitoring/logging | log collector, Loki, Alertmanager and Prometheus self-scrape failures |
 
 For backup acceptance, run the cryptographic health check:
@@ -141,25 +141,26 @@ Filesystem age metrics do not validate an archive signature. The daily backup
 and matching isolated restore-test evidence must each be no older than 24
 hours. Never create or edit a marker to clear an alert.
 
-## Required signals not yet available
+## Repository P0 signal coverage
 
-The source-controlled coverage register explicitly marks these unavailable:
+The source-controlled coverage register now includes all 20 required P0
+signals: queue backlog; immediate backup failure; payment provider/webhook
+failure; email dispatch/delivery failure; call provider/media failure;
+privileged/admin role changes; separate user, counsellor and administrator/MFA
+authentication spikes; HTTP 401, 403, 429 and 500 rates; and separate
+user/admin/counsellor frontend failures.
 
-- queue backlog;
-- immediate systemd backup-job failure;
-- general payment-provider failure outside the represented reconciliation
-  block;
-- email delivery/bounce outcomes;
-- call media/provider failures;
-- specific role/permission-change events; and
-- separate HTTP 401, 403, 429 and 500 rates.
+Repository validation proves bounded label schemas, producer presence,
+Prometheus rule syntax, firing/recovery fixtures, severity, runbook links,
+explicit owner placeholders and privacy/cardinality mutation tests. It does
+not prove live series, provider callbacks, threshold suitability, delivery or
+human response.
 
-These are monitoring gaps, not implicitly covered requirements.
-
-- `INFRASTRUCTURE ACTION`: add honest low-cardinality telemetry and tested
-  rules, or document a temporary manual control with owner and expiry.
-- `OWNER ACTION`: decide whether any temporary gap is acceptable for a limited
-  pilot; none may be silently accepted for public launch.
+- `INFRASTRUCTURE ACTION`: validate every signal and target in isolated
+  staging, install an approved protected receiver, and retain controlled
+  firing/recovery/delivery evidence.
+- `OWNER ACTION`: replace explicit owner placeholders with approved named
+  primary/alternate responsibilities before launch.
 - `VAPT ACTION`: validate that security monitoring detects the agreed abuse
   cases and does not leak sensitive data.
 
@@ -217,7 +218,7 @@ resolution. Never use a production dependency for this test.
 - [ ] Uptime Kuma monitor inventory and test.
 - [ ] Named rota and acknowledgement records.
 - [ ] Logging source, access, retention, India location and retrieval test.
-- [ ] Recorded treatment for every unavailable signal.
+- [ ] Controlled isolated-staging proof for every required P0 signal.
 
 Until all launch-critical items are evidenced, monitoring remains a public
 launch blocker and the verdict remains **NOT READY**.

@@ -2,11 +2,14 @@
 
 Candidate branch: `release/final-production-readiness`
 
-Runtime candidate SHA: `f507fc41eb636e0c4607d6c34bd80354f8ccff2e`
+Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
 Package status: **execution plan only; evidence not yet collected**
+
+Repository-remediation status:
+**REPOSITORY REMEDIATION COMPLETE — REVIEW REQUIRED**
 
 Public-production verdict: **NOT READY**
 
@@ -25,7 +28,9 @@ The final docs/PR-head SHA is necessarily later because a Git commit cannot
 embed its own content-addressed SHA. Record that full SHA outside Git in the
 approved change record after this package is committed. Deployment may use
 that later head only after proving the runtime SHA is its ancestor and every
-intervening changed path is under `docs/production-readiness/staging/`.
+intervening changed path is under `docs/**` or `menorah/docs/**`. The exact
+documentation HEAD is recorded in the draft PR because a commit cannot embed
+its own SHA.
 
 All synthetic accounts and every outbound email recipient must use the exact
 protected `MENORAH_STAGING_EMAIL_DOMAIN`; any other recipient must fail closed
@@ -43,8 +48,10 @@ The operating source of truth remains:
 - [backup and restore runbook](../10-backup-and-restore-runbook.md);
 - [incident response runbook](../11-incident-response-runbook.md);
 - [monitoring and alerting runbook](../12-monitoring-and-alerting-runbook.md);
-- [production go/no-go record](../21-production-go-no-go.md); and
-- [environment-variable reference](../22-environment-variable-reference.md).
+- [production go/no-go record](../21-production-go-no-go.md);
+- [environment-variable reference](../22-environment-variable-reference.md);
+  and
+- [immutable candidate record](../26-immutable-candidate-record.md).
 
 This staging package links those controls and adds staging execution records;
 it does not restate or replace production procedures.
@@ -105,7 +112,7 @@ Stop immediately if any of these occurs:
 - the branch differs from `release/final-production-readiness`, the remote tip
   or checkout differs from the externally approved docs/PR-head SHA, the
   frozen runtime SHA is not its ancestor, or an intervening change exists
-  outside `docs/production-readiness/staging/`;
+  outside `docs/**` or `menorah/docs/**`;
 - the worktree is unexplained or a tested artifact cannot be tied to the SHA;
 - a hostname, database, Redis endpoint, storage bucket, callback or credential
   may be production;

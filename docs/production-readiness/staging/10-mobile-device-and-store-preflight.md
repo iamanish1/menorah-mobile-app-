@@ -1,6 +1,6 @@
 # Mobile device and store preflight
 
-Runtime candidate SHA: `f507fc41eb636e0c4607d6c34bd80354f8ccff2e`
+Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -49,7 +49,7 @@ values locally without printing them:
 set -euo pipefail
 umask 077
 
-readonly RUNTIME_SHA='f507fc41eb636e0c4607d6c34bd80354f8ccff2e'
+readonly RUNTIME_SHA='3fb99858c6766a341bb7b7dab2377195427f0ea1'
 readonly REPO='/srv/menorah-staging/repository'
 readonly STAGING_ENV='/etc/menorah-staging/staging.env'
 readonly MOBILE_ENV='/etc/menorah-staging/mobile-preview.env'

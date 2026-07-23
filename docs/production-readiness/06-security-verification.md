@@ -116,10 +116,10 @@ From `menorah/scripts/qa`:
 npm run test:monitoring
 ```
 
-The current repository gate validates 14 scrape jobs, 53 alert rules and 26
-coverage records. It also validates Prometheus, Alertmanager, Blackbox, Alloy
-and Loki configuration, backup metrics, and the constrained Docker metrics
-path.
+The current repository gate validates 14 scrape jobs, 69 alert rules, 26
+coverage records and all 20 required P0 alert mappings. It also validates
+Prometheus, Alertmanager, Blackbox, Alloy and Loki configuration, backup
+metrics, and the constrained Docker metrics path.
 
 The Docker gateway security tests must prove:
 

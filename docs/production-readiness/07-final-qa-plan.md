@@ -141,10 +141,12 @@ npm run test:monitoring
 
 The monitoring suite's current expected repository result is:
 
-- 31 Node subtests;
+- 28 monitoring-validator mutation subtests plus the native/configuration
+  monitoring suites;
 - 14 scrape jobs;
-- 53 alert rules;
+- 69 alert rules;
 - 26 coverage records;
+- all 20 required P0 mappings present;
 - successful native Prometheus, Alertmanager, Blackbox, Alloy and Loki
   validation;
 - successful backup-metrics and Docker gateway/exporter runtime checks.

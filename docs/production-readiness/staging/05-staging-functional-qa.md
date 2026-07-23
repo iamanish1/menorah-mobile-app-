@@ -1,6 +1,6 @@
 # Staging functional QA
 
-Runtime candidate SHA: `f507fc41eb636e0c4607d6c34bd80354f8ccff2e`
+Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -109,7 +109,7 @@ gap to track in [09-monitoring-alert-validation.md](./09-monitoring-alert-valida
 | Admin least privilege and stale grants | `FUN-ROLE-001`, `FUN-ROLE-002`, `SEC-ROLE-001` | Backend admin-permission tests |
 | Notification/deep-link minimization | `FUN-NOTIFY-001`, `MOB-PUSH-001`, `MOB-LINK-001` | Mobile release-config tests and devices |
 | Worker idempotency and gates | `FUN-WORKER-001` | Worker tests; queue-backlog gap remains explicit |
-| Recovery, monitoring, mobile and VAPT | `REC-*`, all 53 monitoring rows, `MOB-*`, VAPT scope | Documents `08`–`11` and unified tracker |
+| Recovery, monitoring, mobile and VAPT | `REC-*`, all 69 monitoring rows, `MOB-*`, VAPT scope | Documents `08`–`11` and unified tracker |
 
 Every P0 requirement must have an executed test/evidence record. An automated
 test name in this map is not a pass until its final-candidate result is linked
@@ -126,7 +126,7 @@ printed or committed.
 set -euo pipefail
 umask 077
 
-readonly RUNTIME_SHA='f507fc41eb636e0c4607d6c34bd80354f8ccff2e'
+readonly RUNTIME_SHA='3fb99858c6766a341bb7b7dab2377195427f0ea1'
 readonly REPO='/srv/menorah-staging/repository'
 readonly STAGING_ENV='/etc/menorah-staging/staging.env'
 readonly QA_ENV='/etc/menorah-staging/qa.env'

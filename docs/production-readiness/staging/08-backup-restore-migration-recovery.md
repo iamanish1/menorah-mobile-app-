@@ -1,6 +1,6 @@
 # Staging backup, restore, migration and recovery
 
-Runtime candidate SHA: `f507fc41eb636e0c4607d6c34bd80354f8ccff2e`
+Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -34,7 +34,7 @@ Run only on the approved isolated staging host:
 set -euo pipefail
 umask 077
 
-readonly RUNTIME_SHA='f507fc41eb636e0c4607d6c34bd80354f8ccff2e'
+readonly RUNTIME_SHA='3fb99858c6766a341bb7b7dab2377195427f0ea1'
 readonly CANDIDATE_BRANCH='release/final-production-readiness'
 readonly STAGING_REPO='/srv/menorah-staging/repository'
 readonly STAGING_ENV='/etc/menorah-staging/staging.env'

@@ -1,6 +1,6 @@
 # Current-state baseline
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-07-24.
 
 ## Purpose and verdict
 
@@ -12,10 +12,13 @@ without treating source code as proof of live operation.
 The remediation workspace is on `release/final-production-readiness`. The
 recovery-safety starting point identified for this effort is commit
 `353b19aced537d7acee6310bc0d8acbcc512f739`. Later repository remediation is
-preserved as focused commits on the same release branch. Those commits are
-engineering evidence, not an owner-approved production release. The final
-release record must identify a clean, reviewed and remotely synchronized
-immutable SHA protected by the approved repository rules.
+preserved as focused commits on the same release branch. Repository-controlled
+P0 remediation is frozen at
+`3fb99858c6766a341bb7b7dab2377195427f0ea1`; its exact-SHA release,
+functional and security aggregate gates pass. Those commits remain engineering
+evidence, not an owner-approved production release. The final protected
+release record and repository-governance approval remain external actions.
+See [the immutable candidate record](./26-immutable-candidate-record.md).
 
 ## Evidence classes
 
@@ -100,7 +103,7 @@ must be retained against the final SHA in
 At this review point, repository validators describe:
 
 - **14** Prometheus scrape jobs;
-- **53** alert rules; and
+- **69** alert rules; and
 - **26** observability coverage records.
 
 The source configuration separates JSON health probing from metrics scraping,
@@ -109,10 +112,11 @@ metrics through a Compose-project-scoped gateway. The gateway remains a
 trusted, root-equivalent Docker control-plane component because it holds the
 socket; the exporter itself has no socket or host-filesystem access.
 
-The repository also records known first-class signal gaps, including queue
-backlog, immediate host timer failure, general provider/email/call outcomes,
-permission changes and separate HTTP status-rate coverage. A rule count does
-not show adequate signal quality.
+The repository's machine-validated P0 register covers all 20 required alert
+gaps, including queue backlog, immediate backup failure, provider/email/call
+outcomes, permission changes and separate HTTP status rates. A rule count does
+not prove target health, threshold suitability, receiver delivery or human
+response.
 
 The Alertmanager process and routing template exist, but the committed receiver
 has no email, chat, paging or webhook integration. An approved destination and
@@ -142,7 +146,7 @@ See [the backup and restore runbook](./10-backup-and-restore-runbook.md) and
 
 The following remain explicitly unproven:
 
-- the final immutable release identity and complete cross-stack result set;
+- owner-approved repository governance and protected release identity;
 - actual host configuration, ownership, mounts, time synchronization and
   least-privilege service identities;
 - production migration, backup, restore or rollback execution;
