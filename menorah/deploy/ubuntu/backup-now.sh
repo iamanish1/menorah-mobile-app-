@@ -321,6 +321,8 @@ sign_file() {
   local temporary
   [[ -n "${BACKUP_INTEGRITY_HMAC_KEY:-}" ]] || return 0
   temporary="$(mktemp "$(dirname "${input_file}")/.hmac.XXXXXX")"
+  # The JavaScript program deliberately reads its values from process.env.
+  # shellcheck disable=SC2016
   HMAC_INPUT_FILE="${input_file}" node -e '
     const crypto = require("crypto");
     const fs = require("fs");

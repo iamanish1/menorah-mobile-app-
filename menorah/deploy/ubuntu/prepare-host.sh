@@ -48,6 +48,8 @@ install_docker() {
   fi
 
   if [[ ! -f /etc/apt/sources.list.d/docker.list ]]; then
+    # This file is supplied by the target Ubuntu host, not the release archive.
+    # shellcheck disable=SC1091
     . /etc/os-release
     echo \
       "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
