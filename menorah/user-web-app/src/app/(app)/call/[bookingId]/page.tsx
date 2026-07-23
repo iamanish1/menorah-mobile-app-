@@ -38,6 +38,7 @@ interface RoomData {
   livekitToken?: string;
   token?: string;
   livekitUrl?: string;
+  meetTicket?: string;
   joinUrl?: string;
   externalJoinUrl?: string;
   providerName?: string;
@@ -96,11 +97,29 @@ export default function VideoCallPage() {
         return;
       }
       const next = res.data as RoomData;
-      setRoomData(next);
-      if (next.provider === 'livekit' && next.joinMode === 'in_app' && next.livekitUrl && (next.livekitToken || next.token)) {
+      if (
+        next.provider === 'livekit'
+        && next.joinMode === 'in_app'
+        && next.livekitUrl
+        && next.meetTicket
+      ) {
+        const redemption = await api.redeemVideoMeetTicket(next.meetTicket);
+        const redeemed = redemption.data;
+        const redeemedToken = redeemed?.livekitToken || redeemed?.token;
+        if (!redemption.success || !redeemed?.livekitUrl || !redeemedToken) {
+          fatalError(redemption.message || 'The secure session ticket expired. Please try joining again.');
+          return;
+        }
+        setRoomData({
+          ...next,
+          livekitUrl: redeemed.livekitUrl,
+          livekitToken: redeemedToken,
+          meetTicket: undefined,
+        });
         setPageState('in-call');
         return;
       }
+      setRoomData(next);
       if (next.joinMode === 'external_link') {
         setPageState(next.joinUrl || next.externalJoinUrl ? 'external' : 'not-configured');
         return;

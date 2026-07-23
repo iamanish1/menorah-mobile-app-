@@ -7,7 +7,7 @@ Password: CHANGE_ME_BEFORE_SUBMISSION
 Menorah Health provides mental wellness support, peer support, self-help tools, educational resources, private chat, and booking for support sessions. It does not diagnose, treat, cure, or replace professional medical care.
 
 User-generated content safety:
-Users can report chat messages, report users, block users where supported by the backend, and access Community Guidelines and Support from Settings. Reports are sent to moderation endpoints when available. If a moderation endpoint is unavailable, the app tells the user to contact support instead of claiming the action is complete.
+In-app reporting and blocking are not currently available. Chat safety menus direct users to the Community Guidelines and Support without claiming that a moderation action was submitted.
 
 Privacy:
 Privacy Policy is available at: [ADD URL]

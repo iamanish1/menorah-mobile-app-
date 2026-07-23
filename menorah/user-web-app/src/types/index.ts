@@ -188,8 +188,8 @@ export interface VideoRoom {
   roomName?: string;
   roomId?: string;
   livekitUrl?: string;
-  token?: string;
-  livekitToken?: string;
+  meetTicket?: string;
+  meetUrl?: string;
   joinUrl?: string;
   externalJoinUrl?: string;
   hostUrl?: string;

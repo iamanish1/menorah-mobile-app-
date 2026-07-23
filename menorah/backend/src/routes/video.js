@@ -12,9 +12,16 @@ const {
   providerDisplayName,
   resolveCallPolicy
 } = require('../services/callPolicyService');
+const {
+  evaluateCallAccess,
+} = require('../services/sessionAuthorizationPolicy');
+const { recordSecurityEvent } = require('../utils/securityAudit');
 
 const router = express.Router();
-const MEET_TICKET_TTL_SECONDS = parseInt(process.env.VIDEO_MEET_TICKET_TTL_SECONDS, 10) || 120;
+const configuredMeetTicketTtl = Number(process.env.VIDEO_MEET_TICKET_TTL_SECONDS);
+const MEET_TICKET_TTL_SECONDS = Number.isSafeInteger(configuredMeetTicketTtl)
+  ? Math.min(Math.max(configuredMeetTicketTtl, 30), 300)
+  : 120;
 
 // ── LiveKit client (server-to-server API calls) ────────────────────────────
 // LIVEKIT_API_URL  = https://calls.menorah.me  (HTTP, for room management)
@@ -45,10 +52,20 @@ const generateLivekitToken = async (identity, name, roomName, isModerator = fals
     throw new Error('LiveKit API key/secret not configured.');
   }
 
+  const tokenExpiresAt = guardInput.tokenExpiresAt instanceof Date
+    ? guardInput.tokenExpiresAt
+    : null;
+  const remainingSeconds = tokenExpiresAt
+    ? Math.ceil((tokenExpiresAt.getTime() - Date.now()) / 1000)
+    : null;
+  const ttl = Number.isSafeInteger(remainingSeconds)
+    ? Math.min(Math.max(remainingSeconds, 1), 4 * 60 * 60)
+    : '4h';
+
   const token = new AccessToken(apiKey, apiSecret, {
     identity,
     name,
-    ttl: '4h',   // token valid for 4 hours (covers longest session)
+    ttl,
   });
 
   // In livekit-server-sdk v2, addGrant() accepts a plain VideoGrant object —
@@ -70,13 +87,22 @@ const hashMeetTicket = (ticket) =>
 
 const meetTicketKey = (ticket) => `video:meet-ticket:${hashMeetTicket(ticket)}`;
 
-const createMeetTicket = async ({ livekitToken, livekitUrl, name, type }) => {
+const createMeetTicket = async ({
+  livekitToken,
+  livekitUrl,
+  name,
+  type,
+  bookingId,
+  participantId,
+}) => {
   const ticket = crypto.randomBytes(32).toString('base64url');
   const payload = {
     livekitToken,
     livekitUrl,
     name: String(name || 'Participant').slice(0, 80),
     type: type === 'audio' ? 'audio' : 'video',
+    bookingId: String(bookingId || ''),
+    participantId: String(participantId || ''),
     createdAt: new Date().toISOString(),
   };
 
@@ -92,9 +118,13 @@ const redeemMeetTicket = async (ticket) => {
 
   if (typeof redis.getDel === 'function') {
     raw = await redis.getDel(key);
+  } else if (typeof redis.eval === 'function') {
+    raw = await redis.eval(
+      "local value = redis.call('GET', KEYS[1]); if value then redis.call('DEL', KEYS[1]); end; return value",
+      { keys: [key], arguments: [] }
+    );
   } else {
-    raw = await redis.get(key);
-    if (raw) await redis.del(key);
+    throw new Error('Atomic video ticket consumption is unavailable');
   }
 
   if (!raw) return null;
@@ -110,8 +140,10 @@ const buildMeetUrl = (req, ticket, type = 'video') => {
   const origin = process.env.PUBLIC_API_ORIGIN
     || `${req.protocol}://${req.get('host')}`;
   const url = new URL('/api/video/meet', origin);
-  url.searchParams.set('ticket', ticket);
   url.searchParams.set('type', type === 'audio' ? 'audio' : 'video');
+  // Keep the bearer ticket in the URL fragment so browsers do not send it in
+  // the HTTP request line, reverse-proxy logs, or Referer headers.
+  url.hash = new URLSearchParams({ ticket }).toString();
   return url.toString();
 };
 
@@ -145,28 +177,102 @@ const loadBooking = async (bookingId, requestUserId) => {
   const booking = await Booking.findById(bookingId)
     .populate({
       path: 'counsellor',
-      select: 'user',
-      populate: { path: 'user', select: 'firstName lastName phone address country accountRegion region' },
+      select: 'user status isActive professionalVerification',
+      populate: {
+        path: 'user',
+        select: 'firstName lastName phone address country accountRegion region role isActive',
+      },
     })
-    .populate('user', 'firstName lastName phone address country accountRegion region');
+    .populate(
+      'user',
+      'firstName lastName phone address country accountRegion region role isActive'
+    );
 
   if (!booking) return { booking: null, isUser: false, isCounsellor: false, error: 'Booking not found' };
-  if (!booking.counsellor || !booking.counsellor.user) {
-    return { booking: null, isUser: false, isCounsellor: false, error: 'Counsellor not assigned to this booking' };
-  }
 
-  const isUser       = booking.user._id.toString() === requestUserId.toString();
-  const isCounsellor = booking.counsellor.user._id.toString() === requestUserId.toString();
+  const isUser = booking.user?._id?.toString?.() === requestUserId.toString();
+  const isCounsellor =
+    booking.counsellor?.user?._id?.toString?.() === requestUserId.toString();
 
   return { booking, isUser, isCounsellor, error: null };
+};
+
+const callDenialResponse = (reason) => {
+  if (reason === 'CALL_TOO_EARLY') {
+    return {
+      statusCode: 409,
+      code: reason,
+      message: 'The session join window has not opened yet',
+    };
+  }
+  if (reason === 'CALL_TOO_LATE') {
+    return {
+      statusCode: 410,
+      code: reason,
+      message: 'The session join window has closed',
+    };
+  }
+  if (reason === 'BOOKING_PARTICIPANT_MISMATCH') {
+    return { statusCode: 403, code: reason, message: 'Access denied' };
+  }
+  return {
+    statusCode: 403,
+    code: reason,
+    message: 'This session is not currently available',
+  };
+};
+
+const recordCallDenial = (
+  req,
+  reason,
+  bookingId,
+  user = req.user,
+  statusCode = callDenialResponse(reason).statusCode
+) => {
+  try {
+    recordSecurityEvent('call_authorization_denied', {
+      req,
+      user,
+      outcome: 'failure',
+      statusCode,
+      details: {
+        reason,
+        resource: 'booking_call',
+        targetId: bookingId,
+      },
+    });
+    if (req?.res?.locals) req.res.locals.securityAuthorizationLogged = true;
+  } catch {
+    // The request still fails closed if audit output is unavailable.
+  }
+};
+
+const authorizeLoadedCall = ({ req, res, booking, requesterUserId = req.user?._id }) => {
+  const access = evaluateCallAccess({
+    booking,
+    requesterUserId,
+    now: new Date(),
+  });
+  if (access.allowed) return access;
+
+  const denial = callDenialResponse(access.reason);
+  recordCallDenial(req, access.reason, booking?._id || req.params?.bookingId || req.body?.bookingId);
+  res.locals.securityAuthorizationLogged = true;
+  res.status(denial.statusCode).json({
+    success: false,
+    code: denial.code,
+    message: denial.message,
+  });
+  return null;
 };
 
 const getRequestCountry = (req) =>
   req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || req.headers['x-country-code'] || '';
 
-const buildGuardInput = (req, booking) => ({
+const buildGuardInput = (req, booking, access) => ({
   user: booking.user,
   booking,
+  tokenExpiresAt: access?.closesAt,
   req: {
     headers: req.headers,
     ipCountry: getRequestCountry(req),
@@ -252,6 +358,8 @@ const livekitPayload = async ({ req, booking, roomName, livekitUrl, livekitToken
     livekitUrl,
     name: displayName,
     type: booking.sessionType === 'audio' ? 'audio' : 'video',
+    bookingId: booking._id,
+    participantId: req.user._id,
   });
 
   return {
@@ -260,8 +368,6 @@ const livekitPayload = async ({ req, booking, roomName, livekitUrl, livekitToken
     joinMode: 'in_app',
     region: policy.region,
     livekitUrl,
-    token: livekitToken,
-    livekitToken,
     meetTicket: ticket,
     meetUrl: buildMeetUrl(req, ticket, booking.sessionType === 'audio' ? 'audio' : 'video'),
     roomName,
@@ -276,11 +382,14 @@ const livekitPayload = async ({ req, booking, roomName, livekitUrl, livekitToken
   };
 };
 
-const respondWithCallPayload = (res, payload, statusCode = 200) =>
-  res.status(statusCode).json({
+const respondWithCallPayload = (res, payload, statusCode = 200) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  return res.status(statusCode).json({
     ...payload,
     data: payload
   });
+};
 
 const ensureLivekitRoom = async (booking, roomName) => {
   const client = getLivekitClient();
@@ -296,7 +405,7 @@ const getCallPolicy = (req, booking) => resolveCallPolicy(buildGuardInput(req, b
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/video/create-room
-// @desc    Create a LiveKit room for a booking and return a participant token
+// @desc    Create a LiveKit room for a booking and return a one-time meet ticket
 // @access  Private
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/create-room', [
@@ -309,27 +418,13 @@ router.post('/create-room', [
     }
 
     const { bookingId } = req.body;
-    const { booking, isUser, isCounsellor, error } = await loadBooking(bookingId, req.user._id);
+    const { booking, error } = await loadBooking(bookingId, req.user._id);
 
     if (error) return res.status(error === 'Booking not found' ? 404 : 400).json({ success: false, message: error });
-    if (!isUser && !isCounsellor) return res.status(403).json({ success: false, message: 'Access denied' });
-
-    if (booking.status !== 'confirmed' && booking.status !== 'in-progress') {
-      return res.status(400).json({ success: false, message: 'Session is not active' });
-    }
-
-    // Scheduled session — only allow joining within 15 min of scheduled time
-    if (booking.status === 'confirmed') {
-      const now          = new Date();
-      const sessionTime  = new Date(booking.scheduledAt);
-      const timeDiff     = Math.abs(now - sessionTime) / (1000 * 60);
-      const assignedTime = booking.assignedAt ? new Date(booking.assignedAt) : null;
-      const isInstant    = assignedTime && (now - assignedTime) < 24 * 60 * 60 * 1000 && sessionTime > now;
-
-      if (!isInstant && timeDiff > 15) {
-        return res.status(400).json({ success: false, message: 'Session is not available at this time' });
-      }
-    }
+    const access = authorizeLoadedCall({ req, res, booking });
+    if (!access) return;
+    const isUser = access.participantRole === 'user';
+    const isCounsellor = access.participantRole === 'counsellor';
 
     const policy = getCallPolicy(req, booking);
     await updateBookingPolicy(booking, policy);
@@ -350,7 +445,10 @@ router.post('/create-room', [
       await ensureLivekitRoom(booking, roomName);
     } catch (livekitErr) {
       if (!livekitErr.message?.includes('already exists')) {
-        console.error('LiveKit createRoom error:', livekitErr.message);
+        console.error(
+          'LiveKit createRoom error:',
+          livekitErr?.code || 'LIVEKIT_ROOM_CREATE_FAILED'
+        );
         return res.status(503).json({ success: false, message: 'Video service unavailable. Please try again.' });
       }
     }
@@ -364,7 +462,7 @@ router.post('/create-room', [
       displayName,
       roomName,
       isCounsellor,
-      buildGuardInput(req, booking)
+      buildGuardInput(req, booking, access)
     );
 
     // Persist room details on the booking document
@@ -383,7 +481,7 @@ router.post('/create-room', [
       displayName
     }));
   } catch (err) {
-    console.error('Create video room error:', err);
+    console.error('Create video room error:', err?.code || 'VIDEO_ROOM_CREATE_FAILED');
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
@@ -402,10 +500,13 @@ router.get('/room/:bookingId', [
       return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
     }
 
-    const { booking, isUser, isCounsellor, error } = await loadBooking(req.params.bookingId, req.user._id);
+    const { booking, error } = await loadBooking(req.params.bookingId, req.user._id);
 
     if (error) return res.status(error === 'Booking not found' ? 404 : 400).json({ success: false, message: error });
-    if (!isUser && !isCounsellor) return res.status(403).json({ success: false, message: 'Access denied' });
+    const access = authorizeLoadedCall({ req, res, booking });
+    if (!access) return;
+    const isUser = access.participantRole === 'user';
+    const isCounsellor = access.participantRole === 'counsellor';
     const policy = getCallPolicy(req, booking);
     await updateBookingPolicy(booking, policy);
     if (policy.joinMode === 'external_link') {
@@ -433,7 +534,7 @@ router.get('/room/:bookingId', [
       displayName,
       booking.videoCall.roomId,
       isCounsellor,
-      buildGuardInput(req, booking)
+      buildGuardInput(req, booking, access)
     );
 
     await booking.save();
@@ -448,7 +549,7 @@ router.get('/room/:bookingId', [
       displayName
     }));
   } catch (err) {
-    console.error('Get video room error:', err);
+    console.error('Get video room error:', err?.code || 'VIDEO_ROOM_READ_FAILED');
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
@@ -467,14 +568,13 @@ router.post('/room/:bookingId/join', [
       return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
     }
 
-    const { booking, isUser, isCounsellor, error } = await loadBooking(req.params.bookingId, req.user._id);
+    const { booking, error } = await loadBooking(req.params.bookingId, req.user._id);
 
     if (error) return res.status(error === 'Booking not found' ? 404 : 400).json({ success: false, message: error });
-    if (!isUser && !isCounsellor) return res.status(403).json({ success: false, message: 'Access denied' });
-
-    if (booking.status !== 'confirmed' && booking.status !== 'in-progress') {
-      return res.status(400).json({ success: false, message: 'Session is not active' });
-    }
+    const access = authorizeLoadedCall({ req, res, booking });
+    if (!access) return;
+    const isUser = access.participantRole === 'user';
+    const isCounsellor = access.participantRole === 'counsellor';
 
     const policy = getCallPolicy(req, booking);
     await updateBookingPolicy(booking, policy);
@@ -552,7 +652,10 @@ router.post('/room/:bookingId/join', [
         await ensureLivekitRoom(booking, roomName);
       } catch (livekitErr) {
         if (!livekitErr.message?.includes('already exists')) {
-          console.error('LiveKit createRoom error (in-progress path):', livekitErr.message);
+          console.error(
+            'LiveKit createRoom error (in-progress path):',
+            livekitErr?.code || 'LIVEKIT_ROOM_CREATE_FAILED'
+          );
           return res.status(503).json({ success: false, message: 'Video service unavailable. Please try again.' });
         }
       }
@@ -575,7 +678,7 @@ router.post('/room/:bookingId/join', [
       displayName,
       booking.videoCall.roomId,
       isCounsellor,
-      buildGuardInput(req, booking)
+      buildGuardInput(req, booking, access)
     );
 
     return respondWithCallPayload(res, {
@@ -591,7 +694,7 @@ router.post('/room/:bookingId/join', [
       message: 'Joined video room successfully'
     });
   } catch (err) {
-    console.error('Join video room error:', err);
+    console.error('Join video room error:', err?.code || 'VIDEO_ROOM_JOIN_FAILED');
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
@@ -610,10 +713,12 @@ router.post('/room/:bookingId/leave', [
       return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
     }
 
-    const { booking, isUser, isCounsellor, error } = await loadBooking(req.params.bookingId, req.user._id);
+    const { booking, error } = await loadBooking(req.params.bookingId, req.user._id);
 
     if (error) return res.status(error === 'Booking not found' ? 404 : 400).json({ success: false, message: error });
-    if (!isUser && !isCounsellor) return res.status(403).json({ success: false, message: 'Access denied' });
+    const access = authorizeLoadedCall({ req, res, booking });
+    if (!access) return;
+    const isCounsellor = access.participantRole === 'counsellor';
 
     if (booking.status === 'in-progress' && isCounsellor) {
       await booking.complete();
@@ -626,7 +731,10 @@ router.post('/room/:bookingId/leave', [
           await client.deleteRoom(booking.videoCall.roomId);
         } catch (livekitErr) {
           // Room may have already been deleted — not fatal
-          console.warn('LiveKit deleteRoom warning:', livekitErr.message);
+          console.warn(
+            'LiveKit deleteRoom warning:',
+            livekitErr?.code || 'LIVEKIT_ROOM_DELETE_FAILED'
+          );
         }
       }
       await booking.save();
@@ -643,15 +751,15 @@ router.post('/room/:bookingId/leave', [
 
     return res.json({ success: true, message: 'Left video room successfully' });
   } catch (err) {
-    console.error('Leave video room error:', err);
+    console.error('Leave video room error:', err?.code || 'VIDEO_ROOM_LEAVE_FAILED');
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/video/room/:bookingId/recording
-// @desc    Toggle session recording flag (stored on booking)
-// @access  Private (counsellor only)
+// @desc    Recording is deliberately unavailable
+// @access  Private
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/room/:bookingId/recording', [
   param('bookingId').isMongoId().withMessage('Invalid booking ID'),
@@ -663,20 +771,27 @@ router.post('/room/:bookingId/recording', [
       return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
     }
 
-    const { booking, isCounsellor, error } = await loadBooking(req.params.bookingId, req.user._id);
+    const { booking, error } = await loadBooking(req.params.bookingId, req.user._id);
 
     if (error) return res.status(error === 'Booking not found' ? 404 : 400).json({ success: false, message: error });
-    if (!isCounsellor) return res.status(403).json({ success: false, message: 'Only counsellors can toggle recording' });
+    const access = authorizeLoadedCall({ req, res, booking });
+    if (!access) return;
+    if (access.participantRole !== 'counsellor') {
+      return res.status(403).json({
+        success: false,
+        code: 'CALL_RECORDING_FORBIDDEN',
+        message: 'Access denied',
+      });
+    }
 
-    booking.videoCall.isRecordingEnabled = req.body.enable;
-    await booking.save();
-
-    return res.json({
-      success: true,
-      message: `Recording ${req.body.enable ? 'enabled' : 'disabled'} successfully`,
+    return res.status(501).json({
+      success: false,
+      code: 'CALL_RECORDING_DISABLED',
+      isRecordingEnabled: false,
+      message: 'Session recording is not available',
     });
   } catch (err) {
-    console.error('Toggle recording error:', err);
+    console.error('Recording status error:', err?.code || 'VIDEO_RECORDING_STATUS_FAILED');
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
@@ -698,19 +813,64 @@ router.post('/meet/redeem', [
     if (!session) {
       return res.status(410).json({ success: false, message: 'Video session ticket expired or already used' });
     }
+    if (!session.bookingId || !session.participantId) {
+      recordCallDenial(req, 'MEET_TICKET_BINDING_INVALID', session.bookingId, {
+        _id: session.participantId,
+        role: 'ticket',
+      }, 410);
+      return res.status(410).json({
+        success: false,
+        message: 'Video session ticket expired or already used',
+      });
+    }
+
+    const { booking, error } = await loadBooking(
+      session.bookingId,
+      session.participantId
+    );
+    const access = !error && evaluateCallAccess({
+      booking,
+      requesterUserId: session.participantId,
+      now: new Date(),
+    });
+    const policy = access?.allowed ? getCallPolicy(req, booking) : null;
+    if (
+      !access?.allowed
+      || policy?.provider !== 'livekit'
+      || policy?.joinMode !== 'in_app'
+    ) {
+      recordCallDenial(
+        req,
+        access?.reason || (error ? 'MEET_TICKET_BOOKING_INVALID' : 'LIVEKIT_POLICY_CHANGED'),
+        session.bookingId,
+        { _id: session.participantId, role: 'ticket' },
+        410
+      );
+      return res.status(410).json({
+        success: false,
+        message: 'Video session ticket expired or already used',
+      });
+    }
 
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Referrer-Policy', 'no-referrer');
-    return res.json({
+    const redemption = {
       success: true,
       livekitUrl: session.livekitUrl,
       livekitToken: session.livekitToken,
       token: session.livekitToken,
       name: session.name,
       type: session.type,
+    };
+    return res.json({
+      ...redemption,
+      data: redemption,
     });
   } catch (error) {
-    console.error('Redeem video meet ticket error:', error.message);
+    console.error(
+      'Redeem video meet ticket error:',
+      error?.code || 'VIDEO_TICKET_REDEEM_FAILED'
+    );
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
@@ -718,25 +878,20 @@ router.post('/meet/redeem', [
 // @route   GET /api/video/meet
 // @desc    Serve the LiveKit meet HTML page for mobile WebView
 // @access  Public (short-lived ticket must be redeemed by POST)
-// @query   token     — LiveKit participant JWT
-//          url       — LiveKit WebSocket URL (wss://...)
-//          name      — display name for the participant
-//          type      — session type: 'video' | 'audio'
+// @query   type      — session type: 'video' | 'audio'
+// @fragment ticket   — short-lived ticket redeemed once by the page
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/meet', [
-  query('ticket').isString().trim().isLength({ min: 20, max: 128 }).withMessage('ticket is required'),
   query('type').optional().isIn(['video', 'audio']),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).send('<h1>Missing or invalid video session ticket</h1>');
+    return res.status(400).send('<h1>Invalid video session type</h1>');
   }
 
-  const { ticket, type = 'video' } = req.query;
+  const { type = 'video' } = req.query;
   const videoOnly = type === 'video';
 
-  // Sanitise values — they go into JS string literals
-  const safeTicket = String(ticket).replace(/['"<>]/g, '').slice(0, 128);
   const safeName  = 'Participant';
   const cspNonce = crypto.randomBytes(16).toString('base64');
 
@@ -987,7 +1142,7 @@ router.get('/meet', [
 <script nonce="${cspNonce}" src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <script nonce="${cspNonce}">
 (async () => {
-  const MEET_TICKET = '${safeTicket}';
+  const MEET_TICKET = new URLSearchParams(window.location.hash.slice(1)).get('ticket') || '';
   let TOKEN    = '';
   let WS_URL   = '';
   let IS_VIDEO = ${videoOnly ? 'true' : 'false'};
@@ -1282,7 +1437,7 @@ router.post('/livekit-webhook', async (req, res) => {
 
     return res.sendStatus(200);
   } catch (err) {
-    console.error('LiveKit webhook error:', err);
+    console.error('LiveKit webhook error:', err?.code || 'LIVEKIT_WEBHOOK_FAILED');
     return res.sendStatus(200); // Always 200 — LiveKit retries on non-200
   }
 });

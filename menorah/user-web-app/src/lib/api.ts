@@ -371,6 +371,16 @@ class ApiClient {
     return this.post<VideoRoom>(`/video/room/${bookingId}/join`);
   }
 
+  async redeemVideoMeetTicket(ticket: string): Promise<ApiResponse<{
+    livekitUrl: string;
+    livekitToken: string;
+    token: string;
+    name: string;
+    type: 'video' | 'audio';
+  }>> {
+    return this.post('/video/meet/redeem', { ticket });
+  }
+
   async leaveVideoRoom(bookingId: string): Promise<ApiResponse<void>> {
     return this.post<void>(`/video/room/${bookingId}/leave`);
   }

@@ -200,7 +200,7 @@ CORS_ORIGIN=http://localhost:3000,https://menorahhealth.com
 - `GET /api/video/room/:bookingId` - Get video room details
 - `POST /api/video/room/:bookingId/join` - Join video room
 - `POST /api/video/room/:bookingId/leave` - Leave video room
-- `POST /api/video/room/:bookingId/recording` - Toggle recording
+- `POST /api/video/room/:bookingId/recording` - Returns the explicit recording-disabled status
 
 ## Database Models
 
@@ -300,9 +300,9 @@ pm2 monit
 - **Socket.io**: Real-time chat
 
 ### Video Calls
-- **Jitsi**: Secure video conferencing
-- JWT token generation for authentication
-- Room management and recording
+- **LiveKit**: In-app calls where the jurisdiction policy permits it
+- Approved external-provider links for blocked calling regions
+- Booking-bound, short-lived access tokens; session recording is disabled
 
 ### File Storage
 - **Cloudinary**: Image and file upload

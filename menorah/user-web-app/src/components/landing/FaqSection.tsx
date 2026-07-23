@@ -45,7 +45,7 @@ const faqs = [
   {
     question: "How do I ensure my safety while using the app?",
     answer:
-      "Menorah takes safety seriously. We have implemented measures to ensure a safe and respectful environment within the app. If you encounter any inappropriate behavior or have concerns, you can report it, and our team will take appropriate action."
+      "Menorah takes safety seriously. If you encounter inappropriate behavior or have concerns, contact support so the team can review it. In-app reporting and blocking are not currently available."
   },
   {
     question: "How do I get started with the Menorah app?",

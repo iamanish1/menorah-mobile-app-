@@ -35,7 +35,7 @@ Processing: Any operation on personal data including collection, storage, use, d
 3.1 Data You Provide Directly
 • Registration data: name, date of birth, email address, phone number, gender identity
 • Health and wellness data: mood logs, journal entries, symptom check-ins, mental health assessments
-• Session data: audio/video recordings of therapy sessions (only with explicit consent), session notes
+• Session communications and notes. Audio/video session recording is not currently enabled.
 • Payment data: billing details processed via PCI-DSS compliant payment gateways; we do not store card numbers
 • Communications: messages, feedback, support queries
 • Optional face-check data: one selfie, face-detection results, confidence score, consent evidence, submission and review history, and basic image-file metadata
@@ -242,8 +242,8 @@ Do not encourage self-harm, violence, abuse, illegal activity, or unsafe medical
 4. No medical claims
 Users should not present themselves as diagnosing, treating, curing, or replacing professional medical care.
 
-5. Reporting and blocking
-You can report messages or users from chat and contact support from Settings. Reports may be reviewed by authorized support or moderation team members. Blocking helps limit unwanted contact where supported by the service.
+5. Safety support
+In-app reporting and blocking are not currently available. Contact support from Settings if you need help with a conversation.
 
 6. Enforcement
 Menorah may remove content, restrict features, or suspend accounts that create safety risks or violate these guidelines.`;
@@ -265,7 +265,7 @@ For app support, account questions, privacy questions, or safety concerns, conta
 General support: menorahenquries@gmail.com
 Privacy: privacy@menorah.me
 
-For unsafe content or behavior in chat, use the report options in the chat screen where available and include the conversation context in your support request.
+For unsafe content or behavior in chat, contact support from Settings and include the relevant conversation context in your support request.
 
 For urgent danger, self-harm risk, medical emergencies, or threats to another person, do not wait for app support. Contact local emergency services immediately.`;
 

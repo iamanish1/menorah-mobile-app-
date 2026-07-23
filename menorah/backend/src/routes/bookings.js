@@ -1,6 +1,5 @@
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
-const moment = require('moment');
 const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
@@ -41,6 +40,10 @@ const {
   buildProfessionallyApprovedCounsellorQuery,
   isCounsellorProfessionallyApproved,
 } = require('../services/counsellorVerificationPolicy');
+const {
+  evaluateScheduledSessionAccess,
+} = require('../services/sessionAuthorizationPolicy');
+const { recordSecurityEvent } = require('../utils/securityAudit');
 
 const router = express.Router();
 const SLOT_TAKEN_MESSAGE = 'This time slot was just booked by someone else. Please choose another available slot.';
@@ -151,11 +154,71 @@ const getBookingAccessPresentation = (booking, { includeHostUrl = false } = {}) 
   };
 };
 
-const canManageSessionState = (booking, user) => {
-  if (user?.role === 'admin') return true;
-  const counsellorUserId = booking.counsellor?.user?._id?.toString?.()
-    || booking.counsellor?.user?.toString?.();
-  return Boolean(counsellorUserId && counsellorUserId === user?._id?.toString());
+const sessionStateDenialResponse = (reason) => {
+  if (reason === 'CALL_TOO_EARLY') {
+    return {
+      statusCode: 409,
+      code: reason,
+      message: 'The session access window has not opened yet',
+    };
+  }
+  if (reason === 'CALL_TOO_LATE') {
+    return {
+      statusCode: 410,
+      code: reason,
+      message: 'The session access window has closed',
+    };
+  }
+  return {
+    statusCode: 403,
+    code: reason,
+    message: 'This session transition is not currently available',
+  };
+};
+
+const authorizeCounsellorSessionTransition = ({
+  req,
+  res,
+  booking,
+  action,
+  allowedStatuses,
+}) => {
+  const access = evaluateScheduledSessionAccess({
+    booking,
+    requesterUserId: req.user?._id,
+    now: new Date(),
+    allowedStatuses,
+  });
+  const reason = access.allowed && access.participantRole !== 'counsellor'
+    ? 'SESSION_COUNSELLOR_REQUIRED'
+    : access.reason;
+
+  if (!reason) return access;
+
+  const denial = sessionStateDenialResponse(reason);
+  try {
+    recordSecurityEvent('call_authorization_denied', {
+      req,
+      user: req.user,
+      outcome: 'failure',
+      statusCode: denial.statusCode,
+      details: {
+        action,
+        reason,
+        resource: 'booking_session',
+        targetId: booking?._id || req.params?.id,
+      },
+    });
+  } catch {
+    // Session transitions still fail closed if audit output is unavailable.
+  }
+  res.locals.securityAuthorizationLogged = true;
+  res.status(denial.statusCode).json({
+    success: false,
+    code: denial.code,
+    message: denial.message,
+  });
+  return null;
 };
 
 // @route   POST /api/bookings
@@ -1123,8 +1186,18 @@ router.put('/:id/start', [
     const { id } = req.params;
 
     const booking = await Booking.findById(id)
-      .populate('counsellor', 'user')
-      .populate('user', 'firstName lastName');
+      .populate({
+        path: 'counsellor',
+        select: 'user status isActive professionalVerification',
+        populate: {
+          path: 'user',
+          select: 'firstName lastName role isActive',
+        },
+      })
+      .populate(
+        'user',
+        'firstName lastName phone address country accountRegion region role isActive'
+      );
 
     if (!booking) {
       return res.status(404).json({
@@ -1133,39 +1206,14 @@ router.put('/:id/start', [
       });
     }
 
-    if (!canManageSessionState(booking, req.user)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Only the assigned counsellor or an administrator can start this session.'
-      });
-    }
-
-    if (booking.status !== 'confirmed') {
-      return res.status(400).json({
-        success: false,
-        message: 'Session cannot be started. Booking must be confirmed.'
-      });
-    }
-
-    // For instant sessions, allow starting immediately after assignment
-    // For scheduled sessions, check if scheduled time has arrived (with 15 min buffer)
-    const scheduledTime = new Date(booking.scheduledAt);
-    const now = new Date();
-    const timeDiff = scheduledTime.getTime() - now.getTime();
-    const fifteenMinutes = 15 * 60 * 1000;
-    
-    // Check if this is an instant session (recently assigned and scheduled time is in future)
-    const assignedTime = booking.assignedAt ? new Date(booking.assignedAt) : null;
-    const isRecentlyAssigned = assignedTime && (now.getTime() - assignedTime.getTime()) < 24 * 60 * 60 * 1000; // Within 24 hours
-    const isInstantSession = isRecentlyAssigned && scheduledTime > now;
-    
-    // Allow starting if: scheduled time has passed (with 15 min buffer) OR it's an instant session
-    if (!isInstantSession && timeDiff > fifteenMinutes) {
-      return res.status(400).json({
-        success: false,
-        message: `Session cannot be started yet. Scheduled time is ${moment(scheduledTime).format('MMM D, YYYY h:mm A')}.`
-      });
-    }
+    const sessionAccess = authorizeCounsellorSessionTransition({
+      req,
+      res,
+      booking,
+      action: 'start',
+      allowedStatuses: ['confirmed'],
+    });
+    if (!sessionAccess) return;
 
     let startCallPolicy = null;
     if (booking.sessionType === 'video') {
@@ -1260,7 +1308,7 @@ router.put('/:id/start', [
     });
 
   } catch (error) {
-    console.error('Start session error:', error);
+    console.error('Start session error:', error?.code || error?.name || 'unknown_error');
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -1287,8 +1335,18 @@ router.put('/:id/complete', [
     const { id } = req.params;
 
     const booking = await Booking.findById(id)
-      .populate('counsellor', 'user')
-      .populate('user', 'firstName lastName');
+      .populate({
+        path: 'counsellor',
+        select: 'user status isActive professionalVerification',
+        populate: {
+          path: 'user',
+          select: 'firstName lastName role isActive',
+        },
+      })
+      .populate(
+        'user',
+        'firstName lastName role isActive'
+      );
 
     if (!booking) {
       return res.status(404).json({
@@ -1297,19 +1355,14 @@ router.put('/:id/complete', [
       });
     }
 
-    if (!canManageSessionState(booking, req.user)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Only the assigned counsellor or an administrator can complete this session.'
-      });
-    }
-
-    if (booking.status !== 'in-progress') {
-      return res.status(400).json({
-        success: false,
-        message: 'Session cannot be completed'
-      });
-    }
+    const sessionAccess = authorizeCounsellorSessionTransition({
+      req,
+      res,
+      booking,
+      action: 'complete',
+      allowedStatuses: ['in-progress'],
+    });
+    if (!sessionAccess) return;
 
     // Complete session
     await booking.complete();
@@ -1335,7 +1388,7 @@ router.put('/:id/complete', [
     });
 
   } catch (error) {
-    console.error('Complete session error:', error);
+    console.error('Complete session error:', error?.code || error?.name || 'unknown_error');
     res.status(500).json({
       success: false,
       message: 'Internal server error'

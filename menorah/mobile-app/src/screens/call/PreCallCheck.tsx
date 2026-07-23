@@ -108,7 +108,6 @@ export default function PreCallCheck({ navigation, route }: any) {
           bookingId,
           roomId:         res.data.roomId,
           livekitUrl:     res.data.livekitUrl,
-          livekitToken:   res.data.livekitToken || res.data.token,
           meetUrl:        res.data.meetUrl,
           sessionType:    res.data.sessionType,
           counsellorName: res.data.counsellorName,

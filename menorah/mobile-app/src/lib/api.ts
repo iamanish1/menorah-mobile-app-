@@ -107,8 +107,6 @@ export interface VideoRoomSession {
   roomName?: string;
   roomId?: string;
   livekitUrl?: string;
-  livekitToken?: string;
-  token?: string;
   meetUrl?: string;
   meetTicket?: string;
   roomUrl?: string;
@@ -159,22 +157,6 @@ export interface Message {
   type: 'text' | 'image' | 'file';
   status?: 'sent' | 'delivered' | 'read';
   roomId?: string;
-}
-
-export interface ReportUserPayload {
-  userId: string;
-  roomId?: string;
-  reason: string;
-  details?: string;
-}
-
-export interface ReportContentPayload {
-  contentType: 'message' | 'post' | 'chat';
-  contentId: string;
-  roomId?: string;
-  reportedUserId?: string;
-  reason: string;
-  details?: string;
 }
 
 export interface ApiValidationError {
@@ -772,60 +754,6 @@ class ApiClient {
       url: `/chat/rooms/${roomId}/typing`,
       data: { isTyping },
     });
-  }
-
-  async reportUser(payload: ReportUserPayload): Promise<ApiResponse<void>> {
-    // TODO: Confirm the production moderation endpoint path with the backend team.
-    const response = await this.request<void>({
-      method: 'POST',
-      url: '/moderation/report-user',
-      data: payload,
-    });
-
-    return response.message
-      ? response
-      : {
-          ...response,
-          message: response.success
-            ? 'Report submitted.'
-            : 'Report user endpoint is not connected yet. Please contact support so the team can review this manually.',
-        };
-  }
-
-  async reportContent(payload: ReportContentPayload): Promise<ApiResponse<void>> {
-    // TODO: Confirm the production moderation endpoint path with the backend team.
-    const response = await this.request<void>({
-      method: 'POST',
-      url: '/moderation/report-content',
-      data: payload,
-    });
-
-    return response.message
-      ? response
-      : {
-          ...response,
-          message: response.success
-            ? 'Report submitted.'
-            : 'Report content endpoint is not connected yet. Please contact support so the team can review this manually.',
-        };
-  }
-
-  async blockUser(userId: string, roomId?: string): Promise<ApiResponse<void>> {
-    // TODO: Confirm the production blocking endpoint path with the backend team.
-    const response = await this.request<void>({
-      method: 'POST',
-      url: '/moderation/block-user',
-      data: { userId, roomId },
-    });
-
-    return response.message
-      ? response
-      : {
-          ...response,
-          message: response.success
-            ? 'User blocked.'
-            : 'Block user endpoint is not connected yet. Please contact support so the team can review this manually.',
-        };
   }
 
   // Get available counselors for chat

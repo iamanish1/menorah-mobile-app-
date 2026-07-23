@@ -13,6 +13,9 @@ const { verifyUserToken } = require('../../utils/authTokens');
 const { isCurrentSessionToken } = require('../../utils/sessionTokenBinding');
 const { recordSecurityEvent } = require('../../utils/securityAudit');
 const {
+  loadChatRoomAuthorization,
+} = require('../../services/chatRoomAuthorization');
+const {
   getCookieToken,
   getWebSessionForRequest,
 } = require('../../config/webSessions');
@@ -20,6 +23,8 @@ const {
 const SOCKET_ENABLED_SERVICES = new Set(['api-ios', 'api-android', 'api-web']);
 const DEFAULT_SOCKET_SESSION_REVALIDATION_INTERVAL_MS = 30 * 1000;
 const SOCKET_REVALIDATION_CONCURRENCY = 10;
+const MAX_JOINED_CHAT_ROOMS = 100;
+const SOCKET_CHAT_DENIAL_AUDIT_INTERVAL_MS = 30 * 1000;
 
 const parseBooleanEnv = (value, fallback) => {
   if (value === undefined || value === null || value === '') return fallback;
@@ -53,25 +58,98 @@ const resolveSocketRuntime = ({ serviceName, enableSocketsDefault = false } = {}
   };
 };
 
-const isRoomParticipant = (room, userId) => {
-  const id = userId.toString();
-  const isUser = room.user?.toString() === id;
-  const isCounsellor = room.counsellor?.user?.toString() === id;
-  return isUser || isCounsellor;
-};
+const loadAuthorizedRoom = async (
+  roomId,
+  userId,
+  { ChatRoomModel = ChatRoom, now = new Date() } = {}
+) => loadChatRoomAuthorization({
+  roomId,
+  requesterUserId: userId,
+  now,
+  lean: true,
+  ChatRoomModel,
+});
 
-const loadAuthorizedRoom = async (roomId, userId) => {
-  const room = await ChatRoom.findById(roomId).populate('counsellor', 'user').lean();
-  if (!room || !isRoomParticipant(room, userId)) return null;
-  return room;
-};
+const getJoinedChatRoomNames = (socket) => [...socket.rooms]
+  .filter((roomName) =>
+    typeof roomName === 'string' && roomName.startsWith('chat_')
+  )
+  .slice(0, MAX_JOINED_CHAT_ROOMS);
 
-const emitPresenceToJoinedChatRooms = (socket, event) => {
-  for (const room of socket.rooms) {
-    if (typeof room === 'string' && room.startsWith('chat_')) {
-      socket.to(room).emit('user_status_changed', event);
-    }
+const shouldRecordSocketChatDenial = (socket, key, now = Date.now()) => {
+  socket.chatDenialAudit = socket.chatDenialAudit || new Map();
+  const previous = socket.chatDenialAudit.get(key);
+  if (
+    previous !== undefined
+    && now - previous < SOCKET_CHAT_DENIAL_AUDIT_INTERVAL_MS
+  ) return false;
+
+  if (socket.chatDenialAudit.size >= MAX_JOINED_CHAT_ROOMS) {
+    const oldest = socket.chatDenialAudit.keys().next().value;
+    socket.chatDenialAudit.delete(oldest);
   }
+  socket.chatDenialAudit.set(key, now);
+  return true;
+};
+
+const recordSocketChatAuthorizationDenial = (socket, reason, roomId) => {
+  const key = `${reason}:${roomId || 'unknown'}`;
+  if (!shouldRecordSocketChatDenial(socket, key)) return;
+
+  try {
+    recordSecurityEvent('socket_chat_authorization_denied', {
+      req: {
+        method: 'SOCKET',
+        originalUrl: '/socket.io/chat',
+        ip: socket.handshake.address || socket.conn?.remoteAddress,
+      },
+      user: {
+        _id: socket.userId,
+        role: socket.userRole,
+      },
+      outcome: 'failure',
+      statusCode: 403,
+      details: {
+        reason,
+        resource: 'chat_room',
+        targetId: roomId,
+        transport: socket.authTransport,
+      },
+    });
+  } catch {
+    // The socket action still fails closed if audit output is unavailable.
+  }
+};
+
+const authorizeSocketRoom = async (socket, roomId) => {
+  if (!/^[a-f0-9]{24}$/i.test(String(roomId || ''))) {
+    recordSocketChatAuthorizationDenial(socket, 'CHAT_ROOM_ID_INVALID', roomId);
+    return null;
+  }
+
+  const authorization = await loadAuthorizedRoom(roomId, socket.userId);
+  if (!authorization.access.allowed) {
+    recordSocketChatAuthorizationDenial(
+      socket,
+      authorization.access.reason,
+      roomId
+    );
+    socket.leave(`chat_${roomId}`);
+    return null;
+  }
+  return authorization;
+};
+
+const emitPresenceToAuthorizedChatRooms = async (
+  socket,
+  event,
+  roomNames = getJoinedChatRoomNames(socket)
+) => {
+  await Promise.all(roomNames.map(async (roomName) => {
+    const roomId = roomName.slice('chat_'.length);
+    if (!await authorizeSocketRoom(socket, roomId)) return;
+    socket.to(roomName).emit('user_status_changed', event);
+  }));
 };
 
 const getSocketWebSession = (socket) => getWebSessionForRequest({
@@ -307,7 +385,10 @@ const attachSocketHandlers = (io) => {
         .then((counsellor) => {
           if (counsellor) socket.join(`counsellor_${counsellor._id}`);
         })
-        .catch((err) => console.error('Error joining counsellor room:', err));
+        .catch((error) => console.error(
+          'Counsellor socket room lookup failed:',
+          error?.code || 'COUNSELLOR_SOCKET_ROOM_LOOKUP_FAILED'
+        ));
     }
 
     if (socket.userRole === 'admin') {
@@ -317,8 +398,15 @@ const attachSocketHandlers = (io) => {
     socket.on('join_room', async (roomId) => {
       try {
         if (!roomId) return;
-        const room = await loadAuthorizedRoom(roomId, socket.userId);
-        if (!room) return;
+        if (getJoinedChatRoomNames(socket).length >= MAX_JOINED_CHAT_ROOMS) {
+          recordSocketChatAuthorizationDenial(
+            socket,
+            'CHAT_ROOM_LIMIT_REACHED',
+            roomId
+          );
+          return;
+        }
+        if (!await authorizeSocketRoom(socket, roomId)) return;
 
         const userId = socket.userId.toString();
 
@@ -329,18 +417,30 @@ const attachSocketHandlers = (io) => {
           timestamp: new Date().toISOString()
         });
       } catch (err) {
-        console.error('join_room error:', err.message);
+        console.error(
+          'Socket chat join failed closed:',
+          err?.code || 'SOCKET_CHAT_JOIN_FAILED'
+        );
       }
     });
 
-    socket.on('leave_room', (roomId) => {
-      if (!roomId) return;
-      socket.leave(`chat_${roomId}`);
-      socket.to(`chat_${roomId}`).emit('user_left', {
-        userId: socket.userId,
-        roomId,
-        timestamp: new Date().toISOString()
-      });
+    socket.on('leave_room', async (roomId) => {
+      try {
+        if (!roomId) return;
+        if (!socket.rooms.has(`chat_${roomId}`)) return;
+        if (!await authorizeSocketRoom(socket, roomId)) return;
+        socket.leave(`chat_${roomId}`);
+        socket.to(`chat_${roomId}`).emit('user_left', {
+          userId: socket.userId,
+          roomId,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error(
+          'Socket chat leave failed closed:',
+          error?.code || 'SOCKET_CHAT_LEAVE_FAILED'
+        );
+      }
     });
 
     socket.on('send_message', async (data) => {
@@ -348,9 +448,13 @@ const attachSocketHandlers = (io) => {
         const { roomId, content, type = 'text' } = data;
         if (!roomId || !content) return;
         if (!socket.rooms.has(`chat_${roomId}`)) return;
-        if (!await loadAuthorizedRoom(roomId, socket.userId)) return;
+        if (!await authorizeSocketRoom(socket, roomId)) return;
 
-        const safeContent = String(content).slice(0, 5000).replace(/<[^>]*>/g, '');
+        const safeContent = String(content)
+          .slice(0, 5000)
+          .replace(/<[^>]*>/g, '')
+          .trim();
+        if (!safeContent) return;
         const msg = await Message.create({
           room: roomId,
           sender: socket.userId,
@@ -384,46 +488,86 @@ const attachSocketHandlers = (io) => {
           timestamp: payload.timestamp
         });
       } catch (err) {
-        console.error('send_message error:', err.message);
+        console.error(
+          'Socket chat send failed closed:',
+          err?.code || 'SOCKET_CHAT_SEND_FAILED'
+        );
       }
     });
 
     socket.on('typing_start', async (roomId) => {
-      if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
-      if (!await loadAuthorizedRoom(roomId, socket.userId)) return;
-      socket.to(`chat_${roomId}`).emit('user_typing', { userId: socket.userId, isTyping: true });
+      try {
+        if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
+        if (!await authorizeSocketRoom(socket, roomId)) return;
+        socket.to(`chat_${roomId}`).emit('user_typing', { userId: socket.userId, isTyping: true });
+      } catch (error) {
+        console.error(
+          'Socket typing authorization failed closed:',
+          error?.code || 'SOCKET_TYPING_AUTHORIZATION_FAILED'
+        );
+      }
     });
 
     socket.on('typing_stop', async (roomId) => {
-      if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
-      if (!await loadAuthorizedRoom(roomId, socket.userId)) return;
-      socket.to(`chat_${roomId}`).emit('user_typing', { userId: socket.userId, isTyping: false });
+      try {
+        if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
+        if (!await authorizeSocketRoom(socket, roomId)) return;
+        socket.to(`chat_${roomId}`).emit('user_typing', { userId: socket.userId, isTyping: false });
+      } catch (error) {
+        console.error(
+          'Socket typing authorization failed closed:',
+          error?.code || 'SOCKET_TYPING_AUTHORIZATION_FAILED'
+        );
+      }
     });
 
-    socket.on('mark_read', async ({ roomId, messageId }) => {
-      if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
-      if (!await loadAuthorizedRoom(roomId, socket.userId)) return;
-      socket.to(`chat_${roomId}`).emit('message_read', {
-        messageId,
-        readBy: socket.userId,
-        timestamp: new Date().toISOString()
-      });
+    socket.on('mark_read', async (data = {}) => {
+      try {
+        const { roomId, messageId } = data || {};
+        if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
+        if (!await authorizeSocketRoom(socket, roomId)) return;
+        if (!/^[a-f0-9]{24}$/i.test(String(messageId || ''))) return;
+        const message = await Message.findOne({ _id: messageId, room: roomId });
+        if (!message) return;
+        await message.markAsRead(socket.userId);
+        socket.to(`chat_${roomId}`).emit('message_read', {
+          messageId,
+          readBy: socket.userId,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error(
+          'Socket read authorization failed closed:',
+          error?.code || 'SOCKET_READ_AUTHORIZATION_FAILED'
+        );
+      }
     });
 
-    socket.on('set_online_status', (isOnline) =>
-      emitPresenceToJoinedChatRooms(socket, {
+    socket.on('set_online_status', async (isOnline) =>
+      emitPresenceToAuthorizedChatRooms(socket, {
         userId: socket.userId,
-        isOnline,
+        isOnline: isOnline === true,
         timestamp: new Date().toISOString()
+      }).catch((error) => {
+        console.error(
+          'Socket presence authorization failed closed:',
+          error?.code || 'SOCKET_PRESENCE_AUTHORIZATION_FAILED'
+        );
       })
     );
 
-    socket.on('disconnect', () => {
+    socket.on('disconnecting', () => {
+      const roomNames = getJoinedChatRoomNames(socket);
       chatRoutes.setUserOffline(socket.userId);
-      emitPresenceToJoinedChatRooms(socket, {
+      emitPresenceToAuthorizedChatRooms(socket, {
         userId: socket.userId,
         isOnline: false,
         timestamp: new Date().toISOString()
+      }, roomNames).catch((error) => {
+        console.error(
+          'Socket disconnect presence authorization failed closed:',
+          error?.code || 'SOCKET_DISCONNECT_AUTHORIZATION_FAILED'
+        );
       });
     });
   });
@@ -480,10 +624,13 @@ module.exports = {
   parseBooleanEnv,
   _private: {
     DEFAULT_SOCKET_SESSION_REVALIDATION_INTERVAL_MS,
+    MAX_JOINED_CHAT_ROOMS,
     authenticateSocketHandshake,
+    loadAuthorizedRoom,
     createSocketSessionRevalidator,
     readSocketSessionRevalidationInterval,
     revalidateConnectedSockets,
+    shouldRecordSocketChatDenial,
     startSocketSessionRevalidation,
   },
 };

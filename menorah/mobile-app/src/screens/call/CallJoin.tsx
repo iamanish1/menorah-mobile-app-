@@ -13,7 +13,6 @@ interface RouteParams {
   bookingId:      string;
   roomId:         string;
   livekitUrl:     string;
-  livekitToken:   string;
   meetUrl?:       string;
   provider?:      string;
   joinMode?:      string;

@@ -62,7 +62,7 @@ const privacySections = [
         items: [
           "Registration data: name, date of birth, email address, phone number, gender identity.",
           "Health and wellness data: mood logs, journal entries, symptom check-ins, mental health assessments.",
-          "Session data: audio/video recordings of therapy sessions, only with explicit consent, and session notes.",
+          "Session communications and notes. Audio/video session recording is not currently enabled.",
           "Payment data: billing details processed via PCI-DSS compliant payment gateways; we do not store card numbers.",
           "Communications: messages, feedback, support queries.",
           "Optional face-check data: one selfie, face-detection results, confidence score, consent evidence, submission and review history, and basic image-file metadata."
