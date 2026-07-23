@@ -11,26 +11,54 @@ For production, `/mnt/menorah-backups` should be a RAID1 mirror across the two b
 Directory layout:
 
 ```text
+manual/
 six-hourly/
 daily/
 weekly/
 monthly/
+metadata/
 restore-tests/
+  sanitized/
 ```
 
 ## What Is Backed Up
 
-Backups include:
+The source backup set includes:
 
-- MongoDB dump archive.
-- Uploads archive from `MENORAH_DATA_ROOT/uploads`.
-- Metadata with timestamp, git commit SHA, Docker Compose service state, Docker image list, database name, and backup type.
+- An encrypted, full-instance MongoDB archive with an oplog.
+- A mandatory encrypted uploads archive from the shared
+  `MENORAH_DATA_ROOT/uploads` namespace.
+- A signed per-file media manifest (path, byte size, and SHA-256) and a signed
+  database-reference verification report linked to that exact manifest.
+- Signed metadata with the archive digest, exact deployed release, migration
+  marker, MongoDB Database Tools version, server version, FCV, and backup type.
+
+The full source archive contains MongoDB system identity data and is never a
+direct production-restore input. A successful isolated restore test derives a
+separately encrypted `menorah.*`-only archive. Production restore accepts only
+that signed, checksum-verified sanitized artifact.
+
+Production media uses `MEDIA_STORAGE_BACKEND=local`,
+`UPLOAD_PATH=/app/uploads`, and the canonical HTTPS
+`MEDIA_PUBLIC_BASE_URL`. Every API and the worker mounts the same host
+directory. Writes use never-reused object keys, file fsync, atomic rename, and
+write-before-database-reference ordering. Replaced objects are retained; they
+are not overwritten or deleted by request paths. Those properties make the
+post-database media snapshot a safe superset of the MongoDB point-in-time.
+
+Backup fails closed when the uploads directory is absent or symlinked, a media
+path is unsafe, bytes change while being hashed, a managed database reference
+is missing immutable hash/size/service metadata, a referenced file is absent,
+or a managed Cloudinary object remains outside the local recovery set.
 
 Secrets are not written into git or normal logs. Env/secrets are represented as a checklist, not raw values.
 
 ## Encryption Rule
 
 Set `BACKUP_ENCRYPTION_PASSWORD` in the host-only `production.env` before copying backups off-host.
+Set a distinct `BACKUP_INTEGRITY_HMAC_KEY` of at least 32 characters so source
+metadata, latest-success markers, sanitized metadata, and restore-test evidence
+can be authenticated.
 
 For production, set:
 
@@ -93,10 +121,11 @@ sudo bash deploy/ubuntu/install-backup-schedule.sh
 
 This installs timers for:
 
+- Six-hourly backup: `00:15`, `06:15`, `12:15`, and `18:15 UTC`
 - Daily backup: `02:30 UTC`
 - Weekly backup: Sunday `03:00 UTC`
 - Monthly backup: first day of month `04:00 UTC`
-- Weekly restore-test: Sunday `05:00 UTC`
+- Daily restore-test
 - Daily pruning: `06:00 UTC`
 - Hourly backup health checks
 
@@ -106,12 +135,21 @@ Logs are written under `/opt/menorah/logs/` and rotated weekly.
 
 Default retention:
 
+- Manual: 30 days
 - Six-hourly: 7 days
 - Daily: 30 days
 - Weekly: 84 days
 - Monthly: 366 days
+- Sanitized restore artifacts: 366 days, and never longer than their source set
 
-The pruning script never deletes the newest backup in each category.
+Pruning acquires the deployment lock and then the backup lock, so it cannot race
+a backup, restore, update, or rollback. It protects both every signed
+latest-success set and the newest timestamped set in each category. When a
+source set expires, its sanitized artifact, checksum, signed metadata, and HMAC
+sidecar are removed first as a linked unit. Sanitized artifacts whose source is
+already absent are also removed after `SANITIZED_ORPHAN_GRACE_HOURS` (24 hours
+by default). Any malformed or partially published signed evidence makes pruning
+fail before it deletes anything.
 
 ```bash
 bash deploy/ubuntu/prune-backups.sh
@@ -129,16 +167,38 @@ The check verifies:
 
 - Backup root is mounted when required.
 - Latest daily backup is under `BACKUP_MAX_AGE_HOURS`.
-- Latest archive is above `BACKUP_MIN_SIZE_BYTES`.
-- Checksum exists and validates.
+- The cadence-specific latest marker and source metadata have valid HMACs and
+  match the expected full-instance/oplog safety contract.
+- Source MongoDB and mandatory uploads archives are canonical files inside the
+  signed backup set, are above the configured minimum where applicable, and
+  match both their checksum sidecars and signed digests.
+- Production source provenance contains an exact deployed release, Database
+  Tools version, MongoDB 7 server version, and FCV `7.0`.
 - Backup disk usage is below `BACKUP_DISK_USAGE_MAX_PERCENT`.
 - RAID1 device is healthy when expected.
-- Restore-test marker is fresh.
+- The restore-test marker is signed and no older than 24 hours. Production
+  refuses `CHECK_RESTORE_TEST=false` or a configured maximum above 24 hours.
+- The restore-test source is fresh and checksum-valid, and the derived
+  `menorah.*` artifact, checksum, signed metadata, source digest linkage,
+  release linkage, version linkage, and timestamp chain all match.
+- The signed uploads manifest and database-reference report match, contain no
+  managed Cloudinary references, and report no missing or mismatched local
+  objects.
+
+The health check acquires the same deployment-then-backup lock order and reads
+archives only to hash them. It never decrypts an archive or creates a plaintext
+copy.
 
 Optional Uptime Kuma push monitoring:
 
 ```env
 BACKUP_HEALTH_PUSH_URL=https://<uptime-kuma-private-url>/api/push/<token>
+```
+
+Run the deterministic lifecycle regression tests on a Linux host:
+
+```bash
+bash scripts/qa/test-backup-lifecycle.sh
 ```
 
 ## Restore Test
@@ -149,16 +209,27 @@ Default restore target is the test database/container:
 bash deploy/ubuntu/restore-latest-backup.sh restore-test
 ```
 
-This starts the `mongo-restore-test` service and restores the latest MongoDB archive into `menorah_restore_test`.
+This starts a fresh isolated `mongo-restore-test` replica set, restores the
+full source archive there, stages and verifies the uploads archive, proves
+every restored managed-media reference against the staged manifest, derives a
+Menorah-only database artifact, and destroys the no-auth test volume.
 
 ## Production Restore
 
-Production restore is destructive and uses `--drop`.
-
-It is blocked unless explicitly confirmed:
+Production restore is destructive and uses `--drop`. It requires the exact
+source and sanitized digests, current and backup release SHAs, an approved
+change reference, and a separately verified traffic drain. Example shape:
 
 ```bash
-RESTORE_CONFIRM_PRODUCTION=true bash deploy/ubuntu/restore-latest-backup.sh production
+RESTORE_CONFIRM_PRODUCTION=RESTORE_PRODUCTION_WITH_DROP \
+RESTORE_TRAFFIC_DRAIN_CONFIRM=DRAINED_PUBLIC_TRAFFIC \
+RESTORE_EXPECTED_ARCHIVE_SHA256=<reviewed-source-sha256> \
+RESTORE_EXPECTED_SANITIZED_SHA256=<reviewed-sanitized-sha256> \
+RESTORE_EXPECTED_CURRENT_SHA=<current-40-character-sha> \
+RESTORE_EXPECTED_BACKUP_GIT_SHA=<backup-40-character-sha> \
+RESTORE_CHANGE_REFERENCE=<approved-change-or-incident-id> \
+RESTORE_ARCHIVE=<exact-encrypted-source-archive> \
+  bash deploy/ubuntu/restore-latest-backup.sh production
 ```
 
 Before production restore:
@@ -169,9 +240,16 @@ Before production restore:
 - [ ] Confirm the git commit SHA in backup metadata.
 - [ ] Confirm backup checksum.
 - [ ] Run restore-test successfully first.
+- [ ] Confirm the signed media manifest/reference report has no violations.
 
 After production restore:
 
+- [ ] Keep every writer stopped while the restored schema is reviewed.
+- [ ] Confirm the verified media tree was published and record the retained
+      `preRestoreMediaRollbackPath` from the restore review marker.
+- [ ] Run the approved schema/migration review and
+      `acknowledge-production-restore.sh`; do not delete the media rollback
+      tree until the recovery is accepted.
 - [ ] Run `bash deploy/ubuntu/health-check.sh`.
 - [ ] Run `CHECK_PUBLIC=true bash deploy/ubuntu/health-check.sh`.
 - [ ] Verify login, articles, bookings, chat, and admin.
@@ -189,3 +267,7 @@ Monthly:
 - Record archive location and checksum.
 
 Do not upload unencrypted backup files to any off-host storage.
+
+An isolated full database-and-media restore drill and a checksum-verified
+off-host copy remain operator-owned launch evidence; repository tests do not
+prove either external control.

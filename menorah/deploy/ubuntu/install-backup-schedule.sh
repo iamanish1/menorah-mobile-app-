@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="${MENORAH_REPO_ROOT:-/opt/menorah/menorah}"
+REPO_ROOT="${MENORAH_REPO_ROOT:-/opt/menorah/menorah-mobile-app-/menorah}"
 ENV_FILE="${PRODUCTION_ENV:-${REPO_ROOT}/deploy/env/production.env}"
-RUN_USER="${MENORAH_BACKUP_USER:-tejasmenorah}"
+RUN_USER="${MENORAH_BACKUP_RUN_USER:-${SUDO_USER:-}}"
 LOG_DIR="${MENORAH_LOG_DIR:-/opt/menorah/logs}"
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -21,14 +21,15 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   exit 1
 fi
 
-if ! id "${RUN_USER}" >/dev/null 2>&1; then
+if [[ -z "${RUN_USER}" || "${RUN_USER}" == "root" ]] || ! id "${RUN_USER}" >/dev/null 2>&1; then
   echo "Backup run user does not exist: ${RUN_USER}" >&2
   exit 1
 fi
+RUN_GROUP="$(id -gn "${RUN_USER}")"
 
-install -d -m 0750 -o "${RUN_USER}" -g "${RUN_USER}" "${LOG_DIR}"
+install -d -m 0750 -o "${RUN_USER}" -g "${RUN_GROUP}" "${LOG_DIR}"
 touch "${LOG_DIR}/backup.log" "${LOG_DIR}/backup-health.log" "${LOG_DIR}/restore-test.log"
-chown "${RUN_USER}:${RUN_USER}" "${LOG_DIR}/backup.log" "${LOG_DIR}/backup-health.log" "${LOG_DIR}/restore-test.log"
+chown "${RUN_USER}:${RUN_GROUP}" "${LOG_DIR}/backup.log" "${LOG_DIR}/backup-health.log" "${LOG_DIR}/restore-test.log"
 
 cat > /etc/systemd/system/menorah-backup@.service <<UNIT
 [Unit]
@@ -55,6 +56,20 @@ OnCalendar=*-*-* 02:30:00 UTC
 Persistent=true
 RandomizedDelaySec=5m
 Unit=menorah-backup@daily.service
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+cat > /etc/systemd/system/menorah-backup-six-hourly.timer <<'UNIT'
+[Unit]
+Description=Run Menorah six-hourly backup
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:15:00 UTC
+Persistent=true
+RandomizedDelaySec=5m
+Unit=menorah-backup@six-hourly.service
 
 [Install]
 WantedBy=timers.target
@@ -106,10 +121,10 @@ UNIT
 
 cat > /etc/systemd/system/menorah-restore-test.timer <<'UNIT'
 [Unit]
-Description=Run Menorah weekly restore-test
+Description=Run Menorah daily restore-test
 
 [Timer]
-OnCalendar=Sun *-*-* 05:00:00 UTC
+OnCalendar=*-*-* 05:00:00 UTC
 Persistent=true
 RandomizedDelaySec=15m
 Unit=menorah-restore-test.service
@@ -187,6 +202,7 @@ LOGROTATE
 
 systemctl daemon-reload
 systemctl enable --now \
+  menorah-backup-six-hourly.timer \
   menorah-backup-daily.timer \
   menorah-backup-weekly.timer \
   menorah-backup-monthly.timer \
