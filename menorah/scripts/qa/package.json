@@ -8,7 +8,13 @@
     "test:api": "node production-api-smoke.js",
     "test:otp": "node production-auth-smoke.js",
     "test:providers": "node production-provider-check.js",
+    "test:backup-lifecycle": "bash test-backup-lifecycle.sh",
+    "test:media-recovery": "node validate-media-recovery-config.mjs",
+    "test:media-transition": "bash test-media-transition.sh",
+    "test:mongo-identities": "node --test mongo-managed-identities.test.mjs",
+    "test:release-workflow": "node validate-release-workflow.mjs && node --test validate-release-workflow.test.mjs",
     "test:tunnel-config": "node --test validate-cloudflare-tunnel-config.test.mjs",
+    "test:monitoring": "node validate-monitoring-config.mjs && node --test validate-monitoring-config.test.mjs validate-alertmanager-delivery.test.mjs docker-metrics-gateway.test.mjs docker-stats-exporter.test.mjs && bash test-monitoring-native.sh",
     "validate:tunnel-example": "node validate-cloudflare-tunnel-config.mjs --config ../../deploy/cloudflare/tunnel-config.yml.example",
     "test:all-safe": "npm run test:tunnel-config && npm run test:api && npm run test:web"
   },

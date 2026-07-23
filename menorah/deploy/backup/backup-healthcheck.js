@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const backupRoot = process.env.BACKUP_ROOT || '/backups';
-const maxAgeHours = Number(process.env.BACKUP_MAX_AGE_HOURS || 30);
+const maxAgeHours = Number(process.env.BACKUP_MAX_AGE_HOURS || 24);
 const minSizeBytes = Number(process.env.BACKUP_MIN_SIZE_BYTES || 1024);
 const mongoRoot = path.join(backupRoot, 'mongo');
 

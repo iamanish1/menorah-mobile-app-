@@ -3,11 +3,15 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { parseDocument } from 'yaml';
 import {
   DEFAULT_CADDY_PATH,
   DEFAULT_MANIFEST_PATH,
+  DEFAULT_PRODUCTION_COMPOSE_PATH,
+  DEFAULT_TUNNEL_COMPOSE_PATH,
   validateCaddySource,
   validateConfigSource,
+  validateIngressBoundary,
 } from './validate-cloudflare-tunnel-config.mjs';
 
 const FIXTURE_DIR = path.join(
@@ -18,6 +22,17 @@ const FIXTURE_DIR = path.join(
 async function validateFixture(name) {
   const source = await readFile(path.join(FIXTURE_DIR, name), 'utf8');
   return validateConfigSource(source, { configLabel: name });
+}
+
+async function loadIngressBoundary() {
+  const [productionSource, tunnelSource] = await Promise.all([
+    readFile(DEFAULT_PRODUCTION_COMPOSE_PATH, 'utf8'),
+    readFile(DEFAULT_TUNNEL_COMPOSE_PATH, 'utf8'),
+  ]);
+  return {
+    production: parseDocument(productionSource).toJS({ maxAliasCount: 10000 }),
+    tunnel: parseDocument(tunnelSource).toJS({ maxAliasCount: 10000 }),
+  };
 }
 
 test('accepts a complete locally managed YAML configuration', async () => {
@@ -145,5 +160,92 @@ test('detects Caddy site drift from the manifest', async () => {
   assert.match(
     validateCaddySource(drifted, manifest).join('\n'),
     /missing manifest site calls\.mentle\.org/,
+  );
+});
+
+test('production Compose isolates the connector-to-Caddy trust boundary', async () => {
+  const { production, tunnel } = await loadIngressBoundary();
+  assert.deepEqual(validateIngressBoundary(production, tunnel), []);
+});
+
+test('rejects attaching Caddy directly to the public egress network', async () => {
+  const { production, tunnel } = await loadIngressBoundary();
+  production.services['reverse-proxy'].networks.public_net = {};
+  assert.match(
+    validateIngressBoundary(production, tunnel).join('\n'),
+    /reverse-proxy must not join public_net/,
+  );
+});
+
+test('rejects publishing the Caddy origin beyond host loopback', async () => {
+  const { production, tunnel } = await loadIngressBoundary();
+  production.services['reverse-proxy'].ports = ['80:80'];
+  assert.match(
+    validateIngressBoundary(production, tunnel).join('\n'),
+    /reverse-proxy production port publishing must remain loopback-only/,
+  );
+});
+
+test('rejects publishing an application service beyond host loopback', async () => {
+  const { production, tunnel } = await loadIngressBoundary();
+  production.services['api-admin'].ports = ['18083:8080'];
+  assert.match(
+    validateIngressBoundary(production, tunnel).join('\n'),
+    /api-admin production port publishing must remain loopback-only/,
+  );
+});
+
+test('rejects connector address drift from the address trusted by Caddy', async () => {
+  const { production, tunnel } = await loadIngressBoundary();
+  tunnel.services.cloudflared.networks.tunnel_ingress_net.ipv4_address =
+    '172.30.250.4';
+  assert.match(
+    validateIngressBoundary(production, tunnel).join('\n'),
+    /cloudflared must have the exact address trusted by Caddy/,
+  );
+});
+
+test('rejects broad Caddy private-range proxy trust', async () => {
+  const [manifest, caddySource] = await Promise.all([
+    readFile(DEFAULT_MANIFEST_PATH, 'utf8').then(JSON.parse),
+    readFile(DEFAULT_CADDY_PATH, 'utf8'),
+  ]);
+  const unsafe = caddySource.replace(
+    'trusted_proxies static {$CLOUDFLARED_TUNNEL_IP}',
+    'trusted_proxies static private_ranges',
+  );
+  assert.match(
+    validateCaddySource(unsafe, manifest).join('\n'),
+    /trust only the exact cloudflared address/,
+  );
+});
+
+test('rejects a Caddy upstream that bypasses forwarding-header sanitization', async () => {
+  const [manifest, caddySource] = await Promise.all([
+    readFile(DEFAULT_MANIFEST_PATH, 'utf8').then(JSON.parse),
+    readFile(DEFAULT_CADDY_PATH, 'utf8'),
+  ]);
+  const unsafe = caddySource.replace(
+    'import sanitized_reverse_proxy api-web:8080',
+    'reverse_proxy api-web:8080',
+  );
+  assert.match(
+    validateCaddySource(unsafe, manifest).join('\n'),
+    /all Caddy upstreams must use|every Caddy production site must import/,
+  );
+});
+
+test('rejects removing the missing client-IP fail-closed response', async () => {
+  const [manifest, caddySource] = await Promise.all([
+    readFile(DEFAULT_MANIFEST_PATH, 'utf8').then(JSON.parse),
+    readFile(DEFAULT_CADDY_PATH, 'utf8'),
+  ]);
+  const unsafe = caddySource.replace(
+    'respond @missing_tunnel_client_ip 400',
+    'respond @missing_tunnel_client_ip 200',
+  );
+  assert.match(
+    validateCaddySource(unsafe, manifest).join('\n'),
+    /fail closed when trusted client IP provenance is missing/,
   );
 });

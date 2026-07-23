@@ -1,0 +1,207 @@
+schema_version: 1
+signals:
+  - id: api-availability
+    status: covered
+    source: blackbox-http-internal and blackbox-https-public
+    alerts:
+      - InternalApiProbeFailed
+      - PublicEndpointProbeFailed
+      - BlackboxProbeCoverageIncomplete
+
+  - id: frontend-availability
+    status: covered
+    source: blackbox-http-internal and blackbox-https-public
+    alerts:
+      - InternalFrontendProbeFailed
+      - PublicEndpointProbeFailed
+
+  - id: call-service-availability
+    status: covered
+    source: blackbox TCP and public HTTPS probes
+    alerts:
+      - CallServiceProbeFailed
+      - PublicEndpointProbeFailed
+
+  - id: mongodb-health
+    status: covered
+    source: Percona MongoDB exporter plus a TCP probe
+    alerts:
+      - MongoExporterDown
+      - MongoUnavailable
+      - MongoMetricsCoverageMissing
+      - MongoReplicaNotPrimary
+      - DatastoreTcpProbeFailed
+
+  - id: redis-health
+    status: covered
+    source: Redis exporter plus a TCP probe
+    alerts:
+      - RedisExporterDown
+      - RedisUnavailable
+      - RedisMetricsCoverageMissing
+      - RedisMemoryPressure
+      - RedisRejectedConnections
+      - DatastoreTcpProbeFailed
+
+  - id: worker-readiness
+    status: covered
+    source: worker dependency-aware readiness endpoint through blackbox_exporter
+    alerts:
+      - WorkerReadinessProbeFailed
+
+  - id: queue-backlog
+    status: unavailable
+    source: none
+    alerts: []
+    limitation: The repository does not use an instrumented queue with an exported backlog gauge.
+    action: Add bounded per-queue gauges when a queue contract and thresholds are approved.
+
+  - id: backup-age
+    status: covered
+    source: latest-success metadata exposed through node_exporter textfile collector
+    alerts:
+      - BackupMetricsStale
+      - SixHourlyBackupTooOld
+      - DailyBackupMissing
+      - DailyBackupTooOld
+      - WeeklyBackupTooOld
+      - MonthlyBackupTooOld
+      - RestoreTestTooOld
+
+  - id: backup-immediate-failure
+    status: unavailable
+    source: none
+    alerts: []
+    limitation: A failed systemd backup run does not currently emit a Prometheus counter; stale-success alerts detect the failure at the schedule deadline.
+    action: Export systemd unit result metrics or a signed failure marker before claiming immediate failure detection.
+
+  - id: host-capacity
+    status: covered
+    source: node_exporter
+    alerts:
+      - NodeExporterDown
+      - HostDiskSpaceLow
+      - HostCpuSaturation
+      - HostMemoryPressure
+
+  - id: container-restarts-and-memory
+    status: covered
+    source: sanitized container state and stats through the isolated repository gateway
+    alerts:
+      - ContainerMetricsDown
+      - ContainerMetricsCoverageMissing
+      - ContainerRestartLoop
+      - ContainerMemoryNearLimit
+
+  - id: tls-certificate-expiry
+    status: covered
+    source: blackbox HTTPS probes
+    alerts:
+      - TlsCertificateExpiringSoon
+
+  - id: authentication-mfa-admin-events
+    status: covered
+    source: menorah_security_events_total
+    alerts:
+      - AuthenticationFailureSpike
+      - MfaFailureSpike
+      - AdminMfaFailureSpike
+      - AuthorizationDenialSpike
+      - AdminPermissionDenied
+      - PrivilegedActionFailure
+      - AdminChangeBurst
+      - BankDetailsChanged
+      - SecurityMetricsScrapeFailed
+      - SecurityMetricsCoverageIncomplete
+
+  - id: durable-security-audit-sink
+    status: covered
+    source: security audit sink metrics on all five security-events scrape targets
+    alerts:
+      - SecurityAuditEvidenceIntegrityFailure
+      - SecurityAuditSinkPending
+      - SecurityAuditSinkWriteFailures
+
+  - id: specific-privilege-change-events
+    status: unavailable
+    source: none
+    alerts: []
+    limitation: The bounded metric identifies admin changes but does not label the affected resource, so role and permission changes cannot be isolated honestly.
+    action: Add a low-cardinality privileged-change event category after the role and permission mutation inventory is finalized.
+
+  - id: payout-action-failures
+    status: covered
+    source: menorah_security_events_total event=payout_action
+    alerts:
+      - PayoutActionFailed
+
+  - id: payment-webhook-terminal-reconciliation
+    status: covered
+    source: menorah_security_events_total identity-conflict and retry-limit events
+    alerts:
+      - PaymentWebhookReconciliationBlocked
+
+  - id: general-payment-provider-failures
+    status: unavailable
+    source: none
+    alerts: []
+    limitation: Provider requests and booking payment state transitions do not expose durable Prometheus counters by outcome.
+    action: Add low-cardinality counters at the provider boundary and state-transition service.
+
+  - id: email-delivery-failures
+    status: unavailable
+    source: none
+    alerts: []
+    limitation: Email attempts and provider delivery outcomes have no Prometheus metric.
+    action: Instrument accepted, delivered, bounced, deferred, and terminal-failure counters after provider webhook semantics are approved.
+
+  - id: call-provider-failures
+    status: unavailable
+    source: none
+    alerts: []
+    limitation: Reachability and authorization are measured, but provider session and media failure outcomes are not exported.
+    action: Add provider-specific low-cardinality session outcome counters after call lifecycle semantics are finalized.
+
+  - id: call-authorization-denials
+    status: covered
+    source: menorah_security_events_total event=call_authorization_denied
+    alerts:
+      - CallAuthorizationDenialSpike
+
+  - id: http-401-rate
+    status: unavailable
+    source: none
+    alerts: []
+    limitation: Instrumented authorization denials combine 401 and 403 and do not include a status-code label.
+    action: Add bounded HTTP request counters by service, route template, method, and status class.
+
+  - id: http-403-rate
+    status: unavailable
+    source: none
+    alerts: []
+    limitation: Instrumented authorization denials combine 401 and 403 and do not include a status-code label.
+    action: Add bounded HTTP request counters by service, route template, method, and status class.
+
+  - id: http-429-rate
+    status: unavailable
+    source: none
+    alerts: []
+    limitation: Rate-limit responses are not exported as Prometheus counters.
+    action: Add bounded HTTP request counters by service, route template, method, and status class.
+
+  - id: http-500-rate
+    status: unavailable
+    source: none
+    alerts: []
+    limitation: Server response status classes are not exported as Prometheus counters.
+    action: Add bounded HTTP request counters by service, route template, method, and status class.
+
+  - id: monitoring-stack-health
+    status: covered
+    source: Prometheus self-scrapes and exporter scrape health
+    alerts:
+      - LogCollectorDown
+      - LokiDown
+      - BlackboxExporterDown
+      - AlertmanagerDown
+      - PrometheusSelfScrapeFailed

@@ -20,11 +20,13 @@ make_fixture() {
   local fixture_root="$1"
   local age_hours="${2:-0}"
   local include_old="${3:-false}"
+  local restore_age_hours="${4:-${age_hours}}"
   mkdir -p -- "${fixture_root}"
 
   FIXTURE_ROOT="${fixture_root}" \
   FIXTURE_HMAC_KEY="${TEST_HMAC_KEY}" \
   FIXTURE_AGE_HOURS="${age_hours}" \
+  FIXTURE_RESTORE_AGE_HOURS="${restore_age_hours}" \
   FIXTURE_INCLUDE_OLD="${include_old}" \
     node - <<'NODE'
 const crypto = require('crypto');
@@ -34,6 +36,7 @@ const path = require('path');
 const root = fs.realpathSync(process.env.FIXTURE_ROOT);
 const key = process.env.FIXTURE_HMAC_KEY;
 const ageHours = Number(process.env.FIXTURE_AGE_HOURS);
+const restoreAgeHours = Number(process.env.FIXTURE_RESTORE_AGE_HOURS);
 const includeOld = process.env.FIXTURE_INCLUDE_OLD === 'true';
 const releaseSha = 'a'.repeat(40);
 
@@ -241,7 +244,17 @@ const now = new Date();
 now.setUTCMilliseconds(0);
 const currentDate = new Date(now.getTime() - ageHours * 60 * 60 * 1000);
 const current = createSource(currentDate, 'current');
-const sanitized = createSanitized(current, currentDate, 'current');
+const restoreDate = new Date(
+  now.getTime() - restoreAgeHours * 60 * 60 * 1000,
+);
+const restoreSource = restoreAgeHours === ageHours
+  ? current
+  : createSource(restoreDate, 'restore-source');
+const sanitized = createSanitized(
+  restoreSource,
+  restoreDate,
+  'restore-source',
+);
 
 const latestMarker = path.join(root, 'metadata', 'latest-success-daily.json');
 writeJson(latestMarker, {
@@ -265,16 +278,16 @@ sign(latestMarker);
 const restoreMarker = path.join(root, 'restore-tests', 'latest-success.json');
 writeJson(restoreMarker, {
   schemaVersion: 2,
-  timestamp: iso(currentDate),
-  archive: current.archive,
-  archiveSha256: current.archiveSha,
+  timestamp: iso(restoreDate),
+  archive: restoreSource.archive,
+  archiveSha256: restoreSource.archiveSha,
   sanitizedArchive: sanitized.archive,
   sanitizedArchiveSha256: sanitized.archiveSha,
   sanitizedNamespace: 'menorah.*',
-  uploadsArchive: current.uploadsArchive,
-  uploadsArchiveSha256: current.uploadsArchiveSha,
-  mediaManifest: current.uploadsManifest,
-  mediaManifestSha256: current.uploadsManifestSha,
+  uploadsArchive: restoreSource.uploadsArchive,
+  uploadsArchiveSha256: restoreSource.uploadsArchiveSha,
+  mediaManifest: restoreSource.uploadsManifest,
+  mediaManifestSha256: restoreSource.uploadsManifestSha,
   mediaReferencesVerified: true,
   mode: 'restore-test',
 });
@@ -298,7 +311,7 @@ BACKUP_REQUIRE_MOUNT=false
 BACKUP_REQUIRE_ENCRYPTION=true
 BACKUP_INTEGRITY_HMAC_KEY=${TEST_HMAC_KEY}
 BACKUP_TYPE=daily
-BACKUP_MAX_AGE_HOURS=30
+BACKUP_MAX_AGE_HOURS=24
 BACKUP_MIN_SIZE_BYTES=1
 BACKUP_DISK_USAGE_MAX_PERCENT=100
 BACKUP_EXPECT_RAID=false
@@ -366,7 +379,7 @@ test_tampered_marker_hmac_fails() {
 test_restore_chain_is_limited_to_24_hours() {
   local fixture_root="${TMP_ROOT}/stale"
   local output
-  make_fixture "${fixture_root}" 25
+  make_fixture "${fixture_root}" 0 false 25
   if output="$(run_health "${fixture_root}" 2>&1)"; then
     fail "health accepted restore evidence older than 24 hours"
   fi

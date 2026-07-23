@@ -1,3 +1,7 @@
+# NON-AUTHORITATIVE / NON-PRODUCTION.
+# The guarded release uses docker-compose.production.yml (plus the approved
+# tunnel overlay). This local/home compatibility stack and its legacy
+# monitoring services are not release-gated and are not production evidence.
 services:
   reverse-proxy:
     image: caddy:2.8-alpine
@@ -157,7 +161,7 @@ services:
     ports:
       - "${API_IOS_LOCAL_PORT:-127.0.0.1:8080}:8080"
     volumes:
-      - ${MENORAH_DATA_ROOT}/uploads/api-ios:/app/uploads
+      - ${MENORAH_DATA_ROOT}/uploads:/app/uploads
     networks:
       - local_probe_net
       - app_net
@@ -181,7 +185,7 @@ services:
     ports:
       - "${API_ANDROID_LOCAL_PORT:-127.0.0.1:8081}:8080"
     volumes:
-      - ${MENORAH_DATA_ROOT}/uploads/api-android:/app/uploads
+      - ${MENORAH_DATA_ROOT}/uploads:/app/uploads
     networks:
       - local_probe_net
       - app_net
@@ -205,7 +209,7 @@ services:
     ports:
       - "${API_WEB_LOCAL_PORT:-127.0.0.1:8082}:8080"
     volumes:
-      - ${MENORAH_DATA_ROOT}/uploads/api-web:/app/uploads
+      - ${MENORAH_DATA_ROOT}/uploads:/app/uploads
     networks:
       - local_probe_net
       - app_net
@@ -231,7 +235,7 @@ services:
     ports:
       - "${API_ADMIN_LOCAL_PORT:-127.0.0.1:8083}:8080"
     volumes:
-      - ${MENORAH_DATA_ROOT}/uploads/api-admin:/app/uploads
+      - ${MENORAH_DATA_ROOT}/uploads:/app/uploads
     networks:
       - local_probe_net
       - app_net
@@ -256,7 +260,7 @@ services:
     ports:
       - "${WORKER_LOCAL_PORT:-127.0.0.1:8090}:8080"
     volumes:
-      - ${MENORAH_DATA_ROOT}/uploads/worker:/app/uploads
+      - ${MENORAH_DATA_ROOT}/uploads:/app/uploads
     networks:
       - local_probe_net
       - app_net
@@ -281,6 +285,16 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_ROOT_USER: ${MONGO_ROOT_USER}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_APP_USER: ${MONGO_APP_USER}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
+      MONGO_BACKUP_USER: ${MONGO_BACKUP_USER}
+      MONGO_BACKUP_PASSWORD: ${MONGO_BACKUP_PASSWORD}
+      MONGO_RESTORE_USER: ${MONGO_RESTORE_USER}
+      MONGO_RESTORE_PASSWORD: ${MONGO_RESTORE_PASSWORD}
+      MONGO_MONITOR_USER: ${MONGO_MONITOR_USER}
+      MONGO_MONITOR_PASSWORD: ${MONGO_MONITOR_PASSWORD}
     volumes:
       - ./mongo/mongod-primary.conf:/etc/mongod.conf:ro
       - ${MENORAH_DATA_ROOT}/mongo/primary:/data/db
@@ -294,26 +308,32 @@ services:
     restart: "no"
     env_file:
       - ./env/home.env
+    environment:
+      MONGO_ROOT_USER: ${MONGO_ROOT_USER}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
     command:
       - bash
       - -lc
       - |
-        until mongosh --host mongo-primary:27017 \
-          -u "$$MONGO_ROOT_USER" \
-          -p "$$MONGO_ROOT_PASSWORD" \
-          --authenticationDatabase admin \
-          --quiet \
-          --eval "db.adminCommand({ ping: 1 }).ok" >/dev/null; do
+        until mongosh --nodb --quiet --eval '
+          db = connect("mongodb://mongo-primary:27017/admin?authSource=admin", process.env.MONGO_ROOT_USER, process.env.MONGO_ROOT_PASSWORD);
+          quit(db.adminCommand({ ping: 1 }).ok === 1 ? 0 : 1);
+        ' >/dev/null; do
           echo "Waiting for mongo-primary auth..."
           sleep 2
         done
 
-        mongosh --host mongo-primary:27017 \
-          -u "$$MONGO_ROOT_USER" \
-          -p "$$MONGO_ROOT_PASSWORD" \
-          --authenticationDatabase admin \
-          --quiet \
-          --eval "try { printjson(rs.status()) } catch (e) { printjson(rs.initiate({_id: '$${MONGODB_REPLICA_SET_NAME:-menorah-rs}', members: [{_id: 0, host: '$${MONGO_PRIMARY_HOST:-mongo-primary:27017}'}]})) }"
+        mongosh --nodb --quiet --eval '
+          db = connect("mongodb://mongo-primary:27017/admin?authSource=admin", process.env.MONGO_ROOT_USER, process.env.MONGO_ROOT_PASSWORD);
+          try {
+            printjson(rs.status());
+          } catch (error) {
+            printjson(rs.initiate({
+              _id: process.env.MONGODB_REPLICA_SET_NAME || "menorah-rs",
+              members: [{ _id: 0, host: process.env.MONGO_PRIMARY_HOST || "mongo-primary:27017" }],
+            }));
+          }
+        '
     networks:
       - db_net
     depends_on:
@@ -369,18 +389,6 @@ services:
     networks:
       - monitoring_net
       - app_net
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
-    restart: unless-stopped
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    networks:
-      - monitoring_net
 
   log-collector:
     image: grafana/promtail:3.2.1

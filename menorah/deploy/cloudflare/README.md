@@ -2,6 +2,49 @@
 
 Production ingress uses a Cloudflare Tunnel. Browsers connect to Cloudflare over HTTPS and `cloudflared` creates an outbound encrypted tunnel to the host; Caddy then receives HTTP only on the private Docker network. MongoDB and Redis must never be exposed publicly.
 
+## Client Identity Trust Boundary
+
+Production Compose separates connector egress from origin ingress:
+
+```text
+Cloudflare edge
+  -> cloudflared (public_net + tunnel_ingress_net)
+  -> Caddy (tunnel_ingress_net + app_net)
+  -> Express APIs (app_net)
+```
+
+`tunnel_ingress_net` is internal and may contain only `cloudflared` and Caddy.
+Caddy is not attached to `public_net`; it trusts only the connector's exact
+`CLOUDFLARED_TUNNEL_IP`, derives `{client_ip}` only from the single-value
+`CF-Connecting-IP` header, and overwrites forwarding headers sent upstream.
+It returns `400` if the trusted connector arrives without client-IP
+provenance, preventing all callers from collapsing into one rate-limit bucket.
+It strips browser-supplied geolocation aliases and promotes a syntactically
+valid `CF-IPCountry` into the private `X-Menorah-Client-Country` header only
+when the immediate peer is the connector.
+
+Express trusts only Caddy's exact `CADDY_APP_IP`. Rate limiting, security audit
+events, and call-region policy use middleware-validated request provenance;
+they do not read raw `CF-*`, `X-Forwarded-*`, or generic country headers.
+Production startup rejects boolean, hop-count, named-range, and CIDR
+`TRUST_PROXY` values.
+
+The environment template contains these candidate values:
+
+```env
+TUNNEL_INGRESS_SUBNET=10.253.250.0/29
+CADDY_TUNNEL_IP=10.253.250.2
+CLOUDFLARED_TUNNEL_IP=10.253.250.3
+APP_NETWORK_SUBNET=10.253.251.0/24
+CADDY_APP_IP=10.253.251.2
+```
+
+They are required inputs, not safe universal defaults. Before first deployment,
+verify both subnets do not overlap host, LAN, VPN, provider, or existing Docker
+routes. Change all five values together when necessary in the untracked
+production environment. The repository validator verifies single-source wiring
+and exact network membership.
+
 ## Hostname Map
 
 Configure these as public hostnames on the Cloudflare Tunnel, each targeting `http://reverse-proxy:80`:
@@ -60,11 +103,12 @@ cloudflared tunnel --config /absolute/path/to/operator-config.yml \
 The first command enforces the exact normalized hostname and service set,
 rejects duplicate/missing/unexpected routes, path or wildcard shadowing,
 non-terminal catch-alls, a final service other than `http_status:404`, unsafe
-origin targets, and Caddy/manifest drift. The Cloudflare CLI commands add its
-native syntax validation and show the selected rule. Inspect the last command's
-output to confirm the unmatched hostname selects the final `http_status:404`
-rule. `--config` belongs before `ingress`; these commands apply only to a
-locally managed YAML configuration.
+origin targets, Caddy/manifest drift, broad proxy trust, forwarding-header
+sanitization drift, and Compose ingress-network drift. The Cloudflare CLI
+commands add its native syntax validation and show the selected rule. Inspect
+the last command's output to confirm the unmatched hostname selects the final
+`http_status:404` rule. `--config` belongs before `ingress`; these commands
+apply only to a locally managed YAML configuration.
 
 `calls.menorah.me` is proxied by Caddy to `LIVEKIT_UPSTREAM`. For same-VPS Hostinger LiveKit, use:
 
@@ -198,6 +242,22 @@ containing only `success`, `result.source`, and `result.config`. In the
 dashboard, the equivalent read-only review is **Zero Trust > Networks > Tunnels
 > [production tunnel] > Public Hostnames**; compare the displayed hostname and
 service columns with `ingress-manifest.json` without selecting Edit or Save.
+
+The remote route export does **not** prove edge header behavior. Before go-live,
+an operator must separately verify, without changing production:
+
+- the hostname is orange-cloud proxied and reaches only this Tunnel;
+- Cloudflare overwrites `CF-Connecting-IP` and supplies `CF-IPCountry`;
+- no Worker, Transform Rule, or stacked CDN can inject or rewrite either
+  provenance header before the tunnel;
+- an external request carrying forged `CF-Connecting-IP`,
+  `X-Forwarded-For`, `CF-IPCountry`, and `X-Menorah-Client-Country` values is
+  recorded under the real source IP and cannot change call-country policy.
+
+Record the Cloudflare dashboard/API evidence and authenticated negative-test
+result in the release evidence bundle. This remains an external go-live
+blocker until checked against the live zone. Cloudflare documents these headers
+at <https://developers.cloudflare.com/fundamentals/reference/http-headers/>.
 
 ## Second Connector Later
 

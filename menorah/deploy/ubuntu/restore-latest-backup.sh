@@ -958,8 +958,9 @@ NODE
         echo "Production restore runner Database Tools version does not match the signed artifact." >&2
         exit 1
       fi
-      restore_uri="${MONGODB_PRODUCTION_RESTORE_URI:?MONGODB_PRODUCTION_RESTORE_URI is required}"
-      mongosh --quiet "$restore_uri" --eval '\''
+      : "${MONGODB_PRODUCTION_RESTORE_URI:?MONGODB_PRODUCTION_RESTORE_URI is required}"
+      mongosh --nodb --quiet --eval '\''
+        db = connect(process.env.MONGODB_PRODUCTION_RESTORE_URI);
         const status = db.getSiblingDB("admin").runCommand({ connectionStatus: 1, showPrivileges: false });
         const actual = (status.authInfo?.authenticatedUserRoles || [])
           .map(({ role, db: roleDb }) => role + "@" + roleDb)
@@ -977,11 +978,15 @@ verify_restored_domain_invariants() {
     bash -lc '
       set -euo pipefail
       if [[ "$MENORAH_RESTORE_MODE" == "production" ]]; then
-        restore_uri="${MONGODB_PRODUCTION_RESTORE_URI:?MONGODB_PRODUCTION_RESTORE_URI is required}"
+        : "${MONGODB_PRODUCTION_RESTORE_URI:?MONGODB_PRODUCTION_RESTORE_URI is required}"
       else
-        restore_uri="${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}"
+        : "${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}"
       fi
-      mongosh --quiet "$restore_uri" --eval '\''
+      mongosh --nodb --quiet --eval '\''
+        const restoreUri = process.env.MENORAH_RESTORE_MODE === "production"
+          ? process.env.MONGODB_PRODUCTION_RESTORE_URI
+          : process.env.MONGODB_RESTORE_TEST_URI;
+        db = connect(restoreUri);
         const target = db.getSiblingDB("menorah");
         const required = ["users", "bookings", "counsellors", "messages", "chatrooms", "articles"];
         const collections = new Set(target.getCollectionNames().map((name) => name.toLowerCase()));
@@ -1017,8 +1022,8 @@ restore_full_source_into_isolated_target() {
     command cat -- "${LATEST_ARCHIVE}"
   fi | restore_test_stream_cmd bash -lc '
     set -euo pipefail
-    mongorestore \
-      --uri="${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}" \
+    : "${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}"
+    /scripts/run-mongo-tool-secure.sh MONGODB_RESTORE_TEST_URI mongorestore \
       --archive \
       --gzip \
       --drop \
@@ -1050,8 +1055,8 @@ derive_and_verify_sanitized_artifact() {
 
   restore_test_stream_cmd bash -lc '
     set -euo pipefail
-    mongodump \
-      --uri="${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}" \
+    : "${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}"
+    /scripts/run-mongo-tool-secure.sh MONGODB_RESTORE_TEST_URI mongodump \
       --db=menorah \
       --archive \
       --gzip
@@ -1074,8 +1079,8 @@ derive_and_verify_sanitized_artifact() {
     -pass env:BACKUP_ENCRYPTION_PASSWORD \
     | restore_test_stream_cmd bash -lc '
     set -euo pipefail
-    mongorestore \
-      --uri="${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}" \
+    : "${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}"
+    /scripts/run-mongo-tool-secure.sh MONGODB_RESTORE_TEST_URI mongorestore \
       --archive \
       --gzip \
       --drop \
@@ -1085,7 +1090,9 @@ derive_and_verify_sanitized_artifact() {
   verify_restored_domain_invariants restore-test
   restore_test_cmd bash -lc '
     set -euo pipefail
-    mongosh --quiet "${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}" --eval '\''
+    : "${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}"
+    mongosh --nodb --quiet --eval '\''
+      db = connect(process.env.MONGODB_RESTORE_TEST_URI);
       const result = db.getSiblingDB("admin").runCommand({ listDatabases: 1, nameOnly: true });
       assert.commandWorked(result);
       const permitted = new Set(["admin", "config", "local", "menorah"]);
@@ -1162,11 +1169,8 @@ NODE
 capture_non_menorah_fingerprint() {
   compose_cmd exec -T mongo-primary bash -lc '
     set -euo pipefail
-    mongosh --quiet \
-      -u "$MONGO_ROOT_USER" \
-      -p "$MONGO_ROOT_PASSWORD" \
-      --authenticationDatabase admin \
-      --eval '\''
+    mongosh --nodb --quiet --eval '\''
+        db = connect("mongodb://mongo-primary:27017/admin?authSource=admin", process.env.MONGO_ROOT_USER, process.env.MONGO_ROOT_PASSWORD);
         const admin = db.getSiblingDB("admin");
         const users = admin.getCollection("system.users")
           .find({})
@@ -1228,11 +1232,14 @@ case "${MODE}" in
 esac
 
 echo "Restoring only the signed, checksum-verified Menorah namespace artifact."
-echo "openssl decrypt stream | mongorestore --uri=<redacted> --archive --gzip --drop --nsInclude=menorah.* --stopOnError"
+echo "openssl decrypt stream | mongorestore --config=<ephemeral-mode-0600-file> --archive --gzip --drop --nsInclude=menorah.* --stopOnError"
 run_restore_tool production bash -lc '
     set -euo pipefail
-    restore_uri="${MONGODB_PRODUCTION_RESTORE_URI:?MONGODB_PRODUCTION_RESTORE_URI is required}"
-    mongosh --quiet "$restore_uri" --eval '\''assert(db.getSiblingDB("menorah").dropDatabase().ok === 1)'\'' >/dev/null
+    : "${MONGODB_PRODUCTION_RESTORE_URI:?MONGODB_PRODUCTION_RESTORE_URI is required}"
+    mongosh --nodb --quiet --eval '\''
+      db = connect(process.env.MONGODB_PRODUCTION_RESTORE_URI);
+      assert(db.getSiblingDB("menorah").dropDatabase().ok === 1);
+    '\'' >/dev/null
   '
 openssl enc -d -aes-256-cbc -pbkdf2 \
   -in "${SANITIZED_ARCHIVE}" \
@@ -1240,9 +1247,16 @@ openssl enc -d -aes-256-cbc -pbkdf2 \
   -pass env:BACKUP_ENCRYPTION_PASSWORD \
   | run_restore_stream_tool production bash -lc '
     set -euo pipefail
-    restore_uri="${MONGODB_PRODUCTION_RESTORE_URI:?MONGODB_PRODUCTION_RESTORE_URI is required}"
+    uri="${MONGODB_PRODUCTION_RESTORE_URI:?MONGODB_PRODUCTION_RESTORE_URI is required}"
+    [[ "$uri" != *$'\''\n'\''* && "$uri" != *$'\''\r'\''* ]] || exit 64
+    config_file="$(mktemp /tmp/menorah-mongo-tool.XXXXXXXX.yml)"
+    trap '\''rm -f -- "$config_file"'\'' EXIT
+    chmod 0600 "$config_file"
+    escaped_uri="${uri//\\/\\\\}"
+    escaped_uri="${escaped_uri//\"/\\\"}"
+    printf '\''uri: "%s"\n'\'' "$escaped_uri" > "$config_file"
     mongorestore \
-      --uri="$restore_uri" \
+      --config="$config_file" \
       --archive \
       --gzip \
       --drop \

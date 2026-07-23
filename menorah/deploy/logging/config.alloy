@@ -1,0 +1,57 @@
+local.file_match "caddy" {
+  path_targets = [
+    {
+      "__path__" = "/var/log/menorah/caddy/*.log",
+      "job"      = "caddy",
+    },
+  ]
+}
+
+loki.source.file "caddy" {
+  targets    = local.file_match.caddy.targets
+  forward_to = [loki.write.local.receiver]
+}
+
+local.file_match "docker" {
+  path_targets = [
+    {
+      "__path__" = "/var/lib/docker/containers/*/*-json.log",
+      "job"      = "docker",
+    },
+  ]
+}
+
+loki.source.file "docker" {
+  targets    = local.file_match.docker.targets
+  forward_to = [loki.process.docker.receiver]
+}
+
+loki.process "docker" {
+  stage.docker {}
+
+  stage.json {
+    expressions = {
+      "category" = "category",
+      "event"    = "event",
+      "outcome"  = "outcome",
+      "service"  = "service",
+    }
+  }
+
+  stage.labels {
+    values = {
+      "category" = "",
+      "event"    = "",
+      "outcome"  = "",
+      "service"  = "",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

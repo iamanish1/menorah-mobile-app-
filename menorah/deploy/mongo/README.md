@@ -40,6 +40,27 @@ https://www.mongodb.com/docs/database-tools/mongorestore/mongorestore-behavior-a
 It contains no `updateUser` path. Existing role drift or an unsafe partial
 state stops bootstrap without modifying existing users.
 
+With `MONGO_BOOTSTRAP_DRY_RUN=true`, the script validates root and every
+existing managed identity, reports how many identities are missing, and makes
+no changes. The guarded updater controls this flag and rejects an externally
+supplied value during a routine release.
+
+## Existing-host adoption
+
+Do not create users with an ad hoc shell command. The guarded updater performs
+the bootstrap dry-run before maintenance, allowing missing candidate-managed
+identities but rejecting role drift. After the shared lock is held, all writers
+are stopped and verified, and the durable identity-recovery marker exists, it
+runs the create-only bootstrap to fill missing identities, reconciles exact
+roles, and validates the monitoring login. An interrupted boundary is resumed
+only with `recover-managed-mongo-identities.sh`, which repeats those idempotent
+steps and leaves writers stopped.
+
+Root authentication is supplied to `mongosh` from environment variables via
+`connect(...)`, not password arguments. Backup/restore tools use an ephemeral
+mode-0600 `--config` file that is removed on exit. Never enable command tracing
+or capture environment values during either path.
+
 ## Routine role reconciliation
 
 `reconcile-managed-users.js` normally supplies only `roles` to `updateUser`.

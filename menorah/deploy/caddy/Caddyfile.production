@@ -4,7 +4,54 @@
 	# private Docker network. Do not redirect this origin hop to HTTPS.
 	auto_https off
 	servers {
-		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		# This is the single cloudflared address on tunnel_ingress_net, not a
+		# public Cloudflare range or a broad Docker/private range.
+		trusted_proxies static {$CLOUDFLARED_TUNNEL_IP}
+		trusted_proxies_strict
+		client_ip_headers CF-Connecting-IP
+	}
+}
+
+(sanitized_reverse_proxy) {
+	# Cloudflare always supplies a valid client IP on HTTP requests. If the
+	# trusted connector reaches Caddy without one, fail closed instead of
+	# collapsing every caller into the connector's rate-limit identity.
+	@missing_tunnel_client_ip {
+		remote_ip {$CLOUDFLARED_TUNNEL_IP}
+		client_ip {$CLOUDFLARED_TUNNEL_IP}
+	}
+	respond @missing_tunnel_client_ip 400
+
+	# A browser-provided country header is never authoritative. Only the
+	# immediate cloudflared peer may promote Cloudflare's country result into
+	# the private application header.
+	@trusted_tunnel_country {
+		remote_ip {$CLOUDFLARED_TUNNEL_IP}
+		header_regexp CF-IPCountry ^(?:[A-Z][A-Z]|T1)$
+	}
+	request_header -X-Menorah-Client-Country
+	request_header @trusted_tunnel_country X-Menorah-Client-Country {header.CF-IPCountry}
+
+	# Strip every client-controlled forwarding/geolocation alias before the
+	# request is sent to an application.
+	request_header -Forwarded
+	request_header -X-Forwarded-For
+	request_header -X-Forwarded-Proto
+	request_header -X-Forwarded-Host
+	request_header -X-Forwarded-Port
+	request_header -X-Real-IP
+	request_header -True-Client-IP
+	request_header -CF-Connecting-IP
+	request_header -CF-IPCountry
+	request_header -X-Vercel-IP-Country
+	request_header -X-Country-Code
+	request_header -X-Geo-Country
+
+	reverse_proxy {args[0]} {
+		header_up X-Forwarded-For {client_ip}
+		header_up X-Real-IP {client_ip}
+		header_up CF-Connecting-IP {client_ip}
+		header_up X-Forwarded-Proto https
 	}
 }
 
@@ -38,44 +85,43 @@
 	}
 }
 
+(access_log) {
+	log {
+		output file {args[0]} {
+			roll_size 25MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json
+	}
+}
+
 http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN} {
 	import security_headers
 	encode gzip zstd
-	reverse_proxy landing-page:3002
-	log {
-		output file /var/log/caddy/www-access.log
-		format json
-	}
+	import sanitized_reverse_proxy landing-page:3002
+	import access_log /var/log/caddy/www-access.log
 }
 
 http://{$APP_DOMAIN} {
 	import browser_call_security_headers
 	encode gzip zstd
-	reverse_proxy user-web-app:3002
-	log {
-		output file /var/log/caddy/app-access.log
-		format json
-	}
+	import sanitized_reverse_proxy user-web-app:3002
+	import access_log /var/log/caddy/app-access.log
 }
 
 http://{$ADMIN_DOMAIN} {
 	import security_headers
 	encode gzip zstd
-	reverse_proxy admin-panel:3003
-	log {
-		output file /var/log/caddy/admin-access.log
-		format json
-	}
+	import sanitized_reverse_proxy admin-panel:3003
+	import access_log /var/log/caddy/admin-access.log
 }
 
 http://{$COUNSELLOR_DOMAIN} {
 	import browser_call_security_headers
 	encode gzip zstd
-	reverse_proxy web-app:3001
-	log {
-		output file /var/log/caddy/counsellor-access.log
-		format json
-	}
+	import sanitized_reverse_proxy web-app:3001
+	import access_log /var/log/caddy/counsellor-access.log
 }
 
 http://{$API_IOS_DOMAIN} {
@@ -85,12 +131,9 @@ http://{$API_IOS_DOMAIN} {
 	route {
 		@private_diagnostics path /metrics/* /health/deep
 		respond @private_diagnostics 404
-		reverse_proxy api-ios:8080
+		import sanitized_reverse_proxy api-ios:8080
 	}
-	log {
-		output file /var/log/caddy/api-ios-access.log
-		format json
-	}
+	import access_log /var/log/caddy/api-ios-access.log
 }
 
 http://{$API_ANDROID_DOMAIN} {
@@ -100,12 +143,9 @@ http://{$API_ANDROID_DOMAIN} {
 	route {
 		@private_diagnostics path /metrics/* /health/deep
 		respond @private_diagnostics 404
-		reverse_proxy api-android:8080
+		import sanitized_reverse_proxy api-android:8080
 	}
-	log {
-		output file /var/log/caddy/api-android-access.log
-		format json
-	}
+	import access_log /var/log/caddy/api-android-access.log
 }
 
 http://{$API_WEB_DOMAIN} {
@@ -115,12 +155,9 @@ http://{$API_WEB_DOMAIN} {
 	route {
 		@private_diagnostics path /metrics/* /health/deep
 		respond @private_diagnostics 404
-		reverse_proxy api-web:8080
+		import sanitized_reverse_proxy api-web:8080
 	}
-	log {
-		output file /var/log/caddy/api-web-access.log
-		format json
-	}
+	import access_log /var/log/caddy/api-web-access.log
 }
 
 http://{$API_ADMIN_DOMAIN} {
@@ -130,72 +167,51 @@ http://{$API_ADMIN_DOMAIN} {
 	route {
 		@private_diagnostics path /metrics/* /health/deep
 		respond @private_diagnostics 404
-		reverse_proxy api-admin:8080
+		import sanitized_reverse_proxy api-admin:8080
 	}
-	log {
-		output file /var/log/caddy/api-admin-access.log
-		format json
-	}
+	import access_log /var/log/caddy/api-admin-access.log
 }
 
 http://{$CALLS_DOMAIN} {
 	import browser_call_security_headers
 	encode gzip zstd
-	reverse_proxy {$LIVEKIT_UPSTREAM}
-	log {
-		output file /var/log/caddy/calls-access.log
-		format json
-	}
+	import sanitized_reverse_proxy {$LIVEKIT_UPSTREAM}
+	import access_log /var/log/caddy/calls-access.log
 }
 
 http://mentle.org, http://www.mentle.org, http://mentle.mentle.org {
 	import security_headers
 	encode gzip zstd
-	reverse_proxy mentle-landing-web:3101
-	log {
-		output file /var/log/caddy/mentle-www-access.log
-		format json
-	}
+	import sanitized_reverse_proxy mentle-landing-web:3101
+	import access_log /var/log/caddy/mentle-www-access.log
 }
 
 http://app.mentle.org {
 	import browser_call_security_headers
 	encode gzip zstd
-	reverse_proxy mentle-consumer-web:3100
-	log {
-		output file /var/log/caddy/mentle-app-access.log
-		format json
-	}
+	import sanitized_reverse_proxy mentle-consumer-web:3100
+	import access_log /var/log/caddy/mentle-app-access.log
 }
 
 http://business.mentle.org {
 	import security_headers
 	encode gzip zstd
-	reverse_proxy mentle-business-portal:3102
-	log {
-		output file /var/log/caddy/mentle-business-access.log
-		format json
-	}
+	import sanitized_reverse_proxy mentle-business-portal:3102
+	import access_log /var/log/caddy/mentle-business-access.log
 }
 
 http://admin.mentle.org {
 	import security_headers
 	encode gzip zstd
-	reverse_proxy mentle-admin-panel:3103
-	log {
-		output file /var/log/caddy/mentle-admin-access.log
-		format json
-	}
+	import sanitized_reverse_proxy mentle-admin-panel:3103
+	import access_log /var/log/caddy/mentle-admin-access.log
 }
 
 http://counsellor.mentle.org {
 	import browser_call_security_headers
 	encode gzip zstd
-	reverse_proxy mentle-counsellor-portal:3104
-	log {
-		output file /var/log/caddy/mentle-counsellor-access.log
-		format json
-	}
+	import sanitized_reverse_proxy mentle-counsellor-portal:3104
+	import access_log /var/log/caddy/mentle-counsellor-access.log
 }
 
 http://api.mentle.org {
@@ -203,12 +219,9 @@ http://api.mentle.org {
 	route {
 		@private_diagnostics path /metrics/* /health/deep
 		respond @private_diagnostics 404
-		reverse_proxy mentle-api-consumer:4100
+		import sanitized_reverse_proxy mentle-api-consumer:4100
 	}
-	log {
-		output file /var/log/caddy/mentle-api-access.log
-		format json
-	}
+	import access_log /var/log/caddy/mentle-api-access.log
 }
 
 http://api-business.mentle.org {
@@ -216,12 +229,9 @@ http://api-business.mentle.org {
 	route {
 		@private_diagnostics path /metrics/* /health/deep
 		respond @private_diagnostics 404
-		reverse_proxy mentle-api-business:4101
+		import sanitized_reverse_proxy mentle-api-business:4101
 	}
-	log {
-		output file /var/log/caddy/mentle-api-business-access.log
-		format json
-	}
+	import access_log /var/log/caddy/mentle-api-business-access.log
 }
 
 http://api-admin.mentle.org {
@@ -229,12 +239,9 @@ http://api-admin.mentle.org {
 	route {
 		@private_diagnostics path /metrics/* /health/deep
 		respond @private_diagnostics 404
-		reverse_proxy mentle-api-admin:4102
+		import sanitized_reverse_proxy mentle-api-admin:4102
 	}
-	log {
-		output file /var/log/caddy/mentle-api-admin-access.log
-		format json
-	}
+	import access_log /var/log/caddy/mentle-api-admin-access.log
 }
 
 http://api-counsellor.mentle.org {
@@ -242,20 +249,14 @@ http://api-counsellor.mentle.org {
 	route {
 		@private_diagnostics path /metrics/* /health/deep
 		respond @private_diagnostics 404
-		reverse_proxy mentle-api-counsellor:4103
+		import sanitized_reverse_proxy mentle-api-counsellor:4103
 	}
-	log {
-		output file /var/log/caddy/mentle-api-counsellor-access.log
-		format json
-	}
+	import access_log /var/log/caddy/mentle-api-counsellor-access.log
 }
 
 http://calls.mentle.org {
 	import browser_call_security_headers
 	encode gzip zstd
-	reverse_proxy {$LIVEKIT_UPSTREAM}
-	log {
-		output file /var/log/caddy/mentle-calls-access.log
-		format json
-	}
+	import sanitized_reverse_proxy {$LIVEKIT_UPSTREAM}
+	import access_log /var/log/caddy/mentle-calls-access.log
 }

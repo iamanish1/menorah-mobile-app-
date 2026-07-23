@@ -245,7 +245,7 @@ function BackupProtectionPanel({ backup }: { backup: BackupUsage }) {
         <div className="rounded-xl bg-white p-4">
           <p className="text-xs font-bold uppercase text-gray-500">Plain-English meaning</p>
           <p className="mt-2 text-sm font-semibold leading-6 text-gray-700">
-            If production data is lost, the team can restore from the encrypted backup set. The weekly restore test proves the backup is usable.
+            If production data is lost, the team can restore from the encrypted backup set. The daily restore test proves the latest recovery artifact is usable.
           </p>
         </div>
       </div>

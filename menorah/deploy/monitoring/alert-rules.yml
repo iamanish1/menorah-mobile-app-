@@ -1,70 +1,595 @@
 groups:
-  - name: menorah-core
+  - name: menorah-availability
     rules:
-      - alert: ApiHealthEndpointDown
-        expr: up{job="api-services"} == 0
+      - alert: BlackboxExporterDown
+        expr: up{job="blackbox-exporter"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          owner: platform
+        annotations:
+          summary: "Blackbox exporter is unavailable"
+          description: "Prometheus cannot scrape blackbox_exporter, so HTTP and TCP availability probes are blind."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#blackboxexporterdown"
+
+      - alert: BlackboxProbeCoverageIncomplete
+        expr: (absent(probe_success{job="blackbox-http-internal"}) or count(probe_success{job="blackbox-http-internal"}) < 9) or (absent(probe_success{job="blackbox-tcp-internal"}) or count(probe_success{job="blackbox-tcp-internal"}) < 3) or (absent(probe_success{job="blackbox-https-public"}) or count(probe_success{job="blackbox-https-public"}) < 19) or (absent(probe_success{job="blackbox-https-calls"}) or count(probe_success{job="blackbox-https-calls"}) < 2)
+        for: 5m
+        labels:
+          severity: critical
+          owner: platform
+        annotations:
+          summary: "Required blackbox probe coverage is incomplete"
+          description: "At least one required internal, datastore, public, or calls probe target is absent from Prometheus."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#blackboxprobecoverageincomplete"
+
+      - alert: InternalApiProbeFailed
+        expr: probe_success{job="blackbox-http-internal",component="api"} == 0
         for: 2m
         labels:
           severity: critical
+          owner: backend
         annotations:
-          summary: "API health endpoint is down"
-          description: "{{ $labels.instance }} has not responded for 2 minutes."
+          summary: "Internal API readiness probe failed"
+          description: "{{ $labels.service }} at {{ $labels.instance }} has failed readiness probes for two minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#internalapiprobefailed"
+
+      - alert: InternalFrontendProbeFailed
+        expr: probe_success{job="blackbox-http-internal",component="frontend"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          owner: web
+        annotations:
+          summary: "Internal frontend probe failed"
+          description: "{{ $labels.service }} at {{ $labels.instance }} is not serving an expected success response."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#internalfrontendprobefailed"
+
+      - alert: WorkerReadinessProbeFailed
+        expr: probe_success{job="blackbox-http-internal",component="worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          owner: backend
+        annotations:
+          summary: "Worker readiness probe failed"
+          description: "The worker process has failed its dependency-aware readiness endpoint for two minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#workerreadinessprobefailed"
+
+      - alert: CallServiceProbeFailed
+        expr: probe_success{component="calls"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          owner: realtime
+        annotations:
+          summary: "Call service probe failed"
+          description: "{{ $labels.service }} at {{ $labels.instance }} is not reachable through its configured probe."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#callserviceprobefailed"
+
+      - alert: DatastoreTcpProbeFailed
+        expr: probe_success{job="blackbox-tcp-internal",component="datastore"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          owner: data-platform
+        annotations:
+          summary: "Datastore TCP probe failed"
+          description: "{{ $labels.service }} at {{ $labels.instance }} is not accepting TCP connections."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#datastoretcpprobefailed"
+
+      - alert: PublicEndpointProbeFailed
+        expr: probe_success{job=~"blackbox-https-public|blackbox-https-calls"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          owner: platform
+        annotations:
+          summary: "Public production endpoint probe failed"
+          description: "{{ $labels.service }} at {{ $labels.instance }} failed its public DNS/TLS/HTTP probe."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#publicendpointprobefailed"
+
+      - alert: TlsCertificateExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry{job=~"blackbox-https-public|blackbox-https-calls"} - time()) < 1209600
+        for: 30m
+        labels:
+          severity: warning
+          owner: platform
+        annotations:
+          summary: "TLS certificate expires within 14 days"
+          description: "{{ $labels.service }} at {{ $labels.instance }} has a certificate expiring in less than 14 days."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#tlscertificateexpiringsoon"
+
+      - alert: SecurityMetricsScrapeFailed
+        expr: up{job="security-events"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          owner: security
+        annotations:
+          summary: "A security-event metrics endpoint is unavailable"
+          description: "{{ $labels.instance }} has not supplied security-event metrics for two minutes; alert coverage for that service is blind."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securitymetricsscrapefailed"
+
+      - alert: SecurityMetricsCoverageIncomplete
+        expr: absent(up{job="security-events"}) or (count(up{job="security-events"}) < 5)
+        for: 2m
+        labels:
+          severity: critical
+          owner: security
+        annotations:
+          summary: "Security-event metrics target coverage is incomplete"
+          description: "Fewer than the five required API and worker security-event targets are registered in Prometheus."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securitymetricscoverageincomplete"
+
+  - name: menorah-data-services
+    rules:
+      - alert: MongoExporterDown
+        expr: up{job="mongodb-exporter"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          owner: data-platform
+        annotations:
+          summary: "MongoDB exporter is unavailable"
+          description: "Prometheus cannot scrape the MongoDB exporter. MongoDB telemetry is blind."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mongoexporterdown"
+
+      - alert: MongoUnavailable
+        expr: mongodb_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          owner: data-platform
+        annotations:
+          summary: "MongoDB exporter cannot query MongoDB"
+          description: "The exporter is running but its authenticated MongoDB health query is failing."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mongounavailable"
+
+      - alert: MongoMetricsCoverageMissing
+        expr: absent(mongodb_up{job="mongodb-exporter"})
+        for: 5m
+        labels:
+          severity: critical
+          owner: data-platform
+        annotations:
+          summary: "MongoDB health metric is absent"
+          description: "The exporter scrape may be up, but it is not exposing the required mongodb_up health metric."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mongometricscoveragemissing"
+
+      - alert: MongoReplicaNotPrimary
+        expr: mongodb_mongod_replset_my_state != 1
+        for: 5m
+        labels:
+          severity: critical
+          owner: data-platform
+        annotations:
+          summary: "MongoDB member is not PRIMARY"
+          description: "The production single-member replica set has reported state {{ $value }} instead of PRIMARY (1) for five minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mongoreplicanotprimary"
+
+      - alert: RedisExporterDown
+        expr: up{job="redis-exporter"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          owner: data-platform
+        annotations:
+          summary: "Redis exporter is unavailable"
+          description: "Prometheus cannot scrape the Redis exporter. Redis telemetry is blind."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#redisexporterdown"
+
+      - alert: RedisUnavailable
+        expr: redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          owner: data-platform
+        annotations:
+          summary: "Redis exporter cannot query Redis"
+          description: "The exporter is running but Redis does not answer its health query."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#redisunavailable"
+
+      - alert: RedisMetricsCoverageMissing
+        expr: absent(redis_up{job="redis-exporter"})
+        for: 5m
+        labels:
+          severity: critical
+          owner: data-platform
+        annotations:
+          summary: "Redis health metric is absent"
+          description: "The exporter scrape may be up, but it is not exposing the required redis_up health metric."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#redismetricscoveragemissing"
+
+      - alert: RedisMemoryPressure
+        expr: (redis_memory_max_bytes > 0) and (redis_memory_used_bytes / redis_memory_max_bytes > 0.9)
+        for: 10m
+        labels:
+          severity: warning
+          owner: data-platform
+        annotations:
+          summary: "Redis is above 90% of its configured memory limit"
+          description: "Redis memory use has remained above 90% of maxmemory for ten minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#redismemorypressure"
+
+      - alert: RedisRejectedConnections
+        expr: increase(redis_rejected_connections_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          owner: data-platform
+        annotations:
+          summary: "Redis rejected client connections"
+          description: "Redis rejected at least one connection during the last five minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#redisrejectedconnections"
+
+  - name: menorah-host-and-containers
+    rules:
+      - alert: NodeExporterDown
+        expr: up{job="node-exporter"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Host metrics are unavailable"
+          description: "Prometheus cannot scrape node_exporter, so host capacity and backup-age telemetry are blind."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#nodeexporterdown"
+
+      - alert: HostDiskSpaceLow
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"} < 0.1
+        for: 10m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Host filesystem has less than 10% free space"
+          description: "{{ $labels.mountpoint }} on {{ $labels.instance }} has remained below 10% available capacity."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#hostdiskspacelow"
+
+      - alert: HostCpuSaturation
+        expr: (100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 90
+        for: 15m
+        labels:
+          severity: warning
+          owner: infrastructure
+        annotations:
+          summary: "Host CPU usage is above 90%"
+          description: "{{ $labels.instance }} has sustained CPU usage above 90% for fifteen minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#hostcpusaturation"
+
+      - alert: HostMemoryPressure
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.9
+        for: 10m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Host memory usage is above 90%"
+          description: "{{ $labels.instance }} has less than 10% available memory."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#hostmemorypressure"
 
       - alert: ContainerMetricsDown
-        expr: up{job="cadvisor"} == 0
+        expr: up{job="docker-stats-exporter"} == 0
         for: 5m
         labels:
           severity: warning
+          owner: infrastructure
         annotations:
-          summary: "Container metrics are unavailable"
+          summary: "Container metrics exporter is unavailable"
+          description: "Prometheus cannot scrape the constrained Docker stats exporter."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#containermetricsdown"
 
-      - alert: PrometheusDown
-        expr: up{job="prometheus"} == 0
+      - alert: ContainerMetricsCoverageMissing
+        expr: (count(menorah_docker_exporter_collection_success{job="docker-stats-exporter"}) != 1) or (min(menorah_docker_exporter_collection_success{job="docker-stats-exporter"}) != 1) or (count(menorah_container_start_time_seconds{job="docker-stats-exporter",container!=""}) < 1) or (count(menorah_docker_exporter_last_success_timestamp_seconds{job="docker-stats-exporter"}) != 1) or (max(time() - menorah_docker_exporter_last_success_timestamp_seconds{job="docker-stats-exporter"}) > 120)
+        for: 5m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Docker stats collection is missing or stale"
+          description: "The exporter scrape may be up, but its Docker API collection failed, is stale, or contains no named container series."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#containermetricscoveragemissing"
+
+      - alert: ContainerRestartLoop
+        expr: increase(menorah_container_restarts_total{container!=""}[15m]) > 2
         for: 2m
         labels:
           severity: critical
+          owner: platform
         annotations:
-          summary: "Prometheus cannot scrape itself"
+          summary: "Container is restarting repeatedly"
+          description: "{{ $labels.container }} restarted more than twice in fifteen minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#containerrestartloop"
 
-  - name: menorah-security
+      - alert: ContainerMemoryNearLimit
+        expr: ((menorah_container_memory_working_set_bytes{container!=""} / menorah_container_memory_limit_bytes{container!=""}) > 0.9) and (menorah_container_memory_limit_bytes{container!=""} > 0)
+        for: 10m
+        labels:
+          severity: warning
+          owner: platform
+        annotations:
+          summary: "Container memory is above 90% of Docker's reported ceiling"
+          description: "{{ $labels.container }} is close to the memory ceiling reported by Docker stats and may be at risk of OOM termination."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#containermemorynearlimit"
+
+  - name: menorah-backups
     rules:
+      - alert: BackupMetricsStale
+        expr: absent(menorah_backup_metrics_last_run_timestamp_seconds) or (time() - menorah_backup_metrics_last_run_timestamp_seconds > 900)
+        for: 5m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Backup metadata exporter is stale"
+          description: "Backup telemetry has not refreshed for more than fifteen minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#backupmetricsstale"
+
+      - alert: SixHourlyBackupTooOld
+        expr: (menorah_backup_metadata_present{backup_type="six-hourly"} == 0) or (time() - menorah_backup_last_success_timestamp_seconds{backup_type="six-hourly"} > 21600)
+        for: 15m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Six-hourly backup is missing or older than six hours"
+          description: "The highest-frequency recovery point is absent or outside its approved schedule window."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#sixhourlybackuptooold"
+
+      - alert: DailyBackupMissing
+        expr: menorah_backup_metadata_present{backup_type="daily"} == 0
+        for: 15m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Daily backup success marker is missing"
+          description: "No daily backup success metadata is visible to the monitoring sidecar."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#dailybackupmissing"
+
+      - alert: DailyBackupTooOld
+        expr: (time() - menorah_backup_last_success_timestamp_seconds{backup_type="daily"} > 86400) and on (backup_type) (menorah_backup_metadata_present{backup_type="daily"} == 1)
+        for: 15m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Daily backup is older than 24 hours"
+          description: "The latest daily marker and signature sidecar are outside the maximum recovery-point window."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#dailybackuptooold"
+
+      - alert: WeeklyBackupTooOld
+        expr: (menorah_backup_metadata_present{backup_type="weekly"} == 0) or (time() - menorah_backup_last_success_timestamp_seconds{backup_type="weekly"} > 604800)
+        for: 30m
+        labels:
+          severity: warning
+          owner: infrastructure
+        annotations:
+          summary: "Weekly backup is missing or older than seven days"
+          description: "The weekly backup success marker is absent or outside the expected schedule window."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#weeklybackuptooold"
+
+      - alert: MonthlyBackupTooOld
+        expr: (menorah_backup_metadata_present{backup_type="monthly"} == 0) or (time() - menorah_backup_last_success_timestamp_seconds{backup_type="monthly"} > 2678400)
+        for: 30m
+        labels:
+          severity: warning
+          owner: infrastructure
+        annotations:
+          summary: "Monthly backup is missing or older than 31 days"
+          description: "The monthly backup success marker is absent or outside the expected schedule window."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#monthlybackuptooold"
+
+      - alert: RestoreTestTooOld
+        expr: (menorah_restore_test_metadata_present == 0) or (time() - menorah_restore_test_last_success_timestamp_seconds > 86400)
+        for: 30m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Restore test is missing or older than 24 hours"
+          description: "The latest successful isolated restore-test marker is absent or stale."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#restoretesttooold"
+
+  - name: menorah-security-and-critical-flows
+    rules:
+      - alert: SecurityAuditEvidenceIntegrityFailure
+        expr: sum by (service, reason) (increase(menorah_security_audit_sink_failures_total{reason=~"checkpoint_invalid|queue_overflow"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          owner: security
+        annotations:
+          summary: "Durable security-audit evidence is invalid or overflowing"
+          description: "{{ $labels.service }} recorded {{ $labels.reason }} in the durable audit sink; preserve evidence and follow the security-incident procedure."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditevidenceintegrityfailure"
+
+      - alert: SecurityAuditSinkPending
+        expr: max by (service) (menorah_security_audit_sink_pending) > 0
+        for: 10m
+        labels:
+          severity: critical
+          owner: security
+        annotations:
+          summary: "Security-audit events remain outside the durable ledger"
+          description: "{{ $labels.service }} has retained at least one audit event in its process-local queue for ten minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditsinkpending"
+
+      - alert: SecurityAuditSinkWriteFailures
+        expr: sum by (service) (increase(menorah_security_audit_sink_failures_total{reason=~"configuration|database_unavailable|transaction_conflict|write_failure"}[10m])) >= 3
+        for: 5m
+        labels:
+          severity: critical
+          owner: security
+        annotations:
+          summary: "Durable security-audit writes are repeatedly failing"
+          description: "{{ $labels.service }} recorded at least three audit-sink write failures in ten minutes, sustained across the five-minute hold."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditsinkwritefailures"
+
       - alert: AuthenticationFailureSpike
-        expr: sum(increase(menorah_security_events_total{event=~"login_attempt|mfa_attempt|otp_verification|password_reset",outcome="failure"}[10m])) > 20
+        expr: sum(increase(menorah_security_events_total{event=~"login_attempt|otp_verification|password_reset",outcome="failure"}[10m])) > 20
         for: 2m
         labels:
           severity: warning
+          owner: security
         annotations:
           summary: "Authentication failures exceed the expected threshold"
-          description: "More than 20 login, MFA, OTP, or reset failures occurred in 10 minutes."
+          description: "More than 20 login, OTP, or password-reset failures occurred in ten minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#authenticationfailurespike"
 
-      - alert: CsrfBlocksDetected
-        expr: sum(increase(menorah_security_events_total{event="csrf_blocked",outcome="failure"}[10m])) > 5
+      - alert: MfaFailureSpike
+        expr: sum(increase(menorah_security_events_total{event="mfa_attempt",outcome="failure"}[10m])) > 10
+        for: 2m
+        labels:
+          severity: critical
+          owner: security
+        annotations:
+          summary: "MFA failures exceed the expected threshold"
+          description: "More than ten failed MFA attempts occurred in ten minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mfafailurespike"
+
+      - alert: AdminMfaFailureSpike
+        expr: sum(increase(menorah_security_events_total{event="mfa_attempt",outcome="failure",service="api-admin"}[10m])) > 5
         for: 1m
         labels:
-          severity: warning
+          severity: critical
+          owner: security
         annotations:
-          summary: "Repeated CSRF blocks detected"
+          summary: "Admin MFA failures exceed the expected threshold"
+          description: "More than five failed MFA attempts reached the admin API in ten minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminmfafailurespike"
 
       - alert: AuthorizationDenialSpike
         expr: sum(increase(menorah_security_events_total{event="authorization_denied",outcome="failure"}[10m])) > 30
         for: 2m
         labels:
           severity: warning
+          owner: security
         annotations:
           summary: "Authorization denials exceed the expected threshold"
+          description: "More than 30 instrumented 401/403 authorization denials occurred in ten minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#authorizationdenialspike"
 
-      - alert: PayoutActionFailed
-        expr: sum(increase(menorah_security_events_total{event="payout_action",outcome="failure"}[5m])) > 0
+      - alert: AdminPermissionDenied
+        expr: sum by (service) (increase(menorah_security_events_total{event="admin_permission_denied",outcome="failure"}[5m])) > 0
         for: 0m
         labels:
           severity: critical
+          owner: security
         annotations:
-          summary: "A payout action failed"
+          summary: "An admin permission check denied an operation"
+          description: "{{ $labels.service }} recorded an admin permission denial in the last five minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminpermissiondenied"
+
+      - alert: PrivilegedActionFailure
+        expr: sum(increase(menorah_security_events_total{event="admin_change",outcome="failure"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+          owner: security
+        annotations:
+          summary: "A privileged admin change failed"
+          description: "At least one instrumented admin mutation failed during the last five minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#privilegedactionfailure"
 
       - alert: AdminChangeBurst
         expr: sum(increase(menorah_security_events_total{event="admin_change",outcome="success"}[10m])) > 20
         for: 1m
         labels:
           severity: warning
+          owner: security
         annotations:
           summary: "Unusually high volume of admin changes"
+          description: "More than 20 successful instrumented admin mutations occurred in ten minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminchangeburst"
+
+      - alert: BankDetailsChanged
+        expr: sum(increase(menorah_security_events_total{event="bank_details_changed",outcome="success"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+          owner: finance-operations
+        annotations:
+          summary: "Counsellor payout bank details changed"
+          description: "A bank-details mutation succeeded and requires normal finance review."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#bankdetailschanged"
+
+      - alert: PayoutActionFailed
+        expr: sum(increase(menorah_security_events_total{event="payout_action",outcome="failure"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          owner: finance-operations
+        annotations:
+          summary: "A payout action failed"
+          description: "At least one instrumented payout admin action failed during the last five minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#payoutactionfailed"
+
+      - alert: PaymentWebhookReconciliationBlocked
+        expr: sum(increase(menorah_security_events_total{event=~"payment_webhook_identity_conflict|payment_webhook_retry_limit_reached",outcome="failure"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          owner: payments
+        annotations:
+          summary: "Payment webhook reconciliation needs intervention"
+          description: "A webhook identity conflict or retry limit was recorded in the last five minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#paymentwebhookreconciliationblocked"
+
+      - alert: CallAuthorizationDenialSpike
+        expr: sum(increase(menorah_security_events_total{event="call_authorization_denied",outcome="failure"}[10m])) > 10
+        for: 2m
+        labels:
+          severity: warning
+          owner: realtime
+        annotations:
+          summary: "Call authorization denials exceed the expected threshold"
+          description: "More than ten call authorization denials occurred in ten minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#callauthorizationdenialspike"
+
+  - name: menorah-monitoring-stack
+    rules:
+      - alert: LogCollectorDown
+        expr: up{job="alloy"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Grafana Alloy log collection is unavailable"
+          description: "Prometheus cannot scrape the Alloy collector; local files may be rotating without delivery to Loki."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#logcollectordown"
+
+      - alert: LokiDown
+        expr: up{job="loki"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Loki log storage is unavailable"
+          description: "Prometheus cannot scrape Loki; log ingestion and operational queries may be unavailable."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#lokidown"
+
+      - alert: AlertmanagerDown
+        expr: up{job="alertmanager"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          owner: platform
+        annotations:
+          summary: "Alertmanager is unavailable"
+          description: "Prometheus cannot deliver firing alerts to Alertmanager."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#alertmanagerdown"
+
+      - alert: PrometheusSelfScrapeFailed
+        expr: up{job="prometheus"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          owner: platform
+        annotations:
+          summary: "Prometheus cannot scrape itself"
+          description: "Prometheus self-monitoring has failed."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#prometheusselfscrapefailed"

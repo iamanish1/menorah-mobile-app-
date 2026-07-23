@@ -167,8 +167,9 @@ echo "Creating MongoDB backup: ${MONGO_ARCHIVE}"
 if [[ -n "${BACKUP_ENCRYPTION_PASSWORD:-}" ]]; then
   FINAL_MONGO="${MONGO_ARCHIVE}.enc"
   MONGO_ENCRYPTED_TMP="$(mktemp "${OUT_DIR}/mongo/.mongo-archive.XXXXXXXX.enc.tmp")"
-  compose_cmd run --rm --no-deps -T --user "${BACKUP_RUN_AS}" backup-runner bash -lc \
-    'mongodump --uri="$MONGODB_BACKUP_URI" --archive --gzip --oplog' \
+  compose_cmd run --rm --no-deps -T --user "${BACKUP_RUN_AS}" backup-runner \
+    /scripts/run-mongo-tool-secure.sh MONGODB_BACKUP_URI mongodump \
+      --archive --gzip --oplog \
     | openssl enc -aes-256-cbc -pbkdf2 -salt \
         -out "${MONGO_ENCRYPTED_TMP}" \
         -pass env:BACKUP_ENCRYPTION_PASSWORD
@@ -176,8 +177,10 @@ if [[ -n "${BACKUP_ENCRYPTION_PASSWORD:-}" ]]; then
   mv -f -- "${MONGO_ENCRYPTED_TMP}" "${FINAL_MONGO}"
 else
   FINAL_MONGO="${MONGO_ARCHIVE}"
-  compose_cmd run --rm --no-deps --user "${BACKUP_RUN_AS}" backup-runner bash -lc \
-    "umask 077; mongodump --uri=\"\$MONGODB_BACKUP_URI\" --archive=\"/backups/${BACKUP_TYPE}/${STAMP}/mongo/$(basename "${MONGO_ARCHIVE}")\" --gzip --oplog"
+  compose_cmd run --rm --no-deps --user "${BACKUP_RUN_AS}" backup-runner \
+    /scripts/run-mongo-tool-secure.sh MONGODB_BACKUP_URI mongodump \
+      --archive="/backups/${BACKUP_TYPE}/${STAMP}/mongo/$(basename "${MONGO_ARCHIVE}")" \
+      --gzip --oplog
 fi
 
 if [[ ! -s "${FINAL_MONGO}" || ! -r "${FINAL_MONGO}" ]]; then
@@ -282,8 +285,8 @@ if [[ "${NODE_ENV:-}" == "production" ]]; then
   DATABASE_TOOLS_VERSION="$(compose_cmd run --rm --no-deps backup-runner mongodump --version \
     | sed -n 's/^mongodump version: //p' | head -n 1)"
   mapfile -t mongo_versions < <(
-    compose_cmd run --rm --no-deps backup-runner mongosh --quiet \
-      "${MONGODB_BACKUP_URI}" --eval '
+    compose_cmd run --rm --no-deps backup-runner mongosh --nodb --quiet --eval '
+        db = connect(process.env.MONGODB_BACKUP_URI);
         const result = db.getSiblingDB("admin").runCommand({ getParameter: 1, featureCompatibilityVersion: 1 });
         assert.commandWorked(result);
         print(db.version());

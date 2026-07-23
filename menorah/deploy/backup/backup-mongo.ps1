@@ -11,7 +11,20 @@ $outDir = Join-Path $BackupRoot "mongo\$stamp"
 $archive = Join-Path $outDir "menorah-mongo-$stamp.archive.gz"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-mongodump --uri="$env:MONGODB_BACKUP_URI" --archive="$archive" --gzip
+$uri = $env:MONGODB_BACKUP_URI
+if ($uri.Contains("`r") -or $uri.Contains("`n")) {
+  throw "MONGODB_BACKUP_URI must contain one MongoDB URI"
+}
+$escapedUri = $uri.Replace('\', '\\').Replace('"', '\"')
+$configPath = Join-Path ([System.IO.Path]::GetTempPath()) "menorah-mongo-$([guid]::NewGuid().ToString('N')).yml"
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($configPath, "uri: `"$escapedUri`"`n", $utf8NoBom)
+try {
+  & mongodump "--config=$configPath" "--archive=$archive" --gzip
+  if ($LASTEXITCODE -ne 0) { throw "mongodump failed with exit code $LASTEXITCODE" }
+} finally {
+  Remove-Item -LiteralPath $configPath -Force -ErrorAction SilentlyContinue
+}
 
 if ($env:BACKUP_ENCRYPTION_PASSWORD) {
   $encrypted = "$archive.enc"

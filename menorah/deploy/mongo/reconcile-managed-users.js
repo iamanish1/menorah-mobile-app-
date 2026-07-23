@@ -82,10 +82,18 @@ requireSafeEnvironment();
 
 const admin = db.getSiblingDB('admin');
 const rotationInput = process.env.MONGO_ROTATE_CREDENTIALS_CONFIRM || '';
+const dryRunInput = process.env.MONGO_RECONCILE_DRY_RUN || '';
 if (rotationInput && rotationInput !== ROTATION_CONFIRMATION) {
   throw new Error('MONGO_ROTATE_CREDENTIALS_CONFIRM has an invalid value');
 }
+if (dryRunInput && dryRunInput !== 'true') {
+  throw new Error('MONGO_RECONCILE_DRY_RUN has an invalid value');
+}
 const rotateCredentials = rotationInput === ROTATION_CONFIRMATION;
+const dryRun = dryRunInput === 'true';
+if (dryRun && rotateCredentials) {
+  throw new Error('MongoDB reconciliation dry-run cannot rotate credentials');
+}
 const root = {
   user: process.env.MONGO_ROOT_USER,
   roles: [{ role: 'root', db: 'admin' }],
@@ -130,33 +138,40 @@ if (existingManaged.some((identity) => !identity)) {
   throw new Error('Managed MongoDB identity set is incomplete; reconciliation made no changes');
 }
 
-try {
-  for (const identity of managed) {
-    const update = { roles: identity.roles };
-    if (rotateCredentials) update.pwd = identity.pwd;
-    admin.updateUser(identity.user, update);
-  }
-} catch {
-  if (rotateCredentials) {
+if (dryRun) {
+  print(
+    `Verified ${managed.length} managed MongoDB identities exist for maintenance reconciliation `
+    + 'without changes.'
+  );
+} else {
+  try {
+    for (const identity of managed) {
+      const update = { roles: identity.roles };
+      if (rotateCredentials) update.pwd = identity.pwd;
+      admin.updateUser(identity.user, update);
+    }
+  } catch {
+    if (rotateCredentials) {
+      throw new Error(
+        'Managed MongoDB identity reconciliation failed; credentials may be partially rotated '
+        + 'and deployment must not proceed'
+      );
+    }
     throw new Error(
-      'Managed MongoDB identity reconciliation failed; credentials may be partially rotated '
+      'Managed MongoDB identity reconciliation failed; roles may be partially reconciled '
       + 'and deployment must not proceed'
     );
   }
-  throw new Error(
-    'Managed MongoDB identity reconciliation failed; roles may be partially reconciled '
-    + 'and deployment must not proceed'
+
+  for (const identity of managed) {
+    const persisted = admin.getUser(identity.user);
+    if (!persisted || !rolesMatchExactly(persisted.roles, identity.roles)) {
+      throw new Error('Managed MongoDB identity role verification failed');
+    }
+  }
+
+  print(
+    `Reconciled ${managed.length} managed MongoDB identities with exact roles `
+    + `(${rotateCredentials ? 'password rotation confirmed' : 'passwords unchanged'}).`
   );
 }
-
-for (const identity of managed) {
-  const persisted = admin.getUser(identity.user);
-  if (!persisted || !rolesMatchExactly(persisted.roles, identity.roles)) {
-    throw new Error('Managed MongoDB identity role verification failed');
-  }
-}
-
-print(
-  `Reconciled ${managed.length} managed MongoDB identities with exact roles `
-  + `(${rotateCredentials ? 'password rotation confirmed' : 'passwords unchanged'}).`
-);

@@ -80,6 +80,11 @@ const rolesMatchExactly = (actual, expected) => {
 requireSafeEnvironment();
 
 const admin = db.getSiblingDB('admin');
+const dryRunInput = process.env.MONGO_BOOTSTRAP_DRY_RUN || '';
+if (dryRunInput && dryRunInput !== 'true') {
+  throw new Error('MONGO_BOOTSTRAP_DRY_RUN has an invalid value');
+}
+const dryRun = dryRunInput === 'true';
 const root = {
   user: process.env.MONGO_ROOT_USER,
   roles: [{ role: 'root', db: 'admin' }],
@@ -132,24 +137,31 @@ for (const identity of managed) {
   }
 }
 
-let created = 0;
-try {
-  for (const identity of managed) {
-    if (existingByUser.get(identity.user)) continue;
-    admin.createUser(identity);
-    created += 1;
-  }
-} catch {
-  throw new Error(
-    'MongoDB identity bootstrap failed; initialization may be partial and must not proceed'
+const missing = managed.filter((identity) => !existingByUser.get(identity.user));
+if (dryRun) {
+  print(
+    `MongoDB managed-identity bootstrap preflight complete (${missing.length} missing, `
+    + `${managed.length - missing.length} unchanged; no changes made).`
   );
-}
-
-for (const identity of managed) {
-  const persisted = admin.getUser(identity.user);
-  if (!persisted || !rolesMatchExactly(persisted.roles, identity.roles)) {
-    throw new Error('MongoDB identity bootstrap verification failed');
+} else {
+  let created = 0;
+  try {
+    for (const identity of missing) {
+      admin.createUser(identity);
+      created += 1;
+    }
+  } catch {
+    throw new Error(
+      'MongoDB identity bootstrap failed; initialization may be partial and must not proceed'
+    );
   }
-}
 
-print(`MongoDB managed-identity bootstrap complete (${created} created, ${managed.length - created} unchanged).`);
+  for (const identity of managed) {
+    const persisted = admin.getUser(identity.user);
+    if (!persisted || !rolesMatchExactly(persisted.roles, identity.roles)) {
+      throw new Error('MongoDB identity bootstrap verification failed');
+    }
+  }
+
+  print(`MongoDB managed-identity bootstrap complete (${created} created, ${managed.length - created} unchanged).`);
+}

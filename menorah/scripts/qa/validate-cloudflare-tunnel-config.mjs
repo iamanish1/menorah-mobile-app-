@@ -15,6 +15,14 @@ export const DEFAULT_CADDY_PATH = path.resolve(
   SCRIPT_DIR,
   '../../deploy/caddy/Caddyfile.production',
 );
+export const DEFAULT_PRODUCTION_COMPOSE_PATH = path.resolve(
+  SCRIPT_DIR,
+  '../../deploy/docker-compose.production.yml',
+);
+export const DEFAULT_TUNNEL_COMPOSE_PATH = path.resolve(
+  SCRIPT_DIR,
+  '../../deploy/docker-compose.tunnel.yml',
+);
 const MAX_CONFIG_BYTES = 1024 * 1024;
 const HOSTNAME_PATTERN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const SENSITIVE_TOP_LEVEL_KEYS = new Set([
@@ -56,6 +64,21 @@ function parseYamlOrJson(source, label) {
   } catch {
     throw new Error(`${label} contains unsupported YAML aliases`);
   }
+}
+
+function parseRepositoryCompose(source, label) {
+  if (Buffer.byteLength(source, 'utf8') > MAX_CONFIG_BYTES) {
+    throw new Error(`${label} exceeds the 1 MiB offline validation limit`);
+  }
+
+  const document = parseDocument(source, {
+    prettyErrors: false,
+    uniqueKeys: true,
+  });
+  if (document.errors.length > 0) {
+    throw new Error(`${label} is not valid YAML`);
+  }
+  return document.toJS({ maxAliasCount: 10000 });
 }
 
 function normalizeHostname(value, label, errors) {
@@ -364,6 +387,222 @@ export function validateCaddySource(caddySource, manifest) {
     }
   }
 
+  const lines = caddySource
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const trustedProxyLines = lines.filter((line) => line.startsWith('trusted_proxies '));
+  const expectedTrustedProxy =
+    'trusted_proxies static {$CLOUDFLARED_TUNNEL_IP}';
+  if (
+    trustedProxyLines.length !== 1
+    || trustedProxyLines[0] !== expectedTrustedProxy
+  ) {
+    errors.push(
+      'Caddy must trust only the exact cloudflared address from CLOUDFLARED_TUNNEL_IP',
+    );
+  }
+  if (lines.filter((line) => line === 'trusted_proxies_strict').length !== 1) {
+    errors.push('Caddy must enable trusted_proxies_strict exactly once');
+  }
+  const clientIpHeaderLines = lines.filter((line) => line.startsWith('client_ip_headers '));
+  if (
+    clientIpHeaderLines.length !== 1
+    || clientIpHeaderLines[0] !== 'client_ip_headers CF-Connecting-IP'
+  ) {
+    errors.push('Caddy must derive client IP only from CF-Connecting-IP');
+  }
+
+  const requiredSanitization = [
+    'request_header -Forwarded',
+    'request_header -X-Forwarded-For',
+    'request_header -X-Forwarded-Proto',
+    'request_header -X-Forwarded-Host',
+    'request_header -X-Real-IP',
+    'request_header -True-Client-IP',
+    'request_header -CF-Connecting-IP',
+    'request_header -CF-IPCountry',
+    'request_header -X-Menorah-Client-Country',
+    'header_up X-Forwarded-For {client_ip}',
+    'header_up X-Real-IP {client_ip}',
+    'header_up CF-Connecting-IP {client_ip}',
+    'header_up X-Forwarded-Proto https',
+  ];
+  requiredSanitization.forEach((directive) => {
+    if (!lines.includes(directive)) {
+      errors.push(`Caddy proxy provenance is missing "${directive}"`);
+    }
+  });
+
+  if (!lines.includes(
+    'request_header @trusted_tunnel_country X-Menorah-Client-Country {header.CF-IPCountry}',
+  )) {
+    errors.push(
+      'Caddy must promote CF-IPCountry only into the private validated country header',
+    );
+  }
+  if (!lines.includes(
+    'remote_ip {$CLOUDFLARED_TUNNEL_IP}',
+  )) {
+    errors.push('Caddy country provenance must require the exact cloudflared peer');
+  }
+  if (!lines.includes('client_ip {$CLOUDFLARED_TUNNEL_IP}')) {
+    errors.push(
+      'Caddy must detect a trusted connector request missing client IP provenance',
+    );
+  }
+  if (!lines.includes('respond @missing_tunnel_client_ip 400')) {
+    errors.push(
+      'Caddy must fail closed when trusted client IP provenance is missing',
+    );
+  }
+
+  const reverseProxyLines = lines.filter((line) => line.startsWith('reverse_proxy '));
+  if (
+    reverseProxyLines.length !== 1
+    || reverseProxyLines[0] !== 'reverse_proxy {args[0]} {'
+  ) {
+    errors.push(
+      'all Caddy upstreams must use the sanitized_reverse_proxy snippet',
+    );
+  }
+  const siteBlockCount = caddySource
+    .split(/\r?\n/)
+    .filter((line) => line.trim().startsWith('http://') && line.trim().endsWith('{'))
+    .length;
+  const sanitizedProxyImports = lines.filter(
+    (line) => line.startsWith('import sanitized_reverse_proxy '),
+  ).length;
+  if (sanitizedProxyImports !== siteBlockCount) {
+    errors.push(
+      'every Caddy production site must import sanitized_reverse_proxy exactly once',
+    );
+  }
+
+  return errors;
+}
+
+function serviceNetworkNames(service) {
+  if (!isObject(service)) return [];
+  if (Array.isArray(service.networks)) return service.networks;
+  return isObject(service.networks) ? Object.keys(service.networks) : [];
+}
+
+function serviceNetworkConfig(service, networkName) {
+  if (!isObject(service) || !isObject(service.networks)) return null;
+  const config = service.networks[networkName];
+  return isObject(config) ? config : null;
+}
+
+function attachedServices(compose, networkName) {
+  if (!isObject(compose?.services)) return [];
+  return Object.entries(compose.services)
+    .filter(([, service]) => serviceNetworkNames(service).includes(networkName))
+    .map(([name]) => name)
+    .sort();
+}
+
+export function validateIngressBoundary(productionCompose, tunnelCompose) {
+  const errors = [];
+  const productionServices = productionCompose?.services;
+  const tunnelServices = tunnelCompose?.services;
+  if (!isObject(productionServices)) {
+    return ['production Compose must define services'];
+  }
+  if (!isObject(tunnelServices)) {
+    return ['tunnel Compose must define services'];
+  }
+
+  const ingressNetwork = productionCompose?.networks?.tunnel_ingress_net;
+  if (!isObject(ingressNetwork) || ingressNetwork.internal !== true) {
+    errors.push('tunnel_ingress_net must be an internal production network');
+  }
+  const ingressSubnet = ingressNetwork?.ipam?.config?.[0]?.subnet;
+  if (ingressSubnet !== '${TUNNEL_INGRESS_SUBNET:?TUNNEL_INGRESS_SUBNET is required}') {
+    errors.push('tunnel_ingress_net must require an operator-verified subnet');
+  }
+
+  const productionMembers = attachedServices(productionCompose, 'tunnel_ingress_net');
+  if (productionMembers.join(',') !== 'reverse-proxy') {
+    errors.push('only reverse-proxy may join tunnel_ingress_net in production Compose');
+  }
+  const tunnelMembers = attachedServices(tunnelCompose, 'tunnel_ingress_net');
+  if (tunnelMembers.join(',') !== 'cloudflared') {
+    errors.push('only cloudflared may join tunnel_ingress_net in tunnel Compose');
+  }
+
+  const reverseProxy = productionServices['reverse-proxy'];
+  const cloudflared = tunnelServices.cloudflared;
+  const loopbackPorts = new Map([
+    ['reverse-proxy', '${CADDY_HTTP_PORT:-127.0.0.1:8080}:80'],
+    ['landing-page', '${LANDING_LOCAL_PORT:-127.0.0.1:18085}:3002'],
+    ['user-web-app', '${USER_WEB_APP_LOCAL_PORT:-127.0.0.1:18087}:3002'],
+    ['web-app', '${WEB_APP_LOCAL_PORT:-127.0.0.1:18086}:3001'],
+    ['admin-panel', '${ADMIN_PANEL_LOCAL_PORT:-127.0.0.1:18088}:3003'],
+    ['api-ios', '${API_IOS_LOCAL_PORT:-127.0.0.1:18080}:8080'],
+    ['api-android', '${API_ANDROID_LOCAL_PORT:-127.0.0.1:18084}:8080'],
+    ['api-web', '${API_WEB_LOCAL_PORT:-127.0.0.1:18082}:8080'],
+    ['api-admin', '${API_ADMIN_LOCAL_PORT:-127.0.0.1:18083}:8080'],
+    ['worker', '${WORKER_LOCAL_PORT:-127.0.0.1:18090}:8080'],
+    ['alertmanager', '${ALERTMANAGER_LOCAL_PORT:-127.0.0.1:18102}:9093'],
+    ['grafana', '${GRAFANA_LOCAL_PORT:-127.0.0.1:18100}:3000'],
+    ['uptime-kuma', '${UPTIME_KUMA_LOCAL_PORT:-127.0.0.1:18101}:3001'],
+  ]);
+  for (const [serviceName, expectedPort] of loopbackPorts) {
+    const ports = productionServices[serviceName]?.ports;
+    if (!Array.isArray(ports) || ports.length !== 1 || ports[0] !== expectedPort) {
+      errors.push(`${serviceName} production port publishing must remain loopback-only`);
+    }
+  }
+  if (serviceNetworkNames(reverseProxy).includes('public_net')) {
+    errors.push('reverse-proxy must not join public_net');
+  }
+  if (!serviceNetworkNames(cloudflared).includes('public_net')) {
+    errors.push('cloudflared must retain public_net for outbound tunnel connectivity');
+  }
+
+  if (
+    serviceNetworkConfig(reverseProxy, 'tunnel_ingress_net')?.ipv4_address
+    !== '${CADDY_TUNNEL_IP:?CADDY_TUNNEL_IP is required}'
+  ) {
+    errors.push('reverse-proxy must have the reviewed fixed tunnel ingress address');
+  }
+  if (
+    serviceNetworkConfig(cloudflared, 'tunnel_ingress_net')?.ipv4_address
+    !== '${CLOUDFLARED_TUNNEL_IP:?CLOUDFLARED_TUNNEL_IP is required}'
+  ) {
+    errors.push('cloudflared must have the exact address trusted by Caddy');
+  }
+  if (
+    reverseProxy?.environment?.CLOUDFLARED_TUNNEL_IP
+    !== '${CLOUDFLARED_TUNNEL_IP:?CLOUDFLARED_TUNNEL_IP is required}'
+  ) {
+    errors.push('Caddy must receive the same cloudflared address used by Compose');
+  }
+
+  const appNetwork = productionCompose?.networks?.app_net;
+  if (!isObject(appNetwork) || appNetwork.internal !== true) {
+    errors.push('app_net must remain internal');
+  }
+  if (
+    appNetwork?.ipam?.config?.[0]?.subnet
+    !== '${APP_NETWORK_SUBNET:?APP_NETWORK_SUBNET is required}'
+  ) {
+    errors.push('app_net must use the reviewed APP_NETWORK_SUBNET default');
+  }
+  if (
+    serviceNetworkConfig(reverseProxy, 'app_net')?.ipv4_address
+    !== '${CADDY_APP_IP:?CADDY_APP_IP is required}'
+  ) {
+    errors.push('reverse-proxy must have the fixed CADDY_APP_IP on app_net');
+  }
+  if (
+    productionCompose?.['x-backend-env']?.TRUST_PROXY
+    !== '${CADDY_APP_IP:?CADDY_APP_IP is required}'
+  ) {
+    errors.push('Express TRUST_PROXY must be wired only to CADDY_APP_IP');
+  }
+
   return errors;
 }
 
@@ -375,9 +614,16 @@ export async function validateConfigSource(
     configLabel = 'tunnel configuration',
   } = {},
 ) {
-  const [manifestSource, caddySource] = await Promise.all([
+  const [
+    manifestSource,
+    caddySource,
+    productionComposeSource,
+    tunnelComposeSource,
+  ] = await Promise.all([
     readFile(manifestPath, 'utf8'),
     readFile(caddyPath, 'utf8'),
+    readFile(DEFAULT_PRODUCTION_COMPOSE_PATH, 'utf8'),
+    readFile(DEFAULT_TUNNEL_COMPOSE_PATH, 'utf8'),
   ]);
   const manifest = parseYamlOrJson(manifestSource, 'ingress manifest');
   const manifestErrors = validateManifest(manifest);
@@ -392,6 +638,31 @@ export async function validateConfigSource(
   if (caddyErrors.length > 0) {
     return {
       errors: caddyErrors.map((error) => `repository drift: ${error}`),
+      routeCount: manifest.routes.length,
+    };
+  }
+
+  let productionCompose;
+  let tunnelCompose;
+  try {
+    productionCompose = parseRepositoryCompose(
+      productionComposeSource,
+      'production Compose',
+    );
+    tunnelCompose = parseRepositoryCompose(tunnelComposeSource, 'tunnel Compose');
+  } catch (error) {
+    return {
+      errors: [`repository drift: ${error.message}`],
+      routeCount: manifest.routes.length,
+    };
+  }
+  const boundaryErrors = validateIngressBoundary(
+    productionCompose,
+    tunnelCompose,
+  );
+  if (boundaryErrors.length > 0) {
+    return {
+      errors: boundaryErrors.map((error) => `repository drift: ${error}`),
       routeCount: manifest.routes.length,
     };
   }
@@ -477,7 +748,7 @@ export async function runCli(argv) {
   }
 
   console.log(
-    `Cloudflare Tunnel ingress matches all ${result.routeCount} manifest routes, the terminal 404 rule, and Caddy production sites.`,
+    `Cloudflare Tunnel ingress matches all ${result.routeCount} manifest routes, the terminal 404 rule, Caddy proxy provenance, and the isolated Compose ingress boundary.`,
   );
   return 0;
 }

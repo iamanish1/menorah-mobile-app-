@@ -10,8 +10,8 @@ ARCHIVE="${OUT_DIR}/menorah-mongo-${STAMP}.archive.gz"
 
 mkdir -p "${OUT_DIR}"
 
-mongodump \
-  --uri="${MONGODB_BACKUP_URI}" \
+"$(dirname "${BASH_SOURCE[0]}")/run-mongo-tool-secure.sh" \
+  MONGODB_BACKUP_URI mongodump \
   --archive="${ARCHIVE}" \
   --gzip
 

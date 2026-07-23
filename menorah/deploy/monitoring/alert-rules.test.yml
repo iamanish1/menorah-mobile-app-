@@ -1,0 +1,363 @@
+rule_files:
+  - alert-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: checkpoint invalid and queue overflow deltas are immediate incidents
+    interval: 1m
+    input_series:
+      - series: 'menorah_security_audit_sink_failures_total{service="api-ios",reason="checkpoint_invalid",job="security-events",instance="api-ios:8080"}'
+        values: '0 1 1 1'
+      - series: 'menorah_security_audit_sink_failures_total{service="api-admin",reason="queue_overflow",job="security-events",instance="api-admin:8080"}'
+        values: '0 1 1 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: SecurityAuditEvidenceIntegrityFailure
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              reason: checkpoint_invalid
+              service: api-ios
+              severity: critical
+            exp_annotations:
+              summary: "Durable security-audit evidence is invalid or overflowing"
+              description: "api-ios recorded checkpoint_invalid in the durable audit sink; preserve evidence and follow the security-incident procedure."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditevidenceintegrityfailure"
+          - exp_labels:
+              owner: security
+              reason: queue_overflow
+              service: api-admin
+              severity: critical
+            exp_annotations:
+              summary: "Durable security-audit evidence is invalid or overflowing"
+              description: "api-admin recorded queue_overflow in the durable audit sink; preserve evidence and follow the security-incident procedure."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditevidenceintegrityfailure"
+
+  - name: sustained pending events and repeated write failures alert
+    interval: 1m
+    input_series:
+      - series: 'menorah_security_audit_sink_pending{service="api-web",job="security-events",instance="api-web:8080"}'
+        values: '1+0x16'
+      - series: 'menorah_security_audit_sink_failures_total{service="api-web",reason="database_unavailable",job="security-events",instance="api-web:8080"}'
+        values: '0 1 2 3 3 3 3 3 3 3 3 3 3 3 3 3 3'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: SecurityAuditSinkPending
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "Security-audit events remain outside the durable ledger"
+              description: "api-web has retained at least one audit event in its process-local queue for ten minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditsinkpending"
+      - eval_time: 9m
+        alertname: SecurityAuditSinkWriteFailures
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "Durable security-audit writes are repeatedly failing"
+              description: "api-web recorded at least three audit-sink write failures in ten minutes, sustained across the five-minute hold."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditsinkwritefailures"
+
+  - name: an admin permission denial is independently visible
+    interval: 1m
+    input_series:
+      - series: 'menorah_security_events_total{event="admin_permission_denied",outcome="failure",service="api-admin",job="security-events",instance="api-admin:8080"}'
+        values: '0 1 1 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: AdminPermissionDenied
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              service: api-admin
+              severity: critical
+            exp_annotations:
+              summary: "An admin permission check denied an operation"
+              description: "api-admin recorded an admin permission denial in the last five minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminpermissiondenied"
+
+  - name: security metrics alert when one scrape fails or a target disappears
+    interval: 1m
+    input_series:
+      - series: 'up{job="security-events",instance="api-ios:8080"}'
+        values: '0 0 0 0'
+      - series: 'up{job="security-events",instance="api-android:8080"}'
+        values: '1 1 1 1'
+      - series: 'up{job="security-events",instance="api-web:8080"}'
+        values: '1 1 1 1'
+      - series: 'up{job="security-events",instance="api-admin:8080"}'
+        values: '1 1 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: SecurityMetricsScrapeFailed
+        exp_alerts:
+          - exp_labels:
+              instance: api-ios:8080
+              job: security-events
+              owner: security
+              severity: critical
+            exp_annotations:
+              summary: "A security-event metrics endpoint is unavailable"
+              description: "api-ios:8080 has not supplied security-event metrics for two minutes; alert coverage for that service is blind."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securitymetricsscrapefailed"
+      - eval_time: 3m
+        alertname: SecurityMetricsCoverageIncomplete
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              severity: critical
+            exp_annotations:
+              summary: "Security-event metrics target coverage is incomplete"
+              description: "Fewer than the five required API and worker security-event targets are registered in Prometheus."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securitymetricscoverageincomplete"
+
+  - name: absent security metrics job cannot fail open
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: SecurityMetricsCoverageIncomplete
+        exp_alerts:
+          - exp_labels:
+              job: security-events
+              owner: security
+              severity: critical
+            exp_annotations:
+              summary: "Security-event metrics target coverage is incomplete"
+              description: "Fewer than the five required API and worker security-event targets are registered in Prometheus."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securitymetricscoverageincomplete"
+
+  - name: internal API outage becomes critical after the hold period
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox-http-internal",component="api",service="api-ios",instance="http://api-ios:8080/health/ready"}'
+        values: '0 0 0 0'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: InternalApiProbeFailed
+        exp_alerts:
+          - exp_labels:
+              component: api
+              instance: http://api-ios:8080/health/ready
+              job: blackbox-http-internal
+              owner: backend
+              service: api-ios
+              severity: critical
+            exp_annotations:
+              summary: "Internal API readiness probe failed"
+              description: "api-ios at http://api-ios:8080/health/ready has failed readiness probes for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#internalapiprobefailed"
+
+  - name: database exporters distinguish exporter and database health
+    interval: 1m
+    input_series:
+      - series: 'up{job="mongodb-exporter",instance="mongodb-exporter:9216"}'
+        values: '1 1 1 1'
+      - series: 'mongodb_up{job="mongodb-exporter",instance="mongodb-exporter:9216"}'
+        values: '0 0 0 0'
+      - series: 'mongodb_mongod_replset_my_state{job="mongodb-exporter",instance="mongodb-exporter:9216"}'
+        values: '2 2 2 2 2 2 2'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: MongoUnavailable
+        exp_alerts:
+          - exp_labels:
+              instance: mongodb-exporter:9216
+              job: mongodb-exporter
+              owner: data-platform
+              severity: critical
+            exp_annotations:
+              summary: "MongoDB exporter cannot query MongoDB"
+              description: "The exporter is running but its authenticated MongoDB health query is failing."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mongounavailable"
+      - eval_time: 6m
+        alertname: MongoReplicaNotPrimary
+        exp_alerts:
+          - exp_labels:
+              instance: mongodb-exporter:9216
+              job: mongodb-exporter
+              owner: data-platform
+              severity: critical
+            exp_annotations:
+              summary: "MongoDB member is not PRIMARY"
+              description: "The production single-member replica set has reported state 2 instead of PRIMARY (1) for five minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mongoreplicanotprimary"
+
+  - name: stale backup metadata is detected
+    interval: 5m
+    input_series:
+      - series: 'menorah_backup_metrics_last_run_timestamp_seconds{job="node-exporter",instance="node-exporter:9100"}'
+        values: '0 0 0 0 0 0'
+      - series: 'menorah_backup_metadata_present{backup_type="daily",job="node-exporter",instance="node-exporter:9100"}'
+        values: '0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: BackupMetricsStale
+        exp_alerts:
+          - exp_labels:
+              instance: node-exporter:9100
+              job: node-exporter
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Backup metadata exporter is stale"
+              description: "Backup telemetry has not refreshed for more than fifteen minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#backupmetricsstale"
+      - eval_time: 25m
+        alertname: DailyBackupMissing
+        exp_alerts:
+          - exp_labels:
+              backup_type: daily
+              instance: node-exporter:9100
+              job: node-exporter
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Daily backup success marker is missing"
+              description: "No daily backup success metadata is visible to the monitoring sidecar."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#dailybackupmissing"
+      - eval_time: 25m
+        alertname: DailyBackupTooOld
+        exp_alerts: []
+
+  - name: missing six-hourly recovery point is detected
+    interval: 5m
+    input_series:
+      - series: 'menorah_backup_metadata_present{backup_type="six-hourly",job="node-exporter",instance="node-exporter:9100"}'
+        values: '0 0 0 0 0'
+      - series: 'menorah_backup_last_success_timestamp_seconds{backup_type="six-hourly",job="node-exporter",instance="node-exporter:9100"}'
+        values: '0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: SixHourlyBackupTooOld
+        exp_alerts:
+          - exp_labels:
+              backup_type: six-hourly
+              instance: node-exporter:9100
+              job: node-exporter
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Six-hourly backup is missing or older than six hours"
+              description: "The highest-frequency recovery point is absent or outside its approved schedule window."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#sixhourlybackuptooold"
+
+  - name: restore evidence beyond the hard 24-hour window is detected
+    interval: 5m
+    input_series:
+      - series: 'menorah_restore_test_metadata_present{job="node-exporter",instance="node-exporter:9100"}'
+        values: '1+0x300'
+      - series: 'menorah_restore_test_last_success_timestamp_seconds{job="node-exporter",instance="node-exporter:9100"}'
+        values: '0+0x300'
+    alert_rule_test:
+      - eval_time: 24h35m
+        alertname: RestoreTestTooOld
+        exp_alerts:
+          - exp_labels:
+              instance: node-exporter:9100
+              job: node-exporter
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Restore test is missing or older than 24 hours"
+              description: "The latest successful isolated restore-test marker is absent or stale."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#restoretesttooold"
+
+  - name: absent backup telemetry is detected
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: BackupMetricsStale
+        exp_alerts:
+          - exp_labels:
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Backup metadata exporter is stale"
+              description: "Backup telemetry has not refreshed for more than fifteen minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#backupmetricsstale"
+
+  - name: healthy exporter scrape without fresh named container series cannot fail open
+    interval: 1m
+    input_series:
+      - series: 'up{job="docker-stats-exporter",instance="docker-stats-exporter:9250"}'
+        values: '1 1 1 1 1 1 1'
+      - series: 'menorah_docker_exporter_collection_success{job="docker-stats-exporter",instance="docker-stats-exporter:9250"}'
+        values: '0 0 0 0 0 0 0'
+      - series: 'menorah_docker_exporter_last_success_timestamp_seconds{job="docker-stats-exporter",instance="docker-stats-exporter:9250"}'
+        values: '0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ContainerMetricsCoverageMissing
+        exp_alerts:
+          - exp_labels:
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Docker stats collection is missing or stale"
+              description: "The exporter scrape may be up, but its Docker API collection failed, is stale, or contains no named container series."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#containermetricscoveragemissing"
+
+  - name: healthy datastore exporter scrapes without health metrics cannot fail open
+    interval: 1m
+    input_series:
+      - series: 'up{job="mongodb-exporter",instance="mongodb-exporter:9216"}'
+        values: '1 1 1 1 1 1 1'
+      - series: 'up{job="redis-exporter",instance="redis-exporter:9121"}'
+        values: '1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: MongoMetricsCoverageMissing
+        exp_alerts:
+          - exp_labels:
+              job: mongodb-exporter
+              owner: data-platform
+              severity: critical
+            exp_annotations:
+              summary: "MongoDB health metric is absent"
+              description: "The exporter scrape may be up, but it is not exposing the required mongodb_up health metric."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mongometricscoveragemissing"
+      - eval_time: 6m
+        alertname: RedisMetricsCoverageMissing
+        exp_alerts:
+          - exp_labels:
+              job: redis-exporter
+              owner: data-platform
+              severity: critical
+            exp_annotations:
+              summary: "Redis health metric is absent"
+              description: "The exporter scrape may be up, but it is not exposing the required redis_up health metric."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#redismetricscoveragemissing"
+
+  - name: MFA failures trigger independently of other auth events
+    interval: 1m
+    input_series:
+      - series: 'menorah_security_events_total{event="mfa_attempt",outcome="failure",service="api-admin"}'
+        values: '0 6 12 18 24'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MfaFailureSpike
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              severity: critical
+            exp_annotations:
+              summary: "MFA failures exceed the expected threshold"
+              description: "More than ten failed MFA attempts occurred in ten minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mfafailurespike"
+      - eval_time: 4m
+        alertname: AdminMfaFailureSpike
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              severity: critical
+            exp_annotations:
+              summary: "Admin MFA failures exceed the expected threshold"
+              description: "More than five failed MFA attempts reached the admin API in ten minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminmfafailurespike"

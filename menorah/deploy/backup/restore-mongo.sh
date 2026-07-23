@@ -22,8 +22,8 @@ if [[ "${ARCHIVE}" == *.enc ]]; then
   INPUT="${TMP_FILE}"
 fi
 
-mongorestore \
-  --uri="${MONGODB_RESTORE_TEST_URI}" \
+"$(dirname "${BASH_SOURCE[0]}")/run-mongo-tool-secure.sh" \
+  MONGODB_RESTORE_TEST_URI mongorestore \
   --archive="${INPUT}" \
   --gzip \
   --drop

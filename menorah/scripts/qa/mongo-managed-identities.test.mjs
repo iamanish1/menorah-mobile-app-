@@ -208,6 +208,35 @@ test('bootstrap leaves a complete exact identity set unchanged', () => {
   assertNoCredentialLeak(harness);
 });
 
+test('bootstrap preflight reports missing identities without creating them', () => {
+  const harness = buildHarness({
+    env: { ...buildEnv(), MONGO_BOOTSTRAP_DRY_RUN: 'true' },
+    users: { 'root-user': EXPECTED_IDENTITIES['root-user'] },
+  });
+
+  execute('create', harness);
+
+  assert.equal(harness.createCalls.length, 0);
+  assert.equal(harness.updateCalls.length, 0);
+  assert.equal(harness.storedUsers.size, 1);
+  assert.match(harness.output.join('\n'), /4 missing, 0 unchanged; no changes made/);
+  assertNoCredentialLeak(harness);
+});
+
+test('bootstrap preflight validates a complete exact identity set without writes', () => {
+  const harness = buildHarness({
+    env: { ...buildEnv(), MONGO_BOOTSTRAP_DRY_RUN: 'true' },
+    users: exactUsers(),
+  });
+
+  execute('create', harness);
+
+  assert.equal(harness.createCalls.length, 0);
+  assert.equal(harness.updateCalls.length, 0);
+  assert.match(harness.output.join('\n'), /0 missing, 4 unchanged; no changes made/);
+  assertNoCredentialLeak(harness);
+});
+
 test('bootstrap rejects an existing role mismatch before creating anything', () => {
   const users = exactUsers();
   delete users['monitor-user'];
@@ -259,6 +288,36 @@ test('routine reconciliation replaces roles exactly and omits every password fie
     [{ role: 'backup', db: 'admin' }]
   );
   assert.match(harness.output.join('\n'), /passwords unchanged/);
+  assertNoCredentialLeak(harness);
+});
+
+test('read-only reconciliation preflight verifies the complete identity set without writes', () => {
+  const harness = buildHarness({
+    env: { ...buildEnv(), MONGO_RECONCILE_DRY_RUN: 'true' },
+    users: exactUsers(),
+  });
+
+  execute('reconcile', harness);
+
+  assert.equal(harness.createCalls.length, 0);
+  assert.equal(harness.updateCalls.length, 0);
+  assert.match(harness.output.join('\n'), /without changes/);
+  assertNoCredentialLeak(harness);
+});
+
+test('read-only reconciliation preflight permits role drift for maintenance correction', () => {
+  const users = exactUsers();
+  users['monitor-user'] = [{ role: 'root', db: 'admin' }];
+  const harness = buildHarness({
+    env: { ...buildEnv(), MONGO_RECONCILE_DRY_RUN: 'true' },
+    users,
+  });
+
+  execute('reconcile', harness);
+
+  assert.equal(harness.createCalls.length, 0);
+  assert.equal(harness.updateCalls.length, 0);
+  assert.match(harness.output.join('\n'), /without changes/);
   assertNoCredentialLeak(harness);
 });
 
@@ -324,6 +383,21 @@ test('reconciliation rejects any non-exact credential-rotation confirmation', ()
   const error = captureError(() => execute('reconcile', harness));
 
   assert.match(error.message, /MONGO_ROTATE_CREDENTIALS_CONFIRM has an invalid value/);
+  assert.equal(harness.updateCalls.length, 0);
+  assertNoCredentialLeak(harness, error);
+});
+
+test('bootstrap rejects any non-exact dry-run value before DB access', () => {
+  const harness = buildHarness({
+    env: { ...buildEnv(), MONGO_BOOTSTRAP_DRY_RUN: 'yes' },
+    users: exactUsers(),
+  });
+
+  const error = captureError(() => execute('create', harness));
+
+  assert.match(error.message, /MONGO_BOOTSTRAP_DRY_RUN has an invalid value/);
+  assert.equal(harness.getCalls.length, 0);
+  assert.equal(harness.createCalls.length, 0);
   assert.equal(harness.updateCalls.length, 0);
   assertNoCredentialLeak(harness, error);
 });

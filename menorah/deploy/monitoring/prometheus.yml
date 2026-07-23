@@ -1,31 +1,239 @@
 global:
-  scrape_interval: 60s
-  evaluation_interval: 60s
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  external_labels:
+    environment: production
+    stack: menorah
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
 
 rule_files:
   - /etc/prometheus/alert-rules.yml
 
 scrape_configs:
-  - job_name: api-services
-    metrics_path: /health/ready
+  # Application health endpoints return JSON. They are deliberately probed by
+  # blackbox_exporter and are never parsed as Prometheus exposition data.
+  - job_name: blackbox-http-internal
+    metrics_path: /probe
+    params:
+      module:
+        - http_success
     static_configs:
       - targets:
-          - api-ios:8080
-          - api-android:8080
-          - api-web:8080
-          - api-admin:8080
-          - worker:8080
+          - http://api-ios:8080/health/ready
+        labels:
+          component: api
+          service: api-ios
+          probe_module: http_ready
+      - targets:
+          - http://api-android:8080/health/ready
+        labels:
+          component: api
+          service: api-android
+          probe_module: http_ready
+      - targets:
+          - http://api-web:8080/health/ready
+        labels:
+          component: api
+          service: api-web
+          probe_module: http_ready
+      - targets:
+          - http://api-admin:8080/health/ready
+        labels:
+          component: api
+          service: api-admin
+          probe_module: http_ready
+      - targets:
+          - http://worker:8080/health/ready
+        labels:
+          component: worker
+          service: worker
+          probe_module: http_ready
+      - targets:
+          - http://landing-page:3002/
+        labels:
+          component: frontend
+          service: landing-page
+          probe_module: http_success
+      - targets:
+          - http://user-web-app:3002/
+        labels:
+          component: frontend
+          service: user-web-app
+          probe_module: http_success
+      - targets:
+          - http://web-app:3001/
+        labels:
+          component: frontend
+          service: counsellor-web
+          probe_module: http_success
+      - targets:
+          - http://admin-panel:3003/
+        labels:
+          component: frontend
+          service: admin-panel
+          probe_module: http_success
+    relabel_configs:
+      - source_labels:
+          - probe_module
+        target_label: __param_module
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
 
-  - job_name: api-services-deep
-    metrics_path: /health/deep
-    scrape_interval: 10m
+  - job_name: blackbox-tcp-internal
+    metrics_path: /probe
+    params:
+      module:
+        - tcp_connect
     static_configs:
       - targets:
-          - api-ios:8080
-          - api-android:8080
-          - api-web:8080
-          - api-admin:8080
-          - worker:8080
+          - livekit:7880
+        labels:
+          component: calls
+          service: livekit
+      - targets:
+          - mongo-primary:27017
+        labels:
+          component: datastore
+          service: mongodb
+      - targets:
+          - redis:6379
+        labels:
+          component: datastore
+          service: redis
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # These probes exercise the public TLS and routing path. They also expose the
+  # peer certificate expiry metric used by the certificate alert.
+  - job_name: blackbox-https-public
+    metrics_path: /probe
+    params:
+      module:
+        - https_success
+    static_configs:
+      - targets:
+          - https://www.menorah.me/
+        labels:
+          component: frontend
+          service: public-site
+          probe_module: https_success
+      - targets:
+          - https://app.menorah.me/
+        labels:
+          component: frontend
+          service: user-web
+          probe_module: https_success
+      - targets:
+          - https://admin.menorah.me/
+        labels:
+          component: frontend
+          service: admin-web
+          probe_module: https_success
+      - targets:
+          - https://counsellor.menorah.me/
+        labels:
+          component: frontend
+          service: counsellor-web
+          probe_module: https_success
+      - targets:
+          - https://api-ios.menorah.me/health/ready
+        labels:
+          component: api
+          service: api-ios
+          probe_module: https_ready
+      - targets:
+          - https://api-android.menorah.me/health/ready
+        labels:
+          component: api
+          service: api-android
+          probe_module: https_ready
+      - targets:
+          - https://api-web.menorah.me/health/ready
+        labels:
+          component: api
+          service: api-web
+          probe_module: https_ready
+      - targets:
+          - https://api-admin.menorah.me/health/ready
+        labels:
+          component: api
+          service: api-admin
+          probe_module: https_ready
+      - targets:
+          - https://mentle.org/
+          - https://www.mentle.org/
+          - https://mentle.mentle.org/
+          - https://app.mentle.org/
+          - https://business.mentle.org/
+          - https://admin.mentle.org/
+          - https://counsellor.mentle.org/
+        labels:
+          component: frontend
+          service: mentle-web
+          probe_module: https_success
+      - targets:
+          - https://api.mentle.org/health/ready
+          - https://api-business.mentle.org/health/ready
+          - https://api-admin.mentle.org/health/ready
+          - https://api-counsellor.mentle.org/health/ready
+        labels:
+          component: api
+          service: mentle-api
+          probe_module: https_ready
+    relabel_configs:
+      - source_labels:
+          - probe_module
+        target_label: __param_module
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # LiveKit's HTTP root contract returns 200 "OK". Keeping it separate makes
+  # the public calls route explicit without accepting a generic proxy 404.
+  - job_name: blackbox-https-calls
+    metrics_path: /probe
+    params:
+      module:
+        - https_calls
+    static_configs:
+      - targets:
+          - https://calls.menorah.me/
+          - https://calls.mentle.org/
+        labels:
+          component: calls
+          service: livekit-public
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
 
   - job_name: security-events
     metrics_path: /metrics/security
@@ -38,10 +246,45 @@ scrape_configs:
           - api-admin:8080
           - worker:8080
 
-  - job_name: cadvisor
+  - job_name: blackbox-exporter
     static_configs:
       - targets:
-          - cadvisor:8080
+          - blackbox-exporter:9115
+
+  - job_name: mongodb-exporter
+    static_configs:
+      - targets:
+          - mongodb-exporter:9216
+
+  - job_name: redis-exporter
+    static_configs:
+      - targets:
+          - redis-exporter:9121
+
+  - job_name: node-exporter
+    static_configs:
+      - targets:
+          - node-exporter:9100
+
+  - job_name: docker-stats-exporter
+    static_configs:
+      - targets:
+          - docker-stats-exporter:9250
+
+  - job_name: alloy
+    static_configs:
+      - targets:
+          - log-collector:12345
+
+  - job_name: loki
+    static_configs:
+      - targets:
+          - loki:3100
+
+  - job_name: alertmanager
+    static_configs:
+      - targets:
+          - alertmanager:9093
 
   - job_name: prometheus
     static_configs:

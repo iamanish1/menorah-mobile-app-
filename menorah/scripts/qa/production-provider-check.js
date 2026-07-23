@@ -10,17 +10,28 @@
 const REQUIRED = [
   'MONGODB_URI',
   'MONGODB_BACKUP_URI',
+  'MONGODB_PRODUCTION_RESTORE_URI',
   'MONGODB_RESTORE_TEST_URI',
   'REDIS_URL',
   'JWT_SECRET',
   'JWT_REFRESH_SECRET',
   'RESEND_API_KEY',
   'EMAIL_FROM',
+  'PASSWORD_RESET_BASE_URL',
+  'MEDIA_STORAGE_BACKEND',
+  'MEDIA_PUBLIC_BASE_URL',
+  'UPLOAD_PATH',
   'ALLOWED_ORIGINS',
   'RAZORPAY_KEY_ID',
   'RAZORPAY_KEY_SECRET',
   'RAZORPAY_WEBHOOK_SECRET',
   'BACKUP_ENCRYPTION_PASSWORD',
+  'BACKUP_INTEGRITY_HMAC_KEY',
+  'APPLE_SIGN_IN_ENABLED',
+  'APPLE_IOS_BUNDLE_ID',
+  'APPLE_TEAM_ID',
+  'APPLE_KEY_ID',
+  'APPLE_PRIVATE_KEY',
 ];
 
 const OPTIONAL_PROVIDER_GROUPS = [
@@ -29,7 +40,6 @@ const OPTIONAL_PROVIDER_GROUPS = [
   ['GOOGLE_WEB_CLIENT_ID'],
   ['GOOGLE_ANDROID_CLIENT_ID'],
   ['GOOGLE_IOS_CLIENT_ID'],
-  ['APPLE_IOS_BUNDLE_ID'],
   ['APPLE_WEB_SERVICE_ID'],
 ];
 
@@ -66,11 +76,42 @@ const checkRequiredEnv = () => {
     }
   }
 
-  for (const key of ['MONGODB_URI', 'MONGODB_BACKUP_URI', 'MONGODB_RESTORE_TEST_URI']) {
+  for (const key of [
+    'MONGODB_URI',
+    'MONGODB_BACKUP_URI',
+    'MONGODB_PRODUCTION_RESTORE_URI',
+    'MONGODB_RESTORE_TEST_URI',
+  ]) {
     if (hasUsableValue(key) && !isMongoUri(key)) {
       console.log(`FAIL env ${key} must start with mongodb:// or mongodb+srv://`);
       failures += 1;
     }
+  }
+
+  if (envValue('PASSWORD_RESET_BASE_URL') !== 'https://app.menorah.me') {
+    console.log('FAIL env PASSWORD_RESET_BASE_URL must equal the canonical mobile app origin');
+    failures += 1;
+  }
+  if (envValue('APPLE_SIGN_IN_ENABLED') !== 'true'
+    || envValue('APPLE_IOS_BUNDLE_ID') !== 'com.menorah.health.app') {
+    console.log('FAIL env Sign in with Apple must be enabled for the canonical iOS bundle');
+    failures += 1;
+  }
+  if (!/^[A-Z0-9]{10}$/.test(envValue('APPLE_TEAM_ID'))
+    || !/^[A-Z0-9]{10}$/.test(envValue('APPLE_KEY_ID'))
+    || !envValue('APPLE_PRIVATE_KEY').includes('BEGIN PRIVATE KEY')) {
+    console.log('FAIL env Apple server signing credentials are incomplete');
+    failures += 1;
+  }
+  if (
+    envValue('MEDIA_STORAGE_BACKEND') !== 'local'
+    || envValue('MEDIA_PUBLIC_BASE_URL') !== `https://${envValue('API_WEB_DOMAIN') || 'api-web.menorah.me'}`
+    || envValue('UPLOAD_PATH') !== '/app/uploads'
+    || envValue('SOCIAL_STUDIO_STORAGE')
+    || envValue('COUNSELLOR_MEDIA_STORAGE')
+  ) {
+    console.log('FAIL production media must use the canonical shared immutable local store');
+    failures += 1;
   }
 
   for (const group of OPTIONAL_PROVIDER_GROUPS) {

@@ -25,7 +25,19 @@ if (missing.length > 0) quit(1);
 `;
 
 try {
-  execFileSync('mongosh', [uri, '--quiet', '--eval', script], { stdio: 'inherit' });
+  execFileSync(
+    'mongosh',
+    [
+      '--nodb',
+      '--quiet',
+      '--eval',
+      `db = connect(process.env.MONGODB_VERIFY_RESTORE_URI);\n${script}`,
+    ],
+    {
+      env: { ...process.env, MONGODB_VERIFY_RESTORE_URI: uri },
+      stdio: 'inherit',
+    }
+  );
 } catch (error) {
   process.exit(error.status || 1);
 }

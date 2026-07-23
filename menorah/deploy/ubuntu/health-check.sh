@@ -3,7 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+EXPECTED_BACKUP_WORKDIR="$(cd "${DEPLOY_DIR}/.." && pwd)"
 ENV_FILE="${PRODUCTION_ENV:-${DEPLOY_DIR}/env/production.env}"
+CLOUDFLARE_ENV="${CLOUDFLARE_ENV:-${DEPLOY_DIR}/env/cloudflare.env}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
@@ -15,6 +17,15 @@ if [[ -f "${ENV_FILE}" ]]; then
 fi
 
 failures=0
+
+compose_cmd() {
+  docker compose \
+    -f "${DEPLOY_DIR}/docker-compose.production.yml" \
+    -f "${DEPLOY_DIR}/docker-compose.tunnel.yml" \
+    --env-file "${ENV_FILE}" \
+    --env-file "${CLOUDFLARE_ENV}" \
+    "$@"
+}
 
 port_base_url() {
   local value="$1"
@@ -38,21 +49,26 @@ status_code() {
   local method="$1"
   local url="$2"
   local body_file="$3"
-  curl -k -sS -X "${method}" -o "${body_file}" -w "%{http_code}" "${url}" || printf '000'
+  curl --connect-timeout "${HEALTH_CONNECT_TIMEOUT_SECONDS:-5}" \
+    --max-time "${HEALTH_REQUEST_TIMEOUT_SECONDS:-15}" \
+    -sS -X "${method}" -o "${body_file}" -w "%{http_code}" "${url}" || printf '000'
 }
 
 status_and_location() {
   local method="$1"
   local url="$2"
   local body_file="$3"
-  curl -k -sS -X "${method}" -o "${body_file}" -w "%{http_code} %{redirect_url}" "${url}" || printf '000 '
+  curl --connect-timeout "${HEALTH_CONNECT_TIMEOUT_SECONDS:-5}" \
+    --max-time "${HEALTH_REQUEST_TIMEOUT_SECONDS:-15}" \
+    -sS -X "${method}" -o "${body_file}" -w "%{http_code} %{redirect_url}" "${url}" || printf '000 '
 }
 
 require_code() {
   local method="$1"
   local url="$2"
   local expected="$3"
-  local body_file="${TMP_DIR}/$(echo "${method}-${url}" | tr -c 'A-Za-z0-9' '_').body"
+  local body_file
+  body_file="${TMP_DIR}/$(echo "${method}-${url}" | tr -c 'A-Za-z0-9' '_').body"
   local code
   code="$(status_code "${method}" "${url}" "${body_file}")"
   if [[ "${code}" == "${expected}" ]]; then
@@ -68,7 +84,8 @@ require_code_any() {
   local method="$1"
   local url="$2"
   shift 2
-  local body_file="${TMP_DIR}/$(echo "${method}-${url}" | tr -c 'A-Za-z0-9' '_').body"
+  local body_file
+  body_file="${TMP_DIR}/$(echo "${method}-${url}" | tr -c 'A-Za-z0-9' '_').body"
   local code
   code="$(status_code "${method}" "${url}" "${body_file}")"
   for expected in "$@"; do
@@ -88,7 +105,8 @@ require_code_or_redirect() {
   local url="$2"
   local redirect_pattern="$3"
   shift 3
-  local body_file="${TMP_DIR}/$(echo "${method}-${url}" | tr -c 'A-Za-z0-9' '_').body"
+  local body_file
+  body_file="${TMP_DIR}/$(echo "${method}-${url}" | tr -c 'A-Za-z0-9' '_').body"
   local result code location
   result="$(status_and_location "${method}" "${url}" "${body_file}")"
   code="${result%% *}"
@@ -113,11 +131,18 @@ require_code_or_redirect() {
   printf '%s' "${body_file}"
 }
 
-require_container_probe() {
-  local container="$1"
+require_service_probe() {
+  local service="$1"
+  local container
   local inspect
+  container="$(compose_cmd ps -q "${service}" 2>/dev/null || true)"
+  if [[ -z "${container}" ]]; then
+    echo "FAIL service ${service} has no running container" >&2
+    failures=$((failures + 1))
+    return
+  fi
   if ! inspect="$(docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "${container}" 2>/dev/null)"; then
-    echo "FAIL container ${container} is missing" >&2
+    echo "FAIL service ${service} container is missing" >&2
     failures=$((failures + 1))
     return
   fi
@@ -127,9 +152,150 @@ require_container_probe() {
   health="${inspect#* }"
 
   if [[ "${status}" == "running" && ( "${health}" == "healthy" || "${health}" == "no-healthcheck" ) ]]; then
-    echo "PASS container ${container} -> ${status}/${health}" >&2
+    echo "PASS service ${service} -> ${status}/${health}" >&2
   else
-    echo "FAIL container ${container} -> ${status}/${health}" >&2
+    echo "FAIL service ${service} -> ${status}/${health}" >&2
+    failures=$((failures + 1))
+  fi
+}
+
+require_active_timer() {
+  local timer="$1"
+  if ! systemctl is-enabled --quiet "${timer}" \
+    || ! systemctl is-active --quiet "${timer}"; then
+    echo "FAIL required backup timer is not enabled and active: ${timer}" >&2
+    failures=$((failures + 1))
+  else
+    echo "PASS backup timer enabled and active: ${timer}"
+  fi
+}
+
+require_backup_unit_contract() {
+  local unit="$1"
+  local script_path="$2"
+  local required_argument="${3:-}"
+  local expected_user unit_user unit_workdir unit_environment unit_exec
+  expected_user="$(id -un)"
+  unit_user="$(systemctl show --property=User --value "${unit}" 2>/dev/null || true)"
+  unit_workdir="$(systemctl show --property=WorkingDirectory --value "${unit}" 2>/dev/null || true)"
+  unit_environment="$(systemctl show --property=Environment --value "${unit}" 2>/dev/null || true)"
+  unit_exec="$(systemctl show --property=ExecStart --value "${unit}" 2>/dev/null || true)"
+  if [[ "${unit_user}" != "${expected_user}" \
+    || "${unit_workdir}" != "${EXPECTED_BACKUP_WORKDIR}" \
+    || "${unit_environment}" != *"PRODUCTION_ENV=${ENV_FILE}"* \
+    || "${unit_exec}" != *"/bin/bash ${EXPECTED_BACKUP_WORKDIR}/${script_path}"* \
+    || ( -n "${required_argument}" && "${unit_exec}" != *" ${required_argument}"* ) ]]; then
+    echo "FAIL systemd unit does not match this checkout/operator: ${unit}" >&2
+    failures=$((failures + 1))
+  else
+    echo "PASS systemd unit matches this checkout/operator: ${unit}" >&2
+  fi
+}
+
+require_prometheus_targets_up() {
+  local targets_json
+  if ! targets_json="$(compose_cmd exec -T prometheus \
+    wget -qO- 'http://127.0.0.1:9090/api/v1/targets?state=active' 2>/dev/null)"; then
+    echo "FAIL Prometheus active-target API is unavailable" >&2
+    failures=$((failures + 1))
+    return
+  fi
+
+  if TARGETS_JSON="${targets_json}" node - <<'NODE'
+const payload = JSON.parse(process.env.TARGETS_JSON || '{}');
+const targets = payload?.data?.activeTargets;
+if (!Array.isArray(targets) || targets.length === 0) process.exit(1);
+const unhealthy = targets.filter((target) => target.health !== 'up');
+if (unhealthy.length > 0) {
+  for (const target of unhealthy) {
+    const job = target.labels?.job || 'unknown-job';
+    const instance = target.labels?.instance || 'unknown-instance';
+    process.stderr.write(`Prometheus target down: ${job} ${instance}\n`);
+  }
+  process.exit(1);
+}
+NODE
+  then
+    echo "PASS every active Prometheus target is up" >&2
+  else
+    echo "FAIL one or more active Prometheus targets are unavailable" >&2
+    failures=$((failures + 1))
+  fi
+}
+
+require_prometheus_probe_success() {
+  local query_json
+  if ! query_json="$(compose_cmd exec -T prometheus \
+    wget -qO- 'http://127.0.0.1:9090/api/v1/query?query=probe_success' 2>/dev/null)"; then
+    echo "FAIL Prometheus probe_success query is unavailable" >&2
+    failures=$((failures + 1))
+    return
+  fi
+
+  if QUERY_JSON="${query_json}" node - <<'NODE'
+const payload = JSON.parse(process.env.QUERY_JSON || '{}');
+const results = payload?.data?.result;
+if (payload.status !== 'success' || !Array.isArray(results) || results.length === 0) process.exit(1);
+const failed = results.filter((sample) => Number(sample?.value?.[1]) !== 1);
+if (failed.length > 0) {
+  for (const sample of failed) {
+    const job = sample.metric?.job || 'unknown-job';
+    const instance = sample.metric?.instance || 'unknown-instance';
+    process.stderr.write(`Blackbox probe failed: ${job} ${instance}\n`);
+  }
+  process.exit(1);
+}
+NODE
+  then
+    echo "PASS every reported blackbox probe has probe_success=1" >&2
+  else
+    echo "FAIL one or more blackbox probes failed or no probe results were reported" >&2
+    failures=$((failures + 1))
+  fi
+}
+
+require_backup_metrics_fresh() {
+  local query_json presence_json
+  if ! query_json="$(compose_cmd exec -T prometheus \
+    wget -qO- 'http://127.0.0.1:9090/api/v1/query?query=menorah_backup_metrics_last_run_timestamp_seconds' 2>/dev/null)"; then
+    echo "FAIL Prometheus backup-metrics freshness query is unavailable" >&2
+    failures=$((failures + 1))
+    return
+  fi
+
+  if QUERY_JSON="${query_json}" node - <<'NODE'
+const payload = JSON.parse(process.env.QUERY_JSON || '{}');
+const results = payload?.data?.result;
+if (payload.status !== 'success' || !Array.isArray(results) || results.length !== 1) process.exit(1);
+const exportedAt = Number(results[0]?.value?.[1]);
+const ageSeconds = Date.now() / 1000 - exportedAt;
+if (!Number.isFinite(ageSeconds) || ageSeconds < -60 || ageSeconds > 600) process.exit(1);
+NODE
+  then
+    echo "PASS backup textfile metrics were exported within 10 minutes" >&2
+  else
+    echo "FAIL backup textfile metrics are missing, duplicated, or stale" >&2
+    failures=$((failures + 1))
+  fi
+
+  if ! presence_json="$(compose_cmd exec -T prometheus \
+    wget -qO- 'http://127.0.0.1:9090/api/v1/query?query=menorah_backup_metadata_present' 2>/dev/null)"; then
+    echo "FAIL Prometheus backup marker query is unavailable" >&2
+    failures=$((failures + 1))
+    return
+  fi
+  if QUERY_JSON="${presence_json}" node - <<'NODE'
+const payload = JSON.parse(process.env.QUERY_JSON || '{}');
+const results = payload?.data?.result;
+const manual = Array.isArray(results)
+  ? results.find((sample) => sample.metric?.backup_type === 'manual')
+  : undefined;
+if (payload.status !== 'success' || Number(manual?.value?.[1]) !== 1) process.exit(1);
+NODE
+  then
+    echo "PASS fresh manual backup metadata is visible to monitoring" >&2
+  else
+    echo "FAIL fresh manual backup metadata is not visible to monitoring" >&2
     failures=$((failures + 1))
   fi
 }
@@ -145,11 +311,12 @@ assert_no_secret_leak() {
   local key value
   for key in \
     JWT_SECRET JWT_REFRESH_SECRET \
-    MONGODB_URI MONGODB_BACKUP_URI MONGODB_RESTORE_TEST_URI REDIS_URL \
+    MONGODB_URI MONGODB_BACKUP_URI MONGODB_MONITORING_URI MONGODB_PRODUCTION_RESTORE_URI MONGODB_RESTORE_TEST_URI REDIS_URL \
+    MONGO_MONITOR_PASSWORD MONGO_RESTORE_PASSWORD \
     RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET RAZORPAY_WEBHOOK_SECRET_PREVIOUS \
     RAZORPAY_X_KEY_SECRET RAZORPAY_X_WEBHOOK_SECRET \
     RESEND_API_KEY APPLE_PRIVATE_KEY LUXAND_API_TOKEN OPENAI_API_KEY CLOUDINARY_API_SECRET \
-    LIVEKIT_API_SECRET BACKUP_ENCRYPTION_PASSWORD DATA_ENCRYPTION_KEY AUDIT_LOG_SIGNING_KEY; do
+    LIVEKIT_API_SECRET BACKUP_ENCRYPTION_PASSWORD BACKUP_INTEGRITY_HMAC_KEY DATA_ENCRYPTION_KEY AUDIT_LOG_SIGNING_KEY; do
     value="${!key:-}"
     if [[ ${#value} -ge 12 && "${value}" != replace_with_* ]] && grep -Fq "${value}" "${body_file}"; then
       echo "FAIL ${label} exposes ${key}" >&2
@@ -158,25 +325,56 @@ assert_no_secret_leak() {
   done
 }
 
-for container in \
-  deploy-api-ios-1 \
-  deploy-api-android-1 \
-  deploy-api-web-1 \
-  deploy-api-admin-1 \
-  deploy-worker-1 \
-  deploy-livekit-1 \
-  deploy-mongo-primary-1 \
-  deploy-redis-1 \
-  deploy-reverse-proxy-1 \
-  deploy-cloudflared-1 \
-  deploy-prometheus-1 \
-  deploy-grafana-1 \
-  deploy-loki-1 \
-  deploy-log-collector-1 \
-  deploy-uptime-kuma-1 \
-  deploy-backup-runner-1; do
-  require_container_probe "${container}"
+if [[ "$(docker info --format '{{.LoggingDriver}}' 2>/dev/null || true)" != "json-file" ]]; then
+  echo "FAIL Docker default logging driver must be json-file for Alloy file collection" >&2
+  failures=$((failures + 1))
+fi
+if ! node - <<'NODE'
+const fs = require('fs');
+const config = JSON.parse(fs.readFileSync('/etc/docker/daemon.json', 'utf8'));
+if (
+  config['log-driver'] !== 'json-file'
+  || config['log-opts']?.['max-size'] !== '25m'
+  || config['log-opts']?.['max-file'] !== '5'
+) {
+  process.exit(1);
+}
+NODE
+then
+  echo "FAIL Docker json-file rotation must be max-size=25m and max-file=5" >&2
+  failures=$((failures + 1))
+fi
+
+for service in \
+  landing-page user-web-app web-app admin-panel \
+  api-ios api-android api-web api-admin worker \
+  livekit mongo-primary redis reverse-proxy cloudflared \
+  prometheus alertmanager blackbox-exporter mongodb-exporter redis-exporter \
+  node-exporter backup-metrics grafana uptime-kuma docker-metrics-gateway docker-stats-exporter log-collector loki; do
+  require_service_probe "${service}"
 done
+
+if [[ "${BACKUP_AUTOMATION_ENABLED:-false}" == "true" ]]; then
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "FAIL systemctl is required when backup automation is enabled" >&2
+    failures=$((failures + 1))
+  else
+    for timer in \
+      menorah-backup-six-hourly.timer \
+      menorah-backup-daily.timer \
+      menorah-backup-weekly.timer \
+      menorah-backup-monthly.timer \
+      menorah-restore-test.timer \
+      menorah-backup-prune.timer \
+      menorah-backup-health.timer; do
+      require_active_timer "${timer}"
+    done
+    require_backup_unit_contract menorah-backup@daily.service deploy/ubuntu/backup-now.sh daily
+    require_backup_unit_contract menorah-restore-test.service deploy/ubuntu/restore-latest-backup.sh restore-test
+    require_backup_unit_contract menorah-backup-prune.service deploy/ubuntu/prune-backups.sh
+    require_backup_unit_contract menorah-backup-health.service deploy/ubuntu/check-backup-health.sh
+  fi
+fi
 
 for entry in \
   "api-ios|${API_IOS_BASE}" \
@@ -193,6 +391,9 @@ for entry in \
   require_code GET "${api_base}/health/ready" 200 >/dev/null
 done
 require_code GET "${WORKER_BASE}/health/ready" 200 >/dev/null
+require_prometheus_targets_up
+require_prometheus_probe_success
+require_backup_metrics_fresh
 
 require_code POST "${API_IOS_BASE}/api/payments/create-subscription-checkout" 404 >/dev/null
 require_code POST "${API_IOS_BASE}/api/payments/verify-subscription-payment" 404 >/dev/null
@@ -232,7 +433,13 @@ if [[ "${CHECK_PUBLIC:-false}" == "true" ]]; then
     business.mentle.org \
     admin.mentle.org \
     counsellor.mentle.org; do
-    require_code_any GET "https://${mentle_web_domain}" 200 301 302 307 308 >/dev/null
+    escaped_mentle_domain="${mentle_web_domain//./\\.}"
+    if [[ "${mentle_web_domain}" == "mentle.org" || "${mentle_web_domain}" == "www.mentle.org" ]]; then
+      mentle_redirect_pattern='^https://(www\.)?mentle\.org(/|$)|^/'
+    else
+      mentle_redirect_pattern="^https://${escaped_mentle_domain}(/|$)|^/"
+    fi
+    require_code_or_redirect GET "https://${mentle_web_domain}" "${mentle_redirect_pattern}" 200 >/dev/null
   done
   for mentle_api_domain in \
     api.mentle.org \
