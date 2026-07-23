@@ -10,13 +10,16 @@
  */
 
 const crypto = require('crypto');
+const {
+  requireSyntheticEmail,
+  validateSmokeTargets,
+} = require('./smoke-target-safety');
 
-const API_BASE = (process.env.QA_API_BASE || 'https://api-web.menorah.me/api').replace(/\/+$/, '');
-const QA_EMAIL_PATTERN = /^tejasamirth\+menorahqa-[A-Za-z0-9._-]+@gmail\.com$/;
-const QA_EMAIL = process.env.QA_EMAIL || `tejasamirth+menorahqa-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}@gmail.com`;
+let API_BASE;
+let QA_EMAIL;
 const QA_PASSWORD = process.env.QA_PASSWORD;
 const QA_OTP = process.env.QA_OTP;
-const QA_PHONE = process.env.QA_PHONE || `+19${String(Date.now()).slice(-9)}`;
+const QA_PHONE = process.env.QA_PHONE;
 
 const results = [];
 
@@ -68,20 +71,25 @@ const registrationPayload = () => ({
 });
 
 const printResults = () => {
-  console.log('\nMenorah production auth smoke results');
+  console.log(`\nMenorah ${process.env.QA_TARGET_ENVIRONMENT} auth smoke results`);
   for (const result of results) {
     console.log(`${result.status} ${result.name}${result.detail ? ` - ${result.detail}` : ''}`);
   }
 };
 
 const main = async () => {
+  API_BASE = validateSmokeTargets(process.env, {
+    QA_API_BASE: process.env.QA_API_BASE,
+  }).QA_API_BASE;
+  QA_EMAIL = requireSyntheticEmail(process.env);
+
   if (!QA_PASSWORD) {
     console.error('QA_PASSWORD is required but was not printed.');
     process.exit(2);
   }
 
-  if (!QA_EMAIL_PATTERN.test(QA_EMAIL)) {
-    console.error('QA_EMAIL must match tejasamirth+menorahqa-*@gmail.com.');
+  if (!/^\+[1-9]\d{7,14}$/.test(String(QA_PHONE || ''))) {
+    console.error('QA_PHONE must be an explicit synthetic E.164 number.');
     process.exit(2);
   }
 

@@ -1,10 +1,10 @@
 const { test, expect } = require('@playwright/test');
 
-const adminUrl = process.env.QA_ADMIN_URL || 'https://admin.menorah.me';
+const adminUrl = process.env.QA_ADMIN_URL;
 const adminEmail = process.env.QA_ADMIN_EMAIL;
 const adminPassword = process.env.QA_ADMIN_PASSWORD;
 
-test.describe('admin production smoke', () => {
+test.describe('configured admin smoke', () => {
   test.skip(!(adminEmail && adminPassword), 'Set QA_ADMIN_EMAIL and QA_ADMIN_PASSWORD to run admin login smoke.');
 
   test('real admin login works when credentials are supplied', async ({ page }) => {

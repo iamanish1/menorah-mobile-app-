@@ -1,22 +1,11 @@
 #!/usr/bin/env node
 
-const DEFAULTS = {
-  apiWeb: 'https://api-web.menorah.me',
-  apiIos: 'https://api-ios.menorah.me',
-  apiAndroid: 'https://api-android.menorah.me',
-  apiAdmin: 'https://api-admin.menorah.me',
-};
+const {
+  requireSyntheticEmail,
+  validateSmokeTargets,
+} = require('./smoke-target-safety');
 
-const config = {
-  apiWeb: (process.env.QA_API_WEB_URL || DEFAULTS.apiWeb).replace(/\/+$/, ''),
-  apiIos: (process.env.QA_API_IOS_URL || DEFAULTS.apiIos).replace(/\/+$/, ''),
-  apiAndroid: (process.env.QA_API_ANDROID_URL || DEFAULTS.apiAndroid).replace(/\/+$/, ''),
-  apiAdmin: (process.env.QA_API_ADMIN_URL || DEFAULTS.apiAdmin).replace(/\/+$/, ''),
-  qaEmail: process.env.QA_EMAIL || 'tejasamirth+menorahqa-smoke@gmail.com',
-  qaWrongPassword: process.env.QA_WRONG_PASSWORD || `WrongPassword-${Date.now()}-9`,
-  adminEmail: process.env.QA_ADMIN_EMAIL,
-  adminPassword: process.env.QA_ADMIN_PASSWORD,
-};
+let config;
 
 const results = [];
 
@@ -78,7 +67,23 @@ const expectJsonSuccess = async (name, url, options = {}) => {
 };
 
 const main = async () => {
-  console.log('Menorah production API smoke');
+  const targets = validateSmokeTargets(process.env, {
+    QA_API_WEB_URL: process.env.QA_API_WEB_URL,
+    QA_API_IOS_URL: process.env.QA_API_IOS_URL,
+    QA_API_ANDROID_URL: process.env.QA_API_ANDROID_URL,
+    QA_API_ADMIN_URL: process.env.QA_API_ADMIN_URL,
+  });
+  config = {
+    apiWeb: targets.QA_API_WEB_URL,
+    apiIos: targets.QA_API_IOS_URL,
+    apiAndroid: targets.QA_API_ANDROID_URL,
+    apiAdmin: targets.QA_API_ADMIN_URL,
+    qaEmail: requireSyntheticEmail(process.env),
+    qaWrongPassword: process.env.QA_WRONG_PASSWORD || `WrongPassword-${Date.now()}-9`,
+    adminEmail: process.env.QA_ADMIN_EMAIL,
+    adminPassword: process.env.QA_ADMIN_PASSWORD,
+  };
+  console.log(`Menorah ${process.env.QA_TARGET_ENVIRONMENT} API smoke`);
 
   await expectStatus('api-web /health/ready', `${config.apiWeb}/health/ready`, 200);
   await expectStatus('api-ios /health/ready', `${config.apiIos}/health/ready`, 200);

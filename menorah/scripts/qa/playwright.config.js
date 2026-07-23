@@ -1,4 +1,19 @@
 const { defineConfig, devices } = require('@playwright/test');
+const {
+  validateOptionalSyntheticAdminCredentials,
+  validateSmokeTargets,
+} = require('./smoke-target-safety');
+
+const targets = validateSmokeTargets(process.env, {
+  QA_WWW_URL: process.env.QA_WWW_URL,
+  QA_APP_URL: process.env.QA_APP_URL,
+  QA_ADMIN_URL: process.env.QA_ADMIN_URL,
+  QA_COUNSELLOR_WEB_URL: process.env.QA_COUNSELLOR_WEB_URL,
+});
+Object.assign(process.env, targets);
+if (process.env.QA_TARGET_ENVIRONMENT === 'staging') {
+  validateOptionalSyntheticAdminCredentials(process.env);
+}
 
 module.exports = defineConfig({
   testDir: './playwright',

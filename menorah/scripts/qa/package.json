@@ -7,6 +7,7 @@
     "test:web": "playwright test -c playwright.config.js",
     "test:api": "node production-api-smoke.js",
     "test:otp": "node production-auth-smoke.js",
+    "test:smoke-safety": "node --test smoke-target-safety.test.cjs call-origin-policy.test.cjs",
     "test:providers": "node production-provider-check.js",
     "test:backup-lifecycle": "bash test-backup-lifecycle.sh",
     "test:media-recovery": "node validate-media-recovery-config.mjs",
@@ -16,7 +17,7 @@
     "test:tunnel-config": "node --test validate-cloudflare-tunnel-config.test.mjs",
     "test:monitoring": "node validate-monitoring-config.mjs && node --test validate-monitoring-config.test.mjs validate-alertmanager-delivery.test.mjs docker-metrics-gateway.test.mjs docker-stats-exporter.test.mjs && bash test-monitoring-native.sh",
     "validate:tunnel-example": "node validate-cloudflare-tunnel-config.mjs --config ../../deploy/cloudflare/tunnel-config.yml.example",
-    "test:all-safe": "npm run test:tunnel-config && npm run test:api && npm run test:web"
+    "test:all-safe": "npm run test:tunnel-config && npm run test:smoke-safety"
   },
   "dependencies": {
     "yaml": "^2.9.0"
