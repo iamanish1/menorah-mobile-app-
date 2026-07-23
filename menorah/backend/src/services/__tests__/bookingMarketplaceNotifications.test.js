@@ -2,6 +2,11 @@ const mockLean = jest.fn();
 const mockPopulate = jest.fn(() => ({ lean: mockLean }));
 const mockSelect = jest.fn(() => ({ populate: mockPopulate }));
 const mockFind = jest.fn(() => ({ select: mockSelect }));
+const {
+  installCounsellorVerificationTestConfig,
+} = require('../../testUtils/counsellorVerification');
+
+installCounsellorVerificationTestConfig();
 
 jest.mock('../../models/Counsellor', () => ({
   find: mockFind,
@@ -55,8 +60,14 @@ describe('booking marketplace socket notifications', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLean.mockResolvedValue([
-      { _id: '64f000000000000000000010', user: { gender: 'female' } },
-      { _id: '64f000000000000000000011', user: { gender: 'male' } },
+      {
+        _id: '64f000000000000000000010',
+        user: { gender: 'female', role: 'counsellor', isActive: true },
+      },
+      {
+        _id: '64f000000000000000000011',
+        user: { gender: 'male', role: 'counsellor', isActive: true },
+      },
     ]);
   });
 
@@ -70,16 +81,22 @@ describe('booking marketplace socket notifications', () => {
       now: NOW,
     })).resolves.toBe(1);
 
-    expect(mockFind).toHaveBeenCalledWith({
+    expect(mockFind).toHaveBeenCalledWith(expect.objectContaining({
       isActive: true,
       isAvailable: true,
-      isVerified: true,
       status: 'approved',
+      user: { $type: 'objectId' },
+      'professionalVerification.application': { $type: 'objectId' },
+      'professionalVerification.legacyReviewRequired': false,
       profileImage: { $type: 'string', $regex: /\S/ },
       voiceIntroUrl: { $type: 'string', $regex: /\S/ },
-    });
+    }));
     expect(mockSelect).toHaveBeenCalledWith('_id user');
-    expect(mockPopulate).toHaveBeenCalledWith({ path: 'user', select: 'gender' });
+    expect(mockPopulate).toHaveBeenCalledWith({
+      path: 'user',
+      select: 'gender role isActive',
+      match: { role: 'counsellor', isActive: true },
+    });
     expect(to).toHaveBeenCalledWith('counsellor_64f000000000000000000010');
     expect(to).not.toHaveBeenCalledWith('counsellor_64f000000000000000000011');
     expect(emit).toHaveBeenCalledTimes(1);

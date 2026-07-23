@@ -801,7 +801,7 @@ router.post('/forgot-password', [
 ], async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email, isActive: true });
     if (user) {
       const resetToken  = crypto.randomBytes(32).toString('hex');
       const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
@@ -880,6 +880,7 @@ router.post('/reset-password', [
     const user = await User.findOne({
       passwordResetToken:   hashedToken,
       passwordResetExpires: { $gt: Date.now() },
+      isActive: true,
     }).select('+passwordResetToken +passwordResetExpires');
 
     if (!user) {

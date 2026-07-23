@@ -1,7 +1,21 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const request = require('supertest');
+const {
+  installCounsellorVerificationTestConfig,
+  withCurrentProfessionalApproval,
+} = require('../../testUtils/counsellorVerification');
+
+installCounsellorVerificationTestConfig();
 
 const mockSave = jest.fn();
+const mockWithTransaction = jest.fn();
+const mockEndSession = jest.fn();
+const mockSession = {
+  withTransaction: mockWithTransaction,
+  endSession: mockEndSession,
+};
+const startSessionSpy = jest.spyOn(mongoose, 'startSession');
 
 jest.mock('../../middleware/auth', () => ({
   auth: (req, _res, next) => {
@@ -38,11 +52,13 @@ jest.mock('../../models/Booking', () => {
 
 jest.mock('../../models/Counsellor', () => ({
   findById: jest.fn(),
+  findOneAndUpdate: jest.fn(),
   find: jest.fn(),
 }));
 
 jest.mock('../../models/User', () => ({
   findById: jest.fn(),
+  findOneAndUpdate: jest.fn(),
 }));
 
 jest.mock('../../utils/email', () => ({
@@ -87,6 +103,27 @@ const validRequest = () => ({
   sessionType: 'video',
   sessionDuration: 45,
   scheduledAt: futureDate(),
+});
+const directCounsellor = (overrides = {}) => withCurrentProfessionalApproval({
+  _id: '64f000000000000000000020',
+  timezone: 'UTC',
+  hourlyRate: 1200,
+  currency: 'INR',
+  availability: {
+    thursday: { isAvailable: true, start: '00:00', end: '23:59' },
+  },
+  user: {
+    _id: '64f000000000000000000021',
+    firstName: 'Test',
+    lastName: 'Counsellor',
+  },
+  ...overrides,
+}, { populateUser: true });
+const validDirectRequest = () => ({
+  counsellorId: '64f000000000000000000020',
+  sessionType: 'video',
+  sessionDuration: 45,
+  scheduledAt: '2099-01-15T10:00:00.000Z',
 });
 const paidRazorpayBooking = (overrides = {}) => ({
   _id: '64f000000000000000000010',
@@ -138,12 +175,18 @@ describe('booking route server-controlled pricing', () => {
     Booking.updateMany.mockReset().mockResolvedValue({ modifiedCount: 0 });
     Booking.countDocuments.mockReset();
     Counsellor.findById.mockReset();
+    Counsellor.findOneAndUpdate.mockReset();
     mockSave.mockReset().mockResolvedValue(undefined);
     User.findById.mockReset().mockResolvedValue({ subscription: null });
+    User.findOneAndUpdate.mockReset();
+    mockWithTransaction.mockReset().mockImplementation(async (operation) => operation());
+    mockEndSession.mockReset().mockResolvedValue(undefined);
+    startSessionSpy.mockReset().mockResolvedValue(mockSession);
   });
 
   afterAll(() => {
     process.env = originalEnv;
+    startSessionSpy.mockRestore();
   });
 
   test('persists the exact amount from the server catalog', async () => {
@@ -265,9 +308,243 @@ describe('booking route server-controlled pricing', () => {
     }));
   });
 
+  test('fences direct booking eligibility, account state, pricing, and conflicts in one transaction', async () => {
+    const counsellor = directCounsellor();
+    Counsellor.findById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(counsellor),
+    });
+    Counsellor.findOneAndUpdate.mockResolvedValue(counsellor);
+    User.findOneAndUpdate.mockResolvedValue({
+      _id: counsellor.user._id,
+      role: 'counsellor',
+      isActive: true,
+    });
+
+    const initialConflictQuery = {
+      lean: jest.fn().mockResolvedValue([]),
+    };
+    const transactionConflictQuery = {
+      session: jest.fn(),
+      lean: jest.fn().mockResolvedValue([]),
+    };
+    transactionConflictQuery.session.mockReturnValue(transactionConflictQuery);
+    Booking.find
+      .mockReturnValueOnce(initialConflictQuery)
+      .mockReturnValueOnce(transactionConflictQuery);
+
+    const response = await request(buildApp())
+      .post('/api/bookings')
+      .send(validDirectRequest())
+      .expect(201);
+
+    expect(response.body.data.booking).toMatchObject({
+      amount: 900,
+      currency: 'INR',
+      pricingSource: 'counsellor_rate',
+    });
+    expect(startSessionSpy).toHaveBeenCalledTimes(1);
+    expect(mockWithTransaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      {
+        readConcern: { level: 'snapshot' },
+        writeConcern: { w: 'majority' },
+      }
+    );
+    expect(Counsellor.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _id: counsellor._id,
+        user: counsellor.user._id,
+        hourlyRate: 1200,
+        currency: 'INR',
+        status: 'approved',
+        isActive: true,
+        isAvailable: true,
+        'professionalVerification.legacyReviewRequired': false,
+        'professionalVerification.expiresAt': {
+          $type: 'date',
+          $gt: expect.any(Date),
+        },
+      }),
+      {
+        $inc: { 'professionalVerification.marketplaceAssignmentFence': 1 },
+      },
+      {
+        new: true,
+        runValidators: true,
+        session: mockSession,
+      }
+    );
+    expect(User.findOneAndUpdate).toHaveBeenCalledWith(
+      {
+        _id: counsellor.user._id,
+        role: 'counsellor',
+        isActive: true,
+      },
+      {
+        $inc: { marketplaceAssignmentFence: 1 },
+      },
+      {
+        new: true,
+        runValidators: true,
+        session: mockSession,
+      }
+    );
+    expect(transactionConflictQuery.session).toHaveBeenCalledWith(mockSession);
+    expect(mockSave).toHaveBeenCalledWith({ session: mockSession });
+    expect(mockEndSession).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    {
+      name: 'professional eligibility changes',
+      fencedCounsellor: null,
+      fencedAccount: null,
+      expectedMessage: /eligibility or pricing changed/i,
+    },
+    {
+      name: 'linked account role or active state changes',
+      fencedCounsellor: directCounsellor(),
+      fencedAccount: null,
+      expectedMessage: /account changed/i,
+    },
+  ])('aborts cleanly when $name during direct booking', async ({
+    fencedCounsellor,
+    fencedAccount,
+    expectedMessage,
+  }) => {
+    const counsellor = directCounsellor();
+    Counsellor.findById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(counsellor),
+    });
+    Counsellor.findOneAndUpdate.mockResolvedValue(fencedCounsellor);
+    User.findOneAndUpdate.mockResolvedValue(fencedAccount);
+    Booking.find.mockReturnValue({
+      lean: jest.fn().mockResolvedValue([]),
+    });
+
+    const response = await request(buildApp())
+      .post('/api/bookings')
+      .send(validDirectRequest())
+      .expect(409);
+
+    expect(response.body).toMatchObject({
+      success: false,
+      code: 'COUNSELLOR_NOT_ELIGIBLE',
+    });
+    expect(response.body.message).toMatch(expectedMessage);
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockEndSession).toHaveBeenCalledTimes(1);
+  });
+
+  test('aborts when pricing changes inside the direct-booking transaction', async () => {
+    const counsellor = directCounsellor();
+    Counsellor.findById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(counsellor),
+    });
+    Counsellor.findOneAndUpdate.mockResolvedValue(directCounsellor({
+      hourlyRate: 1600,
+    }));
+    User.findOneAndUpdate.mockResolvedValue({
+      _id: counsellor.user._id,
+      role: 'counsellor',
+      isActive: true,
+    });
+    Booking.find.mockReturnValue({
+      lean: jest.fn().mockResolvedValue([]),
+    });
+
+    const response = await request(buildApp())
+      .post('/api/bookings')
+      .send(validDirectRequest())
+      .expect(409);
+
+    expect(response.body.code).toBe('COUNSELLOR_PRICING_CHANGED');
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  test('aborts when counsellor working hours change inside the transaction', async () => {
+    const counsellor = directCounsellor();
+    Counsellor.findById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(counsellor),
+    });
+    Counsellor.findOneAndUpdate.mockResolvedValue(directCounsellor({
+      availability: {
+        thursday: { isAvailable: false, start: '00:00', end: '23:59' },
+      },
+    }));
+    User.findOneAndUpdate.mockResolvedValue({
+      _id: counsellor.user._id,
+      role: 'counsellor',
+      isActive: true,
+    });
+    Booking.find.mockReturnValue({
+      lean: jest.fn().mockResolvedValue([]),
+    });
+
+    const response = await request(buildApp())
+      .post('/api/bookings')
+      .send(validDirectRequest())
+      .expect(409);
+
+    expect(response.body.code).toBe('COUNSELLOR_SCHEDULE_CHANGED');
+    expect(Booking.find).toHaveBeenCalledTimes(1);
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  test('aborts when an overlapping booking appears inside the transaction', async () => {
+    const counsellor = directCounsellor();
+    Counsellor.findById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(counsellor),
+    });
+    Counsellor.findOneAndUpdate.mockResolvedValue(counsellor);
+    User.findOneAndUpdate.mockResolvedValue({
+      _id: counsellor.user._id,
+      role: 'counsellor',
+      isActive: true,
+    });
+
+    const initialConflictQuery = {
+      lean: jest.fn().mockResolvedValue([]),
+    };
+    const transactionConflictQuery = {
+      session: jest.fn(),
+      lean: jest.fn().mockResolvedValue([{
+        scheduledAt: new Date('2099-01-15T09:30:00.000Z'),
+        sessionDuration: 60,
+        status: 'confirmed',
+        paymentStatus: 'paid',
+      }]),
+    };
+    transactionConflictQuery.session.mockReturnValue(transactionConflictQuery);
+    Booking.find
+      .mockReturnValueOnce(initialConflictQuery)
+      .mockReturnValueOnce(transactionConflictQuery);
+
+    const response = await request(buildApp())
+      .post('/api/bookings')
+      .send(validDirectRequest())
+      .expect(409);
+
+    expect(response.body.code).toBe('SLOT_BOOKED');
+    expect(transactionConflictQuery.session).toHaveBeenCalledWith(mockSession);
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  test('keeps unassigned booking creation outside the direct-booking transaction', async () => {
+    await request(buildApp())
+      .post('/api/bookings')
+      .send(validRequest())
+      .expect(201);
+
+    expect(startSessionSpy).not.toHaveBeenCalled();
+    expect(Counsellor.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(User.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(mockSave).toHaveBeenCalledWith();
+  });
+
   test('rejects a direct session whose end falls outside counsellor working hours', async () => {
     Counsellor.findById.mockReturnValue({
-      populate: jest.fn().mockResolvedValue({
+      populate: jest.fn().mockResolvedValue(withCurrentProfessionalApproval({
         _id: '64f000000000000000000020',
         isActive: true,
         isVerified: true,
@@ -277,8 +554,12 @@ describe('booking route server-controlled pricing', () => {
         availability: {
           thursday: { isAvailable: true, start: '09:00', end: '12:00' },
         },
-        user: { firstName: 'Test', lastName: 'Counsellor' },
-      }),
+        user: {
+          _id: '64f000000000000000000020',
+          firstName: 'Test',
+          lastName: 'Counsellor',
+        },
+      }, { populateUser: true })),
     });
 
     const response = await request(buildApp())
@@ -298,7 +579,7 @@ describe('booking route server-controlled pricing', () => {
 
   test('detects a longer earlier booking and includes expired payment reviews in conflict candidates', async () => {
     Counsellor.findById.mockReturnValue({
-      populate: jest.fn().mockResolvedValue({
+      populate: jest.fn().mockResolvedValue(withCurrentProfessionalApproval({
         _id: '64f000000000000000000020',
         isActive: true,
         isVerified: true,
@@ -308,8 +589,12 @@ describe('booking route server-controlled pricing', () => {
         availability: {
           thursday: { isAvailable: true, start: '00:00', end: '23:59' },
         },
-        user: { firstName: 'Test', lastName: 'Counsellor' },
-      }),
+        user: {
+          _id: '64f000000000000000000020',
+          firstName: 'Test',
+          lastName: 'Counsellor',
+        },
+      }, { populateUser: true })),
     });
     Booking.find.mockReturnValue({
       lean: jest.fn().mockResolvedValue([{

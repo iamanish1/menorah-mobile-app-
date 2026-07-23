@@ -19,8 +19,36 @@ const {
   providerDisplayName,
   resolveCallPolicy
 } = require('../services/callPolicyService');
-const { sendCounsellorApprovalEmail } = require('../utils/email');
+const {
+  sendCounsellorApprovalEmail,
+  sendCounsellorReverificationEmail,
+} = require('../utils/email');
 const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const {
+  CounsellorVerificationError,
+  approve: approveCounsellorVerification,
+  expire: expireCounsellorVerification,
+  issueReverificationInvitation,
+  prepareCounsellorActivation,
+  reject: rejectCounsellorVerification,
+  startReview: startCounsellorReview,
+  suspend: suspendCounsellorVerification,
+} = require('../services/counsellorVerificationService');
+const {
+  buildProfessionallyApprovedCounsellorQuery,
+  isCounsellorProfessionallyApproved,
+  validateProfessionalApprovalPrerequisites,
+} = require('../services/counsellorVerificationPolicy');
+const {
+  invalidateCounsellorDiscoveryCache,
+} = require('../services/counsellorDiscoveryCache');
+const {
+  reconcileBatch: reconcileDueCounsellorVerificationExpiries,
+  reconcileOne: reconcileCounsellorVerificationExpiry,
+} = require('../services/counsellorVerificationExpiry');
+const {
+  readCounsellorVerificationConfig,
+} = require('../config/counsellorVerification');
 const {
   PAYOUT_APPROVAL_TTL_MS,
   payoutInFlightStatuses,
@@ -80,12 +108,15 @@ const formatAdminBooking = (booking) => ({
   createdAt: booking.createdAt
 });
 
-const prepareCounsellorActivation = (user) => {
-  const activationToken = crypto.randomBytes(32).toString('hex');
-  user.password = `${crypto.randomBytes(32).toString('base64url')}Aa1`;
-  user.passwordResetToken = crypto.createHash('sha256').update(activationToken).digest('hex');
-  user.passwordResetExpires = Date.now() + 24 * 60 * 60 * 1000;
-  return activationToken;
+const sendCounsellorVerificationError = (res, error) => {
+  if (!(error instanceof CounsellorVerificationError)) return false;
+  res.status(error.status).json({
+    success: false,
+    message: error.message,
+    code: error.code,
+    ...(error.details?.length ? { errors: error.details } : {}),
+  });
+  return true;
 };
 
 const serializeBankDetailsForAdmin = (bankDetails = {}) => {
@@ -495,9 +526,9 @@ router.get('/stats', async (req, res) => {
     ] = await Promise.all([
       User.countDocuments({ role: 'user' }),
       Counsellor.countDocuments(),
-      PendingApplication.countDocuments({ status: 'pending' }),
-      Counsellor.countDocuments({ status: 'approved' }),
-      Counsellor.countDocuments({ isActive: false, status: 'approved' }),
+      PendingApplication.countDocuments({ status: { $in: ['pending', 'submitted', 'under_review'] } }),
+      Counsellor.countDocuments(buildProfessionallyApprovedCounsellorQuery({ now })),
+      Counsellor.countDocuments({ status: 'suspended' }),
       Booking.countDocuments(),
       Booking.countDocuments({ status: { $in: ['confirmed', 'in-progress'] } }),
       Booking.countDocuments({ status: 'completed' }),
@@ -637,17 +668,31 @@ router.get('/server-usage', async (_req, res) => {
 
 // GET /api/admin/counsellors
 router.get('/counsellors', [
-  query('status').optional().isIn(['pending', 'approved', 'rejected', 'blocked', 'all']),
+  query('status').optional().isIn([
+    'pending',
+    'draft',
+    'submitted',
+    'under_review',
+    'approved',
+    'rejected',
+    'suspended',
+    'expired',
+    'blocked',
+    'all',
+  ]),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 100 }),
   query('search').optional().isString().trim()
 ], async (req, res) => {
   try {
+    await reconcileDueCounsellorVerificationExpiries({ limit: 100 });
+    const requestNow = new Date();
     const { status = 'all', page = 1, limit = 20, search } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     // Pending tab — served from PendingApplication collection
-    if (status === 'pending') {
+    if (['pending', 'submitted', 'under_review'].includes(status)) {
+      const verificationConfig = readCounsellorVerificationConfig();
       const searchQuery = search
         ? { $or: [
             { firstName: { $regex: escapeRegex(search), $options: 'i' } },
@@ -655,7 +700,9 @@ router.get('/counsellors', [
             { email: { $regex: escapeRegex(search), $options: 'i' } }
           ]}
         : {};
-      searchQuery.status = 'pending';
+      searchQuery.status = status === 'under_review'
+        ? 'under_review'
+        : { $in: ['pending', 'submitted'] };
 
       const [apps, total] = await Promise.all([
         PendingApplication.find(searchQuery).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
@@ -671,7 +718,14 @@ router.get('/counsellors', [
         experience: a.experience,
         hourlyRate: a.hourlyRate,
         currency: a.currency,
-        status: 'pending',
+        status: a.status === 'pending' ? 'submitted' : a.status,
+        linkedCounsellor: a.linkedCounsellor || null,
+        legacyReviewRequired: a.legacyReviewRequired === true,
+        canStartReview: (
+          ['pending', 'submitted'].includes(a.status)
+          && a.legacyReviewRequired !== true
+          && verificationConfig.configured
+        ),
         isActive: false,
         isVerified: false,
         createdAt: a.createdAt,
@@ -727,7 +781,18 @@ router.get('/counsellors', [
     const counsellorQuery = {};
     if (status === 'blocked') {
       counsellorQuery.isActive = false;
+      counsellorQuery.status = 'suspended';
+    } else if (status === 'approved') {
       counsellorQuery.status = 'approved';
+      counsellorQuery['professionalVerification.expiresAt'] = { $gt: requestNow };
+    } else if (status === 'expired') {
+      counsellorQuery.$or = [
+        { status: 'expired' },
+        {
+          status: 'approved',
+          'professionalVerification.expiresAt': { $not: { $gt: requestNow } },
+        },
+      ];
     } else if (status !== 'all') {
       counsellorQuery.status = status;
     }
@@ -761,9 +826,15 @@ router.get('/counsellors', [
     ]);
     const statsMap = bookingStats.reduce((acc, s) => { acc[s._id.toString()] = s; return acc; }, {});
 
-    const formatted = counsellors.map(c => ({
+    const formatted = counsellors.map(c => {
+      const expiresAt = c.professionalVerification?.expiresAt;
+      const elapsedApproved = (
+        c.status === 'approved'
+        && (!(expiresAt instanceof Date) || expiresAt <= requestNow)
+      );
+      return {
       id: c._id,
-      user: c.user,
+      user: elapsedApproved && c.user ? { ...c.user, isActive: false } : c.user,
       licenseNumber: c.licenseNumber,
       specialization: c.specialization,
       experience: c.experience,
@@ -771,19 +842,24 @@ router.get('/counsellors', [
       currency: c.currency,
       rating: c.rating,
       reviewCount: c.reviewCount,
-      status: c.status,
-      isActive: c.isActive,
-      isVerified: c.isVerified,
+      status: elapsedApproved ? 'expired' : c.status,
+      isActive: elapsedApproved ? false : c.isActive,
+      isVerified: elapsedApproved ? false : c.isVerified,
       approvedBy: c.approvedBy,
       approvedAt: c.approvedAt,
       rejectionReason: c.rejectionReason,
       blockedAt: c.blockedAt,
       blockedReason: c.blockedReason,
+      professionalVerification: {
+        expiresAt: c.professionalVerification?.expiresAt || null,
+        legacyReviewRequired: c.professionalVerification?.legacyReviewRequired === true,
+      },
       stats: c.stats,
       bankDetails: serializeBankDetailsForAdmin(c.bankDetails),
       createdAt: c.createdAt,
       bookingStats: statsMap[c._id.toString()] || { total: 0, completed: 0, cancelled: 0, confirmed: 0 }
-    }));
+      };
+    });
 
     res.json({
       success: true,
@@ -803,18 +879,29 @@ router.get('/counsellors/:id', [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid ID' });
 
+    await reconcileCounsellorVerificationExpiry({ counsellorId: req.params.id });
+
     const counsellor = await Counsellor.findById(req.params.id)
-      .populate('user', 'firstName lastName email phone profileImage isActive createdAt')
+      .populate('user', 'firstName lastName email phone profileImage role isActive createdAt')
       .populate('approvedBy', 'firstName lastName email')
       .lean();
 
     if (!counsellor) {
       const application = await PendingApplication.findById(req.params.id)
+        .select('+credentialEvidence.reference')
         .populate('reviewedBy', 'firstName lastName email')
+        .populate('reviewStartedBy', 'firstName lastName email')
+        .populate('decisionBy', 'firstName lastName email')
         .lean();
 
       if (!application) return res.status(404).json({ success: false, message: 'Counsellor not found' });
 
+      const verificationConfig = readCounsellorVerificationConfig();
+      const approvalCheck = validateProfessionalApprovalPrerequisites({
+        application,
+        verificationExpiresAt: application.verificationExpiresAt,
+        config: verificationConfig,
+      });
       const formattedApplication = {
         id: application._id,
         _id: application._id,
@@ -849,6 +936,24 @@ router.get('/counsellors/:id', [
         rejectionReason: application.rejectionReason,
         reviewedBy: application.reviewedBy || null,
         reviewedAt: application.reviewedAt || null,
+        reviewStartedBy: application.reviewStartedBy || null,
+        reviewStartedAt: application.reviewStartedAt || null,
+        decisionBy: application.decisionBy || null,
+        decisionAt: application.decisionAt || null,
+        onboardingConsent: application.onboardingConsent || null,
+        credentialEvidence: application.credentialEvidence || [],
+        credentialReview: application.credentialReview || null,
+        verificationExpiresAt: application.verificationExpiresAt || null,
+        linkedCounsellor: application.linkedCounsellor || null,
+        requiredCredentialPolicyVersion: verificationConfig.credentialPolicyVersion,
+        legacyReviewRequired: application.legacyReviewRequired === true,
+        canStartReview: (
+          application.status === 'submitted'
+          && application.legacyReviewRequired !== true
+          && verificationConfig.configured
+        ),
+        canApprove: approvalCheck.ok,
+        approvalBlockingReasons: approvalCheck.failures,
         createdAt: application.createdAt,
         updatedAt: application.updatedAt
       };
@@ -891,7 +996,11 @@ router.get('/counsellors/:id', [
     res.json({
       success: true,
       data: {
-        counsellor,
+        counsellor: {
+          ...counsellor,
+          professionalVerification: counsellor.professionalVerification || null,
+          professionallyEligible: isCounsellorProfessionallyApproved(counsellor),
+        },
         bookingStats: {
           allTime: allTimeStats[0] || { total: 0, completed: 0, cancelled: 0, revenue: 0 },
           today: todayStats[0] || { total: 0, completed: 0, cancelled: 0 },
@@ -906,124 +1015,104 @@ router.get('/counsellors/:id', [
   }
 });
 
-// PUT /api/admin/counsellors/:id/approve
-// Creates User + Counsellor from PendingApplication and emails a one-time activation link.
-router.put('/counsellors/:id/approve', [
-  param('id').isMongoId().withMessage('Invalid ID')
+// PUT /api/admin/counsellors/:id/start-review
+// Creates only a dormant account/profile. Professional approval is separate.
+router.put('/counsellors/:id/start-review', [
+  param('id').isMongoId().withMessage('Invalid application ID'),
+  requireRecentAdminMfa,
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid ID' });
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
 
-    const application = await PendingApplication.findById(req.params.id).select('+statusLookupTokenHash');
-    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
-    if (application.status !== 'pending') return res.status(400).json({ success: false, message: 'Application is not pending' });
+    const result = await startCounsellorReview({
+      applicationId: req.params.id,
+      adminId: req.user._id,
+    });
+    await invalidateCounsellorDiscoveryCache();
+    return res.json({
+      success: true,
+      message: 'Counsellor application moved to credential review.',
+      data: {
+        applicationId: result.application._id,
+        counsellorId: result.counsellor._id,
+        status: result.application.status,
+        accountCreated: result.createdDormantUser,
+      },
+    });
+  } catch (error) {
+    if (sendCounsellorVerificationError(res, error)) return;
+    console.error('Admin start counsellor review error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
 
-    const [existingByEmail, existingByPhone, existingLicense] = await Promise.all([
-      User.findOne({ email: application.email }),
-      User.findOne({ phone: application.phone }),
-      Counsellor.findOne({ licenseNumber: application.licenseNumber })
-    ]);
+// PUT /api/admin/counsellors/:id/approve
+// Requires reviewed credential metadata and a bounded verification expiry.
+router.put('/counsellors/:id/approve', [
+  param('id').isMongoId().withMessage('Invalid application ID'),
+  body('credentialPolicyVersion').isString().trim().isLength({ min: 1, max: 128 }),
+  body('verificationExpiresAt').isISO8601({ strict: true }),
+  body('credentialEvidence').isArray({ min: 1, max: 50 }),
+  body('credentialEvidence.*.reference').isString().trim().isLength({ min: 1, max: 512 }),
+  body('credentialEvidence.*.category').isString().trim().isLength({ min: 1, max: 100 }),
+  body('credentialEvidence.*.sha256').optional({ nullable: true }).matches(/^[a-f0-9]{64}$/i),
+  body('credentialEvidence.*.contentType')
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 100 }),
+  body('credentialEvidence.*.sizeBytes').optional({ nullable: true }).isInt({ min: 1 }),
+  requireRecentAdminMfa,
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
 
-    if (existingByEmail && existingByPhone && existingByEmail._id.toString() !== existingByPhone._id.toString()) {
-      return res.status(400).json({
-        success: false,
-        message: 'This application email and phone belong to different existing users. Use a unique test phone/email or review manually.'
+    const { application, counsellor, user, activationToken } =
+      await approveCounsellorVerification({
+        applicationId: req.params.id,
+        adminId: req.user._id,
+        credentialEvidence: req.body.credentialEvidence,
+        credentialPolicyVersion: req.body.credentialPolicyVersion,
+        verificationExpiresAt: req.body.verificationExpiresAt,
       });
-    }
+    await invalidateCounsellorDiscoveryCache();
 
-    if (existingLicense) {
-      return res.status(400).json({
-        success: false,
-        message: 'A counsellor with this license number already exists.'
-      });
-    }
-
-    const existingUser = existingByEmail || existingByPhone;
-    if (existingUser && existingUser.role !== 'user') {
-      return res.status(400).json({
-        success: false,
-        message: 'Existing privileged accounts cannot be converted through counsellor application approval.'
-      });
-    }
-
-    if (existingUser) {
-      const existingCounsellor = await Counsellor.findOne({ user: existingUser._id });
-      if (existingCounsellor) {
-        return res.status(400).json({
-          success: false,
-          message: 'This user already has a counsellor profile.'
-        });
-      }
-    }
-
-    const user = existingUser || new User();
-    user.firstName = application.firstName || user.firstName;
-    user.lastName = application.lastName || user.lastName;
-    user.email = application.email || user.email;
-    user.phone = application.phone || user.phone;
-    const activationToken = prepareCounsellorActivation(user);
-    user.dateOfBirth = application.dateOfBirth || user.dateOfBirth;
-    user.gender = application.gender || user.gender || 'male';
-    user.role = 'counsellor';
-    user.isActive = true;
-    user.isEmailVerified = true;
-    user.isPhoneVerified = true;
-    revokeAllSessions(user, { passwordChanged: true });
-    await user.save();
     res.locals.securitySessionRevoked = user;
     res.locals.securitySessionRevocationAction = 'counsellor_approved';
-
-    const counsellor = new Counsellor({
-      user: user._id,
-      licenseNumber: application.licenseNumber,
-      specialization: application.specialization,
-      specializations: application.specializations?.length ? application.specializations : [application.specialization],
-      experience: application.experience,
-      bio: application.bio,
-      languages: application.languages,
-      hourlyRate: application.hourlyRate,
-      currency: application.currency || 'INR',
-      education: application.education || [],
-      certifications: application.certifications || [],
-      availability: application.availability,
-      status: 'approved',
-      isVerified: true,
-      isActive: true,
-      isAvailable: true,
-      approvedBy: req.user._id,
-      approvedAt: new Date(),
-      applicationStatusTokenHash: application.statusLookupTokenHash,
-    });
-    await counsellor.save();
-
-    await PendingApplication.findByIdAndDelete(application._id);
-
     const credentialEmailSent = await sendCounsellorApprovalEmail({
       email: user.email,
       name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-      activationToken
+      activationToken,
     }).catch((error) => {
       console.error('Counsellor approval credential email error:', error.message);
       return false;
     });
 
-    res.json({
+    return res.json({
       success: true,
       message: credentialEmailSent
-        ? 'Counsellor approved. A one-time password setup link was emailed to the counsellor.'
-        : 'Counsellor approved, but the activation email was not sent. Resend the password setup link before granting access.',
+        ? 'Counsellor approved. A one-time password setup link was emailed.'
+        : 'Counsellor approved, but the activation email was not sent. Resend the setup link.',
       data: {
+        applicationId: application._id,
         counsellorId: counsellor._id,
-        status: 'approved',
+        status: counsellor.status,
         username: user.email,
+        verificationExpiresAt: counsellor.professionalVerification.expiresAt,
         credentialEmailSent,
-        credentialEmailRecipient: user.email
-      }
+        credentialEmailRecipient: user.email,
+      },
     });
   } catch (error) {
+    if (sendCounsellorVerificationError(res, error)) return;
     console.error('Admin approve counsellor error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
@@ -1031,20 +1120,18 @@ router.put('/counsellors/:id/approve', [
 // Marks PendingApplication as rejected — no User/Counsellor records to clean up.
 router.put('/counsellors/:id/reject', [
   param('id').isMongoId().withMessage('Invalid ID'),
-  body('reason').trim().notEmpty().withMessage('Rejection reason is required')
+  body('reason').trim().isLength({ min: 1, max: 1000 }).withMessage('Rejection reason is required'),
+  requireRecentAdminMfa,
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
-    const application = await PendingApplication.findById(req.params.id);
-    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
-
-    application.status = 'rejected';
-    application.rejectionReason = req.body.reason;
-    application.reviewedBy = req.user._id;
-    application.reviewedAt = new Date();
-    await application.save();
+    const { application } = await rejectCounsellorVerification({
+      applicationId: req.params.id,
+      adminId: req.user._id,
+      reason: req.body.reason,
+    });
 
     res.json({
       success: true,
@@ -1052,8 +1139,9 @@ router.put('/counsellors/:id/reject', [
       data: { applicationId: application._id, status: 'rejected' }
     });
   } catch (error) {
+    if (sendCounsellorVerificationError(res, error)) return;
     console.error('Admin reject counsellor error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
@@ -1061,7 +1149,8 @@ router.put('/counsellors/:id/reject', [
 // Historical route name retained for clients. It now sends a one-time setup link
 // and never returns or emails a plaintext password.
 router.post('/counsellors/:id/generate-password', [
-  param('id').isMongoId().withMessage('Invalid counsellor ID')
+  param('id').isMongoId().withMessage('Invalid counsellor ID'),
+  requireRecentAdminMfa,
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -1069,16 +1158,24 @@ router.post('/counsellors/:id/generate-password', [
 
     const counsellor = await Counsellor.findById(req.params.id).populate('user');
     if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
-    if (counsellor.status !== 'approved') return res.status(400).json({ success: false, message: 'Counsellor must be approved before generating credentials' });
+    if (!isCounsellorProfessionallyApproved(counsellor)) {
+      return res.status(409).json({
+        success: false,
+        message: 'Current professional approval is required before generating credentials.'
+      });
+    }
 
     const user = await User.findById(counsellor.user._id);
+    if (!user || user.isActive !== true || user.role !== 'counsellor') {
+      return res.status(409).json({
+        success: false,
+        message: 'The approved counsellor account is not active.'
+      });
+    }
     const activationToken = prepareCounsellorActivation(user);
-    user.isActive = true;
     revokeAllSessions(user, { passwordChanged: true });
-    counsellor.isActive = true;
-    counsellor.isAvailable = true;
 
-    await Promise.all([user.save(), counsellor.save()]);
+    await user.save();
     res.locals.securitySessionRevoked = user;
     res.locals.securitySessionRevocationAction = 'activation_link_generated';
 
@@ -1113,62 +1210,102 @@ router.post('/counsellors/:id/generate-password', [
 // PUT /api/admin/counsellors/:id/block
 router.put('/counsellors/:id/block', [
   param('id').isMongoId(),
-  body('reason').trim().notEmpty().withMessage('Block reason is required')
+  body('reason').trim().isLength({ min: 1, max: 1000 }).withMessage('Block reason is required'),
+  requireRecentAdminMfa,
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
-    const counsellor = await Counsellor.findById(req.params.id).populate('user');
-    if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
-    if (!counsellor.isActive) return res.status(400).json({ success: false, message: 'Counsellor is already blocked' });
-
-    counsellor.isActive = false;
-    counsellor.isAvailable = false;
-    counsellor.blockedAt = new Date();
-    counsellor.blockedReason = req.body.reason;
-
-    const user = await User.findById(counsellor.user._id);
-    user.isActive = false;
-    revokeAllSessions(user);
-
-    await Promise.all([counsellor.save(), user.save()]);
+    const { counsellor, user } = await suspendCounsellorVerification({
+      counsellorId: req.params.id,
+      adminId: req.user._id,
+      reason: req.body.reason,
+    });
+    await invalidateCounsellorDiscoveryCache();
     res.locals.securitySessionRevoked = user;
-    res.locals.securitySessionRevocationAction = 'account_blocked';
+    res.locals.securitySessionRevocationAction = 'counsellor_suspended';
 
-    res.json({ success: true, message: 'Counsellor blocked. They cannot receive new bookings or log in.', data: { counsellorId: counsellor._id } });
+    return res.json({
+      success: true,
+      message: 'Counsellor suspended. Re-verification is required before reactivation.',
+      data: { counsellorId: counsellor._id, status: counsellor.status },
+    });
   } catch (error) {
+    if (sendCounsellorVerificationError(res, error)) return;
     console.error('Admin block counsellor error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
-// PUT /api/admin/counsellors/:id/unblock
-router.put('/counsellors/:id/unblock', [
-  param('id').isMongoId()
+router.post('/counsellors/:id/reverification-invite', [
+  param('id').isMongoId(),
+  requireRecentAdminMfa,
 ], async (req, res) => {
   try {
-    const counsellor = await Counsellor.findById(req.params.id).populate('user');
-    if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
-    if (counsellor.isActive) return res.status(400).json({ success: false, message: 'Counsellor is not blocked' });
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
-    counsellor.isActive = true;
-    counsellor.isAvailable = true;
-    counsellor.blockedAt = null;
-    counsellor.blockedReason = null;
+    const {
+      counsellor,
+      user,
+      invitationToken,
+      expiresAt,
+    } = await issueReverificationInvitation({
+      counsellorId: req.params.id,
+      adminId: req.user._id,
+    });
+    const invitationEmailSent = await sendCounsellorReverificationEmail({
+      email: user.email,
+      name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      invitationToken,
+    }).catch((error) => {
+      console.error('Counsellor re-verification invitation email failed:', error.message);
+      return false;
+    });
 
-    const user = await User.findById(counsellor.user._id);
-    user.isActive = true;
-    revokeAllSessions(user);
-
-    await Promise.all([counsellor.save(), user.save()]);
-    res.locals.securitySessionRevoked = user;
-    res.locals.securitySessionRevocationAction = 'account_unblocked';
-
-    res.json({ success: true, message: 'Counsellor unblocked. They can now receive bookings.', data: { counsellorId: counsellor._id } });
+    return res.json({
+      success: true,
+      message: invitationEmailSent
+        ? 'A one-time re-verification invitation was emailed.'
+        : 'The invitation was created, but email delivery failed. Generate a new invitation after resolving email delivery.',
+      data: {
+        counsellorId: counsellor._id,
+        invitationEmailSent,
+        invitationEmailRecipient: user.email,
+        expiresAt,
+      },
+    });
   } catch (error) {
-    console.error('Admin unblock counsellor error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    if (sendCounsellorVerificationError(res, error)) return;
+    console.error('Admin counsellor re-verification invitation error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+router.put('/counsellors/:id/expire', [
+  param('id').isMongoId(),
+  requireRecentAdminMfa,
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+    const { counsellor, user } = await expireCounsellorVerification({
+      counsellorId: req.params.id,
+      adminId: req.user._id,
+    });
+    await invalidateCounsellorDiscoveryCache();
+    res.locals.securitySessionRevoked = user;
+    res.locals.securitySessionRevocationAction = 'counsellor_verification_expired';
+    return res.json({
+      success: true,
+      message: 'Expired professional verification recorded.',
+      data: { counsellorId: counsellor._id, status: counsellor.status },
+    });
+  } catch (error) {
+    if (sendCounsellorVerificationError(res, error)) return;
+    console.error('Admin expire counsellor verification error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 

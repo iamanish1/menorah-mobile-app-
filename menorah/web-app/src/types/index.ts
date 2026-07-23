@@ -157,6 +157,8 @@ export interface DashboardBookingSummary {
 
 export interface ApiResponse<T> {
   success: boolean;
+  code?: string;
+  status?: number;
   message?: string;
   data?: T;
   errors?: any[];

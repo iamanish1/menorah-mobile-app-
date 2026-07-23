@@ -6,6 +6,9 @@ const Message = require('../../models/Message');
 const ChatRoom = require('../../models/ChatRoom');
 const chatRoutes = require('../../routes/chat');
 const { getPubClient, getSubClient } = require('../../config/redis');
+const {
+  evaluateAccountAccess: evaluateCounsellorAccountAccess,
+} = require('../../services/counsellorVerificationExpiry');
 const { verifyAdminToken, verifyUserToken } = require('../../utils/authTokens');
 const {
   getCookieToken,
@@ -13,6 +16,8 @@ const {
 } = require('../../config/webSessions');
 
 const SOCKET_ENABLED_SERVICES = new Set(['api-ios', 'api-android', 'api-web']);
+const DEFAULT_SOCKET_SESSION_REVALIDATION_INTERVAL_MS = 30 * 1000;
+const SOCKET_REVALIDATION_CONCURRENCY = 10;
 
 const parseBooleanEnv = (value, fallback) => {
   if (value === undefined || value === null || value === '') return fallback;
@@ -74,7 +79,108 @@ const getSocketWebSession = (socket) => getWebSessionForRequest({
   },
 });
 
+const createSocketSessionRevalidator = ({
+  UserModel = User,
+  evaluateCounsellorAccess = evaluateCounsellorAccountAccess,
+} = {}) => async (socket) => {
+  const user = await UserModel.findById(socket.userId)
+    .select('firstName lastName role isActive sessionVersion')
+    .lean();
+  if (
+    !user
+    || !user.isActive
+    || user.role !== socket.userRole
+    || (socket.sessionVersion || 0) !== (user.sessionVersion || 0)
+  ) {
+    return false;
+  }
+
+  if (user.role === 'counsellor') {
+    const professionalAccess = await evaluateCounsellorAccess({
+      account: user,
+    });
+    if (!professionalAccess.allowed) return false;
+  }
+
+  return true;
+};
+
+const revalidateConnectedSockets = async ({
+  io,
+  revalidateSocket,
+  concurrency = SOCKET_REVALIDATION_CONCURRENCY,
+}) => {
+  const sockets = [...io.sockets.sockets.values()];
+  let cursor = 0;
+  const workerCount = Math.min(
+    sockets.length,
+    Math.max(1, Number.isSafeInteger(concurrency) ? concurrency : 1)
+  );
+
+  const worker = async () => {
+    while (cursor < sockets.length) {
+      const socket = sockets[cursor];
+      cursor += 1;
+      try {
+        if (!await revalidateSocket(socket)) {
+          socket.disconnect(true);
+        }
+      } catch (error) {
+        console.error(
+          'Socket session revalidation failed closed:',
+          error?.code || 'SOCKET_SESSION_REVALIDATION_FAILED'
+        );
+        socket.disconnect(true);
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return sockets.length;
+};
+
+const readSocketSessionRevalidationInterval = () => {
+  const configured = Number(process.env.SOCKET_SESSION_REVALIDATION_INTERVAL_MS);
+  if (!Number.isSafeInteger(configured)) {
+    return DEFAULT_SOCKET_SESSION_REVALIDATION_INTERVAL_MS;
+  }
+  return Math.min(Math.max(configured, 5000), 5 * 60 * 1000);
+};
+
+const startSocketSessionRevalidation = ({
+  io,
+  revalidateSocket,
+  intervalMs = readSocketSessionRevalidationInterval(),
+}) => {
+  let running = false;
+  const run = async () => {
+    if (running) return 0;
+    running = true;
+    try {
+      return await revalidateConnectedSockets({ io, revalidateSocket });
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(() => {
+    run().catch((error) => {
+      console.error(
+        'Socket session revalidation sweep failed:',
+        error?.code || 'SOCKET_SESSION_REVALIDATION_SWEEP_FAILED'
+      );
+    });
+  }, intervalMs);
+  timer.unref?.();
+
+  return {
+    run,
+    stop: () => clearInterval(timer),
+  };
+};
+
 const attachSocketHandlers = (io) => {
+  const revalidateSocket = createSocketSessionRevalidator();
+
   io.use(async (socket, next) => {
     const webSession = getSocketWebSession(socket);
     const token = webSession
@@ -99,10 +205,19 @@ const attachSocketHandlers = (io) => {
       if (webSession && user.role !== webSession.role) {
         return next(new Error('Authentication error: Invalid session origin'));
       }
+      if (user.role === 'counsellor') {
+        const professionalAccess = await evaluateCounsellorAccountAccess({
+          account: user,
+        });
+        if (!professionalAccess.allowed) {
+          return next(new Error('Authentication error: Counsellor approval unavailable'));
+        }
+      }
 
       socket.userId = decoded.userId;
       socket.userRole = user.role || 'user';
       socket.userName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+      socket.sessionVersion = decoded.sessionVersion || 0;
       socket.authTransport = webSession ? 'cookie' : 'bearer';
       return next();
     } catch {
@@ -111,6 +226,22 @@ const attachSocketHandlers = (io) => {
   });
 
   io.on('connection', async (socket) => {
+    socket.use(async (_event, next) => {
+      try {
+        if (!await revalidateSocket(socket)) {
+          socket.disconnect(true);
+          return;
+        }
+        next();
+      } catch (error) {
+        console.error(
+          'Socket event authorization failed closed:',
+          error?.code || 'SOCKET_EVENT_AUTHORIZATION_FAILED'
+        );
+        socket.disconnect(true);
+      }
+    });
+
     socket.join(`user_${socket.userId}`);
     chatRoutes.setUserOnline(socket.userId, socket.userName);
 
@@ -239,6 +370,11 @@ const attachSocketHandlers = (io) => {
       });
     });
   });
+
+  return startSocketSessionRevalidation({
+    io,
+    revalidateSocket,
+  });
 };
 
 const createSocketServer = ({ server, corsOrigin, serviceName, enableSocketsDefault = false }) => {
@@ -262,10 +398,11 @@ const createSocketServer = ({ server, corsOrigin, serviceName, enableSocketsDefa
     transports: ['websocket', 'polling']
   });
 
-  attachSocketHandlers(io);
+  const sessionRevalidation = attachSocketHandlers(io);
 
   return {
     io,
+    stopSocketSessionRevalidation: sessionRevalidation.stop,
     ...runtime
   };
 };
@@ -283,5 +420,12 @@ module.exports = {
   createSocketServer,
   attachSocketAdapter,
   resolveSocketRuntime,
-  parseBooleanEnv
+  parseBooleanEnv,
+  _private: {
+    DEFAULT_SOCKET_SESSION_REVALIDATION_INTERVAL_MS,
+    createSocketSessionRevalidator,
+    readSocketSessionRevalidationInterval,
+    revalidateConnectedSockets,
+    startSocketSessionRevalidation,
+  },
 };

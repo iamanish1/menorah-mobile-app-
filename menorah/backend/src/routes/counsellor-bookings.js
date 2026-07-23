@@ -7,18 +7,24 @@ const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const sharp = require('sharp');
 const moment = require('moment-timezone');
+const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
 const Payout = require('../models/Payout');
 const { counsellorAuth } = require('../middleware/auth');
-const { getRedisClient } = require('../config/redis');
+const {
+  invalidateCounsellorDiscoveryCache,
+} = require('../services/counsellorDiscoveryCache');
 const { uploadBuffer, deleteResource } = require('../utils/cloudinary');
 const { encryptBankAccountNumber } = require('../utils/bankAccountEncryption');
+const { isSessionWithinWorkingHours } = require('../utils/bookingAvailability');
 const { payoutInFlightStatuses } = require('../services/payoutPolicy');
 const {
   buildBookingAuthorizationQuery,
   buildCounsellorMarketplaceBookingQuery,
+  buildEligibleCounsellorAssignedAccessQuery,
+  buildEligibleCounsellorMarketplaceQuery,
   doesBookingMatchCounsellorPreferences,
   isBookingAuthorizationValid,
   isCounsellorAssignedAccessEligible,
@@ -30,6 +36,31 @@ const {
 } = require('../serializers/bookingSerializer');
 
 const SERVER_TZ = process.env.SERVER_TZ || 'Asia/Kolkata';
+const BOOKING_WRITE_TRANSACTION_OPTIONS = Object.freeze({
+  readConcern: { level: 'snapshot' },
+  writeConcern: { w: 'majority' },
+});
+
+const bookingAcceptanceConflict = (code, message) => Object.assign(new Error(message), {
+  code,
+  isBookingAcceptanceConflict: true,
+});
+
+const bookingRescheduleConflict = (code, message) => Object.assign(new Error(message), {
+  code,
+  isBookingRescheduleConflict: true,
+});
+
+const isMongoTransactionConflict = (error) => Boolean(
+  [112, 251].includes(error?.code)
+  || (
+    typeof error?.hasErrorLabel === 'function'
+    && (
+      error.hasErrorLabel('TransientTransactionError')
+      || error.hasErrorLabel('UnknownTransactionCommitResult')
+    )
+  )
+);
 
 const router = express.Router();
 const MAX_COUNSELLOR_MEDIA_BYTES = parseInt(process.env.COUNSELLOR_MEDIA_MAX_FILE_SIZE, 10) || 12 * 1024 * 1024;
@@ -93,7 +124,7 @@ const formatVideoCall = (videoCall = {}) => ({
 
 // Helper function to get counselor from user
 const getCounsellorFromUser = async (userId) => {
-  return await Counsellor.findOne({ user: userId });
+  return Counsellor.findOne({ user: userId });
 };
 
 const normalizeTagList = (tags, { limit = 20 } = {}) => {
@@ -113,30 +144,50 @@ const normalizeTagList = (tags, { limit = 20 } = {}) => {
   return normalized;
 };
 
-const invalidateCounsellorDiscoveryCache = async () => {
-  try {
-    const redis = getRedisClient();
-    const keys = ['counsellors:specializations', 'counsellors:languages'];
-    let cursor = '0';
-
-    do {
-      const result = await redis.scan(cursor, { MATCH: 'counsellors:list:*', COUNT: 100 });
-      const nextCursor = Array.isArray(result) ? result[0] : result.cursor;
-      const foundKeys = Array.isArray(result) ? result[1] : result.keys;
-      cursor = String(nextCursor);
-      keys.push(...(foundKeys || []));
-    } while (cursor !== '0');
-
-    if (keys.length > 0) await redis.del(keys);
-  } catch (error) {
-    console.warn('Counsellor discovery cache invalidation failed:', error.message);
-  }
-};
-
 const hasCompletedProfileMedia = (counsellor) => Boolean(counsellor?.profileImage && counsellor?.voiceIntroUrl);
-const isCounsellorMarketplaceReady = (counsellor) =>
+const isCounsellorMarketplaceReady = (counsellor, account) =>
   hasCompletedProfileMedia(counsellor)
-  && isCounsellorMarketplaceEligible(counsellor, { requireAvailability: true });
+  && isCounsellorMarketplaceEligible(counsellor, {
+    requireAvailability: true,
+    account,
+  });
+
+const isWithinConfiguredRescheduleAvailability = ({
+  counsellor,
+  scheduledAt,
+  sessionDuration,
+}) => {
+  if (!counsellor?.availability || typeof counsellor.availability !== 'object') {
+    return true;
+  }
+
+  const timezone = counsellor.timezone || SERVER_TZ;
+  const localStart = moment.tz(scheduledAt, timezone);
+  if (!localStart.isValid()) return false;
+
+  const daySchedule = counsellor.availability[
+    localStart.format('dddd').toLowerCase()
+  ];
+  if (!daySchedule) return true;
+
+  const validClock = (value) => (
+    typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+  );
+  if (
+    daySchedule.isAvailable !== true
+    || !validClock(daySchedule.start)
+    || !validClock(daySchedule.end)
+  ) {
+    return false;
+  }
+
+  return isSessionWithinWorkingHours({
+    scheduledAt,
+    sessionDuration,
+    schedule: daySchedule,
+    timezone,
+  });
+};
 
 const marketplaceAccessDenied = (res) => res.status(403).json({
   success: false,
@@ -660,7 +711,7 @@ router.get('/me/bookings/pending', [
       });
     }
 
-    if (!isCounsellorMarketplaceReady(counsellor)) {
+    if (!isCounsellorMarketplaceReady(counsellor, req.user)) {
       return marketplaceAccessDenied(res);
     }
 
@@ -765,7 +816,7 @@ router.get('/me/bookings/:id', [
     const requesterCounsellorId = counsellor._id.toString();
     if (!assignedCounsellorId) {
       if (
-        !isCounsellorMarketplaceReady(counsellor)
+        !isCounsellorMarketplaceReady(counsellor, req.user)
         || !isUnassignedMarketplaceBookingEligible(bookingAccessRecord, { now: accessNow })
         || !doesBookingMatchCounsellorPreferences(bookingAccessRecord, {
           counsellorGender: req.user.gender,
@@ -793,7 +844,7 @@ router.get('/me/bookings/:id', [
     }
 
     if (
-      !isCounsellorAssignedAccessEligible(counsellor)
+      !isCounsellorAssignedAccessEligible(counsellor, { account: req.user })
       || !isBookingAuthorizationValid(bookingAccessRecord, { now: accessNow })
     ) {
       return res.status(404).json({
@@ -887,7 +938,7 @@ router.get('/me/bookings', [
       });
     }
 
-    if (!isCounsellorAssignedAccessEligible(counsellor)) {
+    if (!isCounsellorAssignedAccessEligible(counsellor, { account: req.user })) {
       return assignedBookingAccessDenied(res);
     }
 
@@ -997,7 +1048,7 @@ router.post('/me/bookings/:id/accept', [
       });
     }
 
-    if (!isCounsellorMarketplaceReady(counsellor)) {
+    if (!isCounsellorMarketplaceReady(counsellor, req.user)) {
       return marketplaceAccessDenied(res);
     }
 
@@ -1134,30 +1185,112 @@ router.post('/me/bookings/:id/accept', [
       });
     }
 
-    const assignedAt = new Date();
-    const bookingUpdates = {
-      counsellor: counsellor._id,
-      assignedAt,
-      status: 'confirmed'
-    };
+    let assignedAt;
+    let acceptedBooking = null;
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const transactionNow = new Date();
+        assignedAt = transactionNow;
+        // These writes are intentional authorization fences. Suspension,
+        // expiry, role changes, and account deactivation write the same
+        // documents, forcing one concurrent transaction to retry/abort.
+        const fencedCounsellor = await Counsellor.findOneAndUpdate({
+          _id: counsellor._id,
+          ...buildEligibleCounsellorMarketplaceQuery({ now: transactionNow }),
+        }, {
+          $inc: { 'professionalVerification.marketplaceAssignmentFence': 1 },
+        }, { new: true, runValidators: true, session });
+        if (!fencedCounsellor) {
+          throw bookingAcceptanceConflict(
+            'COUNSELLOR_NOT_ELIGIBLE',
+            'Professional verification changed before acceptance completed.'
+          );
+        }
 
-    const acceptedBooking = await Booking.findOneAndUpdate(
-      {
-        _id: booking._id,
-        ...buildCounsellorMarketplaceBookingQuery({
-          now: acceptanceNow,
-          counsellorGender: req.user.gender,
-        }),
-      },
-      { $set: bookingUpdates },
-      { new: true, runValidators: true }
-    );
+        const fencedAccount = await User.findOneAndUpdate({
+          _id: req.user._id,
+          role: 'counsellor',
+          isActive: true,
+        }, {
+          $inc: { marketplaceAssignmentFence: 1 },
+        }, { new: true, runValidators: true, session });
+        if (!fencedAccount) {
+          throw bookingAcceptanceConflict(
+            'COUNSELLOR_NOT_ELIGIBLE',
+            'The counsellor account changed before acceptance completed.'
+          );
+        }
 
-    if (!acceptedBooking) {
-      return res.status(409).json({
-        success: false,
-        message: 'Booking was already accepted by another counsellor'
-      });
+        const transactionLocal = moment.tz(booking.scheduledAt, fencedCounsellor.timezone || SERVER_TZ);
+        const transactionSchedule = fencedCounsellor.availability?.[
+          transactionLocal.format('dddd').toLowerCase()
+        ];
+        const transactionClockValid = (value) => (
+          typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+        );
+        const transactionStartMinutes = transactionLocal.hour() * 60 + transactionLocal.minute();
+        const transactionEndMinutes = transactionStartMinutes + booking.sessionDuration;
+        const [availableStartHour, availableStartMinute] = transactionSchedule?.start
+          ?.split(':').map(Number) || [];
+        const [availableEndHour, availableEndMinute] = transactionSchedule?.end
+          ?.split(':').map(Number) || [];
+        if (
+          !transactionSchedule?.isAvailable
+          || !transactionClockValid(transactionSchedule.start)
+          || !transactionClockValid(transactionSchedule.end)
+          || transactionStartMinutes < availableStartHour * 60 + availableStartMinute
+          || transactionEndMinutes > availableEndHour * 60 + availableEndMinute
+        ) {
+          throw bookingAcceptanceConflict(
+            'COUNSELLOR_SCHEDULE_UNAVAILABLE',
+            'Counsellor availability changed before acceptance completed.'
+          );
+        }
+
+        const transactionConflict = await Booking.findOne({
+          counsellor: counsellor._id,
+          scheduledAt: { $lt: scheduledEnd },
+          status: { $in: ['pending', 'confirmed', 'in-progress'] },
+          _id: { $ne: booking._id },
+          $expr: {
+            $gt: [{
+              $add: [
+                '$scheduledAt',
+                { $multiply: ['$sessionDuration', 60 * 1000] },
+              ],
+            }, scheduledTime],
+          },
+        }).session(session);
+        if (transactionConflict) {
+          throw bookingAcceptanceConflict(
+            'COUNSELLOR_SCHEDULE_CONFLICT',
+            'Counsellor has a conflicting booking at this time.'
+          );
+        }
+
+        acceptedBooking = await Booking.findOneAndUpdate({
+          _id: booking._id,
+          ...buildCounsellorMarketplaceBookingQuery({
+            now: transactionNow,
+            counsellorGender: fencedAccount.gender,
+          }),
+        }, {
+          $set: {
+            counsellor: counsellor._id,
+            assignedAt,
+            status: 'confirmed',
+          },
+        }, { new: true, runValidators: true, session });
+        if (!acceptedBooking) {
+          throw bookingAcceptanceConflict(
+            'BOOKING_NOT_ACCEPTABLE',
+            'Booking eligibility changed before acceptance completed.'
+          );
+        }
+      }, BOOKING_WRITE_TRANSACTION_OPTIONS);
+    } finally {
+      await session.endSession();
     }
 
     // Emit Socket.IO event (will be handled in server.js)
@@ -1191,6 +1324,13 @@ router.post('/me/bookings/:id/accept', [
     });
 
   } catch (error) {
+    if (error?.isBookingAcceptanceConflict) {
+      return res.status(409).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
     if (error?.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -1232,7 +1372,7 @@ router.put('/me/bookings/:id/schedule', [
       });
     }
 
-    if (!isCounsellorAssignedAccessEligible(counsellor)) {
+    if (!isCounsellorAssignedAccessEligible(counsellor, { account: req.user })) {
       return assignedBookingAccessDenied(res);
     }
 
@@ -1240,7 +1380,7 @@ router.put('/me/bookings/:id/schedule', [
     const { scheduledAt } = req.body;
     const authorizationNow = new Date();
 
-    const booking = await Booking.findOne({
+    const preflightBooking = await Booking.findOne({
       _id: id,
       counsellor: counsellor._id,
       status: { $in: ['pending', 'confirmed'] },
@@ -1249,7 +1389,7 @@ router.put('/me/bookings/:id/schedule', [
       .select('_id user counsellor status sessionDuration scheduledAt')
       .lean();
 
-    if (!booking) {
+    if (!preflightBooking) {
       return res.status(404).json({
         success: false,
         message: 'Booking not found'
@@ -1259,89 +1399,159 @@ router.put('/me/bookings/:id/schedule', [
     const scheduledTime = new Date(scheduledAt);
     
     // Check if scheduled time is in the future
-    if (scheduledTime <= new Date()) {
+    if (scheduledTime <= authorizationNow) {
       return res.status(400).json({
         success: false,
         message: 'Scheduled time must be in the future'
       });
     }
 
-    // Check counsellor availability only if they have explicitly configured it
-    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const dayOfWeek = days[scheduledTime.getDay()];
-    const timeString = scheduledTime.toTimeString().slice(0, 5);
-
-    if (counsellor.availability && typeof counsellor.availability === 'object') {
-      const daySchedule = counsellor.availability[dayOfWeek];
-      if (daySchedule && daySchedule.isAvailable === false) {
-        return res.status(400).json({
-          success: false,
-          message: `You are not available on ${dayOfWeek}s. Please choose another day.`
-        });
-      }
-      if (daySchedule && daySchedule.isAvailable && daySchedule.start && daySchedule.end) {
-        if (timeString < daySchedule.start || timeString > daySchedule.end) {
-          return res.status(400).json({
-            success: false,
-            message: `Your working hours on ${dayOfWeek} are ${daySchedule.start}–${daySchedule.end}. Please pick a time within that range.`
-          });
-        }
-      }
+    if (!isWithinConfiguredRescheduleAvailability({
+      counsellor,
+      scheduledAt: scheduledTime,
+      sessionDuration: preflightBooking.sessionDuration,
+    })) {
+      return res.status(400).json({
+        success: false,
+        code: 'COUNSELLOR_SCHEDULE_UNAVAILABLE',
+        message: 'The requested session falls outside your configured working hours.'
+      });
     }
 
-    // Check for conflicting bookings
-    const scheduledEnd = new Date(
-      scheduledTime.getTime() + booking.sessionDuration * 60 * 1000
-    );
-    const conflictingBooking = await Booking.findOne({
-      counsellor: counsellor._id,
-      scheduledAt: { $lt: scheduledEnd },
-      status: { $in: ['pending', 'confirmed', 'in-progress'] },
-      _id: { $ne: booking._id },
-      $expr: {
-        $gt: [
-          {
-            $add: [
-              '$scheduledAt',
-              { $multiply: ['$sessionDuration', 60 * 1000] },
+    const expectedOldScheduledAt = new Date(preflightBooking.scheduledAt);
+    let oldScheduledAt;
+    let updatedBooking;
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const transactionNow = new Date();
+        const transactionBooking = await Booking.findOne({
+          _id: preflightBooking._id,
+          counsellor: counsellor._id,
+          scheduledAt: expectedOldScheduledAt,
+          status: { $in: ['pending', 'confirmed'] },
+          ...buildBookingAuthorizationQuery({ now: transactionNow }),
+        })
+          .select('_id user counsellor status sessionDuration scheduledAt')
+          .session(session)
+          .lean();
+        if (!transactionBooking) {
+          throw bookingRescheduleConflict(
+            'BOOKING_STATE_CHANGED',
+            'The booking changed before it could be rescheduled.'
+          );
+        }
+
+        // Rescheduling joins the same authorization fence used by direct and
+        // marketplace assignment. It also serializes against professional
+        // suspension/expiry, which update these exact account/profile records.
+        const fencedCounsellor = await Counsellor.findOneAndUpdate({
+          _id: counsellor._id,
+          ...buildEligibleCounsellorAssignedAccessQuery({ now: transactionNow }),
+          user: req.user._id,
+        }, {
+          $inc: { 'professionalVerification.marketplaceAssignmentFence': 1 },
+        }, {
+          new: true,
+          runValidators: true,
+          session,
+        });
+        if (!fencedCounsellor) {
+          throw bookingRescheduleConflict(
+            'COUNSELLOR_NOT_ELIGIBLE',
+            'Professional verification changed before the booking could be rescheduled.'
+          );
+        }
+
+        const fencedAccount = await User.findOneAndUpdate({
+          _id: req.user._id,
+          role: 'counsellor',
+          isActive: true,
+        }, {
+          $inc: { marketplaceAssignmentFence: 1 },
+        }, {
+          new: true,
+          runValidators: true,
+          session,
+        });
+        if (!fencedAccount) {
+          throw bookingRescheduleConflict(
+            'COUNSELLOR_NOT_ELIGIBLE',
+            'The counsellor account changed before the booking could be rescheduled.'
+          );
+        }
+
+        if (scheduledTime <= transactionNow) {
+          throw bookingRescheduleConflict(
+            'BOOKING_STATE_CHANGED',
+            'The requested session time is no longer in the future.'
+          );
+        }
+
+        if (!isWithinConfiguredRescheduleAvailability({
+          counsellor: fencedCounsellor,
+          scheduledAt: scheduledTime,
+          sessionDuration: transactionBooking.sessionDuration,
+        })) {
+          throw bookingRescheduleConflict(
+            'COUNSELLOR_SCHEDULE_UNAVAILABLE',
+            'Counsellor availability changed before the booking could be rescheduled.'
+          );
+        }
+
+        const scheduledEnd = new Date(
+          scheduledTime.getTime() + transactionBooking.sessionDuration * 60 * 1000
+        );
+        const conflictingBooking = await Booking.findOne({
+          counsellor: fencedCounsellor._id,
+          scheduledAt: { $lt: scheduledEnd },
+          status: { $in: ['pending', 'confirmed', 'in-progress'] },
+          _id: { $ne: transactionBooking._id },
+          $expr: {
+            $gt: [
+              {
+                $add: [
+                  '$scheduledAt',
+                  { $multiply: ['$sessionDuration', 60 * 1000] },
+                ],
+              },
+              scheduledTime,
             ],
           },
-          scheduledTime,
-        ],
-      },
-    });
+        }).session(session);
+        if (conflictingBooking) {
+          throw bookingRescheduleConflict(
+            'COUNSELLOR_SCHEDULE_CONFLICT',
+            'Counsellor has a conflicting booking at this time.'
+          );
+        }
 
-    if (conflictingBooking) {
-      return res.status(409).json({
-        success: false,
-        code: 'COUNSELLOR_SCHEDULE_CONFLICT',
-        message: 'Counsellor has a conflicting booking at this time.'
-      });
-    }
-
-    const oldScheduledAt = booking.scheduledAt;
-    const updatedBooking = await Booking.findOneAndUpdate(
-      {
-        _id: booking._id,
-        counsellor: counsellor._id,
-        scheduledAt: oldScheduledAt,
-        status: { $in: ['pending', 'confirmed'] },
-        ...buildBookingAuthorizationQuery({ now: authorizationNow }),
-      },
-      { $set: { scheduledAt: scheduledTime } },
-      {
-        new: true,
-        runValidators: true,
-        projection: '_id user scheduledAt',
-      }
-    );
-
-    if (!updatedBooking) {
-      return res.status(409).json({
-        success: false,
-        code: 'BOOKING_STATE_CHANGED',
-        message: 'The booking changed before it could be rescheduled.'
-      });
+        oldScheduledAt = transactionBooking.scheduledAt;
+        updatedBooking = await Booking.findOneAndUpdate(
+          {
+            _id: transactionBooking._id,
+            counsellor: fencedCounsellor._id,
+            scheduledAt: expectedOldScheduledAt,
+            status: { $in: ['pending', 'confirmed'] },
+            ...buildBookingAuthorizationQuery({ now: transactionNow }),
+          },
+          { $set: { scheduledAt: scheduledTime } },
+          {
+            new: true,
+            runValidators: true,
+            projection: '_id user scheduledAt',
+            session,
+          }
+        );
+        if (!updatedBooking) {
+          throw bookingRescheduleConflict(
+            'BOOKING_STATE_CHANGED',
+            'The booking changed before it could be rescheduled.'
+          );
+        }
+      }, BOOKING_WRITE_TRANSACTION_OPTIONS);
+    } finally {
+      await session.endSession();
     }
 
     // Emit Socket.IO event
@@ -1358,7 +1568,9 @@ router.put('/me/bookings/:id/schedule', [
       });
 
       // Notify the user with full details so their UI can update
-      const counsellorUser = await require('../models/User').findById(counsellor.user).select('firstName lastName');
+      const counsellorUser = await require('../models/User')
+        .findById(counsellor.user._id || counsellor.user)
+        .select('firstName lastName');
       const counsellorName = counsellorUser ? `${counsellorUser.firstName} ${counsellorUser.lastName}` : 'Your counsellor';
       io.to(`user_${userId}`).emit('booking_rescheduled', {
         bookingId: updatedBooking._id,
@@ -1380,7 +1592,14 @@ router.put('/me/bookings/:id/schedule', [
     });
 
   } catch (error) {
-    if (error?.code === 11000) {
+    if (error?.isBookingRescheduleConflict) {
+      return res.status(409).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
+    if (error?.code === 11000 || isMongoTransactionConflict(error)) {
       return res.status(409).json({
         success: false,
         code: 'COUNSELLOR_SCHEDULE_CONFLICT',
@@ -1409,8 +1628,10 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
     }
 
     const profileMediaComplete = hasCompletedProfileMedia(counsellor);
-    const isCounsellorAvailable = isCounsellorMarketplaceReady(counsellor);
-    const canAccessAssignedBookings = isCounsellorAssignedAccessEligible(counsellor);
+    const isCounsellorAvailable = isCounsellorMarketplaceReady(counsellor, req.user);
+    const canAccessAssignedBookings = isCounsellorAssignedAccessEligible(counsellor, {
+      account: req.user,
+    });
 
     const now = new Date();
     const nowLocal = moment.tz(now, SERVER_TZ);
@@ -1491,14 +1712,14 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
         counsellorStatus: {
           isActive: counsellor.isActive,
           isAvailable: counsellor.isAvailable,
-          isVerified: counsellor.isVerified === true && counsellor.status === 'approved',
+          isVerified: canAccessAssignedBookings,
           marketplaceEligible: isCounsellorAvailable,
           profileMediaComplete,
           profileImage: counsellor.profileImage || null,
           voiceIntroUrl: counsellor.voiceIntroUrl || null,
           message: !counsellor.isActive
             ? 'Your account is not active. Please contact support.'
-            : !(counsellor.isVerified === true && counsellor.status === 'approved')
+            : !canAccessAssignedBookings
             ? 'Your professional verification is not approved for new booking requests.'
             : !profileMediaComplete
             ? 'Complete your mandatory selfie and voice intro before your profile goes live.'

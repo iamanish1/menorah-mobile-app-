@@ -10,6 +10,7 @@ describe('worker scheduler isolation', () => {
     delete process.env.WORKER_MODE;
     delete process.env.SERVICE_RUNTIME;
     delete process.env.ENABLE_ARTICLE_SCHEDULER;
+    delete process.env.ENABLE_COUNSELLOR_VERIFICATION_EXPIRY_JOB;
     delete process.env.ENABLE_SOCIAL_SCHEDULER;
     delete process.env.ARTICLE_SCHEDULER_ENABLED;
   });
@@ -26,6 +27,7 @@ describe('worker scheduler isolation', () => {
     expect(jobs.mode).toBe('standby');
     expect(jobs.active).toBe(false);
     expect(jobs.articleScheduler).toBe(false);
+    expect(jobs.counsellorVerificationExpiry).toBe(false);
     expect(jobs.socialScheduler).toBe(false);
   });
 
@@ -38,12 +40,21 @@ describe('worker scheduler isolation', () => {
 
     expect(jobs.active).toBe(true);
     expect(jobs.articleScheduler).toBe(true);
+    expect(jobs.counsellorVerificationExpiry).toBe(true);
     expect(jobs.socialScheduler).toBe(true);
 
     process.env.WORKER_MODE = 'standby';
     const standbyJobs = resolveWorkerJobs();
     expect(standbyJobs.articleScheduler).toBe(false);
+    expect(standbyJobs.counsellorVerificationExpiry).toBe(false);
     expect(standbyJobs.socialScheduler).toBe(false);
+  });
+
+  test('active workers can explicitly disable the expiry job', () => {
+    process.env.WORKER_MODE = 'active';
+    process.env.ENABLE_COUNSELLOR_VERIFICATION_EXPIRY_JOB = 'false';
+
+    expect(resolveWorkerJobs().counsellorVerificationExpiry).toBe(false);
   });
 
   test('API startup does not import scheduler starters', () => {

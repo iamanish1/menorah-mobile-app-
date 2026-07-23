@@ -4,10 +4,19 @@ const request = require('supertest');
 const mockUserId = '64f000000000000000000021';
 const mockFindOne = jest.fn();
 const mockFindById = jest.fn();
+const mockEvaluateCounsellorAccountAccess = jest.fn();
+const mockSendPasswordResetEmail = jest.fn();
 
 jest.mock('../../models/User', () => ({
   findOne: (...args) => mockFindOne(...args),
   findById: (...args) => mockFindById(...args),
+}));
+jest.mock('../../services/counsellorVerificationExpiry', () => ({
+  evaluateAccountAccess: (...args) => mockEvaluateCounsellorAccountAccess(...args),
+}));
+jest.mock('../../utils/email', () => ({
+  sendOTPEmail: jest.fn(),
+  sendPasswordResetEmail: (...args) => mockSendPasswordResetEmail(...args),
 }));
 
 const authRouter = require('../auth');
@@ -30,6 +39,7 @@ const makeUser = (overrides = {}) => ({
   isLocked: jest.fn(() => false),
   comparePassword: jest.fn(async () => true),
   resetLoginAttempts: jest.fn(async () => undefined),
+  save: jest.fn(async () => undefined),
   ...overrides,
 });
 
@@ -63,6 +73,11 @@ describe('browser cookie session authentication', () => {
     delete process.env.SESSION_COOKIE_DOMAIN;
     mockFindOne.mockReset();
     mockFindById.mockReset();
+    mockEvaluateCounsellorAccountAccess.mockReset().mockResolvedValue({
+      allowed: true,
+      reason: null,
+    });
+    mockSendPasswordResetEmail.mockReset().mockResolvedValue(true);
   });
 
   afterAll(() => {
@@ -114,6 +129,57 @@ describe('browser cookie session authentication', () => {
       .set('Origin', 'https://app.example.com')
       .set('Authorization', `Bearer ${token}`)
       .expect(401);
+  });
+
+  test('a counsellor token fails closed when professional approval is no longer current', async () => {
+    const counsellor = makeUser({ role: 'counsellor' });
+    const token = signUserToken(counsellor);
+    mockFindById.mockResolvedValue(counsellor);
+    mockEvaluateCounsellorAccountAccess.mockResolvedValue({
+      allowed: false,
+      reason: 'COUNSELLOR_VERIFICATION_EXPIRED',
+    });
+
+    await request(buildAuthApp())
+      .get('/api/private')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(401);
+
+    expect(mockEvaluateCounsellorAccountAccess).toHaveBeenCalledWith({
+      account: counsellor,
+    });
+  });
+
+  test('forgot-password does not issue reset material for an inactive review account', async () => {
+    mockFindOne.mockResolvedValue(null);
+
+    await request(buildAuthApp())
+      .post('/api/auth/forgot-password')
+      .send({ email: 'reviewing@example.com' })
+      .expect(200);
+
+    expect(mockFindOne).toHaveBeenCalledWith({
+      email: 'reviewing@example.com',
+      isActive: true,
+    });
+    expect(mockSendPasswordResetEmail).not.toHaveBeenCalled();
+  });
+
+  test('a pre-issued reset token cannot mutate an inactive review account', async () => {
+    const select = jest.fn().mockResolvedValue(null);
+    mockFindOne.mockReturnValue({ select });
+
+    await request(buildAuthApp())
+      .post('/api/auth/reset-password')
+      .send({ token: 'pre-review-reset-token', password: 'UpdatedPass123' })
+      .expect(400);
+
+    expect(mockFindOne).toHaveBeenCalledWith(expect.objectContaining({
+      isActive: true,
+      passwordResetToken: expect.stringMatching(/^[a-f0-9]{64}$/),
+      passwordResetExpires: { $gt: expect.any(Number) },
+    }));
+    expect(select).toHaveBeenCalledWith('+passwordResetToken +passwordResetExpires');
   });
 
   test('cookie-authenticated cross-site writes are rejected by CSRF validation', async () => {

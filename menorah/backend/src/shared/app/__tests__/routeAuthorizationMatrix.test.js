@@ -25,6 +25,7 @@ const PUBLIC_ROUTES = new Set([
   'counsellors:GET:/' ,
   'counsellors:GET:/specializations',
   'counsellors:GET:/languages',
+  'counsellors:GET:/verification-requirements',
   'counsellors:GET:/:id',
   'counsellors:GET:/:id/availability',
   'counsellors:POST:/register',

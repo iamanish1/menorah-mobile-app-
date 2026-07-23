@@ -6,6 +6,9 @@ const { createHttpServer } = require('../../shared/app/createHttpServer');
 const { registerGracefulShutdown } = require('../../shared/app/gracefulShutdown');
 const { validateStartupEnv } = require('../../shared/app/startupValidation');
 const { startArticleScheduler } = require('../articleScheduler');
+const {
+  startCounsellorVerificationExpiryScheduler,
+} = require('../counsellorVerificationExpiryScheduler');
 const { startSocialScheduler } = require('../socialStudio/socialScheduler.service');
 require('dotenv').config();
 
@@ -24,6 +27,8 @@ const resolveWorkerJobs = () => {
     mode,
     active,
     articleScheduler: active && schedulerEnabled('ENABLE_ARTICLE_SCHEDULER', process.env.ARTICLE_SCHEDULER_ENABLED === 'true'),
+    counsellorVerificationExpiry:
+      active && schedulerEnabled('ENABLE_COUNSELLOR_VERIFICATION_EXPIRY_JOB', true),
     socialScheduler: active && schedulerEnabled('ENABLE_SOCIAL_SCHEDULER', false),
     backupJobs: active && schedulerEnabled('ENABLE_BACKUP_JOBS', false),
     cleanupJobs: active && schedulerEnabled('ENABLE_CLEANUP_JOBS', false),
@@ -41,6 +46,10 @@ const startWorkerJobs = (jobs) => {
   if (jobs.articleScheduler) {
     process.env.ARTICLE_SCHEDULER_ENABLED = 'true';
     startArticleScheduler();
+  }
+
+  if (jobs.counsellorVerificationExpiry) {
+    startCounsellorVerificationExpiryScheduler();
   }
 
   if (jobs.socialScheduler) {
@@ -99,6 +108,10 @@ const startWorker = async () => {
     console.log(`Menorah worker health server listening on port ${port}`);
     console.log(`Worker mode: ${jobs.mode}`);
     console.log(`Article scheduler: ${jobs.articleScheduler ? 'enabled' : 'disabled'}`);
+    console.log(
+      'Counsellor verification expiry reconciliation: '
+      + `${jobs.counsellorVerificationExpiry ? 'enabled' : 'disabled'}`
+    );
     console.log(`Social scheduler: ${jobs.socialScheduler ? 'enabled' : 'disabled'}`);
   });
 

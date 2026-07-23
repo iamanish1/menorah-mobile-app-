@@ -13,6 +13,53 @@ import type {
   VideoRoom,
 } from '@/types';
 
+export interface CounsellorVerificationRequirements {
+  consentVersion: string;
+  noticeUrl: string;
+}
+
+export interface CounsellorApplicationStatus {
+  status:
+    | 'draft'
+    | 'pending'
+    | 'submitted'
+    | 'under_review'
+    | 'approved'
+    | 'rejected'
+    | 'suspended'
+    | 'expired';
+  rejectionReason?: string | null;
+  isActive?: boolean;
+  requiresFreshApplication?: boolean;
+}
+
+export interface CounsellorRegistrationPayload {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  dateOfBirth: string;
+  gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+  licenseNumber: string;
+  specialization: string;
+  specializations?: string[];
+  experience: number;
+  bio: string;
+  languages: string[];
+  hourlyRate: number;
+  currency?: string;
+  education?: unknown[];
+  certifications?: unknown[];
+  availability: Record<string, {
+    start: string;
+    end: string;
+    isAvailable: boolean;
+  }>;
+  onboardingConsentAccepted: true;
+  onboardingConsentVersion: string;
+  reverificationToken?: string;
+}
+
 class ApiClient {
   private client: AxiosInstance;
   private baseURL: string;
@@ -111,14 +158,70 @@ class ApiClient {
     }
   }
 
-  async registerCounsellor(data: any): Promise<ApiResponse<{ applicationId: string; email: string; statusTicket: string }>> {
+  async getCounsellorVerificationRequirements(
+    signal?: AbortSignal
+  ): Promise<ApiResponse<CounsellorVerificationRequirements>> {
+    try {
+      const response = await this.client.get('/counsellors/verification-requirements', {
+        signal,
+      });
+      return response.data;
+    } catch (error: unknown) {
+      if (axios.isCancel(error)) throw error;
+      const axiosError = axios.isAxiosError(error) ? error : null;
+      const errorResponse = axiosError?.response?.data;
+      return {
+        success: false,
+        code: errorResponse?.code,
+        status: axiosError?.response?.status,
+        message: errorResponse?.message || axiosError?.message || 'Verification requirements are unavailable',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async getCounsellorApplicationStatus(
+    statusTicket: string,
+    signal?: AbortSignal
+  ): Promise<ApiResponse<CounsellorApplicationStatus>> {
+    try {
+      const response = await this.client.get('/counsellors/application-status', {
+        params: { ticket: statusTicket },
+        signal,
+      });
+      return response.data;
+    } catch (error: unknown) {
+      if (axios.isCancel(error)) throw error;
+      const axiosError = axios.isAxiosError(error) ? error : null;
+      const errorResponse = axiosError?.response?.data;
+      return {
+        success: false,
+        code: errorResponse?.code,
+        status: axiosError?.response?.status,
+        message: errorResponse?.message || axiosError?.message || 'Application status is unavailable',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async registerCounsellor(
+    data: CounsellorRegistrationPayload
+  ): Promise<ApiResponse<{
+    applicationId: string;
+    email: string;
+    statusTicket: string;
+    status?: 'submitted' | 'under_review';
+  }>> {
     try {
       const response = await this.client.post('/counsellors/register', data);
       return response.data;
-    } catch (error: any) {
-      const errorResponse = error.response?.data;
+    } catch (error: unknown) {
+      const axiosError = axios.isAxiosError(error) ? error : null;
+      const errorResponse = axiosError?.response?.data;
       return {
         success: false,
+        code: errorResponse?.code,
+        status: axiosError?.response?.status,
         message: errorResponse?.message || 'Registration failed',
         errors: errorResponse?.errors || [],
       };

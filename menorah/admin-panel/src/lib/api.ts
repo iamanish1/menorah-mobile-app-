@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import type {
-  ApiResponse, PlatformStats, Counsellor, CounsellorRevenue,
+  ApiResponse, PlatformStats, Counsellor, CounsellorApprovalPayload, CounsellorRevenue,
   RevenueData, User, Pagination, PayoutRecord, PayoutSummary, PayoutStatus,
   AdminBooking,
   Article, ArticleGenerationRun, ArticleStatus, BrandAsset, BrandGuideline,
@@ -22,7 +22,10 @@ class AdminApiClient {
     this.client.interceptors.response.use(
       (res) => res,
       (err) => {
-        if (err.response?.status === 401 || err.response?.status === 403) {
+        const requestUrl = typeof err.config?.url === 'string' ? err.config.url : '';
+        const isAuthenticationAttempt = requestUrl === '/auth/admin/login'
+          || requestUrl === '/auth/admin/login/mfa';
+        if (err.response?.status === 401 && !isAuthenticationAttempt) {
           if (typeof window !== 'undefined') window.location.href = '/login';
         }
         return Promise.reject(err);
@@ -36,7 +39,10 @@ class AdminApiClient {
       return res.data;
     } catch (err: unknown) {
       const e = err as { response?: { data?: ApiResponse<T> }; message?: string };
-      return { success: false, message: e.response?.data?.message || e.message || 'Request failed' };
+      return e.response?.data || {
+        success: false,
+        message: e.message || 'Request failed',
+      };
     }
   }
 
@@ -99,9 +105,12 @@ class AdminApiClient {
   }
 
   // ── Counsellors ─────────────────────────────────────────────────────────────
-  getCounsellors(params?: { status?: string; page?: number; limit?: number; search?: string }) {
+  getCounsellors(
+    params?: { status?: string; page?: number; limit?: number; search?: string },
+    signal?: AbortSignal
+  ) {
     return this.request<{ counsellors: Counsellor[]; pagination: Pagination }>(
-      () => this.client.get('/admin/counsellors', { params })
+      () => this.client.get('/admin/counsellors', { params, signal })
     );
   }
 
@@ -111,40 +120,68 @@ class AdminApiClient {
     );
   }
 
-  approveCounsellor(id: string) {
+  startCounsellorReview(id: string) {
     return this.request<{
+      applicationId: string;
+      counsellorId: string;
+      status: string;
+      accountCreated: boolean;
+    }>(
+      () => this.client.put(`/admin/counsellors/${id}/start-review`)
+    );
+  }
+
+  approveCounsellor(id: string, payload: CounsellorApprovalPayload) {
+    return this.request<{
+      applicationId: string;
       counsellorId: string;
       status: string;
       username: string;
+      verificationExpiresAt: string;
       credentialEmailSent?: boolean;
       credentialEmailRecipient?: string;
     }>(
-      () => this.client.put(`/admin/counsellors/${id}/approve`)
+      () => this.client.put(`/admin/counsellors/${id}/approve`, payload)
     );
   }
 
   rejectCounsellor(id: string, reason: string) {
-    return this.request<{ counsellorId: string; status: string }>(
+    return this.request<{ applicationId: string; status: string }>(
       () => this.client.put(`/admin/counsellors/${id}/reject`, { reason })
     );
   }
 
-  generatePassword(id: string) {
-    return this.request<{ username: string; password: string; counsellorId: string; userId: string }>(
+  sendCounsellorActivationLink(id: string) {
+    return this.request<{
+      username: string;
+      counsellorId: string;
+      userId: string;
+      activationEmailSent: boolean;
+      activationEmailRecipient?: string;
+    }>(
       () => this.client.post(`/admin/counsellors/${id}/generate-password`)
     );
   }
 
-  blockCounsellor(id: string, reason: string) {
-    return this.request<{ counsellorId: string }>(
+  suspendCounsellor(id: string, reason: string) {
+    return this.request<{ counsellorId: string; status: string }>(
       () => this.client.put(`/admin/counsellors/${id}/block`, { reason })
     );
   }
 
-  unblockCounsellor(id: string) {
-    return this.request<{ counsellorId: string }>(
-      () => this.client.put(`/admin/counsellors/${id}/unblock`)
+  expireCounsellor(id: string) {
+    return this.request<{ counsellorId: string; status: 'expired' }>(
+      () => this.client.put(`/admin/counsellors/${id}/expire`)
     );
+  }
+
+  sendCounsellorReverificationInvite(id: string) {
+    return this.request<{
+      counsellorId: string;
+      invitationEmailSent: boolean;
+      invitationEmailRecipient?: string;
+      expiresAt: string;
+    }>(() => this.client.post(`/admin/counsellors/${id}/reverification-invite`));
   }
 
   getCounsellorBookingStats(id: string, days = 30) {

@@ -265,6 +265,36 @@ const sendCounsellorApprovalEmail = async ({ email, name = '', activationToken }
   return sendEmail(email, 'Set up your Menorah counsellor account', html);
 };
 
+const sendCounsellorReverificationEmail = async ({ email, name = '', invitationToken }) => {
+  const invitationUrl = new URL(buildCounsellorAppUrl('/register'));
+  invitationUrl.hash = `reverificationToken=${encodeURIComponent(invitationToken)}`;
+  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  const safeInvitationUrl = escapeHtml(invitationUrl.toString());
+
+  const html = layout(`
+    <h2 style="color:#111827;margin:0 0 16px;">${greeting}</h2>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 20px;">
+      A Menorah administrator invited you to submit a fresh professional verification application.
+      Your professional access remains disabled until a new review is completed.
+    </p>
+    <div style="text-align:center;margin:28px 0 18px;">
+      <a href="${safeInvitationUrl}"
+         style="background:#2d7a5c;color:#ffffff;text-decoration:none;border-radius:8px;padding:14px 24px;display:inline-block;font-weight:700;">
+        Submit Fresh Application
+      </a>
+    </div>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;">
+      The one-time link expires in 24 hours. You must review and accept the current onboarding notice
+      yourself; an administrator cannot do that for you.
+    </p>
+    <p style="color:#9ca3af;font-size:13px;margin:0;">
+      If you were not expecting this invitation, do not use the link and contact Menorah support.
+    </p>
+  `);
+
+  return sendEmail(email, 'Menorah counsellor re-verification invitation', html);
+};
+
 const sendBookingConfirmationEmail = async (email, bookingDetails) => {
   const { scheduledAt, sessionDuration, sessionType, counsellorName } = bookingDetails;
   const date = new Date(scheduledAt);
@@ -358,6 +388,7 @@ module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendCounsellorApprovalEmail,
+  sendCounsellorReverificationEmail,
   sendBookingConfirmationEmail,
   sendSessionReminderEmail,
 };

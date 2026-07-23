@@ -5,6 +5,10 @@ const ChatRoom = require('../models/ChatRoom');
 const Message = require('../models/Message');
 const Counsellor = require('../models/Counsellor');
 const { getRedisClient } = require('../config/redis');
+const {
+  buildProfessionallyApprovedCounsellorQuery,
+  isCounsellorProfessionallyApproved,
+} = require('../services/counsellorVerificationPolicy');
 
 // Socket.IO instance will be set from server.js to avoid circular dependency
 let socketIOInstance = null;
@@ -667,18 +671,16 @@ router.get('/available-counsellors', auth, async (req, res) => {
       });
     }
 
-    // Get available counselors for chat
-    // For chat, we only require isActive and isAvailable (not isVerified)
-    // This allows users to chat with counselors even if they're not fully verified yet
-    const availableCounsellors = await Counsellor.find({
-      isActive: true,
-      isAvailable: true
-    })
-      .populate('user', 'firstName lastName profileImage')
+    const availableCounsellors = await Counsellor.find(
+      buildProfessionallyApprovedCounsellorQuery({ requireAvailability: true })
+    )
+      .populate({
+        path: 'user',
+        select: 'firstName lastName profileImage role isActive',
+        match: { role: 'counsellor', isActive: true },
+      })
       .sort({ rating: -1, reviewCount: -1 })
       .lean();
-
-    console.log(`Found ${availableCounsellors.length} available counselors for chat`);
 
     // Format response — skip counsellors whose user document was deleted
     const formattedCounsellors = await Promise.all(
@@ -761,7 +763,7 @@ router.post('/start', [
 
     // Verify counselor exists and is available
     const counsellor = await Counsellor.findById(counsellorId)
-      .populate('user', 'firstName lastName profileImage');
+      .populate('user', 'firstName lastName profileImage role isActive');
 
     if (!counsellor) {
       return res.status(404).json({
@@ -770,7 +772,7 @@ router.post('/start', [
       });
     }
 
-    if (!counsellor.isActive || !counsellor.isAvailable) {
+    if (!isCounsellorProfessionallyApproved(counsellor, { requireAvailability: true })) {
       return res.status(400).json({
         success: false,
         message: 'Counsellor is not available at the moment'

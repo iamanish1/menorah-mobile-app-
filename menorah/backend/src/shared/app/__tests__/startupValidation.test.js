@@ -23,6 +23,9 @@ describe('startup validation', () => {
       MAX_PAYOUT_AMOUNT_PAISE: '5000000',
       KYC_CONSENT_VERSION: FACE_CHECK_CONSENT_VERSION,
       KYC_RETENTION_DAYS: String(FACE_CHECK_RETENTION_DAYS),
+      COUNSELLOR_ONBOARDING_CONSENT_VERSION: 'test-counsellor-onboarding-v1',
+      COUNSELLOR_CREDENTIAL_POLICY_VERSION: 'test-counsellor-credential-policy-v1',
+      COUNSELLOR_ONBOARDING_NOTICE_URL: 'https://consent.unit-test.org/counsellor-notice',
       BOOKING_SERVICE_CATALOG_JSON: JSON.stringify({
         test_service: {
           durationMinutes: 60,
@@ -110,6 +113,30 @@ describe('startup validation', () => {
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' }))
       .toThrow(/KYC_RETENTION_DAYS must equal 365/);
+  });
+
+  test.each([
+    'COUNSELLOR_ONBOARDING_CONSENT_VERSION',
+    'COUNSELLOR_CREDENTIAL_POLICY_VERSION',
+    'COUNSELLOR_ONBOARDING_NOTICE_URL',
+  ])('requires counsellor verification configuration %s', (key) => {
+    delete process.env[key];
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(new RegExp(`${key} must contain an approved non-placeholder value`));
+  });
+
+  test.each([
+    ['COUNSELLOR_ONBOARDING_CONSENT_VERSION', 'REPLACE_WITH_APPROVED_VERSION'],
+    ['COUNSELLOR_CREDENTIAL_POLICY_VERSION', 'pending-owner-approval'],
+    ['COUNSELLOR_ONBOARDING_NOTICE_URL', 'https://example.com/counsellor-notice'],
+    ['COUNSELLOR_ONBOARDING_NOTICE_URL', 'http://consent.unit-test.org/counsellor-notice'],
+    ['COUNSELLOR_ONBOARDING_NOTICE_URL', 'not-a-url'],
+  ])('rejects unsafe counsellor verification configuration %s=%s', (key, value) => {
+    process.env[key] = value;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(new RegExp(key));
   });
 
   test('rejects weak production integrity keys', () => {

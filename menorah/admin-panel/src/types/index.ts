@@ -40,6 +40,81 @@ export interface CounsellorCertification {
   expiryDate?: string;
 }
 
+export type CounsellorVerificationStatus =
+  | 'draft'
+  | 'submitted'
+  | 'under_review'
+  | 'approved'
+  | 'rejected'
+  | 'suspended'
+  | 'expired'
+  | 'pending';
+
+export interface CounsellorAdminActor {
+  _id?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+}
+
+export interface CounsellorOnboardingConsent {
+  accepted: boolean;
+  version?: string | null;
+  acceptedAt?: string | null;
+  source?: string | null;
+}
+
+export interface CounsellorCredentialReview {
+  decision: 'pending' | 'approved' | 'rejected';
+  policyVersion?: string | null;
+  evidenceIds?: string[];
+  reviewedBy?: string | CounsellorAdminActor | null;
+  reviewedAt?: string | null;
+}
+
+export interface CounsellorCredentialEvidence {
+  _id?: string;
+  reference: string;
+  category: string;
+  sha256?: string | null;
+  contentType?: string | null;
+  sizeBytes?: number | null;
+  submittedAt?: string | null;
+  source?: string | null;
+  review?: CounsellorCredentialReview & { reason?: string | null };
+}
+
+export interface CounsellorCredentialEvidenceInput {
+  reference: string;
+  category: string;
+  sha256?: string;
+  contentType?: string;
+  sizeBytes?: number;
+}
+
+export interface CounsellorApprovalPayload {
+  credentialEvidence: CounsellorCredentialEvidenceInput[];
+  credentialPolicyVersion: string;
+  verificationExpiresAt: string;
+}
+
+export interface CounsellorProfessionalVerification {
+  application?: string | null;
+  onboardingConsent?: CounsellorOnboardingConsent | null;
+  credentialReview?: CounsellorCredentialReview | null;
+  reviewStartedBy?: string | CounsellorAdminActor | null;
+  reviewStartedAt?: string | null;
+  approvedBy?: string | CounsellorAdminActor | null;
+  approvedAt?: string | null;
+  expiresAt?: string | null;
+  suspendedBy?: string | CounsellorAdminActor | null;
+  suspendedAt?: string | null;
+  suspensionReason?: string | null;
+  expiredAt?: string | null;
+  reverificationRequestedAt?: string | null;
+  legacyReviewRequired?: boolean;
+}
+
 export interface CounsellorAvailabilityDay {
   start?: string;
   end?: string;
@@ -76,13 +151,29 @@ export interface Counsellor {
   education?: CounsellorEducation[];
   certifications?: CounsellorCertification[];
   availability?: CounsellorAvailability;
-  status: 'pending' | 'approved' | 'rejected';
+  status: CounsellorVerificationStatus;
   isActive: boolean;
   isVerified: boolean;
-  approvedBy?: { firstName: string; lastName: string; email: string };
+  approvedBy?: CounsellorAdminActor;
   approvedAt?: string;
-  reviewedBy?: { firstName: string; lastName: string; email: string };
+  reviewedBy?: CounsellorAdminActor;
   reviewedAt?: string;
+  reviewStartedBy?: CounsellorAdminActor | null;
+  reviewStartedAt?: string | null;
+  decisionBy?: CounsellorAdminActor | null;
+  decisionAt?: string | null;
+  onboardingConsent?: CounsellorOnboardingConsent | null;
+  credentialEvidence?: CounsellorCredentialEvidence[];
+  credentialReview?: CounsellorCredentialReview | null;
+  verificationExpiresAt?: string | null;
+  linkedCounsellor?: string | null;
+  legacyReviewRequired?: boolean;
+  requiredCredentialPolicyVersion?: string | null;
+  canStartReview?: boolean;
+  canApprove?: boolean;
+  approvalBlockingReasons?: string[];
+  professionalVerification?: CounsellorProfessionalVerification | null;
+  professionallyEligible?: boolean;
   rejectionReason?: string;
   blockedAt?: string;
   blockedReason?: string;
@@ -661,6 +752,7 @@ export interface Pagination {
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
+  code?: string;
   message?: string;
   data?: T;
   errors?: { field?: string; message?: string }[];

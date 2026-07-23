@@ -4,6 +4,11 @@ const path = require('path');
 const mongoose = require('mongoose');
 
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/menorah';
+const MIGRATION_CONNECTION_OPTIONS = Object.freeze({
+  // Migration modules own every schema change and index preflight explicitly.
+  autoIndex: false,
+  autoCreate: false,
+});
 
 const migrationSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
@@ -19,7 +24,14 @@ const run = async () => {
     return;
   }
 
-  await mongoose.connect(MONGO_URI);
+  await mongoose.connect(MONGO_URI, MIGRATION_CONNECTION_OPTIONS);
+
+  // The migration ledger is the sole runner-owned index. Application indexes
+  // remain the responsibility of named, ordered migrations.
+  await mongoose.connection.collection('migrations').createIndex(
+    { name: 1 },
+    { unique: true, name: 'migration_name_unique' }
+  );
 
   const files = fs.readdirSync(migrationsDir)
     .filter((file) => file.endsWith('.js'))
@@ -41,7 +53,14 @@ const run = async () => {
   await mongoose.disconnect();
 };
 
-run().catch((error) => {
-  console.error('Migration failed:', error);
-  mongoose.disconnect().finally(() => process.exit(1));
-});
+if (require.main === module) {
+  run().catch((error) => {
+    console.error('Migration failed:', error);
+    mongoose.disconnect().finally(() => process.exit(1));
+  });
+}
+
+module.exports = {
+  MIGRATION_CONNECTION_OPTIONS,
+  run,
+};

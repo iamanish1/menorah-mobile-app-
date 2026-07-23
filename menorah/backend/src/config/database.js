@@ -21,6 +21,10 @@ const hasQueryParam = (uri, key) => {
 
 const buildMongooseOptions = (uri = process.env.MONGODB_URI) => {
   const options = {
+    // Production indexes are created and verified only by named migrations.
+    // Model initialization must never mutate the production schema implicitly.
+    autoIndex: process.env.NODE_ENV !== 'production',
+    autoCreate: process.env.NODE_ENV !== 'production',
     maxPoolSize: parseIntegerEnv(process.env.MONGODB_MAX_POOL_SIZE, 20),
     serverSelectionTimeoutMS: parseIntegerEnv(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS, 5000),
     socketTimeoutMS: parseIntegerEnv(process.env.MONGODB_SOCKET_TIMEOUT_MS, 45000),

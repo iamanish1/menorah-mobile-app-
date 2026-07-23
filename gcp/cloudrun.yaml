@@ -134,10 +134,60 @@ spec:
                 secretKeyRef:
                   name: ALLOWED_ORIGINS
                   key: latest
+            - name: WEB_SESSION_ORIGINS
+              valueFrom:
+                secretKeyRef:
+                  name: WEB_SESSION_ORIGINS
+                  key: latest
             - name: RESEND_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: RESEND_API_KEY
+                  key: latest
+            - name: DATA_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: DATA_ENCRYPTION_KEY
+                  key: latest
+            - name: AUDIT_LOG_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: AUDIT_LOG_SIGNING_KEY
+                  key: latest
+            - name: MAX_PAYOUT_AMOUNT_PAISE
+              valueFrom:
+                secretKeyRef:
+                  name: MAX_PAYOUT_AMOUNT_PAISE
+                  key: latest
+            - name: KYC_CONSENT_VERSION
+              valueFrom:
+                secretKeyRef:
+                  name: KYC_CONSENT_VERSION
+                  key: latest
+            - name: KYC_RETENTION_DAYS
+              valueFrom:
+                secretKeyRef:
+                  name: KYC_RETENTION_DAYS
+                  key: latest
+            - name: COUNSELLOR_ONBOARDING_CONSENT_VERSION
+              valueFrom:
+                secretKeyRef:
+                  name: COUNSELLOR_ONBOARDING_CONSENT_VERSION
+                  key: latest
+            - name: COUNSELLOR_CREDENTIAL_POLICY_VERSION
+              valueFrom:
+                secretKeyRef:
+                  name: COUNSELLOR_CREDENTIAL_POLICY_VERSION
+                  key: latest
+            - name: COUNSELLOR_ONBOARDING_NOTICE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: COUNSELLOR_ONBOARDING_NOTICE_URL
+                  key: latest
+            - name: BOOKING_SERVICE_CATALOG_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: BOOKING_SERVICE_CATALOG_JSON
                   key: latest
             - name: RAZORPAY_KEY_ID
               valueFrom:

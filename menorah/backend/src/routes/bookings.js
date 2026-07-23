@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const moment = require('moment');
+const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
@@ -36,9 +37,32 @@ const {
   isBookingAuthorizationValid,
 } = require('../services/bookingMarketplacePolicy');
 const { isBookingPaymentInitiationEnabled } = require('../config/paymentFeatures');
+const {
+  buildProfessionallyApprovedCounsellorQuery,
+  isCounsellorProfessionallyApproved,
+} = require('../services/counsellorVerificationPolicy');
 
 const router = express.Router();
 const SLOT_TAKEN_MESSAGE = 'This time slot was just booked by someone else. Please choose another available slot.';
+const DIRECT_BOOKING_TRANSACTION_OPTIONS = Object.freeze({
+  readConcern: { level: 'snapshot' },
+  writeConcern: { w: 'majority' },
+});
+const directBookingConflict = (code, message) => Object.assign(new Error(message), {
+  code,
+  isDirectBookingConflict: true,
+});
+
+const isMongoTransactionConflict = (error) => Boolean(
+  [112, 251].includes(error?.code)
+  || (
+    typeof error?.hasErrorLabel === 'function'
+    && (
+      error.hasErrorLabel('TransientTransactionError')
+      || error.hasErrorLabel('UnknownTransactionCommitResult')
+    )
+  )
+);
 
 const getPaymentPresentation = (booking) => {
   const explicitReviewRequired = Boolean(
@@ -190,9 +214,11 @@ router.post('/', [
     // If counsellorId is provided, validate and get counsellor details
     if (counsellorId) {
       counsellor = await Counsellor.findById(counsellorId)
-        .populate('user', 'firstName lastName email phone');
+        .populate('user', 'firstName lastName email phone role isActive');
 
-      if (!counsellor || !counsellor.isActive || !counsellor.isVerified) {
+      if (!counsellor || !isCounsellorProfessionallyApproved(counsellor, {
+        requireAvailability: true,
+      })) {
         return res.status(404).json({
           success: false,
           message: 'Counsellor not found or unavailable'
@@ -340,9 +366,11 @@ router.post('/', [
       });
     }
 
-    // Create booking
+    // Prepare an immutable booking payload. Direct bookings construct a fresh
+    // document inside each transaction attempt so an aborted callback retry
+    // cannot reuse Mongoose document state from the previous attempt.
     const scheduledTime = new Date(scheduledAt);
-    const booking = new Booking({
+    const bookingData = {
       user: req.user._id,
       counsellor: counsellorId || null,
       sessionType,
@@ -373,28 +401,186 @@ router.post('/', [
       concerns,
       goals,
       emergencyContact
-    });
+    };
+    const createBookingDocument = () => {
+      const nextBooking = new Booking(bookingData);
 
-    if (sessionType === 'video') {
-      const policy = resolveCallPolicy({
-        user: user || req.user,
-        booking,
-        req: { headers: req.headers, user: req.user }
-      });
-      booking.videoCall.provider = policy.provider;
-      booking.videoCall.joinMode = policy.joinMode;
-      booking.videoCall.region = policy.region;
-      booking.videoCall.status = policy.joinMode === 'disabled' ? 'disabled' : 'not_configured';
-      booking.videoCall.policyReason = policy.reason;
-      booking.videoCall.lastPolicyCheckAt = new Date();
-      if (policy.providerName) {
-        booking.videoCall.externalProviderName = policy.providerName;
+      if (sessionType === 'video') {
+        const policy = resolveCallPolicy({
+          user: user || req.user,
+          booking: nextBooking,
+          req: { headers: req.headers, user: req.user }
+        });
+        nextBooking.videoCall.provider = policy.provider;
+        nextBooking.videoCall.joinMode = policy.joinMode;
+        nextBooking.videoCall.region = policy.region;
+        nextBooking.videoCall.status = policy.joinMode === 'disabled' ? 'disabled' : 'not_configured';
+        nextBooking.videoCall.policyReason = policy.reason;
+        nextBooking.videoCall.lastPolicyCheckAt = new Date();
+        if (policy.providerName) {
+          nextBooking.videoCall.externalProviderName = policy.providerName;
+        }
       }
-    }
 
+      return nextBooking;
+    };
+
+    let booking;
+    let directBookingSession;
     try {
-      await booking.save();
+      if (!counsellor) {
+        booking = createBookingDocument();
+        await booking.save();
+      } else {
+        const counsellorAccountId = counsellor.user?._id || counsellor.user;
+        directBookingSession = await mongoose.startSession();
+        await directBookingSession.withTransaction(async () => {
+          const transactionNow = new Date();
+
+          // These writes form an authorization fence. Suspension/expiry and
+          // role/deactivation flows update the same documents, so MongoDB
+          // serializes those changes against this booking assignment.
+          const fencedCounsellor = await Counsellor.findOneAndUpdate({
+            _id: counsellor._id,
+            ...buildProfessionallyApprovedCounsellorQuery({
+              now: transactionNow,
+              requireAvailability: true,
+            }),
+            user: counsellorAccountId,
+            hourlyRate: counsellor.hourlyRate,
+            currency: counsellor.currency,
+          }, {
+            $inc: { 'professionalVerification.marketplaceAssignmentFence': 1 },
+          }, {
+            new: true,
+            runValidators: true,
+            session: directBookingSession,
+          });
+          if (!fencedCounsellor) {
+            throw directBookingConflict(
+              'COUNSELLOR_NOT_ELIGIBLE',
+              'Counsellor eligibility or pricing changed before the booking completed.'
+            );
+          }
+
+          const fencedAccount = await User.findOneAndUpdate({
+            _id: counsellorAccountId,
+            role: 'counsellor',
+            isActive: true,
+          }, {
+            $inc: { marketplaceAssignmentFence: 1 },
+          }, {
+            new: true,
+            runValidators: true,
+            session: directBookingSession,
+          });
+          if (!fencedAccount) {
+            throw directBookingConflict(
+              'COUNSELLOR_NOT_ELIGIBLE',
+              'The counsellor account changed before the booking completed.'
+            );
+          }
+
+          if (scheduledTime <= transactionNow) {
+            throw directBookingConflict(
+              'BOOKING_STATE_CHANGED',
+              'The requested booking time is no longer in the future.'
+            );
+          }
+
+          let transactionDaySchedule;
+          try {
+            const transactionTimezone = fencedCounsellor.timezone || 'Asia/Kolkata';
+            const transactionParts = new Intl.DateTimeFormat('en-US', {
+              weekday: 'long',
+              timeZone: transactionTimezone,
+            }).formatToParts(scheduledTime);
+            const transactionDay = transactionParts
+              .find((part) => part.type === 'weekday')
+              ?.value.toLowerCase();
+            transactionDaySchedule = fencedCounsellor.availability?.[transactionDay];
+
+            if (!isSessionWithinWorkingHours({
+              scheduledAt: scheduledTime,
+              sessionDuration,
+              schedule: transactionDaySchedule,
+              timezone: transactionTimezone,
+            })) {
+              throw directBookingConflict(
+                'COUNSELLOR_SCHEDULE_CHANGED',
+                'Counsellor availability changed before the booking completed.'
+              );
+            }
+          } catch (error) {
+            if (error?.isDirectBookingConflict) throw error;
+            throw directBookingConflict(
+              'COUNSELLOR_SCHEDULE_CHANGED',
+              'Counsellor availability changed before the booking completed.'
+            );
+          }
+
+          const transactionQuote = resolveBookingPrice({
+            clientInput: req.body,
+            sessionDuration,
+            counsellor: {
+              hourlyRate: fencedCounsellor.hourlyRate,
+              currency: fencedCounsellor.currency,
+            },
+          });
+          if (
+            transactionQuote.amountMinor !== priceQuote.amountMinor
+            || transactionQuote.currency !== priceQuote.currency
+          ) {
+            throw directBookingConflict(
+              'COUNSELLOR_PRICING_CHANGED',
+              'Counsellor pricing changed before the booking completed.'
+            );
+          }
+
+          const transactionConflictQuery = Booking.find(buildBookingConflictQuery({
+            counsellorId: counsellor._id,
+            scheduledAt: scheduledTime,
+            sessionDuration,
+          })).session(directBookingSession);
+          const transactionConflicts = await transactionConflictQuery.lean();
+          const requestedEnd = new Date(
+            scheduledTime.getTime() + sessionDuration * 60 * 1000
+          );
+          const transactionConflict = transactionConflicts.find((candidate) => {
+            if (!isBlockingBooking(candidate, transactionNow)) return false;
+            const candidateStart = new Date(candidate.scheduledAt);
+            const candidateEnd = new Date(
+              candidateStart.getTime()
+              + (candidate.sessionDuration || sessionDuration) * 60 * 1000
+            );
+            return scheduledTime < candidateEnd && requestedEnd > candidateStart;
+          });
+          if (transactionConflict) {
+            throw directBookingConflict(
+              transactionConflict.status === 'pending' ? 'SLOT_PENDING' : 'SLOT_BOOKED',
+              SLOT_TAKEN_MESSAGE
+            );
+          }
+
+          booking = createBookingDocument();
+          await booking.save({ session: directBookingSession });
+        }, DIRECT_BOOKING_TRANSACTION_OPTIONS);
+      }
     } catch (error) {
+      if (error?.isDirectBookingConflict) {
+        return res.status(409).json({
+          success: false,
+          code: error.code,
+          message: error.message,
+        });
+      }
+      if (isMongoTransactionConflict(error)) {
+        return res.status(409).json({
+          success: false,
+          code: 'BOOKING_STATE_CHANGED',
+          message: 'Counsellor or booking state changed. Please try again.',
+        });
+      }
       if (error && error.code === 11000) {
         return res.status(409).json({
           success: false,
@@ -403,6 +589,10 @@ router.post('/', [
         });
       }
       throw error;
+    } finally {
+      if (directBookingSession) {
+        await directBookingSession.endSession();
+      }
     }
 
     // NOTE: counsellor socket notifications are sent only after payment is confirmed

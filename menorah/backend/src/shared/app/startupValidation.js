@@ -7,6 +7,9 @@ const {
   FACE_CHECK_RETENTION_DAYS,
 } = require('../../config/kyc');
 const {
+  readCounsellorVerificationConfig,
+} = require('../../config/counsellorVerification');
+const {
   BOOKING_PAYMENT_INITIATION_ENV,
   PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS_ENV,
   SUBSCRIPTION_PAYMENT_FLOW_ENV,
@@ -129,6 +132,11 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
     requireExactInteger('MAX_PAYOUT_AMOUNT_PAISE', MAX_SINGLE_PAYOUT_PAISE, errors);
     requireExactInteger('KYC_RETENTION_DAYS', FACE_CHECK_RETENTION_DAYS, errors);
     requireExactValue('KYC_CONSENT_VERSION', FACE_CHECK_CONSENT_VERSION, errors);
+
+    const counsellorVerificationConfig = readCounsellorVerificationConfig(process.env);
+    counsellorVerificationConfig.invalidFields.forEach((key) => {
+      errors.push(`${key} must contain an approved non-placeholder value`);
+    });
 
     if (['api-ios', 'api-android', 'api-web', 'api-admin'].includes(serviceName)) {
       requireMinimumLength('DATA_ENCRYPTION_KEY', 32, errors);

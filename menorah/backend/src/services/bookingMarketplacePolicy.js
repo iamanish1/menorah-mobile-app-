@@ -1,5 +1,9 @@
 const SUPPORTED_CURRENCY = 'INR';
 const MAX_SAFE_MINOR_AMOUNT = Number.MAX_SAFE_INTEGER;
+const {
+  buildProfessionallyApprovedCounsellorQuery,
+  isCounsellorProfessionallyApproved,
+} = require('./counsellorVerificationPolicy');
 
 const TERMINAL_BOOKING_STATUSES = Object.freeze([
   'completed',
@@ -254,29 +258,37 @@ const isUnassignedMarketplaceBookingEligible = (
 
 const isCounsellorMarketplaceEligible = (
   counsellor,
-  { requireAvailability = true } = {}
+  {
+    requireAvailability = true,
+    account,
+    now,
+    config,
+  } = {}
 ) => Boolean(
-  counsellor
-  && counsellor.isActive === true
-  && counsellor.isVerified === true
-  && counsellor.status === 'approved'
+  isCounsellorProfessionallyApproved(counsellor, {
+    requireAvailability,
+    ...(account ? { account } : {}),
+    ...(now ? { now } : {}),
+    ...(config ? { config } : {}),
+  })
   && hasNonEmptyString(counsellor.profileImage)
   && hasNonEmptyString(counsellor.voiceIntroUrl)
-  && (!requireAvailability || counsellor.isAvailable === true)
 );
 
-const isCounsellorAssignedAccessEligible = (counsellor) => Boolean(
-  counsellor
-  && counsellor.isActive === true
-  && counsellor.isVerified === true
-  && counsellor.status === 'approved'
-);
+const isCounsellorAssignedAccessEligible = (counsellor, options = {}) =>
+  isCounsellorProfessionallyApproved(counsellor, options);
 
-const buildEligibleCounsellorMarketplaceQuery = () => ({
-  isActive: true,
-  isAvailable: true,
-  isVerified: true,
-  status: 'approved',
+const buildEligibleCounsellorAssignedAccessQuery = (options = {}) =>
+  buildProfessionallyApprovedCounsellorQuery({
+    ...options,
+    requireAvailability: false,
+  });
+
+const buildEligibleCounsellorMarketplaceQuery = (options = {}) => ({
+  ...buildProfessionallyApprovedCounsellorQuery({
+    ...options,
+    requireAvailability: true,
+  }),
   profileImage: { $type: 'string', $regex: /\S/ },
   voiceIntroUrl: { $type: 'string', $regex: /\S/ },
 });
@@ -288,6 +300,7 @@ module.exports = {
   buildBookingAuthorizationQuery,
   buildCounsellorMarketplaceBookingQuery,
   buildCounsellorPreferenceQuery,
+  buildEligibleCounsellorAssignedAccessQuery,
   buildEligibleCounsellorMarketplaceQuery,
   buildUnassignedMarketplaceQuery,
   doesBookingMatchCounsellorPreferences,

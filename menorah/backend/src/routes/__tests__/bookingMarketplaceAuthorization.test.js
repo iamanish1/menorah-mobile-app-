@@ -1,5 +1,12 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const request = require('supertest');
+const {
+  installCounsellorVerificationTestConfig,
+  withCurrentProfessionalApproval,
+} = require('../../testUtils/counsellorVerification');
+
+installCounsellorVerificationTestConfig();
 
 const BOOKING_ID = '64f000000000000000000010';
 const COUNSELLOR_ID = '64f000000000000000000020';
@@ -21,6 +28,13 @@ const mockBookingFindOne = jest.fn();
 const mockBookingFindOneAndUpdate = jest.fn();
 const mockBookingCountDocuments = jest.fn();
 const mockCounsellorFindOne = jest.fn();
+const mockCounsellorFindOneAndUpdate = jest.fn();
+const mockUserFindOneAndUpdate = jest.fn();
+const mockAcceptanceSession = {
+  withTransaction: jest.fn(async (operation) => operation()),
+  endSession: jest.fn(async () => undefined),
+};
+const startSessionSpy = jest.spyOn(mongoose, 'startSession');
 
 jest.mock('../../middleware/auth', () => ({
   counsellorAuth: (req, _res, next) => {
@@ -43,10 +57,12 @@ jest.mock('../../models/Booking', () => ({
 
 jest.mock('../../models/Counsellor', () => ({
   findOne: (...args) => mockCounsellorFindOne(...args),
+  findOneAndUpdate: (...args) => mockCounsellorFindOneAndUpdate(...args),
 }));
 
 jest.mock('../../models/User', () => ({
   findById: jest.fn(),
+  findOneAndUpdate: (...args) => mockUserFindOneAndUpdate(...args),
 }));
 
 jest.mock('../../models/Payout', () => ({
@@ -68,7 +84,7 @@ jest.mock('../../utils/bankAccountEncryption', () => ({
 
 const counsellorBookingsRouter = require('../counsellor-bookings');
 
-const eligibleCounsellor = (overrides = {}) => ({
+const eligibleCounsellor = (overrides = {}) => withCurrentProfessionalApproval({
   _id: COUNSELLOR_ID,
   user: USER_ID,
   isActive: true,
@@ -193,6 +209,14 @@ const selectLeanQuery = (value) => {
   return { query: { select }, select, lean };
 };
 
+const selectSessionLeanQuery = (value) => {
+  const query = {};
+  query.select = jest.fn(() => query);
+  query.session = jest.fn(() => query);
+  query.lean = jest.fn(async () => value);
+  return query;
+};
+
 const populateLeanQuery = (value) => {
   const lean = jest.fn(async () => value);
   const populate = jest.fn(() => ({ lean }));
@@ -202,6 +226,14 @@ const populateLeanQuery = (value) => {
 const selectQuery = (value) => ({
   select: jest.fn(async () => value),
 });
+
+const sessionQuery = (value) => {
+  const query = {
+    session: jest.fn(() => query),
+    then: (resolve, reject) => Promise.resolve(value).then(resolve, reject),
+  };
+  return query;
+};
 
 const expectAuthorizedMarketplacePredicate = (query) => {
   expect(query).toEqual(expect.objectContaining({
@@ -273,6 +305,7 @@ describe('counsellor booking marketplace authorization boundary', () => {
       lastName: 'Counsellor',
       gender: 'female',
       role: 'counsellor',
+      isActive: true,
     };
 
     mockBookingFind.mockReset();
@@ -281,6 +314,15 @@ describe('counsellor booking marketplace authorization boundary', () => {
     mockBookingFindOneAndUpdate.mockReset();
     mockBookingCountDocuments.mockReset().mockResolvedValue(0);
     mockCounsellorFindOne.mockReset().mockResolvedValue(eligibleCounsellor());
+    mockCounsellorFindOneAndUpdate.mockReset();
+    mockUserFindOneAndUpdate.mockReset();
+    mockAcceptanceSession.withTransaction.mockClear();
+    mockAcceptanceSession.endSession.mockClear();
+    startSessionSpy.mockReset().mockResolvedValue(mockAcceptanceSession);
+  });
+
+  afterAll(() => {
+    startSessionSpy.mockRestore();
   });
 
   test('returns an exact sanitized preview list and queries only explicitly authorized bookings', async () => {
@@ -601,7 +643,7 @@ describe('counsellor booking marketplace authorization boundary', () => {
     expect(mockBookingFindOneAndUpdate).not.toHaveBeenCalled();
   });
 
-  test('reschedules with an ownership, authorization, state, and old-time CAS predicate', async () => {
+  test('reschedules inside the shared assignment fence transaction with authoritative rechecks', async () => {
     const assignedBooking = validPaymentBooking({
       counsellor: COUNSELLOR_ID,
       scheduledAt: new Date(FUTURE_DATE),
@@ -609,7 +651,14 @@ describe('counsellor booking marketplace authorization boundary', () => {
     const authorizedRead = selectLeanQuery(assignedBooking);
     mockBookingFindOne
       .mockReturnValueOnce(authorizedRead.query)
-      .mockResolvedValueOnce(null);
+      .mockReturnValueOnce(selectSessionLeanQuery(assignedBooking))
+      .mockReturnValueOnce(sessionQuery(null));
+    mockCounsellorFindOneAndUpdate.mockResolvedValue(eligibleCounsellor());
+    mockUserFindOneAndUpdate.mockResolvedValue({
+      _id: USER_ID,
+      role: 'counsellor',
+      isActive: true,
+    });
     mockBookingFindOneAndUpdate.mockResolvedValue({
       _id: BOOKING_ID,
       user: USER_ID,
@@ -638,16 +687,132 @@ describe('counsellor booking marketplace authorization boundary', () => {
         new: true,
         runValidators: true,
         projection: '_id user scheduledAt',
+        session: mockAcceptanceSession,
       }
     );
+    expect(startSessionSpy).toHaveBeenCalledTimes(1);
+    expect(mockAcceptanceSession.withTransaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      {
+        readConcern: { level: 'snapshot' },
+        writeConcern: { w: 'majority' },
+      }
+    );
+    expect(mockAcceptanceSession.endSession).toHaveBeenCalledTimes(1);
+    expect(mockCounsellorFindOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _id: COUNSELLOR_ID,
+        user: USER_ID,
+        status: 'approved',
+        isActive: true,
+      }),
+      { $inc: { 'professionalVerification.marketplaceAssignmentFence': 1 } },
+      {
+        new: true,
+        runValidators: true,
+        session: mockAcceptanceSession,
+      }
+    );
+    expect(mockUserFindOneAndUpdate).toHaveBeenCalledWith(
+      {
+        _id: USER_ID,
+        role: 'counsellor',
+        isActive: true,
+      },
+      { $inc: { marketplaceAssignmentFence: 1 } },
+      {
+        new: true,
+        runValidators: true,
+        session: mockAcceptanceSession,
+      }
+    );
+
+    const transactionTargetQuery = mockBookingFindOne.mock.calls[1][0];
+    expect(transactionTargetQuery).toEqual(expect.objectContaining({
+      _id: BOOKING_ID,
+      counsellor: COUNSELLOR_ID,
+      scheduledAt: new Date(FUTURE_DATE),
+      status: { $in: ['pending', 'confirmed'] },
+      $or: expect.any(Array),
+    }));
+    const overlapQuery = mockBookingFindOne.mock.calls[2][0];
+    expect(overlapQuery).toEqual({
+      counsellor: COUNSELLOR_ID,
+      scheduledAt: { $lt: new Date('2099-01-16T12:45:00.000Z') },
+      status: { $in: ['pending', 'confirmed', 'in-progress'] },
+      _id: { $ne: BOOKING_ID },
+      $expr: {
+        $gt: [
+          {
+            $add: [
+              '$scheduledAt',
+              { $multiply: ['$sessionDuration', 60 * 1000] },
+            ],
+          },
+          new Date('2099-01-16T12:00:00.000Z'),
+        ],
+      },
+    });
+  });
+
+  test('aborts rescheduling when professional eligibility changes before the fence write', async () => {
+    const assignedBooking = validPaymentBooking({
+      counsellor: COUNSELLOR_ID,
+      scheduledAt: new Date(FUTURE_DATE),
+    });
+    mockBookingFindOne
+      .mockReturnValueOnce(selectLeanQuery(assignedBooking).query)
+      .mockReturnValueOnce(selectSessionLeanQuery(assignedBooking));
+    mockCounsellorFindOneAndUpdate.mockResolvedValue(null);
+
+    const response = await request(buildApp())
+      .put(`/api/counsellors/me/bookings/${BOOKING_ID}/schedule`)
+      .send({ scheduledAt: '2099-01-16T12:00:00.000Z' })
+      .expect(409);
+
+    expect(response.body).toMatchObject({
+      success: false,
+      code: 'COUNSELLOR_NOT_ELIGIBLE',
+    });
+    expect(mockUserFindOneAndUpdate).not.toHaveBeenCalled();
+    expect(mockBookingFindOneAndUpdate).not.toHaveBeenCalled();
+    expect(mockAcceptanceSession.endSession).toHaveBeenCalledTimes(1);
+  });
+
+  test('aborts marketplace acceptance if professional eligibility changes in the transaction', async () => {
+    mockBookingFindById.mockImplementation(() => selectQuery(validPaymentBooking()));
+    mockBookingFindOne.mockImplementation(() => sessionQuery(null));
+    mockCounsellorFindOneAndUpdate.mockResolvedValue(null);
+
+    const response = await request(buildApp())
+      .post(`/api/counsellors/me/bookings/${BOOKING_ID}/accept`)
+      .expect(409);
+
+    expect(response.body).toMatchObject({
+      success: false,
+      code: 'COUNSELLOR_NOT_ELIGIBLE',
+    });
+    expect(mockUserFindOneAndUpdate).not.toHaveBeenCalled();
+    expect(mockBookingFindOneAndUpdate).not.toHaveBeenCalled();
+    expect(mockAcceptanceSession.endSession).toHaveBeenCalledTimes(1);
   });
 
   test('simulates route-level CAS with one winner for two distinct counsellors', async () => {
     mockBookingFindById.mockImplementation(() => selectQuery(validPaymentBooking()));
-    mockBookingFindOne.mockResolvedValue(null);
+    mockBookingFindOne.mockImplementation(() => sessionQuery(null));
     mockCounsellorFindOne.mockImplementation(async ({ user }) => eligibleCounsellor({
       _id: user === SECOND_USER_ID ? SECOND_COUNSELLOR_ID : COUNSELLOR_ID,
       user,
+    }));
+    mockCounsellorFindOneAndUpdate.mockImplementation(async ({ _id }) => eligibleCounsellor({
+      _id,
+      user: _id === SECOND_COUNSELLOR_ID ? SECOND_USER_ID : USER_ID,
+    }));
+    mockUserFindOneAndUpdate.mockImplementation(async ({ _id }) => ({
+      _id,
+      role: 'counsellor',
+      isActive: true,
+      gender: 'female',
     }));
 
     let claimed = false;
@@ -672,6 +837,9 @@ describe('counsellor booking marketplace authorization boundary', () => {
 
     expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
     expect(mockBookingFindOneAndUpdate).toHaveBeenCalledTimes(2);
+    expect(startSessionSpy).toHaveBeenCalledTimes(2);
+    expect(mockAcceptanceSession.withTransaction).toHaveBeenCalledTimes(2);
+    expect(mockAcceptanceSession.endSession).toHaveBeenCalledTimes(2);
     expect(mockCounsellorFindOne).toHaveBeenCalledWith({ user: USER_ID });
     expect(mockCounsellorFindOne).toHaveBeenCalledWith({ user: SECOND_USER_ID });
 
@@ -698,6 +866,8 @@ describe('counsellor booking marketplace authorization boundary', () => {
     }
     expect(overlapCounsellorIds.sort()).toEqual([
       COUNSELLOR_ID,
+      COUNSELLOR_ID,
+      SECOND_COUNSELLOR_ID,
       SECOND_COUNSELLOR_ID,
     ]);
 
@@ -715,12 +885,29 @@ describe('counsellor booking marketplace authorization boundary', () => {
         status: 'confirmed',
       });
       assignedCounsellorIds.push(update.$set.counsellor);
-      expect(options).toEqual({ new: true, runValidators: true });
+      expect(options).toEqual({
+        new: true,
+        runValidators: true,
+        session: mockAcceptanceSession,
+      });
     }
 
     expect(assignedCounsellorIds.sort()).toEqual([
       COUNSELLOR_ID,
       SECOND_COUNSELLOR_ID,
     ]);
+
+    expect(mockCounsellorFindOneAndUpdate).toHaveBeenCalledTimes(2);
+    expect(mockUserFindOneAndUpdate).toHaveBeenCalledTimes(2);
+    for (const [, update, options] of mockCounsellorFindOneAndUpdate.mock.calls) {
+      expect(update).toEqual({
+        $inc: { 'professionalVerification.marketplaceAssignmentFence': 1 },
+      });
+      expect(options).toEqual({
+        new: true,
+        runValidators: true,
+        session: mockAcceptanceSession,
+      });
+    }
   });
 });

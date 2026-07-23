@@ -1,6 +1,9 @@
 const crypto = require('crypto');
 const User = require('../models/User');
 const { getRedisClient } = require('../config/redis');
+const {
+  evaluateAccountAccess: evaluateCounsellorAccountAccess,
+} = require('../services/counsellorVerificationExpiry');
 const { verifyUserToken, verifyAdminToken } = require('../utils/authTokens');
 const { isRecentAdminMfa } = require('../services/payoutPolicy');
 const {
@@ -36,6 +39,23 @@ const loadActiveUserForToken = async (decoded) => {
 
   if ((decoded.sessionVersion || 0) !== (user.sessionVersion || 0)) {
     return null;
+  }
+
+  if (user.role === 'counsellor') {
+    try {
+      const professionalAccess = await evaluateCounsellorAccountAccess({
+        account: user,
+      });
+      if (!professionalAccess.allowed) return null;
+    } catch (error) {
+      // Authentication must fail closed when an elapsed approval cannot be
+      // reconciled safely. Log only the bounded code, never the profile.
+      console.error(
+        'Counsellor professional-access reconciliation failed:',
+        error?.code || 'COUNSELLOR_EXPIRY_RECONCILIATION_FAILED'
+      );
+      return null;
+    }
   }
 
   return user;
@@ -229,6 +249,7 @@ const requireRecentAdminMfa = (req, res, next) => {
   if (!isRecentAdminMfa(req.auth?.decoded)) {
     return res.status(403).json({
       success: false,
+      code: 'ADMIN_MFA_FRESHNESS_REQUIRED',
       message: 'A fresh multi-factor authenticated admin session is required for this action.',
     });
   }

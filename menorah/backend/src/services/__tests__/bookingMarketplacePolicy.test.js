@@ -2,6 +2,7 @@ const {
   buildBookingAuthorizationQuery,
   buildCounsellorMarketplaceBookingQuery,
   buildCounsellorPreferenceQuery,
+  buildEligibleCounsellorAssignedAccessQuery,
   buildEligibleCounsellorMarketplaceQuery,
   buildUnassignedMarketplaceQuery,
   doesBookingMatchCounsellorPreferences,
@@ -10,8 +11,25 @@ const {
   isCounsellorMarketplaceEligible,
   isUnassignedMarketplaceBookingEligible,
 } = require('../bookingMarketplacePolicy');
+const {
+  TEST_COUNSELLOR_CREDENTIAL_POLICY_VERSION,
+  TEST_COUNSELLOR_NOTICE_URL,
+  TEST_COUNSELLOR_ONBOARDING_CONSENT_VERSION,
+  installCounsellorVerificationTestConfig,
+  withCurrentProfessionalApproval,
+} = require('../../testUtils/counsellorVerification');
+
+installCounsellorVerificationTestConfig();
 
 const NOW = new Date('2026-07-23T08:00:00.000Z');
+const VERIFICATION_CONFIG = Object.freeze({
+  configured: true,
+  verificationConfigured: true,
+  onboardingConsentVersion: TEST_COUNSELLOR_ONBOARDING_CONSENT_VERSION,
+  credentialPolicyVersion: TEST_COUNSELLOR_CREDENTIAL_POLICY_VERSION,
+  onboardingNoticeUrl: TEST_COUNSELLOR_NOTICE_URL,
+  invalidFields: Object.freeze([]),
+});
 
 const paymentBooking = (overrides = {}) => ({
   counsellor: null,
@@ -300,64 +318,93 @@ describe('bookingMarketplacePolicy', () => {
   });
 
   describe('counsellor eligibility', () => {
-    const approved = {
+    const approved = withCurrentProfessionalApproval({
+      user: '64f000000000000000000030',
       isActive: true,
       isAvailable: true,
       isVerified: true,
       status: 'approved',
       profileImage: 'https://cdn.example.test/profile.jpg',
       voiceIntroUrl: 'https://cdn.example.test/voice.webm',
-    };
+    }, { populateUser: true });
 
     test('provides the socket/list query and matching pure evaluator', () => {
-      expect(buildEligibleCounsellorMarketplaceQuery()).toEqual({
+      expect(buildEligibleCounsellorMarketplaceQuery({
+        now: NOW,
+        config: VERIFICATION_CONFIG,
+      })).toEqual(expect.objectContaining({
         isActive: true,
         isAvailable: true,
-        isVerified: true,
         status: 'approved',
+        user: { $type: 'objectId' },
+        'professionalVerification.application': { $type: 'objectId' },
+        'professionalVerification.legacyReviewRequired': false,
         profileImage: { $type: 'string', $regex: /\S/ },
         voiceIntroUrl: { $type: 'string', $regex: /\S/ },
-      });
-      expect(isCounsellorMarketplaceEligible(approved)).toBe(true);
+      }));
+      expect(isCounsellorMarketplaceEligible(approved, {
+        now: NOW,
+        config: VERIFICATION_CONFIG,
+      })).toBe(true);
     });
 
     test.each([
       ['inactive', { isActive: false }],
       ['unavailable', { isAvailable: false }],
-      ['unverified', { isVerified: false }],
       ['not approved', { status: 'pending' }],
       ['missing profile image', { profileImage: null }],
       ['missing voice intro', { voiceIntroUrl: '' }],
     ])('rejects %s counsellors', (_label, overrides) => {
-      expect(isCounsellorMarketplaceEligible({ ...approved, ...overrides })).toBe(false);
+      expect(isCounsellorMarketplaceEligible(
+        { ...approved, ...overrides },
+        { now: NOW, config: VERIFICATION_CONFIG }
+      )).toBe(false);
+    });
+
+    test('does not let the retired isVerified flag grant or revoke access', () => {
+      expect(isCounsellorMarketplaceEligible(
+        { ...approved, isVerified: false },
+        { now: NOW, config: VERIFICATION_CONFIG }
+      )).toBe(true);
     });
 
     test('can evaluate view access without requiring current availability', () => {
       expect(isCounsellorMarketplaceEligible(
         { ...approved, isAvailable: false },
-        { requireAvailability: false }
+        { requireAvailability: false, now: NOW, config: VERIFICATION_CONFIG }
       )).toBe(true);
     });
 
     test('assigned access requires current approval but not marketplace availability or media', () => {
-      expect(isCounsellorAssignedAccessEligible({
+      expect(buildEligibleCounsellorAssignedAccessQuery({
+        now: NOW,
+        config: VERIFICATION_CONFIG,
+      })).toEqual(expect.objectContaining({
         isActive: true,
-        isVerified: true,
         status: 'approved',
+        user: { $type: 'objectId' },
+        'professionalVerification.application': { $type: 'objectId' },
+        'professionalVerification.legacyReviewRequired': false,
+      }));
+      expect(buildEligibleCounsellorAssignedAccessQuery({
+        now: NOW,
+        config: VERIFICATION_CONFIG,
+      })).not.toHaveProperty('isAvailable');
+
+      expect(isCounsellorAssignedAccessEligible({
+        ...approved,
         isAvailable: false,
         profileImage: null,
         voiceIntroUrl: null,
-      })).toBe(true);
+      }, { now: NOW, config: VERIFICATION_CONFIG })).toBe(true);
       expect(isCounsellorAssignedAccessEligible({
-        isActive: true,
-        isVerified: false,
+        ...approved,
         status: 'rejected',
-      })).toBe(false);
+      }, { now: NOW, config: VERIFICATION_CONFIG })).toBe(false);
       expect(isCounsellorAssignedAccessEligible({
+        ...approved,
         isActive: false,
-        isVerified: true,
-        status: 'approved',
-      })).toBe(false);
+      }, { now: NOW, config: VERIFICATION_CONFIG })).toBe(false);
     });
   });
 });

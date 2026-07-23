@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const { query, param, body, validationResult } = require('express-validator');
 const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
@@ -11,6 +12,18 @@ const {
   generateAvailabilityForDate,
   getPotentiallyBlockingBookingFilter,
 } = require('../utils/bookingAvailability');
+const {
+  COUNSELLOR_LICENSE_IDENTITY_COLLATION,
+  getPublicCounsellorVerificationRequirements,
+  readCounsellorVerificationConfig,
+} = require('../config/counsellorVerification');
+const {
+  buildProfessionallyApprovedCounsellorQuery,
+  isCounsellorProfessionallyApproved,
+} = require('../services/counsellorVerificationPolicy');
+const {
+  reconcileOne: reconcileCounsellorVerificationExpiry,
+} = require('../services/counsellorVerificationExpiry');
 
 // ── Regex safety helper ────────────────────────────────────────────────────
 // Escapes regex metacharacters to prevent ReDoS via user-supplied search strings
@@ -41,6 +54,41 @@ const { sendVerificationEmail } = require('../utils/email');
 const { sendSMS } = require('../utils/sms');
 
 const router = express.Router();
+const COUNSELLOR_REGISTRATION_TRANSACTION_OPTIONS = Object.freeze({
+  readConcern: { level: 'snapshot' },
+  writeConcern: { w: 'majority' },
+});
+
+class CounsellorRegistrationError extends Error {
+  constructor(message, { code = 'COUNSELLOR_REGISTRATION_CONFLICT', status = 409 } = {}) {
+    super(message);
+    this.name = 'CounsellorRegistrationError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
+const reconcileElapsedCounsellorForStatus = async (counsellor) => {
+  const expiresAt = counsellor?.professionalVerification?.expiresAt;
+  if (
+    counsellor?.status !== 'approved'
+    || !(expiresAt instanceof Date)
+    || expiresAt > new Date()
+  ) {
+    return counsellor;
+  }
+
+  await reconcileCounsellorVerificationExpiry({
+    counsellorId: counsellor._id,
+  });
+  return Counsellor.findById(counsellor._id)
+    .select(
+      'status isActive rejectionReason professionalVerification.legacyReviewRequired '
+      + 'professionalVerification.expiresAt'
+    )
+    .lean();
+};
+
 const emailNormalizationOptions = {
   gmail_remove_dots: false,
   gmail_remove_subaddress: false,
@@ -48,10 +96,17 @@ const emailNormalizationOptions = {
   yahoo_remove_subaddress: false,
   icloud_remove_subaddress: false,
 };
-const publicReadyCounsellorQuery = {
-  isActive: true,
-  status: 'approved',
+const buildPublicReadyCounsellorQuery = async ({ requireAvailability = false } = {}) => {
+  const activeCounsellorUsers = await User.find({
+    role: 'counsellor',
+    isActive: true,
+  }).select('_id').lean();
+  return {
+    ...buildProfessionallyApprovedCounsellorQuery({ requireAvailability }),
+    user: { $in: activeCounsellorUsers.map((user) => user._id) },
+  };
 };
+const comparableId = (value) => String(value?._id || value || '');
 const DEFAULT_SPECIALIZATIONS = Object.freeze([
   'Stress',
   'Sleep',
@@ -81,7 +136,7 @@ const DEFAULT_LANGUAGES = Object.freeze([
   'Punjabi',
   'Urdu',
 ]);
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 
 const normalizeLookupValues = (values) => {
   const seen = new Set();
@@ -159,7 +214,7 @@ router.get('/', [
     }
 
     // Build query
-    const query = { ...publicReadyCounsellorQuery };
+    const query = await buildPublicReadyCounsellorQuery();
 
     // Collect top-level $or conditions to combine later
     const orConditions = [];
@@ -238,16 +293,14 @@ router.get('/', [
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Build a deterministic cache key from the query params.
-    // Skip cache for free-text searches (too many unique keys, low reuse value).
-    const cacheKey = !search
-      ? `counsellors:${CACHE_VERSION}:list:${JSON.stringify({ specialization, language, minRating, minPrice, maxPrice, page, limit, sortBy, sortOrder })}`
-      : null;
-
     const fetchFromDB = async () => {
       const [counsellors, total] = await Promise.all([
         Counsellor.find(query)
-          .populate('user', 'firstName lastName profileImage')
+          .populate({
+            path: 'user',
+            select: 'firstName lastName profileImage role isActive',
+            match: { role: 'counsellor', isActive: true },
+          })
           .sort(sort)
           .skip(skip)
           .limit(parseInt(limit))
@@ -255,7 +308,7 @@ router.get('/', [
         Counsellor.countDocuments(query),
       ]);
 
-      const formatted = counsellors.map(counsellor => ({
+      const formatted = counsellors.filter((counsellor) => counsellor.user).map(counsellor => ({
         id: counsellor._id,
         name: `${counsellor.user.firstName} ${counsellor.user.lastName}`,
         specialization: counsellor.specialization,
@@ -285,9 +338,9 @@ router.get('/', [
       };
     };
 
-    const data = cacheKey
-      ? await withCache(cacheKey, CACHE_TTL.LIST, fetchFromDB)
-      : await fetchFromDB();
+    // Approval can expire through time alone, so discovery results must not
+    // outlive the exact eligibility query that produced them.
+    const data = await fetchFromDB();
 
     res.json({ success: true, data });
 
@@ -306,8 +359,9 @@ router.get('/', [
 router.get('/specializations', async (req, res) => {
   try {
     const specializations = await withCache(`counsellors:${CACHE_VERSION}:specializations`, CACHE_TTL.STATIC_LOOKUPS, async () => {
-      const plural = await Counsellor.distinct('specializations', publicReadyCounsellorQuery);
-      const singular = await Counsellor.distinct('specialization', publicReadyCounsellorQuery);
+      const query = await buildPublicReadyCounsellorQuery();
+      const plural = await Counsellor.distinct('specializations', query);
+      const singular = await Counsellor.distinct('specialization', query);
       return mergeLookupCatalog(DEFAULT_SPECIALIZATIONS, [...plural, ...singular]);
     });
 
@@ -324,7 +378,8 @@ router.get('/specializations', async (req, res) => {
 router.get('/languages', async (req, res) => {
   try {
     const languages = await withCache(`counsellors:${CACHE_VERSION}:languages`, CACHE_TTL.STATIC_LOOKUPS, async () => {
-      const raw = await Counsellor.distinct('languages', publicReadyCounsellorQuery);
+      const query = await buildPublicReadyCounsellorQuery();
+      const raw = await Counsellor.distinct('languages', query);
       return mergeLookupCatalog(DEFAULT_LANGUAGES, raw);
     });
 
@@ -333,6 +388,27 @@ router.get('/languages', async (req, res) => {
     console.error('Get languages error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
+});
+
+// @route   GET /api/counsellors/verification-requirements
+// @desc    Return the exact approved notice required for counsellor registration
+// @access  Public
+router.get('/verification-requirements', (_req, res) => {
+  const requirements = getPublicCounsellorVerificationRequirements();
+  if (!requirements.configured) {
+    return res.status(503).json({
+      success: false,
+      message: 'Counsellor registration is temporarily unavailable.',
+    });
+  }
+
+  return res.json({
+    success: true,
+    data: {
+      consentVersion: requirements.onboardingConsentVersion,
+      noticeUrl: requirements.onboardingNoticeUrl,
+    },
+  });
 });
 
 // @route   GET /api/counsellors/application-status?ticket=xxx
@@ -348,23 +424,56 @@ router.get('/application-status', [
     const ticketHash = crypto.createHash('sha256').update(req.query.ticket).digest('hex');
 
     const pending = await PendingApplication.findOne({ statusLookupTokenHash: ticketHash })
-      .select('status rejectionReason')
+      .select('status rejectionReason linkedCounsellor legacyReviewRequired')
       .lean();
     if (pending) {
+      let currentCounsellor = pending.linkedCounsellor
+        ? await Counsellor.findById(pending.linkedCounsellor)
+          .select(
+            'status isActive rejectionReason professionalVerification.legacyReviewRequired '
+            + 'professionalVerification.expiresAt'
+          )
+          .lean()
+        : null;
+      currentCounsellor = await reconcileElapsedCounsellorForStatus(
+        currentCounsellor
+      );
       return res.json({
         success: true,
-        data: { status: pending.status, rejectionReason: pending.rejectionReason || null, isActive: false }
+        data: {
+          status: currentCounsellor?.status || pending.status,
+          rejectionReason:
+            currentCounsellor?.rejectionReason || pending.rejectionReason || null,
+          isActive: currentCounsellor?.isActive === true,
+          requiresFreshApplication: Boolean(
+            pending.legacyReviewRequired === true
+            || currentCounsellor?.professionalVerification?.legacyReviewRequired === true
+            || ['suspended', 'expired'].includes(currentCounsellor?.status)
+          ),
+        }
       });
     }
 
-    const counsellor = await Counsellor.findOne({ applicationStatusTokenHash: ticketHash })
-      .select('status isActive')
+    let counsellor = await Counsellor.findOne({ applicationStatusTokenHash: ticketHash })
+      .select(
+        'status isActive professionalVerification.legacyReviewRequired '
+        + 'professionalVerification.expiresAt'
+      )
       .lean();
     if (!counsellor) return res.status(404).json({ success: false, message: 'Application status not found' });
+    counsellor = await reconcileElapsedCounsellorForStatus(counsellor);
 
     res.json({
       success: true,
-      data: { status: counsellor.status, rejectionReason: null, isActive: counsellor.isActive }
+      data: {
+        status: counsellor.status,
+        rejectionReason: null,
+        isActive: counsellor.isActive,
+        requiresFreshApplication: Boolean(
+          counsellor.professionalVerification?.legacyReviewRequired === true
+          || ['suspended', 'expired'].includes(counsellor.status)
+        ),
+      }
     });
   } catch (error) {
     console.error('Application status check error:', error);
@@ -390,21 +499,21 @@ router.get('/:id', [
 
     const { id } = req.params;
 
-    const counsellor = await Counsellor.findById(id)
-      .populate('user', 'firstName lastName profileImage')
+    const counsellor = await Counsellor.findOne({
+      _id: id,
+      ...buildProfessionallyApprovedCounsellorQuery(),
+    })
+      .populate({
+        path: 'user',
+        select: 'firstName lastName profileImage role isActive',
+        match: { role: 'counsellor', isActive: true },
+      })
       .lean();
 
-    if (!counsellor) {
+    if (!counsellor || !counsellor.user) {
       return res.status(404).json({
         success: false,
         message: 'Counsellor not found'
-      });
-    }
-
-    if (!counsellor.isActive || counsellor.status !== 'approved') {
-      return res.status(404).json({
-        success: false,
-        message: 'Counsellor not available'
       });
     }
 
@@ -486,8 +595,8 @@ router.get('/:id/availability', [
       });
     }
 
-    const counsellor = await Counsellor.findById(id);
-    if (!counsellor || !counsellor.isActive || !counsellor.isVerified) {
+    const counsellor = await Counsellor.findById(id).populate('user', 'role isActive');
+    if (!counsellor || !isCounsellorProfessionallyApproved(counsellor)) {
       return res.status(404).json({
         success: false,
         message: 'Counsellor not found'
@@ -585,12 +694,24 @@ router.post('/register', [
   body('specializations').optional().isArray(),
   body('education').optional().isArray(),
   body('certifications').optional().isArray(),
-  body('availability').optional().isObject()
+  body('availability').optional().isObject(),
+  body('onboardingConsentAccepted')
+    .custom((value) => value === true)
+    .withMessage('Counsellor onboarding consent must be explicitly accepted'),
+  body('onboardingConsentVersion')
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 128 })
+    .withMessage('A valid counsellor onboarding consent version is required'),
+  body('reverificationToken')
+    .optional()
+    .isHexadecimal()
+    .isLength({ min: 64, max: 64 })
+    .withMessage('A valid re-verification invitation is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('Validation errors:', errors.array());
       const formattedErrors = errors.array().map(err => ({
         field: err.path || err.param,
         message: err.msg,
@@ -599,6 +720,9 @@ router.post('/register', [
       
       return res.status(400).json({
         success: false,
+        ...(errors.array().some(error => (error.path || error.param) === 'reverificationToken')
+          ? { code: 'REVERIFICATION_AUTHORIZATION_INVALID' }
+          : {}),
         message: 'Validation failed',
         errors: formattedErrors,
         errorDetails: errors.array()
@@ -622,29 +746,29 @@ router.post('/register', [
       currency = 'INR',
       education,
       certifications,
-      availability
+      availability,
+      onboardingConsentAccepted,
+      onboardingConsentVersion,
+      reverificationToken,
     } = req.body;
 
-    // Block if already an active/approved counsellor with this email
-    const existingUser = await User.findOne({ email, role: 'counsellor' });
-    if (existingUser) {
-      return res.status(400).json({
+    const verificationConfig = readCounsellorVerificationConfig();
+    if (!verificationConfig.configured) {
+      return res.status(503).json({
         success: false,
-        message: 'A counsellor account with this email already exists'
+        message: 'Counsellor registration is temporarily unavailable.'
       });
     }
-
-    // Block duplicate license numbers already in the approved counsellors
-    const existingCounsellor = await Counsellor.findOne({ licenseNumber });
-    if (existingCounsellor) {
-      return res.status(400).json({
+    if (
+      onboardingConsentAccepted !== true
+      || onboardingConsentVersion !== verificationConfig.onboardingConsentVersion
+    ) {
+      return res.status(422).json({
         success: false,
-        message: 'A counsellor with this license number already exists'
+        code: 'COUNSELLOR_ONBOARDING_CONSENT_STALE',
+        message: 'The counsellor onboarding consent is missing or no longer current.'
       });
     }
-
-    // If a previous application exists for this email, replace it (re-apply after rejection)
-    await PendingApplication.deleteOne({ email });
 
     const defaultAvailability = availability || {
       monday:    { start: '09:00', end: '17:00', isAvailable: true },
@@ -657,30 +781,299 @@ router.post('/register', [
     };
 
     const statusTicket = crypto.randomBytes(32).toString('hex');
-    const application = new PendingApplication({
-      firstName, lastName, email, phone, dateOfBirth, gender,
-      licenseNumber, specialization,
-      specializations: specializations || [specialization],
-      experience, bio, languages, hourlyRate,
-      currency: currency || 'INR',
-      education: education || [],
-      certifications: certifications || [],
-      availability: defaultAvailability,
-      statusLookupTokenHash: crypto.createHash('sha256').update(statusTicket).digest('hex'),
-      status: 'pending'
-    });
+    const submittedAt = new Date();
+    let application;
+    const registrationSession = await mongoose.startSession();
+    try {
+      await registrationSession.withTransaction(async () => {
+        // Resolve and revalidate every identity link from one database snapshot.
+        // Applicant input never selects or mutates an existing account by itself.
+        // Mongoose does not support parallel operations on one transaction
+        // session. Keep identity resolution sequential so every read belongs
+        // to the same well-defined snapshot.
+        const existingCounsellorUserByEmail = await User.findOne({ email })
+          .session(registrationSession);
+        const existingCounsellorUserByPhone = await User.findOne({ phone })
+          .session(registrationSession);
+        const existingCounsellorByLicense = await Counsellor.findOne({ licenseNumber })
+          .collation(COUNSELLOR_LICENSE_IDENTITY_COLLATION)
+          .session(registrationSession);
+        const possibleCounsellorUser = existingCounsellorUserByEmail
+          || existingCounsellorUserByPhone;
+        const existingCounsellorByUser = possibleCounsellorUser
+          ? await Counsellor.findOne({ user: possibleCounsellorUser._id })
+            .session(registrationSession)
+          : null;
+        const identityRecordsExist = Boolean(
+          existingCounsellorUserByEmail
+          || existingCounsellorUserByPhone
+          || existingCounsellorByLicense
+          || existingCounsellorByUser
+        );
+        const identityIsCanonical = Boolean(
+          existingCounsellorUserByEmail
+          && existingCounsellorUserByPhone
+          && existingCounsellorUserByEmail.role === 'counsellor'
+          && existingCounsellorUserByPhone.role === 'counsellor'
+          && existingCounsellorUserByEmail.isActive === false
+          && existingCounsellorUserByPhone.isActive === false
+          && existingCounsellorByLicense
+          && existingCounsellorByUser
+          && comparableId(existingCounsellorUserByEmail)
+            === comparableId(existingCounsellorUserByPhone)
+          && comparableId(existingCounsellorByLicense)
+            === comparableId(existingCounsellorByUser)
+          && comparableId(existingCounsellorByLicense.user)
+            === comparableId(existingCounsellorUserByEmail)
+        );
+        const existingVerification = existingCounsellorByLicense?.professionalVerification;
+        const isRecoveryCandidate = Boolean(
+          identityIsCanonical
+          && (
+            ['suspended', 'expired'].includes(existingCounsellorByLicense.status)
+            || (
+              existingCounsellorByLicense.status === 'draft'
+              && existingVerification?.legacyReviewRequired === true
+            )
+          )
+        );
 
-    await application.save();
+        if (
+          (identityRecordsExist && !isRecoveryCandidate)
+          || (!isRecoveryCandidate && typeof reverificationToken === 'string')
+        ) {
+          throw new CounsellorRegistrationError(
+            'A counsellor application cannot be accepted for the supplied identity.',
+            {
+              code: typeof reverificationToken === 'string'
+                ? 'REVERIFICATION_AUTHORIZATION_INVALID'
+                : 'COUNSELLOR_REGISTRATION_CONFLICT',
+            }
+          );
+        }
+
+        const activeApplication = await PendingApplication.findOne({
+          $or: [{ email }, { licenseNumber }],
+          status: { $in: ['pending', 'draft', 'submitted', 'under_review', 'approved'] },
+          legacyReviewRequired: { $ne: true },
+        })
+          .collation(COUNSELLOR_LICENSE_IDENTITY_COLLATION)
+          .session(registrationSession)
+          .lean();
+        if (activeApplication) {
+          throw new CounsellorRegistrationError(
+            'An active counsellor application already exists for this identity or declared license.',
+            { code: 'COUNSELLOR_APPLICATION_ALREADY_ACTIVE' }
+          );
+        }
+
+        let previousApplication = null;
+        if (isRecoveryCandidate && existingVerification?.application) {
+          previousApplication = await PendingApplication.findOne({
+            _id: existingVerification.application,
+            licenseNumber,
+          })
+            .collation(COUNSELLOR_LICENSE_IDENTITY_COLLATION)
+            .select('_id status linkedUser linkedCounsellor')
+            .session(registrationSession)
+            .lean();
+          if (
+            !previousApplication
+            || previousApplication.status !== existingCounsellorByLicense.status
+            || comparableId(previousApplication.linkedUser)
+              !== comparableId(existingCounsellorUserByEmail)
+            || comparableId(previousApplication.linkedCounsellor)
+              !== comparableId(existingCounsellorByLicense)
+          ) {
+            throw new CounsellorRegistrationError(
+              'A counsellor application cannot be accepted for the supplied identity.',
+              { code: 'REVERIFICATION_AUTHORIZATION_INVALID' }
+            );
+          }
+        } else if (isRecoveryCandidate) {
+          if (
+            existingVerification?.legacyReviewRequired !== true
+            || typeof existingVerification?.migrationVersion !== 'string'
+            || !existingVerification.migrationVersion
+          ) {
+            throw new CounsellorRegistrationError(
+              'A counsellor application cannot be accepted for the supplied identity.',
+              { code: 'REVERIFICATION_AUTHORIZATION_INVALID' }
+            );
+          }
+          previousApplication = await PendingApplication.findOne({
+            email,
+            phone,
+            licenseNumber,
+            legacyReviewRequired: true,
+            legacyMigrationVersion: existingVerification.migrationVersion,
+          })
+            .collation(COUNSELLOR_LICENSE_IDENTITY_COLLATION)
+            .sort({ createdAt: -1 })
+            .select('_id')
+            .session(registrationSession)
+            .lean();
+        } else {
+          previousApplication = await PendingApplication.findOne({
+            $and: [
+              { $or: [{ email }, { licenseNumber }] },
+              { $or: [{ status: 'rejected' }, { legacyReviewRequired: true }] },
+            ],
+          })
+            .collation(COUNSELLOR_LICENSE_IDENTITY_COLLATION)
+            .sort({ createdAt: -1 })
+            .select('_id')
+            .session(registrationSession)
+            .lean();
+        }
+
+        let recoveredCounsellor = null;
+        let reverificationAuthorization;
+        if (isRecoveryCandidate) {
+          if (typeof reverificationToken !== 'string') {
+            throw new CounsellorRegistrationError(
+              'A counsellor application cannot be accepted for the supplied identity.',
+              { code: 'REVERIFICATION_AUTHORIZATION_INVALID' }
+            );
+          }
+          const invitationTokenHash = crypto
+            .createHash('sha256')
+            .update(reverificationToken)
+            .digest('hex');
+          recoveredCounsellor = await Counsellor.findOneAndUpdate({
+            _id: existingCounsellorByLicense._id,
+            status: existingCounsellorByLicense.status,
+            user: existingCounsellorUserByEmail._id,
+            licenseNumber,
+            ...(existingCounsellorByLicense.status === 'draft'
+              ? { 'professionalVerification.legacyReviewRequired': true }
+              : {}),
+            ...(!existingVerification?.application
+              ? {
+                'professionalVerification.legacyReviewRequired': true,
+                'professionalVerification.migrationVersion':
+                  existingVerification?.migrationVersion,
+              }
+              : {}),
+            'professionalVerification.reverificationInviteTokenHash': invitationTokenHash,
+            'professionalVerification.reverificationInviteIssuedBy': { $type: 'objectId' },
+            'professionalVerification.reverificationInviteIssuedAt': {
+              $type: 'date',
+              $lte: submittedAt,
+            },
+            'professionalVerification.reverificationInviteExpiresAt': { $gt: submittedAt },
+            'professionalVerification.reverificationInviteConsentVersion':
+              verificationConfig.onboardingConsentVersion,
+          }, {
+            $unset: {
+              'professionalVerification.reverificationInviteTokenHash': '',
+              'professionalVerification.reverificationInviteIssuedBy': '',
+              'professionalVerification.reverificationInviteIssuedAt': '',
+              'professionalVerification.reverificationInviteExpiresAt': '',
+              'professionalVerification.reverificationInviteConsentVersion': '',
+            },
+          }, { new: false, session: registrationSession })
+            .collation(COUNSELLOR_LICENSE_IDENTITY_COLLATION)
+            .select([
+              '+professionalVerification.reverificationInviteTokenHash',
+              '+professionalVerification.reverificationInviteIssuedBy',
+              '+professionalVerification.reverificationInviteIssuedAt',
+              '+professionalVerification.reverificationInviteExpiresAt',
+              '+professionalVerification.reverificationInviteConsentVersion',
+            ].join(' '));
+          if (!recoveredCounsellor) {
+            throw new CounsellorRegistrationError(
+              'A counsellor application cannot be accepted for the supplied identity.',
+              { code: 'REVERIFICATION_AUTHORIZATION_INVALID' }
+            );
+          }
+          reverificationAuthorization = {
+            tokenHash: recoveredCounsellor.professionalVerification
+              .reverificationInviteTokenHash,
+            issuedBy: recoveredCounsellor.professionalVerification
+              .reverificationInviteIssuedBy,
+            issuedAt: recoveredCounsellor.professionalVerification
+              .reverificationInviteIssuedAt,
+            expiresAt: recoveredCounsellor.professionalVerification
+              .reverificationInviteExpiresAt,
+            consentVersion: recoveredCounsellor.professionalVerification
+              .reverificationInviteConsentVersion,
+            redeemedAt: submittedAt,
+          };
+        }
+
+        application = new PendingApplication({
+          firstName, lastName, email, phone, dateOfBirth, gender,
+          licenseNumber, specialization,
+          specializations: specializations || [specialization],
+          experience, bio, languages, hourlyRate,
+          currency: currency || 'INR',
+          education: education || [],
+          certifications: certifications || [],
+          availability: defaultAvailability,
+          statusLookupTokenHash: crypto.createHash('sha256').update(statusTicket).digest('hex'),
+          status: 'submitted',
+          onboardingConsent: {
+            accepted: true,
+            version: verificationConfig.onboardingConsentVersion,
+            acceptedAt: submittedAt,
+            source: recoveredCounsellor
+              ? 'counsellor_web_reverification'
+              : 'counsellor_web_registration',
+          },
+          linkedUser: recoveredCounsellor
+            ? existingCounsellorUserByEmail._id
+            : null,
+          linkedCounsellor: recoveredCounsellor
+            ? recoveredCounsellor._id
+            : null,
+          supersedesApplication: previousApplication?._id || null,
+          reverificationAuthorization,
+          legacyReviewRequired: false,
+          statusHistory: [{
+            from: 'draft',
+            to: 'submitted',
+            at: submittedAt,
+            actorType: 'applicant',
+            actor: null,
+            reason: null,
+          }],
+        });
+
+        await application.save({ session: registrationSession });
+      }, COUNSELLOR_REGISTRATION_TRANSACTION_OPTIONS);
+    } finally {
+      await registrationSession.endSession();
+    }
 
     res.status(201).json({
       success: true,
-      message: 'Registration submitted successfully. Your profile is under review by our admin team. You will receive your login credentials once approved.',
-      data: { applicationId: application._id, email: application.email, statusTicket }
+      message: 'Application submitted successfully. Professional approval and account activation remain separate review steps.',
+      data: {
+        applicationId: application._id,
+        email: application.email,
+        status: application.status,
+        statusTicket
+      }
     });
 
   } catch (error) {
+    if (error instanceof CounsellorRegistrationError) {
+      return res.status(error.status).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        code: 'COUNSELLOR_APPLICATION_ALREADY_ACTIVE',
+        message: 'An active counsellor application already exists for this identity or declared license.',
+      });
+    }
     console.error('Counsellor registration error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Internal server error'
     });

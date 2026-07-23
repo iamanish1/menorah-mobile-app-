@@ -111,6 +111,15 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  marketplaceAssignmentFence: {
+    type: Number,
+    default: 0,
+    min: 0,
+    validate: {
+      validator: Number.isSafeInteger,
+      message: 'Marketplace assignment fence must be a safe integer'
+    }
+  },
   lastSessionRevokedAt: {
     type: Date,
     default: null,
