@@ -13,9 +13,9 @@ const compose = YAML.parse(read('deploy/docker-compose.production.yml'));
 const backendEnv = compose['x-backend-env'];
 assert.equal(backendEnv.MEDIA_STORAGE_BACKEND, '${MEDIA_STORAGE_BACKEND:-local}');
 assert.equal(backendEnv.UPLOAD_PATH, '/app/uploads');
-assert.match(
+assert.equal(
   backendEnv.MEDIA_PUBLIC_BASE_URL,
-  /^\$\{MEDIA_PUBLIC_BASE_URL:-https:\/\/\$\{API_WEB_DOMAIN:/
+  '${MEDIA_PUBLIC_BASE_URL:?MEDIA_PUBLIC_BASE_URL is required}'
 );
 
 const writerServices = ['api-ios', 'api-android', 'api-web', 'api-admin', 'worker'];
