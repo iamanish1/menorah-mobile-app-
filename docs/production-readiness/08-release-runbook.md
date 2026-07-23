@@ -141,7 +141,9 @@ The reviewed script must:
 3. detach at the reviewed SHA and validate rollback-compatible loopback
    endpoints, the existing application network/static address, exact runtime
    directory ownership/modes and existing managed MongoDB identity safety
-   without writes, reporting candidate-managed identities that are absent;
+   without writes, authenticating configured credentials and reporting
+   candidate-managed identities that are absent; atomically create and
+   authenticate only a missing backup identity before backup;
 4. create a fresh manual backup, verify it and restore that exact archive into
    the isolated restore-test database;
 5. verify host backup/restore timers and retire unsupported continuous backup
@@ -156,9 +158,11 @@ The reviewed script must:
    the shared namespace without deleting predecessor copies, and preserve a
    checksum-bound transition manifest;
 10. write the identity-reconciliation marker, idempotently create missing
-    candidate-managed identities, reconcile exact MongoDB roles without routine
-    password rotation, validate the separate least-privilege monitoring
-    identity, and clear the marker only after the complete identity set passes;
+     candidate-managed identities, reconcile exact MongoDB roles without routine
+     password rotation, validate the separate least-privilege monitoring
+     identity, and clear the marker only after the complete identity set passes;
+     candidate programs use cleaned mode-0600 `mongosh --file` execution so
+     script errors cannot be swallowed by stdin REPL behavior;
 11. write the migration-in-progress marker and run the approved migration once
     using the checksum-recorded candidate API image identity, with pulling and
     rebuilding disabled;
@@ -173,10 +177,14 @@ The reviewed script must:
     and retain the completed release record, backup identity, migration state,
     media evidence, artifact checksum and health result.
 
-The identity-provisioning/reconciliation order is security-critical: an
-identity or role change cannot race active writers, and monitoring access must
-be proven before migration. Release-workflow regression tests must reject moving it before the
-writer-stop boundary or after migration.
+The identity-provisioning/reconciliation order is security-critical: the
+pre-backup scope can create only one atomic backup user and immediately proves
+its configured credential. Every other identity or role change cannot race
+active writers, and monitoring access must be proven before migration. An
+interrupted full create or role update retains its durable recovery marker;
+changed credential inputs fail closed on retry. Release-workflow regression
+tests must reject moving the full boundary before writer-stop or after
+migration.
 
 ## Monitoring-specific post-start checks
 

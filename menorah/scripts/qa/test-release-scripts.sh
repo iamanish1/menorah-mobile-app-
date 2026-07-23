@@ -511,6 +511,44 @@ EOF
     || fail "MongoDB tool wrapper did not remove its ephemeral config"
 }
 
+test_media_verifier_credentials_stay_out_of_compose_argv() {
+  local script expected_assignment
+
+  for script in \
+    "${REPO_ROOT}/deploy/ubuntu/backup-now.sh" \
+    "${REPO_ROOT}/deploy/ubuntu/restore-latest-backup.sh"; do
+    if grep -Eq -- "-e[[:space:]]+[\"']?MEDIA_VERIFY_MONGODB_URI=" "${script}"; then
+      fail "$(basename "${script}") exposed its credential-bearing media verification URI in Compose argv"
+    fi
+    grep -F -- "-e MEDIA_VERIFY_MONGODB_URI" "${script}" >/dev/null \
+      || fail "$(basename "${script}") did not use value-free Compose environment inheritance"
+  done
+
+  expected_assignment='MEDIA_VERIFY_MONGODB_URI="${MONGODB_BACKUP_URI}"'
+  grep -F -- "${expected_assignment}" "${REPO_ROOT}/deploy/ubuntu/backup-now.sh" >/dev/null \
+    || fail "backup media verification did not supply its URI through the Compose process environment"
+  expected_assignment='MEDIA_VERIFY_MONGODB_URI="${uri}"'
+  grep -F -- "${expected_assignment}" "${REPO_ROOT}/deploy/ubuntu/restore-latest-backup.sh" >/dev/null \
+    || fail "restore media verification did not supply its URI through the Compose process environment"
+}
+
+test_production_smoke_credentials_stay_out_of_docker_argv() {
+  local script="${REPO_ROOT}/scripts/qa/run-production-chat-call-smoke.sh"
+
+  if grep -Eq -- "-e[[:space:]]+[\"']?QA_(PASSWORD|FIXTURE_JSON|RUN_ID)=" "${script}"; then
+    fail "production chat/call smoke exposed credential or fixture values in Docker argv"
+  fi
+  if grep -Eq -- "process\.argv[^\n]*fixture_json|node -e[^\n]*\"\$fixture_json\"" "${script}"; then
+    fail "production chat/call smoke exposed fixture data in Node argv"
+  fi
+  grep -F -- 'JSON.parse(process.env.QA_FIXTURE_JSON_TO_VALIDATE)' "${script}" >/dev/null \
+    || fail "production chat/call smoke did not validate fixture JSON through process environment"
+  for variable in QA_PASSWORD QA_FIXTURE_JSON QA_FIXTURE_ACTION QA_RUN_ID; do
+    grep -Eq -- "-e[[:space:]]+${variable}([[:space:]]|\\\\$)" "${script}" \
+      || fail "production chat/call smoke did not inherit ${variable} value-free"
+  done
+}
+
 test_interrupted_rollback_reuses_durable_target() {
   local fixture_repo="${TMP_ROOT}/rollback-retry-repo"
   local state_dir="${TMP_ROOT}/rollback-retry-state"
@@ -1007,6 +1045,8 @@ test_partial_identity_reconciliation_rollback_is_blocked
 test_interrupted_release_rollback_uses_current_artifacts
 test_recorded_migration_refuses_tag_drift
 test_mongo_tool_credentials_stay_out_of_argv
+test_media_verifier_credentials_stay_out_of_compose_argv
+test_production_smoke_credentials_stay_out_of_docker_argv
 test_interrupted_rollback_reuses_durable_target
 test_release_state_marker_ordering
 test_resume_accepts_proven_applied_interruption

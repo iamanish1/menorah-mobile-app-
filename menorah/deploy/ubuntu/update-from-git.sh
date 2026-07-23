@@ -192,6 +192,8 @@ run_candidate_mongo_program() {
   local program_path="$1"
   local mode_variable="$2"
   local mode_value="$3"
+  local extra_variable="${4:-}"
+  local extra_value="${5:-}"
   local key
   local -a env_args=()
 
@@ -199,28 +201,50 @@ run_candidate_mongo_program() {
     env_args+=(-e "${key}")
   done
   env_args+=(-e "${mode_variable}=${mode_value}")
+  if [[ -n "${extra_variable}" ]]; then
+    env_args+=(-e "${extra_variable}=${extra_value}")
+  fi
 
-  # Authenticate from environment variables inside mongosh. The candidate
-  # program is appended on stdin, so neither the root password nor a
-  # credential-bearing URI is exposed through the process argument vector.
+  # Authenticate from environment variables inside mongosh. The candidate is
+  # staged mode-0600 inside the database container and executed in --file mode
+  # so script exceptions propagate nonzero without exposing credentials in argv.
   {
     printf '%s\n' \
       'db = connect("mongodb://mongo-primary:27017/admin?authSource=admin", process.env.MONGO_ROOT_USER, process.env.MONGO_ROOT_PASSWORD);'
     cat -- "${program_path}"
-  } | compose_cmd exec -T "${env_args[@]}" mongo-primary mongosh --nodb --quiet
+  } | compose_cmd exec -T "${env_args[@]}" mongo-primary sh -ceu '
+    umask 077
+    script_file="$(mktemp /tmp/menorah-managed-mongo.XXXXXXXX.js)"
+    cleanup() { rm -f -- "${script_file}"; }
+    trap cleanup EXIT
+    chmod 0600 "${script_file}"
+    cat > "${script_file}"
+    mongosh --nodb --quiet --file "${script_file}"
+  '
 }
 
 run_managed_mongo_bootstrap() {
   local mode="${1:-apply}"
+  local scope="${2:-all}"
+
+  case "${scope}" in
+    all|backup-only) ;;
+    *)
+      echo "Unknown managed MongoDB bootstrap scope: ${scope}" >&2
+      return 1
+      ;;
+  esac
 
   case "${mode}" in
     preflight)
       run_candidate_mongo_program \
-        "${DEPLOY_DIR}/mongo/create-users.js" MONGO_BOOTSTRAP_DRY_RUN true
+        "${DEPLOY_DIR}/mongo/create-users.js" MONGO_BOOTSTRAP_DRY_RUN true \
+        MONGO_BOOTSTRAP_SCOPE "${scope}"
       ;;
     apply)
       run_candidate_mongo_program \
-        "${DEPLOY_DIR}/mongo/create-users.js" MONGO_BOOTSTRAP_DRY_RUN ''
+        "${DEPLOY_DIR}/mongo/create-users.js" MONGO_BOOTSTRAP_DRY_RUN '' \
+        MONGO_BOOTSTRAP_SCOPE "${scope}"
       ;;
     *)
       echo "Unknown managed MongoDB bootstrap mode: ${mode}" >&2
@@ -1184,6 +1208,11 @@ if [[ -n "${MONGO_BOOTSTRAP_DRY_RUN:-}" ]]; then
   echo "The updater controls its read-only bootstrap preflight and maintenance provisioning modes." >&2
   exit 1
 fi
+if [[ -n "${MONGO_BOOTSTRAP_SCOPE:-}" ]]; then
+  echo "Routine releases must leave MONGO_BOOTSTRAP_SCOPE unset." >&2
+  echo "The updater controls the atomic backup-identity and full managed-identity scopes." >&2
+  exit 1
+fi
 validate_loopback_port_values
 validate_candidate_runtime_directories
 
@@ -1394,8 +1423,11 @@ echo "Validating the candidate monitoring identity and delivery evidence..."
 validate_monitoring_release_config
 echo "Validating existing app_net compatibility before any candidate container is created..."
 validate_existing_app_network
-echo "Checking existing managed MongoDB identities and role drift without writes..."
-run_managed_mongo_bootstrap preflight
+echo "Checking existing managed MongoDB identities, roles, and configured credentials without writes..."
+run_managed_mongo_bootstrap preflight all
+echo "Ensuring the atomic backup identity exists before the mandatory backup..."
+run_managed_mongo_bootstrap apply backup-only
+run_managed_mongo_bootstrap preflight backup-only
 
 RELEASE_METADATA="${RELEASE_STATE_DIR}/${NEW_SHA}.json"
 IMAGE_MANIFEST="${RELEASE_STATE_DIR}/${NEW_SHA}.images"

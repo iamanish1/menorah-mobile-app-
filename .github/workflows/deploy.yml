@@ -78,6 +78,7 @@ jobs:
           npm run test:backup-lifecycle
           npm run test:monitoring
           bash test-release-scripts.sh
+          bash test-mongosh-file-mode.sh
 
       - name: Validate production Compose configuration
         run: bash menorah/deploy/ubuntu/validate-compose.sh

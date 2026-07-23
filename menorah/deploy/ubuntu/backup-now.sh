@@ -220,9 +220,11 @@ node "${REPO_ROOT}/menorah/backend/src/scripts/media-manifest.js" create \
   --manifest "${UPLOADS_MANIFEST}"
 
 if [[ "${NODE_ENV:-}" == "production" ]]; then
+  # Value-free -e inherits the URI without exposing it in Docker/Compose argv.
+  MEDIA_VERIFY_MONGODB_URI="${MONGODB_BACKUP_URI}" \
   compose_cmd --profile backup-job run --rm --no-deps -T \
     --user "${BACKUP_RUN_AS}" \
-    -e "MEDIA_VERIFY_MONGODB_URI=${MONGODB_BACKUP_URI}" \
+    -e MEDIA_VERIFY_MONGODB_URI \
     -v "${MEDIA_SNAPSHOT_ROOT}/uploads:/media-snapshot/uploads:ro" \
     -v "${OUT_DIR}/metadata:/media-output" \
     media-verifier \

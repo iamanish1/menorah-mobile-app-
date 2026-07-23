@@ -81,8 +81,12 @@ requireSafeEnvironment();
 
 const admin = db.getSiblingDB('admin');
 const dryRunInput = process.env.MONGO_BOOTSTRAP_DRY_RUN || '';
+const scopeInput = process.env.MONGO_BOOTSTRAP_SCOPE || 'all';
 if (dryRunInput && dryRunInput !== 'true') {
   throw new Error('MONGO_BOOTSTRAP_DRY_RUN has an invalid value');
+}
+if (!['all', 'backup-only'].includes(scopeInput)) {
+  throw new Error('MONGO_BOOTSTRAP_SCOPE has an invalid value');
 }
 const dryRun = dryRunInput === 'true';
 const root = {
@@ -118,6 +122,31 @@ const managed = Object.freeze([
   },
 ]);
 
+const verifyConfiguredCredential = (identity) => {
+  try {
+    const credentialDb = connect(
+      'mongodb://127.0.0.1:27017/admin?authSource=admin',
+      identity.user,
+      identity.pwd
+    );
+    const status = credentialDb.runCommand({ connectionStatus: 1, showPrivileges: false });
+    const authenticatedUsers = status?.authInfo?.authenticatedUsers || [];
+    if (
+      status?.ok !== 1
+      || !authenticatedUsers.some(({ user, db: authDb }) => (
+        user === identity.user && authDb === 'admin'
+      ))
+    ) {
+      throw new Error('credential verification failed');
+    }
+  } catch {
+    throw new Error(
+      'A managed MongoDB identity does not authenticate with its configured credential; '
+      + 'bootstrap made no further changes'
+    );
+  }
+};
+
 const existingRoot = admin.getUser(root.user);
 if (!existingRoot || !rolesMatchExactly(existingRoot.roles, root.roles)) {
   throw new Error(
@@ -135,19 +164,24 @@ for (const identity of managed) {
       + 'bootstrap made no changes'
     );
   }
+  if (existing) verifyConfiguredCredential(identity);
 }
 
 const missing = managed.filter((identity) => !existingByUser.get(identity.user));
+const scopedMissing = scopeInput === 'backup-only'
+  ? missing.filter((identity) => identity.user === process.env.MONGO_BACKUP_USER)
+  : missing;
 if (dryRun) {
   print(
-    `MongoDB managed-identity bootstrap preflight complete (${missing.length} missing, `
-    + `${managed.length - missing.length} unchanged; no changes made).`
+    `MongoDB managed-identity bootstrap preflight complete (${scopedMissing.length} in-scope missing, `
+    + `${managed.length - missing.length} existing credentials verified; no changes made).`
   );
 } else {
   let created = 0;
   try {
-    for (const identity of missing) {
+    for (const identity of scopedMissing) {
       admin.createUser(identity);
+      verifyConfiguredCredential(identity);
       created += 1;
     }
   } catch {
@@ -158,10 +192,17 @@ if (dryRun) {
 
   for (const identity of managed) {
     const persisted = admin.getUser(identity.user);
-    if (!persisted || !rolesMatchExactly(persisted.roles, identity.roles)) {
+    const mustExist = scopeInput === 'all'
+      || identity.user === process.env.MONGO_BACKUP_USER
+      || existingByUser.has(identity.user) && Boolean(existingByUser.get(identity.user));
+    if (mustExist && (!persisted || !rolesMatchExactly(persisted.roles, identity.roles))) {
       throw new Error('MongoDB identity bootstrap verification failed');
     }
+    if (persisted) verifyConfiguredCredential(identity);
   }
 
-  print(`MongoDB managed-identity bootstrap complete (${created} created, ${managed.length - created} unchanged).`);
+  print(
+    `MongoDB managed-identity bootstrap complete (${created} in-scope created, `
+    + `${managed.length - missing.length} existing credentials verified).`
+  );
 }

@@ -203,9 +203,12 @@ changes while application writers are active.
 4. Configure all ten managed MongoDB identity variables and the dedicated
    monitoring URI as documented in `monitoring-alert-runbook.md`; do not run an
    ad hoc creation command. The updater's pre-maintenance bootstrap dry-run is
-   read-only: it rejects unsafe existing-role drift and reports missing
-   candidate-managed identities. Only the guarded, writer-stopped maintenance
-   boundary may create them after durable recovery state exists.
+   read-only: it rejects unsafe existing-role or configured-credential drift
+   and reports missing candidate-managed identities. Before the mandatory
+   backup, the guarded updater may atomically create and authenticate only the
+   missing backup identity. Every other missing identity is created only at the
+   guarded, writer-stopped maintenance boundary after durable recovery state
+   exists.
 
 ### One-time guarded-tooling adoption
 
@@ -266,7 +269,9 @@ The guarded script:
    no public predecessor. The updater then checks out the candidate detached.
 4. Validates the existing `app_net` labels/subnet/address and preflights
    existing managed MongoDB identities read-only before maintenance, rejecting
-   role drift while safely identifying identities the candidate must add.
+   role or configured-credential drift while safely identifying identities the
+   candidate must add. It atomically creates and authenticates only a missing
+   backup identity so first adoption cannot deadlock before the backup.
 5. Creates a fresh manual backup, restores that exact archive into the isolated
    restore-test database, verifies backup health and checksum, then records the
    archive identity.
@@ -281,9 +286,12 @@ The guarded script:
    checksum-protected manifest.
 8. Stops and verifies every API/worker writer. It collision-checks and copies
    legacy media without deleting predecessor files, records checksummed media
-   evidence, then writes the identity marker, creates missing candidate-managed
-   identities idempotently, and reconciles exact MongoDB roles. The marker
-   remains if any non-transactional create/update is incomplete.
+   evidence, then writes the identity marker, creates any remaining
+   candidate-managed identities idempotently, authenticates the configured
+   credentials, and reconciles exact MongoDB roles. The marker remains if any
+   non-transactional create/update is incomplete or credential verification
+   fails. Candidate MongoDB programs execute from a cleaned mode-0600 file so
+   parse errors and uncaught exceptions propagate as release failures.
 9. Writes `migration-in-progress-sha`, verifies the checksum-recorded `api-web`
    image ID and refuses mutable-tag drift, then runs the approved migration once
    with an image-ID Compose override and `--pull never`. After the command

@@ -72,28 +72,47 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 const buildHarness = ({
   env = buildEnv(),
   users = {},
+  credentials = {},
   failCreateAt = null,
   failUpdateAt = null,
   applyUpdates = true,
 } = {}) => {
+  const configuredPasswordByUser = new Map([
+    [env.MONGO_ROOT_USER, env.MONGO_ROOT_PASSWORD],
+    [env.MONGO_APP_USER, env.MONGO_APP_PASSWORD],
+    [env.MONGO_BACKUP_USER, env.MONGO_BACKUP_PASSWORD],
+    [env.MONGO_RESTORE_USER, env.MONGO_RESTORE_PASSWORD],
+    [env.MONGO_MONITOR_USER, env.MONGO_MONITOR_PASSWORD],
+  ]);
   const storedUsers = new Map(
-    Object.entries(users).map(([user, roles]) => [user, { user, roles: clone(roles) }])
+    Object.entries(users).map(([user, roles]) => [user, {
+      user,
+      roles: clone(roles),
+      pwd: credentials[user] ?? configuredPasswordByUser.get(user),
+    }])
   );
   const createCalls = [];
+  const connectCalls = [];
   const updateCalls = [];
   const getCalls = [];
   const output = [];
   const admin = {
     getUser(user) {
       getCalls.push(user);
-      return storedUsers.has(user) ? clone(storedUsers.get(user)) : null;
+      if (!storedUsers.has(user)) return null;
+      const stored = storedUsers.get(user);
+      return clone({ user: stored.user, roles: stored.roles });
     },
     createUser(spec) {
       createCalls.push(clone(spec));
       if (failCreateAt === createCalls.length) {
         throw new Error(`database failure included ${spec.pwd}`);
       }
-      storedUsers.set(spec.user, { user: spec.user, roles: clone(spec.roles) });
+      storedUsers.set(spec.user, {
+        user: spec.user,
+        roles: clone(spec.roles),
+        pwd: spec.pwd,
+      });
     },
     updateUser(user, update) {
       updateCalls.push({ user, update: clone(update) });
@@ -101,7 +120,12 @@ const buildHarness = ({
         throw new Error(`database failure included ${update.pwd}`);
       }
       if (applyUpdates) {
-        storedUsers.set(user, { user, roles: clone(update.roles) });
+        const previous = storedUsers.get(user);
+        storedUsers.set(user, {
+          user,
+          roles: clone(update.roles),
+          pwd: update.pwd ?? previous?.pwd,
+        });
       }
     },
   };
@@ -115,11 +139,27 @@ const buildHarness = ({
     print(value) {
       output.push(String(value));
     },
+    connect(uri, user, password) {
+      connectCalls.push({ uri, user });
+      assert.equal(uri, 'mongodb://127.0.0.1:27017/admin?authSource=admin');
+      const stored = storedUsers.get(user);
+      if (!stored || stored.pwd !== password) throw new Error('authentication failed');
+      return {
+        runCommand(command) {
+          assert.equal(command.connectionStatus, 1);
+          return {
+            ok: 1,
+            authInfo: { authenticatedUsers: [{ user, db: 'admin' }] },
+          };
+        },
+      };
+    },
     process: { env: { ...env } },
   };
 
   return {
     context,
+    connectCalls,
     createCalls,
     env,
     getCalls,
@@ -204,7 +244,7 @@ test('bootstrap leaves a complete exact identity set unchanged', () => {
 
   assert.equal(harness.createCalls.length, 0);
   assert.equal(harness.updateCalls.length, 0);
-  assert.match(harness.output.join('\n'), /0 created, 4 unchanged/);
+  assert.match(harness.output.join('\n'), /0 in-scope created, 4 existing credentials verified/);
   assertNoCredentialLeak(harness);
 });
 
@@ -219,7 +259,7 @@ test('bootstrap preflight reports missing identities without creating them', () 
   assert.equal(harness.createCalls.length, 0);
   assert.equal(harness.updateCalls.length, 0);
   assert.equal(harness.storedUsers.size, 1);
-  assert.match(harness.output.join('\n'), /4 missing, 0 unchanged; no changes made/);
+  assert.match(harness.output.join('\n'), /4 in-scope missing, 0 existing credentials verified; no changes made/);
   assertNoCredentialLeak(harness);
 });
 
@@ -233,8 +273,77 @@ test('bootstrap preflight validates a complete exact identity set without writes
 
   assert.equal(harness.createCalls.length, 0);
   assert.equal(harness.updateCalls.length, 0);
-  assert.match(harness.output.join('\n'), /0 missing, 4 unchanged; no changes made/);
+  assert.match(harness.output.join('\n'), /0 in-scope missing, 4 existing credentials verified; no changes made/);
   assertNoCredentialLeak(harness);
+});
+
+test('backup-only bootstrap atomically provisions only the identity needed by the mandatory backup', () => {
+  const harness = buildHarness({
+    env: { ...buildEnv(), MONGO_BOOTSTRAP_SCOPE: 'backup-only' },
+    users: { 'root-user': EXPECTED_IDENTITIES['root-user'] },
+  });
+
+  execute('create', harness);
+
+  assert.deepEqual(harness.createCalls.map(({ user }) => user), ['backup-user']);
+  assert.deepEqual(harness.storedUsers.get('backup-user').roles, EXPECTED_IDENTITIES['backup-user']);
+  assert.equal(harness.storedUsers.has('app-user'), false);
+  assert.equal(harness.storedUsers.has('restore-user'), false);
+  assert.equal(harness.storedUsers.has('monitor-user'), false);
+  assert.match(harness.output.join('\n'), /1 in-scope created/);
+  assertNoCredentialLeak(harness);
+});
+
+test('bootstrap rejects a configured credential mismatch before creating another identity', () => {
+  const users = exactUsers();
+  delete users['monitor-user'];
+  const harness = buildHarness({
+    users,
+    credentials: { 'app-user': `previous-app-${'p'.repeat(40)}` },
+  });
+
+  const error = captureError(() => execute('create', harness));
+
+  assert.match(error.message, /does not authenticate with its configured credential/);
+  assert.equal(harness.createCalls.length, 0);
+  assertNoCredentialLeak(harness, error);
+});
+
+test('partial bootstrap retry fails closed if the configured credential set changed', () => {
+  const firstAttempt = buildHarness({
+    users: { 'root-user': EXPECTED_IDENTITIES['root-user'] },
+    failCreateAt: 3,
+  });
+  const firstError = captureError(() => execute('create', firstAttempt));
+  assert.match(firstError.message, /initialization may be partial/);
+  assert.deepEqual(
+    firstAttempt.createCalls.map(({ user }) => user),
+    ['app-user', 'backup-user', 'restore-user']
+  );
+
+  const changedEnv = {
+    ...buildEnv(),
+    MONGO_BACKUP_PASSWORD: `changed-backup-${'c'.repeat(40)}`,
+  };
+  const retry = buildHarness({
+    env: changedEnv,
+    users: {
+      'root-user': EXPECTED_IDENTITIES['root-user'],
+      'app-user': EXPECTED_IDENTITIES['app-user'],
+      'backup-user': EXPECTED_IDENTITIES['backup-user'],
+    },
+    credentials: {
+      'app-user': buildEnv().MONGO_APP_PASSWORD,
+      'backup-user': buildEnv().MONGO_BACKUP_PASSWORD,
+    },
+  });
+
+  const retryError = captureError(() => execute('create', retry));
+
+  assert.match(retryError.message, /does not authenticate with its configured credential/);
+  assert.equal(retry.createCalls.length, 0);
+  assertNoCredentialLeak(firstAttempt, firstError);
+  assertNoCredentialLeak(retry, retryError);
 });
 
 test('bootstrap rejects an existing role mismatch before creating anything', () => {
@@ -396,6 +505,21 @@ test('bootstrap rejects any non-exact dry-run value before DB access', () => {
   const error = captureError(() => execute('create', harness));
 
   assert.match(error.message, /MONGO_BOOTSTRAP_DRY_RUN has an invalid value/);
+  assert.equal(harness.getCalls.length, 0);
+  assert.equal(harness.createCalls.length, 0);
+  assert.equal(harness.updateCalls.length, 0);
+  assertNoCredentialLeak(harness, error);
+});
+
+test('bootstrap rejects any externally invented scope before DB access', () => {
+  const harness = buildHarness({
+    env: { ...buildEnv(), MONGO_BOOTSTRAP_SCOPE: 'backup-and-app' },
+    users: exactUsers(),
+  });
+
+  const error = captureError(() => execute('create', harness));
+
+  assert.match(error.message, /MONGO_BOOTSTRAP_SCOPE has an invalid value/);
   assert.equal(harness.getCalls.length, 0);
   assert.equal(harness.createCalls.length, 0);
   assert.equal(harness.updateCalls.length, 0);

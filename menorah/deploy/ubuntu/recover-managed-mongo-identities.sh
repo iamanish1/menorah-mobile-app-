@@ -69,19 +69,31 @@ stop_and_verify_writers() {
 }
 
 run_candidate_mongo_program() {
-  local repository_path="$1" mode_variable="$2" mode_value="$3" key
+  local repository_path="$1" mode_variable="$2" mode_value="$3"
+  local extra_variable="${4:-}" extra_value="${5:-}" key
   local -a env_args=()
 
   for key in "${MONGO_MANAGED_ENV_KEYS[@]}"; do
     env_args+=(-e "${key}")
   done
   env_args+=(-e "${mode_variable}=${mode_value}")
+  if [[ -n "${extra_variable}" ]]; then
+    env_args+=(-e "${extra_variable}=${extra_value}")
+  fi
 
   {
     printf '%s\n' \
       'db = connect("mongodb://mongo-primary:27017/admin?authSource=admin", process.env.MONGO_ROOT_USER, process.env.MONGO_ROOT_PASSWORD);'
     git -C "${REPO_ROOT}" cat-file blob "${RECOVERY_SHA}:${repository_path}"
-  } | compose_cmd exec -T "${env_args[@]}" mongo-primary mongosh --nodb --quiet
+  } | compose_cmd exec -T "${env_args[@]}" mongo-primary sh -ceu '
+    umask 077
+    script_file="$(mktemp /tmp/menorah-managed-mongo.XXXXXXXX.js)"
+    cleanup() { rm -f -- "${script_file}"; }
+    trap cleanup EXIT
+    chmod 0600 "${script_file}"
+    cat > "${script_file}"
+    mongosh --nodb --quiet --file "${script_file}"
+  '
 }
 
 run_bootstrap() {
@@ -89,11 +101,13 @@ run_bootstrap() {
   case "${mode}" in
     preflight)
       run_candidate_mongo_program \
-        menorah/deploy/mongo/create-users.js MONGO_BOOTSTRAP_DRY_RUN true
+        menorah/deploy/mongo/create-users.js MONGO_BOOTSTRAP_DRY_RUN true \
+        MONGO_BOOTSTRAP_SCOPE all
       ;;
     apply)
       run_candidate_mongo_program \
-        menorah/deploy/mongo/create-users.js MONGO_BOOTSTRAP_DRY_RUN ''
+        menorah/deploy/mongo/create-users.js MONGO_BOOTSTRAP_DRY_RUN '' \
+        MONGO_BOOTSTRAP_SCOPE all
       ;;
     *)
       echo "Unknown managed MongoDB bootstrap recovery mode: ${mode}" >&2
@@ -214,8 +228,9 @@ set -a
 set +a
 [[ -z "${MONGO_ROTATE_CREDENTIALS_CONFIRM:-}" \
   && -z "${MONGO_RECONCILE_DRY_RUN:-}" \
-  && -z "${MONGO_BOOTSTRAP_DRY_RUN:-}" ]] || {
-  echo "Routine identity recovery requires rotation and bootstrap/reconciliation dry-run overrides to be unset." >&2
+  && -z "${MONGO_BOOTSTRAP_DRY_RUN:-}" \
+  && -z "${MONGO_BOOTSTRAP_SCOPE:-}" ]] || {
+  echo "Routine identity recovery requires rotation and bootstrap scope/dry-run overrides to be unset." >&2
   exit 1
 }
 for key in "${MONGO_MANAGED_ENV_KEYS[@]}"; do

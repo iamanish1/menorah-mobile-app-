@@ -33,9 +33,11 @@ https://www.mongodb.com/docs/database-tools/mongorestore/mongorestore-behavior-a
 1. it validates every input before accessing MongoDB;
 2. it requires Docker's root bootstrap to have already created the exact root
    identity;
-3. it preflights all existing managed identities;
+3. it authenticates every existing managed identity with the configured
+   credential and preflights its exact roles;
 4. it creates only missing managed identities; and
-5. it verifies exact roles afterward.
+5. it authenticates every newly created identity and verifies exact roles
+   afterward.
 
 It contains no `updateUser` path. Existing role drift or an unsafe partial
 state stops bootstrap without modifying existing users.
@@ -45,21 +47,32 @@ existing managed identity, reports how many identities are missing, and makes
 no changes. The guarded updater controls this flag and rejects an externally
 supplied value during a routine release.
 
+`MONGO_BOOTSTRAP_SCOPE=backup-only` is an internal guarded-updater channel. It
+can create at most the one backup identity needed by the mandatory release
+backup; a user creation is atomic and the script immediately proves the
+configured credential by authenticating. The updater rejects operator-supplied
+scope values. Full provisioning remains the default candidate/recovery scope.
+
 ## Existing-host adoption
 
 Do not create users with an ad hoc shell command. The guarded updater performs
 the bootstrap dry-run before maintenance, allowing missing candidate-managed
-identities but rejecting role drift. After the shared lock is held, all writers
-are stopped and verified, and the durable identity-recovery marker exists, it
-runs the create-only bootstrap to fill missing identities, reconciles exact
-roles, and validates the monitoring login. An interrupted boundary is resumed
-only with `recover-managed-mongo-identities.sh`, which repeats those idempotent
-steps and leaves writers stopped.
+identities but rejecting role or configured-credential drift. It then
+atomically creates only a missing backup identity and authenticates it before
+the mandatory backup. After all writers are stopped and verified and the
+durable identity-recovery marker exists, it runs the full create-only bootstrap
+to fill any other missing identities, reconciles exact roles, and validates the
+monitoring login. An interrupted full boundary is resumed only with
+`recover-managed-mongo-identities.sh`, which repeats those idempotent steps,
+fails closed if configured credentials changed, and leaves writers stopped.
 
 Root authentication is supplied to `mongosh` from environment variables via
-`connect(...)`, not password arguments. Backup/restore tools use an ephemeral
-mode-0600 `--config` file that is removed on exit. Never enable command tracing
-or capture environment values during either path.
+`connect(...)`, not password arguments. Candidate programs are written to an
+ephemeral mode-0600 file inside the MongoDB container and invoked with
+`mongosh --file`; this makes parse errors and uncaught exceptions return
+nonzero instead of being swallowed by stdin REPL mode. Backup/restore tools use
+an ephemeral mode-0600 `--config` file that is removed on exit. Never enable
+command tracing or capture environment values during either path.
 
 ## Routine role reconciliation
 

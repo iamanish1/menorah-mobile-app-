@@ -794,9 +794,11 @@ verify_staged_media_references() {
     uri="${MONGODB_RESTORE_TEST_URI:?MONGODB_RESTORE_TEST_URI is required}"
   fi
 
+  # Value-free -e inherits the URI without exposing it in Docker/Compose argv.
+  MEDIA_VERIFY_MONGODB_URI="${uri}" \
   compose_cmd --profile "${profile}" run --rm --no-deps -T \
     --user "$(id -u):$(id -g)" \
-    -e "MEDIA_VERIFY_MONGODB_URI=${uri}" \
+    -e MEDIA_VERIFY_MONGODB_URI \
     -v "${MEDIA_STAGING_ROOT}/uploads:/media-staged/uploads:ro" \
     -v "${SOURCE_UPLOADS_MANIFEST}:/media-staged/manifest.json:ro" \
     media-verifier \

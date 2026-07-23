@@ -207,11 +207,49 @@ test('rejects candidate-only validation before the exact candidate checkout', ()
   );
 });
 
+test('rejects provisioning the first-adoption backup identity after the mandatory backup', () => {
+  const applyCall = '\nrun_managed_mongo_bootstrap apply backup-only\n';
+  const verifyCall = '\nrun_managed_mongo_bootstrap preflight backup-only\n';
+  const backupCall = 'BACKUP_DEPLOYED_RELEASE_SHA="${PREVIOUS_SHA}" "${SCRIPT_DIR}/backup-now.sh" manual';
+  assert.ok(updateScript.includes(applyCall));
+  assert.ok(updateScript.includes(verifyCall));
+  assert.ok(updateScript.includes(backupCall));
+  const unsafe = updateScript
+    .replace(applyCall, '\n')
+    .replace(verifyCall, '\n')
+    .replace(backupCall, `${backupCall}${applyCall}${verifyCall}`);
+
+  assert.throws(
+    () => validateUpdateScript(unsafe),
+    /atomic backup-identity provisioning must run after checkout and before the mandatory backup/,
+  );
+});
+
+test('rejects relinquishing guarded control of MongoDB bootstrap scope', () => {
+  const unsafe = updateScript.replace(
+    'Routine releases must leave MONGO_BOOTSTRAP_SCOPE unset.',
+    'Operator-selected scope accepted.',
+  );
+  assert.notEqual(unsafe, updateScript);
+  assert.throws(
+    () => validateUpdateScript(unsafe),
+    /operator-supplied MongoDB bootstrap scope must be rejected/,
+  );
+});
+
 test('rejects MongoDB root credentials in updater process arguments', () => {
   const unsafe = `${updateScript}\nmongosh -p "$MONGO_ROOT_PASSWORD" --quiet\n`;
   assert.throws(
     () => validateUpdateScript(unsafe),
     /MongoDB root passwords must not enter process arguments/,
+  );
+});
+
+test('rejects candidate MongoDB programs executed through mongosh stdin REPL mode', () => {
+  const unsafe = `${updateScript}\nprintf x | compose_cmd exec -T mongo-primary mongosh --nodb --quiet\n`;
+  assert.throws(
+    () => validateUpdateScript(unsafe),
+    /must not run through mongosh stdin REPL mode/,
   );
 });
 
@@ -345,6 +383,26 @@ test('rejects migration execution in post-migration resume', () => {
 
 test('accepts the guarded managed MongoDB identity recovery workflow', () => {
   validateMongoIdentityRecovery(recoverMongoIdentitiesScript);
+});
+
+test('rejects a partial bootstrap scope in managed MongoDB identity recovery', () => {
+  const unsafe = recoverMongoIdentitiesScript.replaceAll(
+    'MONGO_BOOTSTRAP_SCOPE all',
+    'MONGO_BOOTSTRAP_SCOPE backup-only',
+  );
+  assert.notEqual(unsafe, recoverMongoIdentitiesScript);
+  assert.throws(
+    () => validateMongoIdentityRecovery(unsafe),
+    /managed-identity recovery must force the full bootstrap scope/,
+  );
+});
+
+test('rejects managed MongoDB recovery through mongosh stdin REPL mode', () => {
+  const unsafe = `${recoverMongoIdentitiesScript}\nprintf x | compose_cmd exec -T mongo-primary mongosh --nodb --quiet\n`;
+  assert.throws(
+    () => validateMongoIdentityRecovery(unsafe),
+    /must not run candidate programs through mongosh stdin REPL mode/,
+  );
 });
 
 test('accepts the ephemeral MongoDB Database Tools credential wrapper', () => {

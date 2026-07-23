@@ -98,13 +98,16 @@ and must never contain secrets.
 | `MONGODB_RETRY_WRITES` | O | Exact boolean consistent with replica-set/transaction requirements | No | DBA; transaction tests |
 | `MONGODB_MAX_POOL_SIZE`, `MONGODB_SERVER_SELECTION_TIMEOUT_MS`, `MONGODB_SOCKET_TIMEOUT_MS` | O | Positive decimal tuning values | No | DBA/platform; capacity evidence |
 | `MONGO_ROTATE_CREDENTIALS_CONFIRM` | C maintenance only | Must be unset for routine release; exact maintenance confirmation is documented in `menorah/deploy/mongo/README.md` | Sensitive | `INFRASTRUCTURE ACTION`; approved rotation record |
-| `MONGO_BOOTSTRAP_DRY_RUN`, `MONGO_RECONCILE_DRY_RUN` | C internal release channel only | The guarded updater sets exact read-only/apply modes and rejects operator-supplied values | No | Engineering/infrastructure; release-script evidence |
+| `MONGO_BOOTSTRAP_DRY_RUN`, `MONGO_BOOTSTRAP_SCOPE`, `MONGO_RECONCILE_DRY_RUN` | C internal release channel only | The guarded updater sets exact read-only/apply and atomic backup-only/full scope modes and rejects operator-supplied values | No | Engineering/infrastructure; release-script evidence |
 
 The root identity plus the four managed identities must use five pairwise
 distinct usernames and five pairwise distinct passwords under the
-bootstrap/reconciliation contract. Under the guarded writer-stop marker,
-create-only bootstrap may add missing candidate-managed identities; routine
-reconciliation changes roles only and must not rotate passwords.
+bootstrap/reconciliation contract. The guarded updater may atomically create
+and authenticate only a missing backup identity before its mandatory backup.
+Under the guarded writer-stop marker, create-only bootstrap may add all other
+missing candidate-managed identities; it authenticates configured credentials
+before continuing. Routine reconciliation changes roles only and must not
+rotate passwords.
 
 ## Encryption, audit, privacy and counsellor verification
 
@@ -267,6 +270,7 @@ reconciliation changes roles only and must not rotate passwords.
 | `MONGO_ROTATE_CREDENTIALS_CONFIRM` | U for routine release | Credential rotation is a separate quiesced maintenance workflow |
 | `MONGO_RECONCILE_DRY_RUN` | U for routine release | The guarded updater owns read-only preflight versus maintenance apply mode |
 | `MONGO_BOOTSTRAP_DRY_RUN` | U for routine release | The guarded updater owns missing-identity preflight versus guarded create-only apply mode |
+| `MONGO_BOOTSTRAP_SCOPE` | U for routine release | The guarded updater alone selects the atomic `backup-only` or full candidate/recovery scope |
 | `CADDY_HTTPS_PORT` | U | Retired; Tunnel traffic terminates at the reviewed internal HTTP listener and the updater rejects this legacy host binding |
 
 ## Internal and test-only environment channels

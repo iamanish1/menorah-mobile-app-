@@ -28,9 +28,11 @@ fixture_json=""
 cleanup() {
   local status=$?
   if [[ -n "$fixture_json" ]]; then
+    QA_FIXTURE_ACTION=cleanup \
+    QA_FIXTURE_JSON="$fixture_json" \
     docker exec \
-      -e QA_FIXTURE_ACTION=cleanup \
-      -e QA_FIXTURE_JSON="$fixture_json" \
+      -e QA_FIXTURE_ACTION \
+      -e QA_FIXTURE_JSON \
       "$api_container" node /tmp/menorah-qa-chat-call-fixture.js >/dev/null || \
       echo "WARNING: QA fixture cleanup needs attention. Run ID: $run_id" >&2
   fi
@@ -40,28 +42,39 @@ cleanup() {
 trap cleanup EXIT
 
 docker cp "$fixture_script" "$api_container:/tmp/menorah-qa-chat-call-fixture.js"
-fixture_json="$(docker exec \
-  -e QA_FIXTURE_ACTION=create \
-  -e QA_RUN_ID="$run_id" \
-  -e QA_PASSWORD="$password" \
-  "$api_container" node /tmp/menorah-qa-chat-call-fixture.js)"
+fixture_json="$(
+  QA_FIXTURE_ACTION=create \
+  QA_RUN_ID="$run_id" \
+  QA_PASSWORD="$password" \
+    docker exec \
+      -e QA_FIXTURE_ACTION \
+      -e QA_RUN_ID \
+      -e QA_PASSWORD \
+      "$api_container" node /tmp/menorah-qa-chat-call-fixture.js
+)"
 
-if ! node -e 'JSON.parse(process.argv[1])' "$fixture_json" >/dev/null 2>&1; then
+if ! QA_FIXTURE_JSON_TO_VALIDATE="$fixture_json" \
+  node -e 'JSON.parse(process.env.QA_FIXTURE_JSON_TO_VALIDATE)' >/dev/null 2>&1; then
   echo "The QA fixture returned an invalid reference." >&2
   exit 1
 fi
 
 echo "Running authenticated chat and WebRTC smoke with short-lived QA records."
+QA_FIXTURE_JSON="$fixture_json" \
+QA_PASSWORD="$password" \
+QA_API_WEB_URL="${QA_API_WEB_URL:-https://api-web.menorah.me}" \
+QA_CALL_API_URL="${QA_CALL_API_URL:-http://127.0.0.1:18082}" \
+QA_APP_URL="${QA_APP_URL:-https://app.menorah.me}" \
 docker run --rm \
   --network host \
   --shm-size=1gb \
   --user 0 \
   -v "$repo_root:/workspace:ro" \
   -w /workspace/scripts/qa \
-  -e QA_FIXTURE_JSON="$fixture_json" \
-  -e QA_PASSWORD="$password" \
-  -e QA_API_WEB_URL="${QA_API_WEB_URL:-https://api-web.menorah.me}" \
-  -e QA_CALL_API_URL="${QA_CALL_API_URL:-http://127.0.0.1:18082}" \
-  -e QA_APP_URL="${QA_APP_URL:-https://app.menorah.me}" \
+  -e QA_FIXTURE_JSON \
+  -e QA_PASSWORD \
+  -e QA_API_WEB_URL \
+  -e QA_CALL_API_URL \
+  -e QA_APP_URL \
   mcr.microsoft.com/playwright:v1.61.0-noble \
   node /workspace/scripts/qa/production-chat-call-smoke.js

@@ -196,6 +196,7 @@ function validateWorkflow(workflow, rawWorkflow) {
   requirePattern(runs, /npm run test:backup-lifecycle/, 'workflow must test backup lifecycle controls');
   requirePattern(runs, /npm run test:monitoring/, 'workflow must validate monitoring configuration');
   requirePattern(runs, /bash test-release-scripts\.sh/, 'workflow must run deterministic release script tests');
+  requirePattern(runs, /bash test-mongosh-file-mode\.sh/, 'workflow must prove mongosh file-mode exception propagation');
   requirePattern(runs, /validate-compose\.sh/, 'workflow must validate the production Compose render');
   requirePattern(runs, /bash -n/, 'workflow must validate release shell syntax');
 }
@@ -371,8 +372,20 @@ export function validateUpdateScript(script) {
   );
   const networkCompatibilityIndex = script.indexOf('\nvalidate_existing_app_network\n', checkoutIndex);
   const managedIdentityPreflightIndex = script.indexOf(
-    '\nrun_managed_mongo_bootstrap preflight\n',
+    '\nrun_managed_mongo_bootstrap preflight all\n',
     checkoutIndex,
+  );
+  const backupIdentityApplyIndex = script.indexOf(
+    '\nrun_managed_mongo_bootstrap apply backup-only\n',
+    managedIdentityPreflightIndex,
+  );
+  const backupIdentityVerifyIndex = script.indexOf(
+    '\nrun_managed_mongo_bootstrap preflight backup-only\n',
+    backupIdentityApplyIndex,
+  );
+  const mandatoryBackupIndex = script.indexOf(
+    '"${SCRIPT_DIR}/backup-now.sh" manual',
+    backupIdentityVerifyIndex,
   );
   const writersStoppedIndex = script.indexOf('DEPLOY_PHASE="writers-stopped"');
   const mediaTransitionIndex = script.indexOf(
@@ -402,8 +415,11 @@ export function validateUpdateScript(script) {
     checkoutIndex >= 0
       && checkoutIndex < networkCompatibilityIndex
       && networkCompatibilityIndex < managedIdentityPreflightIndex
-      && managedIdentityPreflightIndex < maintenanceIndex,
-    'candidate network and managed-identity preflights must run after checkout and before maintenance',
+      && managedIdentityPreflightIndex < backupIdentityApplyIndex
+      && backupIdentityApplyIndex < backupIdentityVerifyIndex
+      && backupIdentityVerifyIndex < mandatoryBackupIndex
+      && mandatoryBackupIndex < maintenanceIndex,
+    'candidate identity preflight and atomic backup-identity provisioning must run after checkout and before the mandatory backup and maintenance',
   );
   assert.ok(
     maintenanceIndex >= 0
@@ -419,8 +435,23 @@ export function validateUpdateScript(script) {
     /compose_cmd stop[^\n]+"\$\{WRITER_SERVICES\[@\]\}"\s+verify_writers_stopped\s+DEPLOY_PHASE="writers-stopped"[\s\S]*?consolidate-legacy-media\.sh[\s\S]*?write_marker_atomically "\$\{MONGO_IDENTITY_RECONCILIATION_MARKER\}"[\s\S]*?run_managed_mongo_bootstrap apply[\s\S]*?run_managed_mongo_reconciliation apply/,
     'writers must be verified stopped before media evidence and marked identity provisioning/reconciliation',
   );
+  requirePattern(
+    script,
+    /Routine releases must leave MONGO_BOOTSTRAP_SCOPE unset/,
+    'operator-supplied MongoDB bootstrap scope must be rejected',
+  );
   rejectPattern(script, /-p "\$MONGO_ROOT_PASSWORD"/, 'MongoDB root passwords must not enter process arguments');
   rejectPattern(script, /mongosh[^\n]*"\$MONGODB_/, 'credential-bearing MongoDB URIs must not enter process arguments');
+  requirePattern(
+    script,
+    /mktemp \/tmp\/menorah-managed-mongo\.[\s\S]*?trap cleanup EXIT[\s\S]*?chmod 0600 "\$\{script_file\}"[\s\S]*?mongosh --nodb --quiet --file "\$\{script_file\}"/,
+    'candidate MongoDB programs must use a cleaned mode-0600 file so exceptions propagate',
+  );
+  rejectPattern(
+    script,
+    /\|\s*compose_cmd exec[^\n]*mongo-primary mongosh --nodb --quiet/,
+    'candidate MongoDB programs must not run through mongosh stdin REPL mode',
+  );
   rejectPattern(script, /\bgit\s+-C\s+"\$\{REPO_ROOT\}"\s+pull\b/, 'release must not deploy an unreviewed moving branch tip');
   rejectPattern(script, /--network\s+host|docker\s+run\s+-d/, 'guarded Compose must remain the only runtime path');
   rejectPattern(
@@ -624,11 +655,31 @@ function validateMongoIdentityRecovery(script) {
   );
   requirePattern(
     script,
+    /MONGO_BOOTSTRAP_SCOPE all/,
+    'managed-identity recovery must force the full bootstrap scope',
+  );
+  requirePattern(
+    script,
+    /-z "\$\{MONGO_BOOTSTRAP_SCOPE:-\}"/,
+    'managed-identity recovery must reject an operator-supplied bootstrap scope',
+  );
+  requirePattern(
+    script,
     /stop_and_verify_writers[\s\S]*?run_bootstrap apply[\s\S]*?run_reconciliation apply[\s\S]*?run_reconciliation preflight[\s\S]*?rm -f -- "\$\{IDENTITY_MARKER\}"/,
     'managed-identity recovery must stop writers, finish idempotent provisioning, and verify exact roles before clearing state',
   );
   requirePattern(script, /process\.env\.MONGO_ROOT_PASSWORD/, 'identity recovery must authenticate from environment inside mongosh');
   rejectPattern(script, /-p "\$MONGO_ROOT_PASSWORD"/, 'identity recovery must not expose the root password in argv');
+  requirePattern(
+    script,
+    /mktemp \/tmp\/menorah-managed-mongo\.[\s\S]*?trap cleanup EXIT[\s\S]*?chmod 0600 "\$\{script_file\}"[\s\S]*?mongosh --nodb --quiet --file "\$\{script_file\}"/,
+    'identity recovery must execute candidate programs as a checked file with nonzero exception propagation',
+  );
+  rejectPattern(
+    script,
+    /\|\s*compose_cmd exec[^\n]*mongo-primary mongosh --nodb --quiet/,
+    'identity recovery must not run candidate programs through mongosh stdin REPL mode',
+  );
   rejectPattern(
     script,
     /src\/database\/migrate|compose_cmd (?:up|start)\b/,
@@ -658,6 +709,8 @@ function validateBackupAndRestoreScripts(backup, restore, acknowledge) {
   requirePattern(backup, /mongodump[\s\S]*--oplog/, 'MongoDB backup must capture an oplog-consistent snapshot');
   requirePattern(backup, /run-mongo-tool-secure\.sh MONGODB_BACKUP_URI mongodump/, 'backup must keep its credential-bearing URI out of argv');
   rejectPattern(backup, /mongodump[^\n]*--uri/, 'backup must not expose its credential-bearing URI in argv');
+  requirePattern(backup, /MEDIA_VERIFY_MONGODB_URI="\$\{MONGODB_BACKUP_URI\}"[\s\S]*?-e MEDIA_VERIFY_MONGODB_URI/, 'backup media verification must inherit its URI without an argv value');
+  rejectPattern(backup, /-e\s+["']?MEDIA_VERIFY_MONGODB_URI=/, 'backup media verification must not expose its URI in Compose argv');
   requirePattern(restore, /flock -n "\$\{fd\}"/, 'restore must acquire shared deployment and backup locks');
   requirePattern(restore, /Production restore requires an explicit RESTORE_ARCHIVE/, 'production restore must require an exact archive');
   requirePattern(restore, /ACTUAL_ARCHIVE_SHA256/, 'restore must verify archive content identity');
@@ -669,6 +722,8 @@ function validateBackupAndRestoreScripts(backup, restore, acknowledge) {
   requirePattern(restore, /verify_restored_domain_invariants/, 'restore must verify domain-level data invariants');
   requirePattern(restore, /MONGODB_PRODUCTION_RESTORE_URI[\s\S]*?mongorestore[\s\S]*?--config="\$config_file"/, 'production restore must keep its credential-bearing URI in an ephemeral config');
   rejectPattern(restore, /mongorestore[^\n]*--uri/, 'restore must not expose a credential-bearing URI in argv');
+  requirePattern(restore, /MEDIA_VERIFY_MONGODB_URI="\$\{uri\}"[\s\S]*?-e MEDIA_VERIFY_MONGODB_URI/, 'restore media verification must inherit its URI without an argv value');
+  rejectPattern(restore, /-e\s+["']?MEDIA_VERIFY_MONGODB_URI=/, 'restore media verification must not expose its URI in Compose argv');
   requirePattern(restore, /rm -f -- "\$\{MIGRATION_MARKER\}"/, 'restore must invalidate stale migration state');
   requirePattern(restore, /production-restore-requires-schema-review/, 'restore must leave a blocking schema-review state');
   rejectPattern(restore, /RESTORE_CONFIRM_PRODUCTION:-false/, 'production restore must not use a boolean confirmation');
