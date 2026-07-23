@@ -1,4 +1,5 @@
 const {
+  assertNoPersistedPrivacyPermissions,
   enforcePrivacyAdminPermissionAuthority,
   purgePersistedPrivacyPermissions,
 } = require('../privacyAdminPermissionAuthority');
@@ -37,7 +38,7 @@ const validEnv = (grants = [{
 });
 
 describe('privacy admin permission authority', () => {
-  test('purges every legacy persisted grant and validates current active admins', async () => {
+  test('validates current active admins without mutating legacy fields at startup', async () => {
     const UserModel = makeUserModel({
       activeAdminIds: [ADMIN_A, ADMIN_B],
       modifiedCount: 4,
@@ -59,12 +60,8 @@ describe('privacy admin permission authority', () => {
 
     expect(result).toEqual({
       configuredAdminCount: 2,
-      removedPersistedFields: 4,
     });
-    expect(UserModel.collection.updateMany).toHaveBeenCalledWith(
-      { privacyPermissions: { $exists: true } },
-      { $unset: { privacyPermissions: '' } }
-    );
+    expect(UserModel.collection.updateMany).not.toHaveBeenCalled();
     expect(UserModel.collection.countDocuments).toHaveBeenCalledWith(
       { privacyPermissions: { $exists: true } },
       { limit: 1 }
@@ -76,7 +73,7 @@ describe('privacy admin permission authority', () => {
     });
   });
 
-  test('purges legacy state before failing closed on an invalid map', async () => {
+  test('rejects an invalid map before any database access', async () => {
     const UserModel = makeUserModel({ modifiedCount: 2 });
 
     await expect(enforcePrivacyAdminPermissionAuthority({
@@ -86,7 +83,8 @@ describe('privacy admin permission authority', () => {
       code: 'PRIVACY_PERMISSION_CONFIGURATION_INVALID',
     });
 
-    expect(UserModel.collection.updateMany).toHaveBeenCalledTimes(1);
+    expect(UserModel.collection.updateMany).not.toHaveBeenCalled();
+    expect(UserModel.collection.countDocuments).not.toHaveBeenCalled();
     expect(UserModel.find).not.toHaveBeenCalled();
   });
 
@@ -101,13 +99,22 @@ describe('privacy admin permission authority', () => {
     });
   });
 
-  test('refuses startup when a legacy persisted grant survives cleanup', async () => {
+  test('refuses startup when a legacy persisted grant remains', async () => {
     const UserModel = makeUserModel({ remainingPersistedFields: 1 });
 
-    await expect(purgePersistedPrivacyPermissions({
+    await expect(assertNoPersistedPrivacyPermissions({
       UserModel,
     })).rejects.toMatchObject({
       code: 'PRIVACY_PERMISSION_STALE_STATE',
     });
+    expect(UserModel.collection.updateMany).not.toHaveBeenCalled();
+  });
+
+  test('migration cleanup helper still fails if a persisted grant survives removal', async () => {
+    const UserModel = makeUserModel({ remainingPersistedFields: 1 });
+
+    await expect(purgePersistedPrivacyPermissions({ UserModel }))
+      .rejects.toMatchObject({ code: 'PRIVACY_PERMISSION_STALE_STATE' });
+    expect(UserModel.collection.updateMany).toHaveBeenCalledTimes(1);
   });
 });

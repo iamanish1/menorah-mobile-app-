@@ -29,6 +29,21 @@ const purgePersistedPrivacyPermissions = async ({
   return Number(result?.modifiedCount || 0);
 };
 
+const assertNoPersistedPrivacyPermissions = async ({
+  UserModel = User,
+} = {}) => {
+  const remaining = await UserModel.collection.countDocuments(
+    { privacyPermissions: { $exists: true } },
+    { limit: 1 }
+  );
+  if (remaining !== 0) {
+    throw makeAuthorityError(
+      'PRIVACY_PERMISSION_STALE_STATE',
+      'Legacy persisted privacy permissions remain; run the approved migration before startup.'
+    );
+  }
+};
+
 const validateConfiguredAdminTargets = async ({
   grants,
   UserModel = User,
@@ -55,12 +70,6 @@ const enforcePrivacyAdminPermissionAuthority = async ({
   env = process.env,
   UserModel = User,
 } = {}) => {
-  // Persisted grants are legacy state and are never consulted for access.
-  // Remove them before validating the current map so a failed startup remains
-  // fail-closed even if an older application revision read this field.
-  const removedPersistedFields = await purgePersistedPrivacyPermissions({
-    UserModel,
-  });
   const configuration = readPrivacyAdminPermissionConfiguration(env);
   if (!configuration.configured) {
     throw makeAuthorityError(
@@ -68,17 +77,21 @@ const enforcePrivacyAdminPermissionAuthority = async ({
       'Privacy administrator permission configuration is invalid.'
     );
   }
+  // Startup is read-only. The reviewed database migration owns removal of
+  // legacy persisted grants; if it was skipped or stale state reappears, fail
+  // closed instead of performing an implicit data mutation here.
+  await assertNoPersistedPrivacyPermissions({ UserModel });
   await validateConfiguredAdminTargets({
     grants: configuration.grants,
     UserModel,
   });
   return Object.freeze({
     configuredAdminCount: configuration.grants.length,
-    removedPersistedFields,
   });
 };
 
 module.exports = {
+  assertNoPersistedPrivacyPermissions,
   enforcePrivacyAdminPermissionAuthority,
   purgePersistedPrivacyPermissions,
   validateConfiguredAdminTargets,

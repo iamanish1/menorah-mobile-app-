@@ -8,6 +8,7 @@ const {
 } = require('../../middleware/privacyAuthorization');
 const {
   enforcePrivacyAdminPermissionAuthority,
+  purgePersistedPrivacyPermissions,
 } = require('../privacyAdminPermissionAuthority');
 const { signAdminToken } = require('../../utils/authTokens');
 
@@ -104,6 +105,7 @@ describeWithMongo('privacy admin permission authority on isolated MongoDB', () =
     await User.collection.updateMany({}, {
       $set: { privacyPermissions: allPermissions },
     });
+    await purgePersistedPrivacyPermissions();
     process.env.PRIVACY_ADMIN_PERMISSION_GRANTS_JSON = grantMap(adminA._id);
     await enforcePrivacyAdminPermissionAuthority();
 
@@ -130,13 +132,10 @@ describeWithMongo('privacy admin permission authority on isolated MongoDB', () =
     );
     await useSession(tokenA).expect(403);
 
-    const reconciliation = await enforcePrivacyAdminPermissionAuthority();
-    expect(reconciliation).toEqual({
-      configuredAdminCount: 1,
-      removedPersistedFields: 1,
-    });
+    await expect(enforcePrivacyAdminPermissionAuthority())
+      .rejects.toMatchObject({ code: 'PRIVACY_PERMISSION_STALE_STATE' });
     expect(await User.collection.countDocuments({
       privacyPermissions: { $exists: true },
-    })).toBe(0);
+    })).toBe(1);
   });
 });
