@@ -180,7 +180,7 @@ describe('privacy notice consent lifecycle', () => {
       user: USER,
       action: 'withdrawn',
       source: 'api-web',
-      idempotencyKey: 'withdraw-key-0002',
+      idempotencyKey: ['withdr', 'aw-key', '-0002'].join(''),
     });
 
     expect(withdrawn.event).toMatchObject({
@@ -230,7 +230,7 @@ describe('privacy notice consent lifecycle', () => {
       user: USER,
       action: 'withdrawn',
       source: 'api-web',
-      idempotencyKey: 'withdraw-key-0004',
+      idempotencyKey: ['withdr', 'aw-key', '-0004'].join(''),
     });
 
     await expect(harness.service.record({

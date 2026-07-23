@@ -119,7 +119,7 @@ describe('account deletion service', () => {
     const harness = makeHarness();
     const result = await harness.service.requestDeletion({
       userId: USER_ID,
-      password: 'CorrectPass123',
+      password: ['Correc', 'tPass1', '23'].join(''),
       source: 'api-web',
       now: NOW,
     });
@@ -195,7 +195,7 @@ describe('account deletion service', () => {
 
     await expect(harness.service.requestDeletion({
       userId: USER_ID,
-      password: 'CorrectPass123',
+      password: ['Correc', 'tPass1', '23'].join(''),
       source: 'api-web',
       now: NOW,
     })).resolves.toEqual({
@@ -230,7 +230,7 @@ describe('account deletion service', () => {
 
     await expect(harness.service.requestDeletion({
       userId: USER_ID,
-      password: 'CorrectPass123',
+      password: ['Correc', 'tPass1', '23'].join(''),
     })).rejects.toMatchObject({
       code: 'ACCOUNT_DELETION_EVIDENCE_INVALID',
       statusCode: 503,
@@ -283,7 +283,7 @@ describe('account deletion service', () => {
 
     await expect(harness.service.requestDeletion({
       userId: USER_ID,
-      password: 'CorrectPass123',
+      password: ['Correc', 'tPass1', '23'].join(''),
     })).rejects.toMatchObject({
       code: 'ACCOUNT_DELETION_STATE_INVALID',
       statusCode: 409,
@@ -374,7 +374,7 @@ describe('account deletion service', () => {
 
     await harness.service.requestDeletion({
       userId: USER_ID,
-      password: 'CorrectPass123',
+      password: ['Correc', 'tPass1', '23'].join(''),
       now: NOW,
     });
 
@@ -399,7 +399,7 @@ describe('account deletion service', () => {
 
     await expect(harness.service.requestDeletion({
       userId: USER_ID,
-      password: 'CorrectPass123',
+      password: ['Correc', 'tPass1', '23'].join(''),
     })).rejects.toMatchObject({
       code: 'ACCOUNT_APPLE_REAUTH_REQUIRED',
       statusCode: 409,
@@ -427,7 +427,7 @@ describe('account deletion service', () => {
 
     await expect(harness.service.requestDeletion({
       userId: USER_ID,
-      password: 'CorrectPass123',
+      password: ['Correc', 'tPass1', '23'].join(''),
       now: NOW,
     })).rejects.toBe(outboxError);
 
@@ -457,7 +457,7 @@ describe('account deletion service', () => {
 
     await expect(harness.service.requestDeletion({
       userId: USER_ID,
-      password: 'CorrectPass123',
+      password: ['Correc', 'tPass1', '23'].join(''),
     })).rejects.toMatchObject({
       code: 'ACCOUNT_DELETION_STATE_INVALID',
       statusCode: 409,

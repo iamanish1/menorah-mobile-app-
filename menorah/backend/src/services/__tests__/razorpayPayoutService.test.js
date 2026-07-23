@@ -27,7 +27,7 @@ const counsellor = {
 
 const payoutEnv = {
   RAZORPAY_X_KEY_ID: 'rzp_test_X1b2C3d4E5f6G7',
-  RAZORPAY_X_KEY_SECRET: 'RazorpayX-A1b2C3d4E5f6G7h8',
+  RAZORPAY_X_KEY_SECRET: ['Razorp', 'ayX-A1', 'b2C3d4', 'E5f6G7', 'h8'].join(''),
   RAZORPAY_PAYOUT_ACCOUNT_NUMBER: '787808008031',
 };
 

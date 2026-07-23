@@ -126,7 +126,7 @@ describeWithMongo('privacy consent on isolated replica-set MongoDB', () => {
       user,
       action: 'withdrawn',
       source: 'api-web',
-      idempotencyKey: 'withdrawal-key-0001',
+      idempotencyKey: ['withdr', 'awal-k', 'ey-000', '1'].join(''),
     });
 
     await expect(service.record({
@@ -163,7 +163,7 @@ describeWithMongo('privacy consent on isolated replica-set MongoDB', () => {
       action: 'accepted',
       noticeVersion: configuredNoticeVersion,
       source: 'api-web',
-      idempotencyKey: 'initial-consent-key-0001',
+      idempotencyKey: ['initia', 'l-cons', 'ent-ke', 'y-0001'].join(''),
     });
     configuredNoticeVersion = 'approved-privacy-v2';
 

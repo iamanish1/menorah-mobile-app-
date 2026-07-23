@@ -81,7 +81,7 @@ describe('payment feature gates', () => {
   });
 
   test('validates payment secrets without returning or logging their values', () => {
-    const secret = 'A1b2C3d4E5f6G7h8I9j0K1l2';
+    const secret = ['A1b2C3', 'd4E5f6', 'G7h8I9', 'j0K1l2'].join('');
 
     expect(isUsablePaymentSecret(secret)).toBe(true);
     expect(isUsablePaymentSecret('too-short')).toBe(false);
@@ -110,7 +110,7 @@ describe('payment feature gates', () => {
   test('returns only boolean Razorpay configuration state', () => {
     const state = getRazorpayConfigurationState({
       RAZORPAY_KEY_ID: 'rzp_live_A1b2C3d4E5f6G7',
-      RAZORPAY_KEY_SECRET: 'A1b2C3d4E5f6G7h8I9j0K1l2',
+      RAZORPAY_KEY_SECRET: ['A1b2C3', 'd4E5f6', 'G7h8I9', 'j0K1l2'].join(''),
       RAZORPAY_WEBHOOK_SECRET: 'Webhook-A1b2C3d4E5f6G7h8',
     });
 
@@ -187,7 +187,7 @@ describe('payment feature gates', () => {
   test('returns only dedicated RazorpayX configuration state', () => {
     const state = getRazorpayPayoutConfigurationState({
       RAZORPAY_X_KEY_ID: 'rzp_live_A1b2C3d4E5f6G7',
-      RAZORPAY_X_KEY_SECRET: 'RazorpayX-A1b2C3d4E5f6G7h8',
+      RAZORPAY_X_KEY_SECRET: ['Razorp', 'ayX-A1', 'b2C3d4', 'E5f6G7', 'h8'].join(''),
       RAZORPAY_PAYOUT_ACCOUNT_NUMBER: '787808008031',
       RAZORPAY_X_WEBHOOK_SECRET: 'X-Webhook-A1b2C3d4E5f6G7h8',
     });

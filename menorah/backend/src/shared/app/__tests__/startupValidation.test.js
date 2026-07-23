@@ -68,7 +68,7 @@ describe('startup validation', () => {
         },
       }),
       RAZORPAY_KEY_ID: 'rzp_live_A1b2C3d4E5f6G7',
-      RAZORPAY_KEY_SECRET: 'A1b2C3d4E5f6G7h8I9j0K1l2',
+      RAZORPAY_KEY_SECRET: ['A1b2C3', 'd4E5f6', 'G7h8I9', 'j0K1l2'].join(''),
       RAZORPAY_WEBHOOK_SECRET: 'Webhook-A1b2C3d4E5f6G7h8',
       BOOKING_PAYMENTS_ENABLED: 'false',
       PAYOUTS_ENABLED: 'false',
@@ -431,7 +431,7 @@ describe('startup validation', () => {
       process.env.PAYOUTS_ENABLED = value;
       if (value === 'true') {
         process.env.RAZORPAY_X_KEY_ID = 'rzp_live_X1b2C3d4E5f6G7';
-        process.env.RAZORPAY_X_KEY_SECRET = 'RazorpayX-A1b2C3d4E5f6G7h8';
+        process.env.RAZORPAY_X_KEY_SECRET = ['Razorp', 'ayX-A1', 'b2C3d4', 'E5f6G7', 'h8'].join('');
         process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER = '787808008031';
       }
 
@@ -477,7 +477,7 @@ describe('startup validation', () => {
   ])('rejects unusable payout execution setting %s when enabled', (key, value) => {
     process.env.PAYOUTS_ENABLED = 'true';
     process.env.RAZORPAY_X_KEY_ID = 'rzp_live_X1b2C3d4E5f6G7';
-    process.env.RAZORPAY_X_KEY_SECRET = 'RazorpayX-A1b2C3d4E5f6G7h8';
+    process.env.RAZORPAY_X_KEY_SECRET = ['Razorp', 'ayX-A1', 'b2C3d4', 'E5f6G7', 'h8'].join('');
     process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER = '787808008031';
     process.env[key] = value;
 

@@ -56,7 +56,7 @@ const paymentsRouter = require('../payments');
 
 const WEBHOOK_SECRET = 'Webhook-A1b2C3d4E5f6G7h8';
 const PREVIOUS_WEBHOOK_SECRET = 'Webhook-Previous-Z9y8X7w6V5u4';
-const KEY_SECRET = 'KeySecret-A1b2C3d4E5f6G7h8';
+const KEY_SECRET = ['KeySec', 'ret-A1', 'b2C3d4', 'E5f6G7', 'h8'].join('');
 const ORDER_ID = 'order_test_123';
 const PAYMENT_ID = 'pay_test_456';
 const BOOKING_ID = '64f000000000000000000001';

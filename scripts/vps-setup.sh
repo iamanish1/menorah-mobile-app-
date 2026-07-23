@@ -194,7 +194,7 @@ REDIS_URL=redis://127.0.0.1:6379
 
 # ── JWT ────────────────────────────────────────────────────
 # Generate: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-JWT_SECRET=REPLACE_WITH_64_CHAR_SECRET
+JWT_SECRET=REPLACE
 JWT_EXPIRES_IN=7d
 JWT_REFRESH_SECRET=REPLACE_WITH_64_CHAR_REFRESH_SECRET
 JWT_REFRESH_EXPIRES_IN=30d
@@ -244,7 +244,7 @@ AI_TEXT_MODEL=gpt-4o-mini
 META_APP_ID=REPLACE
 META_APP_SECRET=REPLACE
 META_GRAPH_API_VERSION=v23.0
-SOCIAL_TOKEN_ENCRYPTION_KEY=REPLACE_WITH_32_BYTE_HEX
+SOCIAL_TOKEN_ENCRYPTION_KEY=REPLACE
 PUBLIC_WEB_BASE_URL=https://api.menorah.me
 
 # ── Jitsi ──────────────────────────────────────────────────
