@@ -196,6 +196,7 @@ describe('password reset email URLs', () => {
     process.env = {
       ...originalEnv,
       NODE_ENV: 'production',
+      DEPLOYMENT_ENVIRONMENT: 'production',
       PASSWORD_RESET_BASE_URL: 'https://app.menorah.me',
     };
     delete process.env.PASSWORD_RESET_URL_TEMPLATE;
@@ -228,5 +229,48 @@ describe('password reset email URLs', () => {
     process.env.PASSWORD_RESET_BASE_URL = 'http://untrusted.example/reset-password';
     expect(() => buildPasswordResetUrl('reset-token'))
       .toThrow(/PASSWORD_RESET_BASE_URL must equal https:\/\/app\.menorah\.me/);
+  });
+
+  test('supports a distinct HTTPS reset origin in production-like staging', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    process.env.PASSWORD_RESET_BASE_URL = 'https://app.staging.example.com';
+    const resetUrl = new URL(buildPasswordResetUrl('reset-token'));
+
+    expect(resetUrl.origin).toBe('https://app.staging.example.com');
+    expect(resetUrl.pathname).toBe('/reset-password');
+    expect(resetUrl.search).toBe('');
+    expect(resetUrl.hash).toBe('#token=reset-token');
+  });
+
+  test.each([
+    'https://app.menorah.me',
+    'https://app.menorah.me.',
+    'https://app.menorah.me:8443',
+    'http://app.staging.example.com',
+    'https://app.staging.example.com:8443',
+    'https://app.staging.example.com/',
+    'https://app.staging.example.com/reset-password',
+  ])('fails closed for an unsafe staging reset origin %s', (value) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    process.env.PASSWORD_RESET_BASE_URL = value;
+
+    expect(() => buildPasswordResetUrl('reset-token'))
+      .toThrow(/PASSWORD_RESET_BASE_URL/);
+  });
+
+  test('fails closed for an invalid deployment environment', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'preview';
+
+    expect(() => buildPasswordResetUrl('reset-token'))
+      .toThrow(/DEPLOYMENT_ENVIRONMENT must be exactly production or staging/);
+  });
+
+  test('fails closed when staging would suppress production email behavior', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    process.env.PASSWORD_RESET_BASE_URL = 'https://app.staging.example.com';
+
+    expect(() => buildPasswordResetUrl('reset-token'))
+      .toThrow(/DEPLOYMENT_ENVIRONMENT=staging requires NODE_ENV=production/);
   });
 });

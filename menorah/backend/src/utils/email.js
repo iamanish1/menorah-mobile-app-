@@ -1,4 +1,8 @@
 const axios = require('axios');
+const {
+  DEPLOYMENT_ENVIRONMENTS,
+  getDeploymentEnvironment,
+} = require('../config/deploymentEnvironment');
 
 const RESEND_EMAIL_URL = 'https://api.resend.com/emails';
 const FROM_NAME = 'Menorah Health';
@@ -9,12 +13,10 @@ const isPlaceholder = (value) =>
   !value || /^REPLACE/i.test(value) || value.includes('replace_with');
 
 const safeErrorResponse = (error) => {
-  const data = error.response?.data;
-  if (data && typeof data === 'object') return data;
-  if (data) return { response: String(data).slice(0, 500) };
   return {
-    message: error.message,
+    message: 'Email delivery provider request failed',
     status: error.response?.status,
+    code: error.code,
   };
 };
 
@@ -42,10 +44,7 @@ const isConfigured = () => {
 
 const sendEmail = async (to, subject, html) => {
   if (isDev) {
-    console.log('\n[DEV EMAIL - not sent]');
-    console.log(`To: ${to}`);
-    console.log(`Subject: ${subject}`);
-    console.log('[HTML content suppressed]');
+    console.log('[DEV EMAIL - not sent; recipient, subject, and content suppressed]');
     return true;
   }
 
@@ -68,7 +67,7 @@ const sendEmail = async (to, subject, html) => {
       }
     );
 
-    console.log(`\u2705 Email sent via Resend to: ${to}`);
+    console.log('\u2705 Email sent via Resend.');
     return true;
   } catch (error) {
     console.error('\u274C Resend email error:', safeErrorResponse(error));
@@ -79,26 +78,73 @@ const sendEmail = async (to, subject, html) => {
 const buildPasswordResetUrl = (token) => {
   const template = process.env.PASSWORD_RESET_URL_TEMPLATE?.trim();
   const configuredBase = process.env.PASSWORD_RESET_BASE_URL?.trim();
+  const deploymentEnvironment = getDeploymentEnvironment(process.env);
+  if (
+    deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.STAGING
+    && process.env.NODE_ENV !== 'production'
+  ) {
+    throw new Error('DEPLOYMENT_ENVIRONMENT=staging requires NODE_ENV=production');
+  }
 
   if (process.env.NODE_ENV === 'production') {
     if (template) {
       throw new Error('PASSWORD_RESET_URL_TEMPLATE must be unset in production');
     }
-    if (configuredBase !== CANONICAL_PASSWORD_RESET_BASE_URL) {
+    if (
+      deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.PRODUCTION
+      && configuredBase !== CANONICAL_PASSWORD_RESET_BASE_URL
+    ) {
       throw new Error(
         `PASSWORD_RESET_BASE_URL must equal ${CANONICAL_PASSWORD_RESET_BASE_URL} in production`
       );
+    }
+    if (deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.STAGING) {
+      validateStagingPasswordResetBaseUrl(configuredBase);
     }
   }
 
   const base = configuredBase || process.env.WEB_APP_URL?.trim() || 'https://menorah.me';
   const resetBase = template ? template.replace(/\{token\}/g, '') : base;
-  return buildPasswordResetUrlFromBase(resetBase, token);
+  return buildPasswordResetUrlFromBase(
+    resetBase,
+    token,
+    deploymentEnvironment
+  );
+};
+
+const validateStagingPasswordResetBaseUrl = (base) => {
+  let parsedBase;
+  try {
+    parsedBase = new URL(base);
+  } catch {
+    throw new Error('PASSWORD_RESET_BASE_URL must be a valid HTTPS staging origin');
+  }
+
+  if (parsedBase.protocol !== 'https:') {
+    throw new Error('PASSWORD_RESET_BASE_URL must use HTTPS in staging');
+  }
+  if (parsedBase.hostname.toLowerCase().replace(/\.$/, '') === 'app.menorah.me') {
+    throw new Error(
+      `PASSWORD_RESET_BASE_URL must not use the production origin ${CANONICAL_PASSWORD_RESET_BASE_URL} in staging`
+    );
+  }
+  if (
+    parsedBase.username
+    || parsedBase.password
+    || parsedBase.search
+    || parsedBase.hash
+    || parsedBase.port
+    || base !== parsedBase.origin
+  ) {
+    throw new Error(
+      'PASSWORD_RESET_BASE_URL must be an exact origin without credentials, path, port, query, or fragment'
+    );
+  }
 };
 
 // URL fragments are never sent in the HTTP request, keeping reset tokens out
 // of reverse-proxy, CDN, and application access logs.
-const buildPasswordResetUrlFromBase = (base, token) => {
+const buildPasswordResetUrlFromBase = (base, token, deploymentEnvironment) => {
   let parsedBase;
   try {
     parsedBase = new URL(base);
@@ -107,6 +153,7 @@ const buildPasswordResetUrlFromBase = (base, token) => {
     parsedBase = new URL('https://menorah.me');
   }
   if (process.env.NODE_ENV === 'production'
+    && deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.PRODUCTION
     && parsedBase.origin !== CANONICAL_PASSWORD_RESET_BASE_URL) {
     throw new Error('Production password reset links must use the canonical mobile app origin');
   }
