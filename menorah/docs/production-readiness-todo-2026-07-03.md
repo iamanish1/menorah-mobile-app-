@@ -1,5 +1,12 @@
 # Production Readiness TODO For July 3, 2026
 
+> **HISTORICAL / SUPERSEDED — NOT A LAUNCH AUTHORITY.** Checked items below
+> describe an earlier point-in-time checklist and are not evidence for the
+> current candidate or live environment. The current public-production verdict
+> is **NOT READY**. Use only `docs/production-readiness/19-handover-checklist.md`
+> and `docs/production-readiness/21-production-go-no-go.md` for the current
+> release decision.
+
 Target: get the Menorah app stack ready for production traffic by Friday, July 3, 2026.
 
 This checklist is based on a local repo sweep on July 2, 2026. It covers backend APIs, web apps, mobile app, Social Studio/brand tooling, self-host deployment, Cloudflare ingress, rate limiting, payments, calls, backups, monitoring, QA, and release operations.

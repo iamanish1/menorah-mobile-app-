@@ -2,6 +2,30 @@
 
 Production ingress uses a Cloudflare Tunnel. Cloudflare handles public HTTPS and `cloudflared` carries traffic over its encrypted outbound tunnel to Caddy on the private Docker network. The Ubuntu host should not expose MongoDB, Redis, Prometheus, Grafana, Loki, or Uptime Kuma to public DNS.
 
+## Trusted Proxy And Client Provenance Contract
+
+The connector and Caddy share the internal `tunnel_ingress_net`; no other
+service may join it. `cloudflared` also joins `public_net` for outbound
+connectivity, while Caddy is deliberately absent from `public_net`. Caddy
+trusts only the connector's exact address, reads client identity only from
+`CF-Connecting-IP`, and sends sanitized forwarding headers to applications.
+Connector traffic without valid client-IP provenance fails closed with `400`.
+The APIs trust only Caddy's exact `app_net` address.
+
+The environment template proposes `10.253.250.0/29` for tunnel ingress and
+`10.253.251.0/24` for applications, but these are required operator inputs, not
+safe universal defaults. Before deployment, compare them with `ip route`,
+VPN/LAN/provider routes, and `docker network inspect` output. Set a
+non-overlapping `TUNNEL_INGRESS_SUBNET`, `CADDY_TUNNEL_IP`,
+`CLOUDFLARED_TUNNEL_IP`, `APP_NETWORK_SUBNET`, and `CADDY_APP_IP` together in
+the untracked production environment. Never replace exact IP trust with
+`private_ranges`, a hop count, `true`, or an entire subnet.
+
+The backend accepts country provenance only through Caddy's private
+`X-Menorah-Client-Country` header when the socket peer is the configured Caddy
+IP. Browser-provided `CF-IPCountry`, `X-Country-Code`, and related aliases are
+not policy inputs.
+
 ## Required Offline Release Gate
 
 The exact 22-host Menorah and Mentle ingress map is owned by
@@ -32,8 +56,9 @@ cloudflared tunnel --config /absolute/path/to/operator-config.yml \
 The unmatched test URL must select the final `http_status:404` rule. Cloudflare
 CLI ingress validation and rule testing apply to locally managed YAML, not a
 remotely managed API export. A passing repository validator proves manifest,
-Caddy, and supplied ingress parity offline; it does not prove live DNS,
-connector health, or origin health.
+Caddy, supplied ingress parity, exact Compose network membership, and
+forwarding-header sanitization offline; it does not prove live DNS, connector
+health, edge header transforms, or origin health.
 
 ## Dashboard-Managed Tunnel — INFRASTRUCTURE ACTION
 
@@ -200,6 +225,33 @@ Dashboard alternative: open **Zero Trust > Networks > Tunnels > [production
 tunnel] > Public Hostnames** and compare hostname/service rows with
 `menorah/deploy/cloudflare/ingress-manifest.json`. Do not select Edit or Save
 during this read-only check.
+
+Also capture read-only evidence that the live zone preserves the provenance
+contract:
+
+1. Confirm every hostname is orange-cloud proxied and resolves only through
+   this Tunnel.
+2. Confirm IP Geolocation is active and Cloudflare supplies `CF-IPCountry`.
+3. Review Workers, Transform Rules, and any stacked CDN; none may inject or
+   rewrite `CF-Connecting-IP` or `CF-IPCountry` before this connector.
+4. From an external test client, send deliberately forged
+   `CF-Connecting-IP`, `X-Forwarded-For`, `CF-IPCountry`, and
+   `X-Menorah-Client-Country` headers. Confirm the Caddy/security-audit entry
+   uses the real test-client IP, not either forged IP.
+5. With an authenticated non-production booking fixture, confirm the forged
+   country headers cannot change the call provider/region. Repeat through the
+   normal tunnel path to confirm Cloudflare's actual country provenance is
+   accepted.
+
+Do not add a public echo/debug endpoint for this test. Use structured Caddy and
+security-audit logs plus the authenticated call-policy response, retain only
+redacted evidence, and remove the QA fixture afterward through the normal
+application workflow.
+
+The repository cannot perform these live account checks. They remain a
+go-live blocker until an operator records passing evidence. Header behavior is
+documented by Cloudflare at
+<https://developers.cloudflare.com/fundamentals/reference/http-headers/>.
 
 ## Add A Second Connector Later — INFRASTRUCTURE ACTION
 
