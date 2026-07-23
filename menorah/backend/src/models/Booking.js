@@ -126,6 +126,20 @@ const bookingSchema = new mongoose.Schema({
     enum: ['razorpay', 'wallet', 'subscription', 'promo'],
     required: true
   },
+  bookingAuthorization: {
+    kind: {
+      type: String,
+      enum: ['payment', 'subscription_entitlement']
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'authorized', 'revoked', 'needs_review'],
+      default: 'pending'
+    },
+    reference: String,
+    authorizedAt: Date,
+    validUntil: Date
+  },
   paymentId: String,
   transactionId: String,
   // Subscription booking flag

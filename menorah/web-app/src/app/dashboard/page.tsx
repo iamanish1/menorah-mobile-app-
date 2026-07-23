@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { DashboardStats, TodaySchedule, Booking, CounsellorStatus } from '@/types';
+import type { CounsellorStatus } from '@/types';
 import { format } from 'date-fns';
 import Link from 'next/link';
 import AppLayout from '@/components/layout/AppLayout';
@@ -17,7 +17,7 @@ import styles from './page.module.css';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [statusToggling, setStatusToggling] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { on, off } = useSocket(isAuthenticated);
@@ -27,7 +27,6 @@ export default function DashboardPage() {
   const {
     data:      dashboardData,
     isLoading: loading,
-    error:     queryError,
     refetch,
   } = useQuery({
     queryKey:  ['dashboard'],
@@ -106,10 +105,20 @@ export default function DashboardPage() {
       router.push('/profile#profile-media');
       return;
     }
+    if (!counsellorStatus.isVerified) {
+      setError(counsellorStatus.message || 'Professional verification is required before accepting bookings.');
+      return;
+    }
     const newStatus = !counsellorStatus.isAvailable;
     setStatusToggling(true);
     // Optimistic update — show change immediately, then re-validate from server
-    setCounsellorStatus(prev => prev ? { ...prev, isAvailable: newStatus } : prev);
+    setCounsellorStatus(prev => prev ? {
+      ...prev,
+      isAvailable: newStatus,
+      marketplaceEligible: Boolean(
+        newStatus && prev.isActive && prev.isVerified && prev.profileMediaComplete
+      ),
+    } : prev);
     const response = await api.updateAvailabilityStatus(newStatus);
     setStatusToggling(false);
     if (response.success) {
@@ -117,7 +126,13 @@ export default function DashboardPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     } else {
       // Roll back on failure
-      setCounsellorStatus(prev => prev ? { ...prev, isAvailable: !newStatus } : prev);
+      setCounsellorStatus(prev => prev ? {
+        ...prev,
+        isAvailable: !newStatus,
+        marketplaceEligible: Boolean(
+          !newStatus && prev.isActive && prev.isVerified && prev.profileMediaComplete
+        ),
+      } : prev);
       setError(response.message || 'Failed to update availability');
     }
   };
@@ -176,7 +191,7 @@ export default function DashboardPage() {
     },
   ];
   const profileMediaReady = Boolean(counsellorStatus?.profileMediaComplete);
-  const effectiveAvailability = Boolean(counsellorStatus?.isAvailable && profileMediaReady);
+  const effectiveAvailability = counsellorStatus?.marketplaceEligible === true;
 
   return (
     <AppLayout>
@@ -225,10 +240,12 @@ export default function DashboardPage() {
             size="sm"
             onClick={handleToggleAvailability}
             isLoading={statusToggling}
-            disabled={statusToggling}
+            disabled={statusToggling || !counsellorStatus.isVerified}
           >
             {!profileMediaReady
               ? 'Complete Profile Setup'
+              : !counsellorStatus.isVerified
+              ? 'Verification Required'
               : effectiveAvailability
               ? 'Set Unavailable'
               : 'Set Available'}

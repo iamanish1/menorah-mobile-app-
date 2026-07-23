@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
 import { useBookings, usePendingBookings } from '@/hooks/useBookings';
-import { Booking } from '@/types';
+import type { CounsellorBooking } from '@/types';
 import { format } from 'date-fns';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
@@ -17,7 +17,7 @@ import styles from './page.module.css';
 function BookingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -54,8 +54,8 @@ function BookingsContent() {
     };
   }, [isAuthenticated, on, off]);
 
-  const getBookingsForTab = (): Booking[] => {
-    let bookings: Booking[] = [];
+  const getBookingsForTab = (): CounsellorBooking[] => {
+    let bookings: CounsellorBooking[] = [];
     switch (activeTab) {
       case 'pending':
         bookings = pendingBookings;
@@ -74,12 +74,16 @@ function BookingsContent() {
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      bookings = bookings.filter(b => 
-        b.userName.toLowerCase().includes(query) ||
-        b.userEmail.toLowerCase().includes(query) ||
-        b.userPhone.toLowerCase().includes(query) ||
-        (b.concerns && b.concerns.toLowerCase().includes(query))
-      );
+      bookings = bookings.filter((booking) => {
+        if (booking.accessScope !== 'assigned') {
+          return booking.sessionType.toLowerCase().includes(query);
+        }
+
+        return booking.userName.toLowerCase().includes(query) ||
+          booking.userEmail.toLowerCase().includes(query) ||
+          booking.userPhone.toLowerCase().includes(query) ||
+          Boolean(booking.concerns?.toLowerCase().includes(query));
+      });
     }
 
     if (startDate || endDate) {
@@ -101,7 +105,9 @@ function BookingsContent() {
           comparison = a.status.localeCompare(b.status);
           break;
         case 'name':
-          comparison = a.userName.localeCompare(b.userName);
+          comparison = a.accessScope === 'assigned' && b.accessScope === 'assigned'
+            ? a.userName.localeCompare(b.userName)
+            : a.sessionType.localeCompare(b.sessionType);
           break;
       }
       return sortOrder === 'asc' ? comparison : -comparison;
@@ -120,7 +126,7 @@ function BookingsContent() {
     return allError;
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status?: string) => {
     const variants: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'default'> = {
       'confirmed': 'success',
       'pending': 'warning',
@@ -128,7 +134,8 @@ function BookingsContent() {
       'cancelled': 'danger',
       'in-progress': 'info',
     };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
+    const label = status || 'available';
+    return <Badge variant={variants[label] || 'default'}>{label}</Badge>;
   };
 
   if (isLoading) {
@@ -192,7 +199,9 @@ function BookingsContent() {
               <input
                 type="text"
                 className={styles.searchInput}
-                placeholder="Search by name, email, phone, or concerns..."
+                placeholder={activeTab === 'pending'
+                  ? 'Search by session format...'
+                  : 'Search by name, email, phone, or concerns...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -233,7 +242,7 @@ function BookingsContent() {
             >
               <option value="date">Sort by Date</option>
               <option value="status">Sort by Status</option>
-              <option value="name">Sort by Name</option>
+              <option value="name">{activeTab === 'pending' ? 'Sort by Service' : 'Sort by Name'}</option>
             </select>
             <Button
               variant="ghost"
@@ -307,7 +316,74 @@ function BookingsContent() {
           </Card>
         ) : (
           <div className={styles.bookingsList}>
-            {bookings.map((booking) => (
+            {bookings.map((booking) => booking.accessScope !== 'assigned' ? (
+              <Card key={booking.id} hover padding="md" className={styles.bookingCard}>
+                <div className={styles.bookingContent}>
+                  <div className={styles.bookingMain}>
+                    <div className={styles.bookingHeader}>
+                      <div className={styles.bookingAvatar} aria-hidden="true">
+                        <span className={styles.bookingAvatarText}>B</span>
+                      </div>
+                      <div className={styles.bookingInfo}>
+                        <div className={styles.bookingNameRow}>
+                          <h3 className={styles.bookingName}>New booking request</h3>
+                          {getStatusBadge(booking.status)}
+                        </div>
+                        <p className={styles.bookingContact}>
+                          Client details are private until assignment
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className={styles.bookingDetails}>
+                      <div className={styles.detailItem}>
+                        <svg className={styles.detailIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        <div className={styles.detailContent}>
+                          <p className={styles.detailLabel}>Service</p>
+                          <p className={styles.detailValue}>{booking.sessionType}</p>
+                        </div>
+                      </div>
+                      <div className={styles.detailItem}>
+                        <svg className={styles.detailIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div className={styles.detailContent}>
+                          <p className={styles.detailLabel}>Duration</p>
+                          <p className={styles.detailValue}>{booking.sessionDuration} min</p>
+                        </div>
+                      </div>
+                      <div className={styles.detailItem}>
+                        <svg className={styles.detailIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <div className={styles.detailContent}>
+                          <p className={styles.detailLabel}>Scheduled</p>
+                          <p className={styles.detailValue}>
+                            {format(new Date(booking.scheduledAt), 'MMM d, h:mm a')}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={styles.bookingActions}>
+                    {booking.canAccept === false ? (
+                      <Button variant="outline" size="md" style={{ width: '100%' }} disabled>
+                        Not available
+                      </Button>
+                    ) : (
+                      <Link href={`/bookings/${booking.id}`}>
+                        <Button variant="primary" size="md" style={{ width: '100%' }}>
+                          Review Request
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            ) : (
               <Card key={booking.id} hover padding="md" className={styles.bookingCard}>
                 <div className={styles.bookingContent}>
                   <div className={styles.bookingMain}>

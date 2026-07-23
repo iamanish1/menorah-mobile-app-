@@ -25,6 +25,9 @@ const {
   parseBookingServiceCatalog,
   resolveBookingPrice,
 } = require('../services/bookingPricing');
+const {
+  notifyEligibleCounsellorsOfBooking,
+} = require('../services/bookingMarketplaceNotifications');
 
 const router = express.Router();
 const SLOT_TAKEN_MESSAGE = 'This time slot was just booked by someone else. Please choose another available slot.';
@@ -232,6 +235,7 @@ router.post('/', [
     let paymentMethod = 'razorpay';
     let amount = priceQuote.amount;
     let amountMinor = priceQuote.amountMinor;
+    let subscriptionAuthorization = null;
 
     if (user && user.subscription) {
       const now = new Date();
@@ -256,6 +260,13 @@ router.post('/', [
         paymentMethod = 'subscription';
         amount = 0;
         amountMinor = 0;
+        subscriptionAuthorization = {
+          kind: 'subscription_entitlement',
+          status: 'authorized',
+          reference: `${user.subscription.subscriptionType}:${startDate.toISOString()}`,
+          authorizedAt: now,
+          validUntil: endDate,
+        };
       }
     }
 
@@ -280,6 +291,10 @@ router.post('/', [
       },
       paymentMethod: paymentMethod,
       paymentStatus: paymentStatus,
+      bookingAuthorization: subscriptionAuthorization || {
+        kind: 'payment',
+        status: 'pending',
+      },
       status: isSubscriptionBooking ? 'confirmed' : 'pending',
       holdExpiresAt: paymentStatus === 'pending' ? getPendingHoldExpiresAt() : undefined,
       isSubscriptionBooking: isSubscriptionBooking,
@@ -323,19 +338,9 @@ router.post('/', [
     // NOTE: counsellor socket notifications are sent only after payment is confirmed
     // (see payments.js verify-razorpay handler)
     if (paymentStatus === 'paid' && !booking.counsellor && req.app.get('io')) {
-      const io = req.app.get('io');
-      const availableCounsellors = await Counsellor.find({ isActive: true, isAvailable: true }).select('_id').lean();
-      const notification = {
-        bookingId: booking._id,
-        sessionType: booking.sessionType,
-        sessionDuration: booking.sessionDuration,
-        scheduledAt: booking.scheduledAt,
-        amount: booking.amount,
-        preferences: booking.preferences,
-        createdAt: booking.createdAt
-      };
-      availableCounsellors.forEach(c => {
-        io.to(`counsellor_${c._id}`).emit('new_booking_available', notification);
+      await notifyEligibleCounsellorsOfBooking({
+        booking,
+        io: req.app.get('io'),
       });
     }
 

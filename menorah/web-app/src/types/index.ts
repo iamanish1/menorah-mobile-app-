@@ -9,6 +9,7 @@ export interface User {
 }
 
 export interface Booking {
+  accessScope: 'assigned';
   id: string;
   userName: string;
   userEmail: string;
@@ -18,7 +19,7 @@ export interface Booking {
   sessionType: 'video' | 'audio' | 'chat';
   sessionDuration: number;
   scheduledAt: string;
-  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
+  status: BookingStatus;
   amount: number;
   currency: string;
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
@@ -32,11 +33,7 @@ export interface Booking {
     phone: string;
     relationship: string;
   };
-  preferences?: {
-    gender?: string;
-    sessionType?: string;
-    categoryId?: string;
-  };
+  preferences?: BookingPreferences;
   assignedAt?: string;
   videoCall?: {
     provider?: CallProvider;
@@ -52,6 +49,39 @@ export interface Booking {
   };
   createdAt?: string;
 }
+
+export type BookingStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'in-progress'
+  | 'completed'
+  | 'cancelled'
+  | 'no-show'
+  | 'expired';
+
+export interface BookingPreferences {
+  gender?: 'male' | 'female' | 'any';
+  sessionType?: string;
+  categoryId?: string;
+}
+
+/**
+ * The only booking shape a counsellor may receive before assignment.
+ * Identity, contact, clinical, emergency-contact, payment, and call data are
+ * intentionally absent so preview consumers cannot depend on those fields.
+ */
+export interface UnassignedBookingPreview {
+  accessScope: 'preview';
+  id: string;
+  sessionType: 'video' | 'audio' | 'chat';
+  sessionDuration: number;
+  scheduledAt: string;
+  status: Extract<BookingStatus, 'pending' | 'confirmed'>;
+  canAccept: boolean;
+  createdAt: string;
+}
+
+export type CounsellorBooking = Booking | UnassignedBookingPreview;
 
 export type CallProvider = 'livekit' | 'vsee' | 'doxy' | 'zoom' | 'google_meet' | 'teams' | 'disabled';
 export type CallJoinMode = 'in_app' | 'external_link' | 'disabled';
@@ -85,6 +115,8 @@ export interface VideoRoom {
 export interface CounsellorStatus {
   isActive: boolean;
   isAvailable: boolean;
+  isVerified: boolean;
+  marketplaceEligible: boolean;
   profileMediaComplete?: boolean;
   profileImage?: string | null;
   voiceIntroUrl?: string | null;
@@ -102,6 +134,7 @@ export interface DashboardStats {
 }
 
 export interface TodaySchedule {
+  accessScope: 'assigned';
   id: string;
   userName: string;
   userImage?: string;
@@ -109,6 +142,17 @@ export interface TodaySchedule {
   sessionDuration: number;
   scheduledAt: string;
   status: string;
+}
+
+export interface DashboardBookingSummary {
+  accessScope: 'assigned';
+  id: string;
+  userName: string;
+  userImage?: string;
+  sessionType: 'video' | 'audio' | 'chat';
+  scheduledAt: string;
+  status: BookingStatus;
+  isSubscriptionBooking?: boolean;
 }
 
 export interface ApiResponse<T> {

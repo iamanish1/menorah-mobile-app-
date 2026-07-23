@@ -16,6 +16,18 @@ const { getRedisClient } = require('../config/redis');
 const { uploadBuffer, deleteResource } = require('../utils/cloudinary');
 const { encryptBankAccountNumber } = require('../utils/bankAccountEncryption');
 const { payoutInFlightStatuses } = require('../services/payoutPolicy');
+const {
+  buildBookingAuthorizationQuery,
+  buildCounsellorMarketplaceBookingQuery,
+  doesBookingMatchCounsellorPreferences,
+  isBookingAuthorizationValid,
+  isCounsellorAssignedAccessEligible,
+  isCounsellorMarketplaceEligible,
+  isUnassignedMarketplaceBookingEligible,
+} = require('../services/bookingMarketplacePolicy');
+const {
+  serializeUnassignedBookingPreview,
+} = require('../serializers/bookingSerializer');
 
 const SERVER_TZ = process.env.SERVER_TZ || 'Asia/Kolkata';
 
@@ -122,6 +134,20 @@ const invalidateCounsellorDiscoveryCache = async () => {
 };
 
 const hasCompletedProfileMedia = (counsellor) => Boolean(counsellor?.profileImage && counsellor?.voiceIntroUrl);
+const isCounsellorMarketplaceReady = (counsellor) =>
+  hasCompletedProfileMedia(counsellor)
+  && isCounsellorMarketplaceEligible(counsellor, { requireAvailability: true });
+
+const marketplaceAccessDenied = (res) => res.status(403).json({
+  success: false,
+  code: 'COUNSELLOR_MARKETPLACE_ACCESS_DENIED',
+  message: 'Your counsellor profile is not eligible to view or accept new booking requests.',
+});
+const assignedBookingAccessDenied = (res) => res.status(403).json({
+  success: false,
+  code: 'COUNSELLOR_ASSIGNED_ACCESS_DENIED',
+  message: 'Current professional approval is required to access assigned bookings.',
+});
 
 const stripApiPath = (rawUrl) => {
   if (!rawUrl) return null;
@@ -634,20 +660,8 @@ router.get('/me/bookings/pending', [
       });
     }
 
-    // Allow viewing pending bookings even if temporarily unavailable
-    // Only check if counsellor profile exists and is active
-    if (!counsellor.isActive) {
-      return res.status(400).json({
-        success: false,
-        message: 'Counsellor profile is not active'
-      });
-    }
-
-    if (!hasCompletedProfileMedia(counsellor)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Complete your mandatory selfie and voice intro before viewing new pending assignments.'
-      });
+    if (!isCounsellorMarketplaceReady(counsellor)) {
+      return marketplaceAccessDenied(res);
     }
 
     const { page = 1, limit = 10 } = req.query;
@@ -657,28 +671,10 @@ router.get('/me/bookings/pending', [
     // Get counsellor's gender from their User record for gender-based filtering
     const counsellorGender = req.user.gender; // e.g. 'male', 'female', 'other'
 
-    // Build gender filter:
-    // - If counsellor has gender set: show bookings matching their gender + 'any' + no preference
-    // - If counsellor has NO gender set: show only 'any' + no preference (never show gender-specific bookings)
-    const genderOrClauses = counsellorGender
-      ? [
-          { 'preferences.gender': counsellorGender },
-          { 'preferences.gender': 'any' },
-          { 'preferences.gender': { $exists: false } },
-          { 'preferences.gender': null },
-        ]
-      : [
-          { 'preferences.gender': 'any' },
-          { 'preferences.gender': { $exists: false } },
-          { 'preferences.gender': null },
-        ];
-
-    const query = {
-      counsellor: null,
-      status: { $in: ['pending', 'confirmed'] },
-      scheduledAt: { $gte: new Date() },
-      $or: genderOrClauses,
-    };
+    const query = buildCounsellorMarketplaceBookingQuery({
+      now: new Date(),
+      counsellorGender,
+    });
 
     // Calculate pagination
     const skip = (pageNum - 1) * limitNum;
@@ -686,10 +682,11 @@ router.get('/me/bookings/pending', [
 
     // Execute query
     const bookings = await Booking.find(query)
-      .populate({
-        path: 'user',
-        select: 'firstName lastName email phone profileImage gender'
-      })
+      .select(
+        '_id sessionType sessionDuration scheduledAt status preferences createdAt '
+        + 'paymentStatus paymentMethod paymentId isSubscriptionBooking amountMinor currency '
+        + 'pricing bookingAuthorization'
+      )
       .sort({ scheduledAt: 1 }) // Earliest first
       .skip(skip)
       .limit(limitNum)
@@ -698,34 +695,7 @@ router.get('/me/bookings/pending', [
     // Get total count
     const total = await Booking.countDocuments(query);
     
-    console.log(`Found ${bookings.length} pending bookings out of ${total} total`);
-
-    // Format response
-    const formattedBookings = bookings
-      .filter(booking => booking.user) // Filter out bookings with null/undefined users
-      .map(booking => ({
-        id: booking._id,
-        userName: `${booking.user?.firstName || ''} ${booking.user?.lastName || ''}`.trim() || 'Unknown User',
-        userEmail: booking.user?.email || '',
-        userPhone: booking.user?.phone || '',
-        userImage: booking.user?.profileImage,
-        userGender: booking.user?.gender,
-        sessionType: booking.sessionType,
-        sessionDuration: booking.sessionDuration,
-        scheduledAt: booking.scheduledAt,
-        amount: booking.amount,
-        currency: booking.currency,
-        paymentStatus: booking.paymentStatus,
-        isSubscriptionBooking: booking.isSubscriptionBooking || false,
-        paymentMethod: booking.paymentMethod,
-        preferences: booking.preferences,
-        symptoms: booking.symptoms,
-        concerns: booking.concerns,
-        goals: booking.goals,
-        emergencyContact: booking.emergencyContact,
-        videoCall: formatVideoCall(booking.videoCall),
-        createdAt: booking.createdAt
-      }));
+    const formattedBookings = bookings.map(serializeUnassignedBookingPreview);
 
     res.json({
       success: true,
@@ -775,20 +745,67 @@ router.get('/me/bookings/:id', [
     }
 
     const { id } = req.params;
+    const accessNow = new Date();
 
-    // Find booking that counselor can access (matching dashboard logic):
-    // 1. Assigned to this counselor (any status except cancelled)
-    // 2. Unassigned pending/confirmed bookings (available for any counselor)
-    let booking = await Booking.findOne({
+    const bookingAccessRecord = await Booking.findById(id)
+      .select(
+        '_id counsellor sessionType sessionDuration scheduledAt status '
+        + 'preferences createdAt paymentStatus paymentMethod isSubscriptionBooking '
+        + 'paymentId amount amountMinor currency pricing bookingAuthorization'
+      )
+      .lean();
+    if (!bookingAccessRecord) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+
+    const assignedCounsellorId = bookingAccessRecord.counsellor?.toString?.();
+    const requesterCounsellorId = counsellor._id.toString();
+    if (!assignedCounsellorId) {
+      if (
+        !isCounsellorMarketplaceReady(counsellor)
+        || !isUnassignedMarketplaceBookingEligible(bookingAccessRecord, { now: accessNow })
+        || !doesBookingMatchCounsellorPreferences(bookingAccessRecord, {
+          counsellorGender: req.user.gender,
+        })
+      ) {
+        return res.status(404).json({
+          success: false,
+          message: 'Booking not found'
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          booking: serializeUnassignedBookingPreview(bookingAccessRecord, { now: accessNow }),
+        },
+      });
+    }
+
+    if (assignedCounsellorId !== requesterCounsellorId) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+
+    if (
+      !isCounsellorAssignedAccessEligible(counsellor)
+      || !isBookingAuthorizationValid(bookingAccessRecord, { now: accessNow })
+    ) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+
+    const booking = await Booking.findOne({
       _id: id,
-      status: { $ne: 'cancelled' }, // Exclude cancelled bookings
-      $or: [
-        { counsellor: counsellor._id }, // Assigned to this counselor
-        { 
-          counsellor: null, 
-          status: { $in: ['pending', 'confirmed'] } // Unassigned available bookings
-        }
-      ]
+      counsellor: counsellor._id,
+      ...buildBookingAuthorizationQuery({ now: accessNow }),
     })
       .populate({
         path: 'user',
@@ -797,23 +814,14 @@ router.get('/me/bookings/:id', [
       .lean();
 
     if (!booking) {
-      // If not found with the above criteria, check if booking exists at all
-      // This helps with debugging
-      const bookingExists = await Booking.findById(id).lean();
-      if (bookingExists) {
-        return res.status(403).json({
-          success: false,
-          message: 'You do not have access to this booking. It may be assigned to another counselor or is not available.'
-        });
-      }
       return res.status(404).json({
         success: false,
         message: 'Booking not found'
       });
     }
 
-    // Format response
     const formattedBooking = {
+      accessScope: 'assigned',
       id: booking._id,
       userName: booking.user ? `${booking.user?.firstName || ''} ${booking.user?.lastName || ''}`.trim() || 'Unknown User' : 'Unknown User',
       userEmail: booking.user?.email || '',
@@ -834,8 +842,7 @@ router.get('/me/bookings/:id', [
       preferences: booking.preferences,
       videoCall: formatVideoCall(booking.videoCall),
       assignedAt: booking.assignedAt,
-      createdAt: booking.createdAt,
-      statusHistory: booking.statusHistory
+      createdAt: booking.createdAt
     };
 
     res.json({
@@ -880,10 +887,18 @@ router.get('/me/bookings', [
       });
     }
 
+    if (!isCounsellorAssignedAccessEligible(counsellor)) {
+      return assignedBookingAccessDenied(res);
+    }
+
     const { status, startDate, endDate, page = 1, limit = 10 } = req.query;
+    const authorizationQuery = buildBookingAuthorizationQuery({ now: new Date() });
 
     // Build query
-    const query = { counsellor: counsellor._id };
+    const query = {
+      counsellor: counsellor._id,
+      ...authorizationQuery,
+    };
     if (status) {
       query.status = status;
     }
@@ -914,6 +929,7 @@ router.get('/me/bookings', [
     const formattedBookings = bookings
       .filter(booking => booking.user) // Filter out bookings with null/undefined users
       .map(booking => ({
+        accessScope: 'assigned',
         id: booking._id,
         userName: `${booking.user?.firstName || ''} ${booking.user?.lastName || ''}`.trim() || 'Unknown User',
         userEmail: booking.user?.email || '',
@@ -981,32 +997,18 @@ router.post('/me/bookings/:id/accept', [
       });
     }
 
-    // Check if counselor is available to accept bookings
-    if (!counsellor.isActive) {
-      return res.status(400).json({
-        success: false,
-        message: 'Counsellor account is not active'
-      });
-    }
-
-    if (!hasCompletedProfileMedia(counsellor)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Complete your mandatory selfie and voice intro before accepting bookings.'
-      });
-    }
-
-    if (!counsellor.isAvailable) {
-      return res.status(400).json({
-        success: false,
-        message: 'Counsellor is currently not available to accept new bookings. Please set your availability to "Available" to accept bookings.'
-      });
+    if (!isCounsellorMarketplaceReady(counsellor)) {
+      return marketplaceAccessDenied(res);
     }
 
     const { id } = req.params;
 
     const booking = await Booking.findById(id)
-      .populate('user', 'firstName lastName email phone');
+      .select(
+        '_id user counsellor status scheduledAt sessionDuration preferences paymentStatus '
+        + 'paymentMethod paymentId isSubscriptionBooking amount amountMinor currency pricing '
+        + 'bookingAuthorization assignedAt'
+      );
 
     if (!booking) {
       return res.status(404).json({
@@ -1016,15 +1018,23 @@ router.post('/me/bookings/:id/accept', [
     }
 
     if (booking.counsellor) {
-      // If already assigned to THIS counsellor, just set assignedAt and return success
+      // A retry is idempotent only while this remains the same authorized,
+      // confirmed booking. Never revive or re-confirm a terminal/refunded record.
       if (booking.counsellor.toString() === counsellor._id.toString()) {
-        if (!booking.assignedAt) {
-          booking.assignedAt = new Date();
-          await booking.save();
+        if (
+          booking.status !== 'confirmed'
+          || !isBookingAuthorizationValid(booking, { now: new Date() })
+        ) {
+          return res.status(409).json({
+            success: false,
+            code: 'BOOKING_NOT_ACCEPTABLE',
+            message: 'This booking is no longer eligible for acceptance.'
+          });
         }
+
         return res.json({
           success: true,
-          message: 'Booking confirmed',
+          message: 'Booking already accepted',
           data: {
             booking: {
               id: booking._id,
@@ -1034,98 +1044,94 @@ router.post('/me/bookings/:id/accept', [
           }
         });
       }
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
         message: 'Booking is already assigned to another counsellor'
       });
     }
 
-    // Allow accepting unassigned bookings that are pending or confirmed
-    // (confirmed but unassigned is an edge case that can happen)
-    if (!['pending', 'confirmed'].includes(booking.status)) {
-      return res.status(400).json({
+    const acceptanceNow = new Date();
+    if (
+      !isUnassignedMarketplaceBookingEligible(booking, { now: acceptanceNow })
+      || !doesBookingMatchCounsellorPreferences(booking, {
+        counsellorGender: req.user.gender,
+      })
+    ) {
+      return res.status(409).json({
         success: false,
-        message: `Cannot accept booking with status '${booking.status}'. Only pending or confirmed unassigned bookings can be accepted.`
+        code: 'BOOKING_NOT_ACCEPTABLE',
+        message: 'This booking is not in a paid or explicitly authorized accept-ready state.'
       });
     }
 
-    // Check if this is an instant session (unassigned pending/confirmed booking)
-    // For instant sessions, we skip time-based conflict checks since they can start immediately
-    const now = new Date();
     const scheduledTime = new Date(booking.scheduledAt);
-    // Instant sessions are unassigned bookings that are pending or confirmed
-    const isInstantSession = !booking.counsellor && ['pending', 'confirmed'].includes(booking.status);
-    
-    if (!isInstantSession) {
-      // For scheduled sessions, check availability and time conflicts
-      // Get day of week as lowercase string (monday, tuesday, etc.)
-      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-      const dayOfWeek = days[scheduledTime.getDay()];
-      const timeString = scheduledTime.toTimeString().slice(0, 5);
-      
-      // Check if availability exists and has the day
-      if (!counsellor.availability || typeof counsellor.availability !== 'object') {
-        return res.status(400).json({
-          success: false,
-          message: 'Counsellor availability is not configured'
-        });
-      }
-      
-      const daySchedule = counsellor.availability[dayOfWeek];
+    const scheduledEnd = new Date(
+      scheduledTime.getTime() + booking.sessionDuration * 60 * 1000
+    );
+    const scheduleTimezone = counsellor.timezone || SERVER_TZ;
+    const scheduledLocal = moment.tz(scheduledTime, scheduleTimezone);
+    const dayOfWeek = scheduledLocal.format('dddd').toLowerCase();
 
-      if (!daySchedule || !daySchedule.isAvailable) {
-        return res.status(400).json({
-          success: false,
-          message: 'Counsellor is not available on this day'
-        });
-      }
-
-      if (!daySchedule.start || !daySchedule.end) {
-        return res.status(400).json({
-          success: false,
-          message: 'Counsellor working hours are not configured for this day'
-        });
-      }
-
-      if (timeString < daySchedule.start || timeString > daySchedule.end) {
-        return res.status(400).json({
-          success: false,
-          message: 'Scheduled time is outside counsellor\'s working hours'
-        });
-      }
-
-      // Check for conflicting bookings (only for scheduled sessions)
-      const conflictingBooking = await Booking.findOne({
-        counsellor: counsellor._id,
-        scheduledAt: {
-          $gte: new Date(scheduledTime.getTime() - booking.sessionDuration * 60 * 1000),
-          $lte: new Date(scheduledTime.getTime() + booking.sessionDuration * 60 * 1000)
-        },
-        status: { $in: ['pending', 'confirmed', 'in-progress'] },
-        _id: { $ne: booking._id }
+    if (!counsellor.availability || typeof counsellor.availability !== 'object') {
+      return res.status(409).json({
+        success: false,
+        code: 'COUNSELLOR_SCHEDULE_UNAVAILABLE',
+        message: 'Counsellor availability is not configured.'
       });
+    }
 
-      if (conflictingBooking) {
-        return res.status(400).json({
-          success: false,
-          message: 'Counsellor has a conflicting booking at this time'
-        });
-      }
-    } else {
-      // For instant sessions, only check if counselor has an active in-progress session
-      // Multiple instant sessions can be accepted, but only one can be in-progress at a time
-      const activeSession = await Booking.findOne({
-        counsellor: counsellor._id,
-        status: 'in-progress',
-        _id: { $ne: booking._id }
+    const daySchedule = counsellor.availability[dayOfWeek];
+    const validClock = (value) => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+    if (!daySchedule?.isAvailable || !validClock(daySchedule.start) || !validClock(daySchedule.end)) {
+      return res.status(409).json({
+        success: false,
+        code: 'COUNSELLOR_SCHEDULE_UNAVAILABLE',
+        message: 'Counsellor is not available for the requested time.'
       });
+    }
 
-      if (activeSession) {
-        return res.status(400).json({
-          success: false,
-          message: 'Counsellor is currently in an active session. Please complete it before accepting a new booking.'
-        });
-      }
+    const [startHour, startMinute] = daySchedule.start.split(':').map(Number);
+    const [endHour, endMinute] = daySchedule.end.split(':').map(Number);
+    const workingStartMinutes = startHour * 60 + startMinute;
+    const workingEndMinutes = endHour * 60 + endMinute;
+    const bookingStartMinutes = scheduledLocal.hour() * 60 + scheduledLocal.minute();
+    const bookingEndMinutes = bookingStartMinutes + booking.sessionDuration;
+
+    if (
+      bookingStartMinutes < workingStartMinutes
+      || bookingEndMinutes > workingEndMinutes
+    ) {
+      return res.status(409).json({
+        success: false,
+        code: 'COUNSELLOR_SCHEDULE_UNAVAILABLE',
+        message: 'The requested session falls outside counsellor working hours.'
+      });
+    }
+
+    const conflictingBooking = await Booking.findOne({
+      counsellor: counsellor._id,
+      scheduledAt: { $lt: scheduledEnd },
+      status: { $in: ['pending', 'confirmed', 'in-progress'] },
+      _id: { $ne: booking._id },
+      $expr: {
+        $gt: [
+          {
+            $add: [
+              '$scheduledAt',
+              { $multiply: ['$sessionDuration', 60 * 1000] },
+            ],
+          },
+          scheduledTime,
+        ],
+      },
+    });
+
+    if (conflictingBooking) {
+      return res.status(409).json({
+        success: false,
+        code: 'COUNSELLOR_SCHEDULE_CONFLICT',
+        message: 'Counsellor has a conflicting booking at this time.'
+      });
     }
 
     const assignedAt = new Date();
@@ -1134,25 +1140,18 @@ router.post('/me/bookings/:id/accept', [
       assignedAt,
       status: 'confirmed'
     };
-    
-    // Update amount based on counsellor's rate if not already set
-    if (!booking.amount || booking.amount === 0) {
-      bookingUpdates.amount = (counsellor.hourlyRate / 60) * booking.sessionDuration;
-      bookingUpdates.currency = counsellor.currency;
-    }
 
     const acceptedBooking = await Booking.findOneAndUpdate(
       {
         _id: booking._id,
-        status: { $in: ['pending', 'confirmed'] },
-        $or: [
-          { counsellor: { $exists: false } },
-          { counsellor: null }
-        ]
+        ...buildCounsellorMarketplaceBookingQuery({
+          now: acceptanceNow,
+          counsellorGender: req.user.gender,
+        }),
       },
       { $set: bookingUpdates },
       { new: true, runValidators: true }
-    ).populate('user', 'firstName lastName email phone');
+    );
 
     if (!acceptedBooking) {
       return res.status(409).json({
@@ -1164,14 +1163,16 @@ router.post('/me/bookings/:id/accept', [
     // Emit Socket.IO event (will be handled in server.js)
     if (req.app.get('io') && acceptedBooking.user) {
       const io = req.app.get('io');
+      const acceptedUserId = acceptedBooking.user._id?.toString?.()
+        || acceptedBooking.user.toString();
       io.to(`counsellor_${counsellor._id}`).emit('booking_assigned', {
         bookingId: acceptedBooking._id,
-        userId: acceptedBooking.user._id,
+        userId: acceptedUserId,
         scheduledAt: acceptedBooking.scheduledAt
       });
       
       // Notify user
-      io.to(`user_${acceptedBooking.user._id}`).emit('booking_confirmed', {
+      io.to(`user_${acceptedUserId}`).emit('booking_confirmed', {
         bookingId: acceptedBooking._id,
         counsellorName: `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim() || 'Counsellor'
       });
@@ -1190,8 +1191,14 @@ router.post('/me/bookings/:id/accept', [
     });
 
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        code: 'COUNSELLOR_SCHEDULE_CONFLICT',
+        message: 'The counsellor schedule changed before this booking could be accepted.'
+      });
+    }
     console.error('Accept booking error:', error);
-    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -1225,23 +1232,27 @@ router.put('/me/bookings/:id/schedule', [
       });
     }
 
+    if (!isCounsellorAssignedAccessEligible(counsellor)) {
+      return assignedBookingAccessDenied(res);
+    }
+
     const { id } = req.params;
     const { scheduledAt } = req.body;
+    const authorizationNow = new Date();
 
-    const booking = await Booking.findById(id)
-      .populate('user', 'firstName lastName email phone');
+    const booking = await Booking.findOne({
+      _id: id,
+      counsellor: counsellor._id,
+      status: { $in: ['pending', 'confirmed'] },
+      ...buildBookingAuthorizationQuery({ now: authorizationNow }),
+    })
+      .select('_id user counsellor status sessionDuration scheduledAt')
+      .lean();
 
     if (!booking) {
       return res.status(404).json({
         success: false,
         message: 'Booking not found'
-      });
-    }
-
-    if (booking.counsellor?.toString() !== counsellor._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. This booking is not assigned to you'
       });
     }
 
@@ -1279,37 +1290,70 @@ router.put('/me/bookings/:id/schedule', [
     }
 
     // Check for conflicting bookings
+    const scheduledEnd = new Date(
+      scheduledTime.getTime() + booking.sessionDuration * 60 * 1000
+    );
     const conflictingBooking = await Booking.findOne({
       counsellor: counsellor._id,
-      scheduledAt: {
-        $gte: new Date(scheduledTime.getTime() - booking.sessionDuration * 60 * 1000),
-        $lte: new Date(scheduledTime.getTime() + booking.sessionDuration * 60 * 1000)
+      scheduledAt: { $lt: scheduledEnd },
+      status: { $in: ['pending', 'confirmed', 'in-progress'] },
+      _id: { $ne: booking._id },
+      $expr: {
+        $gt: [
+          {
+            $add: [
+              '$scheduledAt',
+              { $multiply: ['$sessionDuration', 60 * 1000] },
+            ],
+          },
+          scheduledTime,
+        ],
       },
-      status: { $in: ['pending', 'confirmed'] },
-      _id: { $ne: booking._id }
     });
 
     if (conflictingBooking) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
-        message: 'Counsellor has a conflicting booking at this time'
+        code: 'COUNSELLOR_SCHEDULE_CONFLICT',
+        message: 'Counsellor has a conflicting booking at this time.'
       });
     }
 
-    // Update scheduled time
     const oldScheduledAt = booking.scheduledAt;
-    booking.scheduledAt = scheduledTime;
-    await booking.save();
+    const updatedBooking = await Booking.findOneAndUpdate(
+      {
+        _id: booking._id,
+        counsellor: counsellor._id,
+        scheduledAt: oldScheduledAt,
+        status: { $in: ['pending', 'confirmed'] },
+        ...buildBookingAuthorizationQuery({ now: authorizationNow }),
+      },
+      { $set: { scheduledAt: scheduledTime } },
+      {
+        new: true,
+        runValidators: true,
+        projection: '_id user scheduledAt',
+      }
+    );
+
+    if (!updatedBooking) {
+      return res.status(409).json({
+        success: false,
+        code: 'BOOKING_STATE_CHANGED',
+        message: 'The booking changed before it could be rescheduled.'
+      });
+    }
 
     // Emit Socket.IO event
-    if (req.app.get('io') && booking.user) {
+    if (req.app.get('io') && updatedBooking.user) {
       const io = req.app.get('io');
-      const userId = booking.user._id || booking.user;
+      const userId = updatedBooking.user._id?.toString?.()
+        || updatedBooking.user.toString();
 
       // Notify the counsellor's own room
       io.to(`counsellor_${counsellor._id}`).emit('booking_scheduled', {
-        bookingId: booking._id,
-        scheduledAt: booking.scheduledAt,
+        bookingId: updatedBooking._id,
+        scheduledAt: updatedBooking.scheduledAt,
         oldScheduledAt,
       });
 
@@ -1317,8 +1361,8 @@ router.put('/me/bookings/:id/schedule', [
       const counsellorUser = await require('../models/User').findById(counsellor.user).select('firstName lastName');
       const counsellorName = counsellorUser ? `${counsellorUser.firstName} ${counsellorUser.lastName}` : 'Your counsellor';
       io.to(`user_${userId}`).emit('booking_rescheduled', {
-        bookingId: booking._id,
-        scheduledAt: booking.scheduledAt,
+        bookingId: updatedBooking._id,
+        scheduledAt: updatedBooking.scheduledAt,
         oldScheduledAt,
         counsellorName,
       });
@@ -1329,13 +1373,20 @@ router.put('/me/bookings/:id/schedule', [
       message: 'Session scheduled successfully',
       data: {
         booking: {
-          id: booking._id,
-          scheduledAt: booking.scheduledAt
+          id: updatedBooking._id,
+          scheduledAt: updatedBooking.scheduledAt
         }
       }
     });
 
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        code: 'COUNSELLOR_SCHEDULE_CONFLICT',
+        message: 'The counsellor schedule changed before this booking could be rescheduled.'
+      });
+    }
     console.error('Schedule booking error:', error);
     res.status(500).json({
       success: false,
@@ -1358,51 +1409,47 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
     }
 
     const profileMediaComplete = hasCompletedProfileMedia(counsellor);
-    // Only active, available counselors with public-ready profile media can see unassigned bookings.
-    const isCounsellorAvailable = counsellor.isActive && counsellor.isAvailable && profileMediaComplete;
+    const isCounsellorAvailable = isCounsellorMarketplaceReady(counsellor);
+    const canAccessAssignedBookings = isCounsellorAssignedAccessEligible(counsellor);
 
     const now = new Date();
     const nowLocal = moment.tz(now, SERVER_TZ);
     const startOfMonth = nowLocal.clone().startOf('month').toDate();
     const endOfMonth = nowLocal.clone().endOf('month').toDate();
     const next7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const authorizationQuery = buildBookingAuthorizationQuery({ now });
 
-    // Total bookings - ALL bookings that counselors can work with
-    // Includes: assigned to this counselor OR unassigned (only if counselor is available)
-    const totalBookings = await Booking.countDocuments({
-      $or: [
-        { counsellor: counsellor._id }, // Always show assigned bookings
-        ...(isCounsellorAvailable ? [{ counsellor: null, status: { $in: ['pending', 'confirmed'] } }] : []) // Only show unassigned if available
-      ],
+    // Dashboard schedule/recent lists contain assigned bookings only. New,
+    // anonymized opportunities are available through the dedicated preview route.
+    const totalBookings = canAccessAssignedBookings ? await Booking.countDocuments({
+      counsellor: counsellor._id,
+      ...authorizationQuery,
       status: { $ne: 'cancelled' }
-    });
+    }) : 0;
 
-    // Upcoming sessions (next 7 days) - ALL available bookings
-    const upcomingSessions = await Booking.countDocuments({
-      $or: [
-        { counsellor: counsellor._id }, // Always show assigned bookings
-        ...(isCounsellorAvailable ? [{ counsellor: null, status: 'pending' }] : []) // Only show unassigned if available
-      ],
+    const upcomingSessions = canAccessAssignedBookings ? await Booking.countDocuments({
+      counsellor: counsellor._id,
+      ...authorizationQuery,
       scheduledAt: { $gte: now, $lte: next7Days },
       status: { $in: ['confirmed', 'pending'] }
-    });
+    }) : 0;
 
-    // Pending assignments — unassigned bookings (including subscription auto-confirmed ones)
     const pendingAssignments = isCounsellorAvailable
-      ? await Booking.countDocuments({
-          counsellor: null,
-          status: { $in: ['pending', 'confirmed'] }
-        })
+      ? await Booking.countDocuments(buildCounsellorMarketplaceBookingQuery({
+          now,
+          counsellorGender: req.user.gender,
+        }))
       : 0;
 
     // Monthly earnings - only paid bookings, after counsellor's commission share
     const commissionRate = counsellor.commissionRate ?? 20;
     const counsellorShare = (100 - commissionRate) / 100;
-    const monthlyBookings = await Booking.find({
+    const monthlyBookings = canAccessAssignedBookings ? await Booking.find({
       counsellor: counsellor._id,
+      ...authorizationQuery,
       scheduledAt: { $gte: startOfMonth, $lte: endOfMonth },
       paymentStatus: 'paid'
-    }).select('amount').lean();
+    }).select('amount').lean() : [];
 
     const monthlyEarnings = monthlyBookings.reduce((total, booking) => {
       return total + (booking.amount || 0) * counsellorShare;
@@ -1414,54 +1461,29 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
     const endOfDay = todayLocal.clone().endOf('day').toDate();
     
     // Get assigned bookings for today
-    const assignedToday = await Booking.find({
+    const assignedToday = canAccessAssignedBookings ? await Booking.find({
       counsellor: counsellor._id,
+      ...authorizationQuery,
       scheduledAt: { $gte: startOfDay, $lte: endOfDay },
       status: { $in: ['confirmed', 'pending', 'in-progress'] }
     })
       .populate('user', 'firstName lastName profileImage')
       .sort({ scheduledAt: 1 })
-      .lean();
+      .lean() : [];
     
-    // Get all unassigned bookings (pending or subscription auto-confirmed)
-    const unassignedPending = isCounsellorAvailable
-      ? await Booking.find({
-          counsellor: null,
-          status: { $in: ['pending', 'confirmed'] }
-        })
-          .populate('user', 'firstName lastName profileImage')
-          .sort({ createdAt: -1 }) // Most recent first for instant sessions
-          .lean()
-      : [];
-    
-    // Combine and sort: assigned today's bookings first, then unassigned pending
-    const todayBookings = [...assignedToday, ...unassignedPending].sort((a, b) => {
-      // If both are assigned, sort by scheduledAt
-      if (a.counsellor && b.counsellor) {
-        return new Date(a.scheduledAt) - new Date(b.scheduledAt);
-      }
-      // Unassigned (pending) bookings come after assigned ones
-      if (!a.counsellor && b.counsellor) return 1;
-      if (a.counsellor && !b.counsellor) return -1;
-      // Both unassigned, sort by creation date (newest first for instant sessions)
-      const dateA = a.createdAt ? new Date(a.createdAt) : (a._id && typeof a._id.getTimestamp === 'function' ? a._id.getTimestamp() : new Date(0));
-      const dateB = b.createdAt ? new Date(b.createdAt) : (b._id && typeof b._id.getTimestamp === 'function' ? b._id.getTimestamp() : new Date(0));
-      return dateB.getTime() - dateA.getTime();
-    });
+    const todayBookings = assignedToday;
 
-    // Recent bookings (last 10) - ALL bookings available for counselors
-    // Only show unassigned bookings to available counselors
-    const recentBookings = await Booking.find({
-      $or: [
-        { counsellor: counsellor._id }, // Always show assigned bookings
-        ...(isCounsellorAvailable ? [{ counsellor: null, status: { $in: ['pending', 'confirmed'] } }] : [])
-      ],
+    // Recent bookings contain assigned records only; this prevents identity
+    // data from being mixed into the unassigned marketplace response.
+    const recentBookings = canAccessAssignedBookings ? await Booking.find({
+      counsellor: counsellor._id,
+      ...authorizationQuery,
       status: { $ne: 'cancelled' }
     })
       .populate('user', 'firstName lastName profileImage')
       .sort({ createdAt: -1 })
       .limit(10)
-      .lean();
+      .lean() : [];
 
     res.json({
       success: true,
@@ -1469,11 +1491,15 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
         counsellorStatus: {
           isActive: counsellor.isActive,
           isAvailable: counsellor.isAvailable,
+          isVerified: counsellor.isVerified === true && counsellor.status === 'approved',
+          marketplaceEligible: isCounsellorAvailable,
           profileMediaComplete,
           profileImage: counsellor.profileImage || null,
           voiceIntroUrl: counsellor.voiceIntroUrl || null,
           message: !counsellor.isActive
             ? 'Your account is not active. Please contact support.'
+            : !(counsellor.isVerified === true && counsellor.status === 'approved')
+            ? 'Your professional verification is not approved for new booking requests.'
             : !profileMediaComplete
             ? 'Complete your mandatory selfie and voice intro before your profile goes live.'
             : !counsellor.isAvailable
@@ -1492,6 +1518,7 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
         todaySchedule: todayBookings
           .filter(booking => booking.user)
           .map(booking => ({
+            accessScope: 'assigned',
             id: booking._id.toString(),
             userName: `${booking.user?.firstName || ''} ${booking.user?.lastName || ''}`.trim() || 'Unknown User',
             userImage: booking.user?.profileImage,
@@ -1506,6 +1533,7 @@ router.get('/me/dashboard', counsellorAuth, async (req, res) => {
         recentBookings: recentBookings
           .filter(booking => booking.user)
           .map(booking => ({
+            accessScope: 'assigned',
             id: booking._id.toString(),
             userName: `${booking.user?.firstName || ''} ${booking.user?.lastName || ''}`.trim() || 'Unknown User',
             userImage: booking.user?.profileImage,

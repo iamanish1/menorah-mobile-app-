@@ -1,5 +1,17 @@
 import axios, { AxiosInstance } from 'axios';
-import { Article, ArticlePagination, Booking, DashboardStats, TodaySchedule, ApiResponse, CounsellorStatus, VideoRoom } from '@/types';
+import type {
+  Article,
+  ArticlePagination,
+  Booking,
+  CounsellorBooking,
+  DashboardBookingSummary,
+  DashboardStats,
+  TodaySchedule,
+  ApiResponse,
+  CounsellorStatus,
+  UnassignedBookingPreview,
+  VideoRoom,
+} from '@/types';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -151,7 +163,7 @@ class ApiClient {
   async getPendingBookings(params?: {
     page?: number;
     limit?: number;
-  }): Promise<ApiResponse<{ bookings: Booking[]; pagination: any }>> {
+  }): Promise<ApiResponse<{ bookings: UnassignedBookingPreview[]; pagination: any }>> {
     try {
       // Build query params - only include if they have valid values
       const queryParams: Record<string, string> = {};
@@ -216,7 +228,7 @@ class ApiClient {
     }
   }
 
-  async getBookingById(bookingId: string): Promise<ApiResponse<{ booking: Booking }>> {
+  async getBookingById(bookingId: string): Promise<ApiResponse<{ booking: CounsellorBooking }>> {
     try {
       const response = await this.client.get(`/counsellors/me/bookings/${bookingId}`);
       return response.data;
@@ -304,7 +316,7 @@ class ApiClient {
     counsellorStatus: CounsellorStatus;
     stats: DashboardStats;
     todaySchedule: TodaySchedule[];
-    recentBookings: Booking[];
+    recentBookings: DashboardBookingSummary[];
   }>> {
     try {
       const response = await this.client.get('/counsellors/me/dashboard');

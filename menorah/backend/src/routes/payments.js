@@ -10,6 +10,9 @@ const {
   expireStalePendingBookings,
   isBlockingBooking,
 } = require('../utils/bookingAvailability');
+const {
+  notifyEligibleCounsellorsOfBooking,
+} = require('../services/bookingMarketplaceNotifications');
 
 const router = express.Router();
 const SLOT_EXPIRED_MESSAGE = 'This slot expired while waiting for payment. Please choose another available time.';
@@ -368,20 +371,9 @@ router.post('/verify-razorpay', [
 
     // Now that payment is confirmed, notify available counsellors about unassigned bookings
     if (!booking.counsellor && req.app.get('io')) {
-      const io = req.app.get('io');
-      const CounsellorModel = require('../models/Counsellor');
-      const availableCounsellors = await CounsellorModel.find({ isActive: true, isAvailable: true }).select('_id').lean();
-      const notification = {
-        bookingId: booking._id,
-        sessionType: booking.sessionType,
-        sessionDuration: booking.sessionDuration,
-        scheduledAt: booking.scheduledAt,
-        amount: booking.amount,
-        preferences: booking.preferences,
-        createdAt: booking.createdAt
-      };
-      availableCounsellors.forEach(c => {
-        io.to(`counsellor_${c._id}`).emit('new_booking_available', notification);
+      await notifyEligibleCounsellorsOfBooking({
+        booking,
+        io: req.app.get('io'),
       });
     }
 
@@ -740,14 +732,7 @@ const handleRazorpayPaymentSuccess = async (payment, io) => {
   await freshBooking.save();
 
   if (!freshBooking.counsellor && io) {
-    const CounsellorModel = require('../models/Counsellor');
-    const available = await CounsellorModel.find({ isActive: true, isAvailable: true }).select('_id').lean();
-    const notification = {
-      bookingId: freshBooking._id, sessionType: freshBooking.sessionType,
-      sessionDuration: freshBooking.sessionDuration, scheduledAt: freshBooking.scheduledAt,
-      amount: freshBooking.amount, preferences: freshBooking.preferences, createdAt: freshBooking.createdAt,
-    };
-    available.forEach(c => io.to(`counsellor_${c._id}`).emit('new_booking_available', notification));
+    await notifyEligibleCounsellorsOfBooking({ booking: freshBooking, io });
   }
 };
 

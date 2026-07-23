@@ -131,6 +131,10 @@ describe('booking route server-controlled pricing', () => {
         serviceCode: 'basic',
         listAmountMinor: 123456,
       }),
+      bookingAuthorization: {
+        kind: 'payment',
+        status: 'pending',
+      },
     }));
   });
 
@@ -143,6 +147,7 @@ describe('booking route server-controlled pricing', () => {
     ['promoCode', 'FORGED-FREE'],
     ['discountCode', 'FORGED-DISCOUNT'],
     ['paymentStatus', 'paid'],
+    ['bookingAuthorization', { kind: 'payment', status: 'authorized' }],
     ['isFree', true],
   ])('rejects client-controlled %s before creating a booking', async (field, value) => {
     const response = await request(buildApp())
@@ -204,6 +209,10 @@ describe('booking route server-controlled pricing', () => {
       amountMinor: 0,
       status: 'confirmed',
       pricing: expect.objectContaining({ listAmountMinor: 123456 }),
+      bookingAuthorization: expect.objectContaining({
+        kind: 'subscription_entitlement',
+        status: 'authorized',
+      }),
     }));
   });
 
