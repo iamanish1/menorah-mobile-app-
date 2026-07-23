@@ -1,6 +1,6 @@
 # VAPT scope and evidence
 
-Runtime candidate SHA: `4c82121bfa2293a21a831bc490f4101eb4db1213`
+Runtime candidate SHA: `f507fc41eb636e0c4607d6c34bd80354f8ccff2e`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -114,7 +114,7 @@ for public launch under this plan.
 Remediation changes the candidate SHA. The assessor must review the diff,
 confirm the new immutable staging build, retest every affected finding and
 perform agreed regression around the changed boundary. A report for
-`4c82121bfa2293a21a831bc490f4101eb4db1213` cannot be relabelled for a later
+`f507fc41eb636e0c4607d6c34bd80354f8ccff2e` cannot be relabelled for a later
 runtime SHA.
 
 ## Required deliverables

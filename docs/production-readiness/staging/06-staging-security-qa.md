@@ -1,6 +1,6 @@
 # Staging security QA
 
-Runtime candidate SHA: `4c82121bfa2293a21a831bc490f4101eb4db1213`
+Runtime candidate SHA: `f507fc41eb636e0c4607d6c34bd80354f8ccff2e`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -85,7 +85,7 @@ set -euo pipefail
 
 readonly GH_REPOSITORY='menorahsoftware-cmyk/menorah-mobile-app-'
 readonly APPROVED_BRANCH='<protected-branch-allowed-by-staging-security>'
-readonly RUNTIME_SHA='4c82121bfa2293a21a831bc490f4101eb4db1213'
+readonly RUNTIME_SHA='f507fc41eb636e0c4607d6c34bd80354f8ccff2e'
 : "${APPROVED_WORKFLOW_HEAD_SHA:?Set the externally recorded protected workflow-head SHA}"
 readonly APPROVED_WORKFLOW_HEAD_SHA
 

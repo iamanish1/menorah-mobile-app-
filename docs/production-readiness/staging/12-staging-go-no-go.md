@@ -1,6 +1,6 @@
 # Staging go/no-go record
 
-Runtime candidate SHA: `4c82121bfa2293a21a831bc490f4101eb4db1213`
+Runtime candidate SHA: `f507fc41eb636e0c4607d6c34bd80354f8ccff2e`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -36,7 +36,7 @@ Complete in the controlled decision record:
 
 | Field | Record |
 | --- | --- |
-| Runtime candidate branch/SHA | `release/final-production-readiness` / `4c82121bfa2293a21a831bc490f4101eb4db1213` |
+| Runtime candidate branch/SHA | `release/final-production-readiness` / `f507fc41eb636e0c4607d6c34bd80354f8ccff2e` |
 | Docs/PR-head revision | Record the final full `git rev-parse HEAD` externally after the package commit; it cannot be embedded in its own content-addressed commit |
 | Meeting UTC time | TBD |
 | Change/evidence-pack reference | TBD |

@@ -1,6 +1,6 @@
 # Staging prerequisites
 
-Runtime candidate SHA: `4c82121bfa2293a21a831bc490f4101eb4db1213`
+Runtime candidate SHA: `f507fc41eb636e0c4607d6c34bd80354f8ccff2e`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -82,7 +82,7 @@ staging checkout. Save outputs with UTC time.
 ```bash
 set -euo pipefail
 
-readonly RUNTIME_SHA='4c82121bfa2293a21a831bc490f4101eb4db1213'
+readonly RUNTIME_SHA='f507fc41eb636e0c4607d6c34bd80354f8ccff2e'
 readonly CANDIDATE_BRANCH='release/final-production-readiness'
 : "${APPROVED_PR_HEAD_SHA:?Set the externally recorded final docs/PR-head SHA}"
 readonly APPROVED_PR_HEAD_SHA
@@ -112,7 +112,7 @@ Pass only when:
 - `APPROVED_PR_HEAD_SHA` is the full SHA recorded in the approved external
   change record after the evidence-package commit;
 - `HEAD` and the remote branch tip are exactly `APPROVED_PR_HEAD_SHA`;
-- runtime SHA `4c82121bfa2293a21a831bc490f4101eb4db1213` is an ancestor of that
+- runtime SHA `f507fc41eb636e0c4607d6c34bd80354f8ccff2e` is an ancestor of that
   head and every intervening change is confined to this staging package;
 - left/right divergence is `0 0`;
 - the worktree is clean and both whitespace checks succeed; and

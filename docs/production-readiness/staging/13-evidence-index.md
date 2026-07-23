@@ -1,6 +1,6 @@
 # Unified production-readiness evidence index
 
-Runtime candidate SHA: `4c82121bfa2293a21a831bc490f4101eb4db1213`
+Runtime candidate SHA: `f507fc41eb636e0c4607d6c34bd80354f8ccff2e`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -39,16 +39,26 @@ affected rows `INVALIDATED` and rerun them for the new SHA.
 
 ## Current repository observation log
 
-These results were observed locally on the exact frozen runtime SHA
-`4c82121bfa2293a21a831bc490f4101eb4db1213`. They are diagnostic console
-observations, not durable external evidence. Controlled storage, responsible
-party review and any required skipped-test disposition remain necessary before
-a related tracker row can become `PASS`.
+The workflow and media-recovery validators, security-preflight web image
+builds, and actionlint were rerun locally on the exact frozen runtime SHA
+`f507fc41eb636e0c4607d6c34bd80354f8ccff2e`. The other results below were
+observed on predecessor runtime SHA
+`4c82121bfa2293a21a831bc490f4101eb4db1213`. Excluding this staging
+documentation package, changes between those SHAs are limited to release QA
+validators/tests and the security-scan workflow; no application source,
+dependency lockfile, migration or deployment runtime changed. The listed
+application results are therefore retained as unaffected diagnostic
+observations under the package impact rule. They are not newly executed or
+durable external evidence. Controlled storage, responsible-party review and
+any required skipped-test disposition remain necessary before a related
+tracker row can become `PASS`.
 
 | Command | Most recent local result | Current tracker treatment |
 | --- | --- | --- |
-| `git rev-parse HEAD` at runtime freeze | `4c82121bfa2293a21a831bc490f4101eb4db1213` | Exact local runtime identity; final docs/PR-head and remote synchronization record still required |
-| `cd menorah/scripts/qa && npm run test:release-workflow` | 61/61 checks passed, including CRLF regression coverage | Diagnostic only; durable log and independent review required |
+| `git rev-parse HEAD` at runtime freeze | `f507fc41eb636e0c4607d6c34bd80354f8ccff2e` | Exact local runtime identity; final docs/PR-head and remote synchronization record still required |
+| `cd menorah/scripts/qa && npm run test:release-workflow` | 62/62 checks passed, including CRLF and non-routable security-build-origin regression coverage | Diagnostic only; durable log and independent review required |
+| `cd menorah/scripts/qa && npm run test:media-recovery` | Passed on the runtime SHA after aligning the validator with the required `MEDIA_PUBLIC_BASE_URL` contract | Diagnostic only; remote exact-head workflow must pass |
+| Security preflight image builds for user and counsellor web | Both passed with exact non-routable `https://calls.security-test.invalid` build origin | Diagnostic only; exact-head Trivy/SBOM jobs must pass remotely |
 | `cd menorah/scripts/qa && npm run test:smoke-safety` | 12/12 checks passed | Diagnostic only; durable log required |
 | `cd menorah/mobile-app && npm run test:release-config` | 20/20 checks passed | Diagnostic only; durable log required |
 | `cd menorah/mobile-app && npm run validate:release-config` | Passed | Diagnostic only; durable log required |
@@ -63,7 +73,7 @@ a related tracker row can become `PASS`.
 | `actionlint` v1.7.12 | Passed | Diagnostic only; pinned-tool durable log required |
 | Production Compose, missing-authoritative-value and home/live-mailbox guards | Passed | Diagnostic only; protected staging render evidence required |
 | Shell staging guards | Passed | Diagnostic only; protected-host execution evidence required |
-| Pinned Gitleaks v8.30.1 full-history scan | 344 commits, approximately 11.84 MB, 0 leaks | Local clean result only; remaining security scans, durable report and review required |
+| Pinned Gitleaks v8.30.1 full-history scan | 345 commits, approximately 12.15 MB, 0 leaks at docs-head predecessor `8df0c67e3d1003668e288bba1ae4025e128fa3b4` | Local clean result only; rerun after the final docs-head commit and retain the exact report |
 
 ## Current external governance snapshot
 
