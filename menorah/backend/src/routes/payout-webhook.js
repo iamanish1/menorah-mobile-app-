@@ -5,7 +5,6 @@
  */
 
 const express = require('express');
-const crypto  = require('crypto');
 const Payout  = require('../models/Payout');
 const Counsellor = require('../models/Counsellor');
 const { getPermittedPriorPayoutStatuses } = require('../services/payoutPolicy');
@@ -15,6 +14,14 @@ const {
 const {
   verifyRazorpayWebhookSignature,
 } = require('../services/razorpayPaymentSecurity');
+const {
+  SUPPORTED_PAYOUT_EVENT_STATUSES,
+  claimPayoutWebhookEvent,
+  finalizePayoutWebhookEvent,
+  recordPayoutWebhookIdentityConflict,
+  validatePayoutWebhookEntity,
+} = require('../services/payoutWebhookReconciliation');
+const { recordSecurityEvent } = require('../utils/securityAudit');
 
 const router = express.Router();
 
@@ -22,8 +29,31 @@ async function sendPayoutSms() {
   return false;
 }
 
+const reconcileCounsellorSettlement = async (counsellorId) => {
+  const [settlement] = await Payout.aggregate([
+    { $match: { counsellor: counsellorId, status: 'processed' } },
+    { $sort: { updatedAt: -1 } },
+    {
+      $group: {
+        _id: null,
+        totalPaidOut: { $sum: '$amountRupees' },
+        lastPayoutAt: { $first: '$updatedAt' },
+        lastPayoutAmount: { $first: '$amountRupees' },
+      },
+    },
+  ]);
+  await Counsellor.findByIdAndUpdate(counsellorId, {
+    $set: {
+      totalPaidOut: settlement?.totalPaidOut || 0,
+      lastPayoutAt: settlement?.lastPayoutAt || null,
+      lastPayoutAmount: settlement?.lastPayoutAmount || 0,
+    },
+  });
+};
+
 // POST /api/payouts/webhook
 router.post('/', async (req, res) => {
+  let claim = null;
   try {
     const webhookSecret = process.env.RAZORPAY_X_WEBHOOK_SECRET;
     const configuration = getRazorpayPayoutConfigurationState();
@@ -54,39 +84,166 @@ router.post('/', async (req, res) => {
     }
 
     const rawBody = req.body;
-    const event      = JSON.parse(rawBody.toString('utf8'));
+    let event;
+    try {
+      event = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      return res.status(400).json({ success: false, message: 'Invalid JSON payload' });
+    }
     const payoutData = event?.payload?.payout?.entity;
+    claim = await claimPayoutWebhookEvent({
+      rawBody,
+      providerEventId: req.get('x-razorpay-event-id'),
+      eventType: event?.event,
+      providerPayoutId: payoutData?.id,
+    });
 
-    // Acknowledge immediately for events we don't process
+    if (claim.conflict) {
+      await recordPayoutWebhookIdentityConflict({ eventId: claim.event._id });
+      recordSecurityEvent('payout_webhook_identity_conflict', {
+        req,
+        outcome: 'failure',
+        statusCode: 200,
+        details: {
+          provider: 'razorpay_x',
+          reason: 'identity_conflict',
+          resource: 'payout_webhook',
+        },
+      });
+      return res.status(200).json({ success: true, reviewRequired: true });
+    }
+    if (!claim.claimed) {
+      return res.status(200).json({ success: true, duplicate: true });
+    }
+
+    const finalizeClaim = (options) => finalizePayoutWebhookEvent({
+      eventId: claim.event._id,
+      payloadDigest: claim.identity.payloadDigest,
+      providerPayoutId: payoutData?.id,
+      ...options,
+    });
+
     if (!payoutData?.id) {
-      console.log('Payout webhook ignored an event without a payout entity.');
-      return res.status(200).json({ success: true });
+      await finalizeClaim({
+        processingState: 'needs_review',
+        reconciliationDecision: 'needs_review',
+        mismatchCodes: ['PAYOUT_ENTITY_MISSING'],
+      });
+      return res.status(200).json({ success: true, reviewRequired: true });
     }
 
     const TERMINAL_STATUSES = ['processed', 'reversed', 'cancelled', 'failed', 'rejected'];
     const newStatus = payoutData.status;
-    const permittedPriorStatuses = getPermittedPriorPayoutStatuses(newStatus);
-    if (!permittedPriorStatuses) {
-      console.warn('Payout webhook ignored an unsupported provider status.');
-      return res.status(200).json({ success: true });
+    if (!Object.prototype.hasOwnProperty.call(
+      SUPPORTED_PAYOUT_EVENT_STATUSES,
+      event?.event
+    )) {
+      await finalizeClaim({
+        processingState: 'ignored',
+        reconciliationDecision: 'ignore',
+        mismatchCodes: ['UNSUPPORTED_EVENT_TYPE'],
+      });
+      return res.status(200).json({ success: true, ignored: true });
     }
 
-    // Razorpay normally supplies an event ID. Hashing the signed raw body gives
-    // retries without one the same idempotency protection without storing it.
-    const webhookEventId = event.id || crypto.createHash('sha256').update(rawBody).digest('hex');
-    const webhookMatch = {
+    const permittedPriorStatuses = getPermittedPriorPayoutStatuses(newStatus);
+    if (!permittedPriorStatuses) {
+      await finalizeClaim({
+        processingState: 'needs_review',
+        reconciliationDecision: 'needs_review',
+        mismatchCodes: ['PAYOUT_STATUS_UNSUPPORTED'],
+      });
+      return res.status(200).json({ success: true, reviewRequired: true });
+    }
+
+    const storedPayout = await Payout.findOne({
       razorpayPayoutId: payoutData.id,
-      webhookEventId: { $ne: webhookEventId },
+    }).populate({
+      path: 'counsellor',
+      select: 'user',
+      populate: { path: 'user', select: 'firstName phone' },
+    });
+    if (!storedPayout) {
+      await finalizeClaim({
+        processingState: 'needs_review',
+        reconciliationDecision: 'needs_review',
+        mismatchCodes: ['PAYOUT_RECORD_NOT_FOUND'],
+      });
+      recordSecurityEvent('payout_webhook_reconciliation_mismatch', {
+        req,
+        outcome: 'failure',
+        statusCode: 200,
+        details: {
+          provider: 'razorpay_x',
+          reason: 'payout_record_not_found',
+          resource: 'payout_webhook',
+        },
+      });
+      return res.status(200).json({ success: true, reviewRequired: true });
+    }
+
+    const validation = validatePayoutWebhookEntity({
+      event,
+      payoutData,
+      payoutRecord: storedPayout,
+    });
+    const webhookEventId = claim.identity.providerEventId
+      || claim.identity.payloadDigest;
+    if (!validation.valid) {
+      await Payout.updateOne({
+        _id: storedPayout._id,
+        razorpayPayoutId: payoutData.id,
+      }, {
+        $set: {
+          reconciliationStatus: 'needs_review',
+          reconciliationMismatchCodes: validation.mismatchCodes,
+          lastWebhookAt: new Date(),
+          webhookEventId,
+          lastWebhookPayloadDigest: claim.identity.payloadDigest,
+        },
+      });
+      await finalizeClaim({
+        processingState: 'needs_review',
+        reconciliationDecision: 'needs_review',
+        mismatchCodes: validation.mismatchCodes,
+        payoutId: storedPayout._id,
+      });
+      recordSecurityEvent('payout_webhook_reconciliation_mismatch', {
+        req,
+        outcome: 'failure',
+        statusCode: 200,
+        details: {
+          provider: 'razorpay_x',
+          reason: 'entity_mismatch',
+          resource: 'payout_webhook',
+          targetId: storedPayout._id,
+        },
+      });
+      return res.status(200).json({ success: true, reviewRequired: true });
+    }
+
+    const webhookMatch = {
+      _id: storedPayout._id,
+      razorpayPayoutId: payoutData.id,
+      amountPaise: payoutData.amount,
+      referenceId: payoutData.reference_id,
+      razorpayFundAccountId: payoutData.fund_account_id,
+      counsellor: storedPayout.counsellor._id,
       status: { $in: permittedPriorStatuses },
     };
     const payoutRecord = await Payout.findOneAndUpdate(
       webhookMatch,
       {
-        status:         newStatus,
-        utr:            payoutData.utr || null,
-        failureReason:  payoutData.failure_reason || null,
-        lastWebhookAt:  new Date(),
-        webhookEventId,
+        $set: {
+          status: newStatus,
+          utr: payoutData.utr || null,
+          failureReason: payoutData.failure_reason || null,
+          lastWebhookAt: new Date(),
+          webhookEventId,
+          lastWebhookPayloadDigest: claim.identity.payloadDigest,
+          reconciliationStatus: 'matched',
+          reconciliationMismatchCodes: [],
+        },
       },
       { new: true }
     ).populate({
@@ -96,33 +253,54 @@ router.post('/', async (req, res) => {
     });
 
     if (!payoutRecord) {
-      // Duplicate delivery is expected from payment providers. It is safe to
-      // acknowledge it without repeating customer notifications or accounting.
-      return res.status(200).json({ success: true });
+      const current = await Payout.findById(storedPayout._id).lean();
+      const alreadyApplied = current?.status === newStatus
+        && current?.lastWebhookPayloadDigest === claim.identity.payloadDigest;
+      if (alreadyApplied) {
+        // A previous delivery may have committed the payout transition and
+        // crashed before updating derived counters or the event ledger.
+        await reconcileCounsellorSettlement(storedPayout.counsellor._id);
+        await finalizeClaim({
+          processingState: 'processed',
+          reconciliationDecision: 'already_applied',
+          payoutId: storedPayout._id,
+        });
+        return res.status(200).json({ success: true, duplicate: true });
+      }
+
+      const terminalStateWins = TERMINAL_STATUSES.includes(current?.status)
+        && !(
+          current.status === 'processed'
+          && newStatus === 'reversed'
+        );
+      if (terminalStateWins) {
+        await finalizeClaim({
+          processingState: 'ignored',
+          reconciliationDecision: 'ignore',
+          mismatchCodes: ['OUT_OF_ORDER_PAYOUT_STATUS'],
+          payoutId: storedPayout._id,
+        });
+        return res.status(200).json({ success: true, ignored: true });
+      }
+
+      await Payout.updateOne({ _id: storedPayout._id }, {
+        $set: {
+          reconciliationStatus: 'needs_review',
+          reconciliationMismatchCodes: ['PAYOUT_STATUS_TRANSITION_CONFLICT'],
+        },
+      });
+      await finalizeClaim({
+        processingState: 'needs_review',
+        reconciliationDecision: 'needs_review',
+        mismatchCodes: ['PAYOUT_STATUS_TRANSITION_CONFLICT'],
+        payoutId: storedPayout._id,
+      });
+      return res.status(200).json({ success: true, reviewRequired: true });
     }
 
     // Keep the denormalized display counters consistent with the immutable
     // payout ledger. Recalculation makes retries and status corrections safe.
-    const [settlement] = await Payout.aggregate([
-      { $match: { counsellor: payoutRecord.counsellor._id, status: 'processed' } },
-      { $sort: { updatedAt: -1 } },
-      {
-        $group: {
-          _id: null,
-          totalPaidOut: { $sum: '$amountRupees' },
-          lastPayoutAt: { $first: '$updatedAt' },
-          lastPayoutAmount: { $first: '$amountRupees' },
-        },
-      },
-    ]);
-    const counsellorUpdate = {
-      totalPaidOut: settlement?.totalPaidOut || 0,
-      lastPayoutAt: settlement?.lastPayoutAt || null,
-      lastPayoutAmount: settlement?.lastPayoutAmount || 0,
-    };
-    await Counsellor.findByIdAndUpdate(payoutRecord.counsellor._id, {
-      $set: counsellorUpdate,
-    });
+    await reconcileCounsellorSettlement(payoutRecord.counsellor._id);
 
     // Send SMS on terminal status
     if (TERMINAL_STATUSES.includes(newStatus) && payoutRecord.counsellor?.user) {
@@ -131,12 +309,30 @@ router.post('/', async (req, res) => {
       await sendPayoutSms(phone, firstName, payoutRecord.amountRupees, payoutData.id, smsStatus);
     }
 
+    await finalizeClaim({
+      processingState: 'processed',
+      reconciliationDecision: 'apply',
+      payoutId: payoutRecord._id,
+    });
     console.log(`Payout webhook processed with status: ${newStatus}`);
     res.status(200).json({ success: true });
 
   } catch (error) {
+    if (claim?.event?._id && claim?.identity?.payloadDigest && !claim.conflict) {
+      try {
+        await finalizePayoutWebhookEvent({
+          eventId: claim.event._id,
+          payloadDigest: claim.identity.payloadDigest,
+          processingState: 'retryable_failure',
+          reconciliationDecision: 'needs_review',
+          failureCode: 'PAYOUT_WEBHOOK_PROCESSING_FAILED',
+        });
+      } catch {
+        console.error('Payout webhook failure ledger update failed');
+      }
+    }
     console.error('Payout webhook error:', error.message);
-    res.status(500).json({ success: false });
+    res.status(503).json({ success: false, message: 'Webhook temporarily unavailable' });
   }
 });
 

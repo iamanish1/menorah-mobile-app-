@@ -68,6 +68,29 @@ const payoutSchema = new mongoose.Schema({
   // Webhook tracking
   lastWebhookAt:  { type: Date, default: null },
   webhookEventId: { type: String, default: null },
+  lastWebhookPayloadDigest: {
+    type: String,
+    default: null,
+    match: /^[a-f0-9]{64}$/,
+  },
+  reconciliationStatus: {
+    type: String,
+    enum: ['pending', 'matched', 'needs_review'],
+    default: 'pending',
+    index: true,
+  },
+  reconciliationMismatchCodes: {
+    type: [{
+      type: String,
+      match: /^[A-Z][A-Z0-9_]{1,63}$/,
+      maxlength: 64,
+    }],
+    default: [],
+    validate: {
+      validator: (codes) => codes.length <= 32,
+      message: 'Mismatch code list is too large',
+    },
+  },
 }, {
   timestamps: true
 });
@@ -83,6 +106,7 @@ payoutSchema.index(
   }
 );
 payoutSchema.index({ approvalExpiresAt: 1, status: 1 });
+payoutSchema.index({ reconciliationStatus: 1, updatedAt: -1 });
 payoutSchema.index(
   { counsellor: 1 },
   {
