@@ -3,6 +3,7 @@ const {
   DEPLOYMENT_ENVIRONMENTS,
   getDeploymentEnvironment,
 } = require('../config/deploymentEnvironment');
+const { recordEmailDispatch } = require('./reliabilityMetrics');
 
 const RESEND_EMAIL_URL = 'https://api.resend.com/emails';
 const FROM_NAME = 'Menorah Health';
@@ -88,11 +89,13 @@ const canDeliverToStagingRecipient = (recipient) => {
 };
 
 const sendEmail = async (to, subject, html) => {
+  recordEmailDispatch({ provider: 'resend', outcome: 'attempted' });
   let deploymentEnvironment;
   try {
     deploymentEnvironment = getDeploymentEnvironment(process.env);
   } catch (_error) {
     console.error('Email delivery environment is invalid. Email sending is disabled.');
+    recordEmailDispatch({ provider: 'resend', outcome: 'disabled' });
     return false;
   }
 
@@ -101,15 +104,20 @@ const sendEmail = async (to, subject, html) => {
     && !canDeliverToStagingRecipient(to)
   ) {
     console.error('Staging email recipient is outside the isolated delivery domain.');
+    recordEmailDispatch({ provider: 'resend', outcome: 'disabled' });
     return false;
   }
 
   if (isDev) {
     console.log('[DEV EMAIL - not sent; recipient, subject, and content suppressed]');
+    recordEmailDispatch({ provider: 'resend', outcome: 'disabled' });
     return true;
   }
 
-  if (!isConfigured()) return false;
+  if (!isConfigured()) {
+    recordEmailDispatch({ provider: 'resend', outcome: 'disabled' });
+    return false;
+  }
 
   try {
     await axios.post(
@@ -129,9 +137,11 @@ const sendEmail = async (to, subject, html) => {
     );
 
     console.log('\u2705 Email sent via Resend.');
+    recordEmailDispatch({ provider: 'resend', outcome: 'success' });
     return true;
   } catch (error) {
     console.error('\u274C Resend email error:', safeErrorResponse(error));
+    recordEmailDispatch({ provider: 'resend', outcome: 'failure' });
     return false;
   }
 };

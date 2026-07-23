@@ -22,6 +22,7 @@ const {
   validatePayoutWebhookEntity,
 } = require('../services/payoutWebhookReconciliation');
 const { recordSecurityEvent } = require('../utils/securityAudit');
+const { recordPaymentWebhook } = require('../utils/reliabilityMetrics');
 
 const router = express.Router();
 
@@ -61,15 +62,18 @@ router.post('/', async (req, res) => {
     // Signature verification is ALWAYS required — no bypass, no dev skip.
     // An unverified payout webhook lets attackers inject fake payout completions.
     if (!configuration.webhookConfigured) {
+      recordPaymentWebhook({ provider: 'razorpay', event: 'processing', outcome: 'failure' });
       console.error('Payout webhook: RAZORPAY_X_WEBHOOK_SECRET not configured — rejecting request');
       return res.status(503).json({ success: false, message: 'Webhook not configured' });
     }
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      recordPaymentWebhook({ provider: 'razorpay', event: 'processing', outcome: 'failure' });
       return res.status(400).json({ success: false, message: 'Raw request body required' });
     }
 
     const signature = req.headers['x-razorpay-signature'];
     if (!signature) {
+      recordPaymentWebhook({ provider: 'razorpay', event: 'signature', outcome: 'failure' });
       console.warn('Payout webhook: missing x-razorpay-signature header');
       return res.status(400).json({ success: false, message: 'Missing signature' });
     }
@@ -79,15 +83,18 @@ router.post('/', async (req, res) => {
       signature,
       secret: webhookSecret,
     })) {
+      recordPaymentWebhook({ provider: 'razorpay', event: 'signature', outcome: 'failure' });
       console.warn('Payout webhook: invalid signature');
       return res.status(400).json({ success: false, message: 'Invalid signature' });
     }
+    recordPaymentWebhook({ provider: 'razorpay', event: 'signature', outcome: 'success' });
 
     const rawBody = req.body;
     let event;
     try {
       event = JSON.parse(rawBody.toString('utf8'));
     } catch {
+      recordPaymentWebhook({ provider: 'razorpay', event: 'processing', outcome: 'failure' });
       return res.status(400).json({ success: false, message: 'Invalid JSON payload' });
     }
     const payoutData = event?.payload?.payout?.entity;
@@ -99,6 +106,7 @@ router.post('/', async (req, res) => {
     });
 
     if (claim.conflict) {
+      recordPaymentWebhook({ provider: 'razorpay', event: 'relationship', outcome: 'failure' });
       await recordPayoutWebhookIdentityConflict({ eventId: claim.event._id });
       recordSecurityEvent('payout_webhook_identity_conflict', {
         req,
@@ -113,6 +121,7 @@ router.post('/', async (req, res) => {
       return res.status(200).json({ success: true, reviewRequired: true });
     }
     if (!claim.claimed) {
+      recordPaymentWebhook({ provider: 'razorpay', event: 'processing', outcome: 'replay' });
       return res.status(200).json({ success: true, duplicate: true });
     }
 
@@ -124,6 +133,7 @@ router.post('/', async (req, res) => {
     });
 
     if (!payoutData?.id) {
+      recordPaymentWebhook({ provider: 'razorpay', event: 'relationship', outcome: 'failure' });
       await finalizeClaim({
         processingState: 'needs_review',
         reconciliationDecision: 'needs_review',
@@ -148,6 +158,7 @@ router.post('/', async (req, res) => {
 
     const permittedPriorStatuses = getPermittedPriorPayoutStatuses(newStatus);
     if (!permittedPriorStatuses) {
+      recordPaymentWebhook({ provider: 'razorpay', event: 'relationship', outcome: 'failure' });
       await finalizeClaim({
         processingState: 'needs_review',
         reconciliationDecision: 'needs_review',
@@ -164,6 +175,7 @@ router.post('/', async (req, res) => {
       populate: { path: 'user', select: 'firstName phone' },
     });
     if (!storedPayout) {
+      recordPaymentWebhook({ provider: 'razorpay', event: 'relationship', outcome: 'failure' });
       await finalizeClaim({
         processingState: 'needs_review',
         reconciliationDecision: 'needs_review',
@@ -190,6 +202,7 @@ router.post('/', async (req, res) => {
     const webhookEventId = claim.identity.providerEventId
       || claim.identity.payloadDigest;
     if (!validation.valid) {
+      recordPaymentWebhook({ provider: 'razorpay', event: 'relationship', outcome: 'failure' });
       await Payout.updateOne({
         _id: storedPayout._id,
         razorpayPayoutId: payoutData.id,
@@ -257,6 +270,7 @@ router.post('/', async (req, res) => {
       const alreadyApplied = current?.status === newStatus
         && current?.lastWebhookPayloadDigest === claim.identity.payloadDigest;
       if (alreadyApplied) {
+        recordPaymentWebhook({ provider: 'razorpay', event: 'processing', outcome: 'replay' });
         // A previous delivery may have committed the payout transition and
         // crashed before updating derived counters or the event ledger.
         await reconcileCounsellorSettlement(storedPayout.counsellor._id);
@@ -295,6 +309,7 @@ router.post('/', async (req, res) => {
         mismatchCodes: ['PAYOUT_STATUS_TRANSITION_CONFLICT'],
         payoutId: storedPayout._id,
       });
+      recordPaymentWebhook({ provider: 'razorpay', event: 'relationship', outcome: 'failure' });
       return res.status(200).json({ success: true, reviewRequired: true });
     }
 
@@ -314,10 +329,12 @@ router.post('/', async (req, res) => {
       reconciliationDecision: 'apply',
       payoutId: payoutRecord._id,
     });
+    recordPaymentWebhook({ provider: 'razorpay', event: 'reconciliation', outcome: 'success' });
     console.log(`Payout webhook processed with status: ${newStatus}`);
     res.status(200).json({ success: true });
 
   } catch (error) {
+    recordPaymentWebhook({ provider: 'razorpay', event: 'processing', outcome: 'failure' });
     if (claim?.event?._id && claim?.identity?.payloadDigest && !claim.conflict) {
       try {
         await finalizePayoutWebhookEvent({

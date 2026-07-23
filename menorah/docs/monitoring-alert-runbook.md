@@ -19,17 +19,17 @@ infrastructure actions below. Do not interpret a healthy Alertmanager process
 as proof that notifications are delivered.
 
 The exact covered and unavailable signals are maintained in
-`deploy/monitoring/observability-coverage.yml`. In particular, the repository
-does not yet emit honest metrics for queue backlog, immediate systemd backup
-failure, general payment-provider failure, email delivery outcomes, call media
-or provider failures, specific role/permission changes, or separate
-401/403/429/500 response rates.
+`deploy/monitoring/observability-coverage.yml`. All 20 launch-critical
+repository signal gaps now have bounded producers, rules, and controlled
+fixtures. That is repository evidence only: isolated-staging firing/recovery,
+approved notification delivery, final owner assignment, and provider-sandbox
+evidence remain launch blockers.
 
 Every committed alert links to this runbook on the protected
 `release/final-production-readiness` branch because the file is not yet present
 on `main`. Operators must keep the same checked-out file available locally as
 the outage fallback. After an approved merge creates a stable protected path,
-change all 53 URLs and their validator together in a separately reviewed
+change all alert URLs and their validator together in a separately reviewed
 commit; never leave alerts pointing at a deleted branch or an unreviewed moving
 document.
 
@@ -615,6 +615,74 @@ event, and provider response. Do not blindly retry or bypass dual approval.
 Owner: `payments`. Inspect the durable webhook record, identity conflict/retry
 state, provider event ID, booking/order/payment linkage, and reconciliation
 runbook. Keep payment feature flags closed unless the launch gate is approved.
+
+### WorkerQueueBacklogHigh
+
+Owner placeholder: `worker-response-owner-tbd`. The initial five-minute hold
+fires when the durable provider-revocation queue has at least 25 pending jobs,
+an oldest job age of 15 minutes, ten retries, any manual-review dead letter,
+three failed attempts in ten minutes, or a heartbeat older than three minutes.
+Inspect the worker readiness endpoint, MongoDB health, bounded queue gauges,
+and safe error codes. Never print encrypted token payloads or customer IDs.
+Resolution requires every branch of the expression to remain healthy for five
+minutes; isolated staging must calibrate the thresholds and assign the owner.
+
+### PaymentProviderFailure
+
+Owner placeholder: `payments-response-owner-tbd`. A single payout submission
+failure or three order/recovery/evidence/verification failures in five minutes
+is critical because outcome ambiguity can affect money movement. Preserve the
+existing idempotency key, reconciliation ledger, dual approval, recent MFA,
+and ₹50,000 cap. Use provider sandbox status and bounded operation labels;
+never retry by creating a new payout or expose payment identifiers in metrics.
+The rolling window must remain below threshold for two minutes to resolve.
+
+### PaymentWebhookFailure
+
+Owner placeholder: `payments-response-owner-tbd`. Any relationship mismatch,
+three processing failures, or ten signature failures in five minutes crosses
+the initial threshold. Inspect the durable webhook claim, replay state, entity
+relationship validation, and signed security event. Do not bypass signature
+verification or replay/idempotency controls. Resolution requires one quiet
+minute after the rolling count falls below threshold.
+
+### EmailDispatchFailed
+
+Owner placeholder: `messaging-response-owner-tbd`. Three Resend API request
+failures in five minutes, sustained for two minutes, indicates dispatch
+degradation. Confirm deployment isolation, sender-domain configuration,
+provider status, and safe HTTP status/code diagnostics. Do not log recipients,
+subjects, bodies, or API keys. Disabled development/staging-policy outcomes are
+measured separately and do not fire this alert.
+
+### EmailDeliveryOutcomeFailed
+
+Owner placeholder: `messaging-response-owner-tbd`. A verified Resend callback
+reporting bounced, complained, failed, or suppressed delivery fires after one
+minute. The callback uses the raw signed body and a hashed `svix-id` replay
+claim; never disable either check to clear the alert. Review aggregate provider
+outcomes in Prometheus and individual events only in approved access-controlled
+provider evidence. It resolves after the ten-minute event window is quiet.
+
+### CallProviderFailure
+
+Owner placeholder: `calls-response-owner-tbd`. Two bounded room, token,
+connection, regional-fallback, or verified-webhook failures in five minutes,
+sustained for two minutes, indicates call-provider degradation. Check LiveKit
+health, call policy, region, and fallback configuration without logging room
+names, participant IDs, or tokens. Provider-disabled policy outcomes are
+separate and do not count as failures. Require a sandbox recovery call before
+disposing the incident.
+
+### CallMediaFailure
+
+Owner placeholder: `calls-response-owner-tbd`. Two one-time, token-bound audio
+or video establishment failures in five minutes, sustained for two minutes,
+indicate client media failure after a valid meet-ticket redemption. Correlate
+browser/device permissions, network reachability, LiveKit state, and the exact
+release SHA. The endpoint accepts only bounded media/outcome labels and never
+receives booking or participant identifiers. Resolution requires two quiet
+minutes after the rolling count falls below threshold.
 
 ### CallAuthorizationDenialSpike
 

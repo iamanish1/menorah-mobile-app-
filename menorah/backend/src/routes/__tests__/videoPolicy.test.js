@@ -56,6 +56,10 @@ jest.mock('../../config/redis', () => ({
 const Booking = require('../../models/Booking');
 const { AccessToken } = require('livekit-server-sdk');
 const videoRouter = require('../video');
+const {
+  renderReliabilityMetrics,
+  resetReliabilityMetricsForTests,
+} = require('../../utils/reliabilityMetrics');
 
 const bookingId = '64f000000000000000000000';
 const userId = '64f000000000000000000001';
@@ -215,6 +219,7 @@ describe('video route call policy gates', () => {
     mockDel.mockClear();
     AccessToken.mockClear();
     Booking.findById.mockReset();
+    resetReliabilityMetricsForTests();
   });
 
   afterAll(() => {
@@ -429,6 +434,38 @@ describe('video route call policy gates', () => {
       .post('/api/video/meet/redeem')
       .send({ ticket: 'expired-ticket-value-that-is-long-enough' })
       .expect(410);
+  });
+
+  test('records one bounded media failure from a one-time telemetry token', async () => {
+    const telemetryToken = await videoRouter._private.createMediaTelemetryToken('video');
+
+    await request(buildApp())
+      .post('/api/video/meet/media-outcome')
+      .send({
+        telemetryToken,
+        phase: 'media',
+        outcome: 'failure',
+      })
+      .expect(200);
+
+    await request(buildApp())
+      .post('/api/video/meet/media-outcome')
+      .send({
+        telemetryToken,
+        phase: 'media',
+        outcome: 'failure',
+      })
+      .expect(410);
+
+    const metrics = renderReliabilityMetrics();
+    expect(metrics).toContain(
+      'menorah_call_provider_operations_total{service="api",provider="livekit",operation="connect",outcome="success"} 1'
+    );
+    expect(metrics).toContain(
+      'menorah_call_media_outcomes_total{service="api",provider="livekit",media="video",outcome="failure"} 1'
+    );
+    expect(metrics).not.toContain(bookingId);
+    expect(metrics).not.toContain(userId);
   });
 
   test.each([

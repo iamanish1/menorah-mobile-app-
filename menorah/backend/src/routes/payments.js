@@ -37,6 +37,10 @@ const {
 } = require('../services/bookingMarketplaceNotifications');
 const { expireStalePendingBookings } = require('../utils/bookingAvailability');
 const { recordSecurityEvent } = require('../utils/securityAudit');
+const {
+  recordPaymentOperation,
+  recordPaymentWebhook,
+} = require('../utils/reliabilityMetrics');
 
 const router = express.Router();
 const SLOT_EXPIRED_MESSAGE = 'This slot expired while waiting for payment. Please choose another available time.';
@@ -230,6 +234,11 @@ router.post('/create-checkout-session', [
 
     const razorpay = getRazorpayClient();
     if (!razorpay) {
+      recordPaymentOperation({
+        provider: 'razorpay',
+        operation: 'order_create',
+        outcome: 'disabled',
+      });
       return res.status(503).json({
         success: false,
         code: 'PAYMENT_PROVIDER_UNAVAILABLE',
@@ -278,9 +287,19 @@ router.post('/create-checkout-session', [
 router.post('/razorpay-webhook', async (req, res) => {
   const configuration = getRazorpayConfigurationState();
   if (!configuration.webhookConfigured) {
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'failure',
+    });
     return res.status(503).json({ error: 'Webhook unavailable' });
   }
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'failure',
+    });
     return res.status(400).json({ error: 'Raw request body required' });
   }
 
@@ -291,8 +310,18 @@ router.post('/razorpay-webhook', async (req, res) => {
     secret: process.env.RAZORPAY_WEBHOOK_SECRET,
     previousSecret: process.env.RAZORPAY_WEBHOOK_SECRET_PREVIOUS,
   })) {
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'signature',
+      outcome: 'failure',
+    });
     return res.status(400).json({ error: 'Invalid signature' });
   }
+  recordPaymentWebhook({
+    provider: 'razorpay',
+    event: 'signature',
+    outcome: 'success',
+  });
 
   let event;
   let identity;
@@ -303,6 +332,11 @@ router.post('/razorpay-webhook', async (req, res) => {
       providerEventId: req.headers['x-razorpay-event-id'],
     });
   } catch (_error) {
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'failure',
+    });
     return res.status(400).json({ error: 'Invalid webhook envelope' });
   }
 
@@ -317,14 +351,29 @@ router.post('/razorpay-webhook', async (req, res) => {
     });
   } catch (_error) {
     console.error('Payment webhook ledger claim failed');
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'failure',
+    });
     return res.status(503).json({ error: 'Webhook temporarily unavailable' });
   }
 
   if (!claim?.claimed) {
     if (claim?.inFlight || claim?.retryable) {
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'processing',
+        outcome: 'replay',
+      });
       return res.status(503).json({ error: 'Webhook processing in progress' });
     }
     if (claim?.conflict) {
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'relationship',
+        outcome: 'failure',
+      });
       recordSecurityEvent('payment_webhook_identity_conflict', {
         req,
         outcome: 'failure',
@@ -344,6 +393,11 @@ router.post('/razorpay-webhook', async (req, res) => {
         reviewRequired: claim.processingState === 'needs_review' || undefined,
       });
     }
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'replay',
+    });
     return res.json({ received: true, duplicate: true });
   }
 
@@ -376,6 +430,11 @@ router.post('/razorpay-webhook', async (req, res) => {
           resource: 'payment_webhook',
         },
       });
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'processing',
+        outcome: 'failure',
+      });
       return res.json({ received: true, reviewRequired: true });
     }
 
@@ -392,6 +451,11 @@ router.post('/razorpay-webhook', async (req, res) => {
     }
 
     if (!reference.orderId || !reference.paymentId) {
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'relationship',
+        outcome: 'failure',
+      });
       await finalizeWebhookEvent({
         eventKey: ledgerEventKey,
         claimToken,
@@ -406,6 +470,11 @@ router.post('/razorpay-webhook', async (req, res) => {
 
     const localAttempt = await PaymentAttempt.findOne({ orderId: reference.orderId });
     if (!localAttempt) {
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'relationship',
+        outcome: 'failure',
+      });
       await finalizeWebhookEvent({
         eventKey: ledgerEventKey,
         claimToken,
@@ -436,6 +505,11 @@ router.post('/razorpay-webhook', async (req, res) => {
         eventKey: ledgerEventKey,
         claimToken,
       });
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'reconciliation',
+        outcome: result?.decision === 'needs_review' ? 'failure' : 'success',
+      });
       return res.json({
         received: true,
         failedPaymentRecorded: result?.recorded === true,
@@ -451,6 +525,11 @@ router.post('/razorpay-webhook', async (req, res) => {
       eventKey: ledgerEventKey,
       claimToken,
     });
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'reconciliation',
+      outcome: result?.decision === 'needs_review' ? 'failure' : 'success',
+    });
     dispatchWebhookNotification({ result, io: req.app.get('io') });
 
     return res.json({
@@ -459,6 +538,11 @@ router.post('/razorpay-webhook', async (req, res) => {
       reviewRequired: result?.decision === 'needs_review' || undefined,
     });
   } catch (_error) {
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'failure',
+    });
     try {
       await finalizeWebhookEventFailure({
         eventKey: ledgerEventKey,
@@ -502,6 +586,11 @@ router.post('/verify-razorpay', [
 
     const configuration = getRazorpayConfigurationState();
     if (!configuration.checkoutConfigured) {
+      recordPaymentOperation({
+        provider: 'razorpay',
+        operation: 'payment_verify',
+        outcome: 'disabled',
+      });
       return res.status(503).json({
         success: false,
         code: 'PAYMENT_PROVIDER_UNAVAILABLE',
@@ -514,6 +603,11 @@ router.post('/verify-razorpay', [
       signature,
       secret: process.env.RAZORPAY_KEY_SECRET,
     })) {
+      recordPaymentOperation({
+        provider: 'razorpay',
+        operation: 'payment_verify',
+        outcome: 'failure',
+      });
       return res.status(400).json({ success: false, message: 'Invalid payment signature' });
     }
 
@@ -532,9 +626,19 @@ router.post('/verify-razorpay', [
       eventKey: `redirect:${orderId}:${paymentId}`,
     });
     await notifyAfterCommittedAuthorization({ result, io: req.app.get('io') });
+    recordPaymentOperation({
+      provider: 'razorpay',
+      operation: 'payment_verify',
+      outcome: result?.decision === 'needs_review' ? 'failure' : 'success',
+    });
     return sendReconciliationResult(res, result);
   } catch (_error) {
     console.error('Razorpay redirect reconciliation failed');
+    recordPaymentOperation({
+      provider: 'razorpay',
+      operation: 'payment_verify',
+      outcome: 'failure',
+    });
     return res.status(503).json({
       success: false,
       code: 'PAYMENT_RECONCILIATION_UNAVAILABLE',

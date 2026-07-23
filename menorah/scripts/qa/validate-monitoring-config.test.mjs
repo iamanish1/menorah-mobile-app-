@@ -38,11 +38,52 @@ test('rejects fake alert coverage for an unavailable signal', () => {
   const queueSignal = documents.coverage.signals.find(
     (signal) => signal.id === 'queue-backlog',
   );
+  queueSignal.status = 'unavailable';
   queueSignal.alerts = ['WorkerReadinessProbeFailed'];
+  queueSignal.limitation = 'mutated test limitation';
+  queueSignal.action = 'mutated test action';
 
   assert.match(
     validateMonitoringDocuments(documents).join('\n'),
     /queue-backlog is unavailable but claims alert coverage/,
+  );
+});
+
+test('rejects removal of any required P0 observability evidence record', () => {
+  const documents = cloneDocuments();
+  documents.coverage.p0_alerts = documents.coverage.p0_alerts.filter(
+    (record) => record.alert !== 'EmailDeliveryOutcomeFailed',
+  );
+
+  assert.match(
+    validateMonitoringDocuments(documents).join('\n'),
+    /observability P0 record must contain exactly 20 unique alerts/,
+  );
+});
+
+test('rejects email delivery telemetry without signature verification', () => {
+  const documents = cloneDocuments();
+  documents.emailWebhook = documents.emailWebhook.replace(
+    'verifyResendWebhook({',
+    'void ({',
+  );
+
+  assert.match(
+    validateMonitoringDocuments(documents).join('\n'),
+    /email dispatch\/delivery telemetry is missing raw-body signature, replay, or fail-closed startup controls/,
+  );
+});
+
+test('rejects recipient cardinality added to reliability metrics', () => {
+  const documents = cloneDocuments();
+  documents.reliabilityMetrics = documents.reliabilityMetrics.replace(
+    "labels: ['service', 'provider', 'outcome']",
+    "labels: ['service', 'provider', 'recipient', 'outcome']",
+  );
+
+  assert.match(
+    validateMonitoringDocuments(documents).join('\n'),
+    /reliability metrics contain a forbidden unbounded or identifying label/,
   );
 });
 

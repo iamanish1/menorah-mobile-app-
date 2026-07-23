@@ -10,6 +10,9 @@ const {
   validateOrderAgainstExpected,
   withPaymentProviderTimeout,
 } = require('./razorpayPaymentSecurity');
+const {
+  recordPaymentOperation,
+} = require('../utils/reliabilityMetrics');
 
 const DEFAULT_PROVIDER_TIMEOUT_MS = 5000;
 const DEFAULT_RECOVERY_DELAY_MS = 30_000;
@@ -481,15 +484,29 @@ const createOrReuseBookingOrder = async ({
   }
 
   if (recoveryAction === 'create_initial_order') {
-    order = await withPaymentProviderTimeout(
-      () => client.orders.create({
-        amount: attempt.expected.amountMinor,
-        currency: attempt.expected.currency,
-        receipt: attempt.expected.receipt,
-        notes: { ...attempt.expected.notes },
-      }),
-      providerTimeoutMs
-    );
+    try {
+      order = await withPaymentProviderTimeout(
+        () => client.orders.create({
+          amount: attempt.expected.amountMinor,
+          currency: attempt.expected.currency,
+          receipt: attempt.expected.receipt,
+          notes: { ...attempt.expected.notes },
+        }),
+        providerTimeoutMs
+      );
+      recordPaymentOperation({
+        provider: 'razorpay',
+        operation: 'order_create',
+        outcome: 'success',
+      });
+    } catch (error) {
+      recordPaymentOperation({
+        provider: 'razorpay',
+        operation: 'order_create',
+        outcome: 'failure',
+      });
+      throw error;
+    }
   }
 
   attempt = await bindProviderOrder({ attempt, order, now });

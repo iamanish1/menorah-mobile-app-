@@ -50,7 +50,7 @@ groups:
         for: 3m
         labels:
           severity: critical
-          owner: web
+          owner: web-response-owner-tbd
         annotations:
           summary: "User frontend probe failed"
           description: "The user web surface at {{ $labels.instance }} has failed its expected HTTP success probe for three minutes."
@@ -62,7 +62,7 @@ groups:
         for: 3m
         labels:
           severity: critical
-          owner: web
+          owner: web-response-owner-tbd
         annotations:
           summary: "Admin frontend probe failed"
           description: "The administrator web surface at {{ $labels.instance }} has failed its expected HTTP success probe for three minutes."
@@ -74,7 +74,7 @@ groups:
         for: 3m
         labels:
           severity: critical
-          owner: web
+          owner: web-response-owner-tbd
         annotations:
           summary: "Counsellor frontend probe failed"
           description: "The counsellor web surface at {{ $labels.instance }} has failed its expected HTTP success probe for three minutes."
@@ -356,7 +356,7 @@ groups:
         for: 0m
         labels:
           severity: critical
-          owner: infrastructure
+          owner: backup-response-owner-tbd
         annotations:
           summary: "Backup execution failed"
           description: "The latest {{ $labels.backup_type }} backup attempt failed; the previous success marker remains unchanged."
@@ -659,6 +659,101 @@ groups:
           summary: "Call authorization denials exceed the expected threshold"
           description: "More than ten call authorization denials occurred in ten minutes."
           runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#callauthorizationdenialspike"
+
+      - alert: WorkerQueueBacklogHigh
+        expr: |
+          max by (service, queue) (menorah_queue_pending_jobs) >= 25
+          or max by (service, queue) (menorah_queue_oldest_pending_age_seconds) >= 900
+          or max by (service, queue) (menorah_queue_retry_backlog) >= 10
+          or max by (service, queue) (menorah_queue_dead_letter_jobs) > 0
+          or sum by (service, queue) (increase(menorah_queue_jobs_total{outcome="failure"}[10m])) >= 3
+          or (time() - max by (service, queue) (menorah_worker_heartbeat_timestamp_seconds)) > 180
+        for: 5m
+        labels:
+          severity: critical
+          owner: worker-response-owner-tbd
+        annotations:
+          summary: "A durable worker queue is not draining safely"
+          description: "{{ $labels.service }} queue {{ $labels.queue }} has sustained size, age, retry, dead-letter, failure, or heartbeat pressure."
+          resolution: "The alert resolves after every queue threshold and the worker heartbeat remain healthy for five minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#workerqueuebackloghigh"
+
+      - alert: PaymentProviderFailure
+        expr: |
+          sum by (service, provider, operation) (increase(menorah_payment_operations_total{outcome="failure",operation="payout"}[5m])) > 0
+          or sum by (service, provider, operation) (increase(menorah_payment_operations_total{outcome="failure",operation!="payout"}[5m])) >= 3
+        for: 2m
+        labels:
+          severity: critical
+          owner: payments-response-owner-tbd
+        annotations:
+          summary: "Payment provider operations are failing"
+          description: "{{ $labels.provider }} operation {{ $labels.operation }} on {{ $labels.service }} crossed its bounded failure threshold."
+          resolution: "The alert resolves after the rolling five-minute provider failure count remains below threshold for two minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#paymentproviderfailure"
+
+      - alert: PaymentWebhookFailure
+        expr: |
+          sum by (service, provider, event) (increase(menorah_payment_webhook_events_total{outcome="failure",event="relationship"}[5m])) > 0
+          or sum by (service, provider, event) (increase(menorah_payment_webhook_events_total{outcome="failure",event="processing"}[5m])) >= 3
+          or sum by (service, provider, event) (increase(menorah_payment_webhook_events_total{outcome="failure",event="signature"}[5m])) >= 10
+        for: 1m
+        labels:
+          severity: critical
+          owner: payments-response-owner-tbd
+        annotations:
+          summary: "Payment webhook validation or reconciliation is failing"
+          description: "{{ $labels.provider }} webhook event {{ $labels.event }} on {{ $labels.service }} crossed its failure threshold."
+          resolution: "The alert resolves after the rolling five-minute webhook failure count remains below threshold for one minute."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#paymentwebhookfailure"
+
+      - alert: EmailDispatchFailed
+        expr: sum by (service, provider) (increase(menorah_email_dispatch_total{outcome="failure"}[5m])) >= 3
+        for: 2m
+        labels:
+          severity: warning
+          owner: messaging-response-owner-tbd
+        annotations:
+          summary: "Email dispatch requests are failing"
+          description: "{{ $labels.provider }} dispatch on {{ $labels.service }} failed at least three times in five minutes."
+          resolution: "The alert resolves after the rolling five-minute dispatch failure count remains below three for two minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#emaildispatchfailed"
+
+      - alert: EmailDeliveryOutcomeFailed
+        expr: sum by (service, provider, outcome) (increase(menorah_email_delivery_outcomes_total{outcome=~"bounced|complained|failed|suppressed"}[10m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+          owner: messaging-response-owner-tbd
+        annotations:
+          summary: "The email provider reported a terminal delivery outcome"
+          description: "{{ $labels.provider }} reported {{ $labels.outcome }} delivery outcomes on {{ $labels.service }}."
+          resolution: "The event alert resolves after the ten-minute provider callback window expires and remains quiet for one minute."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#emaildeliveryoutcomefailed"
+
+      - alert: CallProviderFailure
+        expr: sum by (service, provider, operation) (increase(menorah_call_provider_operations_total{outcome="failure"}[5m])) >= 2
+        for: 2m
+        labels:
+          severity: critical
+          owner: calls-response-owner-tbd
+        annotations:
+          summary: "Call provider operations are failing"
+          description: "{{ $labels.provider }} operation {{ $labels.operation }} on {{ $labels.service }} failed at least twice in five minutes."
+          resolution: "The alert resolves after the rolling five-minute call provider failure count remains below two for two minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#callproviderfailure"
+
+      - alert: CallMediaFailure
+        expr: sum by (service, provider, media) (increase(menorah_call_media_outcomes_total{outcome="failure"}[5m])) >= 2
+        for: 2m
+        labels:
+          severity: critical
+          owner: calls-response-owner-tbd
+        annotations:
+          summary: "Call media establishment is failing"
+          description: "{{ $labels.provider }} {{ $labels.media }} establishment on {{ $labels.service }} failed at least twice in five minutes."
+          resolution: "The alert resolves after the rolling five-minute media failure count remains below two for two minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#callmediafailure"
 
   - name: menorah-monitoring-stack
     rules:

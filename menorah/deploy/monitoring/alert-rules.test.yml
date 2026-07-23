@@ -37,7 +37,7 @@ tests:
               component: frontend
               instance: "http://user-web-app:3002/"
               job: blackbox-http-internal
-              owner: web
+              owner: web-response-owner-tbd
               service: user-web-app
               severity: critical
             exp_annotations:
@@ -52,7 +52,7 @@ tests:
               component: frontend
               instance: "http://admin-panel:3003/"
               job: blackbox-http-internal
-              owner: web
+              owner: web-response-owner-tbd
               service: admin-panel
               severity: critical
             exp_annotations:
@@ -67,7 +67,7 @@ tests:
               component: frontend
               instance: "http://web-app:3001/"
               job: blackbox-http-internal
-              owner: web
+              owner: web-response-owner-tbd
               service: counsellor-web
               severity: critical
             exp_annotations:
@@ -111,7 +111,7 @@ tests:
               backup_type: six-hourly
               instance: node-exporter:9100
               job: node-exporter
-              owner: infrastructure
+              owner: backup-response-owner-tbd
               severity: critical
             exp_annotations:
               summary: "Backup execution failed"
@@ -635,4 +635,159 @@ tests:
         exp_alerts: []
       - eval_time: 15m
         alertname: AdminRoleChanged
+        exp_alerts: []
+
+  - name: queue payment email and call reliability signals fire from bounded producers
+    interval: 1m
+    input_series:
+      - series: 'menorah_queue_pending_jobs{service="worker",queue="provider_revocation"}'
+        values: '30+0x10'
+      - series: 'menorah_payment_operations_total{service="api-admin",provider="razorpay",operation="payout",outcome="failure"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10'
+      - series: 'menorah_payment_webhook_events_total{service="api-web",provider="razorpay",event="relationship",outcome="failure"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10'
+      - series: 'menorah_email_dispatch_total{service="api-web",provider="resend",outcome="failure"}'
+        values: '0 2 4 6 8 10 12 14 16 18 20'
+      - series: 'menorah_email_delivery_outcomes_total{service="api-web",provider="resend",outcome="bounced"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10'
+      - series: 'menorah_call_provider_operations_total{service="api-web",provider="livekit",operation="connect",outcome="failure"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10'
+      - series: 'menorah_call_media_outcomes_total{service="api-web",provider="livekit",media="video",outcome="failure"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: WorkerQueueBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              owner: worker-response-owner-tbd
+              queue: provider_revocation
+              service: worker
+              severity: critical
+            exp_annotations:
+              summary: "A durable worker queue is not draining safely"
+              description: "worker queue provider_revocation has sustained size, age, retry, dead-letter, failure, or heartbeat pressure."
+              resolution: "The alert resolves after every queue threshold and the worker heartbeat remain healthy for five minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#workerqueuebackloghigh"
+      - eval_time: 7m
+        alertname: PaymentProviderFailure
+        exp_alerts:
+          - exp_labels:
+              operation: payout
+              owner: payments-response-owner-tbd
+              provider: razorpay
+              service: api-admin
+              severity: critical
+            exp_annotations:
+              summary: "Payment provider operations are failing"
+              description: "razorpay operation payout on api-admin crossed its bounded failure threshold."
+              resolution: "The alert resolves after the rolling five-minute provider failure count remains below threshold for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#paymentproviderfailure"
+      - eval_time: 7m
+        alertname: PaymentWebhookFailure
+        exp_alerts:
+          - exp_labels:
+              event: relationship
+              owner: payments-response-owner-tbd
+              provider: razorpay
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "Payment webhook validation or reconciliation is failing"
+              description: "razorpay webhook event relationship on api-web crossed its failure threshold."
+              resolution: "The alert resolves after the rolling five-minute webhook failure count remains below threshold for one minute."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#paymentwebhookfailure"
+      - eval_time: 7m
+        alertname: EmailDispatchFailed
+        exp_alerts:
+          - exp_labels:
+              owner: messaging-response-owner-tbd
+              provider: resend
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "Email dispatch requests are failing"
+              description: "resend dispatch on api-web failed at least three times in five minutes."
+              resolution: "The alert resolves after the rolling five-minute dispatch failure count remains below three for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#emaildispatchfailed"
+      - eval_time: 7m
+        alertname: EmailDeliveryOutcomeFailed
+        exp_alerts:
+          - exp_labels:
+              outcome: bounced
+              owner: messaging-response-owner-tbd
+              provider: resend
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "The email provider reported a terminal delivery outcome"
+              description: "resend reported bounced delivery outcomes on api-web."
+              resolution: "The event alert resolves after the ten-minute provider callback window expires and remains quiet for one minute."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#emaildeliveryoutcomefailed"
+      - eval_time: 7m
+        alertname: CallProviderFailure
+        exp_alerts:
+          - exp_labels:
+              operation: connect
+              owner: calls-response-owner-tbd
+              provider: livekit
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "Call provider operations are failing"
+              description: "livekit operation connect on api-web failed at least twice in five minutes."
+              resolution: "The alert resolves after the rolling five-minute call provider failure count remains below two for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#callproviderfailure"
+      - eval_time: 7m
+        alertname: CallMediaFailure
+        exp_alerts:
+          - exp_labels:
+              media: video
+              owner: calls-response-owner-tbd
+              provider: livekit
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "Call media establishment is failing"
+              description: "livekit video establishment on api-web failed at least twice in five minutes."
+              resolution: "The alert resolves after the rolling five-minute media failure count remains below two for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#callmediafailure"
+
+  - name: queue payment email and call reliability signals recover after quiet windows
+    interval: 1m
+    input_series:
+      - series: 'menorah_queue_pending_jobs{service="worker",queue="provider_revocation"}'
+        values: '30 0+0x25'
+      - series: 'menorah_payment_operations_total{service="api-admin",provider="razorpay",operation="payout",outcome="failure"}'
+        values: '0 2+0x25'
+      - series: 'menorah_payment_webhook_events_total{service="api-web",provider="razorpay",event="relationship",outcome="failure"}'
+        values: '0 2+0x25'
+      - series: 'menorah_email_dispatch_total{service="api-web",provider="resend",outcome="failure"}'
+        values: '0 5+0x25'
+      - series: 'menorah_email_delivery_outcomes_total{service="api-web",provider="resend",outcome="bounced"}'
+        values: '0 1+0x25'
+      - series: 'menorah_call_provider_operations_total{service="api-web",provider="livekit",operation="connect",outcome="failure"}'
+        values: '0 3+0x25'
+      - series: 'menorah_call_media_outcomes_total{service="api-web",provider="livekit",media="video",outcome="failure"}'
+        values: '0 3+0x25'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: WorkerQueueBacklogHigh
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: PaymentProviderFailure
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: PaymentWebhookFailure
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: EmailDispatchFailed
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: EmailDeliveryOutcomeFailed
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: CallProviderFailure
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: CallMediaFailure
         exp_alerts: []

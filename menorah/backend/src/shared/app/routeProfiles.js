@@ -16,6 +16,7 @@ const socialStudioRoutes = require('../../routes/socialStudio');
 const ekycRoutes = require('../../routes/ekyc');
 const privacyRoutes = require('../../routes/privacy');
 const privacyAdminRoutes = require('../../routes/privacy-admin');
+const emailWebhookRoutes = require('../../routes/email-webhook');
 
 const routeDefinitions = {
   auth: { mountPath: '/api/auth', router: authRoutes },
@@ -34,6 +35,7 @@ const routeDefinitions = {
   ekyc: { mountPath: '/api/ekyc', router: ekycRoutes },
   'privacy-user': { mountPath: '/api/privacy', router: privacyRoutes },
   'privacy-admin': { mountPath: '/api/privacy', router: privacyAdminRoutes },
+  'email-webhook': { mountPath: '/api/email', router: emailWebhookRoutes },
   'admin-social-studio': { mountPath: '/api/admin/social-studio', router: socialStudioRoutes },
   admin: { mountPath: '/api/admin', router: adminRoutes }
 };
@@ -75,6 +77,7 @@ const routeProfiles = {
     'articles-public',
     'video',
     'chat',
+    'email-webhook',
     'privacy-user'
   ],
   'api-admin': [

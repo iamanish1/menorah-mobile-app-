@@ -226,6 +226,8 @@ const isWebhookPath = (path = '') => (
   path === '/api/video/livekit-webhook'
   || path === '/api/payments/razorpay-webhook'
   || path === '/api/payouts/webhook'
+  || path === '/api/email/resend'
+  || path === '/api/video/meet/media-outcome'
   || path.startsWith('/api/payouts/webhook/')
 );
 

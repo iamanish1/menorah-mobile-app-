@@ -75,6 +75,9 @@ const {
 const {
   expireStaleAwaitingApprovalPayouts,
 } = require('../services/payoutApprovalExpiry');
+const {
+  recordPaymentOperation,
+} = require('../utils/reliabilityMetrics');
 
 const router = express.Router();
 
@@ -85,6 +88,11 @@ router.use(requireAssignedAdminRole);
 
 const requirePayoutInitiationEnabled = (_req, res, next) => {
   if (isPayoutInitiationEnabled()) return next();
+  recordPaymentOperation({
+    provider: 'razorpay',
+    operation: 'payout',
+    outcome: 'disabled',
+  });
   return res.status(503).json({
     success: false,
     code: 'PAYOUTS_DISABLED',
@@ -1948,6 +1956,11 @@ router.post('/payouts/:payoutId/approve', [
 
     try {
       const { payoutResponse, contactId, fundAccountId } = await createRazorpayPayout({ payout, counsellor });
+      recordPaymentOperation({
+        provider: 'razorpay',
+        operation: 'payout',
+        outcome: 'success',
+      });
       const providerStatuses = new Set([
         'processing', 'queued', 'pending', 'on_hold', 'processed',
         'reversed', 'cancelled', 'failed', 'rejected',
@@ -1967,6 +1980,13 @@ router.post('/payouts/:payoutId/approve', [
         data: serializePayoutRequest(updatedPayout),
       });
     } catch (error) {
+      recordPaymentOperation({
+        provider: 'razorpay',
+        operation: 'payout',
+        outcome: error?.name === 'RazorpayPayoutConfigurationError'
+          ? 'disabled'
+          : 'failure',
+      });
       const definitiveFailure = isDefinitiveProviderFailure(error);
       await Payout.findByIdAndUpdate(payout._id, {
         $set: definitiveFailure

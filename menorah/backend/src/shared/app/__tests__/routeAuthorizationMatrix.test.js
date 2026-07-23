@@ -40,10 +40,12 @@ const PUBLIC_ROUTES = new Set([
 const TICKET_ROUTES = new Set([
   'counsellors:GET:/application-status',
   'video:POST:/meet/redeem',
+  'video:POST:/meet/media-outcome',
   'video:GET:/meet',
 ]);
 
 const SIGNED_WEBHOOK_ROUTES = new Set([
+  'email-webhook:POST:/resend',
   'payments-full:POST:/razorpay-webhook',
   'payout-webhook:POST:/',
   'video:POST:/livekit-webhook',

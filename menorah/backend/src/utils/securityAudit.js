@@ -15,6 +15,10 @@ const {
   renderApplicationMetrics,
   resetApplicationMetricsForTests,
 } = require('./applicationMetrics');
+const {
+  renderReliabilityMetrics,
+  resetReliabilityMetricsForTests,
+} = require('./reliabilityMetrics');
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const SAFE_DETAIL_KEYS = new Set([
@@ -332,7 +336,7 @@ const renderSecurityMetrics = () => {
     );
   });
 
-  return `${lines.join('\n')}\n${renderApplicationMetrics()}`;
+  return `${lines.join('\n')}\n${renderApplicationMetrics()}${renderReliabilityMetrics()}`;
 };
 
 const resetSecurityMetricsForTests = () => {
@@ -340,6 +344,7 @@ const resetSecurityMetricsForTests = () => {
   auditChainHead = null;
   resetSecurityAuditSinkForTests();
   resetApplicationMetricsForTests();
+  resetReliabilityMetricsForTests();
 };
 
 const recordRoleChange = ({

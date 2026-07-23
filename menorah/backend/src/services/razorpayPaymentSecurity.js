@@ -1,4 +1,7 @@
 const crypto = require('crypto');
+const {
+  recordPaymentOperation,
+} = require('../utils/reliabilityMetrics');
 
 const RAZORPAY_ID_PATTERN = /^[A-Za-z0-9_-]{3,128}$/;
 const RAZORPAY_SIGNATURE_PATTERN = /^[a-fA-F0-9]{64}$/;
@@ -205,13 +208,28 @@ const fetchRazorpayEvidence = async ({ client, orderId, paymentId, timeoutMs }) 
     throw new TypeError('Valid Razorpay order and payment IDs are required');
   }
 
-  return withPaymentProviderTimeout(
-    () => Promise.all([
-      client.orders.fetch(orderId),
-      client.payments.fetch(paymentId),
-    ]).then(([order, payment]) => ({ order, payment })),
-    timeoutMs
-  );
+  try {
+    const evidence = await withPaymentProviderTimeout(
+      () => Promise.all([
+        client.orders.fetch(orderId),
+        client.payments.fetch(paymentId),
+      ]).then(([order, payment]) => ({ order, payment })),
+      timeoutMs
+    );
+    recordPaymentOperation({
+      provider: 'razorpay',
+      operation: 'evidence_fetch',
+      outcome: 'success',
+    });
+    return evidence;
+  } catch (error) {
+    recordPaymentOperation({
+      provider: 'razorpay',
+      operation: 'evidence_fetch',
+      outcome: 'failure',
+    });
+    throw error;
+  }
 };
 
 const findRazorpayOrdersByReceipt = async ({ client, receipt, timeoutMs }) => {
@@ -220,10 +238,25 @@ const findRazorpayOrdersByReceipt = async ({ client, receipt, timeoutMs }) => {
     throw new TypeError('A receipt is required');
   }
 
-  const result = await withPaymentProviderTimeout(
-    () => client.orders.all({ receipt, count: 10 }),
-    timeoutMs
-  );
+  let result;
+  try {
+    result = await withPaymentProviderTimeout(
+      () => client.orders.all({ receipt, count: 10 }),
+      timeoutMs
+    );
+    recordPaymentOperation({
+      provider: 'razorpay',
+      operation: 'order_recovery',
+      outcome: 'success',
+    });
+  } catch (error) {
+    recordPaymentOperation({
+      provider: 'razorpay',
+      operation: 'order_recovery',
+      outcome: 'failure',
+    });
+    throw error;
+  }
 
   return Array.isArray(result?.items) ? result.items : [];
 };

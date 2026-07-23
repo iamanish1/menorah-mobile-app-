@@ -295,6 +295,9 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
       requireEnv(key, errors)
     );
     requireMinimumLength('AUDIT_LOG_SIGNING_KEY', 32, errors);
+    if (serviceName === 'api-web') {
+      requireMinimumLength('RESEND_WEBHOOK_SECRET', 24, errors);
+    }
     validateOptionalIntegerRange('SECURITY_AUDIT_PENDING_MAX', 128, 8192, errors);
     requireExactInteger('MAX_PAYOUT_AMOUNT_PAISE', MAX_SINGLE_PAYOUT_PAISE, errors);
     requireExactInteger('KYC_RETENTION_DAYS', FACE_CHECK_RETENTION_DAYS, errors);

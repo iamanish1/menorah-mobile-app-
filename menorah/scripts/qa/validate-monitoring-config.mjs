@@ -11,6 +11,7 @@ const MENORAH_ROOT = path.resolve(QA_DIR, '..', '..');
 const FILES = {
   prometheus: path.join(MENORAH_ROOT, 'deploy', 'monitoring', 'prometheus.yml'),
   alerts: path.join(MENORAH_ROOT, 'deploy', 'monitoring', 'alert-rules.yml'),
+  alertTests: path.join(MENORAH_ROOT, 'deploy', 'monitoring', 'alert-rules.test.yml'),
   blackbox: path.join(MENORAH_ROOT, 'deploy', 'monitoring', 'blackbox.yml'),
   alertmanager: path.join(MENORAH_ROOT, 'deploy', 'monitoring', 'alertmanager.yml'),
   coverage: path.join(MENORAH_ROOT, 'deploy', 'monitoring', 'observability-coverage.yml'),
@@ -35,6 +36,67 @@ const FILES = {
     'src',
     'utils',
     'applicationMetrics.js',
+  ),
+  reliabilityMetrics: path.join(
+    MENORAH_ROOT,
+    'backend',
+    'src',
+    'utils',
+    'reliabilityMetrics.js',
+  ),
+  queueProducer: path.join(
+    MENORAH_ROOT,
+    'backend',
+    'src',
+    'services',
+    'providerRevocationService.js',
+  ),
+  paymentSecurity: path.join(
+    MENORAH_ROOT,
+    'backend',
+    'src',
+    'services',
+    'razorpayPaymentSecurity.js',
+  ),
+  paymentRoute: path.join(MENORAH_ROOT, 'backend', 'src', 'routes', 'payments.js'),
+  payoutWebhook: path.join(
+    MENORAH_ROOT,
+    'backend',
+    'src',
+    'routes',
+    'payout-webhook.js',
+  ),
+  emailProducer: path.join(MENORAH_ROOT, 'backend', 'src', 'utils', 'email.js'),
+  emailWebhook: path.join(
+    MENORAH_ROOT,
+    'backend',
+    'src',
+    'routes',
+    'email-webhook.js',
+  ),
+  resendWebhook: path.join(
+    MENORAH_ROOT,
+    'backend',
+    'src',
+    'services',
+    'resendWebhook.js',
+  ),
+  videoRoute: path.join(MENORAH_ROOT, 'backend', 'src', 'routes', 'video.js'),
+  createExpressApp: path.join(
+    MENORAH_ROOT,
+    'backend',
+    'src',
+    'shared',
+    'app',
+    'createExpressApp.js',
+  ),
+  startupValidation: path.join(
+    MENORAH_ROOT,
+    'backend',
+    'src',
+    'shared',
+    'app',
+    'startupValidation.js',
   ),
   securityAudit: path.join(
     MENORAH_ROOT,
@@ -180,8 +242,28 @@ const REQUIRED_COVERAGE_IDS = [
   'monitoring-stack-health',
 ];
 
-const FORBIDDEN_UNAVAILABLE_METRICS =
-  /\bmenorah_(?:queue_backlog|email_delivery|call_provider|payment_provider|http_requests)_/;
+const REQUIRED_P0_ALERTS = new Map([
+  ['WorkerQueueBacklogHigh', 'menorah_queue_pending_jobs'],
+  ['BackupJobFailed', 'menorah_backup_last_attempt_result'],
+  ['PaymentProviderFailure', 'menorah_payment_operations_total'],
+  ['PaymentWebhookFailure', 'menorah_payment_webhook_events_total'],
+  ['EmailDispatchFailed', 'menorah_email_dispatch_total'],
+  ['EmailDeliveryOutcomeFailed', 'menorah_email_delivery_outcomes_total'],
+  ['CallProviderFailure', 'menorah_call_provider_operations_total'],
+  ['CallMediaFailure', 'menorah_call_media_outcomes_total'],
+  ['PrivilegedRoleChanged', 'menorah_privilege_changes_total'],
+  ['AdminRoleChanged', 'menorah_privilege_changes_total'],
+  ['UserAuthenticationFailureSpike', 'menorah_auth_attempts_total'],
+  ['CounsellorAuthenticationFailureSpike', 'menorah_auth_attempts_total'],
+  ['AdminAuthenticationMfaFailureSpike', 'menorah_auth_attempts_total'],
+  ['ElevatedHttp401Rate', 'menorah_http_responses_total'],
+  ['ElevatedHttp403Rate', 'menorah_http_responses_total'],
+  ['ElevatedHttp429Rate', 'menorah_http_responses_total'],
+  ['ElevatedHttp500Rate', 'menorah_http_responses_total'],
+  ['UserFrontendProbeFailed', 'probe_success'],
+  ['AdminFrontendProbeFailed', 'probe_success'],
+  ['CounsellorFrontendProbeFailed', 'probe_success'],
+]);
 
 const EXPECTED_CONTAINER_METRICS = new Set([
   'menorah_container_running',
@@ -203,6 +285,7 @@ const parseYaml = (filename) => {
 export const loadMonitoringDocuments = () => ({
   prometheus: parseYaml(FILES.prometheus),
   alerts: parseYaml(FILES.alerts),
+  alertTests: parseYaml(FILES.alertTests),
   blackbox: parseYaml(FILES.blackbox),
   alertmanager: parseYaml(FILES.alertmanager),
   coverage: parseYaml(FILES.coverage),
@@ -212,6 +295,17 @@ export const loadMonitoringDocuments = () => ({
   backupNow: fs.readFileSync(FILES.backupNow, 'utf8'),
   backupSchedule: fs.readFileSync(FILES.backupSchedule, 'utf8'),
   applicationMetrics: fs.readFileSync(FILES.applicationMetrics, 'utf8'),
+  reliabilityMetrics: fs.readFileSync(FILES.reliabilityMetrics, 'utf8'),
+  queueProducer: fs.readFileSync(FILES.queueProducer, 'utf8'),
+  paymentSecurity: fs.readFileSync(FILES.paymentSecurity, 'utf8'),
+  paymentRoute: fs.readFileSync(FILES.paymentRoute, 'utf8'),
+  payoutWebhook: fs.readFileSync(FILES.payoutWebhook, 'utf8'),
+  emailProducer: fs.readFileSync(FILES.emailProducer, 'utf8'),
+  emailWebhook: fs.readFileSync(FILES.emailWebhook, 'utf8'),
+  resendWebhook: fs.readFileSync(FILES.resendWebhook, 'utf8'),
+  videoRoute: fs.readFileSync(FILES.videoRoute, 'utf8'),
+  createExpressApp: fs.readFileSync(FILES.createExpressApp, 'utf8'),
+  startupValidation: fs.readFileSync(FILES.startupValidation, 'utf8'),
   securityAudit: fs.readFileSync(FILES.securityAudit, 'utf8'),
   authRoute: fs.readFileSync(FILES.authRoute, 'utf8'),
   userModel: fs.readFileSync(FILES.userModel, 'utf8'),
@@ -241,6 +335,7 @@ export const validateMonitoringDocuments = (documents) => {
   const {
     prometheus,
     alerts,
+    alertTests,
     blackbox,
     alertmanager,
     coverage,
@@ -250,6 +345,17 @@ export const validateMonitoringDocuments = (documents) => {
     backupNow,
     backupSchedule,
     applicationMetrics,
+    reliabilityMetrics,
+    queueProducer,
+    paymentSecurity,
+    paymentRoute,
+    payoutWebhook,
+    emailProducer,
+    emailWebhook,
+    resendWebhook,
+    videoRoute,
+    createExpressApp,
+    startupValidation,
     securityAudit,
     authRoute,
     userModel,
@@ -331,9 +437,6 @@ export const validateMonitoringDocuments = (documents) => {
       ),
       `${rule.alert || '<unnamed>'} has no canonical HTTPS runbook_url`,
     );
-    if (FORBIDDEN_UNAVAILABLE_METRICS.test(String(rule.expr || ''))) {
-      errors.push(`${rule.alert || '<unnamed>'} claims an explicitly unavailable application metric`);
-    }
     if (
       /\bmenorah_security_audit_sink_(?:persisted|failures)_total\b/.test(
         String(rule.expr || ''),
@@ -429,6 +532,184 @@ export const validateMonitoringDocuments = (documents) => {
       errors,
       rule?.annotations?.resolution,
       `${alertName} is missing a clear resolution message`,
+    );
+  }
+
+  const phaseFiveAlerts = new Map([
+    ['WorkerQueueBacklogHigh', [
+      'menorah_queue_pending_jobs',
+      'menorah_queue_oldest_pending_age_seconds',
+      'menorah_queue_retry_backlog',
+      'menorah_queue_dead_letter_jobs',
+      'menorah_queue_jobs_total',
+      'menorah_worker_heartbeat_timestamp_seconds',
+    ]],
+    ['PaymentProviderFailure', ['menorah_payment_operations_total']],
+    ['PaymentWebhookFailure', ['menorah_payment_webhook_events_total']],
+    ['EmailDispatchFailed', ['menorah_email_dispatch_total']],
+    ['EmailDeliveryOutcomeFailed', ['menorah_email_delivery_outcomes_total']],
+    ['CallProviderFailure', ['menorah_call_provider_operations_total']],
+    ['CallMediaFailure', ['menorah_call_media_outcomes_total']],
+  ]);
+  for (const [alertName, requiredMetrics] of phaseFiveAlerts) {
+    const rule = rules.find((candidate) => candidate.alert === alertName);
+    requireValue(errors, rule, `missing required P0 alert: ${alertName}`);
+    for (const metricName of requiredMetrics) {
+      requireValue(
+        errors,
+        String(rule?.expr || '').includes(metricName),
+        `${alertName} does not use required bounded metric ${metricName}`,
+      );
+    }
+    requireValue(errors, rule?.for !== undefined, `${alertName} has no duration`);
+    requireValue(
+      errors,
+      String(rule?.labels?.owner || '').endsWith('-owner-tbd'),
+      `${alertName} must retain an explicit response-owner placeholder`,
+    );
+    requireValue(
+      errors,
+      rule?.annotations?.resolution,
+      `${alertName} is missing a clear resolution message`,
+    );
+  }
+
+  for (const metricName of new Set(
+    Array.from(phaseFiveAlerts.values()).flat(),
+  )) {
+    requireValue(
+      errors,
+      reliabilityMetrics.includes(metricName),
+      `reliability metric producer does not declare ${metricName}`,
+    );
+  }
+  for (const labelContract of [
+    "labels: ['service', 'queue']",
+    "labels: ['service', 'queue', 'outcome']",
+    "labels: ['service', 'provider', 'operation', 'outcome']",
+    "labels: ['service', 'provider', 'event', 'outcome']",
+    "labels: ['service', 'provider', 'outcome']",
+    "labels: ['service', 'provider', 'media', 'outcome']",
+  ]) {
+    requireValue(
+      errors,
+      reliabilityMetrics.includes(labelContract),
+      `reliability metrics are missing bounded label contract ${labelContract}`,
+    );
+  }
+  requireValue(
+    errors,
+    !/\blabels:\s*\[[^\]]*(?:recipient|email|user|booking|payment_id|raw_path|reason|payload)/i.test(
+      reliabilityMetrics,
+    ),
+    'reliability metrics contain a forbidden unbounded or identifying label',
+  );
+  requireValue(
+    errors,
+    queueProducer.includes('setQueueSnapshot({')
+      && queueProducer.includes("recordWorkerHeartbeat({ worker: 'provider_revocation' })")
+      && queueProducer.includes('recordQueueJobOutcome({'),
+    'durable provider-revocation queue is missing snapshot, heartbeat, or outcome instrumentation',
+  );
+  requireValue(
+    errors,
+    paymentSecurity.includes("operation: 'evidence_fetch'")
+      && paymentSecurity.includes("operation: 'order_recovery'")
+      && paymentRoute.includes('recordPaymentWebhook({')
+      && payoutWebhook.includes('recordPaymentWebhook({'),
+    'payment provider and webhook boundaries are missing bounded reliability instrumentation',
+  );
+  requireValue(
+    errors,
+    emailProducer.includes('recordEmailDispatch({')
+      && emailWebhook.includes('verifyResendWebhook({')
+      && emailWebhook.includes('getResendReplayKey(verified.id)')
+      && emailWebhook.includes('NX: true')
+      && emailWebhook.includes("req.headers['svix-id']")
+      && resendWebhook.includes('MAX_TIMESTAMP_SKEW_SECONDS')
+      && createExpressApp.includes(
+        "app.use('/api/email/resend', express.raw({ type: 'application/json', limit: '256kb' }))",
+      )
+      && startupValidation.includes(
+        "requireMinimumLength('RESEND_WEBHOOK_SECRET', 24, errors)",
+      ),
+    'email dispatch/delivery telemetry is missing raw-body signature, replay, or fail-closed startup controls',
+  );
+  requireValue(
+    errors,
+    videoRoute.includes("router.post('/meet/media-outcome'")
+      && videoRoute.includes('consumeMediaTelemetryToken(req.body.telemetryToken)')
+      && videoRoute.includes("recordCallProviderOperation({")
+      && videoRoute.includes('recordCallMediaOutcome({')
+      && videoRoute.includes("await reportMediaOutcome(OUTCOME_PHASE, 'failure')"),
+    'call provider/media telemetry is missing one-time bounded client or server instrumentation',
+  );
+
+  const p0Records = coverage?.p0_alerts || [];
+  const p0ByAlert = new Map(p0Records.map((record) => [record.alert, record]));
+  requireValue(
+    errors,
+    p0Records.length === REQUIRED_P0_ALERTS.size
+      && p0ByAlert.size === REQUIRED_P0_ALERTS.size,
+    `observability P0 record must contain exactly ${REQUIRED_P0_ALERTS.size} unique alerts`,
+  );
+  const alertTestNames = new Set(
+    (alertTests?.tests || []).map((fixture) => fixture.name),
+  );
+  for (const [alertName, metricName] of REQUIRED_P0_ALERTS) {
+    const record = p0ByAlert.get(alertName);
+    const rule = rules.find((candidate) => candidate.alert === alertName);
+    requireValue(errors, record, `observability P0 record is missing ${alertName}`);
+    if (!record) continue;
+    requireValue(
+      errors,
+      record.metric === metricName,
+      `${alertName} P0 record metric must be ${metricName}`,
+    );
+    requireValue(
+      errors,
+      String(rule?.expr || '').includes(metricName),
+      `${alertName} rule does not reference its recorded metric ${metricName}`,
+    );
+    requireValue(
+      errors,
+      record.rule === 'deploy/monitoring/alert-rules.yml',
+      `${alertName} P0 record has an unexpected rule location`,
+    );
+    requireValue(
+      errors,
+      typeof record.producer === 'string'
+        && fs.existsSync(path.join(MENORAH_ROOT, record.producer)),
+      `${alertName} P0 record producer does not exist`,
+    );
+    requireValue(
+      errors,
+      alertTestNames.has(record.test_fixture),
+      `${alertName} P0 record references a missing Prometheus fixture`,
+    );
+    requireValue(
+      errors,
+      record.severity === rule?.labels?.severity,
+      `${alertName} P0 record severity has drifted from the rule`,
+    );
+    requireValue(
+      errors,
+      record.owner_placeholder === rule?.labels?.owner
+        && String(record.owner_placeholder || '').endsWith('-owner-tbd'),
+      `${alertName} P0 record owner placeholder has drifted from the rule`,
+    );
+    requireValue(
+      errors,
+      String(rule?.annotations?.runbook_url || '').endsWith(
+        `/docs/${record.runbook}`,
+      ),
+      `${alertName} P0 record runbook has drifted from the rule`,
+    );
+    requireValue(
+      errors,
+      typeof record.live_evidence_requirement === 'string'
+        && record.live_evidence_requirement.length >= 24,
+      `${alertName} P0 record is missing its staging/live evidence requirement`,
     );
   }
   for (const ambiguousAlert of [
@@ -545,6 +826,18 @@ export const validateMonitoringDocuments = (documents) => {
   const coverageById = new Map(coverageSignals.map((signal) => [signal.id, signal]));
   for (const id of REQUIRED_COVERAGE_IDS) {
     requireValue(errors, coverageById.has(id), `observability coverage is missing signal: ${id}`);
+  }
+  for (const id of [
+    'queue-backlog',
+    'general-payment-provider-failures',
+    'email-delivery-failures',
+    'call-provider-failures',
+  ]) {
+    requireValue(
+      errors,
+      coverageById.get(id)?.status === 'covered',
+      `${id} must remain covered by the final P0 metric contract`,
+    );
   }
 
   const coveredAlertNames = new Set();

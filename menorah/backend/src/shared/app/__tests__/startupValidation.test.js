@@ -65,6 +65,7 @@ describe('startup validation', () => {
       WEB_SESSION_ORIGINS: 'https://app.example.com=user,https://counsellor.example.com=counsellor,https://admin.example.com=admin',
       REDIS_URL: 'redis://redis:6379',
       RESEND_API_KEY: 'resend-key',
+      RESEND_WEBHOOK_SECRET: `whsec_${'a'.repeat(32)}`,
       EMAIL_FROM: 'Menorah <noreply@example.com>',
       CONTACT_TO_EMAIL: 'contact@example.com',
       PASSWORD_RESET_BASE_URL: 'https://app.menorah.me',
@@ -146,6 +147,13 @@ describe('startup validation', () => {
     delete process.env.LIVEKIT_API_URL;
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' })).toThrow(/LIVEKIT_API_URL is missing/);
+  });
+
+  test('requires a usable Resend webhook secret on api-web in production', () => {
+    delete process.env.RESEND_WEBHOOK_SECRET;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/RESEND_WEBHOOK_SECRET must contain at least 24/);
   });
 
   test('requires the bank-account encryption key for API services', () => {

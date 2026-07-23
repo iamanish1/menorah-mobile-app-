@@ -2,6 +2,11 @@ const crypto = require('crypto');
 const ProviderRevocationTask = require('../models/ProviderRevocationTask');
 const { revokeAppleToken } = require('./appleSignInService');
 const { decryptAppleRefreshToken } = require('../utils/appleRefreshTokenEncryption');
+const {
+  recordQueueJobOutcome,
+  recordWorkerHeartbeat,
+  setQueueSnapshot,
+} = require('../utils/reliabilityMetrics');
 
 const MAX_ATTEMPTS = 10;
 const LOCK_MILLISECONDS = 2 * 60 * 1000;
@@ -77,6 +82,10 @@ const createProviderRevocationProcessor = ({
       if (completed.modifiedCount !== 1) {
         throw new Error('Provider revocation completion lock was lost');
       }
+      recordQueueJobOutcome({
+        queue: 'provider_revocation',
+        outcome: 'success',
+      });
       return { taskId: task._id, status: 'completed' };
     } catch (error) {
       const terminal = task.attempts >= MAX_ATTEMPTS;
@@ -96,6 +105,10 @@ const createProviderRevocationProcessor = ({
           $unset: { lockTokenHash: '' },
         }
       );
+      recordQueueJobOutcome({
+        queue: 'provider_revocation',
+        outcome: 'failure',
+      });
       return {
         taskId: task._id,
         status,
@@ -107,6 +120,33 @@ const createProviderRevocationProcessor = ({
   return { processNext };
 };
 
+const collectProviderRevocationQueueMetrics = async ({
+  TaskModel = ProviderRevocationTask,
+  now = new Date(),
+} = {}) => {
+  const [pending, retryBacklog, deadLetter, oldest] = await Promise.all([
+    TaskModel.countDocuments({ status: 'pending' }),
+    TaskModel.countDocuments({ status: 'retry' }),
+    TaskModel.countDocuments({ status: 'manual_review' }),
+    TaskModel.findOne({ status: { $in: ['pending', 'retry'] } })
+      .sort({ createdAt: 1 })
+      .select('createdAt')
+      .lean(),
+  ]);
+  const createdAt = oldest?.createdAt ? new Date(oldest.createdAt) : null;
+  const oldestPendingAgeSeconds = createdAt && !Number.isNaN(createdAt.getTime())
+    ? Math.max(0, (now.getTime() - createdAt.getTime()) / 1000)
+    : 0;
+  setQueueSnapshot({
+    queue: 'provider_revocation',
+    pending,
+    oldestPendingAgeSeconds,
+    retryBacklog,
+    deadLetter,
+  });
+  return { pending, oldestPendingAgeSeconds, retryBacklog, deadLetter };
+};
+
 const processor = createProviderRevocationProcessor();
 
 const startProviderRevocationScheduler = () => {
@@ -114,6 +154,7 @@ const startProviderRevocationScheduler = () => {
   const run = async () => {
     if (running) return;
     running = true;
+    recordWorkerHeartbeat({ worker: 'provider_revocation' });
     try {
       for (let processed = 0; processed < 10; processed += 1) {
         const result = await processor.processNext();
@@ -125,6 +166,14 @@ const startProviderRevocationScheduler = () => {
     } catch (error) {
       console.error('Provider revocation scheduler error code:', error?.code || 'UNEXPECTED_ERROR');
     } finally {
+      try {
+        await collectProviderRevocationQueueMetrics();
+      } catch (error) {
+        console.error(
+          'Provider revocation queue metrics error code:',
+          error?.code || 'QUEUE_METRICS_FAILED'
+        );
+      }
       running = false;
     }
   };
@@ -137,6 +186,7 @@ const startProviderRevocationScheduler = () => {
 
 module.exports = {
   MAX_ATTEMPTS,
+  collectProviderRevocationQueueMetrics,
   createProviderRevocationProcessor,
   startProviderRevocationScheduler,
 };

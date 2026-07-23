@@ -16,6 +16,10 @@ const {
   evaluateCallAccess,
 } = require('../services/sessionAuthorizationPolicy');
 const { recordSecurityEvent } = require('../utils/securityAudit');
+const {
+  recordCallMediaOutcome,
+  recordCallProviderOperation,
+} = require('../utils/reliabilityMetrics');
 
 const router = express.Router();
 const configuredMeetTicketTtl = Number(process.env.VIDEO_MEET_TICKET_TTL_SECONDS);
@@ -79,13 +83,30 @@ const generateLivekitToken = async (identity, name, roomName, isModerator = fals
     roomAdmin:      isModerator, // counsellors can mute/remove participants
   });
 
-  return token.toJwt();   // async in v2 — returns Promise<string>
+  try {
+    const signedToken = await token.toJwt();
+    recordCallProviderOperation({
+      provider: 'livekit',
+      operation: 'token_create',
+      outcome: 'success',
+    });
+    return signedToken;
+  } catch (error) {
+    recordCallProviderOperation({
+      provider: 'livekit',
+      operation: 'token_create',
+      outcome: 'failure',
+    });
+    throw error;
+  }
 };
 
 const hashMeetTicket = (ticket) =>
   crypto.createHash('sha256').update(ticket).digest('hex');
 
 const meetTicketKey = (ticket) => `video:meet-ticket:${hashMeetTicket(ticket)}`;
+const mediaTelemetryKey = (token) =>
+  `video:media-telemetry:${hashMeetTicket(token)}`;
 
 const createMeetTicket = async ({
   livekitToken,
@@ -134,6 +155,30 @@ const redeemMeetTicket = async (ticket) => {
   } catch {
     return null;
   }
+};
+
+const createMediaTelemetryToken = async (media) => {
+  const token = crypto.randomBytes(32).toString('base64url');
+  await getRedisClient().setEx(
+    mediaTelemetryKey(token),
+    MEET_TICKET_TTL_SECONDS,
+    media === 'audio' ? 'audio' : 'video'
+  );
+  return token;
+};
+
+const consumeMediaTelemetryToken = async (token) => {
+  if (!token || typeof token !== 'string') return null;
+  const redis = getRedisClient();
+  const key = mediaTelemetryKey(token);
+  if (typeof redis.getDel === 'function') return redis.getDel(key);
+  if (typeof redis.eval === 'function') {
+    return redis.eval(
+      "local value = redis.call('GET', KEYS[1]); if value then redis.call('DEL', KEYS[1]); end; return value",
+      { keys: [key], arguments: [] }
+    );
+  }
+  throw new Error('Atomic media telemetry token consumption is unavailable');
 };
 
 const buildMeetUrl = (req, ticket, type = 'video') => {
@@ -326,6 +371,11 @@ const externalPayload = ({ booking, policy, includeHostUrl = false }) => {
   }
 
   if (!payload.joinUrl) {
+    recordCallProviderOperation({
+      provider,
+      operation: 'regional_fallback',
+      outcome: 'failure',
+    });
     return {
       ...payload,
       success: false,
@@ -334,6 +384,11 @@ const externalPayload = ({ booking, policy, includeHostUrl = false }) => {
     };
   }
 
+  recordCallProviderOperation({
+    provider,
+    operation: 'regional_fallback',
+    outcome: 'success',
+  });
   return {
     ...payload,
     success: true,
@@ -341,12 +396,19 @@ const externalPayload = ({ booking, policy, includeHostUrl = false }) => {
   };
 };
 
-const disabledPayload = ({ booking, policy }) => ({
-  ...baseCallPayload({ booking, policy }),
-  success: false,
-  status: 'disabled',
-  message: 'Video calling is not available until your region is verified.'
-});
+const disabledPayload = ({ booking, policy }) => {
+  recordCallProviderOperation({
+    provider: 'disabled',
+    operation: 'regional_fallback',
+    outcome: 'disabled',
+  });
+  return {
+    ...baseCallPayload({ booking, policy }),
+    success: false,
+    status: 'disabled',
+    message: 'Video calling is not available until your region is verified.'
+  };
+};
 
 const livekitPayload = async ({ req, booking, roomName, livekitUrl, livekitToken, policy, displayName }) => {
   const ticket = await createMeetTicket({
@@ -439,14 +501,29 @@ router.post('/create-room', [
 
     try {
       await ensureLivekitRoom(booking, roomName);
+      recordCallProviderOperation({
+        provider: 'livekit',
+        operation: 'room_create',
+        outcome: 'success',
+      });
     } catch (livekitErr) {
       if (!livekitErr.message?.includes('already exists')) {
+        recordCallProviderOperation({
+          provider: 'livekit',
+          operation: 'room_create',
+          outcome: 'failure',
+        });
         console.error(
           'LiveKit createRoom error:',
           livekitErr?.code || 'LIVEKIT_ROOM_CREATE_FAILED'
         );
         return res.status(503).json({ success: false, message: 'Video service unavailable. Please try again.' });
       }
+      recordCallProviderOperation({
+        provider: 'livekit',
+        operation: 'room_create',
+        outcome: 'success',
+      });
     }
 
     const displayName = isUser
@@ -646,14 +723,29 @@ router.post('/room/:bookingId/join', [
       const roomName = `menorah-${booking._id}`;
       try {
         await ensureLivekitRoom(booking, roomName);
+        recordCallProviderOperation({
+          provider: 'livekit',
+          operation: 'room_create',
+          outcome: 'success',
+        });
       } catch (livekitErr) {
         if (!livekitErr.message?.includes('already exists')) {
+          recordCallProviderOperation({
+            provider: 'livekit',
+            operation: 'room_create',
+            outcome: 'failure',
+          });
           console.error(
             'LiveKit createRoom error (in-progress path):',
             livekitErr?.code || 'LIVEKIT_ROOM_CREATE_FAILED'
           );
           return res.status(503).json({ success: false, message: 'Video service unavailable. Please try again.' });
         }
+        recordCallProviderOperation({
+          provider: 'livekit',
+          operation: 'room_create',
+          outcome: 'success',
+        });
       }
       booking.videoCall.roomId  = roomName;
       booking.videoCall.roomUrl = `${livekitUrl}/${roomName}`;
@@ -850,11 +942,13 @@ router.post('/meet/redeem', [
 
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    const telemetryToken = await createMediaTelemetryToken(session.type);
     const redemption = {
       success: true,
       livekitUrl: session.livekitUrl,
       livekitToken: session.livekitToken,
       token: session.livekitToken,
+      telemetryToken,
       name: session.name,
       type: session.type,
     };
@@ -868,6 +962,48 @@ router.post('/meet/redeem', [
       error?.code || 'VIDEO_TICKET_REDEEM_FAILED'
     );
     return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+router.post('/meet/media-outcome', [
+  body('telemetryToken').matches(/^[A-Za-z0-9_-]{32,128}$/),
+  body('phase').isIn(['connect', 'media']),
+  body('outcome').isIn(['success', 'failure']),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, message: 'Invalid media outcome' });
+  }
+
+  try {
+    const media = await consumeMediaTelemetryToken(req.body.telemetryToken);
+    if (!media) {
+      return res.status(410).json({ success: false, message: 'Media outcome token expired' });
+    }
+    if (req.body.phase === 'connect') {
+      recordCallProviderOperation({
+        provider: 'livekit',
+        operation: 'connect',
+        outcome: req.body.outcome,
+      });
+    } else {
+      recordCallProviderOperation({
+        provider: 'livekit',
+        operation: 'connect',
+        outcome: 'success',
+      });
+      recordCallMediaOutcome({
+        provider: 'livekit',
+        media,
+        outcome: req.body.outcome,
+      });
+    }
+    return res.json({ success: true });
+  } catch (_error) {
+    return res.status(503).json({
+      success: false,
+      message: 'Media outcome temporarily unavailable',
+    });
   }
 });
 
@@ -1141,6 +1277,8 @@ router.get('/meet', [
   const MEET_TICKET = new URLSearchParams(window.location.hash.slice(1)).get('ticket') || '';
   let TOKEN    = '';
   let WS_URL   = '';
+  let TELEMETRY_TOKEN = '';
+  let OUTCOME_PHASE = 'connect';
   let IS_VIDEO = ${videoOnly ? 'true' : 'false'};
   let MY_NAME  = '${safeName}';
 
@@ -1165,6 +1303,23 @@ router.get('/meet', [
   function notifyNative(action) {
     if (window.ReactNativeWebView) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ action }));
+    }
+  }
+
+  async function reportMediaOutcome(phase, outcome) {
+    if (!TELEMETRY_TOKEN) return;
+    const telemetryToken = TELEMETRY_TOKEN;
+    TELEMETRY_TOKEN = '';
+    try {
+      await fetch('/api/video/meet/media-outcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        referrerPolicy: 'no-referrer',
+        cache: 'no-store',
+        body: JSON.stringify({ telemetryToken, phase, outcome }),
+      });
+    } catch {
+      // Telemetry must never prevent the participant from leaving or retrying.
     }
   }
 
@@ -1301,11 +1456,13 @@ router.get('/meet', [
     }
     TOKEN = redeemed.livekitToken || redeemed.token;
     WS_URL = redeemed.livekitUrl;
+    TELEMETRY_TOKEN = redeemed.telemetryToken || '';
     IS_VIDEO = redeemed.type === 'audio' ? false : IS_VIDEO;
     MY_NAME = redeemed.name || MY_NAME;
     localInit.textContent = initial(MY_NAME);
 
     await room.connect(WS_URL, TOKEN, { autoSubscribe: true });
+    OUTCOME_PHASE = 'media';
 
     // Fade out the connecting overlay
     connecting.className = 'fade-out';
@@ -1319,6 +1476,7 @@ router.get('/meet', [
     } else {
       await room.localParticipant.setMicrophoneEnabled(true);
     }
+    await reportMediaOutcome('media', 'success');
 
     // Render local camera
     const camPub = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
@@ -1331,6 +1489,7 @@ router.get('/meet', [
       });
     });
   } catch (err) {
+    await reportMediaOutcome(OUTCOME_PHASE, 'failure');
     showError('Failed to connect: ' + (err.message || 'unknown error'));
     return;
   }
@@ -1418,6 +1577,11 @@ router.post('/livekit-webhook', async (req, res) => {
       // Signature verification failed — ignore silently (could be a replay)
       return res.sendStatus(200);
     }
+    recordCallProviderOperation({
+      provider: 'livekit',
+      operation: 'webhook',
+      outcome: 'success',
+    });
 
     if (event.event === 'room_finished') {
       // Room closed — mark any in-progress booking as completed
@@ -1433,6 +1597,11 @@ router.post('/livekit-webhook', async (req, res) => {
 
     return res.sendStatus(200);
   } catch (err) {
+    recordCallProviderOperation({
+      provider: 'livekit',
+      operation: 'webhook',
+      outcome: 'failure',
+    });
     console.error('LiveKit webhook error:', err?.code || 'LIVEKIT_WEBHOOK_FAILED');
     return res.sendStatus(200); // Always 200 — LiveKit retries on non-200
   }
@@ -1443,6 +1612,8 @@ router._private = {
   getCallPolicy,
   createMeetTicket,
   redeemMeetTicket,
+  createMediaTelemetryToken,
+  consumeMediaTelemetryToken,
   buildMeetUrl
 };
 
