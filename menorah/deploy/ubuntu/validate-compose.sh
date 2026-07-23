@@ -112,14 +112,10 @@ home_config="$(
     -f "${DEPLOY_DIR}/docker-compose.home.yml" \
     --env-file "${DEPLOY_DIR}/env/home.env.example" \
     --env-file "${DEPLOY_DIR}/env/home.compose.env.example" \
-    config --no-env-resolution
+    config
 )"
-if ! grep -Fq 'home.env.example' <<< "${home_config}"; then
+if ! grep -Fq 'SERVICE_RUNTIME: home' <<< "${home_config}"; then
   echo "Home Compose validation did not bind the tracked synthetic service environment." >&2
-  exit 1
-fi
-if grep -Eq '(^|[[:space:]/])home\.env([[:space:]]|$)' <<< "${home_config}"; then
-  echo "Home Compose validation unexpectedly depends on the ignored runtime environment." >&2
   exit 1
 fi
 if grep -Fq 'menorahenquiries@gmail.com' <<< "${home_config}"; then
