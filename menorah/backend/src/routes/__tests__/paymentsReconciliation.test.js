@@ -154,6 +154,7 @@ describe('payment routes use durable captured-only reconciliation', () => {
       PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS: '5',
       BOOKING_PAYMENTS_ENABLED: 'true',
       SUBSCRIPTION_PAYMENTS_ENABLED: 'false',
+      CHECKOUT_RETURN_URL: 'https://app.menorah.me/checkout/return',
     };
     jest.clearAllMocks();
     Booking.findById.mockResolvedValue(booking);
@@ -250,6 +251,42 @@ describe('payment routes use durable captured-only reconciliation', () => {
       currency: 'INR',
       paymentMethod: 'razorpay',
     });
+    const checkoutUrl = new URL(response.body.data.checkoutUrl);
+    const redirectUrl = new URL(checkoutUrl.searchParams.get('redirect_url'));
+    expect(redirectUrl.origin).toBe('https://app.menorah.me');
+    expect(redirectUrl.pathname).toBe('/checkout/return');
+    expect(redirectUrl.searchParams.get('bookingId')).toBe(BOOKING_ID);
+    expect(redirectUrl.searchParams.get('order_id')).toBe(ORDER_ID);
+  });
+
+  test('uses the configured staging checkout return without a provider fallback', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    process.env.CHECKOUT_RETURN_URL =
+      'https://app.staging.example.com/checkout/return';
+
+    const response = await request(buildApp())
+      .post('/api/payments/create-checkout-session')
+      .send({ bookingId: BOOKING_ID })
+      .expect(200);
+
+    const checkoutUrl = new URL(response.body.data.checkoutUrl);
+    const redirectUrl = new URL(checkoutUrl.searchParams.get('redirect_url'));
+    expect(redirectUrl.origin).toBe('https://app.staging.example.com');
+    expect(redirectUrl.pathname).toBe('/checkout/return');
+  });
+
+  test('fails before provider order creation when production return routing is missing', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.CHECKOUT_RETURN_URL;
+
+    const response = await request(buildApp())
+      .post('/api/payments/create-checkout-session')
+      .send({ bookingId: BOOKING_ID })
+      .expect(503);
+
+    expect(response.body.code).toBe('PAYMENT_ORDER_UNAVAILABLE');
+    expect(mockCreateOrReuseBookingOrder).not.toHaveBeenCalled();
   });
 
   test('requires an unchanged raw body before webhook verification', async () => {

@@ -1,6 +1,13 @@
 const MIN_JWT_SECRET_LENGTH = 64;
 const MAX_ADMIN_JWT_SECONDS = 30 * 60;
 const CANONICAL_PASSWORD_RESET_BASE_URL = 'https://app.menorah.me';
+const CANONICAL_CHECKOUT_RETURN_URL =
+  'https://app.menorah.me/checkout/return';
+const {
+  DEPLOYMENT_ENVIRONMENTS,
+  getDeploymentEnvironment,
+  validateStagingEnvironmentIsolation,
+} = require('../../config/deploymentEnvironment');
 const { getTrustedWebSessionOrigins } = require('../../config/webSessions');
 const { MAX_SINGLE_PAYOUT_PAISE } = require('../../config/payout');
 const {
@@ -60,6 +67,81 @@ const requireExactInteger = (key, expected, errors) => {
 const requireExactValue = (key, expected, errors) => {
   if (String(process.env[key] || '').trim() !== expected) {
     errors.push(`${key} must equal ${expected}`);
+  }
+};
+
+const validateAppleSignInConfig = ({ deploymentEnvironment, errors }) => {
+  const enabled = String(process.env.APPLE_SIGN_IN_ENABLED || '').trim();
+
+  if (deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.PRODUCTION) {
+    requireExactValue('APPLE_SIGN_IN_ENABLED', 'true', errors);
+    requireExactValue('APPLE_IOS_BUNDLE_ID', 'com.menorah.health.app', errors);
+  } else if (!['true', 'false'].includes(enabled)) {
+    errors.push(
+      'APPLE_SIGN_IN_ENABLED must be exactly true or false in staging'
+    );
+  }
+
+  if (
+    deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.STAGING
+    && enabled !== 'true'
+  ) return;
+
+  const bundleId = String(process.env.APPLE_IOS_BUNDLE_ID || '').trim();
+  if (
+    deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.STAGING
+    && !/^[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)+$/.test(bundleId)
+  ) {
+    errors.push(
+      'APPLE_IOS_BUNDLE_ID must contain a valid bundle identifier when Apple sign-in is enabled'
+    );
+  }
+
+  if (!/^[A-Z0-9]{10}$/.test(String(process.env.APPLE_TEAM_ID || '').trim())) {
+    errors.push('APPLE_TEAM_ID must be a 10-character Apple Team ID');
+  }
+  if (!/^[A-Z0-9]{10}$/.test(String(process.env.APPLE_KEY_ID || '').trim())) {
+    errors.push('APPLE_KEY_ID must be a 10-character Apple key ID');
+  }
+  const applePrivateKey = String(process.env.APPLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+  if (!applePrivateKey.includes('-----BEGIN PRIVATE KEY-----')
+    || !applePrivateKey.includes('-----END PRIVATE KEY-----')) {
+    errors.push('APPLE_PRIVATE_KEY must contain an Apple PKCS#8 private key');
+  }
+};
+
+const validateStagingPasswordResetBaseUrl = (errors) => {
+  const configuredBase = String(process.env.PASSWORD_RESET_BASE_URL || '').trim();
+  if (!configuredBase) {
+    errors.push('PASSWORD_RESET_BASE_URL is missing');
+    return;
+  }
+
+  let parsedBase;
+  try {
+    parsedBase = new URL(configuredBase);
+  } catch {
+    errors.push('PASSWORD_RESET_BASE_URL must be a valid HTTPS staging origin');
+    return;
+  }
+
+  if (parsedBase.protocol !== 'https:') {
+    errors.push('PASSWORD_RESET_BASE_URL must use HTTPS in staging');
+  }
+  if (parsedBase.hostname.toLowerCase().replace(/\.$/, '') === 'app.menorah.me') {
+    errors.push(
+      `PASSWORD_RESET_BASE_URL must not use the production origin ${CANONICAL_PASSWORD_RESET_BASE_URL} in staging`
+    );
+  }
+  if (
+    parsedBase.username
+    || parsedBase.password
+    || parsedBase.search
+    || parsedBase.hash
+    || parsedBase.port
+    || configuredBase !== parsedBase.origin
+  ) {
+    errors.push('PASSWORD_RESET_BASE_URL must be an exact origin without credentials, path, port, query, or fragment');
   }
 };
 
@@ -178,6 +260,19 @@ const parseDurationSeconds = (value) => {
 
 const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
   const errors = [];
+  let deploymentEnvironment = DEPLOYMENT_ENVIRONMENTS.PRODUCTION;
+
+  try {
+    deploymentEnvironment = getDeploymentEnvironment(process.env);
+  } catch (error) {
+    errors.push(error.message);
+  }
+  if (
+    deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.STAGING
+    && process.env.NODE_ENV !== 'production'
+  ) {
+    errors.push('DEPLOYMENT_ENVIRONMENT=staging requires NODE_ENV=production');
+  }
 
   if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < MIN_JWT_SECRET_LENGTH) {
     errors.push(`JWT_SECRET is missing or shorter than ${MIN_JWT_SECRET_LENGTH} characters`);
@@ -186,7 +281,17 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
   requireEnv('MONGODB_URI', errors);
 
   if (process.env.NODE_ENV === 'production') {
-    ['ALLOWED_ORIGINS', 'REDIS_URL', 'RESEND_API_KEY', 'EMAIL_FROM'].forEach((key) =>
+    if (deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.STAGING) {
+      errors.push(...validateStagingEnvironmentIsolation(process.env));
+    }
+    [
+      'ALLOWED_ORIGINS',
+      'REDIS_URL',
+      'RESEND_API_KEY',
+      'EMAIL_FROM',
+      'CONTACT_TO_EMAIL',
+      'CHECKOUT_RETURN_URL',
+    ].forEach((key) =>
       requireEnv(key, errors)
     );
     requireMinimumLength('AUDIT_LOG_SIGNING_KEY', 32, errors);
@@ -232,27 +337,24 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
     }
 
     if (['api-ios', 'worker'].includes(serviceName)) {
-      requireExactValue('APPLE_SIGN_IN_ENABLED', 'true', errors);
-      requireExactValue('APPLE_IOS_BUNDLE_ID', 'com.menorah.health.app', errors);
-      if (!/^[A-Z0-9]{10}$/.test(String(process.env.APPLE_TEAM_ID || '').trim())) {
-        errors.push('APPLE_TEAM_ID must be a 10-character Apple Team ID');
-      }
-      if (!/^[A-Z0-9]{10}$/.test(String(process.env.APPLE_KEY_ID || '').trim())) {
-        errors.push('APPLE_KEY_ID must be a 10-character Apple key ID');
-      }
-      const applePrivateKey = String(process.env.APPLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-      if (!applePrivateKey.includes('-----BEGIN PRIVATE KEY-----')
-        || !applePrivateKey.includes('-----END PRIVATE KEY-----')) {
-        errors.push('APPLE_PRIVATE_KEY must contain an Apple PKCS#8 private key');
-      }
+      validateAppleSignInConfig({ deploymentEnvironment, errors });
     }
 
     requireEnv('WEB_SESSION_ORIGINS', errors);
-    requireExactValue(
-      'PASSWORD_RESET_BASE_URL',
-      CANONICAL_PASSWORD_RESET_BASE_URL,
-      errors
-    );
+    if (deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.STAGING) {
+      validateStagingPasswordResetBaseUrl(errors);
+    } else {
+      requireExactValue(
+        'PASSWORD_RESET_BASE_URL',
+        CANONICAL_PASSWORD_RESET_BASE_URL,
+        errors
+      );
+      requireExactValue(
+        'CHECKOUT_RETURN_URL',
+        CANONICAL_CHECKOUT_RETURN_URL,
+        errors
+      );
+    }
     if (String(process.env.PASSWORD_RESET_URL_TEMPLATE || '').trim()) {
       errors.push('PASSWORD_RESET_URL_TEMPLATE must be unset in production');
     }

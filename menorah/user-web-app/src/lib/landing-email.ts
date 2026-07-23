@@ -1,5 +1,6 @@
 const RESEND_EMAIL_URL = 'https://api.resend.com/emails';
-const defaultRecipient = 'menorahenquiries@gmail.com';
+const dnsHostPattern =
+  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 type SubmissionEmailInput = {
   subject: string;
@@ -28,6 +29,18 @@ function isPlaceholder(value: string) {
     normalized.startsWith('local_') ||
     normalized.includes('@localhost')
   );
+}
+
+function getBareEmailDomain(value: string) {
+  const match = value.trim().match(/^([^@<>\s]+)@([^@<>\s]+)$/);
+  if (!match || !dnsHostPattern.test(match[2])) return undefined;
+  return match[2];
+}
+
+function getSenderEmailDomain(value: string) {
+  const sender = value.trim();
+  const displayNameMatch = sender.match(/^[^<>\r\n]+<([^<>\s]+)>$/);
+  return getBareEmailDomain(displayNameMatch ? displayNameMatch[1] : sender);
 }
 
 function escapeHtml(value: string) {
@@ -74,9 +87,18 @@ function buildEmailText(input: SubmissionEmailInput) {
 }
 
 export async function sendSubmissionEmail(input: SubmissionEmailInput): Promise<EmailDeliveryResult> {
-  const recipient = optionalEnv('CONTACT_TO_EMAIL') || defaultRecipient;
+  const recipient = optionalEnv('CONTACT_TO_EMAIL');
   const apiKey = optionalEnv('RESEND_API_KEY');
   const from = optionalEnv('EMAIL_FROM');
+
+  if (!recipient || isPlaceholder(recipient)) {
+    return {
+      sent: false,
+      provider: 'resend',
+      recipient: recipient || '',
+      skippedReason: 'CONTACT_TO_EMAIL is not configured.',
+    };
+  }
 
   if (!apiKey || isPlaceholder(apiKey)) {
     return { sent: false, provider: 'resend', recipient, skippedReason: 'RESEND_API_KEY is not configured.' };
@@ -84,6 +106,37 @@ export async function sendSubmissionEmail(input: SubmissionEmailInput): Promise<
 
   if (!from || isPlaceholder(from)) {
     return { sent: false, provider: 'resend', recipient, skippedReason: 'EMAIL_FROM is not configured.' };
+  }
+
+  const deploymentEnvironment =
+    optionalEnv('DEPLOYMENT_ENVIRONMENT') || 'production';
+  if (!['production', 'staging'].includes(deploymentEnvironment)) {
+    return {
+      sent: false,
+      provider: 'resend',
+      recipient,
+      skippedReason: 'DEPLOYMENT_ENVIRONMENT is invalid.',
+    };
+  }
+
+  if (deploymentEnvironment === 'staging') {
+    const stagingEmailDomain = optionalEnv('MENORAH_STAGING_EMAIL_DOMAIN');
+    const hasValidStagingDomain =
+      stagingEmailDomain
+      && dnsHostPattern.test(stagingEmailDomain)
+      && stagingEmailDomain.split('.').includes('staging');
+    if (
+      !hasValidStagingDomain
+      || getBareEmailDomain(recipient) !== stagingEmailDomain
+      || getSenderEmailDomain(from) !== stagingEmailDomain
+    ) {
+      return {
+        sent: false,
+        provider: 'resend',
+        recipient,
+        skippedReason: 'Staging email routing is not isolated.',
+      };
+    }
   }
 
   try {

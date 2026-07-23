@@ -974,6 +974,269 @@ EOF
   fi
 }
 
+run_release_environment_validator() {
+  local script_path="$1"
+  local deployment_environment="$2"
+  local reset_origin="$3"
+  local apple_enabled="$4"
+  local apple_bundle_id="${5:-}"
+  local apple_team_id="${6:-}"
+  local apple_key_id="${7:-}"
+  local apple_private_key="${8:-}"
+  local node_environment="${9:-production}"
+  local reset_template="${10:-}"
+  local topology_variant="${11:-valid}"
+  local validator
+
+  validator="$(sed -n '/^validate_release_environment() {/,/^}/p' "${script_path}")"
+  [[ -n "${validator}" ]] \
+    || fail "release environment validator is missing from ${script_path}"
+
+  (
+    eval "${validator}"
+    NODE_ENV="${node_environment}"
+    if [[ "${deployment_environment}" == "__default__" ]]; then
+      unset DEPLOYMENT_ENVIRONMENT
+    else
+      DEPLOYMENT_ENVIRONMENT="${deployment_environment}"
+    fi
+    ROOT_DOMAIN="staging.example.com"
+    WWW_DOMAIN="www.staging.example.com"
+    APP_DOMAIN="app.staging.example.com"
+    ADMIN_DOMAIN="admin.staging.example.com"
+    COUNSELLOR_DOMAIN="counsellor.staging.example.com"
+    API_IOS_DOMAIN="api-ios.staging.example.com"
+    API_ANDROID_DOMAIN="api-android.staging.example.com"
+    API_WEB_DOMAIN="api-web.staging.example.com"
+    API_ADMIN_DOMAIN="api-admin.staging.example.com"
+    CALLS_DOMAIN="calls.staging.example.com"
+    MENORAH_STAGING_ALLOWED_HOSTS=\
+"${ROOT_DOMAIN},${WWW_DOMAIN},${APP_DOMAIN},${ADMIN_DOMAIN},${COUNSELLOR_DOMAIN},"\
+"${API_IOS_DOMAIN},${API_ANDROID_DOMAIN},${API_WEB_DOMAIN},${API_ADMIN_DOMAIN},${CALLS_DOMAIN}"
+    LIVEKIT_URL="wss://${CALLS_DOMAIN}"
+    LIVEKIT_API_URL="https://${CALLS_DOMAIN}"
+    MENORAH_STAGING_EMAIL_DOMAIN="mail.staging.example.com"
+    CONTACT_TO_EMAIL="contact@mail.staging.example.com"
+    EMAIL_FROM="Menorah Staging <noreply@mail.staging.example.com>"
+    FRONTEND_API_WEB_URL="https://${API_WEB_DOMAIN}/api"
+    FRONTEND_API_ADMIN_URL="https://${API_ADMIN_DOMAIN}/api"
+    FRONTEND_SOCKET_WEB_URL="https://${API_WEB_DOMAIN}"
+    MEDIA_PUBLIC_BASE_URL="https://${API_WEB_DOMAIN}"
+    ALLOWED_ORIGINS="https://${WWW_DOMAIN},https://${APP_DOMAIN},https://${ADMIN_DOMAIN},https://${COUNSELLOR_DOMAIN}"
+    WEB_SESSION_ORIGINS="https://${WWW_DOMAIN}=user,https://${APP_DOMAIN}=user,https://${COUNSELLOR_DOMAIN}=counsellor,https://${ADMIN_DOMAIN}=admin"
+    RAZORPAY_KEY_ID="rzp_test_A1b2C3d4E5f6G7"
+    RAZORPAY_X_KEY_ID=""
+    NEXT_PUBLIC_RAZORPAY_KEY_ID="rzp_test_A1b2C3d4E5f6G7"
+    PASSWORD_RESET_BASE_URL="${reset_origin}"
+    CHECKOUT_RETURN_URL="https://${APP_DOMAIN}/checkout/return"
+    PASSWORD_RESET_URL_TEMPLATE="${reset_template}"
+    APPLE_SIGN_IN_ENABLED="${apple_enabled}"
+    APPLE_IOS_BUNDLE_ID="${apple_bundle_id}"
+    APPLE_TEAM_ID="${apple_team_id}"
+    APPLE_KEY_ID="${apple_key_id}"
+    APPLE_PRIVATE_KEY="${apple_private_key}"
+
+    if [[ "${deployment_environment}" != "staging" ]]; then
+      MENORAH_STAGING_EMAIL_DOMAIN=""
+      CONTACT_TO_EMAIL="menorahenquiries@gmail.com"
+      EMAIL_FROM="Menorah Health <noreply@menorah.me>"
+      CHECKOUT_RETURN_URL="https://app.menorah.me/checkout/return"
+    fi
+
+    case "${topology_variant}" in
+      valid) ;;
+      unset)
+        unset \
+          MENORAH_STAGING_ALLOWED_HOSTS \
+          MENORAH_STAGING_EMAIL_DOMAIN CONTACT_TO_EMAIL EMAIL_FROM \
+          ROOT_DOMAIN WWW_DOMAIN APP_DOMAIN ADMIN_DOMAIN COUNSELLOR_DOMAIN \
+          API_IOS_DOMAIN API_ANDROID_DOMAIN API_WEB_DOMAIN API_ADMIN_DOMAIN \
+          CALLS_DOMAIN LIVEKIT_URL LIVEKIT_API_URL PASSWORD_RESET_BASE_URL \
+          CHECKOUT_RETURN_URL \
+          FRONTEND_API_WEB_URL FRONTEND_API_ADMIN_URL FRONTEND_SOCKET_WEB_URL \
+          MEDIA_PUBLIC_BASE_URL ALLOWED_ORIGINS WEB_SESSION_ORIGINS
+        ;;
+      production)
+        ROOT_DOMAIN="menorah.me"
+        WWW_DOMAIN="www.menorah.me"
+        APP_DOMAIN="app.menorah.me"
+        ADMIN_DOMAIN="admin.menorah.me"
+        COUNSELLOR_DOMAIN="counsellor.menorah.me"
+        API_IOS_DOMAIN="api-ios.menorah.me"
+        API_ANDROID_DOMAIN="api-android.menorah.me"
+        API_WEB_DOMAIN="api-web.menorah.me"
+        API_ADMIN_DOMAIN="api-admin.menorah.me"
+        CALLS_DOMAIN="calls.menorah.me"
+        MENORAH_STAGING_ALLOWED_HOSTS="${ROOT_DOMAIN},${WWW_DOMAIN},${APP_DOMAIN},${ADMIN_DOMAIN},${COUNSELLOR_DOMAIN},${API_IOS_DOMAIN},${API_ANDROID_DOMAIN},${API_WEB_DOMAIN},${API_ADMIN_DOMAIN},${CALLS_DOMAIN}"
+        LIVEKIT_URL="wss://${CALLS_DOMAIN}"
+        LIVEKIT_API_URL="https://${CALLS_DOMAIN}"
+        PASSWORD_RESET_BASE_URL="https://${APP_DOMAIN}"
+        CHECKOUT_RETURN_URL="https://${APP_DOMAIN}/checkout/return"
+        MENORAH_STAGING_EMAIL_DOMAIN=""
+        CONTACT_TO_EMAIL="menorahenquiries@gmail.com"
+        EMAIL_FROM="Menorah Health <noreply@menorah.me>"
+        FRONTEND_API_WEB_URL="https://${API_WEB_DOMAIN}/api"
+        FRONTEND_API_ADMIN_URL="https://${API_ADMIN_DOMAIN}/api"
+        FRONTEND_SOCKET_WEB_URL="https://${API_WEB_DOMAIN}"
+        MEDIA_PUBLIC_BASE_URL="https://${API_WEB_DOMAIN}"
+        ALLOWED_ORIGINS="https://${WWW_DOMAIN},https://${APP_DOMAIN},https://${ADMIN_DOMAIN},https://${COUNSELLOR_DOMAIN}"
+        WEB_SESSION_ORIGINS="https://${WWW_DOMAIN}=user,https://${APP_DOMAIN}=user,https://${COUNSELLOR_DOMAIN}=counsellor,https://${ADMIN_DOMAIN}=admin"
+        ;;
+      alias)
+        API_ANDROID_DOMAIN="${API_IOS_DOMAIN}"
+        ;;
+      staging-substring)
+        MENORAH_STAGING_ALLOWED_HOSTS="${MENORAH_STAGING_ALLOWED_HOSTS/${API_IOS_DOMAIN}/api-ios-staging.example.com}"
+        API_IOS_DOMAIN="api-ios-staging.example.com"
+        ;;
+      livekit-url) LIVEKIT_URL="wss://other.staging.example.com" ;;
+      livekit-api-url) LIVEKIT_API_URL="https://other.staging.example.com" ;;
+      checkout-return)
+        if [[ "${deployment_environment}" == "staging" ]]; then
+          CHECKOUT_RETURN_URL="https://app.menorah.me/checkout/return"
+        else
+          CHECKOUT_RETURN_URL="https://app.staging.example.com/checkout/return"
+        fi
+        ;;
+      email-domain) MENORAH_STAGING_EMAIL_DOMAIN="mail.menorah.me" ;;
+      email-contact) CONTACT_TO_EMAIL="menorahenquiries@gmail.com" ;;
+      email-contact-display) CONTACT_TO_EMAIL="Menorah <contact@mail.staging.example.com>" ;;
+      email-from) EMAIL_FROM="Menorah Health <noreply@menorah.me>" ;;
+      frontend-web) FRONTEND_API_WEB_URL="https://${API_WEB_DOMAIN}" ;;
+      frontend-admin) FRONTEND_API_ADMIN_URL="https://${API_WEB_DOMAIN}/api" ;;
+      frontend-socket) FRONTEND_SOCKET_WEB_URL="https://${API_ADMIN_DOMAIN}" ;;
+      media) MEDIA_PUBLIC_BASE_URL="https://media.staging.example.com" ;;
+      allowed-origins)
+        ALLOWED_ORIGINS="https://${WWW_DOMAIN},https://${APP_DOMAIN},https://${ADMIN_DOMAIN},https://app.menorah.me"
+        ;;
+      web-sessions)
+        WEB_SESSION_ORIGINS="https://${WWW_DOMAIN}=user,https://${APP_DOMAIN}=user,https://${COUNSELLOR_DOMAIN}=counsellor,https://admin.menorah.me=admin"
+        ;;
+      razorpay) RAZORPAY_KEY_ID="rzp_live_A1b2C3d4E5f6G7" ;;
+      razorpay-x) RAZORPAY_X_KEY_ID="rzp_live_A1b2C3d4E5f6G7" ;;
+      razorpay-public) NEXT_PUBLIC_RAZORPAY_KEY_ID="rzp_live_A1b2C3d4E5f6G7" ;;
+      *)
+        fail "unknown release environment topology fixture: ${topology_variant}"
+        ;;
+    esac
+    validate_release_environment
+  )
+}
+
+test_release_environment_guards() {
+  local script_path invalid_origin topology_variant
+  local private_key_begin="-----BEGIN PRIVATE"" KEY-----"
+  local private_key_end="-----END PRIVATE"" KEY-----"
+  local complete_private_key="${private_key_begin}test-only${private_key_end}"
+  local -a scripts=(
+    "${REPO_ROOT}/deploy/ubuntu/update-from-git.sh"
+    "${REPO_ROOT}/deploy/ubuntu/first-run.sh"
+  )
+  local -a invalid_staging_origins=(
+    "https://app.menorah.me"
+    "https://APP.MENORAH.ME"
+    "https://app.staging.example.com."
+    "https://app.staging.example.com:443"
+    "https://app.staging.example.com/reset-password"
+    "https://app.staging.example.com?source=test"
+    "https://operator@app.staging.example.com"
+    "https://app.staging.example.com#reset"
+  )
+  local -a invalid_staging_topologies=(
+    unset
+    production
+    alias
+    staging-substring
+    livekit-url
+    livekit-api-url
+    checkout-return
+    email-domain
+    email-contact
+    email-contact-display
+    email-from
+    frontend-web
+    frontend-admin
+    frontend-socket
+    media
+    allowed-origins
+    web-sessions
+    razorpay
+    razorpay-x
+    razorpay-public
+  )
+
+  for script_path in "${scripts[@]}"; do
+    run_release_environment_validator \
+      "${script_path}" "__default__" "https://app.menorah.me" "true" \
+      "com.menorah.health.app" "A1B2C3D4E5" "F6G7H8I9J0" "${complete_private_key}" \
+      || fail "$(basename "${script_path}") rejected the default production policy"
+
+    if run_release_environment_validator \
+      "${script_path}" "production" "https://app.staging.example.com" "true" \
+      "com.menorah.health.app" "A1B2C3D4E5" "F6G7H8I9J0" "${complete_private_key}" \
+      >/dev/null 2>&1; then
+      fail "$(basename "${script_path}") changed the canonical production reset policy"
+    fi
+    if run_release_environment_validator \
+      "${script_path}" "production" "https://app.menorah.me" "true" \
+      "com.menorah.health.app" "A1B2C3D4E5" "F6G7H8I9J0" "${complete_private_key}" \
+      "production" "" "checkout-return" >/dev/null 2>&1; then
+      fail "$(basename "${script_path}") changed the canonical production checkout return policy"
+    fi
+    if run_release_environment_validator \
+      "${script_path}" "production" "https://app.menorah.me" "false" \
+      "com.menorah.health.app" "A1B2C3D4E5" "F6G7H8I9J0" "${complete_private_key}" \
+      >/dev/null 2>&1; then
+      fail "$(basename "${script_path}") allowed Apple sign-in to be disabled in production"
+    fi
+
+    run_release_environment_validator \
+      "${script_path}" "staging" "https://app.staging.example.com" "false" \
+      || fail "$(basename "${script_path}") rejected explicitly disabled staging Apple sign-in"
+    run_release_environment_validator \
+      "${script_path}" "staging" "https://app.staging.example.com" "true" \
+      "com.menorah.health.staging" "A1B2C3D4E5" "F6G7H8I9J0" "${complete_private_key}" \
+      || fail "$(basename "${script_path}") rejected complete staging Apple configuration"
+
+    for topology_variant in "${invalid_staging_topologies[@]}"; do
+      if run_release_environment_validator \
+        "${script_path}" "staging" "https://app.staging.example.com" "false" \
+        "" "" "" "" "production" "" "${topology_variant}" >/dev/null 2>&1; then
+        fail "$(basename "${script_path}") accepted unsafe staging topology ${topology_variant}"
+      fi
+    done
+
+    for invalid_origin in "${invalid_staging_origins[@]}"; do
+      if run_release_environment_validator \
+        "${script_path}" "staging" "${invalid_origin}" "false" >/dev/null 2>&1; then
+        fail "$(basename "${script_path}") accepted unsafe staging reset origin ${invalid_origin}"
+      fi
+    done
+
+    if run_release_environment_validator \
+      "${script_path}" "staging" "https://app.staging.example.com" "true" \
+      "com.menorah.health.staging" "A1B2C3D4E5" "" "${complete_private_key}" \
+      >/dev/null 2>&1; then
+      fail "$(basename "${script_path}") accepted incomplete staging Apple configuration"
+    fi
+    if run_release_environment_validator \
+      "${script_path}" "staging" "https://app.staging.example.com" "" \
+      >/dev/null 2>&1; then
+      fail "$(basename "${script_path}") accepted an implicit staging Apple policy"
+    fi
+    if run_release_environment_validator \
+      "${script_path}" "preview" "https://app.staging.example.com" "false" \
+      >/dev/null 2>&1; then
+      fail "$(basename "${script_path}") accepted an unsupported deployment environment"
+    fi
+    if run_release_environment_validator \
+      "${script_path}" "staging" "https://app.staging.example.com" "false" \
+      "" "" "" "" "development" >/dev/null 2>&1; then
+      fail "$(basename "${script_path}") allowed staging without NODE_ENV=production"
+    fi
+  done
+}
+
 test_first_run_requires_literal_confirmation() {
   local output
 
@@ -1050,6 +1313,7 @@ test_production_smoke_credentials_stay_out_of_docker_argv
 test_interrupted_rollback_reuses_durable_target
 test_release_state_marker_ordering
 test_resume_accepts_proven_applied_interruption
+test_release_environment_guards
 test_first_run_requires_literal_confirmation
 test_first_run_rejects_abbreviated_sha
 test_first_run_rejects_partial_bootstrap_state

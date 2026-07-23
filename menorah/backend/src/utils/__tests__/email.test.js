@@ -62,6 +62,88 @@ describe('email delivery logging', () => {
     expect(output).not.toContain(otp);
   });
 
+  test('defaults an omitted deployment selector to production delivery', async () => {
+    delete process.env.DEPLOYMENT_ENVIRONMENT;
+    const recipient = 'production-recipient@example.com';
+    const { sendOTPEmail } = loadEmail();
+
+    await expect(sendOTPEmail(recipient, '918273')).resolves.toBe(true);
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'https://api.resend.com/emails',
+      expect.objectContaining({ to: [recipient] }),
+      expect.any(Object)
+    );
+  });
+
+  test.each([
+    undefined,
+    'mail.example.com',
+    'mail-staging.example.com',
+    'MAIL.STAGING.EXAMPLE.COM',
+  ])(
+    'blocks staging delivery with invalid email-domain selector %s',
+    async (stagingDomain) => {
+      process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+      if (stagingDomain === undefined) {
+        delete process.env.MENORAH_STAGING_EMAIL_DOMAIN;
+      } else {
+        process.env.MENORAH_STAGING_EMAIL_DOMAIN = stagingDomain;
+      }
+      const { sendOTPEmail } = loadEmail();
+
+      await expect(
+        sendOTPEmail('recipient@mail.staging.example.com', '918273')
+      ).resolves.toBe(false);
+
+      expect(axiosPost).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    'real-recipient@gmail.com',
+    'Menorah Test <recipient@mail.staging.example.com>',
+    'recipient@MAIL.STAGING.EXAMPLE.COM',
+    'first@mail.staging.example.com,second@mail.staging.example.com',
+  ])('blocks unsafe staging recipient %s', async (recipient) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    process.env.MENORAH_STAGING_EMAIL_DOMAIN = 'mail.staging.example.com';
+    const { sendOTPEmail } = loadEmail();
+
+    await expect(sendOTPEmail(recipient, '918273')).resolves.toBe(false);
+
+    expect(axiosPost).not.toHaveBeenCalled();
+    expect(serializeCalls(errorSpy)).not.toContain(recipient);
+  });
+
+  test('blocks delivery for an unsupported nonempty deployment selector', async () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'preview';
+    const { sendOTPEmail } = loadEmail();
+
+    await expect(
+      sendOTPEmail('production-recipient@example.com', '918273')
+    ).resolves.toBe(false);
+
+    expect(axiosPost).not.toHaveBeenCalled();
+  });
+
+  test('delivers to a bare recipient on the exact staging email domain', async () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    process.env.MENORAH_STAGING_EMAIL_DOMAIN = 'mail.staging.example.com';
+    process.env.EMAIL_FROM =
+      'Menorah Staging <noreply@mail.staging.example.com>';
+    const recipient = 'synthetic.user@mail.staging.example.com';
+    const { sendOTPEmail } = loadEmail();
+
+    await expect(sendOTPEmail(recipient, '918273')).resolves.toBe(true);
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'https://api.resend.com/emails',
+      expect.objectContaining({ to: [recipient] }),
+      expect.any(Object)
+    );
+  });
+
   test('suppresses provider response data and email identifiers on failure', async () => {
     const recipient = 'failure-recipient@example.com';
     const token = 'private-reset-token';

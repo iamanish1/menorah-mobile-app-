@@ -96,6 +96,217 @@ warn_optional_env() {
   fi
 }
 
+validate_release_environment() {
+  local staging_bundle_id_pattern
+  local staging_display_sender_pattern
+  local staging_email_address_pattern
+  local staging_email_domain staging_sender_address
+  local staging_host_pattern
+  local staging_host_key staging_host staging_value
+  local staging_private_key_begin="-----BEGIN PRIVATE"" KEY-----"
+  local staging_private_key_end="-----END PRIVATE"" KEY-----"
+  local -a staging_host_keys staging_allowlist staging_allowed_origins staging_session_origins
+  local -A staging_reviewed_hosts=()
+  local -A staging_assigned_hosts=()
+  local -A staging_expected_origins=()
+  local -A staging_seen_origins=()
+  local -A staging_expected_sessions=()
+  local -A staging_seen_sessions=()
+
+  if [[ "${NODE_ENV:-}" != "production" ]]; then
+    echo "NODE_ENV must remain production for production and staging releases." >&2
+    return 1
+  fi
+
+  DEPLOYMENT_ENVIRONMENT="${DEPLOYMENT_ENVIRONMENT:-production}"
+  export DEPLOYMENT_ENVIRONMENT
+  case "${DEPLOYMENT_ENVIRONMENT}" in
+    production)
+      if [[ "${APPLE_SIGN_IN_ENABLED:-}" != "true" \
+        || "${APPLE_IOS_BUNDLE_ID:-}" != "com.menorah.health.app" \
+        || ! "${APPLE_TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ \
+        || ! "${APPLE_KEY_ID:-}" =~ ^[A-Z0-9]{10}$ \
+        || "${APPLE_PRIVATE_KEY:-}" != *"BEGIN PRIVATE KEY"* ]]; then
+        echo "Sign in with Apple server credentials are incomplete or invalid." >&2
+        return 1
+      fi
+      if [[ "${PASSWORD_RESET_BASE_URL:-}" != "https://app.menorah.me" \
+        || "${CHECKOUT_RETURN_URL:-}" != "https://app.menorah.me/checkout/return" \
+        || -n "${PASSWORD_RESET_URL_TEMPLATE:-}" ]]; then
+        echo "Production reset and checkout returns must use their canonical app.menorah.me targets with no legacy reset template." >&2
+        return 1
+      fi
+      ;;
+    staging)
+      staging_host_pattern='^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$'
+      staging_email_address_pattern='^[^@[:space:]<>]+@([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$'
+      staging_display_sender_pattern='^[^<>]+<([^<>[:space:]]+)>$'
+      staging_host_keys=(
+        ROOT_DOMAIN
+        WWW_DOMAIN
+        APP_DOMAIN
+        ADMIN_DOMAIN
+        COUNSELLOR_DOMAIN
+        API_IOS_DOMAIN
+        API_ANDROID_DOMAIN
+        API_WEB_DOMAIN
+        API_ADMIN_DOMAIN
+        CALLS_DOMAIN
+      )
+      IFS=',' read -r -a staging_allowlist \
+        <<< "${MENORAH_STAGING_ALLOWED_HOSTS:-}"
+      if (( ${#staging_allowlist[@]} != ${#staging_host_keys[@]} )); then
+        echo "MENORAH_STAGING_ALLOWED_HOSTS must contain exactly ten reviewed staging hosts." >&2
+        return 1
+      fi
+      for staging_host in "${staging_allowlist[@]}"; do
+        if [[ ! "${staging_host}" =~ ${staging_host_pattern} \
+          || ".${staging_host}." != *".staging."* ]]; then
+          echo "MENORAH_STAGING_ALLOWED_HOSTS must contain lowercase DNS hosts with staging as a full label." >&2
+          return 1
+        fi
+        if [[ -n "${staging_reviewed_hosts[${staging_host}]+present}" ]]; then
+          echo "MENORAH_STAGING_ALLOWED_HOSTS must not contain host aliases." >&2
+          return 1
+        fi
+        staging_reviewed_hosts["${staging_host}"]=1
+      done
+      for staging_host_key in "${staging_host_keys[@]}"; do
+        staging_host="${!staging_host_key:-}"
+        if [[ ! "${staging_host}" =~ ${staging_host_pattern} \
+          || ".${staging_host}." != *".staging."* ]]; then
+          echo "${staging_host_key} must be a lowercase DNS host with staging as a full label." >&2
+          return 1
+        fi
+        if [[ -z "${staging_reviewed_hosts[${staging_host}]+present}" ]]; then
+          echo "${staging_host_key} is not in MENORAH_STAGING_ALLOWED_HOSTS." >&2
+          return 1
+        fi
+        if [[ -n "${staging_assigned_hosts[${staging_host}]+present}" ]]; then
+          echo "${staging_host_key} aliases another staging service host." >&2
+          return 1
+        fi
+        staging_assigned_hosts["${staging_host}"]=1
+      done
+      if (( ${#staging_assigned_hosts[@]} != ${#staging_reviewed_hosts[@]} )); then
+        echo "MENORAH_STAGING_ALLOWED_HOSTS must exactly match the ten staging service hosts." >&2
+        return 1
+      fi
+
+      if [[ "${LIVEKIT_URL:-}" != "wss://${CALLS_DOMAIN}" \
+        || "${LIVEKIT_API_URL:-}" != "https://${CALLS_DOMAIN}" \
+        || "${PASSWORD_RESET_BASE_URL:-}" != "https://${APP_DOMAIN}" \
+        || "${CHECKOUT_RETURN_URL:-}" != "https://${APP_DOMAIN}/checkout/return" \
+        || "${FRONTEND_API_WEB_URL:-}" != "https://${API_WEB_DOMAIN}/api" \
+        || "${FRONTEND_API_ADMIN_URL:-}" != "https://${API_ADMIN_DOMAIN}/api" \
+        || "${FRONTEND_SOCKET_WEB_URL:-}" != "https://${API_WEB_DOMAIN}" \
+        || "${MEDIA_PUBLIC_BASE_URL:-}" != "https://${API_WEB_DOMAIN}" \
+        || -n "${PASSWORD_RESET_URL_TEMPLATE:-}" ]]; then
+        echo "Staging calls, reset, checkout, frontend, socket, and media URLs must exactly map to their reviewed staging hosts." >&2
+        return 1
+      fi
+
+      staging_email_domain="${MENORAH_STAGING_EMAIL_DOMAIN:-}"
+      if [[ ! "${staging_email_domain}" =~ ${staging_host_pattern} \
+        || ".${staging_email_domain}." != *".staging."* ]]; then
+        echo "MENORAH_STAGING_EMAIL_DOMAIN must be lowercase DNS with staging as a full label." >&2
+        return 1
+      fi
+      if [[ ! "${CONTACT_TO_EMAIL:-}" =~ ${staging_email_address_pattern} \
+        || "${CONTACT_TO_EMAIL##*@}" != "${staging_email_domain}" ]]; then
+        echo "CONTACT_TO_EMAIL must be a bare address on MENORAH_STAGING_EMAIL_DOMAIN." >&2
+        return 1
+      fi
+      staging_sender_address="${EMAIL_FROM:-}"
+      if [[ "${staging_sender_address}" =~ ${staging_display_sender_pattern} ]]; then
+        staging_sender_address="${BASH_REMATCH[1]}"
+      fi
+      if [[ ! "${staging_sender_address}" =~ ${staging_email_address_pattern} \
+        || "${staging_sender_address##*@}" != "${staging_email_domain}" ]]; then
+        echo "EMAIL_FROM must use MENORAH_STAGING_EMAIL_DOMAIN." >&2
+        return 1
+      fi
+
+      staging_expected_origins["https://${WWW_DOMAIN}"]=1
+      staging_expected_origins["https://${APP_DOMAIN}"]=1
+      staging_expected_origins["https://${ADMIN_DOMAIN}"]=1
+      staging_expected_origins["https://${COUNSELLOR_DOMAIN}"]=1
+      IFS=',' read -r -a staging_allowed_origins <<< "${ALLOWED_ORIGINS:-}"
+      if (( ${#staging_allowed_origins[@]} != ${#staging_expected_origins[@]} )); then
+        echo "ALLOWED_ORIGINS must contain exactly the reviewed staging web origins." >&2
+        return 1
+      fi
+      for staging_value in "${staging_allowed_origins[@]}"; do
+        if [[ -z "${staging_value}" ]]; then
+          echo "ALLOWED_ORIGINS must not contain empty staging origins." >&2
+          return 1
+        fi
+        if [[ -z "${staging_expected_origins[${staging_value}]+present}" \
+          || -n "${staging_seen_origins[${staging_value}]+present}" ]]; then
+          echo "ALLOWED_ORIGINS must contain only unique reviewed staging web origins." >&2
+          return 1
+        fi
+        staging_seen_origins["${staging_value}"]=1
+      done
+
+      staging_expected_sessions["https://${WWW_DOMAIN}=user"]=1
+      staging_expected_sessions["https://${APP_DOMAIN}=user"]=1
+      staging_expected_sessions["https://${COUNSELLOR_DOMAIN}=counsellor"]=1
+      staging_expected_sessions["https://${ADMIN_DOMAIN}=admin"]=1
+      IFS=',' read -r -a staging_session_origins <<< "${WEB_SESSION_ORIGINS:-}"
+      if (( ${#staging_session_origins[@]} != ${#staging_expected_sessions[@]} )); then
+        echo "WEB_SESSION_ORIGINS must contain exactly the reviewed staging role mappings." >&2
+        return 1
+      fi
+      for staging_value in "${staging_session_origins[@]}"; do
+        if [[ -z "${staging_value}" ]]; then
+          echo "WEB_SESSION_ORIGINS must not contain empty staging mappings." >&2
+          return 1
+        fi
+        if [[ -z "${staging_expected_sessions[${staging_value}]+present}" \
+          || -n "${staging_seen_sessions[${staging_value}]+present}" ]]; then
+          echo "WEB_SESSION_ORIGINS must contain only unique reviewed staging role mappings." >&2
+          return 1
+        fi
+        staging_seen_sessions["${staging_value}"]=1
+      done
+
+      for staging_host_key in \
+        RAZORPAY_KEY_ID RAZORPAY_X_KEY_ID NEXT_PUBLIC_RAZORPAY_KEY_ID; do
+        staging_value="${!staging_host_key:-}"
+        if [[ -n "${staging_value}" \
+          && ! "${staging_value}" =~ ^rzp_test_[A-Za-z0-9]{14,64}$ ]]; then
+          echo "${staging_host_key} must use an rzp_test_ key ID in staging." >&2
+          return 1
+        fi
+      done
+
+      case "${APPLE_SIGN_IN_ENABLED:-}" in
+        false) ;;
+        true)
+          staging_bundle_id_pattern='^[A-Za-z0-9]+([.-][A-Za-z0-9]+)+$'
+          if [[ ! "${APPLE_IOS_BUNDLE_ID:-}" =~ ${staging_bundle_id_pattern} \
+            || ! "${APPLE_TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ \
+            || ! "${APPLE_KEY_ID:-}" =~ ^[A-Z0-9]{10}$ \
+            || "${APPLE_PRIVATE_KEY:-}" != *"${staging_private_key_begin}"* \
+            || "${APPLE_PRIVATE_KEY:-}" != *"${staging_private_key_end}"* ]]; then
+            echo "Enabled staging Sign in with Apple requires a complete valid server configuration." >&2
+            return 1
+          fi
+          ;;
+        *)
+          echo "APPLE_SIGN_IN_ENABLED must be explicitly true or false in staging." >&2
+          return 1
+          ;;
+      esac
+      ;;
+    *)
+      echo "DEPLOYMENT_ENVIRONMENT must be exactly production or staging." >&2
+      return 1
+      ;;
+  esac
+}
+
 compose_cmd() {
   docker compose \
     -f "${DEPLOY_DIR}/docker-compose.production.yml" \
@@ -135,7 +346,9 @@ required=(
   REDIS_URL
   RESEND_API_KEY
   EMAIL_FROM
+  CONTACT_TO_EMAIL
   PASSWORD_RESET_BASE_URL
+  CHECKOUT_RETURN_URL
   MEDIA_STORAGE_BACKEND
   MEDIA_PUBLIC_BASE_URL
   UPLOAD_PATH
@@ -143,10 +356,6 @@ required=(
   BACKUP_ENCRYPTION_PASSWORD
   BACKUP_INTEGRITY_HMAC_KEY
   APPLE_SIGN_IN_ENABLED
-  APPLE_IOS_BUNDLE_ID
-  APPLE_TEAM_ID
-  APPLE_KEY_ID
-  APPLE_PRIVATE_KEY
   API_WEB_DOMAIN
   TUNNEL_INGRESS_SUBNET
   CADDY_TUNNEL_IP
@@ -192,14 +401,7 @@ esac
 warn_optional_env GOOGLE_WEB_CLIENT_ID
 warn_optional_env GOOGLE_IOS_CLIENT_ID
 warn_optional_env GOOGLE_ANDROID_CLIENT_ID
-if [[ "${APPLE_SIGN_IN_ENABLED}" != "true" \
-  || "${APPLE_IOS_BUNDLE_ID}" != "com.menorah.health.app" \
-  || ! "${APPLE_TEAM_ID}" =~ ^[A-Z0-9]{10}$ \
-  || ! "${APPLE_KEY_ID}" =~ ^[A-Z0-9]{10}$ \
-  || "${APPLE_PRIVATE_KEY}" != *"BEGIN PRIVATE KEY"* ]]; then
-  echo "Sign in with Apple server credentials are incomplete or invalid." >&2
-  exit 1
-fi
+validate_release_environment
 warn_optional_env LUXAND_API_TOKEN
 warn_optional_env OPENAI_API_KEY
 warn_optional_env CLOUDINARY_CLOUD_NAME
@@ -310,12 +512,6 @@ if [[ "${MEDIA_STORAGE_BACKEND}" != "local" \
   || -n "${SOCIAL_STUDIO_STORAGE:-}" \
   || -n "${COUNSELLOR_MEDIA_STORAGE:-}" ]]; then
   echo "Production media must use the shared immutable local store at the canonical API web origin." >&2
-  exit 1
-fi
-
-if [[ "${PASSWORD_RESET_BASE_URL}" != "https://app.menorah.me" \
-  || -n "${PASSWORD_RESET_URL_TEMPLATE:-}" ]]; then
-  echo "Production password reset links must use https://app.menorah.me with no legacy template." >&2
   exit 1
 fi
 

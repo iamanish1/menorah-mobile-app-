@@ -7,11 +7,58 @@ const { RETENTION_CATEGORIES } = require('../../../config/privacy');
 
 describe('startup validation', () => {
   const originalEnv = process.env;
+  const stagingHosts = {
+    ROOT_DOMAIN: 'staging.example.com',
+    WWW_DOMAIN: 'www.staging.example.com',
+    APP_DOMAIN: 'app.staging.example.com',
+    ADMIN_DOMAIN: 'admin.staging.example.com',
+    COUNSELLOR_DOMAIN: 'counsellor.staging.example.com',
+    API_IOS_DOMAIN: 'api-ios.staging.example.com',
+    API_ANDROID_DOMAIN: 'api-android.staging.example.com',
+    API_WEB_DOMAIN: 'api-web.staging.example.com',
+    API_ADMIN_DOMAIN: 'api-admin.staging.example.com',
+    CALLS_DOMAIN: 'calls.staging.example.com',
+  };
+
+  const configureValidStagingEnvironment = () => {
+    Object.assign(process.env, {
+      ...stagingHosts,
+      MENORAH_STAGING_ALLOWED_HOSTS: Object.values(stagingHosts).join(','),
+      MENORAH_STAGING_EMAIL_DOMAIN: 'mail.staging.example.com',
+      CONTACT_TO_EMAIL: 'contact@mail.staging.example.com',
+      EMAIL_FROM: 'Menorah Staging <noreply@mail.staging.example.com>',
+      LIVEKIT_URL: `wss://${stagingHosts.CALLS_DOMAIN}`,
+      LIVEKIT_API_URL: `https://${stagingHosts.CALLS_DOMAIN}`,
+      PASSWORD_RESET_BASE_URL: `https://${stagingHosts.APP_DOMAIN}`,
+      CHECKOUT_RETURN_URL:
+        `https://${stagingHosts.APP_DOMAIN}/checkout/return`,
+      FRONTEND_API_WEB_URL: `https://${stagingHosts.API_WEB_DOMAIN}/api`,
+      FRONTEND_API_ADMIN_URL: `https://${stagingHosts.API_ADMIN_DOMAIN}/api`,
+      FRONTEND_SOCKET_WEB_URL: `https://${stagingHosts.API_WEB_DOMAIN}`,
+      MEDIA_PUBLIC_BASE_URL: `https://${stagingHosts.API_WEB_DOMAIN}`,
+      ALLOWED_ORIGINS: [
+        `https://${stagingHosts.WWW_DOMAIN}`,
+        `https://${stagingHosts.APP_DOMAIN}`,
+        `https://${stagingHosts.ADMIN_DOMAIN}`,
+        `https://${stagingHosts.COUNSELLOR_DOMAIN}`,
+      ].join(','),
+      WEB_SESSION_ORIGINS: [
+        `https://${stagingHosts.WWW_DOMAIN}=user`,
+        `https://${stagingHosts.APP_DOMAIN}=user`,
+        `https://${stagingHosts.COUNSELLOR_DOMAIN}=counsellor`,
+        `https://${stagingHosts.ADMIN_DOMAIN}=admin`,
+      ].join(','),
+      RAZORPAY_KEY_ID: 'rzp_test_A1b2C3d4E5f6G7',
+      RAZORPAY_X_KEY_ID: '',
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: 'rzp_test_A1b2C3d4E5f6G7',
+    });
+  };
 
   beforeEach(() => {
     process.env = {
       ...originalEnv,
       NODE_ENV: 'production',
+      DEPLOYMENT_ENVIRONMENT: 'production',
       JWT_SECRET: 'x'.repeat(64),
       MONGODB_URI: 'mongodb://mongo-primary:27017/menorah',
       ALLOWED_ORIGINS: 'https://app.example.com',
@@ -19,7 +66,9 @@ describe('startup validation', () => {
       REDIS_URL: 'redis://redis:6379',
       RESEND_API_KEY: 'resend-key',
       EMAIL_FROM: 'Menorah <noreply@example.com>',
+      CONTACT_TO_EMAIL: 'contact@example.com',
       PASSWORD_RESET_BASE_URL: 'https://app.menorah.me',
+      CHECKOUT_RETURN_URL: 'https://app.menorah.me/checkout/return',
       MEDIA_STORAGE_BACKEND: 'local',
       MEDIA_PUBLIC_BASE_URL: 'https://media.example.com',
       UPLOAD_PATH: '/app/uploads',
@@ -130,6 +179,275 @@ describe('startup validation', () => {
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' }))
       .toThrow(/PASSWORD_RESET_BASE_URL must equal https:\/\/app\.menorah\.me/);
+  });
+
+  test('defaults an omitted deployment environment to production', () => {
+    delete process.env.DEPLOYMENT_ENVIRONMENT;
+    process.env.PASSWORD_RESET_BASE_URL = 'https://app.staging.example.com';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/PASSWORD_RESET_BASE_URL must equal https:\/\/app\.menorah\.me/);
+  });
+
+  test.each(['preview', 'Production', 'prod'])(
+    'rejects unsupported deployment environment %s',
+    (value) => {
+      process.env.DEPLOYMENT_ENVIRONMENT = value;
+
+      expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+        .toThrow(/DEPLOYMENT_ENVIRONMENT must be exactly production or staging/);
+    }
+  );
+
+  test('rejects an invalid deployment environment outside production mode', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.DEPLOYMENT_ENVIRONMENT = 'preview';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/DEPLOYMENT_ENVIRONMENT must be exactly production or staging/);
+  });
+
+  test('rejects staging when NODE_ENV would skip production hardening', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/DEPLOYMENT_ENVIRONMENT=staging requires NODE_ENV=production/);
+  });
+
+  test('accepts a fully reviewed isolated production-like staging topology', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
+  });
+
+  test('rejects staging when every topology variable is omitted', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    [
+      'MENORAH_STAGING_ALLOWED_HOSTS',
+      'MENORAH_STAGING_EMAIL_DOMAIN',
+      ...Object.keys(stagingHosts),
+      'LIVEKIT_URL',
+      'LIVEKIT_API_URL',
+      'PASSWORD_RESET_BASE_URL',
+      'CHECKOUT_RETURN_URL',
+      'FRONTEND_API_WEB_URL',
+      'FRONTEND_API_ADMIN_URL',
+      'FRONTEND_SOCKET_WEB_URL',
+      'MEDIA_PUBLIC_BASE_URL',
+      'ALLOWED_ORIGINS',
+      'WEB_SESSION_ORIGINS',
+      'CONTACT_TO_EMAIL',
+      'EMAIL_FROM',
+    ].forEach((key) => delete process.env[key]);
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/MENORAH_STAGING_ALLOWED_HOSTS.*ROOT_DOMAIN/);
+  });
+
+  test('rejects production-default topology values when staging is selected', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    const productionHosts = {
+      ROOT_DOMAIN: 'menorah.me',
+      WWW_DOMAIN: 'www.menorah.me',
+      APP_DOMAIN: 'app.menorah.me',
+      ADMIN_DOMAIN: 'admin.menorah.me',
+      COUNSELLOR_DOMAIN: 'counsellor.menorah.me',
+      API_IOS_DOMAIN: 'api-ios.menorah.me',
+      API_ANDROID_DOMAIN: 'api-android.menorah.me',
+      API_WEB_DOMAIN: 'api-web.menorah.me',
+      API_ADMIN_DOMAIN: 'api-admin.menorah.me',
+      CALLS_DOMAIN: 'calls.menorah.me',
+    };
+    Object.assign(process.env, {
+      ...productionHosts,
+      MENORAH_STAGING_ALLOWED_HOSTS: Object.values(productionHosts).join(','),
+      LIVEKIT_URL: 'wss://calls.menorah.me',
+      LIVEKIT_API_URL: 'https://calls.menorah.me',
+      PASSWORD_RESET_BASE_URL: 'https://app.menorah.me',
+      FRONTEND_API_WEB_URL: 'https://api-web.menorah.me/api',
+      FRONTEND_API_ADMIN_URL: 'https://api-admin.menorah.me/api',
+      FRONTEND_SOCKET_WEB_URL: 'https://api-web.menorah.me',
+      MEDIA_PUBLIC_BASE_URL: 'https://api-web.menorah.me',
+      ALLOWED_ORIGINS:
+        'https://www.menorah.me,https://app.menorah.me,https://admin.menorah.me,https://counsellor.menorah.me',
+      WEB_SESSION_ORIGINS:
+        'https://www.menorah.me=user,https://app.menorah.me=user,https://counsellor.menorah.me=counsellor,https://admin.menorah.me=admin',
+      RAZORPAY_KEY_ID: 'rzp_test_A1b2C3d4E5f6G7',
+    });
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/staging as a full label/);
+  });
+
+  test('rejects staging service-host aliases', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    process.env.API_ANDROID_DOMAIN = process.env.API_IOS_DOMAIN;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/API_ANDROID_DOMAIN must not alias another staging service host/);
+  });
+
+  test('rejects staging as a hostname substring rather than a full label', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    const invalidHost = 'api-ios-staging.example.com';
+    process.env.MENORAH_STAGING_ALLOWED_HOSTS =
+      process.env.MENORAH_STAGING_ALLOWED_HOSTS.replace(
+        stagingHosts.API_IOS_DOMAIN,
+        invalidHost
+      );
+    process.env.API_IOS_DOMAIN = invalidHost;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/API_IOS_DOMAIN must be a lowercase DNS host with staging as a full label/);
+  });
+
+  test.each([
+    ['LIVEKIT_URL', 'wss://calls.other-staging.example.com'],
+    ['LIVEKIT_API_URL', 'https://calls.other-staging.example.com'],
+    ['PASSWORD_RESET_BASE_URL', 'https://other.staging.example.com'],
+    ['CHECKOUT_RETURN_URL', 'https://app.menorah.me/checkout/return'],
+    ['FRONTEND_API_WEB_URL', 'https://api-web.staging.example.com'],
+    ['FRONTEND_API_ADMIN_URL', 'https://api-web.staging.example.com/api'],
+    ['FRONTEND_SOCKET_WEB_URL', 'https://api-admin.staging.example.com'],
+    ['MEDIA_PUBLIC_BASE_URL', 'https://media.staging.example.com'],
+  ])('rejects a staging target that does not exactly map %s', (key, value) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    process.env[key] = value;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(new RegExp(`${key} must equal`));
+  });
+
+  test.each([
+    ['MENORAH_STAGING_EMAIL_DOMAIN', 'mail.example.com'],
+    ['MENORAH_STAGING_EMAIL_DOMAIN', 'mail-staging.example.com'],
+    ['CONTACT_TO_EMAIL', 'Menorah <contact@mail.staging.example.com>'],
+    ['CONTACT_TO_EMAIL', 'contact@menorah.me'],
+    ['EMAIL_FROM', 'Menorah <noreply@menorah.me>'],
+    ['EMAIL_FROM', 'not-an-address'],
+  ])('rejects unsafe staging email routing through %s', (key, value) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    process.env[key] = value;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(
+        /MENORAH_STAGING_EMAIL_DOMAIN|CONTACT_TO_EMAIL|EMAIL_FROM/
+      );
+  });
+
+  test('retains the canonical checkout return URL in production', () => {
+    process.env.CHECKOUT_RETURN_URL =
+      'https://app.staging.example.com/checkout/return';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(
+        /CHECKOUT_RETURN_URL must equal https:\/\/app\.menorah\.me\/checkout\/return/
+      );
+  });
+
+  test.each([
+    [
+      'ALLOWED_ORIGINS',
+      'https://www.staging.example.com,https://app.staging.example.com,https://admin.staging.example.com,https://app.menorah.me',
+    ],
+    [
+      'WEB_SESSION_ORIGINS',
+      'https://www.staging.example.com=user,https://app.staging.example.com=user,https://counsellor.staging.example.com=counsellor,https://admin.menorah.me=admin',
+    ],
+  ])('rejects mixed or aliased staging origin mapping %s', (key, value) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    process.env[key] = value;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(new RegExp(`${key} must contain exactly`));
+  });
+
+  test.each([
+    'RAZORPAY_KEY_ID',
+    'RAZORPAY_X_KEY_ID',
+    'NEXT_PUBLIC_RAZORPAY_KEY_ID',
+  ])('rejects a live Razorpay key ID in staging via %s', (key) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    process.env[key] = 'rzp_live_A1b2C3d4E5f6G7';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(new RegExp(`${key} must use an rzp_test_ key ID in staging`));
+  });
+
+  test.each([
+    'https://app.menorah.me',
+    'https://app.menorah.me.',
+    'https://app.menorah.me:8443',
+    'http://app.staging.example.com',
+    'https://app.staging.example.com:8443',
+    'https://app.staging.example.com/',
+    'https://app.staging.example.com/reset-password',
+  ])('rejects an unsafe staging password-reset origin %s', (value) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    process.env.PASSWORD_RESET_BASE_URL = value;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/PASSWORD_RESET_BASE_URL/);
+  });
+
+  test('permits Apple sign-in to be explicitly disabled in staging', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    process.env.APPLE_SIGN_IN_ENABLED = 'false';
+    delete process.env.APPLE_IOS_BUNDLE_ID;
+    delete process.env.APPLE_TEAM_ID;
+    delete process.env.APPLE_KEY_ID;
+    delete process.env.APPLE_PRIVATE_KEY;
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-ios',
+      requirePaymentEnv: false,
+    })).not.toThrow();
+  });
+
+  test('requires an explicit Apple sign-in decision in staging', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    delete process.env.APPLE_SIGN_IN_ENABLED;
+
+    expect(() => validateStartupEnv({
+      serviceName: 'worker',
+      requirePaymentEnv: false,
+    })).toThrow(/APPLE_SIGN_IN_ENABLED must be exactly true or false in staging/);
+  });
+
+  test('validates complete Apple credentials when enabled in staging', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    process.env.APPLE_IOS_BUNDLE_ID = 'com.menorah.health.staging';
+    delete process.env.APPLE_TEAM_ID;
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-ios',
+      requirePaymentEnv: false,
+    })).toThrow(/APPLE_TEAM_ID must be a 10-character Apple Team ID/);
+  });
+
+  test('retains mandatory Apple sign-in and the canonical bundle ID in production', () => {
+    process.env.APPLE_SIGN_IN_ENABLED = 'false';
+    process.env.APPLE_IOS_BUNDLE_ID = 'com.menorah.health.staging';
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-ios',
+      requirePaymentEnv: false,
+    })).toThrow(
+      /APPLE_SIGN_IN_ENABLED must equal true.*APPLE_IOS_BUNDLE_ID must equal com\.menorah\.health\.app/
+    );
   });
 
   test('rejects the legacy password-reset URL template in production', () => {

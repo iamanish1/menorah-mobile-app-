@@ -1,21 +1,27 @@
 x-backend-env: &backend-env
   NODE_ENV: ${NODE_ENV:-production}
+  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
+  MENORAH_STAGING_ALLOWED_HOSTS: ${MENORAH_STAGING_ALLOWED_HOSTS:-}
+  MENORAH_STAGING_EMAIL_DOMAIN: ${MENORAH_STAGING_EMAIL_DOMAIN:-}
   SERVICE_RUNTIME: ${SERVICE_RUNTIME:-home}
   PORT: "8080"
   PUBLIC_EMAIL: ${PUBLIC_EMAIL:-}
-  ROOT_DOMAIN: ${ROOT_DOMAIN:-menorah.me}
-  WWW_DOMAIN: ${WWW_DOMAIN:-www.menorah.me}
-  APP_DOMAIN: ${APP_DOMAIN:-app.menorah.me}
-  ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.menorah.me}
-  COUNSELLOR_DOMAIN: ${COUNSELLOR_DOMAIN:-counsellor.menorah.me}
-  API_IOS_DOMAIN: ${API_IOS_DOMAIN:-api-ios.menorah.me}
-  API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN:-api-android.menorah.me}
-  API_WEB_DOMAIN: ${API_WEB_DOMAIN:-api-web.menorah.me}
-  API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN:-api-admin.menorah.me}
-  CALLS_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+  ROOT_DOMAIN: ${ROOT_DOMAIN:?ROOT_DOMAIN is required}
+  WWW_DOMAIN: ${WWW_DOMAIN:?WWW_DOMAIN is required}
+  APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+  ADMIN_DOMAIN: ${ADMIN_DOMAIN:?ADMIN_DOMAIN is required}
+  COUNSELLOR_DOMAIN: ${COUNSELLOR_DOMAIN:?COUNSELLOR_DOMAIN is required}
+  API_IOS_DOMAIN: ${API_IOS_DOMAIN:?API_IOS_DOMAIN is required}
+  API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN:?API_ANDROID_DOMAIN is required}
+  API_WEB_DOMAIN: ${API_WEB_DOMAIN:?API_WEB_DOMAIN is required}
+  API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN:?API_ADMIN_DOMAIN is required}
+  CALLS_DOMAIN: ${CALLS_DOMAIN:?CALLS_DOMAIN is required}
+  FRONTEND_API_WEB_URL: ${FRONTEND_API_WEB_URL:?FRONTEND_API_WEB_URL is required}
+  FRONTEND_API_ADMIN_URL: ${FRONTEND_API_ADMIN_URL:?FRONTEND_API_ADMIN_URL is required}
+  FRONTEND_SOCKET_WEB_URL: ${FRONTEND_SOCKET_WEB_URL:?FRONTEND_SOCKET_WEB_URL is required}
   LIVEKIT_UPSTREAM: ${LIVEKIT_UPSTREAM:-}
-  LIVEKIT_URL: ${LIVEKIT_URL:-wss://calls.menorah.me}
-  LIVEKIT_API_URL: ${LIVEKIT_API_URL:-https://calls.menorah.me}
+  LIVEKIT_URL: ${LIVEKIT_URL:?LIVEKIT_URL is required}
+  LIVEKIT_API_URL: ${LIVEKIT_API_URL:?LIVEKIT_API_URL is required}
   LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
   LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
   CALLING_REGION_MODE: ${CALLING_REGION_MODE:-hybrid}
@@ -54,8 +60,8 @@ x-backend-env: &backend-env
   GOOGLE_ANDROID_CLIENT_ID: ${GOOGLE_ANDROID_CLIENT_ID:-${EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:-}}
   APPLE_IOS_BUNDLE_ID: ${APPLE_IOS_BUNDLE_ID:-com.menorah.health.app}
   APPLE_WEB_SERVICE_ID: ${APPLE_WEB_SERVICE_ID:-}
-  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
-  WEB_SESSION_ORIGINS: ${WEB_SESSION_ORIGINS:-https://${WWW_DOMAIN:-www.menorah.me}=user,https://${APP_DOMAIN:-app.menorah.me}=user,https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}=counsellor,https://${ADMIN_DOMAIN:-admin.menorah.me}=admin}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
+  WEB_SESSION_ORIGINS: ${WEB_SESSION_ORIGINS:?WEB_SESSION_ORIGINS is required}
   ENABLE_SOCKET_IO: ${ENABLE_SOCKET_IO:-true}
   ENABLE_SOCKET_ADAPTER: ${ENABLE_SOCKET_ADAPTER:-true}
   WORKER_MODE: ${WORKER_MODE:-standby}
@@ -77,6 +83,7 @@ x-backend-env: &backend-env
   WEEKLY_RETENTION_DAYS: ${WEEKLY_RETENTION_DAYS:-84}
   MONTHLY_RETENTION_DAYS: ${MONTHLY_RETENTION_DAYS:-366}
   RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+  NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
   RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
   RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
   RAZORPAY_WEBHOOK_SECRET_PREVIOUS: ${RAZORPAY_WEBHOOK_SECRET_PREVIOUS:-}
@@ -89,16 +96,18 @@ x-backend-env: &backend-env
   PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS: ${PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS:-}
   SUBSCRIPTION_PAYMENTS_ENABLED: "false"
   BOOKING_SERVICE_CATALOG_JSON: ${BOOKING_SERVICE_CATALOG_JSON:-}
+  CHECKOUT_RETURN_URL: ${CHECKOUT_RETURN_URL:?CHECKOUT_RETURN_URL is required}
   RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
-  EMAIL_FROM: "${EMAIL_FROM:-Menorah Health <noreply@menorah.me>}"
-  PASSWORD_RESET_BASE_URL: ${PASSWORD_RESET_BASE_URL:-}
+  EMAIL_FROM: "${EMAIL_FROM:?EMAIL_FROM is required}"
+  CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:?CONTACT_TO_EMAIL is required}
+  PASSWORD_RESET_BASE_URL: ${PASSWORD_RESET_BASE_URL:?PASSWORD_RESET_BASE_URL is required}
   LUXAND_API_TOKEN: ${LUXAND_API_TOKEN:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
   CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
   CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
   MEDIA_STORAGE_BACKEND: ${MEDIA_STORAGE_BACKEND:-local}
-  MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}
+  MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:?MEDIA_PUBLIC_BASE_URL is required}
   UPLOAD_PATH: /app/uploads
   BACKUP_ENCRYPTION_PASSWORD: ${BACKUP_ENCRYPTION_PASSWORD:-}
   DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:-}
@@ -141,16 +150,16 @@ services:
     environment:
       PUBLIC_EMAIL: ${PUBLIC_EMAIL:-}
       LIVEKIT_UPSTREAM: ${LIVEKIT_UPSTREAM:-}
-      ROOT_DOMAIN: ${ROOT_DOMAIN:-menorah.me}
-      WWW_DOMAIN: ${WWW_DOMAIN:-www.menorah.me}
-      APP_DOMAIN: ${APP_DOMAIN:-app.menorah.me}
-      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.menorah.me}
-      COUNSELLOR_DOMAIN: ${COUNSELLOR_DOMAIN:-counsellor.menorah.me}
-      API_IOS_DOMAIN: ${API_IOS_DOMAIN:-api-ios.menorah.me}
-      API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN:-api-android.menorah.me}
-      API_WEB_DOMAIN: ${API_WEB_DOMAIN:-api-web.menorah.me}
-      API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN:-api-admin.menorah.me}
-      CALLS_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:?ROOT_DOMAIN is required}
+      WWW_DOMAIN: ${WWW_DOMAIN:?WWW_DOMAIN is required}
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:?ADMIN_DOMAIN is required}
+      COUNSELLOR_DOMAIN: ${COUNSELLOR_DOMAIN:?COUNSELLOR_DOMAIN is required}
+      API_IOS_DOMAIN: ${API_IOS_DOMAIN:?API_IOS_DOMAIN is required}
+      API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN:?API_ANDROID_DOMAIN is required}
+      API_WEB_DOMAIN: ${API_WEB_DOMAIN:?API_WEB_DOMAIN is required}
+      API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN:?API_ADMIN_DOMAIN is required}
+      CALLS_DOMAIN: ${CALLS_DOMAIN:?CALLS_DOMAIN is required}
       CLOUDFLARED_TUNNEL_IP: ${CLOUDFLARED_TUNNEL_IP:?CLOUDFLARED_TUNNEL_IP is required}
     ports:
       - "${CADDY_HTTP_PORT:-127.0.0.1:8080}:80"
@@ -188,16 +197,16 @@ services:
     environment:
       PUBLIC_EMAIL: ${PUBLIC_EMAIL:-}
       LIVEKIT_UPSTREAM: ${LIVEKIT_UPSTREAM:-}
-      ROOT_DOMAIN: ${ROOT_DOMAIN:-menorah.me}
-      WWW_DOMAIN: ${WWW_DOMAIN:-www.menorah.me}
-      APP_DOMAIN: ${APP_DOMAIN:-app.menorah.me}
-      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.menorah.me}
-      COUNSELLOR_DOMAIN: ${COUNSELLOR_DOMAIN:-counsellor.menorah.me}
-      API_IOS_DOMAIN: ${API_IOS_DOMAIN:-api-ios.menorah.me}
-      API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN:-api-android.menorah.me}
-      API_WEB_DOMAIN: ${API_WEB_DOMAIN:-api-web.menorah.me}
-      API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN:-api-admin.menorah.me}
-      CALLS_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:?ROOT_DOMAIN is required}
+      WWW_DOMAIN: ${WWW_DOMAIN:?WWW_DOMAIN is required}
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:?ADMIN_DOMAIN is required}
+      COUNSELLOR_DOMAIN: ${COUNSELLOR_DOMAIN:?COUNSELLOR_DOMAIN is required}
+      API_IOS_DOMAIN: ${API_IOS_DOMAIN:?API_IOS_DOMAIN is required}
+      API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN:?API_ANDROID_DOMAIN is required}
+      API_WEB_DOMAIN: ${API_WEB_DOMAIN:?API_WEB_DOMAIN is required}
+      API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN:?API_ADMIN_DOMAIN is required}
+      CALLS_DOMAIN: ${CALLS_DOMAIN:?CALLS_DOMAIN is required}
       CLOUDFLARED_TUNNEL_IP: ${CLOUDFLARED_TUNNEL_IP:?CLOUDFLARED_TUNNEL_IP is required}
     command: ["caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
     read_only: true
@@ -237,27 +246,31 @@ services:
       context: ../user-web-app
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
-        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?FRONTEND_API_WEB_URL is required}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?FRONTEND_SOCKET_WEB_URL is required}"
         NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-${RAZORPAY_KEY_ID:-}}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
-        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
-        NEXT_PUBLIC_WEB_BASE_URL: "https://${WWW_DOMAIN:-www.menorah.me}"
-        NEXT_PUBLIC_SITE_URL: "https://${WWW_DOMAIN:-www.menorah.me}"
-        PUBLIC_WEB_BASE_URL: "https://${WWW_DOMAIN:-www.menorah.me}"
-        MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:?CALLS_DOMAIN is required}
+        NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?LIVEKIT_URL is required}"
+        NEXT_PUBLIC_WEB_BASE_URL: "https://${WWW_DOMAIN:?WWW_DOMAIN is required}"
+        NEXT_PUBLIC_SITE_URL: "https://${WWW_DOMAIN:?WWW_DOMAIN is required}"
+        PUBLIC_WEB_BASE_URL: "https://${WWW_DOMAIN:?WWW_DOMAIN is required}"
+        MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:?FRONTEND_API_WEB_URL is required}"
     restart: unless-stopped
     environment:
       PORT: "3002"
       NODE_ENV: production
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
+      MENORAH_STAGING_EMAIL_DOMAIN: ${MENORAH_STAGING_EMAIL_DOMAIN:-}
       MONGODB_URI: ${MONGODB_URI:-}
       MONGO_DATABASE: ${MONGO_DATABASE:-menorah}
       RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
-      EMAIL_FROM: "${EMAIL_FROM:-Menorah Health <noreply@menorah.me>}"
-      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:-menorahenquiries@gmail.com}
-      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
-      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
-      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+      EMAIL_FROM: "${EMAIL_FROM:?EMAIL_FROM is required}"
+      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:?CONTACT_TO_EMAIL is required}
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?FRONTEND_API_WEB_URL is required}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?FRONTEND_SOCKET_WEB_URL is required}"
+      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:?CALLS_DOMAIN is required}
+      NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?LIVEKIT_URL is required}"
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
     ports:
       - "${LANDING_LOCAL_PORT:-127.0.0.1:18085}:3002"
@@ -274,27 +287,31 @@ services:
       context: ../user-web-app
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
-        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?FRONTEND_API_WEB_URL is required}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?FRONTEND_SOCKET_WEB_URL is required}"
         NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-${RAZORPAY_KEY_ID:-}}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
-        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
-        NEXT_PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:-app.menorah.me}"
-        NEXT_PUBLIC_SITE_URL: "https://${APP_DOMAIN:-app.menorah.me}"
-        PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:-app.menorah.me}"
-        MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:?CALLS_DOMAIN is required}
+        NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?LIVEKIT_URL is required}"
+        NEXT_PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:?APP_DOMAIN is required}"
+        NEXT_PUBLIC_SITE_URL: "https://${APP_DOMAIN:?APP_DOMAIN is required}"
+        PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:?APP_DOMAIN is required}"
+        MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:?FRONTEND_API_WEB_URL is required}"
     restart: unless-stopped
     environment:
       PORT: "3002"
       NODE_ENV: production
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
+      MENORAH_STAGING_EMAIL_DOMAIN: ${MENORAH_STAGING_EMAIL_DOMAIN:-}
       MONGODB_URI: ${MONGODB_URI:-}
       MONGO_DATABASE: ${MONGO_DATABASE:-menorah}
       RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
-      EMAIL_FROM: "${EMAIL_FROM:-Menorah Health <noreply@menorah.me>}"
-      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:-menorahenquiries@gmail.com}
-      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
-      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
-      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+      EMAIL_FROM: "${EMAIL_FROM:?EMAIL_FROM is required}"
+      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:?CONTACT_TO_EMAIL is required}
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?FRONTEND_API_WEB_URL is required}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?FRONTEND_SOCKET_WEB_URL is required}"
+      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:?CALLS_DOMAIN is required}
+      NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?LIVEKIT_URL is required}"
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
     ports:
       - "${USER_WEB_APP_LOCAL_PORT:-127.0.0.1:18087}:3002"
@@ -311,16 +328,18 @@ services:
       context: ../web-app
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
-        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
-        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?FRONTEND_API_WEB_URL is required}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?FRONTEND_SOCKET_WEB_URL is required}"
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:?CALLS_DOMAIN is required}
+        NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?LIVEKIT_URL is required}"
     restart: unless-stopped
     environment:
       PORT: "3001"
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
-      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
-      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?FRONTEND_API_WEB_URL is required}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?FRONTEND_SOCKET_WEB_URL is required}"
+      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:?CALLS_DOMAIN is required}
+      NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?LIVEKIT_URL is required}"
     ports:
       - "${WEB_APP_LOCAL_PORT:-127.0.0.1:18086}:3001"
     networks:
@@ -332,12 +351,12 @@ services:
       context: ../admin-panel
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:-https://${API_ADMIN_DOMAIN:-api-admin.menorah.me}/api}"
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:?FRONTEND_API_ADMIN_URL is required}"
     restart: unless-stopped
     environment:
       PORT: "3003"
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:-https://${API_ADMIN_DOMAIN:-api-admin.menorah.me}/api}"
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:?FRONTEND_API_ADMIN_URL is required}"
     ports:
       - "${ADMIN_PANEL_LOCAL_PORT:-127.0.0.1:18088}:3003"
     networks:
@@ -354,7 +373,7 @@ services:
     environment:
       <<: *backend-env
       SERVICE_NAME: api-ios
-      APPLE_SIGN_IN_ENABLED: ${APPLE_SIGN_IN_ENABLED:-false}
+      APPLE_SIGN_IN_ENABLED: ${APPLE_SIGN_IN_ENABLED:?APPLE_SIGN_IN_ENABLED is required}
       APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
       APPLE_KEY_ID: ${APPLE_KEY_ID:-}
       APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
@@ -472,7 +491,7 @@ services:
     environment:
       <<: *backend-env
       SERVICE_NAME: worker
-      APPLE_SIGN_IN_ENABLED: ${APPLE_SIGN_IN_ENABLED:-false}
+      APPLE_SIGN_IN_ENABLED: ${APPLE_SIGN_IN_ENABLED:?APPLE_SIGN_IN_ENABLED is required}
       APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
       APPLE_KEY_ID: ${APPLE_KEY_ID:-}
       APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}

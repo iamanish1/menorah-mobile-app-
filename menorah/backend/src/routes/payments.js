@@ -94,8 +94,20 @@ const sendSubscriptionUnavailable = (res) => res.status(503).json({
   message: SUBSCRIPTION_DISABLED_MESSAGE,
 });
 
-const buildCheckoutResponse = ({ booking, order, reused = false }) => {
-  const returnUrl = process.env.CHECKOUT_RETURN_URL || 'https://app.menorah.me/checkout/return';
+const getCheckoutReturnUrl = () => {
+  const configuredReturnUrl = String(process.env.CHECKOUT_RETURN_URL || '').trim();
+  if (process.env.NODE_ENV === 'production' && !configuredReturnUrl) {
+    throw new Error('CHECKOUT_RETURN_URL is required in production');
+  }
+  return configuredReturnUrl || 'https://app.menorah.me/checkout/return';
+};
+
+const buildCheckoutResponse = ({
+  booking,
+  order,
+  returnUrl = getCheckoutReturnUrl(),
+  reused = false,
+}) => {
   const isLocalDev = process.env.NODE_ENV === 'development';
   const successUrl = isLocalDev
     ? `menorah://payments/return?status=success&bookingId=${booking._id}&order_id=${order.id}`
@@ -179,6 +191,7 @@ router.post('/create-checkout-session', [
   try {
     if (sendValidationErrors(req, res)) return;
     if (!isBookingPaymentInitiationEnabled()) return sendPaymentUnavailable(res);
+    const returnUrl = getCheckoutReturnUrl();
 
     let booking = await Booking.findById(req.body.bookingId);
     if (!booking) {
@@ -233,7 +246,12 @@ router.post('/create-checkout-session', [
 
     return res.json({
       success: true,
-      data: buildCheckoutResponse({ booking, order, reused }),
+      data: buildCheckoutResponse({
+        booking,
+        order,
+        returnUrl,
+        reused,
+      }),
     });
   } catch (error) {
     if (error instanceof BookingPaymentOrderError) {

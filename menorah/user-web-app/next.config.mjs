@@ -44,6 +44,7 @@ const nextConfig = {
     NEXT_PUBLIC_RAZORPAY_KEY_ID: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
     NEXT_PUBLIC_JITSI_DOMAIN: process.env.NEXT_PUBLIC_JITSI_DOMAIN,
+    NEXT_PUBLIC_CALLS_URL: process.env.NEXT_PUBLIC_CALLS_URL,
   },
   webpack(config, { dev }) {
     if (dev) {

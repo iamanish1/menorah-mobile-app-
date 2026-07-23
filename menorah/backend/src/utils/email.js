@@ -8,6 +8,10 @@ const RESEND_EMAIL_URL = 'https://api.resend.com/emails';
 const FROM_NAME = 'Menorah Health';
 const isDev = process.env.NODE_ENV !== 'production';
 const CANONICAL_PASSWORD_RESET_BASE_URL = 'https://app.menorah.me';
+const DNS_HOST_PATTERN =
+  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const EMAIL_LOCAL_PART_PATTERN =
+  /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/;
 
 const isPlaceholder = (value) =>
   !value || /^REPLACE/i.test(value) || value.includes('replace_with');
@@ -42,7 +46,64 @@ const isConfigured = () => {
   return true;
 };
 
+const getBareEmailDomain = (value) => {
+  const address = typeof value === 'string' ? value : '';
+  const separatorIndex = address.indexOf('@');
+  if (
+    separatorIndex <= 0
+    || separatorIndex !== address.lastIndexOf('@')
+    || address !== address.trim()
+    || /[<>\s]/.test(address)
+  ) {
+    return null;
+  }
+
+  const localPart = address.slice(0, separatorIndex);
+  const domain = address.slice(separatorIndex + 1);
+  if (
+    !EMAIL_LOCAL_PART_PATTERN.test(localPart)
+    || !DNS_HOST_PATTERN.test(domain)
+  ) {
+    return null;
+  }
+  return domain;
+};
+
+const hasValidStagingEmailDomain = (value) => {
+  const domain = String(value || '').trim();
+  return (
+    DNS_HOST_PATTERN.test(domain)
+    && domain.split('.').includes('staging')
+  );
+};
+
+const canDeliverToStagingRecipient = (recipient) => {
+  const stagingDomain = String(
+    process.env.MENORAH_STAGING_EMAIL_DOMAIN || ''
+  ).trim();
+  return (
+    hasValidStagingEmailDomain(stagingDomain)
+    && getBareEmailDomain(recipient) === stagingDomain
+  );
+};
+
 const sendEmail = async (to, subject, html) => {
+  let deploymentEnvironment;
+  try {
+    deploymentEnvironment = getDeploymentEnvironment(process.env);
+  } catch (_error) {
+    console.error('Email delivery environment is invalid. Email sending is disabled.');
+    return false;
+  }
+
+  if (
+    deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.STAGING
+    && !canDeliverToStagingRecipient(to)
+  ) {
+    console.error('Staging email recipient is outside the isolated delivery domain.');
+    return false;
+  }
+
   if (isDev) {
     console.log('[DEV EMAIL - not sent; recipient, subject, and content suppressed]');
     return true;

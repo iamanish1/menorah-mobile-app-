@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readCallOrigins } from '../scripts/call-origin-policy.cjs';
 
 const AUTH_ROUTES = ['/login', '/register', '/verify-otp', '/verify-email', '/forgot-password', '/reset-password'];
 
@@ -18,6 +19,9 @@ function buildCsp(nonce: string) {
   const apiOrigin = originFromUrl(process.env.NEXT_PUBLIC_API_URL);
   const socketOrigin = originFromUrl(process.env.NEXT_PUBLIC_SOCKET_URL);
   const isProd = process.env.NODE_ENV === 'production';
+  const callOrigins = readCallOrigins(process.env.NEXT_PUBLIC_CALLS_URL, {
+    required: isProd,
+  });
   const scriptSrc = [
     "'self'",
     `'nonce-${nonce}'`,
@@ -31,10 +35,7 @@ function buildCsp(nonce: string) {
     "'self'",
     apiOrigin,
     socketOrigin,
-    'https://api-web.menorah.me',
-    'wss://api-web.menorah.me',
-    'https://calls.menorah.me',
-    'wss://calls.menorah.me',
+    ...callOrigins,
     ...(!isProd ? ['http://localhost:*', 'http://127.0.0.1:*', 'ws://localhost:*', 'ws://127.0.0.1:*'] : []),
   ].filter(Boolean);
 

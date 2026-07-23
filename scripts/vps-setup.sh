@@ -205,6 +205,7 @@ ALLOWED_ORIGINS=https://menorahhealth.app,https://counsellor.menorahhealth.app,h
 # ── MSG91 ──────────────────────────────────────────────────
 RESEND_API_KEY=REPLACE_WITH_RESEND_API_KEY
 EMAIL_FROM="Menorah Health <noreply@menorah.me>"
+CONTACT_TO_EMAIL=menorahenquiries@gmail.com
 
 # MSG91 SMS only
 MSG91_AUTH_KEY=REPLACE
@@ -221,7 +222,7 @@ RAZORPAY_WEBHOOK_SECRET_PREVIOUS=
 BOOKING_PAYMENTS_ENABLED=false
 PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS=
 SUBSCRIPTION_PAYMENTS_ENABLED=false
-CHECKOUT_RETURN_URL=https://menorahhealth.app/checkout/return
+CHECKOUT_RETURN_URL=https://app.menorah.me/checkout/return
 
 # ── Cloudinary ─────────────────────────────────────────────
 CLOUDINARY_CLOUD_NAME=REPLACE
