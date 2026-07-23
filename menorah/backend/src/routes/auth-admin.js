@@ -34,6 +34,10 @@ const {
 } = require('../config/webSessions');
 
 const router = express.Router();
+router.use((_req, res, next) => {
+  res.locals.authenticationSubject = 'admin';
+  next();
+});
 
 const isAdminMfaRequired = () =>
   process.env.ADMIN_MFA_REQUIRED === 'true' ||

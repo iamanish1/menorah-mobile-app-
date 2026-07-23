@@ -103,12 +103,11 @@ signals:
 
   - id: authentication-mfa-admin-events
     status: covered
-    source: menorah_security_events_total
+    source: menorah_auth_attempts_total plus the signed menorah_security_events_total audit stream
     alerts:
-      - AuthenticationFailureSpike
-      - MfaFailureSpike
-      - AdminMfaFailureSpike
-      - AuthorizationDenialSpike
+      - UserAuthenticationFailureSpike
+      - CounsellorAuthenticationFailureSpike
+      - AdminAuthenticationMfaFailureSpike
       - AdminPermissionDenied
       - PrivilegedActionFailure
       - AdminChangeBurst
@@ -125,11 +124,11 @@ signals:
       - SecurityAuditSinkWriteFailures
 
   - id: specific-privilege-change-events
-    status: unavailable
-    source: none
-    alerts: []
-    limitation: The bounded metric identifies admin changes but does not label the affected resource, so role and permission changes cannot be isolated honestly.
-    action: Add a low-cardinality privileged-change event category after the role and permission mutation inventory is finalized.
+    status: covered
+    source: User role-change model middleware emits a signed audit event plus menorah_privilege_changes_total
+    alerts:
+      - PrivilegedRoleChanged
+      - AdminRoleChanged
 
   - id: payout-action-failures
     status: covered
@@ -171,32 +170,28 @@ signals:
       - CallAuthorizationDenialSpike
 
   - id: http-401-rate
-    status: unavailable
-    source: none
-    alerts: []
-    limitation: Instrumented authorization denials combine 401 and 403 and do not include a status-code label.
-    action: Add bounded HTTP request counters by service, route template, method, and status class.
+    status: covered
+    source: menorah_http_responses_total with fixed service, route-family, and status inventories
+    alerts:
+      - ElevatedHttp401Rate
 
   - id: http-403-rate
-    status: unavailable
-    source: none
-    alerts: []
-    limitation: Instrumented authorization denials combine 401 and 403 and do not include a status-code label.
-    action: Add bounded HTTP request counters by service, route template, method, and status class.
+    status: covered
+    source: menorah_http_responses_total with fixed service, route-family, and status inventories
+    alerts:
+      - ElevatedHttp403Rate
 
   - id: http-429-rate
-    status: unavailable
-    source: none
-    alerts: []
-    limitation: Rate-limit responses are not exported as Prometheus counters.
-    action: Add bounded HTTP request counters by service, route template, method, and status class.
+    status: covered
+    source: menorah_http_responses_total with fixed service, route-family, and status inventories
+    alerts:
+      - ElevatedHttp429Rate
 
   - id: http-500-rate
-    status: unavailable
-    source: none
-    alerts: []
-    limitation: Server response status classes are not exported as Prometheus counters.
-    action: Add bounded HTTP request counters by service, route template, method, and status class.
+    status: covered
+    source: menorah_http_responses_total with fixed service, route-family, and status inventories
+    alerts:
+      - ElevatedHttp500Rate
 
   - id: monitoring-stack-health
     status: covered

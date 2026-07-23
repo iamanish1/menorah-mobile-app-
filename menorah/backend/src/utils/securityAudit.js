@@ -8,6 +8,13 @@ const {
   resetSecurityAuditSinkForTests,
   verifyDurableSecurityAuditChain,
 } = require('../services/securityAuditSink');
+const {
+  recordAuthenticationAttempt,
+  recordHttpResponse,
+  recordPrivilegeChange,
+  renderApplicationMetrics,
+  resetApplicationMetricsForTests,
+} = require('./applicationMetrics');
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const SAFE_DETAIL_KEYS = new Set([
@@ -178,11 +185,34 @@ const recordSecurityEvent = (eventName, {
 };
 
 const classifyAuthEvent = (requestPath) => {
-  if (/\/auth\/(?:admin\/)?login\/mfa$/.test(requestPath)) return 'mfa_attempt';
-  if (/\/auth\/(?:admin\/)?login$/.test(requestPath)) return 'login_attempt';
-  if (/\/auth\/reset-password$/.test(requestPath)) return 'password_reset';
-  if (/\/auth\/(?:verify-email-otp|verify-email|verify-phone)$/.test(requestPath)) return 'otp_verification';
+  if (/\/auth\/(?:admin\/)?login\/mfa$/.test(requestPath)) {
+    return { event: 'mfa_attempt', method: 'mfa' };
+  }
+  if (/\/auth\/(?:admin\/)?login$/.test(requestPath)) {
+    return { event: 'login_attempt', method: 'password' };
+  }
+  if (/\/auth\/(?:google|apple)$/.test(requestPath)) {
+    return { event: 'login_attempt', method: 'federated' };
+  }
+  if (/\/auth\/reset-password$/.test(requestPath)) {
+    return { event: 'password_reset', method: 'password_reset' };
+  }
+  if (/\/auth\/(?:verify-email-otp|verify-email|verify-phone)$/.test(requestPath)) {
+    return { event: 'otp_verification', method: 'otp' };
+  }
   return null;
+};
+
+const authenticationSubject = (req, res, requestPath) => {
+  const actorRole = res.locals.securityActor?.role || req.user?.role;
+  if (['user', 'counsellor', 'admin'].includes(actorRole)) return actorRole;
+  if (
+    res.locals.authenticationSubject === 'admin'
+    || getServiceName() === 'api-admin'
+    || /\/auth\/admin\//.test(requestPath)
+  ) return 'admin';
+  if (res.locals.authenticationSubject === 'counsellor') return 'counsellor';
+  return 'user';
 };
 
 const classifySessionRevocation = (requestPath) => {
@@ -201,10 +231,17 @@ const securityAuditTrail = (req, res, next) => {
     const statusCode = res.statusCode;
     const outcome = statusCode < 400 ? 'success' : 'failure';
     const user = req.user || res.locals.securityActor;
+    recordHttpResponse({ req, statusCode });
 
     const authEvent = classifyAuthEvent(requestPath);
     if (authEvent && !SAFE_METHODS.has(method)) {
-      recordSecurityEvent(authEvent, { req, user, outcome, statusCode });
+      recordAuthenticationAttempt({
+        req,
+        subject: authenticationSubject(req, res, requestPath),
+        method: authEvent.method,
+        outcome,
+      });
+      recordSecurityEvent(authEvent.event, { req, user, outcome, statusCode });
     }
 
     if (statusCode < 400 && res.locals.securitySessionCreated) {
@@ -295,16 +332,56 @@ const renderSecurityMetrics = () => {
     );
   });
 
-  return `${lines.join('\n')}\n`;
+  return `${lines.join('\n')}\n${renderApplicationMetrics()}`;
 };
 
 const resetSecurityMetricsForTests = () => {
   counters.clear();
   auditChainHead = null;
   resetSecurityAuditSinkForTests();
+  resetApplicationMetricsForTests();
+};
+
+const recordRoleChange = ({
+  target,
+  previousRole,
+  nextRole,
+  actor,
+  req,
+}) => {
+  const previous = sanitizeLabel(previousRole, 'none');
+  const next = sanitizeLabel(nextRole, 'none');
+  const privilegedRoles = new Set(['admin', 'counsellor']);
+  if (!privilegedRoles.has(previous) && !privilegedRoles.has(next)) return null;
+
+  const category = previous === 'admin' || next === 'admin'
+    ? 'admin_role'
+    : 'privileged_role';
+  const event = category === 'admin_role'
+    ? 'admin_role_changed'
+    : 'privileged_role_changed';
+  const action = previous === 'none'
+    ? 'assigned'
+    : privilegedRoles.has(previous) && !privilegedRoles.has(next)
+      ? 'removed'
+      : 'changed';
+  const entry = recordSecurityEvent(event, {
+    req,
+    user: actor,
+    outcome: 'success',
+    details: {
+      action,
+      actorRole: actor?.role || 'system',
+      operationalRole: next,
+      targetId: target,
+    },
+  });
+  recordPrivilegeChange({ category, outcome: 'success' });
+  return entry;
 };
 
 module.exports = {
+  recordRoleChange,
   recordSecurityEvent,
   renderSecurityMetrics,
   resetSecurityMetricsForTests,

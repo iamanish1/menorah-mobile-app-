@@ -453,29 +453,186 @@ tests:
               description: "The exporter scrape may be up, but it is not exposing the required redis_up health metric."
               runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#redismetricscoveragemissing"
 
-  - name: MFA failures trigger independently of other auth events
+  - name: bounded HTTP auth and role-change signals fire independently
     interval: 1m
     input_series:
-      - series: 'menorah_security_events_total{event="mfa_attempt",outcome="failure",service="api-admin"}'
-        values: '0 6 12 18 24'
+      - series: 'menorah_auth_attempts_total{service="api-web",subject="user",method="password",outcome="failure"}'
+        values: '0 11 22 33 44 55 66 77'
+      - series: 'menorah_auth_attempts_total{service="api-web",subject="counsellor",method="password",outcome="failure"}'
+        values: '0 6 12 18 24 30 36 42'
+      - series: 'menorah_auth_attempts_total{service="api-admin",subject="admin",method="mfa",outcome="failure"}'
+        values: '0 3 6 9 12 15 18 21'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/auth/*",status="401"}'
+        values: '0 13 26 39 52 65 78 91'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/admin/*",status="403"}'
+        values: '0 5 10 15 20 25 30 35'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/other",status="429"}'
+        values: '0 13 26 39 52 65 78 91'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/bookings/*",status="500"}'
+        values: '0 3 6 9 12 15 18 21'
+      - series: 'menorah_privilege_changes_total{service="api-web",category="privileged_role",outcome="success"}'
+        values: '0 1 1 1 1 1 1 1'
+      - series: 'menorah_privilege_changes_total{service="api-admin",category="admin_role",outcome="success"}'
+        values: '0 1 1 1 1 1 1 1'
     alert_rule_test:
       - eval_time: 4m
-        alertname: MfaFailureSpike
+        alertname: UserAuthenticationFailureSpike
         exp_alerts:
           - exp_labels:
-              owner: security
-              severity: critical
+              owner: security-response-owner-tbd
+              service: api-web
+              subject: user
+              severity: warning
             exp_annotations:
-              summary: "MFA failures exceed the expected threshold"
-              description: "More than ten failed MFA attempts occurred in ten minutes."
-              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mfafailurespike"
+              summary: "User authentication failures exceed the expected threshold"
+              description: "More than 20 bounded user authentication failures occurred in ten minutes."
+              resolution: "The alert resolves after the rolling ten-minute user failure count remains below the threshold for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#userauthenticationfailurespike"
       - eval_time: 4m
-        alertname: AdminMfaFailureSpike
+        alertname: CounsellorAuthenticationFailureSpike
         exp_alerts:
           - exp_labels:
-              owner: security
+              owner: security-response-owner-tbd
+              service: api-web
+              subject: counsellor
               severity: critical
             exp_annotations:
-              summary: "Admin MFA failures exceed the expected threshold"
-              description: "More than five failed MFA attempts reached the admin API in ten minutes."
-              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminmfafailurespike"
+              summary: "Counsellor authentication failures exceed the expected threshold"
+              description: "More than ten bounded counsellor authentication failures occurred in ten minutes."
+              resolution: "The alert resolves after the rolling ten-minute counsellor failure count remains below the threshold for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#counsellorauthenticationfailurespike"
+      - eval_time: 4m
+        alertname: AdminAuthenticationMfaFailureSpike
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-admin
+              subject: admin
+              severity: critical
+            exp_annotations:
+              summary: "Administrator password or MFA failures exceed the expected threshold"
+              description: "More than five bounded administrator password or MFA failures occurred in ten minutes."
+              resolution: "The alert resolves after the rolling ten-minute administrator failure count remains below the threshold for one minute."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminauthenticationmfafailurespike"
+      - eval_time: 4m
+        alertname: ElevatedHttp401Rate
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "HTTP 401 responses are elevated"
+              description: "api-web returned at least 25 HTTP 401 responses in five minutes."
+              resolution: "The alert resolves after the rolling five-minute 401 count remains below 25 for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp401rate"
+      - eval_time: 4m
+        alertname: ElevatedHttp403Rate
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "HTTP 403 responses are elevated"
+              description: "api-web returned at least 10 HTTP 403 responses in five minutes."
+              resolution: "The alert resolves after the rolling five-minute 403 count remains below 10 for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp403rate"
+      - eval_time: 7m
+        alertname: ElevatedHttp429Rate
+        exp_alerts:
+          - exp_labels:
+              owner: platform-response-owner-tbd
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "HTTP 429 responses are elevated"
+              description: "api-web returned at least 25 HTTP 429 responses in five minutes."
+              resolution: "The alert resolves after the rolling five-minute 429 count remains below 25 for five minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp429rate"
+      - eval_time: 4m
+        alertname: ElevatedHttp500Rate
+        exp_alerts:
+          - exp_labels:
+              owner: backend-response-owner-tbd
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "HTTP 500 responses are elevated"
+              description: "api-web returned at least five HTTP 500 responses in five minutes."
+              resolution: "The alert resolves after the rolling five-minute 500 count remains below five for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp500rate"
+      - eval_time: 2m
+        alertname: PrivilegedRoleChanged
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "A privileged role assignment changed"
+              description: "api-web recorded a counsellor privileged-role assignment, removal, or transition in the last five minutes."
+              resolution: "The event alert resolves when the five-minute change window expires; the signed audit event remains durable evidence."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#privilegedrolechanged"
+      - eval_time: 2m
+        alertname: AdminRoleChanged
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-admin
+              severity: critical
+            exp_annotations:
+              summary: "An administrator role assignment changed"
+              description: "api-admin recorded an administrator role assignment, removal, or transition in the last five minutes."
+              resolution: "The event alert resolves when the five-minute change window expires; the signed audit event remains durable evidence."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminrolechanged"
+
+  - name: bounded HTTP auth and role-change signals resolve after quiet windows
+    interval: 1m
+    input_series:
+      - series: 'menorah_auth_attempts_total{service="api-web",subject="user",method="password",outcome="failure"}'
+        values: '0 30+0x20'
+      - series: 'menorah_auth_attempts_total{service="api-web",subject="counsellor",method="password",outcome="failure"}'
+        values: '0 20+0x20'
+      - series: 'menorah_auth_attempts_total{service="api-admin",subject="admin",method="mfa",outcome="failure"}'
+        values: '0 10+0x20'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/auth/*",status="401"}'
+        values: '0 30+0x20'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/admin/*",status="403"}'
+        values: '0 15+0x20'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/other",status="429"}'
+        values: '0 30+0x20'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/bookings/*",status="500"}'
+        values: '0 10+0x20'
+      - series: 'menorah_privilege_changes_total{service="api-web",category="privileged_role",outcome="success"}'
+        values: '0 1+0x20'
+      - series: 'menorah_privilege_changes_total{service="api-admin",category="admin_role",outcome="success"}'
+        values: '0 1+0x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: UserAuthenticationFailureSpike
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: CounsellorAuthenticationFailureSpike
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: AdminAuthenticationMfaFailureSpike
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ElevatedHttp401Rate
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ElevatedHttp403Rate
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ElevatedHttp429Rate
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ElevatedHttp500Rate
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PrivilegedRoleChanged
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: AdminRoleChanged
+        exp_alerts: []

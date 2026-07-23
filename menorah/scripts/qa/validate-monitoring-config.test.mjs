@@ -72,6 +72,59 @@ test('rejects a backup failure alert without the immediate result metric', () =>
   );
 });
 
+test('rejects a subject-specific auth alert weakened to a generic total', () => {
+  const documents = cloneDocuments();
+  const rule = documents.alerts.groups
+    .flatMap((group) => group.rules)
+    .find((candidate) => candidate.alert === 'CounsellorAuthenticationFailureSpike');
+  rule.expr =
+    'sum(increase(menorah_auth_attempts_total{outcome="failure"}[10m])) > 10';
+
+  assert.match(
+    validateMonitoringDocuments(documents).join('\n'),
+    /CounsellorAuthenticationFailureSpike does not use its bounded application metric contract/,
+  );
+});
+
+test('rejects removal of loaded-account counsellor authentication classification', () => {
+  const documents = cloneDocuments();
+  documents.authRoute = documents.authRoute.replace(
+    "res.locals.authenticationSubject = user.role === 'counsellor' ? 'counsellor' : 'user';",
+    '',
+  );
+
+  assert.match(
+    validateMonitoringDocuments(documents).join('\n'),
+    /password authentication must classify existing counsellor failures/,
+  );
+});
+
+test('rejects raw or unbounded HTTP metric labels', () => {
+  const documents = cloneDocuments();
+  documents.applicationMetrics = documents.applicationMetrics.replace(
+    "labels: ['service', 'route', 'status']",
+    "labels: ['service', 'raw_path', 'status']",
+  );
+
+  assert.match(
+    validateMonitoringDocuments(documents).join('\n'),
+    /HTTP metric labels must remain service, bounded route family, and bounded status/,
+  );
+});
+
+test('rejects removal of signed-audit instrumentation from role changes', () => {
+  const documents = cloneDocuments();
+  documents.userModel = documents.userModel.replace(
+    'recordRoleChange({',
+    'void ({',
+  );
+
+  assert.match(
+    validateMonitoringDocuments(documents).join('\n'),
+    /User role mutations do not retain metric plus signed-audit instrumentation/,
+  );
+});
+
 test('rejects backup execution state mounted read-write', () => {
   const documents = cloneDocuments();
   documents.compose.services['backup-metrics'].volumes =

@@ -18,6 +18,7 @@ const {
 } = require('../config/passwordPolicy');
 const {
   clearMappedSessionCookie,
+  getWebSessionForRequest,
   isCookieTransportRequested,
   setSessionCookieForRequest,
 } = require('../config/webSessions');
@@ -28,6 +29,10 @@ const {
 const { encryptAppleRefreshToken } = require('../utils/appleRefreshTokenEncryption');
 
 const router = express.Router();
+router.use((req, res, next) => {
+  res.locals.authenticationSubject = getWebSessionForRequest(req)?.role || 'user';
+  next();
+});
 const emailNormalizationOptions = {
   gmail_remove_dots: false,
   gmail_remove_subaddress: false,
@@ -531,6 +536,7 @@ router.post('/login', [
     if (!user || !user.isActive) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
+    res.locals.authenticationSubject = user.role === 'counsellor' ? 'counsellor' : 'user';
 
     if (user.isLocked()) {
       // Locked message is acceptable — user already proved they know the email exists

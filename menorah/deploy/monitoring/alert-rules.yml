@@ -475,49 +475,89 @@ groups:
           description: "{{ $labels.service }} recorded at least three audit-sink write failures in ten minutes, sustained across the five-minute hold."
           runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditsinkwritefailures"
 
-      - alert: AuthenticationFailureSpike
-        expr: sum(increase(menorah_security_events_total{event=~"login_attempt|otp_verification|password_reset",outcome="failure"}[10m])) > 20
+      - alert: UserAuthenticationFailureSpike
+        expr: sum by (service, subject) (increase(menorah_auth_attempts_total{subject="user",outcome="failure"}[10m])) > 20
         for: 2m
         labels:
           severity: warning
-          owner: security
+          owner: security-response-owner-tbd
         annotations:
-          summary: "Authentication failures exceed the expected threshold"
-          description: "More than 20 login, OTP, or password-reset failures occurred in ten minutes."
-          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#authenticationfailurespike"
+          summary: "User authentication failures exceed the expected threshold"
+          description: "More than 20 bounded user authentication failures occurred in ten minutes."
+          resolution: "The alert resolves after the rolling ten-minute user failure count remains below the threshold for two minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#userauthenticationfailurespike"
 
-      - alert: MfaFailureSpike
-        expr: sum(increase(menorah_security_events_total{event="mfa_attempt",outcome="failure"}[10m])) > 10
+      - alert: CounsellorAuthenticationFailureSpike
+        expr: sum by (service, subject) (increase(menorah_auth_attempts_total{subject="counsellor",outcome="failure"}[10m])) > 10
         for: 2m
         labels:
           severity: critical
-          owner: security
+          owner: security-response-owner-tbd
         annotations:
-          summary: "MFA failures exceed the expected threshold"
-          description: "More than ten failed MFA attempts occurred in ten minutes."
-          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mfafailurespike"
+          summary: "Counsellor authentication failures exceed the expected threshold"
+          description: "More than ten bounded counsellor authentication failures occurred in ten minutes."
+          resolution: "The alert resolves after the rolling ten-minute counsellor failure count remains below the threshold for two minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#counsellorauthenticationfailurespike"
 
-      - alert: AdminMfaFailureSpike
-        expr: sum(increase(menorah_security_events_total{event="mfa_attempt",outcome="failure",service="api-admin"}[10m])) > 5
+      - alert: AdminAuthenticationMfaFailureSpike
+        expr: sum by (service, subject) (increase(menorah_auth_attempts_total{subject="admin",method=~"password|mfa",outcome="failure"}[10m])) > 5
         for: 1m
         labels:
           severity: critical
-          owner: security
+          owner: security-response-owner-tbd
         annotations:
-          summary: "Admin MFA failures exceed the expected threshold"
-          description: "More than five failed MFA attempts reached the admin API in ten minutes."
-          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminmfafailurespike"
+          summary: "Administrator password or MFA failures exceed the expected threshold"
+          description: "More than five bounded administrator password or MFA failures occurred in ten minutes."
+          resolution: "The alert resolves after the rolling ten-minute administrator failure count remains below the threshold for one minute."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminauthenticationmfafailurespike"
 
-      - alert: AuthorizationDenialSpike
-        expr: sum(increase(menorah_security_events_total{event="authorization_denied",outcome="failure"}[10m])) > 30
+      - alert: ElevatedHttp401Rate
+        expr: sum by (service) (increase(menorah_http_responses_total{status="401"}[5m])) >= 25
         for: 2m
         labels:
           severity: warning
-          owner: security
+          owner: security-response-owner-tbd
         annotations:
-          summary: "Authorization denials exceed the expected threshold"
-          description: "More than 30 instrumented 401/403 authorization denials occurred in ten minutes."
-          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#authorizationdenialspike"
+          summary: "HTTP 401 responses are elevated"
+          description: "{{ $labels.service }} returned at least 25 HTTP 401 responses in five minutes."
+          resolution: "The alert resolves after the rolling five-minute 401 count remains below 25 for two minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp401rate"
+
+      - alert: ElevatedHttp403Rate
+        expr: sum by (service) (increase(menorah_http_responses_total{status="403"}[5m])) >= 10
+        for: 2m
+        labels:
+          severity: warning
+          owner: security-response-owner-tbd
+        annotations:
+          summary: "HTTP 403 responses are elevated"
+          description: "{{ $labels.service }} returned at least 10 HTTP 403 responses in five minutes."
+          resolution: "The alert resolves after the rolling five-minute 403 count remains below 10 for two minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp403rate"
+
+      - alert: ElevatedHttp429Rate
+        expr: sum by (service) (increase(menorah_http_responses_total{status="429"}[5m])) >= 25
+        for: 5m
+        labels:
+          severity: warning
+          owner: platform-response-owner-tbd
+        annotations:
+          summary: "HTTP 429 responses are elevated"
+          description: "{{ $labels.service }} returned at least 25 HTTP 429 responses in five minutes."
+          resolution: "The alert resolves after the rolling five-minute 429 count remains below 25 for five minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp429rate"
+
+      - alert: ElevatedHttp500Rate
+        expr: sum by (service) (increase(menorah_http_responses_total{status="500"}[5m])) >= 5
+        for: 2m
+        labels:
+          severity: critical
+          owner: backend-response-owner-tbd
+        annotations:
+          summary: "HTTP 500 responses are elevated"
+          description: "{{ $labels.service }} returned at least five HTTP 500 responses in five minutes."
+          resolution: "The alert resolves after the rolling five-minute 500 count remains below five for two minutes."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp500rate"
 
       - alert: AdminPermissionDenied
         expr: sum by (service) (increase(menorah_security_events_total{event="admin_permission_denied",outcome="failure"}[5m])) > 0
@@ -551,6 +591,30 @@ groups:
           summary: "Unusually high volume of admin changes"
           description: "More than 20 successful instrumented admin mutations occurred in ten minutes."
           runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminchangeburst"
+
+      - alert: PrivilegedRoleChanged
+        expr: sum by (service) (increase(menorah_privilege_changes_total{category="privileged_role",outcome="success"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+          owner: security-response-owner-tbd
+        annotations:
+          summary: "A privileged role assignment changed"
+          description: "{{ $labels.service }} recorded a counsellor privileged-role assignment, removal, or transition in the last five minutes."
+          resolution: "The event alert resolves when the five-minute change window expires; the signed audit event remains durable evidence."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#privilegedrolechanged"
+
+      - alert: AdminRoleChanged
+        expr: sum by (service) (increase(menorah_privilege_changes_total{category="admin_role",outcome="success"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          owner: security-response-owner-tbd
+        annotations:
+          summary: "An administrator role assignment changed"
+          description: "{{ $labels.service }} recorded an administrator role assignment, removal, or transition in the last five minutes."
+          resolution: "The event alert resolves when the five-minute change window expires; the signed audit event remains durable evidence."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminrolechanged"
 
       - alert: BankDetailsChanged
         expr: sum(increase(menorah_security_events_total{event="bank_details_changed",outcome="success"}[5m])) > 0

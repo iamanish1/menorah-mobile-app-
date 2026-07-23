@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const { recordRoleChange } = require('../utils/securityAudit');
 
 const userSchema = new mongoose.Schema({
   // Authentication fields
@@ -253,6 +254,50 @@ userSchema.index({ passwordResetToken:     1 }, { sparse: true });
 userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 userSchema.index({ 'socialAuth.googleSub': 1 }, uniqueStringIndex('socialAuth.googleSub'));
 userSchema.index({ 'socialAuth.appleSub': 1 }, uniqueStringIndex('socialAuth.appleSub'));
+
+userSchema.pre('save', async function capturePrivilegedRoleChange() {
+  if (!this.isModified('role')) return;
+
+  let previousRole = 'none';
+  if (!this.isNew) {
+    const query = this.constructor.findById(this._id).select('role').lean();
+    const session = this.$session();
+    if (session) query.session(session);
+    const previous = await query;
+    previousRole = previous?.role || 'none';
+  }
+  this.$locals.privilegedRoleChange = {
+    previousRole,
+    nextRole: this.role || 'none',
+  };
+});
+
+userSchema.post('save', function auditPrivilegedRoleChange(document) {
+  const change = this.$locals.privilegedRoleChange;
+  delete this.$locals.privilegedRoleChange;
+  if (!change) return;
+  recordRoleChange({
+    target: document._id,
+    previousRole: change.previousRole,
+    nextRole: change.nextRole,
+  });
+});
+
+userSchema.pre(
+  ['updateOne', 'updateMany', 'findOneAndUpdate', 'replaceOne'],
+  function rejectUnauditedRoleMutation(next) {
+    const update = this.getUpdate() || {};
+    const mutatesRole = Object.prototype.hasOwnProperty.call(update, 'role')
+      || Object.prototype.hasOwnProperty.call(update.$set || {}, 'role')
+      || Object.prototype.hasOwnProperty.call(update.$unset || {}, 'role');
+    if (mutatesRole) {
+      return next(new Error(
+        'Role changes must use a loaded User document and save() so signed audit instrumentation cannot be bypassed.'
+      ));
+    }
+    return next();
+  }
+);
 
 // Pre-save middleware to hash password
 userSchema.pre('save', async function(next) {

@@ -509,22 +509,56 @@ procedure, require pending to return to zero, and run read-only chain
 verification. Do not print connection strings, signing material, or event
 payloads while collecting evidence.
 
-### AuthenticationFailureSpike
+### UserAuthenticationFailureSpike
 
-Owner: `security`. Break down by service and correlate redacted audit logs,
-source networks, and account targets. Apply approved abuse controls without
-blocking responders or exposing account existence.
+Owner placeholder: `security-response-owner-tbd`. Break down the bounded
+subject/method counters by service and correlate signed, redacted audit logs.
+The threshold is 20 failures in ten minutes with a two-minute hold: high enough
+to avoid paging on individual password mistakes, but deliberately conservative
+until isolated-staging baselines assign the final owner and tune it.
 
-### MfaFailureSpike
+### CounsellorAuthenticationFailureSpike
 
-Owner: `security`. Check admin/user MFA audit events, targeted identities, and
-source networks. Escalate suspected credential stuffing or MFA fatigue.
+Owner placeholder: `security-response-owner-tbd`. Correlate the counsellor
+surface, trusted browser origin, and signed audit events without putting
+identity data in metric labels. The lower ten-failure threshold reflects the
+smaller expected counsellor population and requires staging calibration.
 
-### AdminMfaFailureSpike
+### AdminAuthenticationMfaFailureSpike
 
-Owner: `security`. Focus on MFA failures recorded by `api-admin`, confirm the
-targeted admin identities from redacted audit evidence, and activate the
-privileged-access incident process when activity is unexplained.
+Owner placeholder: `security-response-owner-tbd`. Treat more than five admin
+password/MFA failures in ten minutes as privileged-access triage. Confirm the
+targeted identities only from signed audit evidence, not Prometheus labels.
+The one-minute hold and owner remain subject to staging approval.
+
+### ElevatedHttp401Rate
+
+Owner placeholder: `security-response-owner-tbd`. Use the bounded service and
+route-family counters to identify the affected surface, then correlate signed
+authentication/authorization events. The initial threshold is 25 in five
+minutes with a two-minute hold and requires staging baseline approval.
+
+### ElevatedHttp403Rate
+
+Owner placeholder: `security-response-owner-tbd`. Review authorization-policy
+changes and signed denial events. The threshold of ten in five minutes is lower
+than 401 because repeated authenticated denials can signal role drift or abuse.
+Do not weaken authorization to clear the alert.
+
+### ElevatedHttp429Rate
+
+Owner placeholder: `platform-response-owner-tbd`. Confirm which service and
+bounded route family is rate limiting, then distinguish legitimate traffic,
+client retry storms, and abuse. The initial threshold is 25 in five minutes
+with a five-minute hold; calibrate it in isolated staging.
+
+### ElevatedHttp500Rate
+
+Owner placeholder: `backend-response-owner-tbd`. Correlate the service and
+bounded route family with error logs, dependencies, and release SHA. Five
+responses in five minutes with a two-minute hold is intentionally conservative
+until staging traffic establishes a baseline. Resolution requires the rolling
+count to remain below threshold; it does not erase incident evidence.
 
 ### AuthorizationDenialSpike
 
@@ -549,6 +583,21 @@ failure reason from signed audit evidence. Confirm no partial state change.
 
 Owner: `security`. Confirm the activity is tied to an approved operation and
 expected actor. Escalate unexplained volume as a privileged-access incident.
+
+### PrivilegedRoleChanged
+
+Owner placeholder: `security-response-owner-tbd`. Review the signed
+`privileged_role_changed` event to distinguish an approved counsellor-role
+assignment, removal, or transition. The metric exposes only service, category,
+and outcome; identities remain in access-controlled audit evidence. The alert
+expires after the five-minute event window but still requires disposition.
+
+### AdminRoleChanged
+
+Owner placeholder: `security-response-owner-tbd`. Treat any administrator-role
+assignment, removal, or transition as a critical review event. Verify actor,
+target, approval, and resulting access from the signed audit chain. The alert
+expires after the five-minute event window; durable audit evidence remains.
 
 ### BankDetailsChanged
 

@@ -29,6 +29,22 @@ const FILES = {
     'ubuntu',
     'install-backup-schedule.sh',
   ),
+  applicationMetrics: path.join(
+    MENORAH_ROOT,
+    'backend',
+    'src',
+    'utils',
+    'applicationMetrics.js',
+  ),
+  securityAudit: path.join(
+    MENORAH_ROOT,
+    'backend',
+    'src',
+    'utils',
+    'securityAudit.js',
+  ),
+  authRoute: path.join(MENORAH_ROOT, 'backend', 'src', 'routes', 'auth.js'),
+  userModel: path.join(MENORAH_ROOT, 'backend', 'src', 'models', 'User.js'),
   dockerExporter: path.join(
     MENORAH_ROOT,
     'deploy',
@@ -195,6 +211,10 @@ export const loadMonitoringDocuments = () => ({
   backupResultRecorder: fs.readFileSync(FILES.backupResultRecorder, 'utf8'),
   backupNow: fs.readFileSync(FILES.backupNow, 'utf8'),
   backupSchedule: fs.readFileSync(FILES.backupSchedule, 'utf8'),
+  applicationMetrics: fs.readFileSync(FILES.applicationMetrics, 'utf8'),
+  securityAudit: fs.readFileSync(FILES.securityAudit, 'utf8'),
+  authRoute: fs.readFileSync(FILES.authRoute, 'utf8'),
+  userModel: fs.readFileSync(FILES.userModel, 'utf8'),
   dockerExporter: fs.readFileSync(FILES.dockerExporter, 'utf8'),
   mongoUsers: fs.readFileSync(FILES.mongoUsers, 'utf8'),
   alloy: fs.readFileSync(FILES.alloy, 'utf8'),
@@ -229,6 +249,10 @@ export const validateMonitoringDocuments = (documents) => {
     backupResultRecorder,
     backupNow,
     backupSchedule,
+    applicationMetrics,
+    securityAudit,
+    authRoute,
+    userModel,
     dockerExporter,
     mongoUsers,
     alloy,
@@ -374,6 +398,100 @@ export const validateMonitoringDocuments = (documents) => {
     errors,
     backupFailureRule?.annotations?.resolution,
     'BackupJobFailed is missing a clear resolution message',
+  );
+
+  const phaseFourAlerts = new Map([
+    ['UserAuthenticationFailureSpike', /menorah_auth_attempts_total\{[^}]*subject="user"/],
+    ['CounsellorAuthenticationFailureSpike', /menorah_auth_attempts_total\{[^}]*subject="counsellor"/],
+    ['AdminAuthenticationMfaFailureSpike', /menorah_auth_attempts_total\{[^}]*subject="admin"[^}]*method=~"password\|mfa"/],
+    ['ElevatedHttp401Rate', /menorah_http_responses_total\{status="401"\}/],
+    ['ElevatedHttp403Rate', /menorah_http_responses_total\{status="403"\}/],
+    ['ElevatedHttp429Rate', /menorah_http_responses_total\{status="429"\}/],
+    ['ElevatedHttp500Rate', /menorah_http_responses_total\{status="500"\}/],
+    ['PrivilegedRoleChanged', /menorah_privilege_changes_total\{[^}]*category="privileged_role"/],
+    ['AdminRoleChanged', /menorah_privilege_changes_total\{[^}]*category="admin_role"/],
+  ]);
+  for (const [alertName, metricContract] of phaseFourAlerts) {
+    const rule = rules.find((candidate) => candidate.alert === alertName);
+    requireValue(errors, rule, `missing required P0 alert: ${alertName}`);
+    requireValue(
+      errors,
+      metricContract.test(String(rule?.expr || '')),
+      `${alertName} does not use its bounded application metric contract`,
+    );
+    requireValue(errors, rule?.for !== undefined, `${alertName} has no duration`);
+    requireValue(
+      errors,
+      String(rule?.labels?.owner || '').endsWith('-owner-tbd'),
+      `${alertName} must retain an explicit response-owner placeholder`,
+    );
+    requireValue(
+      errors,
+      rule?.annotations?.resolution,
+      `${alertName} is missing a clear resolution message`,
+    );
+  }
+  for (const ambiguousAlert of [
+    'AuthenticationFailureSpike',
+    'MfaFailureSpike',
+    'AdminMfaFailureSpike',
+    'AuthorizationDenialSpike',
+  ]) {
+    requireValue(
+      errors,
+      !alertNames.has(ambiguousAlert),
+      `${ambiguousAlert} overlaps the required subject/status-specific P0 rules`,
+    );
+  }
+
+  for (const metricName of [
+    'menorah_http_responses_total',
+    'menorah_auth_attempts_total',
+    'menorah_privilege_changes_total',
+  ]) {
+    requireValue(
+      errors,
+      applicationMetrics.includes(`# TYPE ${metricName} counter`),
+      `application metric producer does not declare ${metricName}`,
+    );
+  }
+  for (const routeContract of [
+    "['/api/auth', '/api/auth/*']",
+    "['/api/admin', '/api/admin/*']",
+    "return '/api/other'",
+    "return '/other'",
+  ]) {
+    requireValue(
+      errors,
+      applicationMetrics.includes(routeContract),
+      `route-family normalizer is missing bounded contract: ${routeContract}`,
+    );
+  }
+  requireValue(
+    errors,
+    applicationMetrics.includes("labels: ['service', 'route', 'status']"),
+    'HTTP metric labels must remain service, bounded route family, and bounded status',
+  );
+  requireValue(
+    errors,
+    securityAudit.includes('recordHttpResponse({ req, statusCode })')
+      && securityAudit.includes('recordAuthenticationAttempt({'),
+    'request audit middleware does not emit HTTP and authentication metrics',
+  );
+  requireValue(
+    errors,
+    authRoute.includes(
+      "res.locals.authenticationSubject = user.role === 'counsellor' ? 'counsellor' : 'user';",
+    ),
+    'password authentication must classify existing counsellor failures from the loaded account',
+  );
+  requireValue(
+    errors,
+    securityAudit.includes('recordRoleChange')
+      && userModel.includes("isModified('role')")
+      && userModel.includes('recordRoleChange({')
+      && userModel.includes('Role changes must use a loaded User document and save()'),
+    'User role mutations do not retain metric plus signed-audit instrumentation',
   );
 
   const exportedContainerMetrics = new Set(
