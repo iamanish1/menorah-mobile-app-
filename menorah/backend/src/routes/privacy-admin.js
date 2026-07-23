@@ -5,6 +5,9 @@ const {
   requireRecentAdminMfa,
 } = require('../middleware/auth');
 const {
+  requireAdminPermission,
+} = require('../middleware/adminAuthorization');
+const {
   requirePrivacyLegalHold,
   requirePrivacyReader,
   requirePrivacyReviewer,
@@ -17,6 +20,7 @@ const {
 const { recordSecurityEvent } = require('../utils/securityAudit');
 
 const router = express.Router();
+const requireOperationalPrivacyAccess = requireAdminPermission('privacy_access');
 router.use((_req, res, next) => {
   res.set('Cache-Control', 'no-store');
   res.set('Pragma', 'no-cache');
@@ -70,31 +74,38 @@ const requireObjectId = (req, res, next) => {
   return next();
 };
 
-router.get('/requests', adminAuth, requirePrivacyReader, async (req, res) => {
-  if (req.query.type && !RIGHTS_TYPES.has(req.query.type)) {
-    return res.status(400).json({ success: false, code: 'PRIVACY_REQUEST_TYPE_INVALID' });
+router.get(
+  '/requests',
+  adminAuth,
+  requireOperationalPrivacyAccess,
+  requirePrivacyReader,
+  async (req, res) => {
+    if (req.query.type && !RIGHTS_TYPES.has(req.query.type)) {
+      return res.status(400).json({ success: false, code: 'PRIVACY_REQUEST_TYPE_INVALID' });
+    }
+    if (req.query.status && !RIGHTS_STATUSES.has(req.query.status)) {
+      return res.status(400).json({ success: false, code: 'PRIVACY_REQUEST_STATUS_INVALID' });
+    }
+    try {
+      const requests = await privacyRightsWorkflow.listAdminRequests({
+        requestType: req.query.type,
+        status: req.query.status,
+        limit: req.query.limit,
+      });
+      return res.json({
+        success: true,
+        data: { requests: requests.map(serializeRightsRequest) },
+      });
+    } catch (error) {
+      return sendError(res, error);
+    }
   }
-  if (req.query.status && !RIGHTS_STATUSES.has(req.query.status)) {
-    return res.status(400).json({ success: false, code: 'PRIVACY_REQUEST_STATUS_INVALID' });
-  }
-  try {
-    const requests = await privacyRightsWorkflow.listAdminRequests({
-      requestType: req.query.type,
-      status: req.query.status,
-      limit: req.query.limit,
-    });
-    return res.json({
-      success: true,
-      data: { requests: requests.map(serializeRightsRequest) },
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
+);
 
 router.get(
   '/requests/:id/payload',
   adminAuth,
+  requireOperationalPrivacyAccess,
   requirePrivacyReviewer,
   requireRecentAdminMfa,
   requireObjectId,
@@ -128,6 +139,7 @@ router.get(
 router.post(
   '/requests/:id/status',
   adminAuth,
+  requireOperationalPrivacyAccess,
   requirePrivacyReviewer,
   requireRecentAdminMfa,
   requireObjectId,
@@ -155,6 +167,7 @@ router.post(
 router.post(
   '/requests/:id/legal-hold',
   adminAuth,
+  requireOperationalPrivacyAccess,
   requirePrivacyLegalHold,
   requireRecentAdminMfa,
   requireObjectId,
@@ -183,6 +196,7 @@ router.post(
 router.get(
   '/deletion-requests',
   adminAuth,
+  requireOperationalPrivacyAccess,
   requirePrivacyReader,
   async (req, res) => {
     if (req.query.status && !DELETION_STATUSES.has(req.query.status)) {
@@ -209,6 +223,7 @@ router.get(
 router.post(
   '/deletion-requests/:id/status',
   adminAuth,
+  requireOperationalPrivacyAccess,
   requirePrivacyReviewer,
   requireRecentAdminMfa,
   requireObjectId,
@@ -237,6 +252,7 @@ router.post(
 router.post(
   '/deletion-requests/:id/legal-hold',
   adminAuth,
+  requireOperationalPrivacyAccess,
   requirePrivacyLegalHold,
   requireRecentAdminMfa,
   requireObjectId,

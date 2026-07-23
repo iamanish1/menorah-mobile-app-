@@ -3,14 +3,25 @@ const { body, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
-const { adminAuth } = require('../middleware/auth');
+const { adminAuth, requireRecentAdminMfa } = require('../middleware/auth');
+const {
+  requireAssignedAdminRole,
+} = require('../middleware/adminAuthorization');
 const { getRedisClient } = require('../config/redis');
+const {
+  resolveAdminRoleGrant,
+} = require('../config/adminPermissions');
 const {
   resolvePrivacyAdminGrant,
 } = require('../config/privacyAdminPermissions');
+const {
+  PASSWORD_STRENGTH_MESSAGE,
+  PASSWORD_STRENGTH_OPTIONS,
+} = require('../config/passwordPolicy');
 const { sendOTPEmail } = require('../utils/email');
 const { signAdminToken } = require('../utils/authTokens');
 const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const { recordSecurityEvent } = require('../utils/securityAudit');
 const {
   adminMfaKey,
   createAdminMfaChallengeRecord,
@@ -27,6 +38,60 @@ const router = express.Router();
 const isAdminMfaRequired = () =>
   process.env.ADMIN_MFA_REQUIRED === 'true' ||
   (process.env.NODE_ENV === 'production' && process.env.ADMIN_MFA_REQUIRED !== 'false');
+
+const recordAdminLoginAccessDenial = (req, res, user, {
+  reason,
+  statusCode,
+}) => {
+  res.locals.securityAuthorizationLogged = true;
+  try {
+    recordSecurityEvent('admin_permission_denied', {
+      req,
+      user,
+      outcome: 'failure',
+      statusCode,
+      details: { reason },
+    });
+  } catch (error) {
+    console.error(
+      'Admin login authorization audit error:',
+      error?.code || error?.name || 'ADMIN_LOGIN_AUTHORIZATION_AUDIT_FAILED'
+    );
+  }
+};
+
+const authorizeAdminLogin = (req, res, user) => {
+  const grant = resolveAdminRoleGrant({
+    adminId: user?._id,
+    env: process.env,
+  });
+  res.locals.securityActor = user;
+  if (!grant.configured) {
+    recordAdminLoginAccessDenial(req, res, user, {
+      reason: 'admin_role_configuration_invalid',
+      statusCode: 503,
+    });
+    res.status(503).json({
+      success: false,
+      code: 'ADMIN_ROLE_CONFIGURATION_INVALID',
+      message: 'Administration is temporarily unavailable.',
+    });
+    return false;
+  }
+  if (!grant.role) {
+    recordAdminLoginAccessDenial(req, res, user, {
+      reason: 'admin_role_assignment_required',
+      statusCode: 403,
+    });
+    res.status(403).json({
+      success: false,
+      code: 'ADMIN_ROLE_ASSIGNMENT_REQUIRED',
+      message: 'This admin account has no operational role assignment.',
+    });
+    return false;
+  }
+  return true;
+};
 
 const createAdminMfaChallenge = async (user) => {
   const challengeId = crypto.randomUUID();
@@ -87,7 +152,18 @@ const sendAdminSessionResponse = (req, res, { message, token, user }) => {
   });
 };
 
-const serializeAdmin = (user) => ({
+const serializeAdmin = (user) => {
+  const operationalGrant = resolveAdminRoleGrant({
+    adminId: user._id,
+    env: process.env,
+  });
+  const privacyPermissions = operationalGrant.permissions.includes('privacy_access')
+    ? resolvePrivacyAdminGrant({
+        adminId: user._id,
+        env: process.env,
+      }).permissions
+    : [];
+  return {
   _id: user._id.toString(),
   id: user._id.toString(),
   firstName: user.firstName,
@@ -95,14 +171,14 @@ const serializeAdmin = (user) => ({
   email: user.email,
   phone: user.phone,
   role: user.role,
-  privacyPermissions: resolvePrivacyAdminGrant({
-    adminId: user._id,
-    env: process.env,
-  }).permissions,
+  operationalRole: operationalGrant.role,
+  operationalPermissions: operationalGrant.permissions,
+  privacyPermissions,
   isEmailVerified: user.isEmailVerified,
   isPhoneVerified: user.isPhoneVerified,
   profileImage: user.profileImage || null,
-});
+  };
+};
 
 router.post(['/login', '/admin/login'], [
   body('email').isEmail().normalizeEmail(),
@@ -137,6 +213,7 @@ router.post(['/login', '/admin/login'], [
     if (user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Access denied. Admin accounts only.' });
     }
+    if (!authorizeAdminLogin(req, res, user)) return;
 
     if (isAdminMfaRequired()) {
       const challengeId = await createAdminMfaChallenge(user);
@@ -188,6 +265,7 @@ router.post(['/login/mfa', '/admin/login/mfa'], [
     if (!user || !user.isActive || user.role !== 'admin') {
       return res.status(401).json({ success: false, message: 'Invalid or expired MFA challenge' });
     }
+    if (!authorizeAdminLogin(req, res, user)) return;
 
     await user.resetLoginAttempts();
 
@@ -203,7 +281,7 @@ router.post(['/login/mfa', '/admin/login/mfa'], [
   }
 });
 
-router.get('/me', adminAuth, async (req, res) => {
+router.get('/me', adminAuth, requireAssignedAdminRole, async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select(
       '-password -emailVerificationToken -passwordResetToken -passwordResetExpires -loginAttempts -lockUntil'
@@ -219,6 +297,79 @@ router.get('/me', adminAuth, async (req, res) => {
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
+
+router.put(
+  ['/change-password', '/admin/change-password'],
+  adminAuth,
+  requireAssignedAdminRole,
+  requireRecentAdminMfa,
+  [
+    body('currentPassword')
+      .notEmpty()
+      .withMessage('Current password is required')
+      .isLength({ max: 128 })
+      .withMessage('Current password is invalid'),
+    body('newPassword')
+      .isStrongPassword({ ...PASSWORD_STRENGTH_OPTIONS })
+      .withMessage(PASSWORD_STRENGTH_MESSAGE),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array(),
+        });
+      }
+
+      const user = await User.findById(req.user._id)
+        .select('+password +passwordAuthEnabled');
+      if (!user || !user.isActive || user.role !== 'admin') {
+        return res.status(404).json({
+          success: false,
+          message: 'Admin account not found.',
+        });
+      }
+
+      const currentPasswordValid = await user.comparePassword(req.body.currentPassword);
+      if (!currentPasswordValid) {
+        return res.status(400).json({
+          success: false,
+          message: 'Current password is incorrect.',
+        });
+      }
+      if (await user.comparePassword(req.body.newPassword)) {
+        return res.status(409).json({
+          success: false,
+          message: 'New password must be different from the current password.',
+        });
+      }
+
+      user.password = req.body.newPassword;
+      user.passwordAuthEnabled = true;
+      revokeAllSessions(user, { passwordChanged: true });
+      await user.save();
+
+      const token = req.auth?.token || req.header('Authorization')?.replace(/^Bearer\s+/i, '');
+      if (token) await blockToken(token);
+      clearMappedSessionCookie(req, res);
+      res.locals.securitySessionRevoked = user;
+      res.locals.securitySessionRevocationAction = 'admin_password_changed';
+      return res.json({
+        success: true,
+        message: 'Password changed. Sign in again on every device.',
+      });
+    } catch (error) {
+      console.error(
+        'Admin change password error:',
+        error?.code || error?.name || 'ADMIN_PASSWORD_CHANGE_FAILED'
+      );
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+);
 
 router.post(['/logout', '/admin/logout'], adminAuth, async (req, res) => {
   try {

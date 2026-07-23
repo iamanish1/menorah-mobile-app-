@@ -20,14 +20,20 @@ const buildApp = () => {
 
 describe('payout initiation gate', () => {
   const originalValue = process.env.PAYOUTS_ENABLED;
+  const originalRoleGrants = process.env.ADMIN_ROLE_GRANTS_JSON;
 
   beforeEach(() => {
     process.env.PAYOUTS_ENABLED = 'false';
+    process.env.ADMIN_ROLE_GRANTS_JSON = JSON.stringify([
+      { adminId: '64f000000000000000000001', role: 'admin' },
+    ]);
   });
 
   afterAll(() => {
     if (originalValue === undefined) delete process.env.PAYOUTS_ENABLED;
     else process.env.PAYOUTS_ENABLED = originalValue;
+    if (originalRoleGrants === undefined) delete process.env.ADMIN_ROLE_GRANTS_JSON;
+    else process.env.ADMIN_ROLE_GRANTS_JSON = originalRoleGrants;
   });
 
   test('rejects new payout requests while the default-off gate is disabled', async () => {

@@ -13,6 +13,9 @@ const SocialPromptSettings = require('../models/SocialPromptSettings');
 const SocialWorkflow = require('../models/SocialWorkflow');
 const SocialGenerationRun = require('../models/SocialGenerationRun');
 const { adminAuth } = require('../middleware/auth');
+const {
+  requireAdminPermission,
+} = require('../middleware/adminAuthorization');
 const { storeMediaBuffer } = require('../services/mediaStorage');
 const { createSocialPostDraft } = require('../services/socialStudio/socialStudio.service');
 const {
@@ -56,6 +59,9 @@ const generationLimiter = rateLimit({
 });
 
 router.use(adminAuth);
+// Social Studio includes content search, publishing credentials, and file
+// uploads. It is a content function, not a general support/admin surface.
+router.use(requireAdminPermission('content_manage'));
 
 const validationErrorResponse = (res, errors) => res.status(400).json({
   success: false,

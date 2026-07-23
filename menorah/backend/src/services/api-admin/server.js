@@ -1,7 +1,15 @@
 const { startService } = require('../../shared/app/startService');
 const {
+  enforceAdminPermissionAuthority,
+} = require('../adminPermissionAuthority');
+const {
   enforcePrivacyAdminPermissionAuthority,
 } = require('../privacyAdminPermissionAuthority');
+
+const enforceAdminAuthorities = async (context) => {
+  await enforceAdminPermissionAuthority(context);
+  await enforcePrivacyAdminPermissionAuthority(context);
+};
 
 const start = () =>
   startService({
@@ -9,7 +17,7 @@ const start = () =>
     routeProfile: 'api-admin',
     defaultPort: 4004,
     enableSocketsDefault: false,
-    afterDatabaseConnect: enforcePrivacyAdminPermissionAuthority
+    afterDatabaseConnect: enforceAdminAuthorities
   });
 
 if (require.main === module) {

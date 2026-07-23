@@ -4,6 +4,9 @@ const Article = require('../models/Article');
 const ArticleGenerationRun = require('../models/ArticleGenerationRun');
 const { adminAuth } = require('../middleware/auth');
 const {
+  requireAdminPermission,
+} = require('../middleware/adminAuthorization');
+const {
   countArticleWords,
   createManualGenerationRun,
   createReviewArticle,
@@ -14,6 +17,8 @@ const {
 } = require('../services/articleGenerationService');
 
 const router = express.Router();
+const requireContentRead = requireAdminPermission('content_read');
+const requireContentManage = requireAdminPermission('content_manage');
 
 const ARTICLE_SELECT_LIST = '-contentBlocks';
 const EDITABLE_FIELDS = [
@@ -182,7 +187,7 @@ router.get('/categories/list', async (req, res) => {
 });
 
 // POST /api/articles/admin/generation-runs
-router.post('/admin/generation-runs', adminAuth, [
+router.post('/admin/generation-runs', adminAuth, requireContentManage, [
   body('count').optional().isInt({ min: 1, max: getManualMaxCount() })
 ], async (req, res) => {
   try {
@@ -209,7 +214,7 @@ router.post('/admin/generation-runs', adminAuth, [
 });
 
 // POST /api/articles/admin/generation-runs/cancel-active
-router.post('/admin/generation-runs/cancel-active', adminAuth, async (req, res) => {
+router.post('/admin/generation-runs/cancel-active', adminAuth, requireContentManage, async (req, res) => {
   try {
     const now = new Date();
     const result = await ArticleGenerationRun.updateMany({
@@ -243,7 +248,7 @@ router.post('/admin/generation-runs/cancel-active', adminAuth, async (req, res) 
 });
 
 // GET /api/articles/admin/generation-runs/:id
-router.get('/admin/generation-runs/:id', adminAuth, [
+router.get('/admin/generation-runs/:id', adminAuth, requireContentRead, [
   param('id').isMongoId().withMessage('Invalid run ID')
 ], async (req, res) => {
   try {
@@ -271,7 +276,7 @@ router.get('/admin/generation-runs/:id', adminAuth, [
 });
 
 // GET /api/articles/admin
-router.get('/admin', adminAuth, [
+router.get('/admin', adminAuth, requireContentRead, [
   query('status').optional().isIn(['all', 'draft', 'review', 'published', 'archived', 'rejected']),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 50 }),
@@ -321,7 +326,7 @@ router.get('/admin', adminAuth, [
 });
 
 // POST /api/articles/admin/generate
-router.post('/admin/generate', adminAuth, articleInputValidators, async (req, res) => {
+router.post('/admin/generate', adminAuth, requireContentManage, articleInputValidators, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -341,7 +346,7 @@ router.post('/admin/generate', adminAuth, articleInputValidators, async (req, re
 });
 
 // GET /api/articles/admin/:id
-router.get('/admin/:id', adminAuth, [
+router.get('/admin/:id', adminAuth, requireContentRead, [
   param('id').isMongoId().withMessage('Invalid article ID')
 ], async (req, res) => {
   try {
@@ -366,7 +371,7 @@ router.get('/admin/:id', adminAuth, [
 });
 
 // PATCH /api/articles/admin/:id
-router.patch('/admin/:id', adminAuth, [
+router.patch('/admin/:id', adminAuth, requireContentManage, [
   param('id').isMongoId().withMessage('Invalid article ID'),
   body('title').optional().trim().isLength({ min: 3, max: 200 }),
   body('excerpt').optional().trim().isLength({ min: 10, max: 800 }),
@@ -426,7 +431,7 @@ router.patch('/admin/:id', adminAuth, [
 });
 
 // POST /api/articles/admin/:id/publish
-router.post('/admin/:id/publish', adminAuth, [
+router.post('/admin/:id/publish', adminAuth, requireContentManage, [
   param('id').isMongoId().withMessage('Invalid article ID')
 ], async (req, res) => {
   try {
@@ -463,7 +468,7 @@ router.post('/admin/:id/publish', adminAuth, [
 });
 
 // POST /api/articles/admin/:id/reject
-router.post('/admin/:id/reject', adminAuth, [
+router.post('/admin/:id/reject', adminAuth, requireContentManage, [
   param('id').isMongoId().withMessage('Invalid article ID'),
   body('reason').optional().isString().trim().isLength({ max: 500 })
 ], async (req, res) => {
@@ -501,7 +506,7 @@ router.post('/admin/:id/reject', adminAuth, [
 });
 
 // DELETE /api/articles/admin/:id
-router.delete('/admin/:id', adminAuth, [
+router.delete('/admin/:id', adminAuth, requireContentManage, [
   param('id').isMongoId().withMessage('Invalid article ID')
 ], async (req, res) => {
   try {

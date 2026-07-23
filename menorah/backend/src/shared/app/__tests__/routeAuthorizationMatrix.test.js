@@ -49,6 +49,49 @@ const SIGNED_WEBHOOK_ROUTES = new Set([
   'video:POST:/livekit-webhook',
 ]);
 
+const ADMIN_ROUTE_PERMISSIONS = Object.freeze({
+  'GET:/stats': 'platform_read',
+  'GET:/stats/users': 'support_read',
+  'GET:/server-usage': 'platform_read',
+  'GET:/counsellors': 'clinical_read',
+  'GET:/counsellors/:id': 'clinical_read',
+  'PUT:/counsellors/:id/start-review': 'clinical_manage',
+  'PUT:/counsellors/:id/approve': 'clinical_manage',
+  'PUT:/counsellors/:id/reject': 'clinical_manage',
+  'POST:/counsellors/:id/generate-password': 'clinical_manage',
+  'PUT:/counsellors/:id/block': 'clinical_manage',
+  'POST:/counsellors/:id/reverification-invite': 'clinical_manage',
+  'PUT:/counsellors/:id/expire': 'clinical_manage',
+  'GET:/counsellors/:id/booking-stats': 'clinical_read',
+  'GET:/users': 'support_read',
+  'GET:/revenue': 'finance_read',
+  'GET:/revenue/counsellors': 'finance_read',
+  'GET:/revenue/counsellors/:id': 'finance_read',
+  'POST:/payouts/:counsellorId': 'finance_payout_request',
+  'POST:/payouts/:payoutId/approve': 'finance_payout_approve',
+  'GET:/payouts': 'finance_read',
+  'GET:/payouts/counsellor/:counsellorId': 'finance_read',
+  'GET:/ekyc/reviews': 'clinical_read',
+  'PUT:/ekyc/reviews/:id/approve': 'clinical_manage',
+  'PUT:/ekyc/reviews/:id/reject': 'clinical_manage',
+  'GET:/bookings': 'support_read',
+  'PATCH:/bookings/:id/call-link': 'support_manage',
+});
+
+const ADMIN_FRESH_MFA_ROUTES = new Set([
+  'admin:PUT:/counsellors/:id/start-review',
+  'admin:PUT:/counsellors/:id/approve',
+  'admin:PUT:/counsellors/:id/reject',
+  'admin:POST:/counsellors/:id/generate-password',
+  'admin:PUT:/counsellors/:id/block',
+  'admin:POST:/counsellors/:id/reverification-invite',
+  'admin:PUT:/counsellors/:id/expire',
+  'admin:POST:/payouts/:payoutId/approve',
+  'admin:PUT:/ekyc/reviews/:id/approve',
+  'admin:PUT:/ekyc/reviews/:id/reject',
+  'admin:PATCH:/bookings/:id/call-link',
+]);
+
 const expandRoute = (routerKey, layer) => {
   const paths = Array.isArray(layer.route.path) ? layer.route.path : [layer.route.path];
   const methods = Object.keys(layer.route.methods).map((method) => method.toUpperCase());
@@ -57,6 +100,11 @@ const expandRoute = (routerKey, layer) => {
     method,
     path: routePath,
     middleware: layer.route.stack.map((handler) => handler.name),
+    requiredAdminPermissions: layer.route.stack
+      .map((handler) => handler.handle?.requiredAdminPermission)
+      .filter(Boolean),
+    requiresAssignedAdminRole: layer.route.stack
+      .some((handler) => handler.handle?.requiresAssignedAdminRole === true),
   })));
 };
 
@@ -94,5 +142,71 @@ describe('complete route authorization matrix', () => {
       .filter((key) => !routeKeys.has(key));
 
     expect(stale).toEqual([]);
+  });
+
+  test('every general admin route has the reviewed operational permission', () => {
+    const actual = Object.fromEntries(
+      routes
+        .filter(({ routerKey }) => routerKey === 'admin')
+        .map((route) => [
+          `${route.method}:${route.path}`,
+          route.requiredAdminPermissions[0],
+        ])
+    );
+
+    expect(actual).toEqual(ADMIN_ROUTE_PERMISSIONS);
+    expect(
+      routes
+        .filter(({ routerKey }) => routerKey === 'admin')
+        .every(({ requiredAdminPermissions }) => requiredAdminPermissions.length === 1)
+    ).toBe(true);
+  });
+
+  test('content, export, and privacy file/payload routes have independent permissions', () => {
+    const articleAdminRoutes = routes.filter(
+      ({ routerKey, path }) => routerKey === 'articles-admin' && path.startsWith('/admin')
+    );
+    expect(articleAdminRoutes).not.toHaveLength(0);
+    expect(articleAdminRoutes.every(({ requiredAdminPermissions }) => (
+      requiredAdminPermissions.length === 1
+      && ['content_read', 'content_manage'].includes(requiredAdminPermissions[0])
+    ))).toBe(true);
+
+    const privacyAdminRoutes = routes.filter(({ routerKey }) => routerKey === 'privacy-admin');
+    expect(privacyAdminRoutes).not.toHaveLength(0);
+    expect(privacyAdminRoutes.every(({ requiredAdminPermissions }) => (
+      requiredAdminPermissions.length === 1
+      && requiredAdminPermissions[0] === 'privacy_access'
+    ))).toBe(true);
+
+    const socialRouter = routeDefinitions['admin-social-studio'].router;
+    const inheritedSocialPermissions = (socialRouter.stack || [])
+      .filter((layer) => !layer.route)
+      .map((layer) => layer.handle?.requiredAdminPermission)
+      .filter(Boolean);
+    expect(inheritedSocialPermissions).toEqual(['content_manage']);
+  });
+
+  test('admin self-service rechecks a live role assignment without blocking logout', () => {
+    const authAdminRoutes = routes.filter(({ routerKey }) => routerKey === 'auth-admin');
+    const byKey = new Map(authAdminRoutes.map((route) => [route.key, route]));
+
+    expect(byKey.get('auth-admin:GET:/me')?.requiresAssignedAdminRole).toBe(true);
+    expect(byKey.get('auth-admin:PUT:/change-password')?.requiresAssignedAdminRole).toBe(true);
+    expect(byKey.get('auth-admin:PUT:/admin/change-password')?.requiresAssignedAdminRole).toBe(true);
+    expect(byKey.get('auth-admin:POST:/logout')?.requiresAssignedAdminRole).toBe(false);
+    expect(byKey.get('auth-admin:POST:/logout-all')?.requiresAssignedAdminRole).toBe(false);
+  });
+
+  test('clinical, payout-approval, and call-link mutations retain fresh MFA', () => {
+    const missingFreshMfa = routes
+      .filter(({ key }) => ADMIN_FRESH_MFA_ROUTES.has(key))
+      .filter(({ middleware }) => !middleware.includes('requireRecentAdminMfa'))
+      .map(({ key }) => key);
+
+    expect(missingFreshMfa).toEqual([]);
+    expect(
+      [...ADMIN_FRESH_MFA_ROUTES].every((key) => routes.some((route) => route.key === key))
+    ).toBe(true);
   });
 });

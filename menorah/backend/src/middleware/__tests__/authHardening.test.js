@@ -242,6 +242,68 @@ describe('authentication role and session hardening', () => {
       .expect(401);
   });
 
+  test.each([
+    ['stale role', makeAccount({ id: ADMIN_ID, role: 'user', sessionVersion: 2 })],
+    ['stale session', makeAccount({ id: ADMIN_ID, role: 'admin', sessionVersion: 3 })],
+    ['suspended account', makeAccount({
+      id: ADMIN_ID,
+      role: 'admin',
+      sessionVersion: 2,
+      isActive: false,
+    })],
+    ['deleted account', null],
+  ])('rejects an admin token bound to a %s', async (_label, storedAccount) => {
+    const token = signAdminToken(makeAccount({
+      id: ADMIN_ID,
+      role: 'admin',
+      sessionVersion: 2,
+    }));
+    mockFindById.mockResolvedValue(storedAccount);
+
+    await request(buildApp())
+      .get('/admin')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(401);
+  });
+
+  test('allows simultaneous current sessions and invalidates both after session revocation', async () => {
+    const currentAdmin = makeAccount({
+      id: ADMIN_ID,
+      role: 'admin',
+      sessionVersion: 4,
+    });
+    const firstToken = signAdminToken(currentAdmin);
+    const secondToken = signAdminToken(currentAdmin);
+    mockFindById.mockResolvedValue(currentAdmin);
+
+    await Promise.all([
+      request(buildApp())
+        .get('/admin')
+        .set('Authorization', `Bearer ${firstToken}`)
+        .expect(200),
+      request(buildApp())
+        .get('/admin')
+        .set('Authorization', `Bearer ${secondToken}`)
+        .expect(200),
+    ]);
+
+    mockFindById.mockResolvedValue(makeAccount({
+      id: ADMIN_ID,
+      role: 'admin',
+      sessionVersion: 5,
+    }));
+    await Promise.all([
+      request(buildApp())
+        .get('/admin')
+        .set('Authorization', `Bearer ${firstToken}`)
+        .expect(401),
+      request(buildApp())
+        .get('/admin')
+        .set('Authorization', `Bearer ${secondToken}`)
+        .expect(401),
+    ]);
+  });
+
   test('rejects a blocklisted token before account authorization', async () => {
     const user = makeAccount();
     const token = signUserToken(user);

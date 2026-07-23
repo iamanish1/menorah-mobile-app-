@@ -6,6 +6,7 @@ const mockAdminIds = Object.freeze({
   'Bearer admin-reader': '64f000000000000000000003',
   'Bearer admin-reviewer': '64f000000000000000000004',
   'Bearer admin-unassigned': '64f000000000000000000005',
+  'Bearer finance-a': '64f000000000000000000006',
 });
 const mockRequestId = '64f000000000000000000011';
 const mockListAdminRequests = jest.fn();
@@ -23,6 +24,7 @@ jest.mock('../../middleware/auth', () => ({
       'Bearer admin-reader',
       'Bearer admin-reviewer',
       'Bearer admin-unassigned',
+      'Bearer finance-a',
     ].includes(token)) {
       return res.status(401).json({ success: false });
     }
@@ -82,9 +84,17 @@ const buildApp = () => {
 
 describe('privacy admin authorization', () => {
   const originalGrants = process.env.PRIVACY_ADMIN_PERMISSION_GRANTS_JSON;
+  const originalRoleGrants = process.env.ADMIN_ROLE_GRANTS_JSON;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.ADMIN_ROLE_GRANTS_JSON = JSON.stringify([
+      { adminId: mockAdminIds['Bearer admin-a'], role: 'admin' },
+      { adminId: mockAdminIds['Bearer admin-reader'], role: 'admin' },
+      { adminId: mockAdminIds['Bearer admin-reviewer'], role: 'admin' },
+      { adminId: mockAdminIds['Bearer admin-unassigned'], role: 'admin' },
+      { adminId: mockAdminIds['Bearer finance-a'], role: 'finance' },
+    ]);
     process.env.PRIVACY_ADMIN_PERMISSION_GRANTS_JSON = JSON.stringify([
       {
         adminId: mockAdminIds['Bearer admin-a'],
@@ -101,6 +111,11 @@ describe('privacy admin authorization', () => {
       {
         adminId: mockAdminIds['Bearer admin-reviewer'],
         permissions: ['privacy_reviewer'],
+      },
+      {
+        // A privacy grant must never override the operational finance boundary.
+        adminId: mockAdminIds['Bearer finance-a'],
+        permissions: ['privacy_reader'],
       },
     ]);
     mockListAdminRequests.mockResolvedValue([]);
@@ -121,6 +136,11 @@ describe('privacy admin authorization', () => {
     } else {
       process.env.PRIVACY_ADMIN_PERMISSION_GRANTS_JSON = originalGrants;
     }
+    if (originalRoleGrants === undefined) {
+      delete process.env.ADMIN_ROLE_GRANTS_JSON;
+    } else {
+      process.env.ADMIN_ROLE_GRANTS_JSON = originalRoleGrants;
+    }
   });
 
   test('rejects a user token from the admin queue', async () => {
@@ -140,6 +160,16 @@ describe('privacy admin authorization', () => {
 
     expect(response.body.code).toBe('PRIVACY_PERMISSION_REQUIRED');
     expect(response.headers['cache-control']).toBe('no-store');
+    expect(mockListAdminRequests).not.toHaveBeenCalled();
+  });
+
+  test('does not let a privacy grant override the operational finance boundary', async () => {
+    const response = await request(buildApp())
+      .get('/api/privacy/requests')
+      .set('Authorization', 'Bearer finance-a')
+      .expect(403);
+
+    expect(response.body.code).toBe('ADMIN_PERMISSION_REQUIRED');
     expect(mockListAdminRequests).not.toHaveBeenCalled();
   });
 

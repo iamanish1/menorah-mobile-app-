@@ -5,6 +5,7 @@ const request = require('supertest');
 const mockFindOne = jest.fn();
 const mockFindById = jest.fn();
 const mockSendOTPEmail = jest.fn();
+const mockRecordSecurityEvent = jest.fn();
 let mockRedis;
 
 jest.mock('../../models/User', () => ({
@@ -16,6 +17,9 @@ jest.mock('../../config/redis', () => ({
 }));
 jest.mock('../../utils/email', () => ({
   sendOTPEmail: (...args) => mockSendOTPEmail(...args),
+}));
+jest.mock('../../utils/securityAudit', () => ({
+  recordSecurityEvent: (...args) => mockRecordSecurityEvent(...args),
 }));
 
 const authAdminRouter = require('../auth-admin');
@@ -157,6 +161,10 @@ describe('admin MFA atomic challenge redemption', () => {
       NODE_ENV: 'test',
       ADMIN_MFA_REQUIRED: 'true',
       JWT_SECRET: 'x'.repeat(64),
+      ADMIN_ROLE_GRANTS_JSON: JSON.stringify([{
+        adminId: ADMIN_ID,
+        role: 'admin',
+      }]),
       PRIVACY_ADMIN_PERMISSION_GRANTS_JSON: JSON.stringify([{
         adminId: ADMIN_ID,
         permissions: [
@@ -170,6 +178,7 @@ describe('admin MFA atomic challenge redemption', () => {
     mockFindOne.mockReset();
     mockFindById.mockReset();
     mockSendOTPEmail.mockReset().mockResolvedValue(true);
+    mockRecordSecurityEvent.mockReset();
   });
 
   afterAll(() => {
@@ -237,6 +246,7 @@ describe('admin MFA atomic challenge redemption', () => {
       'privacy_reader',
       'privacy_reviewer',
     ]);
+    expect(successes[0].body.data.user.operationalRole).toBe('admin');
     expect(failures).toHaveLength(19);
     expect(failures.every(({ body }) => (
       body.success === false &&
@@ -247,6 +257,58 @@ describe('admin MFA atomic challenge redemption', () => {
     expect(mockRedis.getChallenge(challengeId)).toBeNull();
     expect(mockFindById).toHaveBeenCalledTimes(1);
     expect(admin.resetLoginAttempts).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not issue an MFA challenge to an unassigned administrator', async () => {
+    const admin = makeAdmin();
+    mockFindOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue(admin),
+    });
+    process.env.ADMIN_ROLE_GRANTS_JSON = JSON.stringify([{
+      adminId: '64f000000000000000000099',
+      role: 'admin',
+    }]);
+
+    const response = await request(buildApp())
+      .post('/api/auth/login')
+      .send({
+        email: admin.email,
+        password: 'correct-password',
+      })
+      .expect(403);
+
+    expect(response.body.code).toBe('ADMIN_ROLE_ASSIGNMENT_REQUIRED');
+    expect(mockSendOTPEmail).not.toHaveBeenCalled();
+    expect(mockRecordSecurityEvent).toHaveBeenCalledWith(
+      'admin_permission_denied',
+      expect.objectContaining({
+        outcome: 'failure',
+        statusCode: 403,
+        details: { reason: 'admin_role_assignment_required' },
+      })
+    );
+  });
+
+  test('does not mint a session when the role assignment is removed during MFA', async () => {
+    const admin = makeAdmin();
+    const app = buildApp();
+    const { challengeId, otp } = await issueChallenge(app, admin);
+    process.env.ADMIN_ROLE_GRANTS_JSON = JSON.stringify([{
+      adminId: '64f000000000000000000099',
+      role: 'admin',
+    }]);
+    mockFindById.mockReturnValue({
+      select: jest.fn().mockResolvedValue(admin),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/login/mfa')
+      .send({ challengeId, otp })
+      .expect(403);
+
+    expect(response.body.code).toBe('ADMIN_ROLE_ASSIGNMENT_REQUIRED');
+    expect(response.body.data).toBeUndefined();
+    expect(admin.resetLoginAttempts).not.toHaveBeenCalled();
   });
 
   test('validation failures do not echo submitted OTP or challenge details', async () => {

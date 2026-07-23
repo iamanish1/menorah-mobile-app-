@@ -1,4 +1,5 @@
 const mockStartService = jest.fn();
+const mockEnforceAdminPermissionAuthority = jest.fn();
 const mockEnforcePrivacyAdminPermissionAuthority = jest.fn();
 
 jest.mock('../../shared/app/startService', () => ({
@@ -9,16 +10,21 @@ jest.mock('../privacyAdminPermissionAuthority', () => ({
     mockEnforcePrivacyAdminPermissionAuthority(...args)
   ),
 }));
+jest.mock('../adminPermissionAuthority', () => ({
+  enforceAdminPermissionAuthority: (...args) => (
+    mockEnforceAdminPermissionAuthority(...args)
+  ),
+}));
 
 const { start } = require('./server');
 
-describe('api-admin startup privacy authority', () => {
+describe('api-admin startup permission authorities', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockStartService.mockResolvedValue({ state: { booted: true } });
   });
 
-  test('runs permission authority enforcement after database connection', async () => {
+  test('runs operational and privacy authority enforcement after database connection', async () => {
     await start();
 
     expect(mockStartService).toHaveBeenCalledWith(expect.objectContaining({
@@ -28,7 +34,11 @@ describe('api-admin startup privacy authority', () => {
     }));
     const [{ afterDatabaseConnect }] = mockStartService.mock.calls[0];
     await afterDatabaseConnect({ serviceName: 'api-admin' });
+    expect(mockEnforceAdminPermissionAuthority)
+      .toHaveBeenCalledWith({ serviceName: 'api-admin' });
     expect(mockEnforcePrivacyAdminPermissionAuthority)
       .toHaveBeenCalledWith({ serviceName: 'api-admin' });
+    expect(mockEnforceAdminPermissionAuthority.mock.invocationCallOrder[0])
+      .toBeLessThan(mockEnforcePrivacyAdminPermissionAuthority.mock.invocationCallOrder[0]);
   });
 });

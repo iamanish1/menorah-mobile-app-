@@ -430,6 +430,12 @@ router.put('/change-password', [
         message: 'Current password is incorrect'
       });
     }
+    if (await user.comparePassword(newPassword)) {
+      return res.status(409).json({
+        success: false,
+        message: 'New password must be different from the current password'
+      });
+    }
 
     // Update password
     user.password = newPassword;

@@ -12,6 +12,11 @@ const KycVerification = require('../models/KycVerification');
 const Payout = require('../models/Payout');
 const { adminAuth, requireRecentAdminMfa } = require('../middleware/auth');
 const {
+  hasAdminPermission,
+  requireAdminPermission,
+  requireAssignedAdminRole,
+} = require('../middleware/adminAuthorization');
+const {
   isAllowedExternalProvider,
   isSafeHttpsUrl,
   normalizeProvider,
@@ -75,6 +80,8 @@ const router = express.Router();
 
 // All routes require an admin-scoped token.
 router.use(adminAuth);
+// Every admin account must also have a live, explicit operational assignment.
+router.use(requireAssignedAdminRole);
 
 const requirePayoutInitiationEnabled = (_req, res, next) => {
   if (isPayoutInitiationEnabled()) return next();
@@ -104,7 +111,7 @@ const formatVideoCall = (videoCall = {}) => ({
   configuredAt: videoCall.configuredAt
 });
 
-const formatAdminBooking = (booking) => ({
+const formatAdminBooking = (booking, { includeFinance = false } = {}) => ({
   id: booking._id,
   user: booking.user || null,
   userName: booking.user ? `${booking.user.firstName} ${booking.user.lastName}` : 'Unknown user',
@@ -118,9 +125,36 @@ const formatAdminBooking = (booking) => ({
   sessionDuration: booking.sessionDuration,
   scheduledAt: booking.scheduledAt,
   status: booking.status,
-  paymentStatus: booking.paymentStatus,
+  ...(includeFinance ? { paymentStatus: booking.paymentStatus } : {}),
   videoCall: formatVideoCall(booking.videoCall),
   createdAt: booking.createdAt
+});
+
+const formatAdminUser = (
+  user,
+  {
+    bookingCount = 0,
+    includeSensitive = false,
+  } = {}
+) => ({
+  _id: user._id,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  email: user.email,
+  phone: user.phone,
+  role: user.role,
+  isEmailVerified: user.isEmailVerified,
+  isPhoneVerified: user.isPhoneVerified,
+  profileImage: user.profileImage || null,
+  isActive: user.isActive,
+  lastLogin: user.lastLogin,
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
+  bookingCount,
+  ...(includeSensitive ? {
+    kyc: user.kyc,
+    subscription: user.subscription,
+  } : {}),
 });
 
 const sendCounsellorVerificationError = (res, error) => {
@@ -419,8 +453,11 @@ const getRaidStatus = () => {
 
 const getBackupStatus = () => {
   const backupRoot = process.env.MENORAH_BACKUP_ROOT || '/opt/menorah/backups';
-  const maxDailyAgeHours = Number(process.env.BACKUP_MAX_AGE_HOURS) || 30;
-  const maxRestoreAgeHours = Number(process.env.BACKUP_RESTORE_TEST_MAX_AGE_HOURS) || 192;
+  const maxDailyAgeHours = Number(process.env.BACKUP_MAX_AGE_HOURS) || 24;
+  const maxRestoreAgeHours = Math.min(
+    Number(process.env.BACKUP_RESTORE_TEST_MAX_AGE_HOURS) || 24,
+    24,
+  );
   const diskUsageLimit = Number(process.env.BACKUP_DISK_USAGE_MAX_PERCENT) || 80;
   const automationEnabled = isTrue(process.env.BACKUP_AUTOMATION_ENABLED);
   const rootExists = fs.existsSync(backupRoot);
@@ -467,7 +504,7 @@ const getBackupStatus = () => {
   if (daily && !daily.checksumPresent) issues.push('The latest daily backup checksum is missing.');
   if (volume.usagePercent >= diskUsageLimit) issues.push('Backup storage is getting full.');
   if (raid.configured && !raid.ok) issues.push('The backup drive mirror is not healthy.');
-  if (!restoreTest.ok) issues.push('The weekly restore test needs attention.');
+  if (!restoreTest.ok) issues.push('The daily restore test needs attention.');
 
   const status = issues.length === 0 ? 'ok' : issues.some((issue) => (
     issue.includes('not visible')
@@ -515,7 +552,7 @@ const getBackupStatus = () => {
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
 // GET /api/admin/stats
-router.get('/stats', async (req, res) => {
+router.get('/stats', requireAdminPermission('platform_read'), async (req, res) => {
   try {
     const { todayStart, weekStart, monthStart, now } = dateRanges();
 
@@ -599,7 +636,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // GET /api/admin/stats/users — daily new user registrations (last 30 days)
-router.get('/stats/users', async (req, res) => {
+router.get('/stats/users', requireAdminPermission('support_read'), async (req, res) => {
   try {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -629,7 +666,7 @@ router.get('/stats/users', async (req, res) => {
 });
 
 // GET /api/admin/server-usage — live server/container resource telemetry
-router.get('/server-usage', async (_req, res) => {
+router.get('/server-usage', requireAdminPermission('platform_read'), async (_req, res) => {
   try {
     const cpuUsagePercent = await getCpuSample();
     const uploadPath = path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads');
@@ -683,6 +720,7 @@ router.get('/server-usage', async (_req, res) => {
 
 // GET /api/admin/counsellors
 router.get('/counsellors', [
+  requireAdminPermission('clinical_read'),
   query('status').optional().isIn([
     'pending',
     'draft',
@@ -888,6 +926,7 @@ router.get('/counsellors', [
 
 // GET /api/admin/counsellors/:id
 router.get('/counsellors/:id', [
+  requireAdminPermission('clinical_read'),
   param('id').isMongoId().withMessage('Invalid counsellor ID')
 ], async (req, res) => {
   try {
@@ -1033,6 +1072,7 @@ router.get('/counsellors/:id', [
 // PUT /api/admin/counsellors/:id/start-review
 // Creates only a dormant account/profile. Professional approval is separate.
 router.put('/counsellors/:id/start-review', [
+  requireAdminPermission('clinical_manage'),
   param('id').isMongoId().withMessage('Invalid application ID'),
   requireRecentAdminMfa,
 ], async (req, res) => {
@@ -1067,6 +1107,7 @@ router.put('/counsellors/:id/start-review', [
 // PUT /api/admin/counsellors/:id/approve
 // Requires reviewed credential metadata and a bounded verification expiry.
 router.put('/counsellors/:id/approve', [
+  requireAdminPermission('clinical_manage'),
   param('id').isMongoId().withMessage('Invalid application ID'),
   body('credentialPolicyVersion').isString().trim().isLength({ min: 1, max: 128 }),
   body('verificationExpiresAt').isISO8601({ strict: true }),
@@ -1134,6 +1175,7 @@ router.put('/counsellors/:id/approve', [
 // PUT /api/admin/counsellors/:id/reject
 // Marks PendingApplication as rejected — no User/Counsellor records to clean up.
 router.put('/counsellors/:id/reject', [
+  requireAdminPermission('clinical_manage'),
   param('id').isMongoId().withMessage('Invalid ID'),
   body('reason').trim().isLength({ min: 1, max: 1000 }).withMessage('Rejection reason is required'),
   requireRecentAdminMfa,
@@ -1164,6 +1206,7 @@ router.put('/counsellors/:id/reject', [
 // Historical route name retained for clients. It now sends a one-time setup link
 // and never returns or emails a plaintext password.
 router.post('/counsellors/:id/generate-password', [
+  requireAdminPermission('clinical_manage'),
   param('id').isMongoId().withMessage('Invalid counsellor ID'),
   requireRecentAdminMfa,
 ], async (req, res) => {
@@ -1224,6 +1267,7 @@ router.post('/counsellors/:id/generate-password', [
 
 // PUT /api/admin/counsellors/:id/block
 router.put('/counsellors/:id/block', [
+  requireAdminPermission('clinical_manage'),
   param('id').isMongoId(),
   body('reason').trim().isLength({ min: 1, max: 1000 }).withMessage('Block reason is required'),
   requireRecentAdminMfa,
@@ -1254,6 +1298,7 @@ router.put('/counsellors/:id/block', [
 });
 
 router.post('/counsellors/:id/reverification-invite', [
+  requireAdminPermission('clinical_manage'),
   param('id').isMongoId(),
   requireRecentAdminMfa,
 ], async (req, res) => {
@@ -1299,6 +1344,7 @@ router.post('/counsellors/:id/reverification-invite', [
 });
 
 router.put('/counsellors/:id/expire', [
+  requireAdminPermission('clinical_manage'),
   param('id').isMongoId(),
   requireRecentAdminMfa,
 ], async (req, res) => {
@@ -1326,6 +1372,7 @@ router.put('/counsellors/:id/expire', [
 
 // GET /api/admin/counsellors/:id/booking-stats — daily accept/reject/complete breakdown
 router.get('/counsellors/:id/booking-stats', [
+  requireAdminPermission('clinical_read'),
   param('id').isMongoId(),
   query('days').optional().isInt({ min: 1, max: 90 })
 ], async (req, res) => {
@@ -1383,13 +1430,30 @@ router.get('/counsellors/:id/booking-stats', [
 
 // GET /api/admin/users
 router.get('/users', [
+  requireAdminPermission('support_read'),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 100 }),
   query('search').optional().isString().trim(),
   query('role').optional().isIn(['user', 'counsellor', 'admin', 'all'])
 ], async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array(),
+      });
+    }
     const { page = 1, limit = 20, search, role = 'user' } = req.query;
+    const isFullAdministrator = req.adminAccess?.role === 'admin';
+    if (!isFullAdministrator && role !== 'user') {
+      return res.status(403).json({
+        success: false,
+        code: 'ADMIN_PERMISSION_REQUIRED',
+        message: 'Support access is limited to user accounts.',
+      });
+    }
     const userQuery = role !== 'all' ? { role } : {};
 
     if (search) {
@@ -1402,9 +1466,24 @@ router.get('/users', [
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
+    const userProjection = [
+      'firstName',
+      'lastName',
+      'email',
+      'phone',
+      'role',
+      'isEmailVerified',
+      'isPhoneVerified',
+      'profileImage',
+      'isActive',
+      'lastLogin',
+      'createdAt',
+      'updatedAt',
+      ...(isFullAdministrator ? ['kyc', 'subscription'] : []),
+    ].join(' ');
     const [users, total] = await Promise.all([
       User.find(userQuery)
-        .select('firstName lastName email phone role isEmailVerified isPhoneVerified profileImage kyc subscription isActive lastLogin createdAt updatedAt')
+        .select(userProjection)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
@@ -1423,7 +1502,10 @@ router.get('/users', [
     res.json({
       success: true,
       data: {
-        users: users.map(u => ({ ...u, bookingCount: bookingMap[u._id.toString()] || 0 })),
+        users: users.map((user) => formatAdminUser(user, {
+          bookingCount: bookingMap[user._id.toString()] || 0,
+          includeSensitive: isFullAdministrator,
+        })),
         pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) }
       }
     });
@@ -1437,6 +1519,7 @@ router.get('/users', [
 
 // GET /api/admin/revenue — Platform-level revenue breakdown
 router.get('/revenue', [
+  requireAdminPermission('finance_read'),
   query('period').optional().isIn(['daily', 'weekly', 'monthly', 'yearly'])
 ], async (req, res) => {
   try {
@@ -1485,6 +1568,7 @@ router.get('/revenue', [
 
 // GET /api/admin/revenue/counsellors — Revenue per counsellor (paginated)
 router.get('/revenue/counsellors', [
+  requireAdminPermission('finance_read'),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 100 }),
   query('period').optional().isIn(['today', 'weekly', 'monthly', 'allTime'])
@@ -1564,6 +1648,7 @@ router.get('/revenue/counsellors', [
 
 // GET /api/admin/revenue/counsellors/:id — Specific counsellor revenue detail
 router.get('/revenue/counsellors/:id', [
+  requireAdminPermission('finance_read'),
   param('id').isMongoId()
 ], async (req, res) => {
   try {
@@ -1685,6 +1770,7 @@ const serializePayoutRequest = (payout) => ({
 
 // POST /api/admin/payouts/:counsellorId — request a payout for independent approval
 router.post('/payouts/:counsellorId', [
+  requireAdminPermission('finance_payout_request'),
   requirePayoutInitiationEnabled,
   param('counsellorId').isMongoId(),
   body('amount').isInt({ min: 100 }).withMessage('Amount must be at least ₹1 (100 paise)'),
@@ -1800,6 +1886,7 @@ router.post('/payouts/:counsellorId', [
 // The requester cannot approve their own request and the approver must have
 // completed MFA within the last five minutes.
 router.post('/payouts/:payoutId/approve', [
+  requireAdminPermission('finance_payout_approve'),
   param('payoutId').isMongoId(),
   requirePayoutInitiationEnabled,
   requireRecentAdminMfa,
@@ -1901,7 +1988,7 @@ router.post('/payouts/:payoutId/approve', [
 });
 
 // GET /api/admin/payouts — list all payouts with pagination + filtering
-router.get('/payouts', async (req, res) => {
+router.get('/payouts', requireAdminPermission('finance_read'), async (req, res) => {
   try {
     await expireStaleAwaitingApprovalPayouts({ limit: 100 });
 
@@ -1946,6 +2033,7 @@ router.get('/payouts', async (req, res) => {
 
 // GET /api/admin/payouts/counsellor/:counsellorId — payouts for one counsellor
 router.get('/payouts/counsellor/:counsellorId', [
+  requireAdminPermission('finance_read'),
   param('counsellorId').isMongoId()
 ], async (req, res) => {
   try {
@@ -1980,6 +2068,7 @@ router.get('/payouts/counsellor/:counsellorId', [
 
 // GET /api/admin/ekyc/reviews — list optional face-check review records
 router.get('/ekyc/reviews', [
+  requireAdminPermission('clinical_read'),
   query('status').optional().isIn(['manual_review', 'verified', 'rejected', 'pending', 'all']),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 100 })
@@ -2037,7 +2126,9 @@ router.get('/ekyc/reviews', [
 
 // PUT /api/admin/ekyc/reviews/:id/approve — manually approve a review
 router.put('/ekyc/reviews/:id/approve', [
-  param('id').isMongoId()
+  requireAdminPermission('clinical_manage'),
+  param('id').isMongoId(),
+  requireRecentAdminMfa,
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -2077,8 +2168,10 @@ router.put('/ekyc/reviews/:id/approve', [
 
 // PUT /api/admin/ekyc/reviews/:id/reject — reject a review with a reason
 router.put('/ekyc/reviews/:id/reject', [
+  requireAdminPermission('clinical_manage'),
   param('id').isMongoId(),
-  body('reason').trim().notEmpty().withMessage('Rejection reason is required')
+  body('reason').trim().notEmpty().withMessage('Rejection reason is required'),
+  requireRecentAdminMfa,
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -2116,6 +2209,7 @@ router.put('/ekyc/reviews/:id/reject', [
 
 // GET /api/admin/bookings — recent booking/session list for call operations
 router.get('/bookings', [
+  requireAdminPermission('support_read'),
   query('status').optional().isString(),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 100 })
@@ -2153,7 +2247,9 @@ router.get('/bookings', [
     res.json({
       success: true,
       data: {
-        bookings: bookings.map(formatAdminBooking),
+        bookings: bookings.map((booking) => formatAdminBooking(booking, {
+          includeFinance: hasAdminPermission(req, 'finance_read'),
+        })),
         pagination: { page, limit, total, pages: Math.ceil(total / limit) }
       }
     });
@@ -2165,10 +2261,12 @@ router.get('/bookings', [
 
 // PATCH /api/admin/bookings/:id/call-link — configure approved external session link
 router.patch('/bookings/:id/call-link', [
+  requireAdminPermission('support_manage'),
   param('id').isMongoId().withMessage('Invalid booking ID'),
   body('provider').isString().trim().notEmpty(),
   body('externalJoinUrl').isString().trim().custom(isSafeHttpsUrl).withMessage('External join URL must be HTTPS'),
   body('externalHostUrl').optional({ nullable: true, checkFalsy: true }).isString().trim().custom(isSafeHttpsUrl).withMessage('External host URL must be HTTPS'),
+  requireRecentAdminMfa,
   body('externalProviderName').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 80 })
 ], async (req, res) => {
   try {

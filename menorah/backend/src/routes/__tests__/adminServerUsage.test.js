@@ -6,7 +6,10 @@ jest.mock('../../middleware/auth', () => ({
     req.user = { role: 'admin' };
     next();
   },
-  adminAuth: (_req, _res, next) => next(),
+  adminAuth: (req, _res, next) => {
+    req.user = { _id: '64f000000000000000000001', role: 'admin' };
+    next();
+  },
   requireRecentAdminMfa: (_req, _res, next) => next(),
 }));
 
@@ -17,7 +20,8 @@ describe('admin server usage telemetry', () => {
     MENORAH_BACKUP_ROOT: process.env.MENORAH_BACKUP_ROOT,
     BACKUP_EXPECT_RAID: process.env.BACKUP_EXPECT_RAID,
     BACKUP_AUTOMATION_ENABLED: process.env.BACKUP_AUTOMATION_ENABLED,
-    BACKUP_ENCRYPTION_PASSWORD: process.env.BACKUP_ENCRYPTION_PASSWORD
+    BACKUP_ENCRYPTION_PASSWORD: process.env.BACKUP_ENCRYPTION_PASSWORD,
+    ADMIN_ROLE_GRANTS_JSON: process.env.ADMIN_ROLE_GRANTS_JSON,
   };
 
   beforeEach(() => {
@@ -25,6 +29,9 @@ describe('admin server usage telemetry', () => {
     process.env.BACKUP_EXPECT_RAID = 'false';
     process.env.BACKUP_AUTOMATION_ENABLED = 'false';
     process.env.BACKUP_ENCRYPTION_PASSWORD = 'test-secret-that-must-not-be-returned';
+    process.env.ADMIN_ROLE_GRANTS_JSON = JSON.stringify([
+      { adminId: '64f000000000000000000001', role: 'admin' },
+    ]);
   });
 
   afterAll(() => {

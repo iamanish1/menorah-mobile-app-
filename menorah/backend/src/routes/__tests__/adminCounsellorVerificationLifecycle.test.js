@@ -193,8 +193,13 @@ const expectNoVerificationMutation = () => {
 };
 
 describe('admin counsellor verification lifecycle routes', () => {
+  const originalRoleGrants = process.env.ADMIN_ROLE_GRANTS_JSON;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.ADMIN_ROLE_GRANTS_JSON = JSON.stringify([
+      { adminId: ADMIN_ID, role: 'admin' },
+    ]);
     mockRedisGet.mockResolvedValue(null);
     mockReconcileExpiryBatch.mockResolvedValue({
       scanned: 0,
@@ -244,6 +249,11 @@ describe('admin counsellor verification lifecycle routes', () => {
       error.name = 'JsonWebTokenError';
       throw error;
     });
+  });
+
+  afterAll(() => {
+    if (originalRoleGrants === undefined) delete process.env.ADMIN_ROLE_GRANTS_JSON;
+    else process.env.ADMIN_ROLE_GRANTS_JSON = originalRoleGrants;
   });
 
   describe.each([
