@@ -1,8 +1,5 @@
-# Locally managed Cloudflare Tunnel example.
-# For first go-live, prefer the dashboard-managed token in env/cloudflare.env.
-
-tunnel: menorah-production
-credentials-file: /etc/cloudflared/menorah-production.json
+tunnel: example-production-tunnel
+credentials-file: /operator/supplied/path/example-production-tunnel.json
 
 ingress:
   - hostname: menorah.me

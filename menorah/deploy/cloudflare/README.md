@@ -6,6 +6,10 @@ Production ingress uses a Cloudflare Tunnel. Browsers connect to Cloudflare over
 
 Configure these as public hostnames on the Cloudflare Tunnel, each targeting `http://reverse-proxy:80`:
 
+`ingress-manifest.json` is the source-controlled authority for this exact map.
+The offline validator also checks that every manifest route has a matching
+`Caddyfile.production` site and that Caddy has no extra public site.
+
 ```text
 menorah.me
 www.menorah.me
@@ -30,6 +34,37 @@ api-admin.mentle.org
 api-counsellor.mentle.org
 calls.mentle.org
 ```
+
+## Offline Configuration Gate
+
+Install the QA package and run the deterministic fixture suite:
+
+```bash
+npm --prefix menorah/scripts/qa ci --ignore-scripts
+npm --prefix menorah/scripts/qa run test:tunnel-config
+```
+
+Validate an operator-supplied locally managed configuration without contacting
+Cloudflare:
+
+```bash
+node menorah/scripts/qa/validate-cloudflare-tunnel-config.mjs \
+  --config /absolute/path/to/operator-config.yml
+cloudflared tunnel --config /absolute/path/to/operator-config.yml ingress validate
+cloudflared tunnel --config /absolute/path/to/operator-config.yml \
+  ingress rule https://api-web.menorah.me/health/ready
+cloudflared tunnel --config /absolute/path/to/operator-config.yml \
+  ingress rule https://not-configured.invalid/
+```
+
+The first command enforces the exact normalized hostname and service set,
+rejects duplicate/missing/unexpected routes, path or wildcard shadowing,
+non-terminal catch-alls, a final service other than `http_status:404`, unsafe
+origin targets, and Caddy/manifest drift. The Cloudflare CLI commands add its
+native syntax validation and show the selected rule. Inspect the last command's
+output to confirm the unmatched hostname selects the final `http_status:404`
+rule. `--config` belongs before `ingress`; these commands apply only to a
+locally managed YAML configuration.
 
 `calls.menorah.me` is proxied by Caddy to `LIVEKIT_UPSTREAM`. For same-VPS Hostinger LiveKit, use:
 
@@ -93,7 +128,8 @@ Use this only after the token-based setup is understood.
 1. Create a named tunnel with `cloudflared tunnel create`.
 2. Copy `tunnel-config.yml.example` to a host-only config path.
 3. Put the Cloudflare credentials JSON outside git, for example `/opt/menorah/secrets/cloudflared/`.
-4. Run cloudflared with the config file instead of `TUNNEL_TOKEN`.
+4. Pass the copied file through the offline gate above.
+5. Run cloudflared with the config file instead of `TUNNEL_TOKEN`.
 
 The example config is:
 
@@ -129,11 +165,39 @@ docker compose \
 
 ## Verify
 
+**INFRASTRUCTURE ACTION — read-only production inspection:**
+
 ```bash
 docker compose -f docker-compose.production.yml -f docker-compose.tunnel.yml ps cloudflared
 docker compose -f docker-compose.production.yml -f docker-compose.tunnel.yml logs cloudflared --tail=100
 CHECK_PUBLIC=true bash ubuntu/health-check.sh
 ```
+
+For a remotely managed tunnel, an operator with a minimally scoped read-only
+Cloudflare Tunnel API token can stream a sanitized configuration response into
+the same offline validator. Run from the repository root; do not paste a token
+value into this document or commit the response:
+
+```bash
+# INFRASTRUCTURE ACTION — read-only Cloudflare API request.
+: "${CLOUDFLARE_ACCOUNT_ID:?set the Cloudflare account ID}"
+: "${CLOUDFLARE_TUNNEL_ID:?set the tunnel UUID}"
+: "${CLOUDFLARE_API_TOKEN:?set a read-only Cloudflare Tunnel API token}"
+curl --fail --silent --show-error \
+  "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel/${CLOUDFLARE_TUNNEL_ID}/configurations" \
+  --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" |
+  node menorah/scripts/qa/validate-cloudflare-tunnel-config.mjs --config -
+```
+
+This is the documented Cloudflare `GET
+/accounts/{account_id}/cfd_tunnel/{tunnel_id}/configurations` endpoint. It does
+not return or validate the connector token. The response is streamed rather
+than saved; the validator selects `result.config` in memory and never prints
+account or tunnel metadata. It also accepts a separately sanitized JSON export
+containing only `success`, `result.source`, and `result.config`. In the
+dashboard, the equivalent read-only review is **Zero Trust > Networks > Tunnels
+> [production tunnel] > Public Hostnames**; compare the displayed hostname and
+service columns with `ingress-manifest.json` without selecting Edit or Save.
 
 ## Second Connector Later
 

@@ -8,7 +8,12 @@
     "test:api": "node production-api-smoke.js",
     "test:otp": "node production-auth-smoke.js",
     "test:providers": "node production-provider-check.js",
-    "test:all-safe": "npm run test:api && npm run test:web"
+    "test:tunnel-config": "node --test validate-cloudflare-tunnel-config.test.mjs",
+    "validate:tunnel-example": "node validate-cloudflare-tunnel-config.mjs --config ../../deploy/cloudflare/tunnel-config.yml.example",
+    "test:all-safe": "npm run test:tunnel-config && npm run test:api && npm run test:web"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1"

@@ -1,13 +1,7 @@
-# Locally managed Cloudflare Tunnel example.
-# For first go-live, prefer the dashboard-managed token in env/cloudflare.env.
-
-tunnel: menorah-production
-credentials-file: /etc/cloudflared/menorah-production.json
-
 ingress:
   - hostname: menorah.me
     service: http://reverse-proxy:80
-  - hostname: www.menorah.me
+  - hostname: internal.menorah.me
     service: http://reverse-proxy:80
   - hostname: app.menorah.me
     service: http://reverse-proxy:80
