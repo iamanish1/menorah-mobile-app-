@@ -114,14 +114,14 @@ jobs:
       CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
       RESULT_DIR: /tmp/menorah-backend-integration-${{ github.run_id }}-${{ github.run_attempt }}
       INTEGRATION_PROJECT: menorah-functional-${{ github.run_id }}-${{ github.run_attempt }}
-      KYC_MIGRATION_TEST_URI: mongodb://127.0.0.1:27017/kyc_ci?replicaSet=menorah-ci&directConnection=true
-      PRIVACY_MIGRATION_TEST_URI: mongodb://127.0.0.1:27017/privacy_migration_ci?replicaSet=menorah-ci&directConnection=true
-      PRIVACY_STATE_MIGRATION_TEST_URI: mongodb://127.0.0.1:27017/privacy_state_ci?replicaSet=menorah-ci&directConnection=true
-      PRIVACY_DELETION_TEST_URI: mongodb://127.0.0.1:27017/privacy_deletion_ci?replicaSet=menorah-ci&directConnection=true
-      PRIVACY_PERMISSION_AUTHORITY_TEST_URI: mongodb://127.0.0.1:27017/privacy_permission_ci?replicaSet=menorah-ci&directConnection=true
-      PRIVACY_CONSENT_TEST_URI: mongodb://127.0.0.1:27017/privacy_consent_ci?replicaSet=menorah-ci&directConnection=true
-      PRIVACY_RETENTION_TEST_URI: mongodb://127.0.0.1:27017/privacy_retention_ci?replicaSet=menorah-ci&directConnection=true
-      PRIVACY_RIGHTS_TEST_URI: mongodb://127.0.0.1:27017/privacy_rights_ci?replicaSet=menorah-ci&directConnection=true
+      KYC_MIGRATION_TEST_URI: mongodb://127.0.0.1:27017/menorah_kyc_migration_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_MIGRATION_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_migration_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_STATE_MIGRATION_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_state_migration_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_DELETION_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_deletion_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_PERMISSION_AUTHORITY_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_permission_authority_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_CONSENT_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_consent_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_RETENTION_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_retention_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_RIGHTS_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_rights_test_ci?replicaSet=menorah-ci&directConnection=true
       ADMIN_MFA_REDIS_TEST_URL: redis://127.0.0.1:6379/15
     steps:
       - name: Checkout candidate exactly
@@ -156,7 +156,7 @@ jobs:
             -f menorah/scripts/qa/docker-compose.integration.yml \
             exec -T mongo mongosh --quiet --eval \
               'rs.initiate({_id:"menorah-ci",members:[{_id:0,host:"mongo:27017"}]})'
-          for attempt in $(seq 1 30); do
+          for _attempt in $(seq 1 30); do
             if docker compose \
               -p "${INTEGRATION_PROJECT}" \
               -f menorah/scripts/qa/docker-compose.integration.yml \

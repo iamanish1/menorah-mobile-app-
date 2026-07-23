@@ -34,5 +34,4 @@ services:
       - integration
 
 networks:
-  integration:
-    internal: true
+  integration: {}

@@ -39,6 +39,16 @@ test('rejects integration tests that can silently skip', () => {
   assert.throws(() => validate(parse(weakened), weakened), /require-no-skips/);
 });
 
+test('rejects integration databases outside the suites disposable namespaces', () => {
+  const workflow = parse(rawWorkflow);
+  workflow.jobs['backend-integration'].env.KYC_MIGRATION_TEST_URI =
+    'mongodb://127.0.0.1:27017/kyc_ci?replicaSet=menorah-ci&directConnection=true';
+  assert.throws(
+    () => validate(workflow),
+    /disposable database guard/,
+  );
+});
+
 test('rejects removal of the tracked-fixture clean-archive assertion', () => {
   const weakened = rawWorkflow.replace(
     'test ! -e "${archive_root}/menorah/deploy/env/home.env"',

@@ -110,6 +110,31 @@ export function validateFunctionalWorkflow(
   for (const expected of ['docker-compose.integration.yml', 'rs.initiate', "testPathPattern='\\.integration\\.test\\.js$'", '--require-no-skips']) {
     requireText(commands['backend-integration'], new RegExp(escapeRegExp(expected)), `backend integration job must run ${expected}`);
   }
+  const integrationEnv = workflow.jobs['backend-integration'].env ?? {};
+  const disposableDatabasePrefixes = {
+    KYC_MIGRATION_TEST_URI: 'menorah_kyc_migration_test',
+    PRIVACY_MIGRATION_TEST_URI: 'menorah_privacy_migration_test',
+    PRIVACY_STATE_MIGRATION_TEST_URI: 'menorah_privacy_state_migration_test',
+    PRIVACY_DELETION_TEST_URI: 'menorah_privacy_deletion_test',
+    PRIVACY_PERMISSION_AUTHORITY_TEST_URI: 'menorah_privacy_permission_authority_test',
+    PRIVACY_CONSENT_TEST_URI: 'menorah_privacy_consent_test',
+    PRIVACY_RETENTION_TEST_URI: 'menorah_privacy_retention_test',
+    PRIVACY_RIGHTS_TEST_URI: 'menorah_privacy_rights_test',
+  };
+  for (const [variable, prefix] of Object.entries(disposableDatabasePrefixes)) {
+    const uri = new URL(integrationEnv[variable]);
+    assert.equal(uri.hostname, '127.0.0.1', `${variable} must remain loopback-only`);
+    assert.match(
+      uri.pathname.slice(1),
+      new RegExp(`^${prefix}(?:_|$)`),
+      `${variable} must pass the integration suite's disposable database guard`,
+    );
+  }
+  assert.equal(
+    integrationEnv.ADMIN_MFA_REDIS_TEST_URL,
+    'redis://127.0.0.1:6379/15',
+    'Redis integration tests must use the disposable loopback-only database',
+  );
   for (const jobId of ['user-web', 'admin-web', 'counsellor-web']) {
     for (const expected of ['npm ci', 'npm run lint', 'tsc --noEmit', 'npm run build', 'audit-production.mjs']) {
       requireText(commands[jobId], new RegExp(escapeRegExp(expected)), `${jobId} must run ${expected}`);
@@ -138,7 +163,11 @@ export function validateFunctionalWorkflow(
     assert.ok(service.tmpfs, `${name} integration data must be disposable`);
     assert.ok((service.ports ?? []).every((port) => String(port).startsWith('127.0.0.1:')));
   }
-  assert.equal(compose.networks?.integration?.internal, true);
+  assert.notEqual(
+    compose.networks?.integration?.external,
+    true,
+    'integration services must use a project-scoped network',
+  );
 
   const security = parse(securityWorkflow);
   assert.ok(security.jobs?.['required-security-gates'], 'security workflow must retain its aggregate gate');
