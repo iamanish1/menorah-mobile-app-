@@ -3,12 +3,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import RootNavigator from '@/navigation/RootNavigator';
 import { ThemeProvider, useThemeMode } from '@/theme/ThemeProvider';
-import { AuthProvider } from '@/state/useAuth';
+import { AuthProvider, useAuth } from '@/state/useAuth';
 import { ChatProvider } from '@/state/useChat';
 import { NotificationProvider } from '@/state/useNotifications';
 import SessionNotificationHandler from '@/components/SessionNotificationHandler';
 import UpdateBanner from '@/components/UpdateBanner';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import SensitiveContentProtection from '@/components/SensitiveContentProtection';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,6 +32,24 @@ function ThemeStatusBar() {
   return <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />;
 }
 
+function AccountScopedApp() {
+  return (
+    <NotificationProvider>
+      <ChatProvider>
+        <RootNavigator />
+        <ThemeStatusBar />
+        <SessionNotificationHandler />
+        <UpdateBanner />
+      </ChatProvider>
+    </NotificationProvider>
+  );
+}
+
+function AuthenticatedAppScope() {
+  const { user } = useAuth();
+  return <AccountScopedApp key={user?.id ?? 'signed-out'} />;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -38,14 +57,8 @@ export default function App() {
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>
-            <NotificationProvider>
-              <ChatProvider>
-                <RootNavigator />
-                <ThemeStatusBar />
-                <SessionNotificationHandler />
-                <UpdateBanner />
-              </ChatProvider>
-            </NotificationProvider>
+            <SensitiveContentProtection />
+            <AuthenticatedAppScope />
           </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>

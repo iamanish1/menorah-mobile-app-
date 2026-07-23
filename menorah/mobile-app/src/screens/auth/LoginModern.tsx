@@ -44,13 +44,6 @@ export default function Login({ navigation }: any) {
     setShowNetworkError(false);
 
     try {
-      if (__DEV__) {
-        console.log('[Login] POST /auth/login payload:', JSON.stringify({
-          email: normalizedEmail,
-          password: `[redacted; length=${password.length}]`,
-        }, null, 2));
-      }
-
       const result = await login(normalizedEmail, password);
 
       if (result.success) {

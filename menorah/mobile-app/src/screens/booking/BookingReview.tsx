@@ -6,6 +6,7 @@ import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { api } from '@/lib/api';
 import { socketService, SessionStartedData } from '@/lib/socket';
+import { reportError } from '@/lib/safeDiagnostics';
 
 // Price categories mapping
 const PRICE_CATEGORIES = {
@@ -91,7 +92,7 @@ export default function BookingReview({ navigation, route }: any) {
         navigation.goBack();
       }
     } catch (error: any) {
-      console.error('Error fetching booking:', error);
+      reportError('booking.review_fetch_failed', error);
       Alert.alert('Error', 'Failed to load booking details. Please try again.');
       navigation.goBack();
     } finally {
@@ -526,7 +527,7 @@ export default function BookingReview({ navigation, route }: any) {
                   Alert.alert('Error', message);
                 }
               } catch (error: any) {
-                console.error('Error creating direct booking:', error);
+                reportError('booking.direct_creation_failed', error);
                 Alert.alert('Error', 'Failed to create booking. Please try again.');
               } finally {
                 setIsCreatingBooking(false);
@@ -697,7 +698,7 @@ export default function BookingReview({ navigation, route }: any) {
                 Alert.alert('Error', message);
             }
             } catch (error: any) {
-              console.error('Error creating booking:', error);
+              reportError('booking.creation_failed', error);
               Alert.alert('Error', 'Failed to create booking. Please try again.');
             } finally {
               setIsCreatingBooking(false);

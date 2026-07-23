@@ -4,6 +4,7 @@
 - [ ] `npm run typecheck` passes.
 - [ ] `npm run lint` has no blocking errors.
 - [ ] `npm run doctor` passes or every warning is documented.
+- [ ] `npm run validate:release-config` and `npm run test:release-config` pass.
 - [ ] Production API is live and reachable.
 - [ ] App does not depend on Expo Go for production behavior.
 - [ ] App launches cleanly on a fresh install.
@@ -26,7 +27,8 @@
 - [ ] Create a reviewer demo account.
 - [ ] Add demo credentials in App Store Connect review notes.
 - [ ] Ensure the demo account can access chat, booking, settings, legal screens, and account deletion.
-- [ ] If social login is added later, provide Sign in with Apple or another compliant equivalent.
+- [ ] Verify the configured Google and Sign in with Apple flows in the archived release build.
+- [ ] Verify Apple-linked users can complete the in-app Apple reauthentication and account-deletion flow.
 
 ## Privacy and Legal
 - [ ] Host Privacy Policy at a public URL.
@@ -63,13 +65,13 @@
 - [ ] Use Apple In-App Purchase for digital subscriptions or premium in-app content where required.
 - [ ] Provide sandbox/test payment instructions for App Review.
 - [ ] Verify refund/cancellation wording is accurate.
-- [ ] Review `react-native-razorpay` before iOS submission because `expo-doctor` reports it as unsupported on New Architecture.
+- [ ] Preserve the validated New Architecture native build for the Razorpay booking integration.
 - [ ] Confirm iOS App Store payment policy for every paid flow before submission.
 - [ ] Move digital subscriptions or premium in-app content to Apple In-App Purchase where required.
 - [ ] Keep Razorpay on iOS only for allowed real-world or one-to-one services, not digital subscriptions/premium content.
-- [ ] Confirm iOS digital subscription Razorpay flow remains disabled for first submission.
-- [ ] Implement Apple In-App Purchase before enabling digital subscriptions or premium content on iOS.
-- [ ] Confirm iOS digital subscriptions do not offer web checkout, browser redirects, or auto-login payment workarounds.
+- [ ] Confirm new digital subscription purchases remain disabled on both iOS and Android for first submission.
+- [ ] Implement the applicable Apple In-App Purchase and Google Play Billing flows before enabling digital subscriptions or premium content.
+- [ ] Confirm digital subscriptions do not offer web checkout, browser redirects, or auto-login payment workarounds.
 - [ ] Complete business/legal policy review before keeping booking payments on iOS.
 - [ ] Confirm booking payment does not unlock digital subscriptions, premium content, or app-only features.
 
@@ -77,6 +79,7 @@
 - [ ] App name, subtitle, description, keywords, category, support URL, and privacy URL are complete.
 - [ ] Screenshots show real app screens, not only login/splash screens.
 - [ ] Review notes are specific and include demo credentials.
+- [ ] Demo credentials are stored only in App Store Connect, never in the repository.
 - [ ] App Review contact details are current.
 - [ ] Export compliance, content rights, privacy, and age rating forms are complete.
 
@@ -86,8 +89,15 @@
 - [ ] Bundle identifier matches App Store Connect.
 - [ ] iOS camera, microphone, and photo permission descriptions are present.
 - [ ] No secrets are hardcoded in the app bundle.
+- [ ] The signed archive contains the Associated Domains entitlement for `app.menorah.me`.
+- [ ] The AASA endpoint returns JSON directly over HTTPS without a redirect.
+- [ ] Xcode's privacy report for the exact archive matches the approved privacy inventory.
+- [ ] Screenshot/recording and app-switcher protection are verified on a physical device.
 - [ ] Final build is tested via TestFlight before submission.
 
 ## Native Project Sync
 - [ ] This repo currently includes `ios/` and `android/`, so it is being treated as a native/prebuild project rather than a pure CNG project.
-- [ ] After changing native config fields in `app.config.ts`, run `npx expo prebuild --clean` intentionally and review the native diffs before building.
+- [ ] Native config is updated in place and reviewed alongside `app.config.ts`.
+- [ ] After dependency changes, run the approved CocoaPods install on macOS and review `Podfile.lock`.
+- [ ] Do not run `npx expo prebuild --clean`; it can overwrite the tracked native remediation.
+- [ ] Complete every item in `docs/mobile-store-external-actions.md`.

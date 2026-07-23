@@ -6,6 +6,7 @@ import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from "@/state/useAuth";
 import { api } from "@/lib/api";
+import { reportError } from "@/lib/safeDiagnostics";
 
 export default function PrivacySettings({ navigation }: any) {
   const [profileVisibility, setProfileVisibility] = useState<'public' | 'counsellors' | 'private'>('public');
@@ -40,7 +41,7 @@ export default function PrivacySettings({ navigation }: any) {
         );
       }
     } catch (error) {
-      console.error('Privacy preference update error:', error);
+      reportError('profile.privacy_preference_failed', error);
       rollback();
       Alert.alert(
         'Preference Not Saved',

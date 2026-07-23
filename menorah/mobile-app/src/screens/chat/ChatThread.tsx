@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import ChatBubble from "@/components/chat/ChatBubble";
 import TypingIndicator from "@/components/chat/TypingIndicator";
 import { ChatMessage } from '@/lib/socket';
+import { reportError } from '@/lib/safeDiagnostics';
 
 export default function ChatThread({ navigation, route }: any) {
   const { roomId } = route.params || {};
@@ -52,7 +53,7 @@ export default function ChatThread({ navigation, route }: any) {
     try {
       await fetchMessages(roomId);
     } catch (error: any) {
-      console.error('Error loading messages:', error);
+      reportError('chat.thread_load_failed', error);
       Alert.alert('Error', 'Failed to load messages. Please try again.');
     } finally {
       setLoading(false);
@@ -99,7 +100,7 @@ export default function ChatThread({ navigation, route }: any) {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     } catch (error: any) {
-      console.error('Error sending message:', error);
+      reportError('chat.thread_send_failed', error);
       Alert.alert('Error', 'Failed to send message. Please try again.');
       setMessage(messageText); // Restore message on error
     } finally {
@@ -115,10 +116,14 @@ export default function ChatThread({ navigation, route }: any) {
     if (text.length > 0 && !typing) {
       setTyping(true);
       // Send typing indicator via API
-      api.sendTypingIndicator(roomId, true).catch(console.error);
+      api.sendTypingIndicator(roomId, true).catch((error) => {
+        reportError('chat.typing_start_failed', error);
+      });
     } else if (text.length === 0 && typing) {
       setTyping(false);
-      api.sendTypingIndicator(roomId, false).catch(console.error);
+      api.sendTypingIndicator(roomId, false).catch((error) => {
+        reportError('chat.typing_stop_failed', error);
+      });
     }
     
     // Clear existing timeout
@@ -130,7 +135,9 @@ export default function ChatThread({ navigation, route }: any) {
     typingTimeoutRef.current = setTimeout(() => {
       if (typing) {
         setTyping(false);
-        api.sendTypingIndicator(roomId, false).catch(console.error);
+        api.sendTypingIndicator(roomId, false).catch((error) => {
+          reportError('chat.typing_cleanup_failed', error);
+        });
       }
     }, 3000);
   };

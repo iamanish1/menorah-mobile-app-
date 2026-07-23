@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { api } from '@/lib/api';
+import { reportError } from '@/lib/safeDiagnostics';
 
 const WebViewWithPermissions = WebView as any;
 
@@ -75,7 +76,7 @@ export default function CallJoin({ navigation, route }: any) {
         setPermissionsGranted(false);
       }
     } catch (permissionError) {
-      console.warn('Could not request call permissions:', permissionError);
+      reportError('call.join_permission_failed', permissionError);
       Alert.alert('Permission Error', 'Could not request permissions. Please enable them in app settings.', [
         { text: 'Go Back', onPress: () => navigation.goBack() },
       ]);
@@ -120,7 +121,7 @@ export default function CallJoin({ navigation, route }: any) {
             try {
               if (bookingId) await api.leaveVideoRoom(bookingId);
             } catch (leaveError) {
-              console.warn('Failed to leave video room:', leaveError);
+              reportError('call.leave_failed', leaveError);
             }
             navigation.goBack();
           },
@@ -136,7 +137,7 @@ export default function CallJoin({ navigation, route }: any) {
         api.leaveVideoRoom(bookingId).catch(() => {}).finally(() => navigation.goBack());
       }
     } catch (parseError) {
-      console.warn('Ignoring invalid call WebView message:', parseError);
+      reportError('call.invalid_webview_message', parseError);
     }
   };
 

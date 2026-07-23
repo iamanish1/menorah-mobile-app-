@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { reportEvent } from './safeDiagnostics';
 
 // Priority: process.env (bundled by Metro at OTA-update time) → app config extra (baked into binary)
 const configBaseURL: string | undefined =
@@ -85,19 +86,4 @@ export const ENV = {
   USE_RAZORPAY_SDK,
 };
 
-if (__DEV__) {
-  console.log('Environment Configuration:', {
-    Platform: Platform.OS,
-    __DEV__,
-    IS_EXPO_GO: ENV.IS_EXPO_GO,
-    API_BASE_URL: ENV.API_BASE_URL,
-    API_ORIGIN: ENV.API_ORIGIN,
-    WEB_BASE_URL: ENV.WEB_BASE_URL,
-    CHECKOUT_RETURN_URL: ENV.CHECKOUT_RETURN_URL,
-    JITSI_BASE_URL: ENV.JITSI_BASE_URL,
-    GOOGLE_WEB_CLIENT_ID: ENV.GOOGLE_WEB_CLIENT_ID ? 'set' : 'missing',
-    GOOGLE_IOS_CLIENT_ID: ENV.GOOGLE_IOS_CLIENT_ID ? 'set' : 'missing',
-    GOOGLE_ANDROID_CLIENT_ID: ENV.GOOGLE_ANDROID_CLIENT_ID ? 'set' : 'missing',
-    GOOGLE_IOS_URL_SCHEME: ENV.GOOGLE_IOS_URL_SCHEME ? 'set' : 'missing',
-  });
-}
+reportEvent('environment.loaded');

@@ -109,8 +109,8 @@ export function SocialAuthButtons({ mode, onSuccess }: SocialAuthButtonsProps) {
         ],
       });
 
-      if (!credential.identityToken) {
-        Alert.alert('Apple Sign-In failed', 'Apple did not return an identity token.');
+      if (!credential.identityToken || !credential.authorizationCode) {
+        Alert.alert('Apple Sign-In failed', 'Apple did not return the required server authorization.');
         return;
       }
 

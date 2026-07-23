@@ -8,6 +8,7 @@ import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from '@/state/useAuth';
 import { SocialAuthButtons } from '@/components/auth/SocialAuthButtons';
+import { reportError } from '@/lib/safeDiagnostics';
 
 type RegisterPayload = {
   firstName: string;
@@ -31,11 +32,6 @@ const passwordRuleMessage = 'Password must be at least 8 characters and include 
 
 const normalizePhone = (value: string) => value.trim().replace(/[\s()-]/g, '');
 const isValidPassword = (value: string) => value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value);
-
-const sanitizeRegisterPayload = (payload: RegisterPayload) => ({
-  ...payload,
-  password: `[redacted; length=${payload.password.length}]`,
-});
 
 const getBackendErrorMessage = (error: BackendValidationError) => error.msg || error.message;
 
@@ -209,19 +205,11 @@ export default function Register({ navigation }: any) {
 
     setLoading(true);
     try {
-      if (__DEV__) {
-        console.log('[Register] POST /auth/register payload:', JSON.stringify(sanitizeRegisterPayload(payload), null, 2));
-      }
-
       if (phone !== payload.phone) setPhone(payload.phone);
 
       const result = await register(payload);
 
       if (result.success) {
-        if (__DEV__) {
-          console.log('[Register] Registration successful:', result.message);
-        }
-
         navigation.reset({
           index: 0,
           routes: [{ name: 'Verify', params: { email: payload.email, fromSignup: true } }],
@@ -238,7 +226,7 @@ export default function Register({ navigation }: any) {
         );
       }
     } catch (error: any) {
-      console.error('Registration error:', error);
+      reportError('registration.unexpected_failure', error);
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);

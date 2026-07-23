@@ -9,6 +9,7 @@ import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from "@/state/useAuth";
 import { api } from "@/lib/api";
+import { reportError } from "@/lib/safeDiagnostics";
 
 export default function EditProfile({ navigation }: any) {
   const { user, updateUser } = useAuth();
@@ -81,7 +82,7 @@ export default function EditProfile({ navigation }: any) {
         Alert.alert('Error', finalResponse.message || 'Failed to update profile. Please try again.');
       }
     } catch (error: any) {
-      console.error('Error updating profile:', error);
+      reportError('profile.update_failed', error);
       Alert.alert('Error', 'Failed to update profile. Please try again.');
     } finally {
       setLoading(false);
@@ -94,16 +95,8 @@ export default function EditProfile({ navigation }: any) {
 
   const handlePickImage = async () => {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permission.granted) {
-        Alert.alert(
-          'Permission Required',
-          'Please allow photo library access to upload a profile picture.'
-        );
-        return;
-      }
-
+      // launchImageLibraryAsync uses the Android system photo picker without
+      // legacy broad-storage permission and requests scoped iOS access itself.
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -130,7 +123,7 @@ export default function EditProfile({ navigation }: any) {
         profileImage: asset.uri,
       }));
     } catch (error) {
-      console.error('Image picker error:', error);
+      reportError('profile.image_picker_failed', error);
       Alert.alert('Upload Failed', 'Unable to select image. Please try again.');
     }
   };

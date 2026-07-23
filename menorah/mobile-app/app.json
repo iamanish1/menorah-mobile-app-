@@ -11,11 +11,19 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.menorah.health.app"
+      "bundleIdentifier": "com.menorah.health.app",
+      "buildNumber": "14",
+      "associatedDomains": [
+        "applinks:app.menorah.me"
+      ]
     },
     "android": {
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES"
+      ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/brand/menorah_logo.png",
+        "foregroundImage": "./assets/brand/menorah-logo-no-bg.png",
         "backgroundColor": "#f0f9f4"
       },
       "package": "com.menorah.healthmobile",
@@ -23,7 +31,7 @@
     },
     "androidStatusBar": {
       "barStyle": "light-content",
-      "backgroundColor": "#314830",
+      "backgroundColor": "#2d7a5c",
       "translucent": false
     },
     "web": {
@@ -39,7 +47,7 @@
     "updates": {
       "url": "https://u.expo.dev/d7fb6e65-3440-4a79-b4b2-6746d2582fa7"
     },
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "2.6.0",
     "extra": {
       "CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
       "eas": {

@@ -1,6 +1,8 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { secureStorage } from './secureStorage';
 import { ENV } from './env';
+import { reportError, reportEvent } from './safeDiagnostics';
+import { invalidateLocalSession } from './authSession';
 import type { Article } from '@/types/article';
 
 // Types
@@ -19,6 +21,11 @@ export interface User {
     email?: boolean;
     sms?: boolean;
     push?: boolean;
+  };
+  reauthenticationMethods?: {
+    password: boolean;
+    apple: boolean;
+    google: boolean;
   };
   kyc?: {
     status: KycStatus;
@@ -198,9 +205,7 @@ class ApiClient {
   private token: string | null = null;
 
   constructor() {
-    if (__DEV__) {
-      console.log('Initializing API Client with baseURL:', ENV.API_BASE_URL);
-    }
+    reportEvent('api.client_initialized');
     
     this.client = axios.create({
       baseURL: ENV.API_BASE_URL,
@@ -218,16 +223,6 @@ class ApiClient {
         }
         if (this.token) {
           config.headers.Authorization = `Bearer ${this.token}`;
-          this.logDebug('[API] Request with token:', {
-            method: config.method,
-            url: config.url,
-            hasBearerToken: true,
-          });
-        } else {
-          this.logDebug('[API] Request without token:', {
-            method: config.method,
-            url: config.url,
-          });
         }
         return config;
       },
@@ -239,42 +234,27 @@ class ApiClient {
       (response) => response,
       async (error) => {
         if (error.response?.status === 401) {
-          await secureStorage.clearToken();
           this.token = null;
+          // Clear protected UI/cache state immediately; physical secure-store
+          // cleanup may complete asynchronously or remain tombstoned for retry.
+          invalidateLocalSession();
+          try {
+            await secureStorage.clearToken();
+          } catch (storageError) {
+            reportError('auth.token_cleanup_pending', storageError);
+          }
         }
         return Promise.reject(error);
       }
     );
   }
 
-  private stringifyForLog(value: unknown) {
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch {
-      return String(value);
-    }
-  }
-
-  private logDebug(label: string, value?: unknown) {
-    if (!__DEV__) return;
-
-    if (value === undefined) {
-      console.log(label);
-      return;
-    }
-
-    console.log(label, typeof value === 'string' ? value : this.stringifyForLog(value));
-  }
-
-  private buildUrl(path: string) {
-    const baseURL = this.client.defaults.baseURL?.replace(/\/+$/, '') || '';
-    return `${baseURL}${path.startsWith('/') ? path : `/${path}`}`;
-  }
-
-  // Set auth token — stored in device secure enclave (Keychain/Keystore)
+  // Set auth token in platform secure storage (iOS Keychain / Android Keystore).
   async setToken(token: string) {
-    this.token = token;
+    // Never activate a credential that was not durably persisted.
+    this.token = null;
     await secureStorage.setToken(token);
+    this.token = token;
   }
 
   // Clear auth token
@@ -321,29 +301,15 @@ class ApiClient {
       const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error');
       
       if (isNetworkError) {
-        // Log network errors as warnings since they're expected when server is unreachable
-        this.logDebug('API Network Error (server unreachable):', {
-          url: config.url,
-          method: config.method,
-        });
+        reportError('api.network_unavailable', error);
         return {
           success: false,
           message: 'Network error: Unable to connect to server. Please check your internet connection and try again.'
         };
       }
       
-      // Log actual errors (non-network errors). Stringify keeps nested validation errors visible.
       const responseData = error.response?.data;
-      if (__DEV__) {
-        console.error('API Request Error:', this.stringifyForLog({
-          url: config.url,
-          method: config.method,
-          error: error.message,
-          code: error.code,
-          status: error.response?.status,
-          response: responseData
-        }));
-      }
+      reportError('api.request_failed', error);
       
       if (responseData) {
         return responseData;
@@ -363,14 +329,6 @@ class ApiClient {
     dateOfBirth: string;
     gender: string;
   }): Promise<ApiResponse<{ user?: User; token?: string; email?: string }>> {
-    this.logDebug('[API] API BASE URL:', this.client.defaults.baseURL);
-    this.logDebug('[API] POST /auth/register endpoint URL:', this.buildUrl('/auth/register'));
-    this.logDebug('[API] REGISTER PAYLOAD KEYS:', Object.keys(userData));
-    this.logDebug('[API] POST /auth/register payload:', {
-      ...userData,
-      password: `[redacted; length=${userData.password.length}]`,
-    });
-
     return this.request({
       method: 'POST',
       url: '/auth/register',
@@ -391,14 +349,6 @@ class ApiClient {
       password: credentials.password,
     };
 
-    this.logDebug('[API] API BASE URL:', this.client.defaults.baseURL);
-    this.logDebug('[API] POST /auth/login endpoint URL:', this.buildUrl('/auth/login'));
-    this.logDebug('[API] LOGIN PAYLOAD KEYS:', Object.keys(payload));
-    this.logDebug('[API] POST /auth/login payload:', {
-      email: payload.email,
-      password: `[redacted; length=${payload.password.length}]`,
-    });
-
     return this.request({
       method: 'POST',
       url: '/auth/login',
@@ -416,7 +366,7 @@ class ApiClient {
 
   async loginWithApple(data: {
     identityToken: string;
-    authorizationCode?: string | null;
+    authorizationCode: string;
     email?: string | null;
     fullName?: string | null;
   }): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
@@ -484,11 +434,6 @@ class ApiClient {
   }
 
   async getCurrentUser(): Promise<ApiResponse<{ user: User }>> {
-    this.logDebug('[API] getCurrentUser called:', {
-      baseURL: this.client.defaults.baseURL,
-      endpoint: this.buildUrl('/users/me'),
-    });
-
     return this.request({
       method: 'GET',
       url: '/users/me',
@@ -948,18 +893,12 @@ class ApiClient {
         timeout: 30000,
       });
 
-      this.logDebug('[API] face-check submit response:', response.data);
       return response.data;
     } catch (error: any) {
       const errorResponse = error.response?.data;
       const status = error.response?.status;
       if (status === 413 || (typeof errorResponse === 'string' && errorResponse.includes('413 Request Entity Too Large'))) {
-        if (__DEV__) {
-          console.error('[API] face-check upload limit error:', this.stringifyForLog({
-            status,
-            response: errorResponse,
-          }));
-        }
+        reportError('api.face_check_upload_limit', error);
         return {
           success: false,
           message: 'The selfie upload is being blocked by the server upload limit. Please try again later or skip the optional face check.',
@@ -967,12 +906,7 @@ class ApiClient {
       }
 
       if (errorResponse) {
-        if (__DEV__) {
-          console.error('[API] face-check submit error:', this.stringifyForLog({
-            status,
-            response: errorResponse,
-          }));
-        }
+        reportError('api.face_check_submit_failed', error);
         return errorResponse;
       }
 
@@ -1009,15 +943,34 @@ class ApiClient {
         };
   }
 
-  async requestAccountDeletion(password: string): Promise<ApiResponse<void>> {
-    if (!password.trim()) {
+  async createAccountDeletionChallenge(): Promise<ApiResponse<{
+    challengeId: string;
+    nonce: string;
+    expiresAt: string;
+  }>> {
+    return this.request({
+      method: 'POST',
+      url: '/users/account/deletion-challenge',
+      data: { method: 'apple' },
+    });
+  }
+
+  async requestAccountDeletion(payload:
+    | { method: 'password'; password: string }
+    | {
+        method: 'apple';
+        challengeId: string;
+        identityToken: string;
+        authorizationCode: string;
+      }
+  ): Promise<ApiResponse<void>> {
+    if (payload.method === 'password' && !payload.password.trim()) {
       return { success: false, message: 'Enter your password to confirm account deletion.' };
     }
-
     return this.request<void>({
       method: 'DELETE',
       url: '/users/account',
-      data: { password },
+      data: payload,
     });
   }
 
@@ -1039,7 +992,7 @@ export async function listCounsellors(): Promise<Counsellor[]> {
     const response = await api.getCounsellors();
     return response.data?.counsellors || [];
   } catch (error) {
-    console.error('Error fetching counsellors:', error);
+    reportError('api.counsellors_fetch_failed', error);
     return [];
   }
 }

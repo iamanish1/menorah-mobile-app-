@@ -13,14 +13,15 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Counsellor, Booking, ChatRoom } from '@/lib/api';
+import { useAuth } from '@/state/useAuth';
 
 // ── Query keys ─────────────────────────────────────────────────────────────
 export const QUERY_KEYS = {
   counsellors:      (params?: object) => ['counsellors', params ?? {}] as const,
   counsellor:       (id: string)      => ['counsellor', id]            as const,
-  bookings:         (params?: object) => ['bookings', params ?? {}]    as const,
-  chatRooms:        ()                => ['chatRooms']                 as const,
-  profile:          ()                => ['profile']                   as const,
+  bookings:         (userId: string, params?: object) => ['bookings', userId, params ?? {}] as const,
+  chatRooms:        (userId: string)  => ['chatRooms', userId]         as const,
+  profile:          (userId: string)  => ['profile', userId]           as const,
   specializations:  ()                => ['specializations']           as const,
   languages:        ()                => ['languages']                 as const,
 };
@@ -84,9 +85,12 @@ export function useBookings(params?: {
   page?: number;
   limit?: number;
 }) {
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
   return useQuery({
-    queryKey:  QUERY_KEYS.bookings(params),
+    queryKey:  QUERY_KEYS.bookings(userId, params),
     queryFn:   () => api.getBookings({ limit: 50, ...params }),
+    enabled:   Boolean(userId),
     staleTime: 0,   // always refetch — booking state changes frequently
     select:    (res) => ({
       bookings:   res.success ? (res.data?.bookings ?? []) as Booking[] : [],
@@ -97,9 +101,12 @@ export function useBookings(params?: {
 
 // ── Chat rooms ──────────────────────────────────────────────────────────────
 export function useChatRooms() {
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
   return useQuery({
-    queryKey:  QUERY_KEYS.chatRooms(),
+    queryKey:  QUERY_KEYS.chatRooms(userId),
     queryFn:   () => api.getChatRooms(),
+    enabled:   Boolean(userId),
     staleTime: 0,   // driven by socket events — no stale period
     select:    (res) => res.success ? (res.data?.chatRooms ?? []) as ChatRoom[] : [],
   });
@@ -107,9 +114,12 @@ export function useChatRooms() {
 
 // ── User profile ─────────────────────────────────────────────────────────────
 export function useProfile() {
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
   return useQuery({
-    queryKey:  QUERY_KEYS.profile(),
+    queryKey:  QUERY_KEYS.profile(userId),
     queryFn:   () => api.getCurrentUser(),
+    enabled:   Boolean(userId),
     staleTime: 5 * 60 * 1000,
     select:    (res) => res.success ? res.data?.user ?? null : null,
   });

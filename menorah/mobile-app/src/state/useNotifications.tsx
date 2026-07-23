@@ -1,7 +1,8 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { socketService, SessionStartedData, BookingStatusData, BookingConfirmedData, BookingRescheduledData, ChatMessage } from '@/lib/socket';
 import { useAuth } from '@/state/useAuth';
 import { navigate } from '@/services/navigationService';
+import { isSafeNavigationIdentifier } from '@/lib/deepLinks';
 
 export type AppNotificationType = 'session' | 'booking' | 'message' | 'system';
 
@@ -17,7 +18,6 @@ export interface AppNotification {
     bookingId?: string;
     roomId?: string;
     sessionType?: 'video' | 'audio' | 'chat';
-    counsellorName?: string;
   };
 }
 
@@ -39,9 +39,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Notifications deliberately remain memory-only and are never shared
-    // between accounts on the same device.
+    // between accounts on the same device. Layout timing clears before paint.
     setNotifications([]);
   }, [user?.id]);
 
@@ -75,9 +75,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const openNotification = useCallback((notification: AppNotification) => {
+    if (!user?.id) {
+      return;
+    }
+
     markAsRead(notification.id);
 
-    if (notification.data?.bookingId && notification.data?.sessionType) {
+    if (
+      isSafeNavigationIdentifier(notification.data?.bookingId) &&
+      notification.data?.sessionType
+    ) {
       if (notification.data.sessionType === 'video') {
         navigate('PreCallCheck', { bookingId: notification.data.bookingId });
         return;
@@ -89,21 +96,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       }
     }
 
-    if (notification.data?.roomId) {
+    if (isSafeNavigationIdentifier(notification.data?.roomId)) {
       navigate('ChatThread', {
         roomId: notification.data.roomId,
-        counsellorName: notification.data.counsellorName,
       });
       return;
     }
 
-    if (notification.data?.bookingId) {
+    if (isSafeNavigationIdentifier(notification.data?.bookingId)) {
       navigate('BookingReview', { bookingId: notification.data.bookingId });
       return;
     }
 
-    navigate('Bookings');
-  }, [markAsRead]);
+    navigate('Tabs', { screen: 'Bookings' });
+  }, [markAsRead, user?.id]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -111,24 +117,34 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
 
     const unsubscribeSessionStarted = socketService.onSessionStarted((data: SessionStartedData) => {
+      if (
+        !isSafeNavigationIdentifier(data.bookingId) ||
+        !['video', 'audio', 'chat'].includes(data.sessionType)
+      ) {
+        return;
+      }
+
       addNotification({
         type: 'session',
-        title: 'Session Started',
-        body: `${data.counsellorName} is waiting for you now.`,
+        title: 'Session ready',
+        body: 'Open Menorah to review your session.',
         actionLabel: 'Join Session',
         data: {
           bookingId: data.bookingId,
           sessionType: data.sessionType,
-          counsellorName: data.counsellorName,
         },
       });
     });
 
     const unsubscribeBookingStatus = socketService.onBookingStatusChanged((data: BookingStatusData) => {
+      if (!isSafeNavigationIdentifier(data.bookingId)) {
+        return;
+      }
+
       addNotification({
         type: 'booking',
         title: 'Booking Updated',
-        body: `Your booking status changed to ${data.status}.`,
+        body: 'Open Menorah to review your booking.',
         actionLabel: 'View Booking',
         data: {
           bookingId: data.bookingId,
@@ -137,10 +153,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     });
 
     const unsubscribeBookingConfirmed = socketService.onBookingConfirmed((data: BookingConfirmedData) => {
+      if (!isSafeNavigationIdentifier(data.bookingId)) {
+        return;
+      }
+
       addNotification({
         type: 'booking',
-        title: 'Booking Confirmed',
-        body: `${data.counsellorName} has accepted your booking.`,
+        title: 'Booking confirmed',
+        body: 'Open Menorah to review your booking.',
         actionLabel: 'View Booking',
         data: {
           bookingId: data.bookingId,
@@ -149,6 +169,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     });
 
     const unsubscribeBookingRescheduled = socketService.onBookingRescheduled((data: BookingRescheduledData) => {
+      if (!isSafeNavigationIdentifier(data.bookingId)) {
+        return;
+      }
+
       addNotification({
         type: 'booking',
         title: 'Session Rescheduled',
@@ -161,7 +185,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     });
 
     const unsubscribeMessage = socketService.onMessage((message: ChatMessage) => {
-      if (message.senderId === user.id) {
+      if (
+        message.senderId === user.id ||
+        !isSafeNavigationIdentifier(message.roomId)
+      ) {
         return;
       }
 

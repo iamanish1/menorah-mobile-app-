@@ -28,6 +28,7 @@ import {
   MENORAH_PRIVACY_POLICY_URL,
 } from '@/lib/faceCheckNotice';
 import { useAuth } from '@/state/useAuth';
+import { reportError } from '@/lib/safeDiagnostics';
 
 type ImageSlotProps = {
   title: string;
@@ -194,20 +195,9 @@ export default function IdentityVerification({ navigation, route }: any) {
         type: imageType,
       };
 
-      if (__DEV__) {
-        console.log('[IdentityVerification] Captured selfie:', {
-          width: asset.width,
-          height: asset.height,
-          fileSize: asset.fileSize,
-          mimeType: asset.mimeType,
-          uploadType: image.type,
-          uploadName: image.name,
-        });
-      }
-
       setSelfie(image);
     } catch (error) {
-      console.error('[IdentityVerification] Camera error:', error);
+      reportError('identity.camera_failed', error);
       Alert.alert('Camera Error', 'Unable to open the camera. Please try again.');
     }
   };
@@ -233,9 +223,7 @@ export default function IdentityVerification({ navigation, route }: any) {
 
     if (!response.success || !response.data) {
       const message = response.message || 'The optional face check could not be completed right now. Please try again later or skip for now.';
-      if (__DEV__) {
-        console.error('[IdentityVerification] Submit failed:', response);
-      }
+      reportError('identity.face_check_rejected');
       Alert.alert('Face Check Failed', message);
       return;
     }

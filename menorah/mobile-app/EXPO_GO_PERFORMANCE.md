@@ -55,7 +55,7 @@ npx expo run:ios
 
 #### Remove Heavy Dependencies
 Consider removing or lazy-loading these heavy packages:
-- `@stomp/stompjs` (WebSocket) - Load only when chat is used
+- `socket.io-client` (real-time chat) - Connect only after authentication
 - `i18next` + `react-i18next` - Load only when language changes
 - `date-fns` + `date-fns-tz` - Load only when date formatting is needed
 - `react-hook-form` + `zod` - Load only when forms are used

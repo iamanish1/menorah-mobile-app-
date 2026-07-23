@@ -1,4 +1,5 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
+import { reportError } from '@/lib/safeDiagnostics';
 
 export const navigationRef = createNavigationContainerRef<Record<string, any>>();
 
@@ -6,7 +7,7 @@ export function navigate(name: string, params?: any) {
   if (navigationRef.isReady()) {
     navigationRef.navigate(name, params);
   } else {
-    console.warn('Navigation not ready yet');
+    reportError('navigation.not_ready');
   }
 }
 

@@ -63,12 +63,24 @@ test('booking checkout handles completed payments and native dismissal without r
 
 test('booking review skips checkout only for a paid subscription booking', () => {
   const bookingReview = readSource('src/screens/booking/BookingReview.tsx');
+  const sessionReview = readSource('src/screens/booking/SessionReview.tsx');
 
   assert.match(bookingReview, /isSubscriptionAuthorizedBooking/);
   assert.match(bookingReview, /booking\?\.isSubscriptionBooking === true/);
   assert.match(bookingReview, /booking\?\.paymentMethod === 'subscription'/);
   assert.match(bookingReview, /booking\?\.paymentStatus === 'paid'/);
   assert.match(bookingReview, /isSubscriptionBooking: true/);
+  assert.match(sessionReview, /booking\.isSubscriptionBooking === true/);
+  assert.match(sessionReview, /booking\.paymentMethod === 'subscription'/);
+  assert.match(sessionReview, /booking\.paymentStatus === 'paid'/);
+  assert.doesNotMatch(sessionReview, /hasActiveSubscription\s*&&\s*booking\.paymentMethod/);
+});
+
+test('mobile does not advertise an unimplemented first-session promotion', () => {
+  const discover = readSource('src/screens/discover/DiscoverModern.tsx');
+
+  assert.doesNotMatch(discover, /FreeSessionModal|hasSeenFreeSessionModal|Book My Free Session/);
+  assert.doesNotMatch(discover, /First Session is on Us|completely free/i);
 });
 
 test('bookings under payment review expose support guidance without join or retry actions', () => {

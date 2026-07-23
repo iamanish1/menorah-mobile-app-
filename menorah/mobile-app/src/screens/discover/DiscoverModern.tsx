@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useCallback, useMemo, useState, type ComponentType } from 'react';
 import { ActivityIndicator, Animated, FlatList, Linking, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ArrowRight,
   Bell,
@@ -21,7 +20,6 @@ import {
   Users,
 } from 'lucide-react-native';
 import HelpSheet from '@/components/help/HelpSheet';
-import FreeSessionModal from '@/components/modals/FreeSessionModal';
 import {
   IOSActionCard,
   IOSArticleCard,
@@ -38,7 +36,6 @@ import { useArticles } from '@/hooks/useArticles';
 import { INSTA } from '@/mock/instagram';
 import { mockCounsellors } from '@/mock/counsellors';
 import { SUBSCRIPTION_PLANS } from '@/screens/subscription/subscriptionPlans';
-import subscriptionService from '@/services/subscriptionService';
 import { useNotifications } from '@/state/useNotifications';
 import type { Article } from '@/types/article';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -141,7 +138,6 @@ function matchesSearch(result: SearchDestination, normalizedQuery: string) {
 export default function Discover({ navigation }: any) {
   const [help, setHelp] = useState(false);
   const [q, setQ] = useState('');
-  const [showFreeSessionModal, setShowFreeSessionModal] = useState(false);
   const { unreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const iosTheme = useIOSTheme();
@@ -159,34 +155,6 @@ export default function Discover({ navigation }: any) {
     q: isSearching ? trimmedQuery : undefined,
   });
   const articles = useMemo(() => articlesData?.articles || [], [articlesData?.articles]);
-
-  useEffect(() => {
-    const checkModal = async () => {
-      try {
-        const seen = await AsyncStorage.getItem('hasSeenFreeSessionModal');
-        if (seen) return;
-
-        const hasPremium = await subscriptionService.hasPremiumSubscription();
-        if (!hasPremium) setShowFreeSessionModal(true);
-      } catch (error) {
-        console.warn('Unable to check subscription modal state:', error);
-      }
-    };
-
-    const timer = setTimeout(checkModal, 800);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleCloseModal = async () => {
-    await AsyncStorage.setItem('hasSeenFreeSessionModal', 'true').catch(() => {});
-    setShowFreeSessionModal(false);
-  };
-
-  const handleBookFreeSession = async () => {
-    await AsyncStorage.setItem('hasSeenFreeSessionModal', 'true').catch(() => {});
-    setShowFreeSessionModal(false);
-    navigation.navigate('GenderSelection');
-  };
 
   const handleSessionSelect = useCallback((sessionType: SessionType) => {
     const details = SESSION_DETAILS[sessionType];
@@ -830,11 +798,6 @@ export default function Discover({ navigation }: any) {
       </IOSScreen>
 
       <HelpSheet visible={help} onClose={() => setHelp(false)} />
-      <FreeSessionModal
-        visible={showFreeSessionModal}
-        onClose={handleCloseModal}
-        onBookSession={handleBookFreeSession}
-      />
     </View>
   );
 }

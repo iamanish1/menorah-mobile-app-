@@ -70,6 +70,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     [
       'expo-image-picker',
       {
+        cameraPermission: 'Menorah Health uses the camera for optional face verification and video support sessions.',
         photosPermission: 'Allow Menorah Health to access your photos so you can update your profile picture.',
       }
     ],
@@ -106,22 +107,30 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       checkAutomatically: 'ON_LOAD',
       fallbackToCacheTimeout: 0,
     },
-    runtimeVersion: '1.0.0',
+    runtimeVersion: '2.6.0',
     // ─────────────────────────────────────────────────────────────────────────
     icon: './assets/brand/menorah_logo.png',
-    userInterfaceStyle: 'light',
+    userInterfaceStyle: 'automatic',
     assetBundlePatterns: [
       '**/*'
     ],
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.menorah.health.app',
+      buildNumber: '14',
+      associatedDomains: ['applinks:app.menorah.me'],
       usesAppleSignIn: true,
       infoPlist: {
-        CFBundleAllowMixedLocalizations: true
+        CFBundleAllowMixedLocalizations: true,
+        LSMinimumSystemVersion: '16.4',
+        NSCameraUsageDescription: 'Menorah Health uses the camera for optional face verification and video support sessions.'
       }
     },
     android: ({
+      blockedPermissions: [
+        'android.permission.READ_EXTERNAL_STORAGE',
+        'android.permission.READ_MEDIA_IMAGES'
+      ],
       adaptiveIcon: {
         foregroundImage: './assets/brand/menorah-logo-no-bg.png',
         backgroundColor: '#f0f9f4'
@@ -132,7 +141,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         {
           action: 'VIEW',
           autoVerify: true,
-          data: [{ scheme: 'https', host: 'app.menorah.me', pathPrefix: '/reset-password' }],
+          data: [
+            { scheme: 'http', host: 'app.menorah.me', path: '/reset-password' },
+            { scheme: 'https', host: 'app.menorah.me', path: '/reset-password' }
+          ],
           category: ['BROWSABLE', 'DEFAULT']
         }
       ],

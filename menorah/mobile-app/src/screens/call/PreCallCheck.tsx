@@ -10,6 +10,7 @@ import { palettes } from '@/theme/colors';
 import { api } from '@/lib/api';
 import { socketService } from '@/lib/socket';
 import NetInfo from '@react-native-community/netinfo';
+import { reportError } from '@/lib/safeDiagnostics';
 
 type Palette = (typeof palettes)[keyof typeof palettes];
 
@@ -38,7 +39,7 @@ export default function PreCallCheck({ navigation, route }: any) {
         setSessionDuration(b.sessionDuration || 0);
       }
     } catch (error) {
-      console.warn('Failed to fetch booking info:', error);
+      reportError('call.booking_fetch_failed', error);
     }
   }, [bookingId]);
 
@@ -61,7 +62,7 @@ export default function PreCallCheck({ navigation, route }: any) {
           );
         }
       } catch (permissionError) {
-        console.warn('Failed to request pre-call permissions:', permissionError);
+        reportError('call.permission_request_failed', permissionError);
         setMicPermission(false);
         setCameraPermission(false);
       }
@@ -76,7 +77,7 @@ export default function PreCallCheck({ navigation, route }: any) {
       const state = await NetInfo.fetch();
       setNetworkOk(Boolean(state.isConnected && (state.type === 'wifi' || state.type === 'cellular')));
     } catch (networkError) {
-      console.warn('Failed to check network before call:', networkError);
+      reportError('call.network_check_failed', networkError);
       setNetworkOk(false);
     } finally {
       setChecking(false);

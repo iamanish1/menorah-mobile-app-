@@ -1,4 +1,5 @@
 import { Alert, Text, View } from 'react-native';
+import { reportError } from '@/lib/safeDiagnostics';
 import { Image } from 'expo-image';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import {
@@ -107,7 +108,12 @@ export default function ProfileHome({ navigation }: any) {
             try {
               await logout();
             } catch (error) {
-              console.warn('[ProfileHome] Logout failed before local reset:', error);
+              reportError('profile.logout_failed', error);
+              Alert.alert(
+                'Signed Out Securely',
+                'Credential cleanup is still pending and will be retried before another sign-in.',
+              );
+              return;
             }
 
             setTimeout(() => {
@@ -121,7 +127,7 @@ export default function ProfileHome({ navigation }: any) {
                   );
                 }
               } catch (error) {
-                console.warn('[ProfileHome] Failed to reset navigation after logout:', error);
+                reportError('profile.logout_navigation_failed', error);
               }
             }, 250);
           },
