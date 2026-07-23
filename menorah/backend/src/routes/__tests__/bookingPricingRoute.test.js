@@ -789,7 +789,7 @@ describe('booking route server-controlled pricing', () => {
     expect(response.body.data.booking.videoCall).not.toHaveProperty('roomUrl');
   });
 
-  test('keeps normal booking actions only when paid authorization is strictly valid', async () => {
+  test('keeps paid booking access but does not advertise automatic cancellation', async () => {
     const booking = paidRazorpayBooking({
       user: {
         _id: '64f000000000000000000001',
@@ -828,7 +828,7 @@ describe('booking route server-controlled pricing', () => {
     expect(response.body.data.booking).toMatchObject({
       paymentReviewRequired: false,
       paymentAction: null,
-      canBeCancelled: true,
+      canBeCancelled: false,
       canBeRescheduled: true,
       videoCall: {
         provider: 'livekit',
@@ -1000,12 +1000,13 @@ describe('booking route server-controlled pricing', () => {
     expect(response.body).toMatchObject({
       success: false,
       code: 'PAID_CANCELLATION_REVIEW_REQUIRED',
-      message: 'Paid booking cancellation requires support review.',
+      message:
+        'Paid or entitled booking cancellation requires manual review. Cancellation and refund eligibility are not determined by this request.',
     });
     expect(Booking.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
-  test('atomically cancels an eligible subscription booking without refund state', async () => {
+  test('does not automatically cancel an entitled booking even beyond 24 hours', async () => {
     const subscriptionBooking = {
       _id: '64f000000000000000000010',
       user: '64f000000000000000000001',
@@ -1030,39 +1031,17 @@ describe('booking route server-controlled pricing', () => {
       },
     };
     Booking.findById.mockResolvedValue(subscriptionBooking);
-    Booking.findOneAndUpdate.mockResolvedValue({
-      ...subscriptionBooking,
-      status: 'cancelled',
-      populate: jest.fn().mockResolvedValue(undefined),
-    });
 
-    await request(buildApp())
+    const response = await request(buildApp())
       .put('/api/bookings/64f000000000000000000010/cancel')
       .send({ reason: 'Changed plans' })
-      .expect(200);
+      .expect(409);
 
-    expect(Booking.findOneAndUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'confirmed',
-      paymentStatus: 'paid',
-      paymentMethod: 'subscription',
-      scheduledAt: { $gt: expect.any(Date) },
-      $or: expect.arrayContaining([
-        expect.objectContaining({
-          paymentMethod: 'subscription',
-          amountMinor: 0,
-          'bookingAuthorization.kind': 'subscription_entitlement',
-          'bookingAuthorization.status': 'authorized',
-          'bookingAuthorization.reference': { $type: 'string', $regex: /\S/ },
-        }),
-      ]),
-    }), expect.objectContaining({
-      $set: expect.objectContaining({
-        status: 'cancelled',
-        'bookingAuthorization.status': 'revoked',
-      }),
-    }), { new: true, runValidators: true });
-    const update = Booking.findOneAndUpdate.mock.calls[0][1];
-    expect(update.$set).not.toHaveProperty('orderStatus');
-    expect(update.$set).not.toHaveProperty('paymentStatus');
+    expect(response.body).toMatchObject({
+      success: false,
+      code: 'PAID_CANCELLATION_REVIEW_REQUIRED',
+    });
+    expect(response.body.message).toContain('eligibility');
+    expect(Booking.findOneAndUpdate).not.toHaveBeenCalled();
   });
 });

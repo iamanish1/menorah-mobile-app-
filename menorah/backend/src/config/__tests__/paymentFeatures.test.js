@@ -1,9 +1,12 @@
 const {
   isBookingPaymentInitiationEnabled,
+  isPayoutInitiationEnabled,
   isSubscriptionPaymentFlowEnabled,
   isUsableRazorpayKeyId,
   isUsablePaymentSecret,
+  isUsablePayoutAccountNumber,
   getRazorpayConfigurationState,
+  getRazorpayPayoutConfigurationState,
   getPaymentWebhookMaxProcessingAttempts,
 } = require('../paymentFeatures');
 
@@ -23,6 +26,15 @@ describe('payment feature gates', () => {
 
     for (const value of ['false', 'TRUE', '1', 'yes', ' true ', '', true]) {
       expect(isBookingPaymentInitiationEnabled({ BOOKING_PAYMENTS_ENABLED: value })).toBe(false);
+    }
+  });
+
+  test('payout initiation is default-off and requires the exact explicit opt-in', () => {
+    expect(isPayoutInitiationEnabled({})).toBe(false);
+    expect(isPayoutInitiationEnabled({ PAYOUTS_ENABLED: 'true' })).toBe(true);
+
+    for (const value of ['false', 'TRUE', '1', 'yes', ' true ', '', true]) {
+      expect(isPayoutInitiationEnabled({ PAYOUTS_ENABLED: value })).toBe(false);
     }
   });
 
@@ -77,6 +89,22 @@ describe('payment feature gates', () => {
     expect(isUsablePaymentSecret('local_razorpay_secret')).toBe(false);
     expect(isUsablePaymentSecret(1234567890123456)).toBe(false);
     expect(isUsablePaymentSecret(secret, { minLength: secret.length + 1 })).toBe(false);
+  });
+
+  test.each([
+    ['787808008031', true],
+    ['123456', true],
+    ['12345678901234567890123456789012', true],
+    [undefined, false],
+    ['', false],
+    ['12345', false],
+    ['123456789012345678901234567890123', false],
+    ['111111111111', false],
+    ['REPLACE_WITH_PAYOUT_ACCOUNT_NUMBER', false],
+    [' 787808008031 ', false],
+    ['acct_787808008031', false],
+  ])('validates RazorpayX payout account number %p', (value, expected) => {
+    expect(isUsablePayoutAccountNumber(value)).toBe(expected);
   });
 
   test('returns only boolean Razorpay configuration state', () => {
@@ -152,6 +180,41 @@ describe('payment feature gates', () => {
     })).toMatchObject({
       webhookSecretUsable: false,
       previousWebhookSecretUsable: true,
+      webhookConfigured: false,
+    });
+  });
+
+  test('returns only dedicated RazorpayX configuration state', () => {
+    const state = getRazorpayPayoutConfigurationState({
+      RAZORPAY_X_KEY_ID: 'rzp_live_A1b2C3d4E5f6G7',
+      RAZORPAY_X_KEY_SECRET: 'RazorpayX-A1b2C3d4E5f6G7h8',
+      RAZORPAY_PAYOUT_ACCOUNT_NUMBER: '787808008031',
+      RAZORPAY_X_WEBHOOK_SECRET: 'X-Webhook-A1b2C3d4E5f6G7h8',
+    });
+
+    expect(state).toEqual({
+      keyIdUsable: true,
+      keySecretUsable: true,
+      accountNumberUsable: true,
+      webhookSecretUsable: true,
+      executionConfigured: true,
+      webhookConfigured: true,
+    });
+    expect(Object.values(state).every((value) => typeof value === 'boolean')).toBe(true);
+  });
+
+  test('checkout credentials never satisfy RazorpayX configuration', () => {
+    expect(getRazorpayPayoutConfigurationState({
+      RAZORPAY_KEY_ID: 'rzp_live_A1b2C3d4E5f6G7',
+      RAZORPAY_KEY_SECRET: 'Checkout-A1b2C3d4E5f6G7h8',
+      RAZORPAY_WEBHOOK_SECRET: 'Checkout-Webhook-A1b2C3d4E5',
+      RAZORPAY_PAYOUT_ACCOUNT_NUMBER: '787808008031',
+    })).toEqual({
+      keyIdUsable: false,
+      keySecretUsable: false,
+      accountNumberUsable: true,
+      webhookSecretUsable: false,
+      executionConfigured: false,
       webhookConfigured: false,
     });
   });

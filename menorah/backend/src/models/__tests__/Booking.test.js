@@ -53,3 +53,57 @@ describe('Booking pricing snapshot validation', () => {
     expect(error?.errors.currency).toBeTruthy();
   });
 });
+
+describe('Booking cancellation boundary', () => {
+  const safeUnpaidHold = (overrides = {}) => new Booking({
+    user: '64f000000000000000000001',
+    sessionDuration: 45,
+    scheduledAt: new Date(Date.now() + 60 * 60 * 1000),
+    status: 'pending',
+    amount: 1000,
+    amountMinor: 100000,
+    currency: 'INR',
+    paymentStatus: 'pending',
+    paymentMethod: 'razorpay',
+    holdExpiresAt: new Date(Date.now() + 60 * 1000),
+    bookingAuthorization: {
+      kind: 'payment',
+      status: 'pending',
+    },
+    pricing: {
+      source: 'service_catalog',
+      serviceCode: 'test-service',
+      listAmount: 1000,
+      listAmountMinor: 100000,
+      currency: 'INR',
+      resolvedAt: new Date(),
+    },
+    ...overrides,
+  });
+
+  test('advertises cancellation only for a live unpaid hold without a provider order', () => {
+    expect(safeUnpaidHold().canBeCancelled).toBe(true);
+    expect(safeUnpaidHold({ razorpayOrderId: 'order_test_123' }).canBeCancelled).toBe(false);
+  });
+
+  test('never advertises direct cancellation for paid or entitled bookings', () => {
+    expect(safeUnpaidHold({
+      status: 'confirmed',
+      paymentStatus: 'paid',
+      bookingAuthorization: { kind: 'payment', status: 'authorized' },
+    }).canBeCancelled).toBe(false);
+    expect(safeUnpaidHold({
+      status: 'confirmed',
+      paymentStatus: 'paid',
+      paymentMethod: 'subscription',
+      bookingAuthorization: {
+        kind: 'subscription_entitlement',
+        status: 'authorized',
+      },
+    }).canBeCancelled).toBe(false);
+  });
+
+  test('does not expose the former unconstrained cancellation model method', () => {
+    expect(safeUnpaidHold().cancel).toBeUndefined();
+  });
+});

@@ -1,4 +1,5 @@
 const BOOKING_PAYMENT_INITIATION_ENV = 'BOOKING_PAYMENTS_ENABLED';
+const PAYOUT_INITIATION_ENV = 'PAYOUTS_ENABLED';
 const SUBSCRIPTION_PAYMENT_FLOW_ENV = 'SUBSCRIPTION_PAYMENTS_ENABLED';
 const PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS_ENV =
   'PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS';
@@ -9,6 +10,9 @@ const RAZORPAY_KEY_ID_PATTERN = /^rzp_(?:test|live)_[A-Za-z0-9]{8,64}$/;
 const isBookingPaymentInitiationEnabled = (env = process.env) =>
   env[BOOKING_PAYMENT_INITIATION_ENV] === 'true'
   && getPaymentWebhookMaxProcessingAttempts(env) !== null;
+
+const isPayoutInitiationEnabled = (env = process.env) =>
+  env[PAYOUT_INITIATION_ENV] === 'true';
 
 // Subscription purchases do not yet have the durable attempt and reconciliation
 // guarantees required for money movement. Keep both initiation and verification
@@ -62,6 +66,16 @@ const isUsablePaymentSecret = (
     && !isObviousPaymentPlaceholder(candidate);
 };
 
+const isUsablePayoutAccountNumber = (value) => {
+  if (typeof value !== 'string') return false;
+  const candidate = value.trim();
+
+  return value === candidate
+    && /^\d{6,32}$/.test(candidate)
+    && !isObviousPaymentPlaceholder(candidate)
+    && new Set(candidate).size > 1;
+};
+
 const getRazorpayConfigurationState = (env = process.env) => {
   const keyIdUsable = isUsableRazorpayKeyId(env.RAZORPAY_KEY_ID);
   const keySecretUsable = isUsablePaymentSecret(env.RAZORPAY_KEY_SECRET);
@@ -86,14 +100,39 @@ const getRazorpayConfigurationState = (env = process.env) => {
   };
 };
 
+const getRazorpayPayoutConfigurationState = (env = process.env) => {
+  const keyIdUsable = isUsableRazorpayKeyId(env.RAZORPAY_X_KEY_ID);
+  const keySecretUsable = isUsablePaymentSecret(env.RAZORPAY_X_KEY_SECRET);
+  const accountNumberUsable = isUsablePayoutAccountNumber(
+    env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER
+  );
+  const webhookSecretUsable = isUsablePaymentSecret(
+    env.RAZORPAY_X_WEBHOOK_SECRET
+  );
+
+  return {
+    keyIdUsable,
+    keySecretUsable,
+    accountNumberUsable,
+    webhookSecretUsable,
+    executionConfigured:
+      keyIdUsable && keySecretUsable && accountNumberUsable,
+    webhookConfigured: webhookSecretUsable,
+  };
+};
+
 module.exports = {
   BOOKING_PAYMENT_INITIATION_ENV,
+  PAYOUT_INITIATION_ENV,
   SUBSCRIPTION_PAYMENT_FLOW_ENV,
   PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS_ENV,
   getPaymentWebhookMaxProcessingAttempts,
   isBookingPaymentInitiationEnabled,
+  isPayoutInitiationEnabled,
   isSubscriptionPaymentFlowEnabled,
   isUsableRazorpayKeyId,
   isUsablePaymentSecret,
+  isUsablePayoutAccountNumber,
   getRazorpayConfigurationState,
+  getRazorpayPayoutConfigurationState,
 };

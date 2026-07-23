@@ -9,6 +9,12 @@ const crypto  = require('crypto');
 const Payout  = require('../models/Payout');
 const Counsellor = require('../models/Counsellor');
 const { getPermittedPriorPayoutStatuses } = require('../services/payoutPolicy');
+const {
+  getRazorpayPayoutConfigurationState,
+} = require('../config/paymentFeatures');
+const {
+  verifyRazorpayWebhookSignature,
+} = require('../services/razorpayPaymentSecurity');
 
 const router = express.Router();
 
@@ -17,15 +23,19 @@ async function sendPayoutSms() {
 }
 
 // POST /api/payouts/webhook
-router.post('/', express.raw({ type: '*/*' }), async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const webhookSecret = process.env.RAZORPAY_X_WEBHOOK_SECRET;
+    const configuration = getRazorpayPayoutConfigurationState();
 
     // Signature verification is ALWAYS required — no bypass, no dev skip.
     // An unverified payout webhook lets attackers inject fake payout completions.
-    if (!webhookSecret || webhookSecret.startsWith('REPLACE_')) {
+    if (!configuration.webhookConfigured) {
       console.error('Payout webhook: RAZORPAY_X_WEBHOOK_SECRET not configured — rejecting request');
-      return res.status(500).json({ success: false, message: 'Webhook not configured' });
+      return res.status(503).json({ success: false, message: 'Webhook not configured' });
+    }
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ success: false, message: 'Raw request body required' });
     }
 
     const signature = req.headers['x-razorpay-signature'];
@@ -34,25 +44,17 @@ router.post('/', express.raw({ type: '*/*' }), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing signature' });
     }
 
-    const rawBody  = req.body.toString('utf8');
-    const expected = crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
-
-    // Timing-safe comparison — prevents brute-force via timing side-channel
-    const signaturesMatch = (() => {
-      try {
-        return crypto.timingSafeEqual(
-          Buffer.from(signature, 'hex'),
-          Buffer.from(expected,  'hex')
-        );
-      } catch { return false; }
-    })();
-
-    if (!signaturesMatch) {
+    if (!verifyRazorpayWebhookSignature({
+      rawBody: req.body,
+      signature,
+      secret: webhookSecret,
+    })) {
       console.warn('Payout webhook: invalid signature');
       return res.status(400).json({ success: false, message: 'Invalid signature' });
     }
 
-    const event      = JSON.parse(req.body.toString('utf8'));
+    const rawBody = req.body;
+    const event      = JSON.parse(rawBody.toString('utf8'));
     const payoutData = event?.payload?.payout?.entity;
 
     // Acknowledge immediately for events we don't process

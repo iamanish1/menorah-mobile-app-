@@ -12,6 +12,7 @@ const {
   getPendingHoldExpiresAt,
   expireStalePendingBookings,
   buildBookingConflictQuery,
+  isDirectlyCancellableUnpaidHold,
   isBlockingBooking,
   isSessionWithinWorkingHours,
   isUnpaidPaymentHold,
@@ -33,7 +34,6 @@ const {
   notifyEligibleCounsellorsOfBooking,
 } = require('../services/bookingMarketplaceNotifications');
 const {
-  buildBookingAuthorizationQuery,
   isBookingAuthorizationValid,
 } = require('../services/bookingMarketplacePolicy');
 const { isBookingPaymentInitiationEnabled } = require('../config/paymentFeatures');
@@ -134,7 +134,7 @@ const getBookingAccessPresentation = (booking, { includeHostUrl = false } = {}) 
     return {
       ...paymentPresentation,
       videoCall: formatVideoCall(booking.videoCall, { includeHostUrl }),
-      canBeCancelled: booking.canBeCancelled,
+      canBeCancelled: isDirectlyCancellableUnpaidHold(booking),
       canBeRescheduled: booking.canBeRescheduled,
     };
   }
@@ -968,7 +968,6 @@ router.put('/:id/cancel', [
     }
 
     const now = new Date();
-    const hasValidBookingAuthorization = isBookingAuthorizationValid(booking, { now });
     const cancellationUpdate = {
       $set: {
         status: 'cancelled',
@@ -985,119 +984,89 @@ router.put('/:id/cancel', [
         },
       },
     };
-    const isSubscriptionCancellation = booking.status === 'confirmed'
-      && booking.paymentStatus === 'paid'
-      && booking.paymentMethod === 'subscription'
-      && booking.bookingAuthorization?.kind === 'subscription_entitlement'
-      && booking.bookingAuthorization?.status === 'authorized'
-      && hasValidBookingAuthorization;
+    const isPaidOrEntitled = booking.paymentStatus === 'paid'
+      || booking.paymentMethod === 'subscription'
+      || booking.bookingAuthorization?.kind === 'subscription_entitlement';
+    if (isPaidOrEntitled) {
+      return res.status(409).json({
+        success: false,
+        code: 'PAID_CANCELLATION_REVIEW_REQUIRED',
+        message:
+          'Paid or entitled booking cancellation requires manual review. Cancellation and refund eligibility are not determined by this request.'
+      });
+    }
 
+    const isUnpaidHold = isUnpaidPaymentHold(booking);
     let cancelledBooking;
-    if (isSubscriptionCancellation) {
-      if (!booking.canBeCancelled) {
-        return res.status(400).json({
-          success: false,
-          message: 'Booking cannot be cancelled at this time'
-        });
-      }
+    if (!isUnpaidHold) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking cannot be cancelled at this time'
+      });
+    }
+    if (booking.razorpayOrderId) {
+      return res.status(409).json({
+        success: false,
+        code: 'PAYMENT_RECONCILIATION_PENDING',
+        message: 'This payment order is still being reconciled. Please wait or contact support.'
+      });
+    }
 
-      const cancellationCutoff = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      const authorizationQuery = buildBookingAuthorizationQuery({ now });
-      cancelledBooking = await Booking.findOneAndUpdate({
-        _id: booking._id,
-        user: req.user._id,
-        status: 'confirmed',
-        paymentStatus: 'paid',
-        paymentMethod: 'subscription',
-        scheduledAt: { $gt: cancellationCutoff },
-        $or: authorizationQuery.$or,
-      }, cancellationUpdate, { new: true, runValidators: true });
+    // A booking can be directly released only before any provider order is
+    // exposed. Once an order is bound, provider state must be reconciled
+    // before cancellation so delayed capture cannot create a paid/cancelled
+    // combination.
+    cancelledBooking = await Booking.findOneAndUpdate({
+      _id: booking._id,
+      user: req.user._id,
+      status: 'pending',
+      paymentStatus: { $in: ['pending', 'failed'] },
+      paymentMethod: 'razorpay',
+      'bookingAuthorization.kind': 'payment',
+      'bookingAuthorization.status': 'pending',
+      holdExpiresAt: { $gt: now },
+      $or: [
+        { razorpayOrderId: { $exists: false } },
+        { razorpayOrderId: null },
+      ],
+    }, {
+      ...cancellationUpdate,
+      $set: {
+        ...cancellationUpdate.$set,
+        orderStatus: 'expired',
+      },
+    }, { new: true, runValidators: true });
 
-      if (!cancelledBooking) {
+    if (!cancelledBooking) {
+      const current = await Booking.findById(id)
+        .select('status paymentStatus paymentMethod razorpayOrderId bookingAuthorization');
+      if (current?.status === 'expired') {
         return res.status(409).json({
           success: false,
-          code: 'BOOKING_STATE_CHANGED',
-          message: 'The booking changed while cancellation was requested.'
+          code: 'SLOT_EXPIRED',
+          message: 'This unpaid booking hold has expired.'
         });
       }
-    } else {
-      const isUnpaidHold = isUnpaidPaymentHold(booking);
-      if (booking.paymentStatus === 'paid') {
-        return res.status(409).json({
-          success: false,
-          code: 'PAID_CANCELLATION_REVIEW_REQUIRED',
-          message: 'Paid booking cancellation requires support review.'
-        });
-      }
-      if (!isUnpaidHold) {
-        return res.status(400).json({
-          success: false,
-          message: 'Booking cannot be cancelled at this time'
-        });
-      }
-      if (booking.razorpayOrderId) {
+      if (current?.razorpayOrderId) {
         return res.status(409).json({
           success: false,
           code: 'PAYMENT_RECONCILIATION_PENDING',
           message: 'This payment order is still being reconciled. Please wait or contact support.'
         });
       }
-
-      // A booking can be directly released only before any provider order is
-      // exposed. Once an order is bound, provider state must be reconciled
-      // before cancellation so delayed capture cannot create a paid/cancelled
-      // combination.
-      cancelledBooking = await Booking.findOneAndUpdate({
-        _id: booking._id,
-        user: req.user._id,
-        status: 'pending',
-        paymentStatus: { $in: ['pending', 'failed'] },
-        paymentMethod: 'razorpay',
-        'bookingAuthorization.kind': 'payment',
-        'bookingAuthorization.status': 'pending',
-        holdExpiresAt: { $gt: now },
-        $or: [
-          { razorpayOrderId: { $exists: false } },
-          { razorpayOrderId: null },
-        ],
-      }, {
-        ...cancellationUpdate,
-        $set: {
-          ...cancellationUpdate.$set,
-          orderStatus: 'expired',
-        },
-      }, { new: true, runValidators: true });
-
-      if (!cancelledBooking) {
-        const current = await Booking.findById(id)
-          .select('status paymentStatus paymentMethod razorpayOrderId bookingAuthorization');
-        if (current?.status === 'expired') {
-          return res.status(409).json({
-            success: false,
-            code: 'SLOT_EXPIRED',
-            message: 'This unpaid booking hold has expired.'
-          });
-        }
-        if (current?.razorpayOrderId) {
-          return res.status(409).json({
-            success: false,
-            code: 'PAYMENT_RECONCILIATION_PENDING',
-            message: 'This payment order is still being reconciled. Please wait or contact support.'
-          });
-        }
-        if (current?.paymentStatus === 'paid') {
-          return res.status(409).json({
-            success: false,
-            code: 'PAID_CANCELLATION_REVIEW_REQUIRED',
-            message: 'Payment completed before cancellation. Contact support for review.'
-          });
-        }
+      if (current?.paymentStatus === 'paid') {
         return res.status(409).json({
           success: false,
-          code: 'BOOKING_PAYMENT_STATE_CHANGED',
-          message: 'The payment state changed while cancellation was requested.'
+          code: 'PAID_CANCELLATION_REVIEW_REQUIRED',
+          message:
+            'Payment completed before cancellation. Manual review is required; cancellation and refund eligibility are not determined by this request.'
         });
       }
+      return res.status(409).json({
+        success: false,
+        code: 'BOOKING_PAYMENT_STATE_CHANGED',
+        message: 'The payment state changed while cancellation was requested.'
+      });
     }
 
     // Send cancellation notifications

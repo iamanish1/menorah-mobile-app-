@@ -6,6 +6,7 @@ const counsellorBookingsRoutes = require('../../routes/counsellor-bookings');
 const bookingRoutes = require('../../routes/bookings');
 const paymentRoutes = require('../../routes/payments');
 const paymentIosRoutes = require('../../routes/payments-ios');
+const payoutWebhookRoutes = require('../../routes/payout-webhook');
 const chatRoutes = require('../../routes/chat');
 const videoRoutes = require('../../routes/video');
 const adminRoutes = require('../../routes/admin');
@@ -23,6 +24,7 @@ const routeDefinitions = {
   bookings: { mountPath: '/api/bookings', router: bookingRoutes },
   'payments-full': { mountPath: '/api/payments', router: paymentRoutes },
   'payments-ios-booking-only': { mountPath: '/api/payments', router: paymentIosRoutes },
+  'payout-webhook': { mountPath: '/api/payouts/webhook', router: payoutWebhookRoutes },
   chat: { mountPath: '/api/chat', router: chatRoutes },
   video: { mountPath: '/api/video', router: videoRoutes },
   'articles-public': { mountPath: '/api/articles', router: publicArticleRoutes },
@@ -70,6 +72,7 @@ const routeProfiles = {
   ],
   'api-admin': [
     'auth-admin',
+    'payout-webhook',
     'admin-social-studio',
     'admin',
     'articles-admin'

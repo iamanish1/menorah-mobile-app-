@@ -42,6 +42,7 @@ services:
       PORT: 8080
       REDIS_URL: redis://redis:6379       # uses service name as hostname inside Docker network
       BOOKING_PAYMENTS_ENABLED: ${BOOKING_PAYMENTS_ENABLED:-false}
+      PAYOUTS_ENABLED: ${PAYOUTS_ENABLED:-false}
       PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS: ${PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS:-}
       SUBSCRIPTION_PAYMENTS_ENABLED: "false"
     env_file:

@@ -4,7 +4,6 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const axios = require('axios');
 const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
 const Booking = require('../models/Booking');
@@ -56,19 +55,35 @@ const {
   getMaximumPayoutPaise,
   calculatePayoutAvailability,
   buildAuthorizedPayoutRevenuePipeline,
-  getProviderPayoutIdempotencyKey,
   isDefinitiveProviderFailure,
   isValidPayoutIdempotencyKey,
 } = require('../services/payoutPolicy');
 const {
-  decryptBankAccountNumber,
   getMaskedBankAccountNumber,
 } = require('../utils/bankAccountEncryption');
+const {
+  isPayoutInitiationEnabled,
+} = require('../config/paymentFeatures');
+const {
+  createRazorpayPayout,
+} = require('../services/razorpayPayoutService');
+const {
+  expireStaleAwaitingApprovalPayouts,
+} = require('../services/payoutApprovalExpiry');
 
 const router = express.Router();
 
 // All routes require an admin-scoped token.
 router.use(adminAuth);
+
+const requirePayoutInitiationEnabled = (_req, res, next) => {
+  if (isPayoutInitiationEnabled()) return next();
+  return res.status(503).json({
+    success: false,
+    code: 'PAYOUTS_DISABLED',
+    message: 'New payout requests and approvals are temporarily unavailable.',
+  });
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1668,80 +1683,9 @@ const serializePayoutRequest = (payout) => ({
   approvalExpiresAt: payout.approvalExpiresAt,
 });
 
-const createRazorpayPayout = async ({ payout, counsellor }) => {
-  const payoutAccountNumber = process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER;
-  const keyId = process.env.RAZORPAY_X_KEY_ID || process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_X_KEY_SECRET || process.env.RAZORPAY_KEY_SECRET;
-  const accountNumber = decryptBankAccountNumber(counsellor.bankDetails?.accountNumberEncrypted);
-
-  if (!keyId || !keySecret || !payoutAccountNumber) {
-    const error = new Error('Payout service is not configured.');
-    error.statusCode = 503;
-    throw error;
-  }
-
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}`,
-  };
-  let contactId = counsellor.razorpayContactId;
-  let fundAccountId = counsellor.razorpayFundAccountId;
-
-  if (!contactId) {
-    const contactResponse = await axios.post('https://api.razorpay.com/v1/contacts', {
-      name: `${counsellor.user.firstName} ${counsellor.user.lastName}`,
-      email: counsellor.user.email,
-      contact: counsellor.user.phone,
-      type: 'vendor',
-      reference_id: counsellor._id.toString(),
-    }, { headers });
-    contactId = contactResponse.data.id;
-    if (!contactId) throw new Error('Payment provider contact response did not include an identifier');
-    await Counsellor.findByIdAndUpdate(counsellor._id, { razorpayContactId: contactId });
-  }
-
-  if (!fundAccountId) {
-    const fundAccountResponse = await axios.post('https://api.razorpay.com/v1/fund_accounts', {
-      contact_id: contactId,
-      account_type: 'bank_account',
-      bank_account: {
-        name: counsellor.bankDetails.accountHolderName || `${counsellor.user.firstName} ${counsellor.user.lastName}`,
-        ifsc: counsellor.bankDetails.ifscCode,
-        account_number: accountNumber,
-      },
-    }, { headers });
-    fundAccountId = fundAccountResponse.data.id;
-    if (!fundAccountId) throw new Error('Payment provider fund-account response did not include an identifier');
-    await Counsellor.findByIdAndUpdate(counsellor._id, { razorpayFundAccountId: fundAccountId });
-  }
-
-  const payoutResponse = await axios.post('https://api.razorpay.com/v1/payouts', {
-    account_number: payoutAccountNumber,
-    fund_account_id: fundAccountId,
-    amount: payout.amountPaise,
-    currency: 'INR',
-    mode: 'IMPS',
-    purpose: 'payout',
-    queue_if_low_balance: true,
-    reference_id: payout.referenceId,
-    narration: 'Menorah Health counsellor payout',
-    notes: { counsellorId: counsellor._id.toString() },
-  }, {
-    headers: {
-      ...headers,
-      'X-Payout-Idempotency': getProviderPayoutIdempotencyKey(payout),
-    },
-  });
-
-  if (!payoutResponse.data?.id) {
-    throw new Error('Payment provider payout response did not include an identifier');
-  }
-
-  return { payoutResponse: payoutResponse.data, contactId, fundAccountId };
-};
-
 // POST /api/admin/payouts/:counsellorId — request a payout for independent approval
 router.post('/payouts/:counsellorId', [
+  requirePayoutInitiationEnabled,
   param('counsellorId').isMongoId(),
   body('amount').isInt({ min: 100 }).withMessage('Amount must be at least ₹1 (100 paise)'),
   body('notes').optional().isString().trim().isLength({ max: 500 }),
@@ -1755,6 +1699,11 @@ router.post('/payouts/:counsellorId', [
     if (!isValidPayoutIdempotencyKey(idempotencyKey)) {
       return res.status(400).json({ success: false, message: 'A valid Idempotency-Key is required to request a payout.' });
     }
+
+    await expireStaleAwaitingApprovalPayouts({
+      counsellorId: req.params.counsellorId,
+      limit: 10,
+    });
 
     const existingRequest = await Payout.findOne({ idempotencyKey }).lean();
     if (existingRequest) {
@@ -1852,6 +1801,7 @@ router.post('/payouts/:counsellorId', [
 // completed MFA within the last five minutes.
 router.post('/payouts/:payoutId/approve', [
   param('payoutId').isMongoId(),
+  requirePayoutInitiationEnabled,
   requireRecentAdminMfa,
 ], async (req, res) => {
   try {
@@ -1859,12 +1809,10 @@ router.post('/payouts/:payoutId/approve', [
     if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid payout request ID.' });
 
     const now = new Date();
-    await Payout.updateOne({
-      _id: req.params.payoutId,
-      status: 'awaiting_approval',
-      approvalExpiresAt: { $lte: now },
-    }, {
-      $set: { status: 'expired', failureReason: 'Approval window expired.' },
+    await expireStaleAwaitingApprovalPayouts({
+      payoutId: req.params.payoutId,
+      now,
+      limit: 1,
     });
 
     let payout = await Payout.findOneAndUpdate({
@@ -1955,6 +1903,8 @@ router.post('/payouts/:payoutId/approve', [
 // GET /api/admin/payouts — list all payouts with pagination + filtering
 router.get('/payouts', async (req, res) => {
   try {
+    await expireStaleAwaitingApprovalPayouts({ limit: 100 });
+
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
     const limit  = Math.min(50, parseInt(req.query.limit) || 20);
     const skip   = (page - 1) * limit;
@@ -2001,6 +1951,11 @@ router.get('/payouts/counsellor/:counsellorId', [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+
+    await expireStaleAwaitingApprovalPayouts({
+      counsellorId: req.params.counsellorId,
+      limit: 10,
+    });
 
     const payouts = await Payout.find({ counsellor: req.params.counsellorId })
       .populate('initiatedBy', 'firstName lastName')

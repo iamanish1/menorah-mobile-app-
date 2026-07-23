@@ -16,6 +16,13 @@ const isUnpaidPaymentHold = (booking) => Boolean(
   && booking?.bookingAuthorization?.status === 'pending'
 );
 
+const isDirectlyCancellableUnpaidHold = (booking, now = new Date()) => Boolean(
+  isUnpaidPaymentHold(booking)
+  && booking?.holdExpiresAt
+  && new Date(booking.holdExpiresAt) > now
+  && !booking?.razorpayOrderId
+);
+
 const isBlockingBooking = (booking, now = new Date()) => {
   if (!booking) return false;
   if (
@@ -385,6 +392,7 @@ module.exports = {
   ACTIVE_BOOKING_STATUSES,
   getPendingHoldExpiresAt,
   isUnpaidPaymentHold,
+  isDirectlyCancellableUnpaidHold,
   isBlockingBooking,
   expireStalePendingBookings,
   isSessionWithinWorkingHours,

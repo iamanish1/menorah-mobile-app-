@@ -731,7 +731,9 @@ function NewBookingForm() {
           <div className="flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
             <ShieldCheck className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
             <p className="text-sm text-green-700">
-              Payment is collected on the next step. Cancel for free up to 24 hours before your session.
+              Payment is collected on the next step. Paid or entitled booking
+              cancellations require manual review; cancellation and refund
+              eligibility are not determined during booking.
             </p>
           </div>
 

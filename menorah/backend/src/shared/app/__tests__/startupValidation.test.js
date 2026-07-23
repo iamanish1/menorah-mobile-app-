@@ -37,6 +37,8 @@ describe('startup validation', () => {
       RAZORPAY_KEY_SECRET: 'A1b2C3d4E5f6G7h8I9j0K1l2',
       RAZORPAY_WEBHOOK_SECRET: 'Webhook-A1b2C3d4E5f6G7h8',
       BOOKING_PAYMENTS_ENABLED: 'false',
+      PAYOUTS_ENABLED: 'false',
+      RAZORPAY_X_WEBHOOK_SECRET: 'X-Webhook-A1b2C3d4E5f6G7h8',
       SUBSCRIPTION_PAYMENTS_ENABLED: 'false',
       LIVEKIT_URL: 'wss://calls.example.com',
       LIVEKIT_API_URL: 'https://calls.example.com',
@@ -273,6 +275,76 @@ describe('startup validation', () => {
     delete process.env.BOOKING_PAYMENTS_ENABLED;
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
+  });
+
+  test.each(['true', 'false'])(
+    'accepts the exact payout gate value %s',
+    (value) => {
+      process.env.PAYOUTS_ENABLED = value;
+      if (value === 'true') {
+        process.env.RAZORPAY_X_KEY_ID = 'rzp_live_X1b2C3d4E5f6G7';
+        process.env.RAZORPAY_X_KEY_SECRET = 'RazorpayX-A1b2C3d4E5f6G7h8';
+        process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER = '787808008031';
+      }
+
+      expect(() => validateStartupEnv({ serviceName: 'api-admin' })).not.toThrow();
+    }
+  );
+
+  test.each(['TRUE', '1', 'yes', ' true '])(
+    'rejects ambiguous payout gate value %s',
+    (value) => {
+      process.env.PAYOUTS_ENABLED = value;
+
+      expect(() => validateStartupEnv({ serviceName: 'api-admin' }))
+        .toThrow(/PAYOUTS_ENABLED must be exactly true or false/);
+    }
+  );
+
+  test('allows the payout gate to be unset so it defaults off', () => {
+    delete process.env.PAYOUTS_ENABLED;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-admin' })).not.toThrow();
+  });
+
+  test('requires a usable payout webhook secret on api-admin while initiation is off', () => {
+    delete process.env.RAZORPAY_X_WEBHOOK_SECRET;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-admin' }))
+      .toThrow(/RAZORPAY_X_WEBHOOK_SECRET must contain/);
+  });
+
+  test('does not require payout execution credentials while initiation is off', () => {
+    delete process.env.RAZORPAY_X_KEY_ID;
+    delete process.env.RAZORPAY_X_KEY_SECRET;
+    delete process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-admin' })).not.toThrow();
+  });
+
+  test.each([
+    ['RAZORPAY_X_KEY_ID', 'rzp_live_REPLACE'],
+    ['RAZORPAY_X_KEY_SECRET', 'replace_with_razorpay_x_key_secret'],
+    ['RAZORPAY_PAYOUT_ACCOUNT_NUMBER', '111111111111'],
+  ])('rejects unusable payout execution setting %s when enabled', (key, value) => {
+    process.env.PAYOUTS_ENABLED = 'true';
+    process.env.RAZORPAY_X_KEY_ID = 'rzp_live_X1b2C3d4E5f6G7';
+    process.env.RAZORPAY_X_KEY_SECRET = 'RazorpayX-A1b2C3d4E5f6G7h8';
+    process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER = '787808008031';
+    process.env[key] = value;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-admin' }))
+      .toThrow(new RegExp(key));
+  });
+
+  test('does not accept checkout credentials as a payout execution fallback', () => {
+    process.env.PAYOUTS_ENABLED = 'true';
+    delete process.env.RAZORPAY_X_KEY_ID;
+    delete process.env.RAZORPAY_X_KEY_SECRET;
+    process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER = '787808008031';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-admin' }))
+      .toThrow(/RAZORPAY_X_KEY_ID.*RAZORPAY_X_KEY_SECRET/);
   });
 
   test('rejects attempts to enable the hard-disabled subscription payment flow', () => {

@@ -101,6 +101,7 @@ const createExpressApp = ({ serviceName, getHealthState }) => {
 
   app.use('/api/video/livekit-webhook', express.raw({ type: '*/*', limit: '1mb' }));
   app.use('/api/payments/razorpay-webhook', express.raw({ type: 'application/json', limit: '1mb' }));
+  app.use('/api/payouts/webhook', express.raw({ type: 'application/json', limit: '1mb' }));
   app.use(csrfProtection);
 
   app.use(express.json({ limit: '1mb' }));

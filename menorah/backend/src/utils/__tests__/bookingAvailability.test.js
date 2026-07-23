@@ -4,6 +4,7 @@ const {
   generateAvailabilityForDate,
   isSessionWithinWorkingHours,
   isBlockingBooking,
+  isDirectlyCancellableUnpaidHold,
   isUnpaidPaymentHold,
 } = require('../bookingAvailability');
 
@@ -313,6 +314,32 @@ describe('booking availability rules', () => {
     },
   ])('does not classify paid, refunded, or entitled bookings as unpaid holds', (candidate) => {
     expect(isUnpaidPaymentHold(candidate)).toBe(false);
+  });
+
+  test('direct cancellation requires a live, unbound unpaid payment hold', () => {
+    const candidate = {
+      status: 'pending',
+      paymentStatus: 'pending',
+      paymentMethod: 'razorpay',
+      bookingAuthorization: { kind: 'payment', status: 'pending' },
+      holdExpiresAt: new Date('2026-06-23T00:10:00.000Z'),
+    };
+
+    expect(isDirectlyCancellableUnpaidHold(candidate, now)).toBe(true);
+    expect(isDirectlyCancellableUnpaidHold({
+      ...candidate,
+      razorpayOrderId: 'order_test_123',
+    }, now)).toBe(false);
+    expect(isDirectlyCancellableUnpaidHold({
+      ...candidate,
+      holdExpiresAt: new Date('2026-06-22T23:59:00.000Z'),
+    }, now)).toBe(false);
+    expect(isDirectlyCancellableUnpaidHold({
+      ...candidate,
+      paymentStatus: 'paid',
+      status: 'confirmed',
+      bookingAuthorization: { kind: 'payment', status: 'authorized' },
+    }, now)).toBe(false);
   });
 
   test('keeps a payment reconciliation review blocking after its hold expires', () => {

@@ -1,4 +1,7 @@
 const mongoose = require('mongoose');
+const {
+  isDirectlyCancellableUnpaidHold,
+} = require('../utils/bookingAvailability');
 
 const bookingSchema = new mongoose.Schema({
   // Basic booking information
@@ -316,11 +319,10 @@ bookingSchema.virtual('isPast').get(function() {
 
 // Virtual for can be cancelled
 bookingSchema.virtual('canBeCancelled').get(function() {
-  const now = new Date();
-  const sessionTime = new Date(this.scheduledAt);
-  const hoursUntilSession = (sessionTime - now) / (1000 * 60 * 60);
-  
-  return this.status === 'confirmed' && hoursUntilSession > 24;
+  // Paid and entitled cancellations require manual review; this model does not
+  // decide cancellation or refund eligibility. Only a safe unpaid hold can be
+  // released directly.
+  return isDirectlyCancellableUnpaidHold(this);
 });
 
 // Virtual for can be rescheduled
@@ -385,15 +387,6 @@ bookingSchema.statics.findPast = function(userId, limit = 10) {
   .populate({ path: 'counsellor', select: 'specialization rating', populate: { path: 'user', select: 'firstName lastName profileImage' } })
   .sort({ scheduledAt: -1 })
   .limit(limit);
-};
-
-// Method to cancel booking
-bookingSchema.methods.cancel = function(reason, cancelledBy) {
-  this.status = 'cancelled';
-  this.cancellationReason = reason;
-  this.cancelledBy = cancelledBy;
-  this.cancelledAt = new Date();
-  return this.save();
 };
 
 // Method to complete booking

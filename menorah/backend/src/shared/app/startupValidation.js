@@ -12,9 +12,12 @@ const {
 const {
   BOOKING_PAYMENT_INITIATION_ENV,
   PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS_ENV,
+  PAYOUT_INITIATION_ENV,
   SUBSCRIPTION_PAYMENT_FLOW_ENV,
   getPaymentWebhookMaxProcessingAttempts,
+  getRazorpayPayoutConfigurationState,
   isUsableRazorpayKeyId,
+  isUsablePayoutAccountNumber,
   isUsablePaymentSecret,
 } = require('../../config/paymentFeatures');
 const { parseBookingServiceCatalog } = require('../../services/bookingPricing');
@@ -55,6 +58,12 @@ const requireRazorpayKeyId = (key, errors) => {
 const requireRazorpaySecret = (key, errors) => {
   if (!isUsablePaymentSecret(process.env[key])) {
     errors.push(`${key} must contain 16-256 non-placeholder characters`);
+  }
+};
+
+const requireRazorpayPayoutAccount = (key, errors) => {
+  if (!isUsablePayoutAccountNumber(process.env[key])) {
+    errors.push(`${key} must be a non-placeholder RazorpayX account number`);
   }
 };
 
@@ -105,6 +114,35 @@ const validatePaymentFeatureFlags = (errors) => {
     errors.push(
       `${PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS_ENV} is required before booking payments can be enabled`
     );
+  }
+
+  const payoutValue = process.env[PAYOUT_INITIATION_ENV];
+  if (
+    payoutValue !== undefined
+    && payoutValue !== ''
+    && payoutValue !== 'true'
+    && payoutValue !== 'false'
+  ) {
+    errors.push(`${PAYOUT_INITIATION_ENV} must be exactly true or false when set`);
+  }
+};
+
+const validatePayoutConfiguration = ({ serviceName, errors }) => {
+  if (serviceName !== 'api-admin') return;
+
+  // The canonical payout webhook remains available while initiation is off so
+  // delayed provider events can still reconcile safely.
+  requireRazorpaySecret('RAZORPAY_X_WEBHOOK_SECRET', errors);
+
+  if (process.env[PAYOUT_INITIATION_ENV] !== 'true') return;
+
+  requireRazorpayKeyId('RAZORPAY_X_KEY_ID', errors);
+  requireRazorpaySecret('RAZORPAY_X_KEY_SECRET', errors);
+  requireRazorpayPayoutAccount('RAZORPAY_PAYOUT_ACCOUNT_NUMBER', errors);
+
+  const payoutConfiguration = getRazorpayPayoutConfigurationState(process.env);
+  if (!payoutConfiguration.executionConfigured) {
+    errors.push('RazorpayX payout execution configuration is incomplete');
   }
 };
 
@@ -180,6 +218,7 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
       requireRazorpaySecret('RAZORPAY_WEBHOOK_SECRET', errors);
       validateOptionalPreviousWebhookSecret(errors);
       validatePaymentFeatureFlags(errors);
+      validatePayoutConfiguration({ serviceName, errors });
     }
 
     ['LIVEKIT_URL', 'LIVEKIT_API_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'].forEach((key) =>

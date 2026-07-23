@@ -1,12 +1,22 @@
 # Payment reconciliation runbook
 
-This runbook is intentionally fail-closed. It provides read-only visibility for
-Razorpay booking payments; it does not approve refunds, cancel bookings, mark
-payments paid, or resolve review records.
+This runbook is intentionally fail-closed. Its report provides read-only
+visibility for Razorpay booking payments; it does not report payout-ledger
+reconciliation, approve refunds, cancel bookings, mark payments paid, or resolve
+review records.
 
 ## Launch gate
 
-Keep `BOOKING_PAYMENTS_ENABLED=false` until all of the following are complete:
+Keep both initiation gates off:
+
+```dotenv
+BOOKING_PAYMENTS_ENABLED=false
+PAYOUTS_ENABLED=false
+SUBSCRIPTION_PAYMENTS_ENABLED=false
+```
+
+`BOOKING_PAYMENTS_ENABLED` must stay `false` until all of the following are
+complete:
 
 - the payment reconciliation migrations have been reviewed and run through the
   approved production migration workflow;
@@ -17,7 +27,31 @@ Keep `BOOKING_PAYMENTS_ENABLED=false` until all of the following are complete:
 - read-only reconciliation reporting and alerts are operational;
 - refund, cancellation, late-capture, and manual-resolution rules are approved.
 
+`PAYOUTS_ENABLED` must stay `false` until dedicated RazorpayX execution
+credentials, its settlement account, sandbox payout behavior, dual approval,
+fresh MFA, finance review, operational alerts, and escalation procedures have
+all been verified. Checkout credentials are not a fallback for RazorpayX
+credentials.
+
 `SUBSCRIPTION_PAYMENTS_ENABLED` remains unsupported and must stay disabled.
+
+The application gates initiation, not reconciliation. Delayed, signed provider
+events must remain reachable while both initiation gates are off:
+
+| Provider callback | Canonical endpoint | Application profile |
+| --- | --- | --- |
+| Booking payment | `https://api-web.menorah.me/api/payments/razorpay-webhook` | `api-web` |
+| RazorpayX payout | `https://api-admin.menorah.me/api/payouts/webhook` | `api-admin` |
+
+Caddy forwards payment paths to the corresponding application profile. The
+application's exact-default-false gate rejects new booking orders and payout
+requests/approvals. The payout callback is mounted only on `api-admin`, consumes
+the signed raw JSON body before general JSON/CSRF processing, and remains active
+when `PAYOUTS_ENABLED=false`.
+
+Expired `awaiting_approval` payout requests are changed to `expired` in bounded
+batches before payout request/list/approval operations. This expiry is not an
+approval, payout execution, refund, or finance-policy decision.
 
 ## Generate the read-only report
 
@@ -110,15 +144,25 @@ still receive a late capture; its slot remains blocked until resolution.
 
 - **OWNER ACTION:** appoint the reconciliation owner; approve the review SLA,
   retry/alert thresholds, manual-resolution rules, late-capture handling,
-  cancellation eligibility, and refund windows.
-- **FINANCE ACTION:** define evidence and dual-control requirements for refunds,
-  write-offs, and payment/booking corrections.
-- **SECURITY ACTION:** approve webhook-secret rotation, verify both-secret overlap,
-  and set the deadline for removing the previous secret.
+  cancellation eligibility, refund eligibility/windows, payout enablement,
+  payout rejection/retry rules, manual-review thresholds, and named approver
+  roles. Until these decisions exist, paid or entitled booking cancellations
+  fail closed to manual review; the request does not determine cancellation or
+  refund eligibility.
+- **OWNER ACTION:** define evidence and dual-control requirements for refunds,
+  write-offs, payout corrections, and payment/booking corrections.
+- **OWNER ACTION:** approve webhook-secret rotation, verify both-secret overlap,
+  and set the deadline for removing the previous booking-payment secret.
 - **INFRASTRUCTURE ACTION:** provision a least-privilege read-only MongoDB
   credential; schedule the report; route alerts to an approved destination; run
   migrations using the guarded deployment workflow; and verify webhook delivery
   without exposing payloads or secrets.
+- **INFRASTRUCTURE ACTION:** configure the two canonical callback URLs above,
+  retain only the required provider events, and verify in staging that an
+  unsigned request is rejected while a provider-signed test delivery is
+  accepted. Confirm that the payout callback remains available with
+  `PAYOUTS_ENABLED=false`, and do not use production credentials for the test.
 
 Until those actions are complete, the repository is ready for continued test
-and staging validation, but the booking payment gate must remain off.
+and staging validation, but the booking-payment and payout gates must remain
+off.

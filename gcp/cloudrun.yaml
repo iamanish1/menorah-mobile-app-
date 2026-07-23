@@ -83,6 +83,8 @@ spec:
               value: https://menorahhealth.app/checkout/return
             - name: BOOKING_PAYMENTS_ENABLED
               value: "false"
+            - name: PAYOUTS_ENABLED
+              value: "false"
             # OWNER ACTION: set an approved 1-1000 limit before enabling the gate.
             - name: PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS
               value: ""
@@ -203,6 +205,26 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: RAZORPAY_WEBHOOK_SECRET
+                  key: latest
+            - name: RAZORPAY_X_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: RAZORPAY_X_KEY_ID
+                  key: latest
+            - name: RAZORPAY_X_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: RAZORPAY_X_KEY_SECRET
+                  key: latest
+            - name: RAZORPAY_PAYOUT_ACCOUNT_NUMBER
+              valueFrom:
+                secretKeyRef:
+                  name: RAZORPAY_PAYOUT_ACCOUNT_NUMBER
+                  key: latest
+            - name: RAZORPAY_X_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: RAZORPAY_X_WEBHOOK_SECRET
                   key: latest
             # RAZORPAY_WEBHOOK_SECRET_PREVIOUS is intentionally not permanent.
             # During a planned rotation, inject a pinned version through the

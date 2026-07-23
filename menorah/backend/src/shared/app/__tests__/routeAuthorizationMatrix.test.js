@@ -45,6 +45,7 @@ const TICKET_ROUTES = new Set([
 
 const SIGNED_WEBHOOK_ROUTES = new Set([
   'payments-full:POST:/razorpay-webhook',
+  'payout-webhook:POST:/',
   'video:POST:/livekit-webhook',
 ]);
 

@@ -38,13 +38,6 @@
 	}
 }
 
-(payment_disabled) {
-	header Cache-Control "no-store, no-cache, max-age=0, must-revalidate"
-	header Pragma "no-cache"
-	header X-Content-Type-Options "nosniff"
-	respond "Payments are temporarily disabled for final testing." 503
-}
-
 http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN} {
 	import security_headers
 	encode gzip zstd
@@ -92,10 +85,6 @@ http://{$API_IOS_DOMAIN} {
 	route {
 		@private_diagnostics path /metrics/* /health/deep
 		respond @private_diagnostics 404
-		@payment path /api/payments* /api/payouts/webhook*
-		handle @payment {
-			import payment_disabled
-		}
 		reverse_proxy api-ios:8080
 	}
 	log {
@@ -111,10 +100,6 @@ http://{$API_ANDROID_DOMAIN} {
 	route {
 		@private_diagnostics path /metrics/* /health/deep
 		respond @private_diagnostics 404
-		@payment path /api/payments* /api/payouts/webhook*
-		handle @payment {
-			import payment_disabled
-		}
 		reverse_proxy api-android:8080
 	}
 	log {
@@ -130,10 +115,6 @@ http://{$API_WEB_DOMAIN} {
 	route {
 		@private_diagnostics path /metrics/* /health/deep
 		respond @private_diagnostics 404
-		@payment path /api/payments* /api/payouts/webhook*
-		handle @payment {
-			import payment_disabled
-		}
 		reverse_proxy api-web:8080
 	}
 	log {
