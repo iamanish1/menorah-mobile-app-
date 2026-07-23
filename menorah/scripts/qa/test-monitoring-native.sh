@@ -52,23 +52,39 @@ test_backup_metrics_runtime() {
   trap cleanup_backup_metrics_contract EXIT
 
   docker run --rm -v "${fixture_volume}:/fixture" "${BUSYBOX_IMAGE}" sh -eu -c '
-    mkdir -p /fixture/backups/metadata /fixture/textfile
+    mkdir -p /fixture/backups/metadata /fixture/attempts /fixture/textfile
     printf "{\"timestamp\":\"20260723T120000Z\"}\n" \
       > /fixture/backups/metadata/latest-success-daily.json
     printf "test-signature\n" \
       > /fixture/backups/metadata/latest-success-daily.json.hmac-sha256
+    {
+      printf "schema_version=1\n"
+      printf "backup_type=daily\n"
+      printf "result=0\n"
+      printf "timestamp_seconds=1784808000\n"
+      printf "service_result=exit-code\n"
+      printf "exit_code=exited\n"
+      printf "exit_status=1\n"
+    } > /fixture/attempts/latest-attempt-daily.status
   '
 
   docker run --rm \
     -v "${MONITORING_DIR}/export-backup-metrics.sh:/scripts/export-backup-metrics.sh:ro" \
     -v "${fixture_volume}:/fixture" \
     -e BACKUP_ROOT=/fixture/backups \
+    -e BACKUP_ATTEMPT_ROOT=/fixture/attempts \
     -e TEXTFILE_DIR=/fixture/textfile \
     "${BUSYBOX_IMAGE}" \
     /bin/sh /scripts/export-backup-metrics.sh
 
   docker run --rm -v "${fixture_volume}:/fixture:ro" "${BUSYBOX_IMAGE}" \
     grep -F 'menorah_backup_metadata_present{backup_type="daily"} 1' \
+    /fixture/textfile/menorah-backup.prom >/dev/null
+  docker run --rm -v "${fixture_volume}:/fixture:ro" "${BUSYBOX_IMAGE}" \
+    grep -F 'menorah_backup_last_attempt_result{backup_type="daily"} 0' \
+    /fixture/textfile/menorah-backup.prom >/dev/null
+  docker run --rm -v "${fixture_volume}:/fixture:ro" "${BUSYBOX_IMAGE}" \
+    grep -F 'menorah_backup_attempt_metadata_present{backup_type="daily"} 1' \
     /fixture/textfile/menorah-backup.prom >/dev/null
 
   cleanup_backup_metrics_contract

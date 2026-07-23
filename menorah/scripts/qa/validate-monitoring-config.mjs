@@ -16,6 +16,19 @@ const FILES = {
   coverage: path.join(MENORAH_ROOT, 'deploy', 'monitoring', 'observability-coverage.yml'),
   compose: path.join(MENORAH_ROOT, 'deploy', 'docker-compose.production.yml'),
   backupScript: path.join(MENORAH_ROOT, 'deploy', 'monitoring', 'export-backup-metrics.sh'),
+  backupResultRecorder: path.join(
+    MENORAH_ROOT,
+    'deploy',
+    'ubuntu',
+    'record-backup-result.sh',
+  ),
+  backupNow: path.join(MENORAH_ROOT, 'deploy', 'ubuntu', 'backup-now.sh'),
+  backupSchedule: path.join(
+    MENORAH_ROOT,
+    'deploy',
+    'ubuntu',
+    'install-backup-schedule.sh',
+  ),
   dockerExporter: path.join(
     MENORAH_ROOT,
     'deploy',
@@ -179,6 +192,9 @@ export const loadMonitoringDocuments = () => ({
   coverage: parseYaml(FILES.coverage),
   compose: parseYaml(FILES.compose),
   backupScript: fs.readFileSync(FILES.backupScript, 'utf8'),
+  backupResultRecorder: fs.readFileSync(FILES.backupResultRecorder, 'utf8'),
+  backupNow: fs.readFileSync(FILES.backupNow, 'utf8'),
+  backupSchedule: fs.readFileSync(FILES.backupSchedule, 'utf8'),
   dockerExporter: fs.readFileSync(FILES.dockerExporter, 'utf8'),
   mongoUsers: fs.readFileSync(FILES.mongoUsers, 'utf8'),
   alloy: fs.readFileSync(FILES.alloy, 'utf8'),
@@ -210,6 +226,9 @@ export const validateMonitoringDocuments = (documents) => {
     coverage,
     compose,
     backupScript,
+    backupResultRecorder,
+    backupNow,
+    backupSchedule,
     dockerExporter,
     mongoUsers,
     alloy,
@@ -309,6 +328,53 @@ export const validateMonitoringDocuments = (documents) => {
       );
     }
   }
+
+  const frontendAlertServices = new Map([
+    ['InternalFrontendProbeFailed', 'landing-page'],
+    ['UserFrontendProbeFailed', 'user-web-app'],
+    ['AdminFrontendProbeFailed', 'admin-panel'],
+    ['CounsellorFrontendProbeFailed', 'counsellor-web'],
+  ]);
+  for (const [alertName, service] of frontendAlertServices) {
+    const rule = rules.find((candidate) => candidate.alert === alertName);
+    requireValue(errors, rule, `missing required frontend alert: ${alertName}`);
+    requireValue(
+      errors,
+      String(rule?.expr || '').includes(`service="${service}"`),
+      `${alertName} must select only the ${service} probe`,
+    );
+  }
+  const productFrontendRules = [
+    'UserFrontendProbeFailed',
+    'AdminFrontendProbeFailed',
+    'CounsellorFrontendProbeFailed',
+  ];
+  for (const alertName of productFrontendRules) {
+    const rule = rules.find((candidate) => candidate.alert === alertName);
+    requireValue(
+      errors,
+      rule?.annotations?.resolution,
+      `${alertName} is missing a clear resolution message`,
+    );
+  }
+
+  const backupFailureRule = rules.find((rule) => rule.alert === 'BackupJobFailed');
+  requireValue(errors, backupFailureRule, 'missing required backup alert: BackupJobFailed');
+  requireValue(
+    errors,
+    /menorah_backup_attempt_metadata_present\s*==\s*1/.test(
+      String(backupFailureRule?.expr || ''),
+    )
+      && /menorah_backup_last_attempt_result\s*==\s*0/.test(
+        String(backupFailureRule?.expr || ''),
+      ),
+    'BackupJobFailed must alert only on a validated latest-attempt failure',
+  );
+  requireValue(
+    errors,
+    backupFailureRule?.annotations?.resolution,
+    'BackupJobFailed is missing a clear resolution message',
+  );
 
   const exportedContainerMetrics = new Set(
     [...dockerExporter.matchAll(
@@ -505,6 +571,19 @@ export const validateMonitoringDocuments = (documents) => {
   );
   requireValue(
     errors,
+    services['backup-metrics']?.environment?.BACKUP_ATTEMPT_ROOT
+      === '/backup-attempts',
+    'backup metric writer has no bounded latest-attempt state root',
+  );
+  requireValue(
+    errors,
+    (services['backup-metrics']?.volumes || []).some((volume) =>
+      String(volume).includes('/backup-attempts:/backup-attempts:ro'),
+    ),
+    'backup metric writer does not mount latest-attempt state read-only',
+  );
+  requireValue(
+    errors,
     !(services['docker-stats-exporter']?.volumes || []).some((volume) =>
       /docker\.sock|containerd\.sock|^\/:|^\/var\/run:|^\/sys:|^\/var\/lib\/docker:/.test(
         String(volume),
@@ -668,6 +747,11 @@ export const validateMonitoringDocuments = (documents) => {
     String((services['backup-metrics']?.command || []).join(' ')).includes('then exit 1'),
     'backup metric writer must terminate when an export fails',
   );
+  requireValue(
+    errors,
+    String((services['backup-metrics']?.command || []).join(' ')).includes('sleep 30'),
+    'backup metric writer must refresh immediate failure state within 30 seconds',
+  );
 
   requireValue(
     errors,
@@ -678,6 +762,44 @@ export const validateMonitoringDocuments = (documents) => {
     errors,
     backupScript.includes('menorah_backup_last_success_timestamp_seconds'),
     'backup metric writer does not expose backup age',
+  );
+  for (const metricName of [
+    'menorah_backup_attempt_metadata_present',
+    'menorah_backup_last_attempt_result',
+    'menorah_backup_last_attempt_timestamp_seconds',
+  ]) {
+    requireValue(
+      errors,
+      backupScript.includes(`# TYPE ${metricName} gauge`),
+      `backup metric writer does not declare ${metricName}`,
+    );
+  }
+  requireValue(
+    errors,
+    backupResultRecorder.includes('mv -f -- "${TEMP_FILE}"'),
+    'backup result recorder must publish state atomically',
+  );
+  requireValue(
+    errors,
+    backupResultRecorder.includes('chmod 0600 "${TEMP_FILE}"'),
+    'backup result recorder must keep execution state operator-only',
+  );
+  requireValue(
+    errors,
+    backupNow.includes('"${SCRIPT_DIR}/record-backup-result.sh"'),
+    'direct backup execution does not record its final result',
+  );
+  requireValue(
+    errors,
+    /ExecStopPost=.*record-backup-result\.sh.*\\\$SERVICE_RESULT.*\\\$EXIT_CODE.*\\\$EXIT_STATUS/.test(
+      backupSchedule,
+    ),
+    'scheduled backup execution does not record systemd failure state',
+  );
+  requireValue(
+    errors,
+    prepareHost.includes('"${DEPLOY_STATE_ROOT}/backup-attempts"'),
+    'host preparation does not create the bounded backup-attempt state directory',
   );
   if (/(PASSWORD|SECRET|TOKEN)=['"][^'"]+['"]/.test(backupScript)) {
     errors.push('backup metric writer contains a literal credential');

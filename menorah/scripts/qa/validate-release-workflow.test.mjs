@@ -8,6 +8,7 @@ import { parse } from 'yaml';
 
 import {
   validateAndroidBuildWorkflow,
+  validateBackupSchedule,
   validateDastWorkflow,
   validateDisabledCloudRunPaths,
   validateGovernance,
@@ -46,6 +47,7 @@ const [
   runtimeDirectoryPrepScript,
   rawProductionCompose,
   mongoToolCredentialWrapper,
+  backupScheduleScript,
 ] = await Promise.all([
   readRepoFile('.github/workflows/deploy.yml'),
   readRepoFile('.github/workflows/security.yml'),
@@ -67,12 +69,25 @@ const [
   readRepoFile('menorah/deploy/ubuntu/prepare-runtime-directories.sh'),
   readRepoFile('menorah/deploy/docker-compose.production.yml'),
   readRepoFile('menorah/deploy/backup/run-mongo-tool-secure.sh'),
+  readRepoFile('menorah/deploy/ubuntu/install-backup-schedule.sh'),
 ]);
 
 const copyWorkflow = () => structuredClone(parse(rawWorkflow));
 const copyDastWorkflow = () => structuredClone(parse(rawDastWorkflow));
 const copyAndroidBuildWorkflow = () =>
   structuredClone(parse(rawAndroidBuildWorkflow));
+
+test('rejects a backup schedule without immediate execution-result recording', () => {
+  const unsafe = backupScheduleScript.replace(
+    /^ExecStopPost=.*record-backup-result\.sh.*$/m,
+    '',
+  );
+  assert.notEqual(unsafe, backupScheduleScript);
+  assert.throws(
+    () => validateBackupSchedule(unsafe),
+    /bounded systemd execution results/,
+  );
+});
 
 test('accepts the reviewed updater with CRLF line endings', () => {
   validateUpdateScript(updateScript.replace(/\r?\n/g, '\r\n'));

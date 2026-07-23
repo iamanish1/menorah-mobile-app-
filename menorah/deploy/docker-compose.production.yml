@@ -790,9 +790,10 @@ services:
       - /bin/sh
       - -c
     command:
-      - while true; do if ! /bin/sh /scripts/export-backup-metrics.sh; then exit 1; fi; sleep 300; done
+      - while true; do if ! /bin/sh /scripts/export-backup-metrics.sh; then exit 1; fi; sleep 30; done
     environment:
       BACKUP_ROOT: /backups
+      BACKUP_ATTEMPT_ROOT: /backup-attempts
       TEXTFILE_DIR: /textfile
     read_only: true
     cap_drop:
@@ -802,6 +803,7 @@ services:
     volumes:
       - ./monitoring/export-backup-metrics.sh:/scripts/export-backup-metrics.sh:ro
       - ${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}:/backups:ro
+      - ${MENORAH_DEPLOY_STATE_ROOT:-/opt/menorah/deploy-state}/backup-attempts:/backup-attempts:ro
       - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/monitoring-textfile:/textfile
     networks:
       - monitoring_net

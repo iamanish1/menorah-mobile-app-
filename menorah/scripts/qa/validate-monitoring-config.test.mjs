@@ -46,6 +46,45 @@ test('rejects fake alert coverage for an unavailable signal', () => {
   );
 });
 
+test('rejects overlapping product frontend probe rules', () => {
+  const documents = cloneDocuments();
+  const rule = documents.alerts.groups
+    .flatMap((group) => group.rules)
+    .find((candidate) => candidate.alert === 'UserFrontendProbeFailed');
+  rule.expr = 'probe_success{job="blackbox-http-internal",component="frontend"} == 0';
+
+  assert.match(
+    validateMonitoringDocuments(documents).join('\n'),
+    /UserFrontendProbeFailed must select only the user-web-app probe/,
+  );
+});
+
+test('rejects a backup failure alert without the immediate result metric', () => {
+  const documents = cloneDocuments();
+  const rule = documents.alerts.groups
+    .flatMap((group) => group.rules)
+    .find((candidate) => candidate.alert === 'BackupJobFailed');
+  rule.expr = 'menorah_backup_metadata_present{backup_type="daily"} == 0';
+
+  assert.match(
+    validateMonitoringDocuments(documents).join('\n'),
+    /must alert only on a validated latest-attempt failure/,
+  );
+});
+
+test('rejects backup execution state mounted read-write', () => {
+  const documents = cloneDocuments();
+  documents.compose.services['backup-metrics'].volumes =
+    documents.compose.services['backup-metrics'].volumes.map((volume) =>
+      String(volume).replace('/backup-attempts:/backup-attempts:ro', '/backup-attempts:/backup-attempts'),
+    );
+
+  assert.match(
+    validateMonitoringDocuments(documents).join('\n'),
+    /does not mount latest-attempt state read-only/,
+  );
+});
+
 test('rejects a mutable monitoring image reference', () => {
   const documents = cloneDocuments();
   documents.compose.services['blackbox-exporter'].image =

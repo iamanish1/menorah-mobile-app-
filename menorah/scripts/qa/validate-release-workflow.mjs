@@ -1314,7 +1314,7 @@ function validateRuntimeDirectoryPreparation(script) {
   );
 }
 
-function validateBackupSchedule(script) {
+export function validateBackupSchedule(script) {
   requirePattern(
     script,
     /menorah-backup-six-hourly\.timer/,
@@ -1329,6 +1329,11 @@ function validateBackupSchedule(script) {
     script,
     /User=root/,
     'scheduled backup services must not run as root',
+  );
+  requirePattern(
+    script,
+    /ExecStopPost=.*record-backup-result\.sh %i \\\$SERVICE_RESULT \\\$EXIT_CODE \\\$EXIT_STATUS/,
+    'scheduled backups must persist bounded systemd execution results',
   );
 }
 

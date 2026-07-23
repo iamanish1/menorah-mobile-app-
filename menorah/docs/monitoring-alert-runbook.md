@@ -227,8 +227,30 @@ route traffic back until it is consistently `200`.
 
 ### InternalFrontendProbeFailed
 
-Owner: `web`. Check the named frontend container, its build/release SHA, reverse
+Owner: `web`. This rule is limited to the landing page so it cannot overlap the
+product-surface rules below. Check the container, build/release SHA, reverse
 proxy upstream resolution, and server logs. Confirm the public probe separately.
+
+### UserFrontendProbeFailed
+
+Owner: `web`. Check the `user-web-app` container, release SHA, reverse-proxy
+upstream, and HTTP probe status. Compare the public user-web probe and API
+readiness before deciding whether the fault is frontend-only. Resolution
+requires the internal user surface to return the expected success response.
+
+### AdminFrontendProbeFailed
+
+Owner: `web`. Check the `admin-panel` container, release SHA, reverse-proxy
+upstream, and HTTP probe status. Preserve administrator API and security logs
+if the failure coincides with an API or authentication incident. Resolution
+requires the internal admin surface to return the expected success response.
+
+### CounsellorFrontendProbeFailed
+
+Owner: `web`. Check the `web-app` counsellor container, release SHA,
+reverse-proxy upstream, and HTTP probe status. Compare the public counsellor
+probe and API readiness. Resolution requires the internal counsellor surface
+to return the expected success response.
 
 ### WorkerReadinessProbeFailed
 
@@ -390,6 +412,16 @@ configured, so confirm the effective cgroup limit before changing configuration.
 Capture a safe profile or heap evidence where supported before adjusting limits.
 
 ## Backup alerts
+
+### BackupJobFailed
+
+Owner: `infrastructure`. Inspect the named systemd backup unit, bounded
+latest-attempt state, backup log, mount, free space, encryption prerequisites,
+and shared locks. The state records only schedule type, success/failure,
+timestamp, and bounded systemd result fields; it contains no paths or backup
+content. Do not edit the state file or manufacture a success marker. The alert
+resolves only after a later attempt for that schedule type succeeds, then the
+signed backup-health and isolated restore evidence must still be checked.
 
 ### BackupMetricsStale
 

@@ -43,6 +43,7 @@ User=${RUN_USER}
 WorkingDirectory=${REPO_ROOT}
 Environment=PRODUCTION_ENV=${ENV_FILE}
 ExecStart=/bin/bash ${REPO_ROOT}/deploy/ubuntu/backup-now.sh %i
+ExecStopPost=/bin/bash ${REPO_ROOT}/deploy/ubuntu/record-backup-result.sh %i \$SERVICE_RESULT \$EXIT_CODE \$EXIT_STATUS
 StandardOutput=append:${LOG_DIR}/backup.log
 StandardError=append:${LOG_DIR}/backup.log
 UNIT

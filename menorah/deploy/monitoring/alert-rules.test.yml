@@ -4,6 +4,124 @@ rule_files:
 evaluation_interval: 1m
 
 tests:
+  - name: distinct frontend probes fire without overlapping the landing rule
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="landing-page",instance="http://landing-page:3002/"}'
+        values: '0 0 0 0 0'
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="user-web-app",instance="http://user-web-app:3002/"}'
+        values: '0 0 0 0 0'
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="admin-panel",instance="http://admin-panel:3003/"}'
+        values: '0 0 0 0 0'
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="counsellor-web",instance="http://web-app:3001/"}'
+        values: '0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: InternalFrontendProbeFailed
+        exp_alerts:
+          - exp_labels:
+              component: frontend
+              instance: "http://landing-page:3002/"
+              job: blackbox-http-internal
+              owner: web
+              service: landing-page
+              severity: critical
+            exp_annotations:
+              summary: "Internal frontend probe failed"
+              description: "landing-page at http://landing-page:3002/ is not serving an expected success response."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#internalfrontendprobefailed"
+      - eval_time: 4m
+        alertname: UserFrontendProbeFailed
+        exp_alerts:
+          - exp_labels:
+              component: frontend
+              instance: "http://user-web-app:3002/"
+              job: blackbox-http-internal
+              owner: web
+              service: user-web-app
+              severity: critical
+            exp_annotations:
+              summary: "User frontend probe failed"
+              description: "The user web surface at http://user-web-app:3002/ has failed its expected HTTP success probe for three minutes."
+              resolution: "The alert resolves after the user frontend returns the expected HTTP success response."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#userfrontendprobefailed"
+      - eval_time: 4m
+        alertname: AdminFrontendProbeFailed
+        exp_alerts:
+          - exp_labels:
+              component: frontend
+              instance: "http://admin-panel:3003/"
+              job: blackbox-http-internal
+              owner: web
+              service: admin-panel
+              severity: critical
+            exp_annotations:
+              summary: "Admin frontend probe failed"
+              description: "The administrator web surface at http://admin-panel:3003/ has failed its expected HTTP success probe for three minutes."
+              resolution: "The alert resolves after the administrator frontend returns the expected HTTP success response."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminfrontendprobefailed"
+      - eval_time: 4m
+        alertname: CounsellorFrontendProbeFailed
+        exp_alerts:
+          - exp_labels:
+              component: frontend
+              instance: "http://web-app:3001/"
+              job: blackbox-http-internal
+              owner: web
+              service: counsellor-web
+              severity: critical
+            exp_annotations:
+              summary: "Counsellor frontend probe failed"
+              description: "The counsellor web surface at http://web-app:3001/ has failed its expected HTTP success probe for three minutes."
+              resolution: "The alert resolves after the counsellor frontend returns the expected HTTP success response."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#counsellorfrontendprobefailed"
+
+  - name: distinct frontend probes recover independently
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="user-web-app",instance="http://user-web-app:3002/"}'
+        values: '0 0 0 0 1 1'
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="admin-panel",instance="http://admin-panel:3003/"}'
+        values: '0 0 0 0 1 1'
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="counsellor-web",instance="http://web-app:3001/"}'
+        values: '0 0 0 0 1 1'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: UserFrontendProbeFailed
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: AdminFrontendProbeFailed
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: CounsellorFrontendProbeFailed
+        exp_alerts: []
+
+  - name: latest backup failure fires immediately and a later success resolves it
+    interval: 1m
+    input_series:
+      - series: 'menorah_backup_attempt_metadata_present{backup_type="six-hourly",job="node-exporter",instance="node-exporter:9100"}'
+        values: '1 1 1'
+      - series: 'menorah_backup_last_attempt_result{backup_type="six-hourly",job="node-exporter",instance="node-exporter:9100"}'
+        values: '0 0 1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: BackupJobFailed
+        exp_alerts:
+          - exp_labels:
+              backup_type: six-hourly
+              instance: node-exporter:9100
+              job: node-exporter
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Backup execution failed"
+              description: "The latest six-hourly backup attempt failed; the previous success marker remains unchanged."
+              resolution: "The alert resolves only after a later backup attempt for this bounded schedule type succeeds."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#backupjobfailed"
+      - eval_time: 2m
+        alertname: BackupJobFailed
+        exp_alerts: []
+
   - name: checkpoint invalid and queue overflow deltas are immediate incidents
     interval: 1m
     input_series:

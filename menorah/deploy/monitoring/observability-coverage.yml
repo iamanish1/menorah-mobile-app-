@@ -13,6 +13,9 @@ signals:
     source: blackbox-http-internal and blackbox-https-public
     alerts:
       - InternalFrontendProbeFailed
+      - UserFrontendProbeFailed
+      - AdminFrontendProbeFailed
+      - CounsellorFrontendProbeFailed
       - PublicEndpointProbeFailed
 
   - id: call-service-availability
@@ -69,11 +72,10 @@ signals:
       - RestoreTestTooOld
 
   - id: backup-immediate-failure
-    status: unavailable
-    source: none
-    alerts: []
-    limitation: A failed systemd backup run does not currently emit a Prometheus counter; stale-success alerts detect the failure at the schedule deadline.
-    action: Export systemd unit result metrics or a signed failure marker before claiming immediate failure detection.
+    status: covered
+    source: bounded atomic systemd/direct execution state through node_exporter textfile collector
+    alerts:
+      - BackupJobFailed
 
   - id: host-capacity
     status: covered

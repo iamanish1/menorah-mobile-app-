@@ -513,6 +513,37 @@ test_prune_is_fail_closed_before_deletion() {
     || fail "prune deleted a source set before completing its integrity plan"
 }
 
+test_backup_execution_result_contract() {
+  local attempt_root="${TMP_ROOT}/backup-attempts"
+  local recorder="${REPO_ROOT}/deploy/ubuntu/record-backup-result.sh"
+  local state_file="${attempt_root}/latest-attempt-six-hourly.status"
+
+  BACKUP_ATTEMPT_STATE_ROOT="${attempt_root}" \
+  BACKUP_RESULT_TIMESTAMP_SECONDS=1784808000 \
+    bash "${recorder}" six-hourly success exited 0
+  grep -Fx 'schema_version=1' "${state_file}" >/dev/null \
+    || fail "backup result state omitted its schema"
+  grep -Fx 'backup_type=six-hourly' "${state_file}" >/dev/null \
+    || fail "backup result state omitted its bounded schedule"
+  grep -Fx 'result=1' "${state_file}" >/dev/null \
+    || fail "successful backup result was not recorded"
+  grep -Fx 'timestamp_seconds=1784808000' "${state_file}" >/dev/null \
+    || fail "backup result state omitted its timestamp"
+
+  BACKUP_ATTEMPT_STATE_ROOT="${attempt_root}" \
+  BACKUP_RESULT_TIMESTAMP_SECONDS=1784808060 \
+    bash "${recorder}" six-hourly exit-code exited 1
+  grep -Fx 'result=0' "${state_file}" >/dev/null \
+    || fail "failed backup result was not recorded"
+  grep -Fx 'service_result=exit-code' "${state_file}" >/dev/null \
+    || fail "bounded systemd failure result was not retained"
+
+  if BACKUP_ATTEMPT_STATE_ROOT="${attempt_root}" \
+    bash "${recorder}" arbitrary-schedule success exited 0 >/dev/null 2>&1; then
+    fail "backup result recorder accepted an unbounded schedule label"
+  fi
+}
+
 test_valid_signed_chain_passes
 test_tampered_derived_bytes_fail
 test_tampered_upload_bytes_fail
@@ -522,4 +553,5 @@ test_inherited_lock_contract
 test_competing_locks_fail_closed
 test_prune_removes_linked_expired_units_only
 test_prune_is_fail_closed_before_deletion
+test_backup_execution_result_contract
 echo "Backup lifecycle integrity tests passed."

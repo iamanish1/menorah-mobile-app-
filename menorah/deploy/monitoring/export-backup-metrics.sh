@@ -2,6 +2,7 @@
 set -eu
 
 BACKUP_ROOT="${BACKUP_ROOT:-/backups}"
+BACKUP_ATTEMPT_ROOT="${BACKUP_ATTEMPT_ROOT:-/backup-attempts}"
 TEXTFILE_DIR="${TEXTFILE_DIR:-/textfile}"
 OUTPUT_FILE="${TEXTFILE_DIR}/menorah-backup.prom"
 TEMP_FILE="${OUTPUT_FILE}.tmp.$$"
@@ -25,6 +26,36 @@ marker_metric() {
   fi
 }
 
+attempt_metric() {
+  backup_type="$1"
+  state_file="${BACKUP_ATTEMPT_ROOT}/latest-attempt-${backup_type}.status"
+  metadata_present=0
+  result=0
+  timestamp_seconds=0
+
+  if [ -s "${state_file}" ]; then
+    schema_version="$(sed -n 's/^schema_version=//p' "${state_file}")"
+    recorded_type="$(sed -n 's/^backup_type=//p' "${state_file}")"
+    recorded_result="$(sed -n 's/^result=//p' "${state_file}")"
+    recorded_timestamp="$(sed -n 's/^timestamp_seconds=//p' "${state_file}")"
+    if [ "${schema_version}" = "1" ] \
+      && [ "${recorded_type}" = "${backup_type}" ] \
+      && { [ "${recorded_result}" = "0" ] || [ "${recorded_result}" = "1" ]; } \
+      && printf '%s\n' "${recorded_timestamp}" | grep -Eq '^[0-9]{10,}$'; then
+      metadata_present=1
+      result="${recorded_result}"
+      timestamp_seconds="${recorded_timestamp}"
+    fi
+  fi
+
+  printf 'menorah_backup_attempt_metadata_present{backup_type="%s"} %s\n' \
+    "${backup_type}" "${metadata_present}"
+  printf 'menorah_backup_last_attempt_result{backup_type="%s"} %s\n' \
+    "${backup_type}" "${result}"
+  printf 'menorah_backup_last_attempt_timestamp_seconds{backup_type="%s"} %s\n' \
+    "${backup_type}" "${timestamp_seconds}"
+}
+
 {
   echo '# HELP menorah_backup_metrics_last_run_timestamp_seconds Unix timestamp of the backup metadata exporter run.'
   echo '# TYPE menorah_backup_metrics_last_run_timestamp_seconds gauge'
@@ -33,9 +64,16 @@ marker_metric() {
   echo '# TYPE menorah_backup_metadata_present gauge'
   echo '# HELP menorah_backup_last_success_timestamp_seconds Filesystem timestamp of a latest-success backup marker.'
   echo '# TYPE menorah_backup_last_success_timestamp_seconds gauge'
+  echo '# HELP menorah_backup_attempt_metadata_present Whether a validated latest-attempt state file exists for a backup type.'
+  echo '# TYPE menorah_backup_attempt_metadata_present gauge'
+  echo '# HELP menorah_backup_last_attempt_result Whether the latest backup attempt succeeded (1) or failed (0).'
+  echo '# TYPE menorah_backup_last_attempt_result gauge'
+  echo '# HELP menorah_backup_last_attempt_timestamp_seconds Unix timestamp of the latest backup attempt.'
+  echo '# TYPE menorah_backup_last_attempt_timestamp_seconds gauge'
 
   for backup_type in manual six-hourly daily weekly monthly; do
     marker_metric "${backup_type}"
+    attempt_metric "${backup_type}"
   done
 
   restore_marker="${BACKUP_ROOT}/restore-tests/latest-success.json"

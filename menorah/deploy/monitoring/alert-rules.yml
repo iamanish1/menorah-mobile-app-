@@ -35,7 +35,7 @@ groups:
           runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#internalapiprobefailed"
 
       - alert: InternalFrontendProbeFailed
-        expr: probe_success{job="blackbox-http-internal",component="frontend"} == 0
+        expr: probe_success{job="blackbox-http-internal",component="frontend",service="landing-page"} == 0
         for: 3m
         labels:
           severity: critical
@@ -44,6 +44,42 @@ groups:
           summary: "Internal frontend probe failed"
           description: "{{ $labels.service }} at {{ $labels.instance }} is not serving an expected success response."
           runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#internalfrontendprobefailed"
+
+      - alert: UserFrontendProbeFailed
+        expr: probe_success{job="blackbox-http-internal",component="frontend",service="user-web-app"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          owner: web
+        annotations:
+          summary: "User frontend probe failed"
+          description: "The user web surface at {{ $labels.instance }} has failed its expected HTTP success probe for three minutes."
+          resolution: "The alert resolves after the user frontend returns the expected HTTP success response."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#userfrontendprobefailed"
+
+      - alert: AdminFrontendProbeFailed
+        expr: probe_success{job="blackbox-http-internal",component="frontend",service="admin-panel"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          owner: web
+        annotations:
+          summary: "Admin frontend probe failed"
+          description: "The administrator web surface at {{ $labels.instance }} has failed its expected HTTP success probe for three minutes."
+          resolution: "The alert resolves after the administrator frontend returns the expected HTTP success response."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminfrontendprobefailed"
+
+      - alert: CounsellorFrontendProbeFailed
+        expr: probe_success{job="blackbox-http-internal",component="frontend",service="counsellor-web"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          owner: web
+        annotations:
+          summary: "Counsellor frontend probe failed"
+          description: "The counsellor web surface at {{ $labels.instance }} has failed its expected HTTP success probe for three minutes."
+          resolution: "The alert resolves after the counsellor frontend returns the expected HTTP success response."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#counsellorfrontendprobefailed"
 
       - alert: WorkerReadinessProbeFailed
         expr: probe_success{job="blackbox-http-internal",component="worker"} == 0
@@ -315,6 +351,18 @@ groups:
 
   - name: menorah-backups
     rules:
+      - alert: BackupJobFailed
+        expr: (menorah_backup_attempt_metadata_present == 1) and on (backup_type) (menorah_backup_last_attempt_result == 0)
+        for: 0m
+        labels:
+          severity: critical
+          owner: infrastructure
+        annotations:
+          summary: "Backup execution failed"
+          description: "The latest {{ $labels.backup_type }} backup attempt failed; the previous success marker remains unchanged."
+          resolution: "The alert resolves only after a later backup attempt for this bounded schedule type succeeds."
+          runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#backupjobfailed"
+
       - alert: BackupMetricsStale
         expr: absent(menorah_backup_metrics_last_run_timestamp_seconds) or (time() - menorah_backup_metrics_last_run_timestamp_seconds > 900)
         for: 5m

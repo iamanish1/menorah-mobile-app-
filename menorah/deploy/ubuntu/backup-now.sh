@@ -25,6 +25,7 @@ fi
 
 MENORAH_BACKUP_ROOT="${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}"
 MENORAH_DATA_ROOT="${MENORAH_DATA_ROOT:-/opt/menorah/data}"
+DEPLOY_STATE_ROOT="${MENORAH_DEPLOY_STATE_ROOT:-/opt/menorah/deploy-state}"
 BACKUP_REQUIRE_MOUNT="${BACKUP_REQUIRE_MOUNT:-}"
 BACKUP_REQUIRE_ENCRYPTION="${BACKUP_REQUIRE_ENCRYPTION:-}"
 BACKUP_RUN_AS="${BACKUP_RUN_AS:-$(id -u):$(id -g)}"
@@ -38,6 +39,7 @@ MEDIA_SNAPSHOT_ROOT=""
 
 cleanup_media_snapshot() {
   local status="$?"
+  local result="failure"
   if [[ -n "${MEDIA_SNAPSHOT_ROOT}" && -d "${MEDIA_SNAPSHOT_ROOT}" ]]; then
     local snapshot_real snapshot_parent_real
     snapshot_real="$(realpath -e -- "${MEDIA_SNAPSHOT_ROOT}" 2>/dev/null || true)"
@@ -45,9 +47,19 @@ cleanup_media_snapshot() {
     if [[ -z "${snapshot_real}" || -z "${snapshot_parent_real}" \
       || "${snapshot_real}" != "${snapshot_parent_real}"/* ]]; then
       echo "Refusing unsafe media snapshot cleanup path: ${MEDIA_SNAPSHOT_ROOT}" >&2
-      exit 1
+      status=1
+    elif ! rm -rf -- "${snapshot_real}"; then
+      echo "Failed to remove media snapshot: ${MEDIA_SNAPSHOT_ROOT}" >&2
+      status=1
     fi
-    rm -rf -- "${snapshot_real}"
+  fi
+  if [[ "${status}" -eq 0 ]]; then
+    result="success"
+  fi
+  if ! BACKUP_ATTEMPT_STATE_ROOT="${DEPLOY_STATE_ROOT}/backup-attempts" \
+    "${SCRIPT_DIR}/record-backup-result.sh" \
+      "${BACKUP_TYPE}" "${result}" exited "${status}"; then
+    echo "Failed to persist the bounded backup execution result." >&2
   fi
   trap - EXIT
   exit "${status}"
@@ -128,7 +140,6 @@ if (parsed.searchParams.get('replicaSet') !== process.env.BACKUP_EXPECTED_REPLIC
 }
 NODE
 
-DEPLOY_STATE_ROOT="${MENORAH_DEPLOY_STATE_ROOT:-/opt/menorah/deploy-state}"
 mkdir -p "${DEPLOY_STATE_ROOT}"
 DEPLOY_LOCK_FILE="${DEPLOY_STATE_ROOT}/.deploy.lock"
 EXPECTED_DEPLOY_LOCK="$(realpath -m -- "${DEPLOY_LOCK_FILE}")"

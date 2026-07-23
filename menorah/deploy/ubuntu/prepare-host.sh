@@ -224,7 +224,8 @@ create_user_and_dirs() {
     "${BACKUP_ROOT}/monthly" \
     "${BACKUP_ROOT}/restore-tests" \
     "${LOG_ROOT}" \
-    "${DEPLOY_STATE_ROOT}"; do
+    "${DEPLOY_STATE_ROOT}" \
+    "${DEPLOY_STATE_ROOT}/backup-attempts"; do
     create_once 0750 "${MENORAH_USER}" "${operator_gid}" "${path}"
     require_directory_security 0750 "${MENORAH_USER}" "${operator_gid}" "${path}"
   done
