@@ -4,6 +4,7 @@ const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const axios  = require('axios');
+const mongoose = require('mongoose');
 const User   = require('../models/User');
 const { auth } = require('../middleware/auth');
 const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
@@ -20,6 +21,11 @@ const {
   isCookieTransportRequested,
   setSessionCookieForRequest,
 } = require('../config/webSessions');
+const {
+  exchangeAppleAuthorizationCode,
+  verifyAppleIdentityToken,
+} = require('../services/appleSignInService');
+const { encryptAppleRefreshToken } = require('../utils/appleRefreshTokenEncryption');
 
 const router = express.Router();
 const emailNormalizationOptions = {
@@ -162,6 +168,14 @@ const splitDisplayName = (fullName, fallbackFirst = 'Menorah', fallbackLast = 'U
   };
 };
 
+const selectIfSupported = (query, fields) => (
+  typeof query?.select === 'function' ? query.select(fields) : query
+);
+
+const sessionIfSupported = (query, session) => (
+  session && typeof query?.session === 'function' ? query.session(session) : query
+);
+
 const verifyGoogleCredential = async (credential) => {
   const clientIds = getGoogleClientIds();
   if (clientIds.length === 0) {
@@ -187,57 +201,6 @@ const verifyGoogleCredential = async (credential) => {
   return payload;
 };
 
-const getAppleAudiences = () => [
-  process.env.APPLE_IOS_BUNDLE_ID,
-  process.env.APPLE_WEB_SERVICE_ID
-]
-  .map((value) => String(value || '').trim())
-  .filter(Boolean);
-
-const getAppleSigningKey = async (kid) => {
-  const response = await axios.get('https://appleid.apple.com/auth/keys', { timeout: 8000 });
-  const key = response.data?.keys?.find((candidate) => candidate.kid === kid);
-  if (!key) throw new Error('Apple signing key was not found');
-  return crypto.createPublicKey({ key, format: 'jwk' });
-};
-
-const verifyJwtAsync = (token, getKey, options) =>
-  new Promise((resolve, reject) => {
-    jwt.verify(token, getKey, options, (error, decoded) => {
-      if (error) return reject(error);
-      resolve(decoded);
-    });
-  });
-
-const verifyAppleIdentityToken = async (identityToken) => {
-  const audiences = getAppleAudiences();
-  if (audiences.length === 0) {
-    throw new Error('Apple Sign in is not configured');
-  }
-
-  const decodedHeader = jwt.decode(identityToken, { complete: true })?.header;
-  if (!decodedHeader?.kid) {
-    throw new Error('Apple identity token is missing key id');
-  }
-
-  return verifyJwtAsync(
-    identityToken,
-    async (header, callback) => {
-      try {
-        const key = await getAppleSigningKey(header.kid);
-        callback(null, key);
-      } catch (error) {
-        callback(error);
-      }
-    },
-    {
-      algorithms: ['RS256'],
-      issuer: 'https://appleid.apple.com',
-      audience: audiences
-    }
-  );
-};
-
 const findOrCreateSocialUser = async ({
   provider,
   subject,
@@ -245,12 +208,19 @@ const findOrCreateSocialUser = async ({
   firstName,
   lastName,
   profileImage = null,
-  privateRelay = false
+  privateRelay = false,
+  session = null
 }) => {
   const normalizedEmail = String(email || '').toLowerCase().trim();
   const socialPath = provider === 'apple' ? 'socialAuth.appleSub' : 'socialAuth.googleSub';
 
-  let user = await User.findOne({ [socialPath]: subject });
+  let user = await sessionIfSupported(
+    selectIfSupported(
+      User.findOne({ [socialPath]: subject }),
+      '+passwordAuthEnabled'
+    ),
+    session
+  );
   if (user && !user.isActive) {
     const error = new Error('Inactive social auth account');
     error.statusCode = 401;
@@ -275,7 +245,10 @@ const findOrCreateSocialUser = async ({
     throw error;
   }
 
-  const existingEmailUser = await User.findOne({ email: normalizedEmail });
+  const existingEmailUser = await sessionIfSupported(
+    User.findOne({ email: normalizedEmail }),
+    session
+  );
   if (existingEmailUser) {
     const error = new Error('Social auth requires explicit account linking');
     error.statusCode = 409;
@@ -285,7 +258,7 @@ const findOrCreateSocialUser = async ({
 
   try {
     const fallbackPhone = `${provider}:${subject}`;
-    user = await User.create({
+    const userDocument = {
       email: normalizedEmail,
       phone: fallbackPhone,
       password: crypto.randomBytes(32).toString('hex'),
@@ -304,7 +277,12 @@ const findOrCreateSocialUser = async ({
         appleSub: provider === 'apple' ? subject : undefined,
         appleEmailPrivateRelay: provider === 'apple' ? Boolean(privateRelay) : undefined
       }
-    });
+    };
+    if (session) {
+      [user] = await User.create([userDocument], { session });
+    } else {
+      user = await User.create(userDocument);
+    }
   } catch (error) {
     if (error.code === 11000) {
       const conflict = new Error('Social auth identity already exists');
@@ -545,7 +523,8 @@ router.post('/login', [
     }
 
     const { email, password } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password +lockUntil');
+    const user = await User.findOne({ email: email.toLowerCase().trim() })
+      .select('+password +passwordAuthEnabled +lockUntil');
 
     // Use same generic message for missing user AND inactive account —
     // different messages allow attackers to enumerate valid email addresses.
@@ -639,6 +618,7 @@ router.post('/google', [
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/apple', [
   body('identityToken').isString().trim().isLength({ min: 20 }),
+  body('authorizationCode').isString().trim().isLength({ min: 20, max: 4096 }),
   body('email').optional().isEmail().normalizeEmail(emailNormalizationOptions),
   body('fullName').optional().isString().trim().isLength({ max: 120 })
 ], async (req, res) => {
@@ -647,18 +627,58 @@ router.post('/apple', [
     if (!errors.isEmpty()) {
       return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
     }
+    if (process.env.APPLE_SIGN_IN_ENABLED !== 'true') {
+      return res.status(503).json({ success: false, message: 'Apple sign-in is unavailable.' });
+    }
 
     const appleUser = await verifyAppleIdentityToken(req.body.identityToken);
+    const clientId = String(appleUser.aud || '').trim();
+    const appleTokens = await exchangeAppleAuthorizationCode({
+      authorizationCode: req.body.authorizationCode,
+      clientId,
+      expectedSubject: appleUser.sub,
+    });
     const tokenEmail = String(appleUser.email || '').toLowerCase().trim();
     const { firstName, lastName } = splitDisplayName(req.body.fullName, 'Menorah', 'User');
-    const { user, existingUser } = await findOrCreateSocialUser({
-      provider: 'apple',
-      subject: appleUser.sub,
-      email: tokenEmail,
-      firstName,
-      lastName,
-      privateRelay: /privaterelay\.appleid\.com$/i.test(tokenEmail)
-    });
+    const session = await mongoose.startSession();
+    let socialUserResult;
+    try {
+      await session.withTransaction(async () => {
+        socialUserResult = await findOrCreateSocialUser({
+          provider: 'apple',
+          subject: appleUser.sub,
+          email: tokenEmail,
+          firstName,
+          lastName,
+          privateRelay: /privaterelay\.appleid\.com$/i.test(tokenEmail),
+          session,
+        });
+        const encryptedRefreshToken = encryptAppleRefreshToken(
+          appleTokens.refreshToken,
+          { userId: socialUserResult.user._id, clientId }
+        );
+        const credentialUpdate = await User.updateOne(
+          {
+            _id: socialUserResult.user._id,
+            isActive: true,
+            'socialAuth.appleSub': appleUser.sub,
+          },
+          {
+            $set: {
+              'socialAuth.appleRefreshTokenEncrypted': encryptedRefreshToken,
+              'socialAuth.appleClientId': clientId,
+            },
+          },
+          { session }
+        );
+        if (credentialUpdate.matchedCount !== 1) {
+          throw new Error('Apple credential persistence failed');
+        }
+      });
+    } finally {
+      await session.endSession();
+    }
+    const { user, existingUser } = socialUserResult;
 
     const token = signUserToken(user);
     return sendAuthSessionResponse(req, res, {
@@ -671,10 +691,23 @@ router.post('/apple', [
       },
     });
   } catch (error) {
-    console.error('Apple auth error:', error.message);
-    return res.status(error.statusCode || 401).json({
+    const statusCode = Number.isInteger(error.statusCode)
+      && error.statusCode >= 400
+      && error.statusCode <= 503
+      ? error.statusCode
+      : 500;
+    const safeCode = typeof error.appleErrorCode === 'string'
+      && /^APPLE_[A-Z0-9_]{1,56}$/.test(error.appleErrorCode)
+      ? error.appleErrorCode
+      : 'APPLE_AUTH_UNEXPECTED';
+    console.error('Apple auth error code:', safeCode);
+    return res.status(statusCode).json({
       success: false,
-      message: error.publicMessage || 'Apple sign-in failed. Please try again.'
+      message: error.publicMessage || (
+        statusCode >= 500
+          ? 'Apple sign-in is temporarily unavailable.'
+          : 'Apple sign-in failed. Please try again.'
+      )
     });
   }
 });

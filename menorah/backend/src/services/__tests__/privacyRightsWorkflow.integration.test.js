@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
+const DataDeletionRequest = require('../../models/DataDeletionRequest');
 const PrivacyEvent = require('../../models/PrivacyEvent');
 const PrivacyRightsRequest = require('../../models/PrivacyRightsRequest');
+const ProviderRevocationTask = require('../../models/ProviderRevocationTask');
 const {
   createPrivacyRightsWorkflow,
 } = require('../privacyRightsWorkflow');
@@ -41,8 +43,10 @@ describeWithMongo('privacy rights idempotency on isolated replica-set MongoDB', 
   beforeEach(async () => {
     await mongoose.connection.dropDatabase();
     await Promise.all([
+      DataDeletionRequest.createIndexes(),
       PrivacyEvent.createIndexes(),
       PrivacyRightsRequest.createIndexes(),
+      ProviderRevocationTask.createIndexes(),
     ]);
   });
 
@@ -173,5 +177,55 @@ describeWithMongo('privacy rights idempotency on isolated replica-set MongoDB', 
         eventType: 'rights_request_submitted',
       }),
     ])).resolves.toEqual([1, 1]);
+  });
+
+  test('deletion completion waits for the linked Apple revocation task', async () => {
+    const now = new Date('2026-07-23T13:02:00.000Z');
+    const deletionRequest = await DataDeletionRequest.create({
+      user: USER._id,
+      status: 'under_review',
+      requestedAt: now,
+      accountDeactivatedAt: now,
+      retentionReviewAfter: now,
+      underReviewAt: now,
+    });
+    const providerTask = await ProviderRevocationTask.create({
+      user: USER._id,
+      deletionRequest: deletionRequest._id,
+      provider: 'apple',
+      clientId: 'com.menorah.mobile',
+      refreshTokenEncrypted: 'v1:test-encrypted-refresh-token',
+      status: 'retry',
+      nextAttemptAt: now,
+    });
+    const transition = {
+      requestId: deletionRequest._id,
+      admin: {
+        _id: new mongoose.Types.ObjectId('64f000000000000000000002'),
+      },
+      toStatus: 'completed',
+      evidenceReference: 'case-evidence-apple-0001',
+      source: 'api-admin',
+      now,
+    };
+
+    await expect(workflow.transitionDeletionRequest(transition)).rejects.toMatchObject({
+      code: 'DELETION_PROVIDER_REVOCATION_INCOMPLETE',
+      message: 'Provider revocation must complete before deletion review can be completed.',
+      statusCode: 409,
+    });
+    await expect(DataDeletionRequest.findById(deletionRequest._id).lean())
+      .resolves.toEqual(expect.objectContaining({ status: 'under_review' }));
+
+    await ProviderRevocationTask.updateOne(
+      { _id: providerTask._id },
+      { $set: { status: 'completed', completedAt: now } }
+    );
+
+    await expect(workflow.transitionDeletionRequest(transition))
+      .resolves.toEqual(expect.objectContaining({
+        status: 'completed',
+        completedAt: now,
+      }));
   });
 });

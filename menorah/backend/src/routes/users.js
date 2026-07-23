@@ -1,8 +1,11 @@
 const express = require('express');
+const crypto = require('crypto');
 const { body, param, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
+const AccountDeletionChallenge = require('../models/AccountDeletionChallenge');
 const { auth } = require('../middleware/auth');
 const { uploadBuffer } = require('../utils/cloudinary');
 const { clearMappedSessionCookie } = require('../config/webSessions');
@@ -11,6 +14,11 @@ const {
   accountDeletionService,
 } = require('../services/accountDeletionService');
 const { getMaskedBankAccountNumber } = require('../utils/bankAccountEncryption');
+const { encryptAppleRefreshToken } = require('../utils/appleRefreshTokenEncryption');
+const {
+  exchangeAppleAuthorizationCode,
+  verifyAppleIdentityToken,
+} = require('../services/appleSignInService');
 const {
   PASSWORD_STRENGTH_MESSAGE,
   PASSWORD_STRENGTH_OPTIONS,
@@ -21,6 +29,19 @@ const {
 } = require('../serializers/userSerializer');
 
 const router = express.Router();
+const leanWithPasswordAuth = (query) => {
+  const selected = typeof query?.select === 'function'
+    ? query.select('+passwordAuthEnabled')
+    : query;
+  return typeof selected?.lean === 'function' ? selected.lean() : selected;
+};
+const accountDeletionChallengeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `account-deletion:${String(req.user?._id || 'unauthenticated')}`,
+});
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -39,7 +60,7 @@ const upload = multer({
 // @access  Private
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).lean();
+    const user = await leanWithPasswordAuth(User.findById(req.user._id));
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -101,7 +122,7 @@ router.get('/me', auth, async (req, res) => {
 // @access  Private
 router.get('/profile', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).lean();
+    const user = await leanWithPasswordAuth(User.findById(req.user._id));
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -417,11 +438,73 @@ router.put('/change-password', [
   }
 });
 
+// @route   POST /api/users/account/deletion-challenge
+// @desc    Issue a single-use nonce for social-provider account deletion
+// @access  Private
+router.post('/account/deletion-challenge', auth, accountDeletionChallengeLimiter, [
+  body('method').equals('apple'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Unsupported deletion reauthentication method' });
+    }
+    if (process.env.APPLE_SIGN_IN_ENABLED !== 'true') {
+      return res.status(503).json({ success: false, message: 'Apple verification is unavailable.' });
+    }
+    if (!req.user.socialAuth?.appleSub) {
+      return res.status(409).json({
+        success: false,
+        code: 'ACCOUNT_REAUTH_METHOD_NOT_LINKED',
+        message: 'This Apple identity is not linked to the account.',
+      });
+    }
+
+    const challengeId = crypto.randomBytes(32).toString('hex');
+    const nonce = crypto.randomBytes(32).toString('base64url');
+    const nonceHash = crypto.createHash('sha256').update(nonce, 'utf8').digest('hex');
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await AccountDeletionChallenge.updateMany(
+      {
+        user: req.user._id,
+        method: 'apple',
+        consumedAt: null,
+      },
+      { $set: { consumedAt: new Date() } }
+    );
+    await AccountDeletionChallenge.create({
+      challengeId,
+      user: req.user._id,
+      method: 'apple',
+      nonceHash,
+      sessionVersion: req.user.sessionVersion,
+      expiresAt,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: { challengeId, nonce, expiresAt: expiresAt.toISOString() },
+    });
+  } catch (error) {
+    console.error('Account deletion challenge error code:', error?.code || 'UNEXPECTED_ERROR');
+    return res.status(500).json({ success: false, message: 'Could not start account deletion verification.' });
+  }
+});
+
 // @route   DELETE /api/users/account
 // @desc    Delete user account
 // @access  Private
 router.delete('/account', [
-  body('password').notEmpty().withMessage('Password is required for account deletion')
+  body('method')
+    .customSanitizer((value, { req }) => (
+      value || (typeof req.body?.password === 'string' ? 'password' : value)
+    ))
+    .isIn(['password', 'apple']),
+  body('password').optional().isString().isLength({ min: 1, max: 256 }),
+  body('challengeId').optional().isString().matches(/^[a-f0-9]{64}$/),
+  body('identityToken').optional().isString().isLength({ min: 20, max: 8192 }),
+  body('authorizationCode').optional().isString().isLength({ min: 20, max: 4096 }),
 ], auth, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -433,10 +516,83 @@ router.delete('/account', [
       });
     }
 
+    let socialReauthentication = null;
+    let providerRevocation = null;
+
+    if (req.body.method === 'password') {
+      if (typeof req.body.password !== 'string' || !req.body.password) {
+        return res.status(400).json({ success: false, message: 'Password is required for account deletion' });
+      }
+    } else {
+      if (process.env.APPLE_SIGN_IN_ENABLED !== 'true') {
+        return res.status(503).json({ success: false, message: 'Apple verification is unavailable.' });
+      }
+      if (!req.body.challengeId || !req.body.identityToken || !req.body.authorizationCode) {
+        return res.status(400).json({ success: false, message: 'Apple reauthentication is incomplete' });
+      }
+
+      const challenge = await AccountDeletionChallenge.findOneAndUpdate(
+        {
+          challengeId: req.body.challengeId,
+          user: req.user._id,
+          method: 'apple',
+          purpose: 'account-deletion',
+          sessionVersion: req.user.sessionVersion,
+          consumedAt: null,
+          expiresAt: { $gt: new Date() },
+        },
+        { $set: { consumedAt: new Date() } },
+        { new: true }
+      ).select('+nonceHash');
+      if (!challenge) {
+        return res.status(409).json({
+          success: false,
+          code: 'ACCOUNT_DELETION_CHALLENGE_INVALID',
+          message: 'Deletion verification expired or was already used. Start again.',
+        });
+      }
+
+      const appleUser = await verifyAppleIdentityToken(req.body.identityToken);
+      const receivedNonceHash = crypto
+        .createHash('sha256')
+        .update(String(appleUser.nonce || ''), 'utf8')
+        .digest('hex');
+      const nonceMatches = crypto.timingSafeEqual(
+        Buffer.from(challenge.nonceHash, 'hex'),
+        Buffer.from(receivedNonceHash, 'hex')
+      );
+      if (!nonceMatches || appleUser.sub !== req.user.socialAuth?.appleSub) {
+        return res.status(403).json({
+          success: false,
+          code: 'ACCOUNT_APPLE_REAUTH_INVALID',
+          message: 'Apple reauthentication did not match this account.',
+        });
+      }
+
+      const clientId = String(appleUser.aud || '').trim();
+      const appleTokens = await exchangeAppleAuthorizationCode({
+        authorizationCode: req.body.authorizationCode,
+        clientId,
+        expectedSubject: appleUser.sub,
+        expectedNonce: appleUser.nonce,
+      });
+      providerRevocation = {
+        provider: 'apple',
+        clientId,
+        refreshTokenEncrypted: encryptAppleRefreshToken(
+          appleTokens.refreshToken,
+          { userId: req.user._id, clientId }
+        ),
+      };
+      socialReauthentication = { provider: 'apple', subject: appleUser.sub };
+    }
+
     await accountDeletionService.requestDeletion({
       userId: req.user._id,
       password: req.body.password,
       source: req.app.get('serviceName') || 'authenticated-api',
+      ...(socialReauthentication ? { socialReauthentication } : {}),
+      ...(providerRevocation ? { providerRevocation } : {}),
     });
     clearMappedSessionCookie(req, res);
 
@@ -446,22 +602,44 @@ router.delete('/account', [
     });
 
   } catch (error) {
-    const statusCode = Number.isInteger(error.statusCode)
+    const isAppleError = typeof error.appleErrorCode === 'string'
+      && /^APPLE_[A-Z0-9_]{1,56}$/.test(error.appleErrorCode);
+    const statusCode = isAppleError && error.statusCode === 401
+      ? 403
+      : isAppleError && error.statusCode === 503
+        ? 503
+        : Number.isInteger(error.statusCode)
       && error.statusCode >= 400
       && error.statusCode < 500
-      ? error.statusCode
-      : 500;
-    if (statusCode === 500) {
-      const safeCode = typeof error.code === 'string'
+        ? error.statusCode
+        : 500;
+    if (statusCode >= 500) {
+      const safeCode = isAppleError
+        ? error.appleErrorCode
+        : typeof error.code === 'string'
         && /^[A-Z0-9_]{1,64}$/.test(error.code)
-        ? error.code
-        : 'UNEXPECTED_ERROR';
+          ? error.code
+          : 'UNEXPECTED_ERROR';
       console.error('Delete account error code:', safeCode);
     }
     res.status(statusCode).json({
       success: false,
-      message: statusCode === 500 ? 'Internal server error' : error.message,
-      ...(statusCode < 500 && error.code ? { code: error.code } : {}),
+      message: isAppleError
+        ? statusCode === 503
+          ? 'Apple verification is temporarily unavailable.'
+          : 'Apple reauthentication could not be verified.'
+        : statusCode === 500
+          ? 'Internal server error'
+          : error.message,
+      ...(isAppleError
+        ? {
+          code: statusCode === 503
+            ? 'APPLE_VERIFICATION_UNAVAILABLE'
+            : 'ACCOUNT_APPLE_REAUTH_INVALID',
+        }
+        : statusCode < 500 && error.code
+          ? { code: error.code }
+          : {}),
     });
   }
 });

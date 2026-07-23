@@ -190,6 +190,16 @@ const userSchema = new mongoose.Schema({
     appleEmailPrivateRelay: {
       type: Boolean,
       default: false
+    },
+    appleRefreshTokenEncrypted: {
+      type: String,
+      default: undefined,
+      select: false,
+    },
+    appleClientId: {
+      type: String,
+      default: undefined,
+      select: false,
     }
   },
 

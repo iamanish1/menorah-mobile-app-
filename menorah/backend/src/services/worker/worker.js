@@ -13,6 +13,7 @@ const {
   startPrivacyRetentionScheduler,
 } = require('../privacyRetentionScheduler');
 const { startSocialScheduler } = require('../socialStudio/socialScheduler.service');
+const { startProviderRevocationScheduler } = require('../providerRevocationService');
 require('dotenv').config();
 
 const getWorkerMode = () => {
@@ -34,6 +35,7 @@ const resolveWorkerJobs = () => {
       active && schedulerEnabled('ENABLE_COUNSELLOR_VERIFICATION_EXPIRY_JOB', true),
     privacyRetention:
       active && process.env.PRIVACY_RETENTION_EXECUTION_ENABLED === 'true',
+    providerRevocation: active,
     socialScheduler: active && schedulerEnabled('ENABLE_SOCIAL_SCHEDULER', false),
     backupJobs: active && schedulerEnabled('ENABLE_BACKUP_JOBS', false),
     cleanupJobs: active && schedulerEnabled('ENABLE_CLEANUP_JOBS', false),
@@ -59,6 +61,10 @@ const startWorkerJobs = (jobs) => {
 
   if (jobs.privacyRetention) {
     startPrivacyRetentionScheduler();
+  }
+
+  if (jobs.providerRevocation) {
+    startProviderRevocationScheduler();
   }
 
   if (jobs.socialScheduler) {
@@ -122,6 +128,7 @@ const startWorker = async () => {
       + `${jobs.counsellorVerificationExpiry ? 'enabled' : 'disabled'}`
     );
     console.log(`Privacy retention: ${jobs.privacyRetention ? 'enabled' : 'disabled'}`);
+    console.log(`Provider revocation: ${jobs.providerRevocation ? 'enabled' : 'disabled'}`);
     console.log(`Social scheduler: ${jobs.socialScheduler ? 'enabled' : 'disabled'}`);
   });
 

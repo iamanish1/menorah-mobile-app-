@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const DataDeletionRequest = require('../models/DataDeletionRequest');
 const PrivacyEvent = require('../models/PrivacyEvent');
 const PrivacyRightsRequest = require('../models/PrivacyRightsRequest');
+const ProviderRevocationTask = require('../models/ProviderRevocationTask');
 const {
   readPrivacyConfiguration,
 } = require('../config/privacy');
@@ -213,6 +214,7 @@ const serializeDeletionRequest = (request) => ({
 const createPrivacyRightsWorkflow = ({
   RightsRequestModel = PrivacyRightsRequest,
   DeletionRequestModel = DataDeletionRequest,
+  ProviderRevocationTaskModel = ProviderRevocationTask,
   PrivacyEventModel = PrivacyEvent,
   appendEvent = appendPrivacyEvent,
   verifyEvent = verifyPrivacyEventOperation,
@@ -551,6 +553,22 @@ const createPrivacyRightsWorkflow = ({
         'DELETION_REQUEST_TRANSITION_INVALID',
         `Deletion request cannot transition from ${current.status} to ${toStatus}.`
       );
+    }
+    if (toStatus === 'completed') {
+      const providerRevocationTask = await leanResult(
+        ProviderRevocationTaskModel.findOne({
+          deletionRequest: current._id,
+          user: current.user,
+          provider: 'apple',
+        }),
+        session
+      );
+      if (providerRevocationTask && providerRevocationTask.status !== 'completed') {
+        throw makeError(
+          'DELETION_PROVIDER_REVOCATION_INCOMPLETE',
+          'Provider revocation must complete before deletion review can be completed.'
+        );
+      }
     }
     const reference = validateEvidenceReference(evidenceReference);
     const filter = {

@@ -395,11 +395,15 @@ describe('privacy rights workflow', () => {
       status: 'completed',
       completedAt: NOW,
     }));
+    const providerRevocationFindOne = jest.fn(() => queryResult(null));
     const appendEvent = jest.fn();
     const workflow = createPrivacyRightsWorkflow({
       DeletionRequestModel: {
         findById: jest.fn(() => queryResult(current)),
         findOneAndUpdate,
+      },
+      ProviderRevocationTaskModel: {
+        findOne: providerRevocationFindOne,
       },
       appendEvent,
       transactionRunner: async (work) => work(null),
@@ -431,6 +435,108 @@ describe('privacy rights workflow', () => {
       fromStatus: 'under_review',
       toStatus: 'completed',
     }));
+    expect(providerRevocationFindOne).toHaveBeenCalledWith({
+      deletionRequest: REQUEST_ID,
+      user: USER_ID,
+      provider: 'apple',
+    });
+  });
+
+  test.each(['pending', 'retry', 'processing', 'manual_review'])(
+    'blocks deletion completion while Apple revocation is %s',
+    async (providerStatus) => {
+      const current = {
+        _id: REQUEST_ID,
+        user: USER_ID,
+        status: 'under_review',
+        legalHold: false,
+        workflowVersion: 2,
+      };
+      const transactionSession = { id: 'transaction-session' };
+      const providerQuery = queryResult({
+        deletionRequest: REQUEST_ID,
+        user: USER_ID,
+        provider: 'apple',
+        status: providerStatus,
+      });
+      const findOneAndUpdate = jest.fn();
+      const appendEvent = jest.fn();
+      const workflow = createPrivacyRightsWorkflow({
+        DeletionRequestModel: {
+          findById: jest.fn(() => queryResult(current)),
+          findOneAndUpdate,
+        },
+        ProviderRevocationTaskModel: {
+          findOne: jest.fn(() => providerQuery),
+        },
+        appendEvent,
+        transactionRunner: async (work) => work(transactionSession),
+      });
+
+      await expect(workflow.transitionDeletionRequest({
+        requestId: REQUEST_ID,
+        admin: { _id: ADMIN_ID },
+        toStatus: 'completed',
+        evidenceReference: 'case-evidence-0001',
+        source: 'api-admin',
+        now: NOW,
+      })).rejects.toMatchObject({
+        code: 'DELETION_PROVIDER_REVOCATION_INCOMPLETE',
+        message: 'Provider revocation must complete before deletion review can be completed.',
+        statusCode: 409,
+      });
+
+      expect(providerQuery.session).toHaveBeenCalledWith(transactionSession);
+      expect(findOneAndUpdate).not.toHaveBeenCalled();
+      expect(appendEvent).not.toHaveBeenCalled();
+    }
+  );
+
+  test('allows deletion completion after the linked Apple revocation completes', async () => {
+    const current = {
+      _id: REQUEST_ID,
+      user: USER_ID,
+      status: 'under_review',
+      legalHold: false,
+      workflowVersion: 3,
+    };
+    const findOneAndUpdate = jest.fn(() => queryResult({
+      ...current,
+      status: 'completed',
+      completedAt: NOW,
+    }));
+    const appendEvent = jest.fn();
+    const workflow = createPrivacyRightsWorkflow({
+      DeletionRequestModel: {
+        findById: jest.fn(() => queryResult(current)),
+        findOneAndUpdate,
+      },
+      ProviderRevocationTaskModel: {
+        findOne: jest.fn(() => queryResult({
+          deletionRequest: REQUEST_ID,
+          user: USER_ID,
+          provider: 'apple',
+          status: 'completed',
+        })),
+      },
+      appendEvent,
+      transactionRunner: async (work) => work(null),
+    });
+
+    await expect(workflow.transitionDeletionRequest({
+      requestId: REQUEST_ID,
+      admin: { _id: ADMIN_ID },
+      toStatus: 'completed',
+      evidenceReference: 'case-evidence-0001',
+      source: 'api-admin',
+      now: NOW,
+    })).resolves.toEqual(expect.objectContaining({
+      status: 'completed',
+      completedAt: NOW,
+    }));
+
+    expect(findOneAndUpdate).toHaveBeenCalledTimes(1);
+    expect(appendEvent).toHaveBeenCalledTimes(1);
   });
 
   test('fails closed if a hold races deletion completion', async () => {
@@ -444,6 +550,9 @@ describe('privacy rights workflow', () => {
           workflowVersion: 2,
         })),
         findOneAndUpdate: jest.fn(() => queryResult(null)),
+      },
+      ProviderRevocationTaskModel: {
+        findOne: jest.fn(() => queryResult(null)),
       },
       appendEvent: jest.fn(),
       transactionRunner: async (work) => work(null),

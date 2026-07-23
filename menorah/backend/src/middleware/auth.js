@@ -41,7 +41,10 @@ const isTokenBlocked = async (token) => {
 const loadActiveUserForToken = async (decoded) => {
   if (!decoded?.userId) return null;
 
-  const user = await User.findById(decoded.userId);
+  const userQuery = User.findById(decoded.userId);
+  const user = await (typeof userQuery?.select === 'function'
+    ? userQuery.select('+passwordAuthEnabled')
+    : userQuery);
   if (!user || !user.isActive) return null;
 
   if (!isCurrentSessionToken(decoded, user)) return null;

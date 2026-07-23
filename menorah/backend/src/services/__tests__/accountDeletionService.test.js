@@ -25,21 +25,34 @@ const leanQuery = (value) => {
   return query;
 };
 
-const makeUser = (overrides = {}) => ({
-  _id: USER_ID,
-  role: 'user',
-  isActive: true,
-  passwordAuthEnabled: true,
-  sessionVersion: 4,
-  comparePassword: jest.fn().mockResolvedValue(true),
-  save: jest.fn().mockResolvedValue(undefined),
-  ...overrides,
-});
+const makeUser = (overrides = {}) => {
+  const user = {
+    _id: USER_ID,
+    role: 'user',
+    isActive: true,
+    passwordAuthEnabled: true,
+    sessionVersion: 4,
+    comparePassword: jest.fn().mockResolvedValue(true),
+    save: jest.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+  user.set = overrides.set || jest.fn((path, value) => {
+    if (path === 'socialAuth.appleRefreshTokenEncrypted') {
+      user.socialAuth.appleRefreshTokenEncrypted = value;
+    }
+    if (path === 'socialAuth.appleClientId') {
+      user.socialAuth.appleClientId = value;
+    }
+  });
+  return user;
+};
 
 const makeHarness = ({
   user = makeUser(),
   deletionRequest = null,
   existingEvent = null,
+  providerRevocationTask = null,
+  providerRevocationError = null,
 } = {}) => {
   const session = { id: 'unit-session' };
   const userLookup = userQuery(user);
@@ -64,6 +77,11 @@ const makeHarness = ({
   const PrivacyEventModel = {
     findOne: jest.fn(() => eventLookup),
   };
+  const ProviderRevocationTaskModel = {
+    create: providerRevocationError
+      ? jest.fn().mockRejectedValue(providerRevocationError)
+      : jest.fn().mockResolvedValue([providerRevocationTask]),
+  };
   const appendEvent = jest.fn().mockResolvedValue(createdEvent);
   const verifyEvent = jest.fn(() => ({ valid: true }));
   const transactionRunner = jest.fn(async (operation) => operation(session));
@@ -71,6 +89,7 @@ const makeHarness = ({
     UserModel,
     DeletionRequestModel,
     PrivacyEventModel,
+    ProviderRevocationTaskModel,
     appendEvent,
     verifyEvent,
     transactionRunner,
@@ -88,6 +107,7 @@ const makeHarness = ({
     UserModel,
     DeletionRequestModel,
     PrivacyEventModel,
+    ProviderRevocationTaskModel,
     appendEvent,
     verifyEvent,
     transactionRunner,
@@ -106,7 +126,10 @@ describe('account deletion service', () => {
 
     expect(harness.transactionRunner).toHaveBeenCalledTimes(1);
     expect(harness.userLookup.select)
-      .toHaveBeenCalledWith('+password +passwordAuthEnabled');
+      .toHaveBeenCalledWith(
+        '+password +passwordAuthEnabled '
+        + '+socialAuth.appleRefreshTokenEncrypted +socialAuth.appleClientId'
+      );
     expect(harness.userLookup.session).toHaveBeenCalledWith(harness.session);
     expect(harness.deletionLookup.session).toHaveBeenCalledWith(harness.session);
     expect(harness.user.save).toHaveBeenCalledWith({ session: harness.session });
@@ -151,6 +174,7 @@ describe('account deletion service', () => {
       event: harness.createdEvent,
       created: true,
       accountDeactivated: true,
+      providerRevocationTask: null,
     });
   });
 
@@ -179,6 +203,7 @@ describe('account deletion service', () => {
       event: existingEvent,
       created: false,
       accountDeactivated: true,
+      providerRevocationTask: null,
     });
 
     expect(user.save).not.toHaveBeenCalled();
@@ -265,6 +290,156 @@ describe('account deletion service', () => {
     });
 
     expect(user.save).not.toHaveBeenCalled();
+    expect(harness.appendEvent).not.toHaveBeenCalled();
+  });
+
+  test('accepts matching Apple reauthentication and creates the revocation outbox atomically', async () => {
+    const encryptedRefreshToken = 'v1:iv:tag:apple-refresh-ciphertext';
+    const providerRevocationTask = {
+      _id: '64f000000000000000000012',
+      provider: 'apple',
+      status: 'pending',
+    };
+    const user = makeUser({
+      passwordAuthEnabled: false,
+      socialAuth: {
+        appleSub: 'apple-subject',
+      },
+    });
+    const harness = makeHarness({ user, providerRevocationTask });
+
+    await expect(harness.service.requestDeletion({
+      userId: USER_ID,
+      socialReauthentication: {
+        provider: 'apple',
+        subject: 'apple-subject',
+      },
+      providerRevocation: {
+        provider: 'apple',
+        clientId: 'com.menorah.health',
+        refreshTokenEncrypted: encryptedRefreshToken,
+      },
+      source: 'api-ios',
+      now: NOW,
+    })).resolves.toMatchObject({
+      request: harness.createdRequest,
+      event: harness.createdEvent,
+      created: true,
+      accountDeactivated: true,
+      providerRevocationTask,
+    });
+
+    expect(user.comparePassword).not.toHaveBeenCalled();
+    expect(user.set).toHaveBeenNthCalledWith(
+      1,
+      'socialAuth.appleRefreshTokenEncrypted',
+      undefined
+    );
+    expect(user.set).toHaveBeenNthCalledWith(
+      2,
+      'socialAuth.appleClientId',
+      undefined
+    );
+    expect(harness.ProviderRevocationTaskModel.create).toHaveBeenCalledWith(
+      [{
+        user: USER_ID,
+        deletionRequest: REQUEST_ID,
+        provider: 'apple',
+        clientId: 'com.menorah.health',
+        refreshTokenEncrypted: encryptedRefreshToken,
+        status: 'pending',
+        attempts: 0,
+        nextAttemptAt: NOW,
+      }],
+      { session: harness.session }
+    );
+    expect(harness.DeletionRequestModel.create.mock.invocationCallOrder[0])
+      .toBeLessThan(harness.ProviderRevocationTaskModel.create.mock.invocationCallOrder[0]);
+    expect(harness.ProviderRevocationTaskModel.create.mock.invocationCallOrder[0])
+      .toBeLessThan(harness.appendEvent.mock.invocationCallOrder[0]);
+  });
+
+  test('uses a valid password and the stored Apple refresh token when reauthentication is unnecessary', async () => {
+    const user = makeUser({
+      socialAuth: {
+        appleSub: 'apple-subject',
+        appleClientId: 'com.menorah.health',
+        appleRefreshTokenEncrypted: 'v1:iv:tag:stored-refresh-ciphertext',
+      },
+    });
+    const harness = makeHarness({
+      user,
+      providerRevocationTask: { _id: '64f000000000000000000012' },
+    });
+
+    await harness.service.requestDeletion({
+      userId: USER_ID,
+      password: 'CorrectPass123',
+      now: NOW,
+    });
+
+    expect(user.comparePassword).toHaveBeenCalledWith('CorrectPass123');
+    expect(harness.ProviderRevocationTaskModel.create).toHaveBeenCalledWith(
+      [expect.objectContaining({
+        provider: 'apple',
+        clientId: 'com.menorah.health',
+        refreshTokenEncrypted: 'v1:iv:tag:stored-refresh-ciphertext',
+      })],
+      { session: harness.session }
+    );
+    expect(user.socialAuth.appleRefreshTokenEncrypted).toBeUndefined();
+    expect(user.socialAuth.appleClientId).toBeUndefined();
+  });
+
+  test('requires fresh Apple reauthentication when no revocable credential is stored', async () => {
+    const user = makeUser({
+      socialAuth: { appleSub: 'apple-subject' },
+    });
+    const harness = makeHarness({ user });
+
+    await expect(harness.service.requestDeletion({
+      userId: USER_ID,
+      password: 'CorrectPass123',
+    })).rejects.toMatchObject({
+      code: 'ACCOUNT_APPLE_REAUTH_REQUIRED',
+      statusCode: 409,
+    });
+
+    expect(user.comparePassword).toHaveBeenCalledWith('CorrectPass123');
+    expect(user.save).not.toHaveBeenCalled();
+    expect(harness.DeletionRequestModel.create).not.toHaveBeenCalled();
+    expect(harness.ProviderRevocationTaskModel.create).not.toHaveBeenCalled();
+  });
+
+  test('propagates outbox creation failure from the shared transaction before evidence is appended', async () => {
+    const outboxError = new Error('simulated provider revocation outbox failure');
+    const user = makeUser({
+      socialAuth: {
+        appleSub: 'apple-subject',
+        appleClientId: 'com.menorah.health',
+        appleRefreshTokenEncrypted: 'v1:iv:tag:stored-refresh-ciphertext',
+      },
+    });
+    const harness = makeHarness({
+      user,
+      providerRevocationError: outboxError,
+    });
+
+    await expect(harness.service.requestDeletion({
+      userId: USER_ID,
+      password: 'CorrectPass123',
+      now: NOW,
+    })).rejects.toBe(outboxError);
+
+    expect(harness.user.save).toHaveBeenCalledWith({ session: harness.session });
+    expect(harness.DeletionRequestModel.create).toHaveBeenCalledWith(
+      expect.any(Array),
+      { session: harness.session }
+    );
+    expect(harness.ProviderRevocationTaskModel.create).toHaveBeenCalledWith(
+      expect.any(Array),
+      { session: harness.session }
+    );
     expect(harness.appendEvent).not.toHaveBeenCalled();
   });
 

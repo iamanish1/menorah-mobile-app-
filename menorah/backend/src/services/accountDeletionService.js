@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const DataDeletionRequest = require('../models/DataDeletionRequest');
 const PrivacyEvent = require('../models/PrivacyEvent');
+const ProviderRevocationTask = require('../models/ProviderRevocationTask');
 const { revokeAllSessions } = require('../utils/sessionLifecycle');
 const {
   appendPrivacyEvent,
@@ -57,6 +58,7 @@ const createAccountDeletionService = ({
   UserModel = User,
   DeletionRequestModel = DataDeletionRequest,
   PrivacyEventModel = PrivacyEvent,
+  ProviderRevocationTaskModel = ProviderRevocationTask,
   appendEvent = appendPrivacyEvent,
   verifyEvent = verifyPrivacyEventOperation,
   transactionRunner = runTransaction,
@@ -64,26 +66,71 @@ const createAccountDeletionService = ({
   const requestDeletion = async ({
     userId,
     password,
+    socialReauthentication = null,
+    providerRevocation = null,
     source,
     now = new Date(),
   }) => transactionRunner(async (session) => {
     const userQuery = UserModel.findById(userId)
-      .select('+password +passwordAuthEnabled');
+      .select(
+        '+password +passwordAuthEnabled '
+        + '+socialAuth.appleRefreshTokenEncrypted +socialAuth.appleClientId'
+      );
     const user = await withSession(userQuery, session);
     if (!user) {
       throw makeError('ACCOUNT_NOT_FOUND', 'User not found', 404);
     }
 
-    if (user.passwordAuthEnabled !== true) {
+    const appleLinked = Boolean(user.socialAuth?.appleSub);
+    const appleReauthenticated = Boolean(
+      socialReauthentication?.provider === 'apple'
+      && socialReauthentication.subject === user.socialAuth?.appleSub
+      && providerRevocation?.provider === 'apple'
+      && providerRevocation.clientId
+      && providerRevocation.refreshTokenEncrypted
+    );
+
+    if (!appleReauthenticated && user.passwordAuthEnabled !== true) {
+      if (appleLinked) {
+        throw makeError(
+          'ACCOUNT_APPLE_REAUTH_REQUIRED',
+          'Reauthenticate with Apple to revoke Sign in with Apple before deleting this account.',
+          409
+        );
+      }
       throw makeError(
         'ACCOUNT_PASSWORD_SETUP_REQUIRED',
         'Use the verified email password-reset flow to establish a password before deleting this social-sign-in account.',
         409
       );
     }
-    const passwordValid = await user.comparePassword(password);
-    if (!passwordValid) {
-      throw makeError('ACCOUNT_PASSWORD_INVALID', 'Password is incorrect', 400);
+    if (!appleReauthenticated) {
+      const passwordValid = await user.comparePassword(password);
+      if (!passwordValid) {
+        throw makeError('ACCOUNT_PASSWORD_INVALID', 'Password is incorrect', 400);
+      }
+    }
+
+    let resolvedProviderRevocation = null;
+    if (appleLinked) {
+      if (appleReauthenticated) {
+        resolvedProviderRevocation = providerRevocation;
+      } else if (
+        user.socialAuth?.appleRefreshTokenEncrypted
+        && user.socialAuth?.appleClientId
+      ) {
+        resolvedProviderRevocation = {
+          provider: 'apple',
+          clientId: user.socialAuth.appleClientId,
+          refreshTokenEncrypted: user.socialAuth.appleRefreshTokenEncrypted,
+        };
+      } else {
+        throw makeError(
+          'ACCOUNT_APPLE_REAUTH_REQUIRED',
+          'Reauthenticate with Apple to revoke Sign in with Apple before deleting this account.',
+          409
+        );
+      }
     }
 
     let deletionRequest = await resolveQuery(
@@ -115,6 +162,10 @@ const createAccountDeletionService = ({
     // instead of racing two unique inserts.
     if (accountWasActive) {
       user.isActive = false;
+      if (appleLinked) {
+        user.set('socialAuth.appleRefreshTokenEncrypted', undefined);
+        user.set('socialAuth.appleClientId', undefined);
+      }
       revokeAllSessions(user);
       await user.save(session ? { session } : undefined);
     }
@@ -130,6 +181,20 @@ const createAccountDeletionService = ({
       }], session ? { session } : undefined);
       deletionRequest = createdRequest;
       created = true;
+    }
+
+    let providerRevocationTask = null;
+    if (resolvedProviderRevocation) {
+      [providerRevocationTask] = await ProviderRevocationTaskModel.create([{
+        user: user._id,
+        deletionRequest: deletionRequest._id,
+        provider: 'apple',
+        clientId: resolvedProviderRevocation.clientId,
+        refreshTokenEncrypted: resolvedProviderRevocation.refreshTokenEncrypted,
+        status: 'pending',
+        attempts: 0,
+        nextAttemptAt: now,
+      }], session ? { session } : undefined);
     }
 
     const eventKey = deletionEventIdempotencyKey(deletionRequest._id);
@@ -184,6 +249,7 @@ const createAccountDeletionService = ({
       event,
       created,
       accountDeactivated: true,
+      providerRevocationTask,
     };
   });
 

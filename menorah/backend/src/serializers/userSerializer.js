@@ -5,6 +5,11 @@ const serializeUserProfile = (user, extras = {}) => {
     ? user.toObject({ virtuals: true })
     : user;
   const id = source._id?.toString?.() || source.id?.toString?.();
+  const reauthenticationMethods = {
+    password: source.passwordAuthEnabled === true,
+    apple: Boolean(source.socialAuth?.appleSub),
+    google: Boolean(source.socialAuth?.googleSub),
+  };
 
   return {
     id,
@@ -25,6 +30,7 @@ const serializeUserProfile = (user, extras = {}) => {
     subscription: source.subscription,
     kyc: source.kyc,
     role: source.role || 'user',
+    reauthenticationMethods,
     createdAt: source.createdAt,
     updatedAt: source.updatedAt,
     ...extras,
@@ -46,6 +52,7 @@ const serializeAuthUser = (user, extras = {}) => {
     profileImage: profile.profileImage,
     role: profile.role,
     kyc: profile.kyc,
+    reauthenticationMethods: profile.reauthenticationMethods,
     ...extras,
   };
 };

@@ -2,8 +2,10 @@ const mongoose = require('mongoose');
 const User = require('../../models/User');
 const DataDeletionRequest = require('../../models/DataDeletionRequest');
 const PrivacyEvent = require('../../models/PrivacyEvent');
+const ProviderRevocationTask = require('../../models/ProviderRevocationTask');
 const {
   accountDeletionService,
+  createAccountDeletionService,
   deletionEventIdempotencyKey,
 } = require('../accountDeletionService');
 const {
@@ -52,6 +54,7 @@ describeWithMongo('account deletion on isolated replica-set MongoDB', () => {
       User.createIndexes(),
       DataDeletionRequest.createIndexes(),
       PrivacyEvent.createIndexes(),
+      ProviderRevocationTask.createIndexes(),
     ]);
   });
 
@@ -180,5 +183,58 @@ describeWithMongo('account deletion on isolated replica-set MongoDB', () => {
     });
     expect(requestCount).toBe(0);
     expect(eventCount).toBe(0);
+  });
+
+  test('downstream evidence failure rolls back Apple credential clearing and the provider outbox', async () => {
+    const user = await createUser(3);
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          'socialAuth.appleSub': 'apple-subject-for-rollback',
+          'socialAuth.appleClientId': 'com.menorah.health',
+          'socialAuth.appleRefreshTokenEncrypted': 'v1:iv:tag:rollback-ciphertext',
+        },
+      }
+    );
+    const evidenceFailure = new Error('simulated audit evidence failure');
+    const service = createAccountDeletionService({
+      appendEvent: jest.fn().mockRejectedValue(evidenceFailure),
+    });
+
+    await expect(service.requestDeletion({
+      userId: user._id,
+      password: PASSWORD,
+      source: 'api-ios',
+      now: NOW,
+    })).rejects.toBe(evidenceFailure);
+
+    const [storedUser, requestCount, eventCount, providerTaskCount] = await Promise.all([
+      User.findById(user._id)
+        .select(
+          '+socialAuth.appleRefreshTokenEncrypted '
+          + '+socialAuth.appleClientId +lastSessionRevokedAt'
+        )
+        .lean(),
+      DataDeletionRequest.countDocuments({ user: user._id }),
+      PrivacyEvent.countDocuments({
+        subjectUser: user._id,
+        eventType: 'account_deletion_requested',
+      }),
+      ProviderRevocationTask.countDocuments({ user: user._id }),
+    ]);
+    expect(storedUser).toMatchObject({
+      isActive: true,
+      sessionVersion: 0,
+      socialAuth: {
+        appleSub: 'apple-subject-for-rollback',
+        appleClientId: 'com.menorah.health',
+        appleRefreshTokenEncrypted: 'v1:iv:tag:rollback-ciphertext',
+      },
+    });
+    expect(storedUser.lastSessionRevokedAt).toBeFalsy();
+    expect(requestCount).toBe(0);
+    expect(eventCount).toBe(0);
+    expect(providerTaskCount).toBe(0);
   });
 });
