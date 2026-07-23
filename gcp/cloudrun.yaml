@@ -81,6 +81,13 @@ spec:
               value: menorah-health://reset-password
             - name: CHECKOUT_RETURN_URL
               value: https://menorahhealth.app/checkout/return
+            - name: BOOKING_PAYMENTS_ENABLED
+              value: "false"
+            # OWNER ACTION: set an approved 1-1000 limit before enabling the gate.
+            - name: PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS
+              value: ""
+            - name: SUBSCRIPTION_PAYMENTS_ENABLED
+              value: "false"
             - name: JITSI_BASE_URL
               value: https://meet.jit.si
             - name: SERVER_TZ
@@ -147,6 +154,9 @@ spec:
                 secretKeyRef:
                   name: RAZORPAY_WEBHOOK_SECRET
                   key: latest
+            # RAZORPAY_WEBHOOK_SECRET_PREVIOUS is intentionally not permanent.
+            # During a planned rotation, inject a pinned version through the
+            # Cloud Build substitution documented in backend/cloudbuild.yaml.
             - name: CLOUDINARY_CLOUD_NAME
               valueFrom:
                 secretKeyRef:

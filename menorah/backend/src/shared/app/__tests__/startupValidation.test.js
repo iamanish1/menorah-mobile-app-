@@ -30,9 +30,11 @@ describe('startup validation', () => {
           currency: 'INR',
         },
       }),
-      RAZORPAY_KEY_ID: 'razorpay-key',
-      RAZORPAY_KEY_SECRET: 'razorpay-secret',
-      RAZORPAY_WEBHOOK_SECRET: 'razorpay-webhook',
+      RAZORPAY_KEY_ID: 'rzp_live_A1b2C3d4E5f6G7',
+      RAZORPAY_KEY_SECRET: 'A1b2C3d4E5f6G7h8I9j0K1l2',
+      RAZORPAY_WEBHOOK_SECRET: 'Webhook-A1b2C3d4E5f6G7h8',
+      BOOKING_PAYMENTS_ENABLED: 'false',
+      SUBSCRIPTION_PAYMENTS_ENABLED: 'false',
       LIVEKIT_URL: 'wss://calls.example.com',
       LIVEKIT_API_URL: 'https://calls.example.com',
       LIVEKIT_API_KEY: 'livekit-key',
@@ -41,6 +43,8 @@ describe('startup validation', () => {
       ADMIN_JWT_EXPIRES_IN: '30m',
     };
     delete process.env.SESSION_COOKIE_DOMAIN;
+    delete process.env.RAZORPAY_WEBHOOK_SECRET_PREVIOUS;
+    delete process.env.PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS;
   });
 
   afterAll(() => {
@@ -150,7 +154,128 @@ describe('startup validation', () => {
       .toThrow(/ADMIN_MFA_REQUIRED must be true/);
   });
 
-  test('passes with redacted provider configuration present', () => {
+  test.each([
+    ['RAZORPAY_KEY_ID', ''],
+    ['RAZORPAY_KEY_ID', 'rzp_live_REPLACE'],
+    ['RAZORPAY_KEY_ID', 'rzp_live_xxxxxxxxxxxxxx'],
+    ['RAZORPAY_KEY_ID', 'not-a-razorpay-key'],
+    ['RAZORPAY_KEY_SECRET', 'REPLACE_WITH_RAZORPAY_SECRET'],
+    ['RAZORPAY_KEY_SECRET', 'local_razorpay_secret'],
+    ['RAZORPAY_KEY_SECRET', 'too-short'],
+    ['RAZORPAY_WEBHOOK_SECRET', 'replace_with_webhook_secret'],
+    ['RAZORPAY_WEBHOOK_SECRET', 'razorpay-webhook'],
+  ])('rejects malformed or placeholder payment credential %s', (key, value) => {
+    process.env[key] = value;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(new RegExp(key));
+  });
+
+  test.each(['true', 'false'])(
+    'accepts the exact booking payment gate value %s',
+    (value) => {
+      process.env.BOOKING_PAYMENTS_ENABLED = value;
+      if (value === 'true') {
+        process.env.PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS = '5';
+      }
+
+      expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
+    }
+  );
+
+  test('requires an owner-approved webhook attempt bound before enabling payments', () => {
+    process.env.BOOKING_PAYMENTS_ENABLED = 'true';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS is required/);
+  });
+
+  test.each(['0', '1001', '01', ' 5 ', 'five'])(
+    'rejects an invalid webhook attempt bound (%p)',
+    (value) => {
+      process.env.PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS = value;
+
+      expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+        .toThrow(/PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS must be an integer/);
+    }
+  );
+
+  test('accepts a distinct optional previous webhook secret for planned rotation', () => {
+    process.env.RAZORPAY_WEBHOOK_SECRET_PREVIOUS = 'Previous-Webhook-Z9y8X7w6V5u4';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
+  });
+
+  test.each([
+    'too-short',
+    'replace_with_previous_webhook_secret',
+    ' Previous-Webhook-Z9y8X7w6V5u4 ',
+  ])('rejects an unsafe optional previous webhook secret (%p)', (value) => {
+    process.env.RAZORPAY_WEBHOOK_SECRET_PREVIOUS = value;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/RAZORPAY_WEBHOOK_SECRET_PREVIOUS/);
+  });
+
+  test('requires current and previous webhook secrets to differ', () => {
+    process.env.RAZORPAY_WEBHOOK_SECRET_PREVIOUS = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/RAZORPAY_WEBHOOK_SECRET_PREVIOUS must differ/);
+  });
+
+  test('does not let a previous webhook secret replace the required current secret', () => {
+    delete process.env.RAZORPAY_WEBHOOK_SECRET;
+    process.env.RAZORPAY_WEBHOOK_SECRET_PREVIOUS = 'Previous-Webhook-Z9y8X7w6V5u4';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/RAZORPAY_WEBHOOK_SECRET must contain/);
+  });
+
+  test.each(['TRUE', '1', 'yes', ' true '])(
+    'rejects ambiguous booking payment gate value %s',
+    (value) => {
+      process.env.BOOKING_PAYMENTS_ENABLED = value;
+
+      expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+        .toThrow(/BOOKING_PAYMENTS_ENABLED must be exactly true or false/);
+    }
+  );
+
+  test('allows the booking payment gate to be unset so it defaults off', () => {
+    delete process.env.BOOKING_PAYMENTS_ENABLED;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
+  });
+
+  test('rejects attempts to enable the hard-disabled subscription payment flow', () => {
+    process.env.SUBSCRIPTION_PAYMENTS_ENABLED = 'true';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/SUBSCRIPTION_PAYMENTS_ENABLED must remain false/);
+  });
+
+  test('does not require payment credentials for a non-payment production service', () => {
+    delete process.env.RAZORPAY_KEY_ID;
+    delete process.env.RAZORPAY_KEY_SECRET;
+    delete process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    expect(() => validateStartupEnv({
+      serviceName: 'worker',
+      requirePaymentEnv: false,
+    })).not.toThrow();
+  });
+
+  test('does not require payment credentials in development', () => {
+    process.env.NODE_ENV = 'development';
+    delete process.env.RAZORPAY_KEY_ID;
+    delete process.env.RAZORPAY_KEY_SECRET;
+    delete process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
+  });
+
+  test('passes with structurally valid redacted provider configuration', () => {
     expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
   });
 });

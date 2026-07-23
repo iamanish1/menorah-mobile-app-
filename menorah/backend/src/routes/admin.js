@@ -27,6 +27,7 @@ const {
   reservedPayoutStatuses,
   getMaximumPayoutPaise,
   calculatePayoutAvailability,
+  buildAuthorizedPayoutRevenuePipeline,
   getProviderPayoutIdempotencyKey,
   isDefinitiveProviderFailure,
   isValidPayoutIdempotencyKey,
@@ -1495,16 +1496,10 @@ async function sendPayoutSms() {
 
 const getPayoutAvailability = async ({ counsellor, excludePayoutId = null }) => {
   const [revenue, reservations] = await Promise.all([
-    Booking.aggregate([
-      {
-        $match: {
-          counsellor: counsellor._id,
-          paymentStatus: 'paid',
-          status: 'completed',
-        },
-      },
-      { $group: { _id: null, revenue: { $sum: '$amount' } } },
-    ]),
+    Booking.aggregate(buildAuthorizedPayoutRevenuePipeline({
+      counsellorId: counsellor._id,
+      now: new Date(),
+    })),
     Payout.aggregate([
       {
         $match: {
@@ -1518,7 +1513,7 @@ const getPayoutAvailability = async ({ counsellor, excludePayoutId = null }) => 
   ]);
 
   return calculatePayoutAvailability({
-    paidRevenueRupees: revenue[0]?.revenue || 0,
+    paidRevenueRupees: (revenue[0]?.revenuePaise || 0) / 100,
     commissionRate: counsellor.commissionRate,
     reservedPaise: reservations[0]?.amountPaise || 0,
   });

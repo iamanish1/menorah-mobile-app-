@@ -1,4 +1,7 @@
 const { MAX_SINGLE_PAYOUT_PAISE } = require('../config/payout');
+const {
+  buildBookingAuthorizationQuery,
+} = require('./bookingMarketplacePolicy');
 
 const PAYOUT_APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 const RECENT_ADMIN_MFA_MAX_AGE_MS = 5 * 60 * 1000;
@@ -39,6 +42,25 @@ const calculatePayoutAvailability = ({ paidRevenueRupees, commissionRate, reserv
     availablePaise: Math.max(0, earnedPaise - alreadyReservedPaise),
   };
 };
+
+const buildAuthorizedPayoutRevenuePipeline = ({
+  counsellorId,
+  now = new Date(),
+}) => [
+  {
+    $match: {
+      counsellor: counsellorId,
+      status: 'completed',
+      ...buildBookingAuthorizationQuery({ now }),
+    },
+  },
+  {
+    $group: {
+      _id: null,
+      revenuePaise: { $sum: '$amountMinor' },
+    },
+  },
+];
 
 const isRecentAdminMfa = (decoded, now = Date.now()) => {
   const verifiedAt = Number(decoded?.mfaAuthenticatedAt);
@@ -92,6 +114,7 @@ module.exports = {
   getMaximumPayoutPaise,
   calculateEarnedPaise,
   calculatePayoutAvailability,
+  buildAuthorizedPayoutRevenuePipeline,
   getProviderPayoutIdempotencyKey,
   isDefinitiveProviderFailure,
   getPermittedPriorPayoutStatuses,

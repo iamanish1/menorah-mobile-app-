@@ -20,10 +20,16 @@ The script:
 - Checks out the configured branch.
 - Pulls with `--ff-only`.
 - Records previous and new commit SHAs.
-- Runs backend migrations using the configured production environment.
-- Rebuilds and restarts Docker services.
+- Creates and restore-tests a fresh backup before maintenance.
+- Builds images, stops application writers, and runs backend migrations using
+  the configured production environment.
+- Writes migration state markers atomically and clears
+  `migration-in-progress-sha` only after the full migration command succeeds.
+- Refuses a new deployment while a partial-migration marker remains.
+- Restarts Docker services without rebuilding after the maintenance boundary.
 - Runs health checks.
-- Rolls back automatically if health checks fail.
+- Leaves writers stopped for operator review if migration fails; it does not
+  attempt an unsafe automatic code-only rollback after migration starts.
 
 Security migrations are run before services are rebuilt and restarted.
 
@@ -32,6 +38,8 @@ Deploy state:
 ```text
 /opt/menorah/deploy-state/last-good-sha
 /opt/menorah/deploy-state/current-sha
+/opt/menorah/deploy-state/migration-in-progress-sha
+/opt/menorah/deploy-state/migration-applied-sha
 /opt/menorah/deploy-state/deploy.log
 ```
 
@@ -44,6 +52,10 @@ bash menorah/deploy/ubuntu/rollback-last-deploy.sh
 
 The rollback script:
 
+- refuses code-only rollback whenever `migration-in-progress-sha` exists,
+  including when an earlier migration succeeded but a later migration failed;
+- refuses code-only rollback when the applied-migration SHA is incompatible
+  with the rollback target;
 - Reads `/opt/menorah/deploy-state/last-good-sha`.
 - Checks out that SHA.
 - Rebuilds and restarts the stack.

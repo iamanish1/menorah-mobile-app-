@@ -11,8 +11,8 @@ import { useAuth } from '@/state/useAuth';
 import subscriptionService from '@/services/subscriptionService';
 import type { SubscriptionType } from './subscriptionPlans';
 import {
-  IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE,
-  shouldDisableIOSSubscriptionPurchase,
+  SUBSCRIPTIONS_UNAVAILABLE_MESSAGE,
+  shouldDisableSubscriptionPurchase,
 } from '@/lib/paymentPolicy';
 
 const RAZORPAY_UNAVAILABLE_MESSAGE =
@@ -63,7 +63,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
   const returnUrl = ENV.CHECKOUT_RETURN_URL || 'menorah://payments/subscription/return';
   const USE_RAZORPAY_SDK = ENV.USE_RAZORPAY_SDK ?? true;
   const canUseRazorpaySdk = USE_RAZORPAY_SDK && hasNativeRazorpay();
-  const isIOSSubscriptionDisabled = shouldDisableIOSSubscriptionPurchase();
+  const isSubscriptionPurchaseDisabled = shouldDisableSubscriptionPurchase();
 
   const verifyAndActivateSubscription = useCallback(async () => {
     try {
@@ -133,8 +133,8 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     setLoading(true);
     setError(null);
 
-    if (isIOSSubscriptionDisabled) {
-      setError(IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
+    if (isSubscriptionPurchaseDisabled) {
+      setError(SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
       setLoading(false);
       return;
     }
@@ -186,12 +186,12 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     } finally {
       setLoading(false);
     }
-  }, [subscriptionType, paymentMethod, canUseRazorpaySdk, isIOSSubscriptionDisabled]);
+  }, [subscriptionType, paymentMethod, canUseRazorpaySdk, isSubscriptionPurchaseDisabled]);
 
   const initiateSDKPayment = useCallback(async () => {
-    if (isIOSSubscriptionDisabled) {
-      Alert.alert('Subscriptions unavailable on iOS', IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
-      setError(IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
+    if (isSubscriptionPurchaseDisabled) {
+      Alert.alert('New subscriptions unavailable', SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
+      setError(SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
       return;
     }
 
@@ -288,7 +288,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         [{ text: 'OK' }]
       );
     }
-  }, [isIOSSubscriptionDisabled, canUseRazorpaySdk, keyId, orderId, amount, currency, user, subscriptionType, navigation, pollOrderStatus, colors.primary]);
+  }, [isSubscriptionPurchaseDisabled, canUseRazorpaySdk, keyId, orderId, amount, currency, user, subscriptionType, navigation, pollOrderStatus, colors.primary]);
 
   useEffect(() => {
     if (subscriptionType) {
@@ -342,15 +342,15 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     );
   };
 
-  if (isIOSSubscriptionDisabled) {
+  if (isSubscriptionPurchaseDisabled) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 12, textAlign: 'center' }}>
-            Subscriptions unavailable on iOS
+            New subscriptions unavailable
           </Text>
           <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
-            {IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE}
+            {SUBSCRIPTIONS_UNAVAILABLE_MESSAGE}
           </Text>
           <TouchableOpacity
             onPress={() => navigation.goBack()}

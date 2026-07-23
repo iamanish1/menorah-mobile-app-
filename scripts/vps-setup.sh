@@ -216,6 +216,11 @@ MOBILE_APP_SCHEME=menorah-health://reset-password
 RAZORPAY_KEY_ID=REPLACE
 RAZORPAY_KEY_SECRET=REPLACE
 RAZORPAY_WEBHOOK_SECRET=REPLACE
+# Optional planned-rotation grace only; keep empty normally and remove on schedule.
+RAZORPAY_WEBHOOK_SECRET_PREVIOUS=
+BOOKING_PAYMENTS_ENABLED=false
+PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS=
+SUBSCRIPTION_PAYMENTS_ENABLED=false
 CHECKOUT_RETURN_URL=https://menorahhealth.app/checkout/return
 
 # ── Cloudinary ─────────────────────────────────────────────

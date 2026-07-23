@@ -6,6 +6,14 @@ const {
   FACE_CHECK_CONSENT_VERSION,
   FACE_CHECK_RETENTION_DAYS,
 } = require('../../config/kyc');
+const {
+  BOOKING_PAYMENT_INITIATION_ENV,
+  PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS_ENV,
+  SUBSCRIPTION_PAYMENT_FLOW_ENV,
+  getPaymentWebhookMaxProcessingAttempts,
+  isUsableRazorpayKeyId,
+  isUsablePaymentSecret,
+} = require('../../config/paymentFeatures');
 const { parseBookingServiceCatalog } = require('../../services/bookingPricing');
 
 const requireEnv = (key, errors) => {
@@ -32,6 +40,68 @@ const requireExactInteger = (key, expected, errors) => {
 const requireExactValue = (key, expected, errors) => {
   if (String(process.env[key] || '').trim() !== expected) {
     errors.push(`${key} must equal ${expected}`);
+  }
+};
+
+const requireRazorpayKeyId = (key, errors) => {
+  if (!isUsableRazorpayKeyId(process.env[key])) {
+    errors.push(`${key} must be a non-placeholder Razorpay key ID`);
+  }
+};
+
+const requireRazorpaySecret = (key, errors) => {
+  if (!isUsablePaymentSecret(process.env[key])) {
+    errors.push(`${key} must contain 16-256 non-placeholder characters`);
+  }
+};
+
+const validateOptionalPreviousWebhookSecret = (errors) => {
+  const previous = process.env.RAZORPAY_WEBHOOK_SECRET_PREVIOUS;
+  if (previous === undefined || previous === '') return;
+  if (!isUsablePaymentSecret(previous)) {
+    errors.push(
+      'RAZORPAY_WEBHOOK_SECRET_PREVIOUS must contain 16-256 non-placeholder characters when set'
+    );
+    return;
+  }
+  if (previous === process.env.RAZORPAY_WEBHOOK_SECRET) {
+    errors.push(
+      'RAZORPAY_WEBHOOK_SECRET_PREVIOUS must differ from RAZORPAY_WEBHOOK_SECRET'
+    );
+  }
+};
+
+const validatePaymentFeatureFlags = (errors) => {
+  const bookingValue = process.env[BOOKING_PAYMENT_INITIATION_ENV];
+  if (
+    bookingValue !== undefined
+    && bookingValue !== ''
+    && bookingValue !== 'true'
+    && bookingValue !== 'false'
+  ) {
+    errors.push(`${BOOKING_PAYMENT_INITIATION_ENV} must be exactly true or false when set`);
+  }
+
+  const subscriptionValue = process.env[SUBSCRIPTION_PAYMENT_FLOW_ENV];
+  if (
+    subscriptionValue !== undefined
+    && subscriptionValue !== ''
+    && subscriptionValue !== 'false'
+  ) {
+    errors.push(`${SUBSCRIPTION_PAYMENT_FLOW_ENV} must remain false`);
+  }
+
+  const retryLimitRaw = process.env[PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS_ENV];
+  const retryLimit = getPaymentWebhookMaxProcessingAttempts(process.env);
+  if (retryLimitRaw !== undefined && retryLimitRaw !== '' && retryLimit === null) {
+    errors.push(
+      `${PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS_ENV} must be an integer from 1 to 1000 when set`
+    );
+  }
+  if (bookingValue === 'true' && retryLimit === null) {
+    errors.push(
+      `${PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS_ENV} is required before booking payments can be enabled`
+    );
   }
 };
 
@@ -97,9 +167,11 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
     });
 
     if (requirePaymentEnv) {
-      ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET'].forEach((key) =>
-        requireEnv(key, errors)
-      );
+      requireRazorpayKeyId('RAZORPAY_KEY_ID', errors);
+      requireRazorpaySecret('RAZORPAY_KEY_SECRET', errors);
+      requireRazorpaySecret('RAZORPAY_WEBHOOK_SECRET', errors);
+      validateOptionalPreviousWebhookSecret(errors);
+      validatePaymentFeatureFlags(errors);
     }
 
     ['LIVEKIT_URL', 'LIVEKIT_API_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'].forEach((key) =>

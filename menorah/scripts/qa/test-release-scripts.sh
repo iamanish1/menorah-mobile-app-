@@ -48,7 +48,13 @@ if [[ " $* " == *" run "* ]]; then
   fi
 fi
 EOF
-  chmod +x "${mock_bin}/docker"
+  cat > "${mock_bin}/flock" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${mock_bin}/docker" "${mock_bin}/flock"
+  PATH="${mock_bin}:${PATH}"
+  export PATH
 
   PATH="${mock_bin}:${PATH}" \
     MOCK_DOCKER_LOG="${docker_log}" \
@@ -82,6 +88,23 @@ test_post_migration_rollback_is_blocked() {
     || fail "rollback did not explain the migration compatibility block"
 }
 
+test_partial_migration_rollback_is_blocked() {
+  local state_dir="${TMP_ROOT}/partial-migration-state"
+  local target_sha output
+  mkdir -p "${state_dir}"
+  target_sha="$(git -C "${REPO_ROOT}/../" rev-parse HEAD^)"
+  printf '%s\n' "${target_sha}" > "${state_dir}/last-good-sha"
+  printf '%s\n' "partial-migration-test" > "${state_dir}/migration-in-progress-sha"
+
+  if output="$(MENORAH_DEPLOY_STATE_ROOT="${state_dir}" \
+    "${REPO_ROOT}/deploy/ubuntu/rollback-last-deploy.sh" 2>&1)"; then
+    fail "rollback unexpectedly proceeded with a partial migration marker"
+  fi
+  grep -F "migration may be partially applied" <<< "${output}" >/dev/null \
+    || fail "rollback did not explain the partial-migration compatibility block"
+}
+
 test_backup_runs_as_host_user
 test_post_migration_rollback_is_blocked
+test_partial_migration_rollback_is_blocked
 echo "Release script safety tests passed."

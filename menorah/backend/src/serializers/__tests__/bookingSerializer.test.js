@@ -32,7 +32,7 @@ const sensitiveBooking = () => ({
   paymentStatus: 'paid',
   paymentMethod: 'razorpay',
   paymentId: 'pay_internal_secret',
-  transactionId: 'order_internal_secret',
+  transactionId: 'order_provider_secret',
   razorpayOrderId: 'order_provider_secret',
   orderStatus: 'paid',
   isSubscriptionBooking: false,

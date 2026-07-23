@@ -298,16 +298,14 @@ function NewBookingForm() {
     // Step 2: Load Razorpay SDK
     const loaded = await loadRazorpay();
     if (!loaded) {
-      await api.cancelBooking(booking.id, 'Payment gateway failed to load');
       setLoading(false);
-      setError('Failed to load payment gateway. Please try again.');
+      setError('Failed to load the payment gateway. The unpaid hold will expire automatically.');
       return;
     }
 
     // Step 3: Create Razorpay order for this booking
     const sessionRes = await api.createCheckoutSession(booking.id);
     if (!sessionRes.success || !sessionRes.data?.orderId) {
-      await api.cancelBooking(booking.id, 'Failed to create payment session');
       setLoading(false);
       if (/expired|slot/i.test(sessionRes.message || '')) {
         setStep('session');
@@ -348,10 +346,8 @@ function NewBookingForm() {
         }
       },
       modal: {
-        ondismiss: async () => {
-          // User closed the modal without paying — silently cancel the booking
-          await api.cancelBooking(booking.id, 'Payment not completed');
-          setError('Payment was cancelled. Your booking has been removed. You can try again anytime.');
+        ondismiss: () => {
+          setError('Payment was not completed. The unpaid booking hold will expire automatically.');
         },
       },
     });

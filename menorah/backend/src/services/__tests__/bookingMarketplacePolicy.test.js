@@ -26,6 +26,9 @@ const paymentBooking = (overrides = {}) => ({
   paymentStatus: 'paid',
   paymentMethod: 'razorpay',
   paymentId: 'pay_test_123',
+  razorpayOrderId: 'order_test_123',
+  transactionId: 'order_test_123',
+  orderStatus: 'paid',
   isSubscriptionBooking: false,
   bookingAuthorization: {
     kind: 'payment',
@@ -57,6 +60,9 @@ describe('bookingMarketplacePolicy', () => {
     expect(query.$or).toHaveLength(2);
     expect(query.$or[0]).toEqual(expect.objectContaining({
       paymentId: { $type: 'string', $regex: /\S/ },
+      razorpayOrderId: { $type: 'string', $regex: /\S/ },
+      transactionId: { $type: 'string', $regex: /\S/ },
+      orderStatus: 'paid',
       amountMinor: {
         $type: 'number',
         $gt: 0,
@@ -65,6 +71,7 @@ describe('bookingMarketplacePolicy', () => {
       $expr: {
         $and: [
           { $eq: ['$bookingAuthorization.reference', '$paymentId'] },
+          { $eq: ['$transactionId', '$razorpayOrderId'] },
           { $eq: ['$amountMinor', '$pricing.listAmountMinor'] },
           {
             $eq: ['$amountMinor', {
@@ -113,6 +120,9 @@ describe('bookingMarketplacePolicy', () => {
               paymentStatus: 'paid',
               paymentMethod: 'razorpay',
               paymentId: { $type: 'string', $regex: /\S/ },
+              razorpayOrderId: { $type: 'string', $regex: /\S/ },
+              transactionId: { $type: 'string', $regex: /\S/ },
+              orderStatus: 'paid',
               amountMinor: {
                 $type: 'number',
                 $gt: 0,
@@ -184,6 +194,10 @@ describe('bookingMarketplacePolicy', () => {
       ['refunded payment', { paymentStatus: 'refunded' }],
       ['missing payment identifier', { paymentId: undefined }],
       ['mismatched payment identifier', { paymentId: 'pay_other' }],
+      ['missing provider order identifier', { razorpayOrderId: undefined }],
+      ['missing bound transaction identifier', { transactionId: undefined }],
+      ['mismatched bound order identifier', { transactionId: 'order_other' }],
+      ['non-paid provider order', { orderStatus: 'attempted' }],
       ['mismatched paid amount', { amountMinor: 99999 }],
       ['fractional paid amount', { amountMinor: 100000.5 }],
       ['unsafe paid amount', {

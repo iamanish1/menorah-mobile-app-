@@ -67,6 +67,10 @@ const isAuthorizedPayment = (booking, now) =>
   && booking.paymentMethod === 'razorpay'
   && booking.isSubscriptionBooking !== true
   && hasNonEmptyString(booking.paymentId)
+  && hasNonEmptyString(booking.razorpayOrderId)
+  && hasNonEmptyString(booking.transactionId)
+  && booking.transactionId === booking.razorpayOrderId
+  && booking.orderStatus === 'paid'
   && booking.bookingAuthorization.reference === booking.paymentId
   && isPositiveMinorAmount(booking.amountMinor)
   && booking.amountMinor === booking.pricing?.listAmountMinor
@@ -104,6 +108,9 @@ const buildAuthorizationQuery = (now) => ({
       paymentMethod: 'razorpay',
       isSubscriptionBooking: { $ne: true },
       paymentId: { $type: 'string', $regex: /\S/ },
+      razorpayOrderId: { $type: 'string', $regex: /\S/ },
+      transactionId: { $type: 'string', $regex: /\S/ },
+      orderStatus: 'paid',
       amountMinor: { $type: 'number', $gt: 0, $lte: MAX_SAFE_MINOR_AMOUNT },
       currency: SUPPORTED_CURRENCY,
       'pricing.listAmountMinor': {
@@ -119,6 +126,7 @@ const buildAuthorizationQuery = (now) => ({
       $expr: {
         $and: [
           { $eq: ['$bookingAuthorization.reference', '$paymentId'] },
+          { $eq: ['$transactionId', '$razorpayOrderId'] },
           { $eq: ['$amountMinor', '$pricing.listAmountMinor'] },
           { $eq: ['$amountMinor', truncateNumericField('$amountMinor')] },
           {

@@ -81,11 +81,14 @@ export interface Booking {
   sessionType: 'video' | 'audio' | 'chat';
   sessionDuration: number;
   scheduledAt: string;
-  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
+  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show' | 'expired';
   amount: number;
   currency: string;
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
   paymentMethod?: 'razorpay' | 'wallet' | 'subscription' | 'promo';
+  paymentReviewRequired?: boolean;
+  paymentAction?: 'resume_payment' | 'contact_support' | null;
+  holdExpiresAt?: string | null;
   promo?: {
     code?: string;
     discountAmount?: number;

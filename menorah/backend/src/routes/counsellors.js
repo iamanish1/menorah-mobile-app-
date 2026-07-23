@@ -9,6 +9,7 @@ const Booking = require('../models/Booking');
 const {
   expireStalePendingBookings,
   generateAvailabilityForDate,
+  getPotentiallyBlockingBookingFilter,
 } = require('../utils/bookingAvailability');
 
 // ── Regex safety helper ────────────────────────────────────────────────────
@@ -507,9 +508,11 @@ router.get('/:id/availability', [
 
     const bookings = await Booking.find({
       counsellor: id,
-      status: { $in: ['pending', 'confirmed', 'in-progress'] },
       scheduledAt: { $gte: rangeStart, $lte: rangeEnd },
-    }).select('scheduledAt sessionDuration status paymentStatus holdExpiresAt').lean();
+      ...getPotentiallyBlockingBookingFilter(),
+    }).select(
+      'scheduledAt sessionDuration status paymentStatus paymentMethod holdExpiresAt bookingAuthorization'
+    ).lean();
 
     const availability = [];
     for (let date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {

@@ -14,6 +14,7 @@
     "test": "jest",
     "lint": "eslint src/",
     "migrate": "node src/database/migrate.js",
+    "report:payment-reconciliation": "node scripts/payment-reconciliation-report.js",
     "seed": "node src/database/seed.js",
     "seed:qa": "node src/database/seed-qa.js"
   },

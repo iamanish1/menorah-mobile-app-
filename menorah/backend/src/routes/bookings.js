@@ -10,7 +10,10 @@ const { sendBookingConfirmationSMS, sendSessionReminderSMS, sendCancellationSMS 
 const {
   getPendingHoldExpiresAt,
   expireStalePendingBookings,
+  buildBookingConflictQuery,
   isBlockingBooking,
+  isSessionWithinWorkingHours,
+  isUnpaidPaymentHold,
 } = require('../utils/bookingAvailability');
 const {
   isAllowedExternalProvider,
@@ -28,9 +31,45 @@ const {
 const {
   notifyEligibleCounsellorsOfBooking,
 } = require('../services/bookingMarketplaceNotifications');
+const {
+  buildBookingAuthorizationQuery,
+  isBookingAuthorizationValid,
+} = require('../services/bookingMarketplacePolicy');
+const { isBookingPaymentInitiationEnabled } = require('../config/paymentFeatures');
 
 const router = express.Router();
 const SLOT_TAKEN_MESSAGE = 'This time slot was just booked by someone else. Please choose another available slot.';
+
+const getPaymentPresentation = (booking) => {
+  const explicitReviewRequired = Boolean(
+    booking?.paymentMethod === 'razorpay'
+    && booking?.paymentStatus !== 'refunded'
+    && booking?.bookingAuthorization?.kind === 'payment'
+    && booking?.bookingAuthorization?.status === 'needs_review'
+  );
+  const paidAuthorizationReviewRequired = Boolean(
+    booking?.paymentStatus === 'paid'
+    && !isBookingAuthorizationValid(booking)
+  );
+  const reviewRequired = explicitReviewRequired || paidAuthorizationReviewRequired;
+  const canResumePayment = Boolean(
+    !reviewRequired
+    && booking?.status === 'pending'
+    && ['pending', 'failed'].includes(booking?.paymentStatus)
+    && booking?.paymentMethod === 'razorpay'
+    && booking?.bookingAuthorization?.kind === 'payment'
+    && booking?.bookingAuthorization?.status === 'pending'
+  );
+  return {
+    paymentReviewRequired: reviewRequired,
+    paymentAction: reviewRequired
+      ? 'contact_support'
+      : canResumePayment
+        ? 'resume_payment'
+        : null,
+    holdExpiresAt: booking?.holdExpiresAt || null,
+  };
+};
 
 const SERVER_PRICING_FAILURE_CODES = new Set([
   'COUNSELLOR_PRICING_REQUIRED',
@@ -62,6 +101,30 @@ const formatVideoCall = (videoCall = {}, { includeHostUrl = false } = {}) => {
   }
 
   return payload;
+};
+
+const getBookingAccessPresentation = (booking, { includeHostUrl = false } = {}) => {
+  const paymentPresentation = getPaymentPresentation(booking);
+
+  if (!paymentPresentation.paymentReviewRequired) {
+    return {
+      ...paymentPresentation,
+      videoCall: formatVideoCall(booking.videoCall, { includeHostUrl }),
+      canBeCancelled: booking.canBeCancelled,
+      canBeRescheduled: booking.canBeRescheduled,
+    };
+  }
+
+  return {
+    ...paymentPresentation,
+    videoCall: formatVideoCall({
+      provider: 'disabled',
+      joinMode: 'disabled',
+      status: 'disabled',
+    }),
+    canBeCancelled: false,
+    canBeRescheduled: false,
+  };
 };
 
 const canManageSessionState = (booking, user) => {
@@ -153,9 +216,6 @@ router.post('/', [
         weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz
       }).formatToParts(scheduledTime);
       const dayOfWeek = tzParts.find(p => p.type === 'weekday').value.toLowerCase();
-      const hour   = tzParts.find(p => p.type === 'hour').value.padStart(2, '0');
-      const minute = tzParts.find(p => p.type === 'minute').value.padStart(2, '0');
-      const timeString = `${hour}:${minute}`;
       const daySchedule = counsellor.availability[dayOfWeek];
 
       if (!daySchedule || !daySchedule.isAvailable) {
@@ -165,7 +225,12 @@ router.post('/', [
         });
       }
 
-      if (timeString < daySchedule.start || timeString > daySchedule.end) {
+      if (!isSessionWithinWorkingHours({
+        scheduledAt: scheduledTime,
+        sessionDuration,
+        schedule: daySchedule,
+        timezone: tz,
+      })) {
         return res.status(400).json({
           success: false,
           message: 'Scheduled time is outside counsellor\'s working hours'
@@ -174,14 +239,11 @@ router.post('/', [
 
       // Check for conflicting bookings. Pending payment bookings only block while
       // their short hold is still alive; confirmed/paid bookings block permanently.
-      const possibleConflicts = await Booking.find({
-        counsellor: counsellorId,
-        scheduledAt: {
-          $gte: new Date(scheduledTime.getTime() - sessionDuration * 60 * 1000),
-          $lte: new Date(scheduledTime.getTime() + sessionDuration * 60 * 1000)
-        },
-        status: { $in: ['pending', 'confirmed', 'in-progress'] }
-      }).lean();
+      const possibleConflicts = await Booking.find(buildBookingConflictQuery({
+        counsellorId,
+        scheduledAt: scheduledTime,
+        sessionDuration,
+      })).lean();
 
       const requestedEnd = new Date(scheduledTime.getTime() + sessionDuration * 60 * 1000);
       const conflictingBooking = possibleConflicts.find((booking) => {
@@ -268,6 +330,14 @@ router.post('/', [
           validUntil: endDate,
         };
       }
+    }
+
+    if (paymentStatus === 'pending' && !isBookingPaymentInitiationEnabled()) {
+      return res.status(503).json({
+        success: false,
+        code: 'BOOKING_PAYMENTS_DISABLED',
+        message: 'New booking payments are temporarily unavailable.'
+      });
     }
 
     // Create booking
@@ -421,25 +491,31 @@ router.get('/', [
 
     const validStatuses = ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'expired'];
 
+    await expireStalePendingBookings(Booking, { user: req.user._id });
+
     // Build query — support comma-separated status list (e.g. "pending,confirmed")
     const dbQuery = { user: req.user._id };
     if (status) {
       const statuses = status.split(',').map(s => s.trim()).filter(s => validStatuses.includes(s));
-      if (statuses.length === 1) {
-        dbQuery.status = statuses[0];
-      } else if (statuses.length > 1) {
-        dbQuery.status = { $in: statuses };
+      const statusFilter = statuses.length === 1
+        ? statuses[0]
+        : statuses.length > 1
+          ? { $in: statuses }
+          : undefined;
+      if (statusFilter && statuses.includes('pending')) {
+        dbQuery.$or = [
+          { status: statusFilter },
+          {
+            paymentMethod: 'razorpay',
+            paymentStatus: { $ne: 'refunded' },
+            'bookingAuthorization.kind': 'payment',
+            'bookingAuthorization.status': 'needs_review',
+          },
+        ];
+      } else if (statusFilter) {
+        dbQuery.status = statusFilter;
       }
     }
-
-    // Never show bookings that are awaiting payment (created but payment not yet completed).
-    // These are excluded from all list views — they only exist temporarily while the
-    // user is in the Razorpay modal, and are auto-cancelled if payment is abandoned.
-    dbQuery.$nor = [{
-      status: 'pending',
-      paymentStatus: 'pending',
-      isSubscriptionBooking: { $ne: true }
-    }];
 
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -476,14 +552,12 @@ router.get('/', [
       currency: booking.currency,
       paymentStatus: booking.paymentStatus,
       paymentMethod: booking.paymentMethod,
+      ...getBookingAccessPresentation(booking),
       isSubscriptionBooking: booking.isSubscriptionBooking || false,
       promo: booking.promo?.code ? {
         code: booking.promo.code,
         discountAmount: booking.promo.discountAmount || 0
       } : undefined,
-      videoCall: formatVideoCall(booking.videoCall),
-      canBeCancelled: booking.canBeCancelled,
-      canBeRescheduled: booking.canBeRescheduled,
       createdAt: booking.createdAt // Add createdAt for date display
     }));
 
@@ -571,14 +645,12 @@ router.get('/:id', [
       currency: booking.currency,
       paymentStatus: booking.paymentStatus,
       paymentMethod: booking.paymentMethod,
+      ...getBookingAccessPresentation(booking, { includeHostUrl: isCounsellor }),
       isSubscriptionBooking: booking.isSubscriptionBooking || false,
       promo: booking.promo?.code ? {
         code: booking.promo.code,
         discountAmount: booking.promo.discountAmount || 0
       } : undefined,
-      videoCall: formatVideoCall(booking.videoCall, { includeHostUrl: isCounsellor }),
-      canBeCancelled: booking.canBeCancelled,
-      canBeRescheduled: booking.canBeRescheduled,
       createdAt: booking.createdAt,
     };
 
@@ -673,7 +745,7 @@ router.patch('/:id/call-link', [
 // @access  Private
 router.put('/:id/cancel', [
   param('id').isMongoId().withMessage('Invalid booking ID'),
-  body('reason').optional().isString()
+  body('reason').optional().isString().trim().isLength({ max: 500 })
 ], auth, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -688,10 +760,7 @@ router.put('/:id/cancel', [
     const { id } = req.params;
     const { reason } = req.body;
 
-    const booking = await Booking.findById(id)
-      .populate('counsellor', 'user')
-      .populate('counsellor.user', 'firstName lastName email phone')
-      .populate('user', 'firstName lastName email phone');
+    const booking = await Booking.findById(id);
 
     if (!booking) {
       return res.status(404).json({
@@ -701,32 +770,163 @@ router.put('/:id/cancel', [
     }
 
     // Check if user can cancel this booking
-    if (booking.user._id.toString() !== req.user._id.toString()) {
+    if (booking.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
       });
     }
 
-    const isUnpaidHold = booking.status === 'pending' && booking.paymentStatus === 'pending';
-    if (!isUnpaidHold && !booking.canBeCancelled) {
-      return res.status(400).json({
-        success: false,
-        message: 'Booking cannot be cancelled at this time'
-      });
-    }
+    const now = new Date();
+    const hasValidBookingAuthorization = isBookingAuthorizationValid(booking, { now });
+    const cancellationUpdate = {
+      $set: {
+        status: 'cancelled',
+        cancellationReason: reason || null,
+        cancelledBy: req.user._id,
+        cancelledAt: now,
+        'bookingAuthorization.status': 'revoked',
+      },
+      $push: {
+        statusHistory: {
+          status: 'cancelled',
+          timestamp: now,
+          updatedBy: req.user._id,
+        },
+      },
+    };
+    const isSubscriptionCancellation = booking.status === 'confirmed'
+      && booking.paymentStatus === 'paid'
+      && booking.paymentMethod === 'subscription'
+      && booking.bookingAuthorization?.kind === 'subscription_entitlement'
+      && booking.bookingAuthorization?.status === 'authorized'
+      && hasValidBookingAuthorization;
 
-    // Cancel booking
-    await booking.cancel(reason, req.user._id);
+    let cancelledBooking;
+    if (isSubscriptionCancellation) {
+      if (!booking.canBeCancelled) {
+        return res.status(400).json({
+          success: false,
+          message: 'Booking cannot be cancelled at this time'
+        });
+      }
+
+      const cancellationCutoff = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const authorizationQuery = buildBookingAuthorizationQuery({ now });
+      cancelledBooking = await Booking.findOneAndUpdate({
+        _id: booking._id,
+        user: req.user._id,
+        status: 'confirmed',
+        paymentStatus: 'paid',
+        paymentMethod: 'subscription',
+        scheduledAt: { $gt: cancellationCutoff },
+        $or: authorizationQuery.$or,
+      }, cancellationUpdate, { new: true, runValidators: true });
+
+      if (!cancelledBooking) {
+        return res.status(409).json({
+          success: false,
+          code: 'BOOKING_STATE_CHANGED',
+          message: 'The booking changed while cancellation was requested.'
+        });
+      }
+    } else {
+      const isUnpaidHold = isUnpaidPaymentHold(booking);
+      if (booking.paymentStatus === 'paid') {
+        return res.status(409).json({
+          success: false,
+          code: 'PAID_CANCELLATION_REVIEW_REQUIRED',
+          message: 'Paid booking cancellation requires support review.'
+        });
+      }
+      if (!isUnpaidHold) {
+        return res.status(400).json({
+          success: false,
+          message: 'Booking cannot be cancelled at this time'
+        });
+      }
+      if (booking.razorpayOrderId) {
+        return res.status(409).json({
+          success: false,
+          code: 'PAYMENT_RECONCILIATION_PENDING',
+          message: 'This payment order is still being reconciled. Please wait or contact support.'
+        });
+      }
+
+      // A booking can be directly released only before any provider order is
+      // exposed. Once an order is bound, provider state must be reconciled
+      // before cancellation so delayed capture cannot create a paid/cancelled
+      // combination.
+      cancelledBooking = await Booking.findOneAndUpdate({
+        _id: booking._id,
+        user: req.user._id,
+        status: 'pending',
+        paymentStatus: { $in: ['pending', 'failed'] },
+        paymentMethod: 'razorpay',
+        'bookingAuthorization.kind': 'payment',
+        'bookingAuthorization.status': 'pending',
+        holdExpiresAt: { $gt: now },
+        $or: [
+          { razorpayOrderId: { $exists: false } },
+          { razorpayOrderId: null },
+        ],
+      }, {
+        ...cancellationUpdate,
+        $set: {
+          ...cancellationUpdate.$set,
+          orderStatus: 'expired',
+        },
+      }, { new: true, runValidators: true });
+
+      if (!cancelledBooking) {
+        const current = await Booking.findById(id)
+          .select('status paymentStatus paymentMethod razorpayOrderId bookingAuthorization');
+        if (current?.status === 'expired') {
+          return res.status(409).json({
+            success: false,
+            code: 'SLOT_EXPIRED',
+            message: 'This unpaid booking hold has expired.'
+          });
+        }
+        if (current?.razorpayOrderId) {
+          return res.status(409).json({
+            success: false,
+            code: 'PAYMENT_RECONCILIATION_PENDING',
+            message: 'This payment order is still being reconciled. Please wait or contact support.'
+          });
+        }
+        if (current?.paymentStatus === 'paid') {
+          return res.status(409).json({
+            success: false,
+            code: 'PAID_CANCELLATION_REVIEW_REQUIRED',
+            message: 'Payment completed before cancellation. Contact support for review.'
+          });
+        }
+        return res.status(409).json({
+          success: false,
+          code: 'BOOKING_PAYMENT_STATE_CHANGED',
+          message: 'The payment state changed while cancellation was requested.'
+        });
+      }
+    }
 
     // Send cancellation notifications
     try {
-      const sessionDetails = {
-        counsellorName: `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`,
-        scheduledAt: booking.scheduledAt
-      };
-
-      await sendCancellationSMS(booking.user.phone, sessionDetails);
+      await cancelledBooking.populate([
+        {
+          path: 'counsellor',
+          select: 'user',
+          populate: { path: 'user', select: 'firstName lastName' },
+        },
+        { path: 'user', select: 'phone' },
+      ]);
+      if (cancelledBooking.counsellor?.user && cancelledBooking.user?.phone) {
+        const sessionDetails = {
+          counsellorName: `${cancelledBooking.counsellor.user.firstName} ${cancelledBooking.counsellor.user.lastName}`,
+          scheduledAt: cancelledBooking.scheduledAt
+        };
+        await sendCancellationSMS(cancelledBooking.user.phone, sessionDetails);
+      }
     } catch (error) {
       console.error('Error sending cancellation notification:', error);
     }

@@ -63,7 +63,22 @@ export default function Bookings({ navigation }: any) {
     }
   };
 
+  const getBookingStatusColor = (booking: Booking) => {
+    if (booking.paymentReviewRequired || booking.paymentAction === 'resume_payment') {
+      return '#F59E0B';
+    }
+    return getStatusColor(booking.status);
+  };
+
+  const getBookingStatusLabel = (booking: Booking) => {
+    if (booking.paymentReviewRequired) return 'Payment Review';
+    if (booking.paymentAction === 'resume_payment') return 'Payment Pending';
+    return getStatusLabel(booking.status);
+  };
+
   const handleJoinSession = async (booking: Booking) => {
+    if (booking.paymentReviewRequired) return;
+
     try {
       if (booking.sessionType === 'video') {
         navigation.navigate('PreCallCheck', { bookingId: booking.id });
@@ -77,7 +92,9 @@ export default function Bookings({ navigation }: any) {
     }
   };
 
-  const upcomingBookings  = bookings.filter(b => ['confirmed','pending','in-progress'].includes(b.status));
+  const upcomingBookings  = bookings.filter(b =>
+    ['confirmed','pending','in-progress'].includes(b.status) || b.paymentReviewRequired
+  );
   const completedBookings = bookings.filter(b => b.status === 'completed');
   const displayBookings   = activeTab === 'upcoming' ? upcomingBookings : completedBookings;
 
@@ -190,11 +207,11 @@ export default function Bookings({ navigation }: any) {
                     </Text>
                   </View>
                   <View style={{
-                    backgroundColor: getStatusColor(booking.status) + '18',
+                    backgroundColor: getBookingStatusColor(booking) + '18',
                     paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
                   }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: getStatusColor(booking.status) }}>
-                      {getStatusLabel(booking.status)}
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: getBookingStatusColor(booking) }}>
+                      {getBookingStatusLabel(booking)}
                     </Text>
                   </View>
                 </View>
@@ -217,8 +234,50 @@ export default function Bookings({ navigation }: any) {
                   </View>
                 </View>
 
+                {booking.paymentAction && (
+                  <View style={{
+                    backgroundColor: '#F59E0B18',
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 14,
+                    borderWidth: 1,
+                    borderColor: '#F59E0B44',
+                  }}>
+                    <Text style={{ color: colors.text, fontSize: 13, lineHeight: 18 }}>
+                      {booking.paymentReviewRequired
+                        ? 'Payment status is being reconciled. This slot remains blocked; contact support if it does not update.'
+                        : 'Payment is incomplete. Continue payment to keep this booking.'}
+                    </Text>
+                    {!booking.paymentReviewRequired
+                      && booking.paymentAction === 'resume_payment' && (
+                      <TouchableOpacity
+                        onPress={() => navigation.navigate('PaymentSheet', {
+                          bookingId: booking.id,
+                          paymentMethod: 'razorpay',
+                        })}
+                        style={{
+                          alignSelf: 'flex-start',
+                          backgroundColor: colors.primary,
+                          borderRadius: 12,
+                          paddingHorizontal: 14,
+                          paddingVertical: 9,
+                          marginTop: 10,
+                        }}
+                      >
+                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>
+                          Continue Payment
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
                 {/* Action buttons */}
-                {(booking.status === 'in-progress' || (booking.status === 'confirmed' && booking.counsellorName && booking.counsellorName !== 'To be assigned')) && (
+                {!booking.paymentReviewRequired
+                  && (booking.status === 'in-progress'
+                    || (booking.status === 'confirmed'
+                      && booking.counsellorName
+                      && booking.counsellorName !== 'To be assigned')) && (
                   <TouchableOpacity
                     onPress={() => handleJoinSession(booking)}
                     style={{

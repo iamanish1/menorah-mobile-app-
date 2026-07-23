@@ -29,6 +29,12 @@ const PRICE_CATEGORIES = {
   }
 };
 
+const isSubscriptionAuthorizedBooking = (booking: any) => Boolean(
+  booking?.isSubscriptionBooking === true
+  && booking?.paymentMethod === 'subscription'
+  && booking?.paymentStatus === 'paid'
+);
+
 export default function BookingReview({ navigation, route }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
@@ -135,9 +141,14 @@ export default function BookingReview({ navigation, route }: any) {
     }
     
     const isAssigned = existingBooking.counsellorName && existingBooking.counsellorName !== 'To be assigned';
-    const canJoin = existingBooking.status === 'in-progress' || sessionReady;
-    const isConfirmedWithCounsellor = existingBooking.status === 'confirmed' && isAssigned;
-    const isPending = existingBooking.status === 'pending' || !isAssigned;
+    const isPaymentReviewRequired = existingBooking.paymentReviewRequired === true;
+    const canJoin = !isPaymentReviewRequired
+      && (existingBooking.status === 'in-progress' || sessionReady);
+    const isConfirmedWithCounsellor = !isPaymentReviewRequired
+      && existingBooking.status === 'confirmed'
+      && isAssigned;
+    const isPending = !isPaymentReviewRequired
+      && (existingBooking.status === 'pending' || !isAssigned);
 
     const statusColors: Record<string, string> = {
       pending: '#F59E0B',
@@ -146,7 +157,9 @@ export default function BookingReview({ navigation, route }: any) {
       completed: '#6B7280',
       cancelled: '#EF4444',
     };
-    const statusColor = statusColors[existingBooking.status] || colors.muted;
+    const statusColor = isPaymentReviewRequired
+      ? '#F59E0B'
+      : statusColors[existingBooking.status] || colors.muted;
 
     const handleJoinSession = () => {
       if (existingBooking.sessionType === 'video') {
@@ -166,8 +179,11 @@ export default function BookingReview({ navigation, route }: any) {
     const warningText = isDark ? colors.accent : '#92400E';
     const warningIconBg = isDark ? '#35260D' : '#FEF3C7';
 
-    const statusLabel = existingBooking.status === 'in-progress' ? 'In Progress'
-      : existingBooking.status.charAt(0).toUpperCase() + existingBooking.status.slice(1);
+    const statusLabel = isPaymentReviewRequired
+      ? 'Payment Review'
+      : existingBooking.status === 'in-progress'
+        ? 'In Progress'
+        : existingBooking.status.charAt(0).toUpperCase() + existingBooking.status.slice(1);
 
     const statusDescriptions: Record<string, string> = {
       confirmed: "Your session is all set. We're looking forward to your session.",
@@ -176,7 +192,9 @@ export default function BookingReview({ navigation, route }: any) {
       completed: 'Your session has been completed. Thank you for choosing us!',
       cancelled: 'Your session has been cancelled.',
     };
-    const statusDescription = statusDescriptions[existingBooking.status] || '';
+    const statusDescription = isPaymentReviewRequired
+      ? 'Payment status is being reconciled. Contact support if it does not update.'
+      : statusDescriptions[existingBooking.status] || '';
 
     const sessionTypeLabel = existingBooking.sessionType === 'video' ? 'Video Session'
       : existingBooking.sessionType === 'audio' ? 'Audio Session' : 'Chat Session';
@@ -487,10 +505,18 @@ export default function BookingReview({ navigation, route }: any) {
                 });
 
                 if (bookingResponse.success && bookingResponse.data?.booking?.id) {
+                  const createdBooking = bookingResponse.data.booking;
+                  if (isSubscriptionAuthorizedBooking(createdBooking)) {
+                    navigation.replace('BookingSuccess', {
+                      bookingId: createdBooking.id,
+                      isSubscriptionBooking: true,
+                    });
+                    return;
+                  }
                   // TODO(App Store): This Razorpay flow should remain limited to real-world one-to-one service booking.
                   // It must not unlock digital subscriptions, premium content, or app-only features.
                   navigation.navigate('PaymentSheet', {
-                    bookingId: bookingResponse.data.booking.id,
+                    bookingId: createdBooking.id,
                     paymentMethod: 'razorpay',
                   });
                 } else {
@@ -649,11 +675,19 @@ export default function BookingReview({ navigation, route }: any) {
               const bookingResponse = await api.createBooking(bookingData);
 
               if (bookingResponse.success && bookingResponse.data?.booking?.id) {
+                const createdBooking = bookingResponse.data.booking;
+                if (isSubscriptionAuthorizedBooking(createdBooking)) {
+                  navigation.replace('BookingSuccess', {
+                    bookingId: createdBooking.id,
+                    isSubscriptionBooking: true,
+                  });
+                  return;
+                }
                 // Navigate to payment screen with bookingId
                 // TODO(App Store): Keep this Razorpay payment classified as real-world one-to-one service booking only.
                 // It still needs business/legal review before iOS App Store submission.
                 navigation.navigate("PaymentSheet", {
-                  bookingId: bookingResponse.data.booking.id,
+                  bookingId: createdBooking.id,
                   paymentMethod: 'razorpay'
                 });
             } else {

@@ -6,8 +6,8 @@ import { palettes } from '@/theme/colors';
 import { useNavigation } from '@react-navigation/native';
 import { type SubscriptionType } from '@/screens/subscription/subscriptionPlans';
 import {
-  IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE,
-  shouldDisableIOSSubscriptionPurchase,
+  SUBSCRIPTIONS_UNAVAILABLE_MESSAGE,
+  shouldDisableSubscriptionPurchase,
 } from '@/lib/paymentPolicy';
 
 interface Props {
@@ -59,7 +59,7 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
   const [selected, setSelected] = useState<SubscriptionType | null>(null);
   const cardBg = scheme === 'dark' ? colors.surface : colors.card;
   const primaryActionText = scheme === 'dark' ? colors.primaryDark : 'white';
-  const isIOSSubscriptionDisabled = shouldDisableIOSSubscriptionPurchase();
+  const isSubscriptionDisabled = shouldDisableSubscriptionPurchase();
 
   const handleSelect = (id: SubscriptionType) => {
     setSelected(id);
@@ -72,16 +72,16 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
       {/* Section header */}
       <View style={{ paddingHorizontal: 16, marginBottom: 4 }}>
         <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.2 }}>
-          {isIOSSubscriptionDisabled ? 'Subscription Plans' : 'Buy Subscription'}
+          {isSubscriptionDisabled ? 'Subscription Plans' : 'Buy Subscription'}
         </Text>
         <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4, marginBottom: 14, lineHeight: 17 }}>
-          {isIOSSubscriptionDisabled
-            ? IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE
+          {isSubscriptionDisabled
+            ? SUBSCRIPTIONS_UNAVAILABLE_MESSAGE
             : 'Choose a subscription plan that works best for you.'}
         </Text>
       </View>
 
-      {isIOSSubscriptionDisabled ? (
+      {isSubscriptionDisabled ? (
         <View
           style={{
             marginHorizontal: 16,
@@ -96,7 +96,7 @@ export default function SubscriptionSelector({ onSubscriptionSelect }: Props) {
             Free features are available
           </Text>
           <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 18 }}>
-            {IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE}
+            {SUBSCRIPTIONS_UNAVAILABLE_MESSAGE}
           </Text>
         </View>
       ) : (

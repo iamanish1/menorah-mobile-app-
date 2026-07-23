@@ -36,6 +36,9 @@ const eligibleBooking = (overrides = {}) => ({
   paymentStatus: 'paid',
   paymentMethod: 'razorpay',
   paymentId: 'pay_test_123',
+  razorpayOrderId: 'order_test_123',
+  transactionId: 'order_test_123',
+  orderStatus: 'paid',
   isSubscriptionBooking: false,
   bookingAuthorization: {
     kind: 'payment',

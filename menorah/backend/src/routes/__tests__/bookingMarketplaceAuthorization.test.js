@@ -94,6 +94,9 @@ const validPaymentBooking = (overrides = {}) => ({
   paymentMethod: 'razorpay',
   isSubscriptionBooking: false,
   paymentId: 'pay_test_123',
+  razorpayOrderId: 'order_test_123',
+  transactionId: 'order_test_123',
+  orderStatus: 'paid',
   amount: 1250,
   amountMinor: 125000,
   currency: 'INR',
@@ -152,6 +155,7 @@ const previewSource = () => ({
   statusHistory: [{ status: 'confirmed', notes: 'private history' }],
   videoCall: { roomUrl: 'https://call.example.test/secret-room' },
   razorpayOrderId: 'order_secret',
+  transactionId: 'order_secret',
   razorpayPaymentId: 'pay_secret',
 });
 
@@ -219,6 +223,9 @@ const expectAuthorizedMarketplacePredicate = (query) => {
   ))).toBe(true);
   expect(authorizationBranches[0]).toEqual(expect.objectContaining({
     paymentId: { $type: 'string', $regex: expect.any(RegExp) },
+    razorpayOrderId: { $type: 'string', $regex: expect.any(RegExp) },
+    transactionId: { $type: 'string', $regex: expect.any(RegExp) },
+    orderStatus: 'paid',
     amountMinor: {
       $type: 'number',
       $gt: 0,
@@ -227,6 +234,7 @@ const expectAuthorizedMarketplacePredicate = (query) => {
     $expr: {
       $and: expect.arrayContaining([
         { $eq: ['$bookingAuthorization.reference', '$paymentId'] },
+        { $eq: ['$transactionId', '$razorpayOrderId'] },
         { $eq: ['$amountMinor', '$pricing.listAmountMinor'] },
       ]),
     },

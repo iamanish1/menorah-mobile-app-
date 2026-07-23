@@ -11,6 +11,7 @@ STATE_DIR="${MENORAH_DEPLOY_STATE_ROOT:-/opt/menorah/deploy-state}"
 LOG_FILE="${STATE_DIR}/deploy.log"
 LOCK_FILE="${STATE_DIR}/.deploy.lock"
 MIGRATION_MARKER="${STATE_DIR}/migration-applied-sha"
+MIGRATION_IN_PROGRESS_MARKER="${STATE_DIR}/migration-in-progress-sha"
 RELEASE_SERVICES=(
   landing-page
   user-web-app
@@ -38,6 +39,16 @@ run_backend_migrations() {
   # Database hostnames are private to the Compose app network, so migrations
   # must run in a backend container rather than on the Ubuntu host.
   compose_cmd run --rm --no-deps api-web node src/database/migrate.js
+}
+
+write_marker_atomically() {
+  local target="$1"
+  local value="$2"
+  local temporary
+  temporary="$(mktemp "${STATE_DIR}/.marker.XXXXXX")"
+  printf '%s\n' "${value}" > "${temporary}"
+  chmod 0600 "${temporary}"
+  mv -f -- "${temporary}" "${target}"
 }
 
 wait_for_health() {
@@ -93,6 +104,12 @@ BOOKING_CATALOG_LOWER="${BOOKING_SERVICE_CATALOG_JSON:-}"
 BOOKING_CATALOG_LOWER="${BOOKING_CATALOG_LOWER,,}"
 if [[ -z "${BOOKING_SERVICE_CATALOG_JSON:-}" || "${BOOKING_CATALOG_LOWER}" == replace* ]]; then
   echo "BOOKING_SERVICE_CATALOG_JSON must contain the owner-approved server pricing catalog." >&2
+  exit 1
+fi
+
+if [[ -e "${MIGRATION_IN_PROGRESS_MARKER}" ]]; then
+  echo "A previous migration may be partially applied: ${MIGRATION_IN_PROGRESS_MARKER}" >&2
+  echo "Keep application writers stopped and complete the coordinated recovery review before deploying again." >&2
   exit 1
 fi
 if [[ "${DATA_ENCRYPTION_KEY}" == "${AUDIT_LOG_SIGNING_KEY}" ]]; then
@@ -173,12 +190,15 @@ echo "Stopping API and worker services for the migration maintenance boundary...
 compose_cmd stop -t "${DEPLOY_STOP_TIMEOUT_SECONDS:-60}" "${WRITER_SERVICES[@]}"
 
 echo "Running the backend migration once with the new release image..."
+write_marker_atomically "${MIGRATION_IN_PROGRESS_MARKER}" "${NEW_SHA}"
+echo "migration=START sha=${NEW_SHA}" >> "${LOG_FILE}"
 if ! run_backend_migrations; then
   echo "Migration failed. API and worker services remain stopped for operator review." >&2
   echo "migration=FAIL sha=${NEW_SHA}" >> "${LOG_FILE}"
   exit 1
 fi
-printf '%s\n' "${NEW_SHA}" > "${MIGRATION_MARKER}"
+write_marker_atomically "${MIGRATION_MARKER}" "${NEW_SHA}"
+rm -f -- "${MIGRATION_IN_PROGRESS_MARKER}"
 echo "migration=PASS sha=${NEW_SHA}" >> "${LOG_FILE}"
 
 echo "Starting the reviewed release without rebuilding..."
