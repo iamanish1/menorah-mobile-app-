@@ -13,6 +13,7 @@ const REQUIRED_KEYS = Object.freeze([
 const USERNAME_KEYS = Object.freeze(REQUIRED_KEYS.filter((key) => key.endsWith('_USER')));
 const PASSWORD_KEYS = Object.freeze(REQUIRED_KEYS.filter((key) => key.endsWith('_PASSWORD')));
 const PLACEHOLDER_PATTERN = /replace|placeholder|change[_-]?me|example/i;
+const ROTATION_CONFIRMATION = 'rotate-managed-credentials';
 
 const requireSafeEnvironment = () => {
   for (const key of REQUIRED_KEYS) {
@@ -80,16 +81,16 @@ const rolesMatchExactly = (actual, expected) => {
 requireSafeEnvironment();
 
 const admin = db.getSiblingDB('admin');
+const rotationInput = process.env.MONGO_ROTATE_CREDENTIALS_CONFIRM || '';
+if (rotationInput && rotationInput !== ROTATION_CONFIRMATION) {
+  throw new Error('MONGO_ROTATE_CREDENTIALS_CONFIRM has an invalid value');
+}
+const rotateCredentials = rotationInput === ROTATION_CONFIRMATION;
 const root = {
   user: process.env.MONGO_ROOT_USER,
   roles: [{ role: 'root', db: 'admin' }],
 };
 const managed = Object.freeze([
-  {
-    user: process.env.MONGO_APP_USER,
-    pwd: process.env.MONGO_APP_PASSWORD,
-    roles: [{ role: 'readWrite', db: 'menorah' }],
-  },
   {
     user: process.env.MONGO_BACKUP_USER,
     pwd: process.env.MONGO_BACKUP_PASSWORD,
@@ -111,45 +112,51 @@ const managed = Object.freeze([
       { role: 'read', db: 'local' },
     ],
   },
+  {
+    // Rotate the active API identity last so an earlier reconciliation failure
+    // cannot strand the still-running release with the old application secret.
+    user: process.env.MONGO_APP_USER,
+    pwd: process.env.MONGO_APP_PASSWORD,
+    roles: [{ role: 'readWrite', db: 'menorah' }],
+  },
 ]);
 
 const existingRoot = admin.getUser(root.user);
+const existingManaged = managed.map((identity) => admin.getUser(identity.user));
 if (!existingRoot || !rolesMatchExactly(existingRoot.roles, root.roles)) {
-  throw new Error(
-    'MongoDB root identity was not safely initialized; managed bootstrap made no changes'
-  );
+  throw new Error('MongoDB root identity is missing or has unexpected roles; reconciliation made no changes');
+}
+if (existingManaged.some((identity) => !identity)) {
+  throw new Error('Managed MongoDB identity set is incomplete; reconciliation made no changes');
 }
 
-const existingByUser = new Map();
-for (const identity of managed) {
-  const existing = admin.getUser(identity.user);
-  existingByUser.set(identity.user, existing);
-  if (existing && !rolesMatchExactly(existing.roles, identity.roles)) {
-    throw new Error(
-      'Existing MongoDB identity roles do not match the bootstrap contract; '
-      + 'bootstrap made no changes'
-    );
-  }
-}
-
-let created = 0;
 try {
   for (const identity of managed) {
-    if (existingByUser.get(identity.user)) continue;
-    admin.createUser(identity);
-    created += 1;
+    const update = { roles: identity.roles };
+    if (rotateCredentials) update.pwd = identity.pwd;
+    admin.updateUser(identity.user, update);
   }
 } catch {
+  if (rotateCredentials) {
+    throw new Error(
+      'Managed MongoDB identity reconciliation failed; credentials may be partially rotated '
+      + 'and deployment must not proceed'
+    );
+  }
   throw new Error(
-    'MongoDB identity bootstrap failed; initialization may be partial and must not proceed'
+    'Managed MongoDB identity reconciliation failed; roles may be partially reconciled '
+    + 'and deployment must not proceed'
   );
 }
 
 for (const identity of managed) {
   const persisted = admin.getUser(identity.user);
   if (!persisted || !rolesMatchExactly(persisted.roles, identity.roles)) {
-    throw new Error('MongoDB identity bootstrap verification failed');
+    throw new Error('Managed MongoDB identity role verification failed');
   }
 }
 
-print(`MongoDB managed-identity bootstrap complete (${created} created, ${managed.length - created} unchanged).`);
+print(
+  `Reconciled ${managed.length} managed MongoDB identities with exact roles `
+  + `(${rotateCredentials ? 'password rotation confirmed' : 'passwords unchanged'}).`
+);
