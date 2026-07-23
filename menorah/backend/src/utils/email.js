@@ -3,6 +3,7 @@ const axios = require('axios');
 const RESEND_EMAIL_URL = 'https://api.resend.com/emails';
 const FROM_NAME = 'Menorah Health';
 const isDev = process.env.NODE_ENV !== 'production';
+const CANONICAL_PASSWORD_RESET_BASE_URL = 'https://app.menorah.me';
 
 const isPlaceholder = (value) =>
   !value || /^REPLACE/i.test(value) || value.includes('replace_with');
@@ -77,7 +78,20 @@ const sendEmail = async (to, subject, html) => {
 
 const buildPasswordResetUrl = (token) => {
   const template = process.env.PASSWORD_RESET_URL_TEMPLATE?.trim();
-  const base = process.env.PASSWORD_RESET_BASE_URL?.trim() || process.env.WEB_APP_URL?.trim() || 'https://menorah.me';
+  const configuredBase = process.env.PASSWORD_RESET_BASE_URL?.trim();
+
+  if (process.env.NODE_ENV === 'production') {
+    if (template) {
+      throw new Error('PASSWORD_RESET_URL_TEMPLATE must be unset in production');
+    }
+    if (configuredBase !== CANONICAL_PASSWORD_RESET_BASE_URL) {
+      throw new Error(
+        `PASSWORD_RESET_BASE_URL must equal ${CANONICAL_PASSWORD_RESET_BASE_URL} in production`
+      );
+    }
+  }
+
+  const base = configuredBase || process.env.WEB_APP_URL?.trim() || 'https://menorah.me';
   const resetBase = template ? template.replace(/\{token\}/g, '') : base;
   return buildPasswordResetUrlFromBase(resetBase, token);
 };
@@ -88,11 +102,13 @@ const buildPasswordResetUrlFromBase = (base, token) => {
   let parsedBase;
   try {
     parsedBase = new URL(base);
-  } catch {
+  } catch (error) {
+    if (process.env.NODE_ENV === 'production') throw error;
     parsedBase = new URL('https://menorah.me');
   }
-  if (process.env.NODE_ENV === 'production' && parsedBase.protocol !== 'https:') {
-    parsedBase = new URL('https://menorah.me');
+  if (process.env.NODE_ENV === 'production'
+    && parsedBase.origin !== CANONICAL_PASSWORD_RESET_BASE_URL) {
+    throw new Error('Production password reset links must use the canonical mobile app origin');
   }
 
   const url = new URL('/reset-password', parsedBase);

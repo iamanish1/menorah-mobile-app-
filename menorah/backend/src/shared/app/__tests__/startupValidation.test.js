@@ -19,8 +19,17 @@ describe('startup validation', () => {
       REDIS_URL: 'redis://redis:6379',
       RESEND_API_KEY: 'resend-key',
       EMAIL_FROM: 'Menorah <noreply@example.com>',
+      PASSWORD_RESET_BASE_URL: 'https://app.menorah.me',
+      MEDIA_STORAGE_BACKEND: 'local',
+      MEDIA_PUBLIC_BASE_URL: 'https://media.example.com',
+      UPLOAD_PATH: '/app/uploads',
       DATA_ENCRYPTION_KEY: 'x'.repeat(64),
       AUDIT_LOG_SIGNING_KEY: 'y'.repeat(64),
+      APPLE_SIGN_IN_ENABLED: 'true',
+      APPLE_IOS_BUNDLE_ID: 'com.menorah.health.app',
+      APPLE_TEAM_ID: 'A1B2C3D4E5',
+      APPLE_KEY_ID: 'F6G7H8I9J0',
+      APPLE_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\ntest-only-key\n-----END PRIVATE KEY-----',
       MAX_PAYOUT_AMOUNT_PAISE: '5000000',
       KYC_CONSENT_VERSION: FACE_CHECK_CONSENT_VERSION,
       KYC_RETENTION_DAYS: String(FACE_CHECK_RETENTION_DAYS),
@@ -47,6 +56,10 @@ describe('startup validation', () => {
           'privacy_legal_hold',
         ],
       }]),
+      ADMIN_ROLE_GRANTS_JSON: JSON.stringify([{
+        adminId: '64f000000000000000000001',
+        role: 'admin',
+      }]),
       BOOKING_SERVICE_CATALOG_JSON: JSON.stringify({
         test_service: {
           durationMinutes: 60,
@@ -71,6 +84,9 @@ describe('startup validation', () => {
     delete process.env.SESSION_COOKIE_DOMAIN;
     delete process.env.RAZORPAY_WEBHOOK_SECRET_PREVIOUS;
     delete process.env.PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS;
+    delete process.env.PASSWORD_RESET_URL_TEMPLATE;
+    delete process.env.COUNSELLOR_MEDIA_STORAGE;
+    delete process.env.SOCIAL_STUDIO_STORAGE;
   });
 
   afterAll(() => {
@@ -97,6 +113,59 @@ describe('startup validation', () => {
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' }))
       .toThrow(/MAX_PAYOUT_AMOUNT_PAISE.*KYC_RETENTION_DAYS.*KYC_CONSENT_VERSION/);
+  });
+
+  test.each(['127', '8193', '1.5', 'placeholder'])(
+    'rejects an invalid durable audit queue bound (%s)',
+    (value) => {
+      process.env.SECURITY_AUDIT_PENDING_MAX = value;
+
+      expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+        .toThrow(/SECURITY_AUDIT_PENDING_MAX/);
+    },
+  );
+
+  test('requires the canonical mobile password-reset origin in production', () => {
+    process.env.PASSWORD_RESET_BASE_URL = 'https://menorah.me';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/PASSWORD_RESET_BASE_URL must equal https:\/\/app\.menorah\.me/);
+  });
+
+  test('rejects the legacy password-reset URL template in production', () => {
+    process.env.PASSWORD_RESET_URL_TEMPLATE =
+      'https://app.menorah.me/reset-password?token={token}';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/PASSWORD_RESET_URL_TEMPLATE must be unset/);
+  });
+
+  test('requires the recoverable local media backend in production', () => {
+    process.env.MEDIA_STORAGE_BACKEND = 'cloudinary';
+    process.env.CLOUDINARY_CLOUD_NAME = 'unit-cloud';
+    process.env.CLOUDINARY_API_KEY = 'unit-key';
+    process.env.CLOUDINARY_API_SECRET = 'unit-secret';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/MEDIA_STORAGE_BACKEND must equal local in production/);
+  });
+
+  test.each([
+    '',
+    'http://media.example.com',
+    'https://localhost:8080',
+  ])('rejects an unsafe production media origin (%s)', (value) => {
+    process.env.MEDIA_PUBLIC_BASE_URL = value;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/MEDIA_PUBLIC_BASE_URL/);
+  });
+
+  test('rejects split legacy media backend selectors in production', () => {
+    process.env.SOCIAL_STUDIO_STORAGE = 'local';
+
+    expect(() => validateStartupEnv({ serviceName: 'worker', requirePaymentEnv: false }))
+      .toThrow(/SOCIAL_STUDIO_STORAGE must be unset/);
   });
 
   test('requires an explicit server-side booking catalog in production', () => {
@@ -182,6 +251,21 @@ describe('startup validation', () => {
 
     expect(() => validateStartupEnv({ serviceName: 'api-admin' }))
       .toThrow(/PRIVACY_ADMIN_PERMISSION_GRANTS_JSON/);
+  });
+
+  test.each([
+    [undefined, 'missing'],
+    ['[]', 'empty'],
+    [JSON.stringify([{
+      adminId: '64f000000000000000000001',
+      role: 'support',
+    }]), 'without a full administrator'],
+  ])('rejects %s admin operational role grants (%s)', (value) => {
+    if (value === undefined) delete process.env.ADMIN_ROLE_GRANTS_JSON;
+    else process.env.ADMIN_ROLE_GRANTS_JSON = value;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-admin' }))
+      .toThrow(/ADMIN_ROLE_GRANTS_JSON/);
   });
 
   test('rejects retention execution when no approved automated category exists', () => {

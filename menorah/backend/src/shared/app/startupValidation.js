@@ -1,5 +1,6 @@
 const MIN_JWT_SECRET_LENGTH = 64;
 const MAX_ADMIN_JWT_SECONDS = 30 * 60;
+const CANONICAL_PASSWORD_RESET_BASE_URL = 'https://app.menorah.me';
 const { getTrustedWebSessionOrigins } = require('../../config/webSessions');
 const { MAX_SINGLE_PAYOUT_PAISE } = require('../../config/payout');
 const {
@@ -28,6 +29,12 @@ const {
 const {
   readPrivacyAdminPermissionConfiguration,
 } = require('../../config/privacyAdminPermissions');
+const {
+  readAdminRoleConfiguration,
+} = require('../../config/adminPermissions');
+const {
+  validateMediaStorageConfig,
+} = require('../../services/mediaStorage');
 
 const requireEnv = (key, errors) => {
   if (!process.env[key]) {
@@ -53,6 +60,15 @@ const requireExactInteger = (key, expected, errors) => {
 const requireExactValue = (key, expected, errors) => {
   if (String(process.env[key] || '').trim() !== expected) {
     errors.push(`${key} must equal ${expected}`);
+  }
+};
+
+const validateOptionalIntegerRange = (key, minimum, maximum, errors) => {
+  const raw = String(process.env[key] || '').trim();
+  if (!raw) return;
+  const value = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    errors.push(`${key} must be an integer from ${minimum} through ${maximum}`);
   }
 };
 
@@ -174,6 +190,7 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
       requireEnv(key, errors)
     );
     requireMinimumLength('AUDIT_LOG_SIGNING_KEY', 32, errors);
+    validateOptionalIntegerRange('SECURITY_AUDIT_PENDING_MAX', 128, 8192, errors);
     requireExactInteger('MAX_PAYOUT_AMOUNT_PAISE', MAX_SINGLE_PAYOUT_PAISE, errors);
     requireExactInteger('KYC_RETENTION_DAYS', FACE_CHECK_RETENTION_DAYS, errors);
     requireExactValue('KYC_CONSENT_VERSION', FACE_CHECK_CONSENT_VERSION, errors);
@@ -197,8 +214,16 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
         `${key} must explicitly assign every privacy function to approved admin IDs`
       );
     });
+    if (serviceName === 'api-admin') {
+      const adminRoles = readAdminRoleConfiguration(process.env);
+      adminRoles.invalidFields.forEach((key) => {
+        errors.push(
+          `${key} must explicitly assign approved admin IDs to operational roles`
+        );
+      });
+    }
 
-    if (['api-ios', 'api-android', 'api-web', 'api-admin'].includes(serviceName)) {
+    if (['api-ios', 'api-android', 'api-web', 'api-admin', 'worker'].includes(serviceName)) {
       requireMinimumLength('DATA_ENCRYPTION_KEY', 32, errors);
     }
     if (process.env.DATA_ENCRYPTION_KEY
@@ -206,7 +231,44 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
       errors.push('DATA_ENCRYPTION_KEY and AUDIT_LOG_SIGNING_KEY must be distinct');
     }
 
+    if (['api-ios', 'worker'].includes(serviceName)) {
+      requireExactValue('APPLE_SIGN_IN_ENABLED', 'true', errors);
+      requireExactValue('APPLE_IOS_BUNDLE_ID', 'com.menorah.health.app', errors);
+      if (!/^[A-Z0-9]{10}$/.test(String(process.env.APPLE_TEAM_ID || '').trim())) {
+        errors.push('APPLE_TEAM_ID must be a 10-character Apple Team ID');
+      }
+      if (!/^[A-Z0-9]{10}$/.test(String(process.env.APPLE_KEY_ID || '').trim())) {
+        errors.push('APPLE_KEY_ID must be a 10-character Apple key ID');
+      }
+      const applePrivateKey = String(process.env.APPLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+      if (!applePrivateKey.includes('-----BEGIN PRIVATE KEY-----')
+        || !applePrivateKey.includes('-----END PRIVATE KEY-----')) {
+        errors.push('APPLE_PRIVATE_KEY must contain an Apple PKCS#8 private key');
+      }
+    }
+
     requireEnv('WEB_SESSION_ORIGINS', errors);
+    requireExactValue(
+      'PASSWORD_RESET_BASE_URL',
+      CANONICAL_PASSWORD_RESET_BASE_URL,
+      errors
+    );
+    if (String(process.env.PASSWORD_RESET_URL_TEMPLATE || '').trim()) {
+      errors.push('PASSWORD_RESET_URL_TEMPLATE must be unset in production');
+    }
+
+    const mediaStorage = validateMediaStorageConfig(process.env);
+    errors.push(...mediaStorage.errors);
+    if (String(process.env.COUNSELLOR_MEDIA_STORAGE || '').trim()) {
+      errors.push(
+        'COUNSELLOR_MEDIA_STORAGE must be unset; MEDIA_STORAGE_BACKEND is the single production media-storage selector'
+      );
+    }
+    if (String(process.env.SOCIAL_STUDIO_STORAGE || '').trim()) {
+      errors.push(
+        'SOCIAL_STUDIO_STORAGE must be unset; MEDIA_STORAGE_BACKEND is the single production media-storage selector'
+      );
+    }
 
     try {
       parseBookingServiceCatalog(process.env.BOOKING_SERVICE_CATALOG_JSON);
