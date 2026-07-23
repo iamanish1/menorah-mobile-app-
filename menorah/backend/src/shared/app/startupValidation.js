@@ -6,6 +6,7 @@ const {
   FACE_CHECK_CONSENT_VERSION,
   FACE_CHECK_RETENTION_DAYS,
 } = require('../../config/kyc');
+const { parseBookingServiceCatalog } = require('../../services/bookingPricing');
 
 const requireEnv = (key, errors) => {
   if (!process.env[key]) {
@@ -68,6 +69,12 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
     }
 
     requireEnv('WEB_SESSION_ORIGINS', errors);
+
+    try {
+      parseBookingServiceCatalog(process.env.BOOKING_SERVICE_CATALOG_JSON);
+    } catch (error) {
+      errors.push(error.message);
+    }
 
     if (process.env.ADMIN_MFA_REQUIRED !== 'true') {
       errors.push('ADMIN_MFA_REQUIRED must be true in production');

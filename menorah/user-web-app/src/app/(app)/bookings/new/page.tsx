@@ -38,7 +38,6 @@ interface BookingDraft {
   genderPreference?: 'male' | 'female' | 'any';
   concerns?: string;
   goals?: string;
-  promoCode?: string;
 }
 
 type SlotStatus = 'available' | 'booked' | 'pending' | 'unavailable' | 'past';
@@ -74,7 +73,6 @@ const sessionTypes = [
 ];
 
 const durations = [30, 45, 60, 90];
-const FREE_CONSULTATION_PROMO_CODE = 'MENORAHFREECALL';
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
 type AvailabilitySchedule = Record<string, { start: string; end: string; isAvailable: boolean }>;
@@ -233,8 +231,6 @@ function NewBookingForm() {
   const selectedDateTimeLabel = draft.scheduledAt
     ? new Date(draft.scheduledAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
     : null;
-  const normalizedPromoCode = (draft.promoCode || '').trim().toUpperCase();
-  const promoPreviewApplied = normalizedPromoCode === FREE_CONSULTATION_PROMO_CODE;
   const estimatedTotal = counsellor ? (counsellor.hourlyRate / 60) * draft.sessionDuration : null;
 
   const selectDate = (dateValue: string) => {
@@ -273,7 +269,7 @@ function NewBookingForm() {
       sessionType:     draft.sessionType,
       sessionDuration: draft.sessionDuration,
       scheduledAt:     new Date(draft.scheduledAt).toISOString(),
-      promoCode:       draft.promoCode?.trim() || undefined,
+      serviceCode:     draft.counsellorId ? undefined : `unassigned-${draft.sessionDuration}`,
       preferences:     { gender: draft.genderPreference, sessionType: draft.sessionType },
       concerns:        draft.concerns,
       goals:           draft.goals ? [draft.goals] : undefined,
@@ -721,42 +717,15 @@ function NewBookingForm() {
                   <span>{formatCurrency(estimatedTotal || 0, counsellor.currency)}</span>
                 </div>
               )}
-              <div className="space-y-2 py-2">
-                <label htmlFor="promoCode" className="text-sm font-semibold text-gray-700">
-                  Promo code
-                </label>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <input
-                    id="promoCode"
-                    value={draft.promoCode ?? ''}
-                    onChange={(event) => set('promoCode', event.target.value.toUpperCase())}
-                    placeholder="Enter promo code"
-                    className="input-field flex-1 uppercase"
-                    autoComplete="off"
-                  />
-                  {promoPreviewApplied && (
-                    <span className="inline-flex items-center justify-center rounded-lg bg-green-100 px-3 py-2 text-sm font-semibold text-green-700">
-                      Free session
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500">
-                  Use a valid promo code to make this consultation free.
-                </p>
-              </div>
-              {promoPreviewApplied && estimatedTotal !== null && (
-                <div className="flex justify-between text-sm font-semibold text-green-700">
-                  <span>Promo discount</span>
-                  <span>-{formatCurrency(estimatedTotal, counsellor?.currency || 'INR')}</span>
-                </div>
-              )}
               <div className="flex justify-between items-center pt-2 border-t border-gray-200">
                 <div className="flex items-center gap-1.5">
                   <CreditCard className="w-4 h-4 text-gray-400" />
                   <span className="text-sm font-semibold text-gray-700">Total due</span>
                 </div>
                 <span className="text-lg font-bold text-primary-700">
-                  {promoPreviewApplied ? 'Free' : estimatedTotal !== null ? formatCurrency(estimatedTotal, counsellor?.currency || 'INR') : 'TBD'}
+                  {estimatedTotal !== null
+                    ? formatCurrency(estimatedTotal, counsellor?.currency || 'INR')
+                    : 'Confirmed by server at checkout'}
                 </span>
               </div>
             </div>
@@ -773,7 +742,7 @@ function NewBookingForm() {
           <div className="flex gap-3 pt-1">
             <Button variant="secondary" fullWidth onClick={() => setStep('preferences')}>Back</Button>
             <Button fullWidth size="lg" loading={loading} onClick={handleBook}>
-              <CreditCard className="w-4 h-4" /> {promoPreviewApplied ? 'Confirm Free Session' : 'Confirm & Pay'}
+              <CreditCard className="w-4 h-4" /> Confirm &amp; Pay
             </Button>
           </div>
         </div>

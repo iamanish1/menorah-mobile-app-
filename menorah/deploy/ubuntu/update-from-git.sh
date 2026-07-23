@@ -89,6 +89,12 @@ require_min_length() {
 
 require_min_length DATA_ENCRYPTION_KEY 32
 require_min_length AUDIT_LOG_SIGNING_KEY 32
+BOOKING_CATALOG_LOWER="${BOOKING_SERVICE_CATALOG_JSON:-}"
+BOOKING_CATALOG_LOWER="${BOOKING_CATALOG_LOWER,,}"
+if [[ -z "${BOOKING_SERVICE_CATALOG_JSON:-}" || "${BOOKING_CATALOG_LOWER}" == replace* ]]; then
+  echo "BOOKING_SERVICE_CATALOG_JSON must contain the owner-approved server pricing catalog." >&2
+  exit 1
+fi
 if [[ "${DATA_ENCRYPTION_KEY}" == "${AUDIT_LOG_SIGNING_KEY}" ]]; then
   echo "DATA_ENCRYPTION_KEY and AUDIT_LOG_SIGNING_KEY must be distinct." >&2
   exit 1

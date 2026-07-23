@@ -484,7 +484,6 @@ export default function BookingReview({ navigation, route }: any) {
                   sessionType: directSessionType || 'video',
                   sessionDuration: displayDuration,
                   scheduledAt,
-                  amount: displayAmount,
                 });
 
                 if (bookingResponse.success && bookingResponse.data?.booking?.id) {
@@ -637,7 +636,7 @@ export default function BookingReview({ navigation, route }: any) {
                 sessionType: 'video', // Default to video session
                 sessionDuration: category.duration,
                 scheduledAt: tomorrow.toISOString(),
-                amount: price,
+                serviceCode: categoryId,
                 preferences: {
                   gender: gender,
                   sessionType: categoryId,

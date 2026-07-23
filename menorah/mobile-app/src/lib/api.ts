@@ -598,7 +598,7 @@ class ApiClient {
     sessionType: 'video' | 'audio' | 'chat';
     sessionDuration: number;
     scheduledAt: string;
-    amount?: number;
+    serviceCode?: string;
     preferences?: {
       gender?: string;
       sessionType?: string;
@@ -608,7 +608,6 @@ class ApiClient {
     concerns?: string;
     goals?: string[];
     emergencyContact?: any;
-    promoCode?: string;
   }): Promise<ApiResponse<{ booking: Booking }>> {
     return this.request({
       method: 'POST',

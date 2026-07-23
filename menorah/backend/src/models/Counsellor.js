@@ -64,6 +64,7 @@ const counsellorSchema = new mongoose.Schema({
   },
   currency: {
     type: String,
+    enum: ['INR'],
     default: 'INR'
   },
 

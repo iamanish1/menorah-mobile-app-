@@ -76,9 +76,45 @@ const bookingSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  amountMinor: {
+    type: Number,
+    min: 0,
+    validate: {
+      validator: Number.isSafeInteger,
+      message: 'Amount in minor units must be a safe integer'
+    }
+  },
   currency: {
     type: String,
+    enum: ['INR'],
     default: 'INR'
+  },
+  pricing: {
+    source: {
+      type: String,
+      enum: ['counsellor_rate', 'service_catalog']
+    },
+    serviceCode: {
+      type: String,
+      default: null
+    },
+    listAmount: {
+      type: Number,
+      min: 0
+    },
+    listAmountMinor: {
+      type: Number,
+      min: 0,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: 'List amount in minor units must be a safe integer'
+      }
+    },
+    currency: {
+      type: String,
+      enum: ['INR']
+    },
+    resolvedAt: Date
   },
   paymentStatus: {
     type: String,

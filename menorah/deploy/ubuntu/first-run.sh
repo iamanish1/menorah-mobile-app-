@@ -71,6 +71,7 @@ required=(
   REDIS_URL
   RESEND_API_KEY
   EMAIL_FROM
+  BOOKING_SERVICE_CATALOG_JSON
 )
 
 for key in "${required[@]}"; do

@@ -86,7 +86,7 @@ export default function SessionReview({ navigation, route }: any) {
         sessionType: 'video',
         sessionDuration: duration,
         scheduledAt: tomorrow.toISOString(),
-        amount: price,
+        serviceCode: sessionType,
         preferences: { gender, sessionType, categoryId: sessionType },
       });
 

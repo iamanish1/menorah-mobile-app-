@@ -246,8 +246,7 @@ class ApiClient {
     sessionType: string;
     sessionDuration: number;
     scheduledAt?: string;
-    amount?: number;
-    promoCode?: string;
+    serviceCode?: string;
     preferences?: { gender?: string; sessionType?: string };
     symptoms?: string[];
     concerns?: string;

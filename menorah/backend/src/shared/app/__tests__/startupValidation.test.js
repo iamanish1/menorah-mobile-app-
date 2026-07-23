@@ -23,6 +23,13 @@ describe('startup validation', () => {
       MAX_PAYOUT_AMOUNT_PAISE: '5000000',
       KYC_CONSENT_VERSION: FACE_CHECK_CONSENT_VERSION,
       KYC_RETENTION_DAYS: String(FACE_CHECK_RETENTION_DAYS),
+      BOOKING_SERVICE_CATALOG_JSON: JSON.stringify({
+        test_service: {
+          durationMinutes: 60,
+          amountMinor: 12345,
+          currency: 'INR',
+        },
+      }),
       RAZORPAY_KEY_ID: 'razorpay-key',
       RAZORPAY_KEY_SECRET: 'razorpay-secret',
       RAZORPAY_WEBHOOK_SECRET: 'razorpay-webhook',
@@ -60,6 +67,24 @@ describe('startup validation', () => {
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' }))
       .toThrow(/MAX_PAYOUT_AMOUNT_PAISE.*KYC_RETENTION_DAYS.*KYC_CONSENT_VERSION/);
+  });
+
+  test('requires an explicit server-side booking catalog in production', () => {
+    delete process.env.BOOKING_SERVICE_CATALOG_JSON;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/BOOKING_SERVICE_CATALOG_JSON must contain an explicit JSON service catalog/);
+  });
+
+  test.each([
+    'REPLACE_WITH_APPROVED_SERVER_PRICING_JSON',
+    '{"test_service":{"durationMinutes":60,"amountMinor":0,"currency":"INR"}}',
+    '{"test_service":{"durationMinutes":60,"amountMinor":12345,"currency":"USD"}}',
+  ])('rejects malformed or unsafe booking catalog configuration (%s)', (catalog) => {
+    process.env.BOOKING_SERVICE_CATALOG_JSON = catalog;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/BOOKING_SERVICE_CATALOG_JSON|amountMinor|currency must be INR/);
   });
 
   test('rejects a payout limit above the approved INR 50,000 cap', () => {

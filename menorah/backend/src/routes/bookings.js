@@ -19,12 +19,26 @@ const {
   providerDisplayName,
   resolveCallPolicy
 } = require('../services/callPolicyService');
+const {
+  BookingPricingError,
+  assertClientDoesNotControlPricing,
+  parseBookingServiceCatalog,
+  resolveBookingPrice,
+} = require('../services/bookingPricing');
 
 const router = express.Router();
-const FREE_CONSULTATION_PROMO_CODE = 'MENORAHFREECALL';
 const SLOT_TAKEN_MESSAGE = 'This time slot was just booked by someone else. Please choose another available slot.';
 
-const normalizePromoCode = (value) => String(value || '').trim().toUpperCase();
+const SERVER_PRICING_FAILURE_CODES = new Set([
+  'COUNSELLOR_PRICING_REQUIRED',
+  'INVALID_SERVER_PRICE',
+  'INVALID_SERVICE_CATALOG',
+  'SERVICE_CATALOG_REQUIRED',
+  'UNSUPPORTED_CURRENCY',
+]);
+
+const bookingPricingErrorStatus = (error) =>
+  SERVER_PRICING_FAILURE_CODES.has(error.code) ? 503 : 400;
 const formatVideoCall = (videoCall = {}, { includeHostUrl = false } = {}) => {
   const payload = {
     provider: videoCall.provider,
@@ -72,8 +86,7 @@ router.post('/', [
   body('sessionType').isIn(['video', 'audio', 'chat']).withMessage('Invalid session type'),
   body('sessionDuration').isInt({ min: 15, max: 180 }).withMessage('Session duration must be between 15 and 180 minutes'),
   body('scheduledAt').isISO8601().withMessage('Invalid scheduled date'),
-  body('amount').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Invalid amount'),
-  body('promoCode').optional({ nullable: true }).isString().trim().isLength({ max: 64 }).withMessage('Invalid promo code'),
+  body('serviceCode').optional({ nullable: true }).isString().isLength({ min: 1, max: 64 }).withMessage('Invalid service code'),
   body('preferences').optional({ nullable: true }).isObject(),
   body('symptoms').optional({ nullable: true }).isArray(),
   body('concerns').optional({ nullable: true }).isString(),
@@ -90,23 +103,23 @@ router.post('/', [
       });
     }
 
+    assertClientDoesNotControlPricing(req.body);
+
     const {
       counsellorId,
       sessionType,
       sessionDuration,
       scheduledAt,
-      amount: providedAmount,
+      serviceCode,
       preferences,
       symptoms,
       concerns,
       goals,
-      emergencyContact,
-      promoCode
+      emergencyContact
     } = req.body;
 
     let counsellor = null;
-    let amount = 0;
-    let currency = 'INR';
+    let priceQuote;
 
     // If counsellorId is provided, validate and get counsellor details
     if (counsellorId) {
@@ -183,27 +196,15 @@ router.post('/', [
         });
       }
 
-      // Calculate amount from counsellor's rate
-      amount = (counsellor.hourlyRate / 60) * sessionDuration;
-      currency = counsellor.currency;
+      priceQuote = resolveBookingPrice({
+        clientInput: req.body,
+        sessionDuration,
+        counsellor: {
+          hourlyRate: counsellor.hourlyRate,
+          currency: counsellor.currency,
+        },
+      });
     } else {
-      // No counsellor provided - use provided amount or default calculation
-      if (providedAmount) {
-        // Validate amount is within sane bounds — prevents ₹0 or absurdly large bookings
-        const MIN_AMOUNT = 100;    // ₹100 minimum
-        const MAX_AMOUNT = 500000; // ₹5,00,000 maximum per session
-        if (providedAmount < MIN_AMOUNT || providedAmount > MAX_AMOUNT) {
-          return res.status(400).json({
-            success: false,
-            message: `Amount must be between ₹${MIN_AMOUNT} and ₹${MAX_AMOUNT}`,
-          });
-        }
-        amount = providedAmount;
-      } else {
-        // Default rate calculation: ₹1000 per hour
-        amount = (1000 / 60) * sessionDuration;
-      }
-      
       // Check if scheduled time is in the future
       const scheduledTime = new Date(scheduledAt);
       if (scheduledTime <= new Date()) {
@@ -212,6 +213,16 @@ router.post('/', [
           message: 'Scheduled time must be in the future'
         });
       }
+
+      const serviceCatalog = parseBookingServiceCatalog(
+        process.env.BOOKING_SERVICE_CATALOG_JSON
+      );
+      priceQuote = resolveBookingPrice({
+        clientInput: req.body,
+        sessionDuration,
+        serviceCode,
+        serviceCatalog,
+      });
     }
 
     // Check if user has active subscription
@@ -219,50 +230,33 @@ router.post('/', [
     let isSubscriptionBooking = false;
     let paymentStatus = 'pending';
     let paymentMethod = 'razorpay';
-    let appliedPromo = null;
-    
+    let amount = priceQuote.amount;
+    let amountMinor = priceQuote.amountMinor;
+
     if (user && user.subscription) {
       const now = new Date();
+      const startDate = user.subscription.startDate ? new Date(user.subscription.startDate) : null;
       const endDate = user.subscription.endDate ? new Date(user.subscription.endDate) : null;
       const subscriptionActive = user.subscription.isActive === true;
+      const subscriptionPlanEligible = user.subscription.plan === 'premium';
+      const subscriptionTypeEligible = ['weekly', 'monthly', 'yearly'].includes(
+        user.subscription.subscriptionType
+      );
+      const subscriptionStarted = startDate && startDate <= now;
       const subscriptionNotExpired = endDate && endDate > now;
-      if (subscriptionActive && subscriptionNotExpired) {
+      if (
+        subscriptionActive
+        && subscriptionPlanEligible
+        && subscriptionTypeEligible
+        && subscriptionStarted
+        && subscriptionNotExpired
+      ) {
         isSubscriptionBooking = true;
         paymentStatus = 'paid';
         paymentMethod = 'subscription';
         amount = 0;
+        amountMinor = 0;
       }
-    }
-
-    const normalizedPromoCode = normalizePromoCode(promoCode);
-    if (!isSubscriptionBooking && normalizedPromoCode) {
-      if (normalizedPromoCode !== FREE_CONSULTATION_PROMO_CODE) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid promo code'
-        });
-      }
-
-      const previousPromoBooking = await Booking.exists({
-        user: req.user._id,
-        'promo.code': FREE_CONSULTATION_PROMO_CODE
-      });
-
-      if (previousPromoBooking) {
-        return res.status(400).json({
-          success: false,
-          message: 'This free consultation promo has already been used on your account.'
-        });
-      }
-
-      appliedPromo = {
-        code: FREE_CONSULTATION_PROMO_CODE,
-        appliedAt: new Date(),
-        discountAmount: amount
-      };
-      amount = 0;
-      paymentStatus = 'paid';
-      paymentMethod = 'promo';
     }
 
     // Create booking
@@ -274,13 +268,21 @@ router.post('/', [
       sessionDuration,
       scheduledAt: scheduledTime,
       amount,
-      currency: currency,
+      amountMinor,
+      currency: priceQuote.currency,
+      pricing: {
+        source: priceQuote.source,
+        serviceCode: priceQuote.serviceCode,
+        listAmount: priceQuote.amount,
+        listAmountMinor: priceQuote.amountMinor,
+        currency: priceQuote.currency,
+        resolvedAt: new Date(),
+      },
       paymentMethod: paymentMethod,
       paymentStatus: paymentStatus,
-      status: isSubscriptionBooking || appliedPromo ? 'confirmed' : 'pending',
+      status: isSubscriptionBooking ? 'confirmed' : 'pending',
       holdExpiresAt: paymentStatus === 'pending' ? getPendingHoldExpiresAt() : undefined,
       isSubscriptionBooking: isSubscriptionBooking,
-      promo: appliedPromo || undefined,
       preferences: preferences || {},
       symptoms,
       concerns,
@@ -320,7 +322,7 @@ router.post('/', [
 
     // NOTE: counsellor socket notifications are sent only after payment is confirmed
     // (see payments.js verify-razorpay handler)
-    if (appliedPromo && !booking.counsellor && req.app.get('io')) {
+    if (paymentStatus === 'paid' && !booking.counsellor && req.app.get('io')) {
       const io = req.app.get('io');
       const availableCounsellors = await Counsellor.find({ isActive: true, isAvailable: true }).select('_id').lean();
       const notification = {
@@ -370,17 +372,22 @@ router.post('/', [
           paymentStatus: booking.paymentStatus,
           paymentMethod: booking.paymentMethod,
           isSubscriptionBooking: booking.isSubscriptionBooking || false,
-          promo: booking.promo?.code ? {
-            code: booking.promo.code,
-            discountAmount: booking.promo.discountAmount || 0
-          } : undefined
+          pricingSource: booking.pricing?.source
         }
       }
     });
 
   } catch (error) {
+    if (error instanceof BookingPricingError) {
+      return res.status(bookingPricingErrorStatus(error)).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
+
     console.error('Create booking error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Internal server error'
     });
