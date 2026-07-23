@@ -3,11 +3,12 @@ const crypto = require('crypto');
 const { body, param, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const multer = require('multer');
+const sharp = require('sharp');
 const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
 const AccountDeletionChallenge = require('../models/AccountDeletionChallenge');
 const { auth } = require('../middleware/auth');
-const { uploadBuffer } = require('../utils/cloudinary');
+const { storeMediaBuffer } = require('../services/mediaStorage');
 const { clearMappedSessionCookie } = require('../config/webSessions');
 const { revokeAllSessions } = require('../utils/sessionLifecycle');
 const {
@@ -192,13 +193,25 @@ router.put('/profile', auth, upload.single('profileImage'), [
 
     if (req.file?.buffer) {
       try {
-        const uploadResult = await uploadBuffer(req.file.buffer, {
-          folder: 'menorah/profile-images',
-          resource_type: 'image',
-          public_id: `user_${user._id}_${Date.now()}`,
+        const safeProfileImage = await sharp(req.file.buffer, {
+          failOn: 'warning',
+          limitInputPixels: 16_000_000,
+        })
+          .rotate()
+          .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 86, mozjpeg: true })
+          .toBuffer();
+        const uploadResult = await storeMediaBuffer(safeProfileImage, {
+          service: 'user-profile',
+          category: 'images',
+          extension: '.jpg',
+          contentType: 'image/jpeg',
+          cloudinaryFolder: 'menorah/profile-images',
+          cloudinaryResourceType: 'image',
         });
 
-        user.profileImage = uploadResult.secure_url;
+        user.profileImage = uploadResult.url;
+        user.profileImageStorage = uploadResult.metadata;
       } catch (uploadError) {
         console.error('Profile image upload error:', uploadError);
         return res.status(500).json({

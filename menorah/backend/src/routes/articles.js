@@ -397,6 +397,12 @@ router.patch('/admin/:id', adminAuth, [
     if (updates.contentBlocks) {
       updates.wordCount = countArticleWords({ contentBlocks: updates.contentBlocks });
     }
+    if (Object.prototype.hasOwnProperty.call(updates, 'coverImageUrl')) {
+      updates.coverImageStorage = null;
+      if (!Object.prototype.hasOwnProperty.call(updates, 'coverImagePublicId')) {
+        updates.coverImagePublicId = null;
+      }
+    }
 
     updateReviewMetadata(updates, req.user._id);
 

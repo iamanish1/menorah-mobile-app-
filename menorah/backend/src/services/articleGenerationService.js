@@ -193,6 +193,7 @@ const createReviewArticle = async ({ input, run }) => {
     tags: normalizeTags(articleDraft.tags),
     coverImageUrl: image.url,
     coverImagePublicId: image.publicId,
+    coverImageStorage: image.metadata,
     canonicalUrl: buildCanonicalUrl(slug),
     status: 'review',
     generationRun: run?._id || null,

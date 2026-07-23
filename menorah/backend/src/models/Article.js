@@ -31,6 +31,10 @@ const contentBlockSchema = new mongoose.Schema({
   caption: {
     type: String,
     default: ''
+  },
+  storage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
   }
 }, { _id: false });
 
@@ -69,6 +73,10 @@ const articleSchema = new mongoose.Schema({
   },
   coverImagePublicId: {
     type: String,
+    default: null
+  },
+  coverImageStorage: {
+    type: mongoose.Schema.Types.Mixed,
     default: null
   },
   imagePrompt: {

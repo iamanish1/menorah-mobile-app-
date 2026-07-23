@@ -66,6 +66,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  profileImageStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   address: {
     street: String,
     city: String,

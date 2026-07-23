@@ -1,5 +1,6 @@
 const axios = require('axios');
-const { uploadBuffer } = require('../utils/cloudinary');
+const sharp = require('sharp');
+const { storeMediaBuffer } = require('./mediaStorage');
 
 const PLACEHOLDER_IMAGE_URL = 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?q=80&w=1600&auto=format&fit=crop';
 
@@ -34,16 +35,6 @@ const buildImagePrompt = ({ article = {}, input = {} } = {}) => {
     'Make it suitable for a men\'s mental health publication cover.',
     'No readable text inside the image.'
   ]).join('\n');
-};
-
-const buildCloudinaryPublicId = (article = {}) => {
-  const title = String(article.slug || article.title || 'article-cover')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-
-  return `${title || 'article-cover'}-${Date.now()}`;
 };
 
 const generateOpenAiImage = async (prompt, options = {}) => {
@@ -89,26 +80,29 @@ const generateOpenAiImage = async (prompt, options = {}) => {
   return Buffer.from(image.b64_json, 'base64');
 };
 
-const uploadArticleCover = async ({ buffer, article }) => {
-  if (isProduction() && (
-    !getUsableEnv('CLOUDINARY_CLOUD_NAME') ||
-    !getUsableEnv('CLOUDINARY_API_KEY') ||
-    !getUsableEnv('CLOUDINARY_API_SECRET')
-  )) {
-    throw new Error('Cloudinary configuration is required for production cover image uploads');
-  }
-
+const uploadArticleCover = async ({ buffer }) => {
   const folder = process.env.CLOUDINARY_ARTICLE_FOLDER || 'menorah/articles';
-  const result = await uploadBuffer(buffer, {
-    folder,
-    public_id: buildCloudinaryPublicId(article),
-    resource_type: 'image',
-    overwrite: false
+  const safeCover = await sharp(buffer, {
+    failOn: 'warning',
+    limitInputPixels: 24_000_000,
+  })
+    .rotate()
+    .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toBuffer();
+  const result = await storeMediaBuffer(safeCover, {
+    service: 'articles',
+    category: 'cover-images',
+    extension: '.jpg',
+    contentType: 'image/jpeg',
+    cloudinaryFolder: folder,
+    cloudinaryResourceType: 'image',
   });
 
   return {
-    url: result.secure_url,
-    publicId: result.public_id
+    url: result.url,
+    publicId: result.metadata.publicId,
+    metadata: result.metadata,
   };
 };
 
@@ -119,7 +113,8 @@ const resolveCoverImage = async ({ coverImageUrl, coverImagePublicId, article, .
   if (providedUrl) {
     return {
       url: providedUrl,
-      publicId: providedPublicId || null
+      publicId: providedPublicId || null,
+      metadata: null,
     };
   }
 
@@ -130,7 +125,8 @@ const resolveCoverImage = async ({ coverImageUrl, coverImagePublicId, article, .
     if (!buffer) {
       return {
         url: PLACEHOLDER_IMAGE_URL,
-        publicId: null
+        publicId: null,
+        metadata: null,
       };
     }
 
@@ -142,7 +138,8 @@ const resolveCoverImage = async ({ coverImageUrl, coverImagePublicId, article, .
     console.warn('AI cover image generation failed, using placeholder:', error.response?.data || error.message);
     return {
       url: PLACEHOLDER_IMAGE_URL,
-      publicId: null
+      publicId: null,
+      metadata: null,
     };
   }
 };

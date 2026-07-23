@@ -1,8 +1,5 @@
 const express = require('express');
 const { param, query, body, validationResult } = require('express-validator');
-const fs = require('fs/promises');
-const path = require('path');
-const crypto = require('crypto');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const sharp = require('sharp');
@@ -16,7 +13,7 @@ const { counsellorAuth } = require('../middleware/auth');
 const {
   invalidateCounsellorDiscoveryCache,
 } = require('../services/counsellorDiscoveryCache');
-const { uploadBuffer, deleteResource } = require('../utils/cloudinary');
+const { storeMediaBuffer } = require('../services/mediaStorage');
 const { encryptBankAccountNumber } = require('../utils/bankAccountEncryption');
 const { isSessionWithinWorkingHours } = require('../utils/bookingAvailability');
 const { payoutInFlightStatuses } = require('../services/payoutPolicy');
@@ -199,36 +196,6 @@ const assignedBookingAccessDenied = (res) => res.status(403).json({
   code: 'COUNSELLOR_ASSIGNED_ACCESS_DENIED',
   message: 'Current professional approval is required to access assigned bookings.',
 });
-
-const stripApiPath = (rawUrl) => {
-  if (!rawUrl) return null;
-  try {
-    const parsed = new URL(rawUrl);
-    parsed.pathname = parsed.pathname.replace(/\/api\/?$/, '') || '/';
-    parsed.search = '';
-    parsed.hash = '';
-    return parsed.toString().replace(/\/$/, '');
-  } catch {
-    return null;
-  }
-};
-
-const getConfiguredPublicBaseUrl = (req) => {
-  const configured =
-    stripApiPath(process.env.MEDIA_PUBLIC_BASE_URL) ||
-    stripApiPath(process.env.FRONTEND_API_WEB_URL) ||
-    stripApiPath(process.env.API_PUBLIC_URL) ||
-    stripApiPath(process.env.NEXT_PUBLIC_API_URL);
-
-  if (configured) return configured;
-  if (process.env.API_WEB_DOMAIN) return `https://${process.env.API_WEB_DOMAIN}`;
-  return `${req.protocol}://${req.get('host')}`;
-};
-
-const isWithinPath = (parent, candidate) => {
-  const relative = path.relative(parent, candidate);
-  return relative && !relative.startsWith('..') && !path.isAbsolute(relative);
-};
 
 const detectAudioKind = (buffer) => {
   if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
@@ -469,81 +436,26 @@ const validateVoiceIntro = async (file) => {
   }
 };
 
-const storeCounsellorMediaFile = async (req, file, { kind, folder, resourceType, publicIdPrefix }) => {
-  const forceLocal = process.env.COUNSELLOR_MEDIA_STORAGE === 'local';
-  const publicId = `${publicIdPrefix}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-
-  if (!forceLocal) {
-    try {
-      const result = await uploadBuffer(file.buffer, {
-        folder,
-        resource_type: resourceType,
-        public_id: publicId,
-      });
-      return {
-        url: result.secure_url,
-        publicId: result.public_id || `${folder}/${publicId}`,
-        localPath: null,
-      };
-    } catch (error) {
-      const mustUseCloudinary = process.env.NODE_ENV === 'production' && process.env.SERVICE_RUNTIME !== 'home';
-      if (mustUseCloudinary) throw error;
-      console.warn(`Falling back to local ${kind} storage:`, error.message);
-    }
-  }
-
-  const uploadRoot = path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads');
-  const relativeDir = path.join('counsellor-media', kind);
-  const targetDir = path.join(uploadRoot, relativeDir);
-  await fs.mkdir(targetDir, { recursive: true });
-  const filename = `${publicId}${file.safeExtension}`;
-  const fullPath = path.join(targetDir, filename);
-  await fs.writeFile(fullPath, file.buffer, { mode: 0o600 });
-  const publicRelativePath = `${relativeDir.replace(/\\/g, '/')}/${filename}`;
-  return {
-    url: `${getConfiguredPublicBaseUrl(req)}/uploads/${publicRelativePath}`,
-    publicId: null,
-    localPath: publicRelativePath,
-  };
-};
-
-const deleteLocalMedia = async (storedPathOrUrl) => {
-  if (!storedPathOrUrl) return;
-
-  const uploadRoot = path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads');
-  let relativePath = storedPathOrUrl;
-
-  try {
-    const parsed = new URL(storedPathOrUrl);
-    const marker = '/uploads/';
-    const markerIndex = parsed.pathname.indexOf(marker);
-    if (markerIndex === -1) return;
-    relativePath = decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
-  } catch {
-    // storedPathOrUrl may already be a relative upload path.
-  }
-
-  if (!relativePath.startsWith('counsellor-media/')) return;
-
-  const fullPath = path.resolve(uploadRoot, relativePath);
-  if (!isWithinPath(uploadRoot, fullPath)) return;
-
-  await fs.unlink(fullPath).catch((error) => {
-    if (error.code !== 'ENOENT') throw error;
+const storeCounsellorMediaFile = async (file, {
+  kind,
+  folder,
+  resourceType,
+}) => {
+  const stored = await storeMediaBuffer(file.buffer, {
+    service: 'counsellor-profile',
+    category: kind,
+    extension: file.safeExtension,
+    contentType: file.mimetype,
+    cloudinaryFolder: folder,
+    cloudinaryResourceType: resourceType,
   });
-};
 
-const deleteStoredCounsellorMedia = async ({ url, publicId, localPath, resourceType }) => {
-  try {
-    if (publicId) {
-      await deleteResource(publicId, { resource_type: resourceType });
-      return;
-    }
-
-    await deleteLocalMedia(localPath || url);
-  } catch (error) {
-    console.warn('Old counsellor media cleanup failed:', error.message);
-  }
+  return {
+    url: stored.url,
+    publicId: stored.metadata.publicId,
+    localPath: stored.metadata.localPath,
+    metadata: stored.metadata,
+  };
 };
 
 const uploadProfileMedia = (req, res, next) => {
@@ -566,9 +478,6 @@ const uploadProfileMedia = (req, res, next) => {
 // @desc    Upload mandatory counsellor selfie and voice intro
 // @access  Private (Counsellor)
 router.put('/me/profile-media', profileMediaUploadLimiter, counsellorAuth, uploadProfileMedia, async (req, res) => {
-  let uploadedProfileImage = null;
-  let uploadedVoiceIntro = null;
-
   try {
     const counsellor = await getCounsellorFromUser(req.user._id);
     if (!counsellor) {
@@ -588,48 +497,33 @@ router.put('/me/profile-media', profileMediaUploadLimiter, counsellorAuth, uploa
       });
     }
 
-    const previousProfileImage = {
-      url: counsellor.profileImage,
-      publicId: counsellor.profileImagePublicId,
-      localPath: counsellor.profileImageLocalPath,
-      resourceType: 'image',
-    };
-    const previousVoiceIntro = {
-      url: counsellor.voiceIntroUrl,
-      publicId: counsellor.voiceIntroPublicId,
-      localPath: counsellor.voiceIntroLocalPath,
-      resourceType: 'video',
-    };
-
     let nextProfileImage = null;
     let nextVoiceIntro = null;
 
     if (profileImage) {
       const safeProfileImage = await sanitizeProfileImage(profileImage);
-      nextProfileImage = await storeCounsellorMediaFile(req, safeProfileImage, {
+      nextProfileImage = await storeCounsellorMediaFile(safeProfileImage, {
         kind: 'selfies',
         folder: 'menorah/counsellor-selfies',
         resourceType: 'image',
-        publicIdPrefix: `counsellor_${counsellor._id}_selfie`,
       });
-      uploadedProfileImage = { ...nextProfileImage, resourceType: 'image' };
       counsellor.profileImage = nextProfileImage.url;
       counsellor.profileImagePublicId = nextProfileImage.publicId;
       counsellor.profileImageLocalPath = nextProfileImage.localPath;
+      counsellor.profileImageStorage = nextProfileImage.metadata;
     }
 
     if (voiceIntro) {
       const safeVoiceIntro = await validateVoiceIntro(voiceIntro);
-      nextVoiceIntro = await storeCounsellorMediaFile(req, safeVoiceIntro, {
+      nextVoiceIntro = await storeCounsellorMediaFile(safeVoiceIntro, {
         kind: 'voice-intros',
         folder: 'menorah/counsellor-voice-intros',
         resourceType: 'video',
-        publicIdPrefix: `counsellor_${counsellor._id}_voice`,
       });
-      uploadedVoiceIntro = { ...nextVoiceIntro, resourceType: 'video' };
       counsellor.voiceIntroUrl = nextVoiceIntro.url;
       counsellor.voiceIntroPublicId = nextVoiceIntro.publicId;
       counsellor.voiceIntroLocalPath = nextVoiceIntro.localPath;
+      counsellor.voiceIntroStorage = nextVoiceIntro.metadata;
       counsellor.voiceIntroDurationSeconds = safeVoiceIntro.durationSeconds;
     }
 
@@ -638,16 +532,13 @@ router.put('/me/profile-media', profileMediaUploadLimiter, counsellorAuth, uploa
     }
 
     await counsellor.save();
-    uploadedProfileImage = null;
-    uploadedVoiceIntro = null;
     if (nextProfileImage) {
-      await User.findByIdAndUpdate(req.user._id, { profileImage: nextProfileImage.url }).catch((error) => {
+      await User.findByIdAndUpdate(req.user._id, {
+        profileImage: nextProfileImage.url,
+        profileImageStorage: nextProfileImage.metadata,
+      }).catch((error) => {
         console.warn('Failed to mirror counsellor profile image to user record:', error.message);
       });
-      await deleteStoredCounsellorMedia(previousProfileImage);
-    }
-    if (nextVoiceIntro) {
-      await deleteStoredCounsellorMedia(previousVoiceIntro);
     }
     await invalidateCounsellorDiscoveryCache();
 
@@ -667,9 +558,6 @@ router.put('/me/profile-media', profileMediaUploadLimiter, counsellorAuth, uploa
       }
     });
   } catch (error) {
-    if (uploadedProfileImage) await deleteStoredCounsellorMedia(uploadedProfileImage);
-    if (uploadedVoiceIntro) await deleteStoredCounsellorMedia(uploadedVoiceIntro);
-
     if (error.statusCode) {
       return res.status(error.statusCode).json({
         success: false,

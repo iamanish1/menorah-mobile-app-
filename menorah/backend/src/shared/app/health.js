@@ -103,11 +103,12 @@ const checkRedisDeep = async () => {
 
 const checkUploadStorage = async () => {
   const uploadPath = getUploadPath();
-  const filename = `.health-${process.pid}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.tmp`;
-  const filePath = path.join(uploadPath, filename);
+  const probePath = path.join(uploadPath, 'operational-health');
+  const filename = `probe-${process.pid}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.tmp`;
+  const filePath = path.join(probePath, filename);
   const contents = 'ok';
 
-  await fs.mkdir(uploadPath, { recursive: true });
+  await fs.mkdir(probePath, { recursive: true });
   await fs.writeFile(filePath, contents, 'utf8');
   const readBack = await fs.readFile(filePath, 'utf8');
   await fs.unlink(filePath);

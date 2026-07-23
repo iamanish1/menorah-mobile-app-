@@ -348,6 +348,10 @@ const counsellorSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  profileImageStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   voiceIntroUrl: {
     type: String,
     default: null
@@ -358,6 +362,10 @@ const counsellorSchema = new mongoose.Schema({
   },
   voiceIntroLocalPath: {
     type: String,
+    default: null
+  },
+  voiceIntroStorage: {
+    type: mongoose.Schema.Types.Mixed,
     default: null
   },
   voiceIntroDurationSeconds: {
@@ -372,6 +380,10 @@ const counsellorSchema = new mongoose.Schema({
   gallery: [{
     url: String,
     caption: String,
+    storage: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
     type: {
       type: String,
       enum: ['image', 'video']
@@ -397,6 +409,10 @@ const counsellorSchema = new mongoose.Schema({
       enum: ['license', 'certification', 'education', 'identity']
     },
     url: String,
+    storage: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
     verified: { type: Boolean, default: false },
     verifiedAt: Date,
     verifiedBy: {

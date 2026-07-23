@@ -119,9 +119,21 @@ const socialPostSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  finalImageStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   thumbnailUrl: {
     type: String,
     default: ''
+  },
+  thumbnailStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  sourceImageStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
   },
   aspectRatio: {
     type: String,
