@@ -68,6 +68,7 @@ function validateProject(root = projectRoot) {
   const app = readJson(root, 'app.json').expo;
   const eas = readJson(root, 'eas.json');
   const appConfig = read(root, 'app.config.ts');
+  const envSource = read(root, 'src/lib/env.ts');
   const androidGradle = read(root, 'android/app/build.gradle');
   const androidManifest = read(root, 'android/app/src/main/AndroidManifest.xml');
   const androidStrings = read(root, 'android/app/src/main/res/values/strings.xml');
@@ -109,6 +110,7 @@ function validateProject(root = projectRoot) {
   const socialAuthButtons = read(root, 'src/components/auth/SocialAuthButtons.tsx');
   const changePassword = read(root, 'src/screens/profile/ChangePassword.tsx');
   const safeDiagnostics = read(root, 'src/lib/safeDiagnostics.ts');
+  const mobileStoreActions = read(root, 'docs/mobile-store-external-actions.md');
   const wrapperPkg = readJson(root, 'mobile-app/package.json');
   const version = pkg.version;
   const buildNumber = String(app.ios.buildNumber);
@@ -176,25 +178,43 @@ function validateProject(root = projectRoot) {
     eas.cli && eas.cli.appVersionSource === 'local',
     'EAS must use the repository-aligned local version metadata'
   );
+  for (const profileName of [
+    'development-ios',
+    'development-android',
+    'preview-ios',
+    'preview-android',
+    'production-ios',
+    'production-android',
+  ]) {
+    const profileEnv = eas.build?.[profileName]?.env || {};
+    fail(
+      isExpectedHttpsApiUrl(
+        profileEnv.EXPO_PUBLIC_IOS_API_BASE_URL,
+        'api-ios.menorah.me'
+      ) && isExpectedHttpsApiUrl(
+        profileEnv.EXPO_PUBLIC_ANDROID_API_BASE_URL,
+        'api-android.menorah.me'
+      ) && !profileEnv.EXPO_PUBLIC_API_BASE_URL,
+      `${profileName} must provide both approved platform API URLs without the ambiguous legacy variable`
+    );
+  }
   fail(
-    isExpectedHttpsApiUrl(
-      eas.build &&
-        eas.build['production-ios'] &&
-        eas.build['production-ios'].env &&
-        eas.build['production-ios'].env.EXPO_PUBLIC_API_BASE_URL,
-      'api-ios.menorah.me'
-    ),
-    'production-ios must provide the approved HTTPS API base URL'
+    envSource.includes("Platform.OS === 'ios'") &&
+      envSource.includes('EXPO_PUBLIC_IOS_API_BASE_URL') &&
+      envSource.includes('EXPO_PUBLIC_ANDROID_API_BASE_URL') &&
+      envSource.includes('__DEV__\n    ? (process.env.EXPO_PUBLIC_API_BASE_URL?.trim())') &&
+      appConfig.includes('IOS_API_BASE_URL: configuredIosApiBaseUrl') &&
+      appConfig.includes('ANDROID_API_BASE_URL: configuredAndroidApiBaseUrl'),
+    'runtime and baked configuration must select the platform-specific API URL'
   );
   fail(
-    isExpectedHttpsApiUrl(
-      eas.build &&
-        eas.build['production-android'] &&
-        eas.build['production-android'].env &&
-        eas.build['production-android'].env.EXPO_PUBLIC_API_BASE_URL,
-      'api-android.menorah.me'
-    ),
-    'production-android must provide the approved HTTPS API base URL'
+    pkg.scripts.update ===
+      'eas update --channel production --environment production --message' &&
+      pkg.scripts['update:preview'] ===
+      'eas update --channel preview --environment preview --message' &&
+      mobileStoreActions.includes('Build-profile `env` values do not') &&
+      mobileStoreActions.includes('Never run an unqualified `eas update`.'),
+    'OTA scripts must bind channels to explicit EAS environments and retain the external variable check'
   );
 
   fail(app.version === version, 'app.json version must equal package.json version');
@@ -313,13 +333,15 @@ function validateProject(root = projectRoot) {
   for (const permission of [
     'android.permission.READ_EXTERNAL_STORAGE',
     'android.permission.READ_MEDIA_IMAGES',
+    'android.permission.READ_PHONE_STATE',
+    'android.permission.WRITE_EXTERNAL_STORAGE',
   ]) {
     fail(
       (app.android.blockedPermissions || []).includes(permission) &&
         new RegExp(
           `<uses-permission[^>]+android:name="${escapeRegex(permission)}"[^>]+tools:node="remove"`
         ).test(androidManifest),
-      `${permission} must be blocked because screenshot detection is not used`
+      `${permission} must be blocked because the app has no approved direct use for it`
     );
   }
   fail(
@@ -339,6 +361,15 @@ function validateProject(root = projectRoot) {
       androidGradle.includes(' + "/hermesc/%OS-BIN%/hermesc"') &&
       !androidGradle.includes('/sdks/hermesc/'),
     'Android must resolve the Expo SDK 57 hermes-compiler binary'
+  );
+  fail(
+    androidGradle.includes("'true'.equalsIgnoreCase(System.getenv('EAS_BUILD'))") &&
+      androidGradle.includes("file('eas-build.gradle').isFile()") &&
+      androidGradle.includes("rootProject.file('../credentials.json').isFile()") &&
+      androidGradle.includes('gradle.taskGraph.whenReady') &&
+      androidGradle.includes('Release task resolved without a complete readable signing configuration') &&
+      !androidGradle.includes('if (releaseBuildRequested || releaseSigningPartiallyConfigured)'),
+    'Android release signing must accept verified EAS injection and still fail closed after task resolution'
   );
   fail(
     appDelegate.includes('internal import Expo') &&

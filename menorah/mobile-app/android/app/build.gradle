@@ -98,7 +98,10 @@ def releaseBuildRequested = gradle.startParameter.taskNames.any {
 def releaseSigningPartiallyConfigured = releaseSigningValues.values().any {
     it != null && !it.toString().trim().isEmpty()
 }
-if (releaseBuildRequested || releaseSigningPartiallyConfigured) {
+def easBuildSigningInjected = 'true'.equalsIgnoreCase(System.getenv('EAS_BUILD')) &&
+    file('eas-build.gradle').isFile() &&
+    rootProject.file('../credentials.json').isFile()
+if (releaseSigningPartiallyConfigured) {
     def missingReleaseSigningNames = releaseSigningNames.findAll {
         def value = releaseSigningValues[it]
         value == null || value.toString().trim().isEmpty()
@@ -109,6 +112,11 @@ if (releaseBuildRequested || releaseSigningPartiallyConfigured) {
     if (!file(releaseSigningValues['ANDROID_KEYSTORE_FILE']).isFile()) {
         throw new GradleException('ANDROID_KEYSTORE_FILE does not identify a readable file')
     }
+} else if (releaseBuildRequested && !easBuildSigningInjected) {
+    throw new GradleException(
+        'Release signing requires either the complete ANDROID_KEYSTORE_* configuration or '
+        + 'EAS_BUILD=true with injected eas-build.gradle and credentials.json files'
+    )
 }
 def releaseKeystoreFile = releaseSigningValues['ANDROID_KEYSTORE_FILE']
 
@@ -185,6 +193,21 @@ android {
         // Ex: android.packagingOptions.pickFirsts += '**/SCCS/**'
         options.each {
             android.packagingOptions[prop] += it
+        }
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def hasReleaseTask = graph.allTasks.any { task ->
+        task.name.toLowerCase().contains('release')
+    }
+    if (hasReleaseTask) {
+        def signing = android.buildTypes.release.signingConfig
+        if (signing == null || signing.storeFile == null || !signing.storeFile.isFile() ||
+            signing.storePassword == null || signing.storePassword.toString().trim().isEmpty() ||
+            signing.keyAlias == null || signing.keyAlias.toString().trim().isEmpty() ||
+            signing.keyPassword == null || signing.keyPassword.toString().trim().isEmpty()) {
+            throw new GradleException('Release task resolved without a complete readable signing configuration')
         }
     }
 }

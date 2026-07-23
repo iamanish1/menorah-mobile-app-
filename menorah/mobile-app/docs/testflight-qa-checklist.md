@@ -118,14 +118,17 @@ production merely for convenience.
 - [ ] Confirm protected deep links opened while signed out do not render protected screens.
 
 ## Commands
-Only use the platform-specific EAS profiles. The generic `development`, `preview`, and
-`production` profiles are base templates and do not pin the iOS split API URL.
+Only use the platform-specific EAS profiles. The generic base profiles are not release
+profiles. Every binary and OTA environment must supply both platform API URLs so a single
+channel update cannot route one platform to the other platform's API surface.
 
 Start Metro for an installed dev client:
 
 ```bash
 cd ~/menorah/menorah-mobile-app-/menorah/mobile-app
-EXPO_PUBLIC_API_BASE_URL=https://api.menorah.me/api npx expo start -c --dev-client
+EXPO_PUBLIC_IOS_API_BASE_URL=https://api-ios.menorah.me/api \
+EXPO_PUBLIC_ANDROID_API_BASE_URL=https://api-android.menorah.me/api \
+npx expo start -c --dev-client
 ```
 
 Create an iOS TestFlight/preview build:

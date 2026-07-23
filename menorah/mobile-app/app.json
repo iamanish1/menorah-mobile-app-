@@ -20,7 +20,9 @@
     "android": {
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_IMAGES"
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/brand/menorah-logo-no-bg.png",

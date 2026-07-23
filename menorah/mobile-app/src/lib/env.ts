@@ -3,9 +3,21 @@ import { Platform } from 'react-native';
 import { reportEvent } from './safeDiagnostics';
 
 // Priority: process.env (bundled by Metro at OTA-update time) → app config extra (baked into binary)
+const platformApiBaseURL: string | undefined = Platform.OS === 'ios'
+  ? process.env.EXPO_PUBLIC_IOS_API_BASE_URL?.trim()
+    || ((Constants.expoConfig?.extra as any)?.IOS_API_BASE_URL as string | undefined)
+  : Platform.OS === 'android'
+    ? process.env.EXPO_PUBLIC_ANDROID_API_BASE_URL?.trim()
+      || ((Constants.expoConfig?.extra as any)?.ANDROID_API_BASE_URL as string | undefined)
+    : undefined;
+
+// The single-value fallback is development-only compatibility for local Expo tooling.
 const configBaseURL: string | undefined =
-  (process.env.EXPO_PUBLIC_API_BASE_URL?.trim()) ||
-  ((Constants.expoConfig?.extra as any)?.API_BASE_URL as string | undefined);
+  platformApiBaseURL ||
+  (__DEV__
+    ? (process.env.EXPO_PUBLIC_API_BASE_URL?.trim())
+      || ((Constants.expoConfig?.extra as any)?.API_BASE_URL as string | undefined)
+    : undefined);
 
 const configWebBaseURL: string | undefined =
   (process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim()) ||
@@ -31,7 +43,7 @@ const configGoogleIosUrlScheme =
 
 const normalizeBaseURL = (url?: string) => {
   if (!url && !__DEV__) {
-    throw new Error('EXPO_PUBLIC_API_BASE_URL is required for production builds');
+    throw new Error('The platform-specific API base URL is required for production builds');
   }
 
   const fallbackUrl = 'http://localhost:3000/api';

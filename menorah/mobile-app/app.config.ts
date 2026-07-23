@@ -40,6 +40,8 @@ const googleIosUrlSchemeFromClientId = (clientId?: string) => {
 export default ({ config }: ConfigContext): ExpoConfig => {
   const isDev = process.env.NODE_ENV !== 'production';
   const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  const configuredIosApiBaseUrl = process.env.EXPO_PUBLIC_IOS_API_BASE_URL?.trim();
+  const configuredAndroidApiBaseUrl = process.env.EXPO_PUBLIC_ANDROID_API_BASE_URL?.trim();
   const configuredWebBaseUrl =
     process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim() ||
     process.env.PUBLIC_WEB_BASE_URL?.trim();
@@ -129,7 +131,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     android: ({
       blockedPermissions: [
         'android.permission.READ_EXTERNAL_STORAGE',
-        'android.permission.READ_MEDIA_IMAGES'
+        'android.permission.READ_MEDIA_IMAGES',
+        'android.permission.READ_PHONE_STATE',
+        'android.permission.WRITE_EXTERNAL_STORAGE'
       ],
       adaptiveIcon: {
         foregroundImage: './assets/brand/menorah-logo-no-bg.png',
@@ -175,11 +179,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     scheme: 'menorah-health',
     extra: {
       // In Expo Go on a phone, localhost points to the phone itself.
-      // Set EXPO_PUBLIC_API_BASE_URL or EXPO_PUBLIC_LOCAL_IP before starting Expo.
+      // Set EXPO_PUBLIC_API_BASE_URL or EXPO_PUBLIC_LOCAL_IP for local development.
       // All URLs are driven by env vars — no domain is hardcoded in source.
-      // In production, set EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_WEB_BASE_URL,
+      // In production, set both platform API variables and EXPO_PUBLIC_WEB_BASE_URL,
       // EXPO_PUBLIC_CHECKOUT_RETURN_URL, and EXPO_PUBLIC_JITSI_BASE_URL before building. Leaving them unset in
       // production will surface the misconfiguration immediately at startup.
+      IOS_API_BASE_URL: configuredIosApiBaseUrl?.replace(/\/+$/, ''),
+      ANDROID_API_BASE_URL: configuredAndroidApiBaseUrl?.replace(/\/+$/, ''),
       API_BASE_URL: configuredApiBaseUrl
         ? configuredApiBaseUrl.replace(/\/+$/, '')
         : (isDev ? devApiBaseUrl : undefined),

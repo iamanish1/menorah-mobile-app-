@@ -55,6 +55,14 @@ following actions with the exact candidate binary.
 - Keep reset tokens in URL fragments. Do not add them to query strings, access logs,
   analytics, crash reports, or notification payloads.
 - Re-run Android domain verification after publication and allow for Apple CDN propagation.
+- In EAS, configure both the `production` and `preview` environments with the same approved
+  public values used by their binary profiles. At minimum this includes
+  `EXPO_PUBLIC_IOS_API_BASE_URL=https://api-ios.menorah.me/api`,
+  `EXPO_PUBLIC_ANDROID_API_BASE_URL=https://api-android.menorah.me/api`, the public web/return
+  URLs, and the applicable public Google OAuth client IDs. Build-profile `env` values do not
+  populate an OTA update environment.
+- Before publishing an OTA update, compare the EAS environment with the exact candidate binary,
+  then use the repository channel/environment scripts. Never run an unqualified `eas update`.
 
 ## PRIVACY ACTION
 
@@ -74,3 +82,5 @@ following actions with the exact candidate binary.
 - Provide monitored support details and approved public privacy-policy and terms URLs.
 - Resolve the Apple payment classification for each booking/subscription flow before
   submission.
+- Approve who may publish to the EAS `preview` and `production` channels, require a reviewed
+  message and candidate SHA, and retain the EAS update evidence for rollback.
