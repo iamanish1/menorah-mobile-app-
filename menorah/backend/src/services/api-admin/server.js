@@ -1,11 +1,15 @@
 const { startService } = require('../../shared/app/startService');
+const {
+  enforcePrivacyAdminPermissionAuthority,
+} = require('../privacyAdminPermissionAuthority');
 
 const start = () =>
   startService({
     serviceName: 'api-admin',
     routeProfile: 'api-admin',
     defaultPort: 4004,
-    enableSocketsDefault: false
+    enableSocketsDefault: false,
+    afterDatabaseConnect: enforcePrivacyAdminPermissionAuthority
   });
 
 if (require.main === module) {

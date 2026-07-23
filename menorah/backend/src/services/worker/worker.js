@@ -9,6 +9,9 @@ const { startArticleScheduler } = require('../articleScheduler');
 const {
   startCounsellorVerificationExpiryScheduler,
 } = require('../counsellorVerificationExpiryScheduler');
+const {
+  startPrivacyRetentionScheduler,
+} = require('../privacyRetentionScheduler');
 const { startSocialScheduler } = require('../socialStudio/socialScheduler.service');
 require('dotenv').config();
 
@@ -29,6 +32,8 @@ const resolveWorkerJobs = () => {
     articleScheduler: active && schedulerEnabled('ENABLE_ARTICLE_SCHEDULER', process.env.ARTICLE_SCHEDULER_ENABLED === 'true'),
     counsellorVerificationExpiry:
       active && schedulerEnabled('ENABLE_COUNSELLOR_VERIFICATION_EXPIRY_JOB', true),
+    privacyRetention:
+      active && process.env.PRIVACY_RETENTION_EXECUTION_ENABLED === 'true',
     socialScheduler: active && schedulerEnabled('ENABLE_SOCIAL_SCHEDULER', false),
     backupJobs: active && schedulerEnabled('ENABLE_BACKUP_JOBS', false),
     cleanupJobs: active && schedulerEnabled('ENABLE_CLEANUP_JOBS', false),
@@ -50,6 +55,10 @@ const startWorkerJobs = (jobs) => {
 
   if (jobs.counsellorVerificationExpiry) {
     startCounsellorVerificationExpiryScheduler();
+  }
+
+  if (jobs.privacyRetention) {
+    startPrivacyRetentionScheduler();
   }
 
   if (jobs.socialScheduler) {
@@ -112,6 +121,7 @@ const startWorker = async () => {
       'Counsellor verification expiry reconciliation: '
       + `${jobs.counsellorVerificationExpiry ? 'enabled' : 'disabled'}`
     );
+    console.log(`Privacy retention: ${jobs.privacyRetention ? 'enabled' : 'disabled'}`);
     console.log(`Social scheduler: ${jobs.socialScheduler ? 'enabled' : 'disabled'}`);
   });
 

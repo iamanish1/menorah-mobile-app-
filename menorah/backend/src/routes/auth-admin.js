@@ -5,6 +5,9 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { adminAuth } = require('../middleware/auth');
 const { getRedisClient } = require('../config/redis');
+const {
+  resolvePrivacyAdminGrant,
+} = require('../config/privacyAdminPermissions');
 const { sendOTPEmail } = require('../utils/email');
 const { signAdminToken } = require('../utils/authTokens');
 const { revokeAllSessions } = require('../utils/sessionLifecycle');
@@ -92,6 +95,10 @@ const serializeAdmin = (user) => ({
   email: user.email,
   phone: user.phone,
   role: user.role,
+  privacyPermissions: resolvePrivacyAdminGrant({
+    adminId: user._id,
+    env: process.env,
+  }).permissions,
   isEmailVerified: user.isEmailVerified,
   isPhoneVerified: user.isPhoneVerified,
   profileImage: user.profileImage || null,

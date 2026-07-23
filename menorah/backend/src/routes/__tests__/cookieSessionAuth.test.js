@@ -208,6 +208,33 @@ describe('browser cookie session authentication', () => {
     expect(select).toHaveBeenCalledWith('+passwordResetToken +passwordResetExpires');
   });
 
+  test('verified reset establishes password auth for a social-only account', async () => {
+    const user = makeUser({
+      passwordAuthEnabled: false,
+      socialAuth: { googleSub: 'google-social-subject' },
+      passwordResetToken: 'hashed-reset-token',
+      passwordResetExpires: Date.now() + 60000,
+    });
+    mockFindOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue(user),
+    });
+
+    await request(buildAuthApp())
+      .post('/api/auth/reset-password')
+      .send({
+        token: 'social-account-reset-token',
+        password: 'UpdatedPass123',
+      })
+      .expect(200);
+
+    expect(user.password).toBe('UpdatedPass123');
+    expect(user.passwordAuthEnabled).toBe(true);
+    expect(user.passwordResetToken).toBeUndefined();
+    expect(user.passwordResetExpires).toBeUndefined();
+    expect(user.sessionVersion).toBe(1);
+    expect(user.save).toHaveBeenCalledTimes(1);
+  });
+
   test('cookie-authenticated cross-site writes are rejected by CSRF validation', async () => {
     await request(buildCsrfApp())
       .post('/api/users/profile')

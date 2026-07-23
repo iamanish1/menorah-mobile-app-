@@ -289,6 +289,7 @@ const findOrCreateSocialUser = async ({
       email: normalizedEmail,
       phone: fallbackPhone,
       password: crypto.randomBytes(32).toString('hex'),
+      passwordAuthEnabled: false,
       firstName: firstName || 'Menorah',
       lastName: lastName || 'User',
       dateOfBirth: new Date('1970-01-01'),
@@ -892,6 +893,7 @@ router.post('/reset-password', [
     }
 
     user.password             = password;
+    user.passwordAuthEnabled  = true;
     user.passwordResetToken   = undefined;
     user.passwordResetExpires = undefined;
     revokeAllSessions(user, { passwordChanged: true });

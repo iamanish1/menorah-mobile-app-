@@ -14,6 +14,8 @@ const articleRoutes = require('../../routes/articles');
 const publicArticleRoutes = require('../../routes/articles-public');
 const socialStudioRoutes = require('../../routes/socialStudio');
 const ekycRoutes = require('../../routes/ekyc');
+const privacyRoutes = require('../../routes/privacy');
+const privacyAdminRoutes = require('../../routes/privacy-admin');
 
 const routeDefinitions = {
   auth: { mountPath: '/api/auth', router: authRoutes },
@@ -30,6 +32,8 @@ const routeDefinitions = {
   'articles-public': { mountPath: '/api/articles', router: publicArticleRoutes },
   'articles-admin': { mountPath: '/api/articles', router: articleRoutes },
   ekyc: { mountPath: '/api/ekyc', router: ekycRoutes },
+  'privacy-user': { mountPath: '/api/privacy', router: privacyRoutes },
+  'privacy-admin': { mountPath: '/api/privacy', router: privacyAdminRoutes },
   'admin-social-studio': { mountPath: '/api/admin/social-studio', router: socialStudioRoutes },
   admin: { mountPath: '/api/admin', router: adminRoutes }
 };
@@ -45,7 +49,8 @@ const routeProfiles = {
     'chat',
     'video',
     'articles-public',
-    'ekyc'
+    'ekyc',
+    'privacy-user'
   ],
   'api-android': [
     'auth',
@@ -57,7 +62,8 @@ const routeProfiles = {
     'chat',
     'video',
     'articles-public',
-    'ekyc'
+    'ekyc',
+    'privacy-user'
   ],
   'api-web': [
     'auth',
@@ -68,12 +74,14 @@ const routeProfiles = {
     'payments-full',
     'articles-public',
     'video',
-    'chat'
+    'chat',
+    'privacy-user'
   ],
   'api-admin': [
     'auth-admin',
     'payout-webhook',
     'admin-social-studio',
+    'privacy-admin',
     'admin',
     'articles-admin'
   ]

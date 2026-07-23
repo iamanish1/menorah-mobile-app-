@@ -114,7 +114,8 @@ const startService = async ({
   routeProfile,
   defaultPort,
   enableSocketsDefault = false,
-  requirePaymentEnv = true
+  requirePaymentEnv = true,
+  afterDatabaseConnect = null
 }) => {
   validateStartupEnv({ serviceName, requirePaymentEnv });
 
@@ -127,6 +128,9 @@ const startService = async ({
 
   await connectDB();
   state.mongoReady = true;
+  if (afterDatabaseConnect) {
+    await afterDatabaseConnect({ serviceName });
+  }
 
   const socketRuntime = createSocketServer({
     server,

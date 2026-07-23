@@ -3,6 +3,7 @@ const {
   FACE_CHECK_CONSENT_VERSION,
   FACE_CHECK_RETENTION_DAYS,
 } = require('../../../config/kyc');
+const { RETENTION_CATEGORIES } = require('../../../config/privacy');
 
 describe('startup validation', () => {
   const originalEnv = process.env;
@@ -26,6 +27,26 @@ describe('startup validation', () => {
       COUNSELLOR_ONBOARDING_CONSENT_VERSION: 'test-counsellor-onboarding-v1',
       COUNSELLOR_CREDENTIAL_POLICY_VERSION: 'test-counsellor-credential-policy-v1',
       COUNSELLOR_ONBOARDING_NOTICE_URL: 'https://consent.unit-test.org/counsellor-notice',
+      PRIVACY_NOTICE_VERSION: 'unit-privacy-notice-v1',
+      PRIVACY_RETENTION_EXECUTION_ENABLED: 'false',
+      PRIVACY_RETENTION_POLICY_JSON: JSON.stringify({
+        version: 'unit-privacy-retention-v1',
+        categories: Object.fromEntries(RETENTION_CATEGORIES.map((category) => [
+          category,
+          {
+            mode: 'manual',
+            policyReference: `unit-policy-${category}`,
+          },
+        ])),
+      }),
+      PRIVACY_ADMIN_PERMISSION_GRANTS_JSON: JSON.stringify([{
+        adminId: '64f000000000000000000001',
+        permissions: [
+          'privacy_reader',
+          'privacy_reviewer',
+          'privacy_legal_hold',
+        ],
+      }]),
       BOOKING_SERVICE_CATALOG_JSON: JSON.stringify({
         test_service: {
           durationMinutes: 60,
@@ -139,6 +160,49 @@ describe('startup validation', () => {
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' }))
       .toThrow(new RegExp(key));
+  });
+
+  test.each([
+    'PRIVACY_NOTICE_VERSION',
+    'PRIVACY_RETENTION_POLICY_JSON',
+    'PRIVACY_RETENTION_EXECUTION_ENABLED',
+    'PRIVACY_ADMIN_PERMISSION_GRANTS_JSON',
+  ])('requires explicit production privacy configuration %s', (key) => {
+    delete process.env[key];
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(new RegExp(key));
+  });
+
+  test('rejects privacy grants that omit a least-privilege function', () => {
+    process.env.PRIVACY_ADMIN_PERMISSION_GRANTS_JSON = JSON.stringify([{
+      adminId: '64f000000000000000000001',
+      permissions: ['privacy_reader'],
+    }]);
+
+    expect(() => validateStartupEnv({ serviceName: 'api-admin' }))
+      .toThrow(/PRIVACY_ADMIN_PERMISSION_GRANTS_JSON/);
+  });
+
+  test('rejects retention execution when no approved automated category exists', () => {
+    process.env.PRIVACY_RETENTION_EXECUTION_ENABLED = 'true';
+
+    expect(() => validateStartupEnv({ serviceName: 'worker', requirePaymentEnv: false }))
+      .toThrow(/PRIVACY_RETENTION_EXECUTION_ENABLED/);
+  });
+
+  test('accepts a bounded automated request-payload category without enabling it by default', () => {
+    const policy = JSON.parse(process.env.PRIVACY_RETENTION_POLICY_JSON);
+    policy.categories.privacy_rights_request_payload = {
+      mode: 'automated',
+      policyReference: 'unit-approved-request-payload-policy',
+      retentionDays: 30,
+    };
+    process.env.PRIVACY_RETENTION_POLICY_JSON = JSON.stringify(policy);
+
+    expect(() => validateStartupEnv({ serviceName: 'worker', requirePaymentEnv: false }))
+      .not.toThrow();
+    expect(process.env.PRIVACY_RETENTION_EXECUTION_ENABLED).toBe('false');
   });
 
   test('rejects weak production integrity keys', () => {

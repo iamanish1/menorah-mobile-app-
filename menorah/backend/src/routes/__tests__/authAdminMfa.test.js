@@ -110,6 +110,7 @@ const makeAdmin = () => ({
   email: 'mira.admin@example.com',
   phone: '+15551234567',
   role: 'admin',
+  privacyPermissions: [],
   isActive: true,
   isEmailVerified: true,
   isPhoneVerified: true,
@@ -156,6 +157,14 @@ describe('admin MFA atomic challenge redemption', () => {
       NODE_ENV: 'test',
       ADMIN_MFA_REQUIRED: 'true',
       JWT_SECRET: 'x'.repeat(64),
+      PRIVACY_ADMIN_PERMISSION_GRANTS_JSON: JSON.stringify([{
+        adminId: ADMIN_ID,
+        permissions: [
+          'privacy_reader',
+          'privacy_reviewer',
+          'privacy_legal_hold',
+        ],
+      }]),
     };
     mockRedis = new AtomicRedisDouble();
     mockFindOne.mockReset();
@@ -223,6 +232,11 @@ describe('admin MFA atomic challenge redemption', () => {
 
     expect(successes).toHaveLength(1);
     expect(successes[0].body.data.token).toEqual(expect.any(String));
+    expect(successes[0].body.data.user.privacyPermissions.sort()).toEqual([
+      'privacy_legal_hold',
+      'privacy_reader',
+      'privacy_reviewer',
+    ]);
     expect(failures).toHaveLength(19);
     expect(failures.every(({ body }) => (
       body.success === false &&

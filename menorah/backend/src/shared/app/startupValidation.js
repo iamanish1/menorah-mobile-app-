@@ -21,6 +21,13 @@ const {
   isUsablePaymentSecret,
 } = require('../../config/paymentFeatures');
 const { parseBookingServiceCatalog } = require('../../services/bookingPricing');
+const {
+  PRIVACY_RETENTION_EXECUTION_ENV,
+  readPrivacyConfiguration,
+} = require('../../config/privacy');
+const {
+  readPrivacyAdminPermissionConfiguration,
+} = require('../../config/privacyAdminPermissions');
 
 const requireEnv = (key, errors) => {
   if (!process.env[key]) {
@@ -174,6 +181,21 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
     const counsellorVerificationConfig = readCounsellorVerificationConfig(process.env);
     counsellorVerificationConfig.invalidFields.forEach((key) => {
       errors.push(`${key} must contain an approved non-placeholder value`);
+    });
+
+    const privacyConfig = readPrivacyConfiguration(process.env);
+    privacyConfig.invalidFields.forEach((key) => {
+      errors.push(`${key} must contain an explicit approved privacy configuration`);
+    });
+    if (!['true', 'false'].includes(process.env[PRIVACY_RETENTION_EXECUTION_ENV])) {
+      errors.push(`${PRIVACY_RETENTION_EXECUTION_ENV} must be exactly true or false in production`);
+    }
+    const privacyAdminPermissions =
+      readPrivacyAdminPermissionConfiguration(process.env);
+    privacyAdminPermissions.invalidFields.forEach((key) => {
+      errors.push(
+        `${key} must explicitly assign every privacy function to approved admin IDs`
+      );
     });
 
     if (['api-ios', 'api-android', 'api-web', 'api-admin'].includes(serviceName)) {

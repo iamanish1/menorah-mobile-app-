@@ -1,7 +1,10 @@
+const express = require('express');
+const request = require('supertest');
 const {
   recordSecurityEvent,
   renderSecurityMetrics,
   resetSecurityMetricsForTests,
+  securityAuditTrail,
   verifyAuditChain,
 } = require('../securityAudit');
 const { buildPasswordResetUrl } = require('../email');
@@ -97,6 +100,31 @@ describe('security audit logging', () => {
       index: 1,
       reason: 'integrity_hash_mismatch',
     });
+  });
+
+  test('keeps successful account deletion classified as session revocation', async () => {
+    const app = express();
+    app.use(securityAuditTrail);
+    app.delete('/api/users/account', (req, res) => {
+      req.user = {
+        _id: '64f000000000000000000021',
+        role: 'user',
+      };
+      res.status(200).json({ success: true });
+    });
+
+    await request(app).delete('/api/users/account').expect(200);
+
+    const entries = infoSpy.mock.calls.map(([line]) => JSON.parse(line));
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        event: 'session_revoked',
+        outcome: 'success',
+        path: '/api/users/account',
+        statusCode: 200,
+        action: 'account_disabled',
+      }),
+    ]));
   });
 });
 

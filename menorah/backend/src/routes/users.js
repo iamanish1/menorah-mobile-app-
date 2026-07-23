@@ -3,11 +3,13 @@ const { body, param, validationResult } = require('express-validator');
 const multer = require('multer');
 const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
-const DataDeletionRequest = require('../models/DataDeletionRequest');
 const { auth } = require('../middleware/auth');
 const { uploadBuffer } = require('../utils/cloudinary');
 const { clearMappedSessionCookie } = require('../config/webSessions');
 const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const {
+  accountDeletionService,
+} = require('../services/accountDeletionService');
 const { getMaskedBankAccountNumber } = require('../utils/bankAccountEncryption');
 const {
   PASSWORD_STRENGTH_MESSAGE,
@@ -431,49 +433,11 @@ router.delete('/account', [
       });
     }
 
-    const { password } = req.body;
-
-    const user = await User.findById(req.user._id).select('+password');
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Verify password
-    const isPasswordValid = await user.comparePassword(password);
-    if (!isPasswordValid) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password is incorrect'
-      });
-    }
-
-    // Immediately revoke access, then route erasure through the controlled
-    // retention workflow rather than claiming records vanished instantly.
-    user.isActive = false;
-    revokeAllSessions(user);
-    const accountDeactivatedAt = new Date();
-    // Queue immediate human review; legal/privacy owners determine retention
-    // from the approved schedule instead of application code inventing a term.
-    const retentionReviewAfter = new Date(accountDeactivatedAt);
-
-    // Record the review obligation before disabling access. If deactivation
-    // then fails, the pending request remains visible for operator follow-up.
-    await DataDeletionRequest.findOneAndUpdate(
-      { user: user._id },
-      {
-        $setOnInsert: {
-          user: user._id,
-          accountDeactivatedAt,
-          retentionReviewAfter,
-          status: 'pending',
-        },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-    await user.save();
+    await accountDeletionService.requestDeletion({
+      userId: req.user._id,
+      password: req.body.password,
+      source: req.app.get('serviceName') || 'authenticated-api',
+    });
     clearMappedSessionCookie(req, res);
 
     res.json({
@@ -482,10 +446,22 @@ router.delete('/account', [
     });
 
   } catch (error) {
-    console.error('Delete account error:', error);
-    res.status(500).json({
+    const statusCode = Number.isInteger(error.statusCode)
+      && error.statusCode >= 400
+      && error.statusCode < 500
+      ? error.statusCode
+      : 500;
+    if (statusCode === 500) {
+      const safeCode = typeof error.code === 'string'
+        && /^[A-Z0-9_]{1,64}$/.test(error.code)
+        ? error.code
+        : 'UNEXPECTED_ERROR';
+      console.error('Delete account error code:', safeCode);
+    }
+    res.status(statusCode).json({
       success: false,
-      message: 'Internal server error'
+      message: statusCode === 500 ? 'Internal server error' : error.message,
+      ...(statusCode < 500 && error.code ? { code: error.code } : {}),
     });
   }
 });
