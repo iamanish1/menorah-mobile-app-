@@ -107,12 +107,21 @@ for required_routing_variable in \
 done
 
 home_config="$(
-  docker compose \
+  MENORAH_HOME_SERVICE_ENV_FILE=./env/home.env.example \
+    docker compose \
     -f "${DEPLOY_DIR}/docker-compose.home.yml" \
     --env-file "${DEPLOY_DIR}/env/home.env.example" \
     --env-file "${DEPLOY_DIR}/env/home.compose.env.example" \
     config --no-env-resolution
 )"
+if ! grep -Fq 'home.env.example' <<< "${home_config}"; then
+  echo "Home Compose validation did not bind the tracked synthetic service environment." >&2
+  exit 1
+fi
+if grep -Eq '(^|[[:space:]/])home\.env([[:space:]]|$)' <<< "${home_config}"; then
+  echo "Home Compose validation unexpectedly depends on the ignored runtime environment." >&2
+  exit 1
+fi
 if grep -Fq 'menorahenquiries@gmail.com' <<< "${home_config}"; then
   echo "Home Compose must not inject the live contact mailbox by default." >&2
   exit 1

@@ -14,4 +14,5 @@ if [[ ! -f "menorah/deploy/env/home.env" ]]; then
   exit 2
 fi
 
+export MENORAH_HOME_SERVICE_ENV_FILE="./env/home.env"
 docker compose --env-file "${COMPOSE_ENV}" -f "${COMPOSE_FILE}" up -d --build

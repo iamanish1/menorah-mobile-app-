@@ -2,12 +2,15 @@
 # The guarded release uses docker-compose.production.yml (plus the approved
 # tunnel overlay). This local/home compatibility stack and its legacy
 # monitoring services are not release-gated and are not production evidence.
+# MENORAH_HOME_SERVICE_ENV_FILE exists only so read-only validation can select
+# a tracked synthetic fixture. The runtime default remains the ignored,
+# operator-created home.env file.
 services:
   reverse-proxy:
     image: caddy:2.8-alpine
     restart: unless-stopped
     env_file:
-      - ./env/home.env
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
     environment:
       PUBLIC_EMAIL: ${PUBLIC_EMAIL}
       LIVEKIT_UPSTREAM: ${LIVEKIT_UPSTREAM}
@@ -161,7 +164,7 @@ services:
     restart: unless-stopped
     command: ["npm", "run", "start:api-ios"]
     env_file:
-      - ./env/home.env
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
     environment:
       PORT: 8080
     ports:
@@ -185,7 +188,7 @@ services:
     restart: unless-stopped
     command: ["npm", "run", "start:api-android"]
     env_file:
-      - ./env/home.env
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
     environment:
       PORT: 8080
     ports:
@@ -209,7 +212,7 @@ services:
     restart: unless-stopped
     command: ["npm", "run", "start:api-web"]
     env_file:
-      - ./env/home.env
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
     environment:
       PORT: 8080
     ports:
@@ -233,7 +236,7 @@ services:
     restart: unless-stopped
     command: ["npm", "run", "start:api-admin"]
     env_file:
-      - ./env/home.env
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
     environment:
       PORT: 8080
       ENABLE_SOCKET_IO: "false"
@@ -259,7 +262,7 @@ services:
     restart: unless-stopped
     command: ["npm", "run", "start:worker"]
     env_file:
-      - ./env/home.env
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
     environment:
       PORT: 8080
       WORKER_MODE: active
@@ -287,7 +290,7 @@ services:
         install -m 400 /mongo-keyfile-source/mongo-keyfile /data/db/mongo-keyfile
         exec docker-entrypoint.sh mongod --config /etc/mongod.conf --keyFile /data/db/mongo-keyfile
     env_file:
-      - ./env/home.env
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
@@ -313,7 +316,7 @@ services:
     image: mongo:7
     restart: "no"
     env_file:
-      - ./env/home.env
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
     environment:
       MONGO_ROOT_USER: ${MONGO_ROOT_USER}
       MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
@@ -358,7 +361,7 @@ services:
     image: mongo:7
     profiles: ["ops"]
     env_file:
-      - ./env/home.env
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
     volumes:
       - ./backup:/scripts:ro
       - ${MENORAH_BACKUP_ROOT}:/backups
