@@ -1,5 +1,14 @@
 import os from 'os';
 import { ExpoConfig, ConfigContext } from 'expo/config';
+const { readReleaseEnvironment } = require('./scripts/release-environment.cjs') as {
+  readReleaseEnvironment: (env: Record<string, string | undefined>) => {
+    iosApiBaseUrl?: string;
+    androidApiBaseUrl?: string;
+    webBaseUrl?: string;
+    checkoutReturnUrl?: string;
+    jitsiBaseUrl?: string;
+  };
+};
 
 const detectLocalIp = () => {
   const interfaces = os.networkInterfaces();
@@ -39,11 +48,12 @@ const googleIosUrlSchemeFromClientId = (clientId?: string) => {
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const isDev = process.env.NODE_ENV !== 'production';
+  const releaseEnvironment = readReleaseEnvironment(process.env);
   const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  const configuredIosApiBaseUrl = process.env.EXPO_PUBLIC_IOS_API_BASE_URL?.trim();
-  const configuredAndroidApiBaseUrl = process.env.EXPO_PUBLIC_ANDROID_API_BASE_URL?.trim();
+  const configuredIosApiBaseUrl = releaseEnvironment.iosApiBaseUrl;
+  const configuredAndroidApiBaseUrl = releaseEnvironment.androidApiBaseUrl;
   const configuredWebBaseUrl =
-    process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim() ||
+    releaseEnvironment.webBaseUrl ||
     process.env.PUBLIC_WEB_BASE_URL?.trim();
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
@@ -193,14 +203,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Public web URL used as the canonical article fallback in native clients.
       WEB_BASE_URL: configuredWebBaseUrl
         ? configuredWebBaseUrl.replace(/\/+$/, '')
-        : 'https://app.menorah.me',
+        : (isDev ? 'https://app.menorah.me' : undefined),
 
       // Checkout Return URL
-      CHECKOUT_RETURN_URL: process.env.EXPO_PUBLIC_CHECKOUT_RETURN_URL?.trim()
+      CHECKOUT_RETURN_URL: releaseEnvironment.checkoutReturnUrl
         || (isDev ? `${devApiProtocol}//${devApiHost}:8081/checkout/return` : undefined),
 
       // Jitsi Base URL
-      JITSI_BASE_URL: process.env.EXPO_PUBLIC_JITSI_BASE_URL?.trim()
+      JITSI_BASE_URL: releaseEnvironment.jitsiBaseUrl
         || (isDev ? `${devApiProtocol}//${devApiHost}:8080` : undefined),
 
       GOOGLE_WEB_CLIENT_ID: googleWebClientId,

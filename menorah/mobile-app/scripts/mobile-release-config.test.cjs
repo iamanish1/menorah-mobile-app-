@@ -7,7 +7,15 @@ const {
   isValidPasswordResetToken,
   splitDeepLinkPath,
 } = require('../src/lib/deepLinks.js');
-const { validateProject } = require('./validate-mobile-release-config.cjs');
+const {
+  containsProductionReleaseHost,
+  resolveBuildProfile,
+  validateProject,
+} = require('./validate-mobile-release-config.cjs');
+const {
+  readAndroidReleaseEnvironment,
+  readReleaseEnvironment,
+} = require('./release-environment.cjs');
 const { createSecureTokenStorage } = require('../src/lib/secureTokenPolicy.js');
 
 const projectRoot = resolve(__dirname, '..');
@@ -15,6 +23,213 @@ const validToken = 'a'.repeat(64);
 
 test('mobile release configuration remains internally consistent', () => {
   assert.deepEqual(validateProject(projectRoot), []);
+});
+
+test('release environment fails closed unless every HTTPS URL is explicit', () => {
+  assert.throws(
+    () => readReleaseEnvironment({ NODE_ENV: 'production' }),
+    /MENORAH_MOBILE_ENVIRONMENT/
+  );
+  assert.throws(
+    () => readReleaseEnvironment({
+      NODE_ENV: 'production',
+      MENORAH_MOBILE_ENVIRONMENT: 'preview',
+      EXPO_PUBLIC_IOS_API_BASE_URL: 'http://staging.example.test/api',
+    }),
+    /credential-free, non-local HTTPS URL/
+  );
+});
+
+test('release environment accepts a complete non-production HTTPS target', () => {
+  assert.deepEqual(
+    readReleaseEnvironment({
+      NODE_ENV: 'production',
+      MENORAH_MOBILE_ENVIRONMENT: 'preview',
+      MENORAH_MOBILE_ALLOWED_HOSTS: [
+        'ios.staging.example.test',
+        'android.staging.example.test',
+        'app.staging.example.test',
+        'calls.staging.example.test',
+      ].join(','),
+      EXPO_PUBLIC_IOS_API_BASE_URL: 'https://ios.staging.example.test/api/',
+      EXPO_PUBLIC_ANDROID_API_BASE_URL: 'https://android.staging.example.test/api/',
+      EXPO_PUBLIC_WEB_BASE_URL: 'https://app.staging.example.test/',
+      EXPO_PUBLIC_CHECKOUT_RETURN_URL:
+        'https://app.staging.example.test/checkout/return',
+      EXPO_PUBLIC_JITSI_BASE_URL: 'https://calls.staging.example.test/',
+    }),
+    {
+      iosApiBaseUrl: 'https://ios.staging.example.test/api',
+      androidApiBaseUrl: 'https://android.staging.example.test/api',
+      webBaseUrl: 'https://app.staging.example.test',
+      checkoutReturnUrl:
+        'https://app.staging.example.test/checkout/return',
+      jitsiBaseUrl: 'https://calls.staging.example.test',
+    }
+  );
+});
+
+test('preview builds reject externally supplied production origins', () => {
+  assert.throws(
+    () => readReleaseEnvironment({
+      NODE_ENV: 'production',
+      MENORAH_MOBILE_ENVIRONMENT: 'preview',
+      MENORAH_MOBILE_ALLOWED_HOSTS: [
+        'api-ios.menorah.me',
+        'api-android.menorah.me',
+        'app.menorah.me',
+        'calls.menorah.me',
+      ].join(','),
+      EXPO_PUBLIC_IOS_API_BASE_URL: 'https://api-ios.menorah.me/api',
+      EXPO_PUBLIC_ANDROID_API_BASE_URL: 'https://api-android.menorah.me/api',
+      EXPO_PUBLIC_WEB_BASE_URL: 'https://app.menorah.me',
+      EXPO_PUBLIC_CHECKOUT_RETURN_URL:
+        'https://app.menorah.me/checkout/return',
+      EXPO_PUBLIC_JITSI_BASE_URL: 'https://calls.menorah.me',
+    }),
+    /preview mobile builds cannot target Menorah production hosts/
+  );
+});
+
+test('an explicit preview tier fails closed even when NODE_ENV is unset', () => {
+  assert.throws(
+    () => readReleaseEnvironment({
+      MENORAH_MOBILE_ENVIRONMENT: 'preview',
+      MENORAH_MOBILE_ALLOWED_HOSTS: [
+        'api-ios.menorah.me',
+        'api-android.menorah.me',
+        'app.menorah.me',
+        'calls.menorah.me',
+      ].join(','),
+    }),
+    /EXPO_PUBLIC_IOS_API_BASE_URL is required/
+  );
+  assert.throws(
+    () => readReleaseEnvironment({
+      MENORAH_MOBILE_ENVIRONMENT: 'preview',
+      EXPO_PUBLIC_IOS_API_BASE_URL: 'https://api-ios.menorah.me/api',
+      EXPO_PUBLIC_ANDROID_API_BASE_URL: 'https://api-android.menorah.me/api',
+      EXPO_PUBLIC_WEB_BASE_URL: 'https://app.menorah.me',
+      EXPO_PUBLIC_CHECKOUT_RETURN_URL:
+        'https://app.menorah.me/checkout/return',
+      EXPO_PUBLIC_JITSI_BASE_URL: 'https://calls.menorah.me',
+    }),
+    /preview mobile builds cannot target Menorah production hosts/
+  );
+});
+
+test('preview builds reject cross-production and off-allowlist hosts', () => {
+  const previewEnv = {
+    MENORAH_MOBILE_ENVIRONMENT: 'preview',
+    MENORAH_MOBILE_ALLOWED_HOSTS: [
+      'ios.staging.example.test',
+      'android.staging.example.test',
+      'app.staging.example.test',
+      'calls.staging.example.test',
+    ].join(','),
+    EXPO_PUBLIC_IOS_API_BASE_URL: 'https://ios.staging.example.test/api',
+    EXPO_PUBLIC_ANDROID_API_BASE_URL:
+      'https://android.staging.example.test/api',
+    EXPO_PUBLIC_WEB_BASE_URL: 'https://app.staging.example.test',
+    EXPO_PUBLIC_CHECKOUT_RETURN_URL:
+      'https://app.staging.example.test/checkout/return',
+    EXPO_PUBLIC_JITSI_BASE_URL: 'https://calls.staging.example.test',
+  };
+  assert.doesNotThrow(() => readReleaseEnvironment(previewEnv));
+  assert.throws(
+    () => readReleaseEnvironment({
+      ...previewEnv,
+      EXPO_PUBLIC_IOS_API_BASE_URL: 'https://api-web.menorah.me/api',
+    }),
+    /cannot target Menorah production hosts/
+  );
+  assert.throws(
+    () => readReleaseEnvironment({
+      ...previewEnv,
+      EXPO_PUBLIC_IOS_API_BASE_URL: 'https://ios.attacker-staging.example/api',
+    }),
+    /MENORAH_MOBILE_ALLOWED_HOSTS/
+  );
+  assert.throws(
+    () => readReleaseEnvironment({
+      ...previewEnv,
+      EXPO_PUBLIC_CHECKOUT_RETURN_URL:
+        'https://app.staging.example.test/wrong-return',
+    }),
+    /one web origin with/
+  );
+});
+
+test('production builds require exact approved URLs rather than hostname matches', () => {
+  const productionEnv = {
+    NODE_ENV: 'production',
+    MENORAH_MOBILE_ENVIRONMENT: 'production',
+    EXPO_PUBLIC_IOS_API_BASE_URL: 'https://api-ios.menorah.me/api',
+    EXPO_PUBLIC_ANDROID_API_BASE_URL: 'https://api-android.menorah.me/api',
+    EXPO_PUBLIC_WEB_BASE_URL: 'https://app.menorah.me',
+    EXPO_PUBLIC_CHECKOUT_RETURN_URL:
+      'https://app.menorah.me/checkout/return',
+    EXPO_PUBLIC_JITSI_BASE_URL: 'https://calls.menorah.me',
+  };
+  assert.doesNotThrow(() => readReleaseEnvironment(productionEnv));
+  assert.throws(
+    () => readReleaseEnvironment({
+      ...productionEnv,
+      EXPO_PUBLIC_IOS_API_BASE_URL: 'https://api-ios.menorah.me:8443/not-api',
+    }),
+    /credential-free, non-local HTTPS URL|approved production destinations/
+  );
+  assert.throws(
+    () => readReleaseEnvironment({
+      ...productionEnv,
+      EXPO_PUBLIC_CHECKOUT_RETURN_URL: 'https://app.menorah.me/wrong-return',
+    }),
+    /approved production destinations/
+  );
+});
+
+test('manual Android releases require both approved Google client IDs', () => {
+  const env = {
+    NODE_ENV: 'production',
+    MENORAH_MOBILE_ENVIRONMENT: 'production',
+    EXPO_PUBLIC_IOS_API_BASE_URL: 'https://api-ios.menorah.me/api',
+    EXPO_PUBLIC_ANDROID_API_BASE_URL: 'https://api-android.menorah.me/api',
+    EXPO_PUBLIC_WEB_BASE_URL: 'https://app.menorah.me',
+    EXPO_PUBLIC_CHECKOUT_RETURN_URL:
+      'https://app.menorah.me/checkout/return',
+    EXPO_PUBLIC_JITSI_BASE_URL: 'https://calls.menorah.me',
+    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:
+      '123456789-releaseweb.apps.googleusercontent.com',
+    EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:
+      '123456789-releaseandroid.apps.googleusercontent.com',
+  };
+  assert.doesNotThrow(() => readAndroidReleaseEnvironment(env));
+  assert.throws(
+    () => readAndroidReleaseEnvironment({
+      ...env,
+      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: '',
+    }),
+    /EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID/
+  );
+});
+
+test('EAS inheritance keeps non-production profiles external and production profiles pinned', () => {
+  const eas = require('../eas.json');
+  for (const profileName of [
+    'development-ios',
+    'development-android',
+    'preview-ios',
+    'preview-android',
+  ]) {
+    const profile = resolveBuildProfile(eas, profileName);
+    assert.ok(profile);
+    assert.equal(containsProductionReleaseHost(profile.env), false);
+  }
+  for (const profileName of ['production-ios', 'production-android']) {
+    const profile = resolveBuildProfile(eas, profileName);
+    assert.ok(profile);
+    assert.equal(containsProductionReleaseHost(profile.env), true);
+  }
 });
 
 test('password-reset deep links accept only one 64-hex fragment token', () => {

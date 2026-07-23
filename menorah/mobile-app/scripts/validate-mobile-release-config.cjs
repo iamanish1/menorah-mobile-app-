@@ -58,6 +58,51 @@ function isExpectedHttpsApiUrl(value, expectedHost) {
   }
 }
 
+const RELEASE_URL_VARIABLES = [
+  'EXPO_PUBLIC_IOS_API_BASE_URL',
+  'EXPO_PUBLIC_ANDROID_API_BASE_URL',
+  'EXPO_PUBLIC_WEB_BASE_URL',
+  'EXPO_PUBLIC_CHECKOUT_RETURN_URL',
+  'EXPO_PUBLIC_JITSI_BASE_URL',
+];
+
+const PRODUCTION_RELEASE_HOSTS = new Set([
+  'api-ios.menorah.me',
+  'api-android.menorah.me',
+  'app.menorah.me',
+  'calls.menorah.me',
+]);
+
+function resolveBuildProfile(eas, profileName, seen = new Set()) {
+  const profile = eas.build?.[profileName];
+  if (!profile || seen.has(profileName)) return null;
+
+  const nextSeen = new Set(seen).add(profileName);
+  const parent = profile.extends
+    ? resolveBuildProfile(eas, profile.extends, nextSeen)
+    : {};
+  if (profile.extends && !parent) return null;
+
+  return {
+    ...parent,
+    ...profile,
+    android: { ...(parent.android || {}), ...(profile.android || {}) },
+    ios: { ...(parent.ios || {}), ...(profile.ios || {}) },
+    env: { ...(parent.env || {}), ...(profile.env || {}) },
+  };
+}
+
+function containsProductionReleaseHost(values) {
+  return Object.values(values || {}).some((value) => {
+    if (typeof value !== 'string') return false;
+    try {
+      return PRODUCTION_RELEASE_HOSTS.has(new URL(value).hostname.toLowerCase());
+    } catch {
+      return false;
+    }
+  });
+}
+
 function validateProject(root = projectRoot) {
   const failures = [];
   const fail = (condition, message) => {
@@ -65,6 +110,7 @@ function validateProject(root = projectRoot) {
   };
 
   const pkg = readJson(root, 'package.json');
+  const repositoryRoot = resolve(root, '..', '..');
   const app = readJson(root, 'app.json').expo;
   const eas = readJson(root, 'eas.json');
   const appConfig = read(root, 'app.config.ts');
@@ -111,6 +157,10 @@ function validateProject(root = projectRoot) {
   const changePassword = read(root, 'src/screens/profile/ChangePassword.tsx');
   const safeDiagnostics = read(root, 'src/lib/safeDiagnostics.ts');
   const mobileStoreActions = read(root, 'docs/mobile-store-external-actions.md');
+  const androidBuildWorkflow = read(
+    repositoryRoot,
+    '.github/workflows/build-android.yml'
+  );
   const wrapperPkg = readJson(root, 'mobile-app/package.json');
   const version = pkg.version;
   const buildNumber = String(app.ios.buildNumber);
@@ -178,26 +228,76 @@ function validateProject(root = projectRoot) {
     eas.cli && eas.cli.appVersionSource === 'local',
     'EAS must use the repository-aligned local version metadata'
   );
-  for (const profileName of [
-    'development-ios',
-    'development-android',
-    'preview-ios',
-    'preview-android',
-    'production-ios',
-    'production-android',
+  for (const [profileName, expectedEnvironment] of [
+    ['development-ios', 'development'],
+    ['development-android', 'development'],
+    ['preview-ios', 'preview'],
+    ['preview-android', 'preview'],
   ]) {
-    const profileEnv = eas.build?.[profileName]?.env || {};
+    const profile = resolveBuildProfile(eas, profileName);
     fail(
-      isExpectedHttpsApiUrl(
-        profileEnv.EXPO_PUBLIC_IOS_API_BASE_URL,
-        'api-ios.menorah.me'
-      ) && isExpectedHttpsApiUrl(
-        profileEnv.EXPO_PUBLIC_ANDROID_API_BASE_URL,
-        'api-android.menorah.me'
-      ) && !profileEnv.EXPO_PUBLIC_API_BASE_URL,
-      `${profileName} must provide both approved platform API URLs without the ambiguous legacy variable`
+      profile
+        && profile.environment === expectedEnvironment
+        && profile.env.MENORAH_MOBILE_ENVIRONMENT === expectedEnvironment
+        && !containsProductionReleaseHost(profile.env)
+        && RELEASE_URL_VARIABLES.every((name) => !(name in profile.env))
+        && !profile.env.EXPO_PUBLIC_API_BASE_URL,
+      `${profileName} must source release URLs from its explicit non-production EAS environment without embedded production origins`
     );
   }
+  for (const profileName of ['production-ios', 'production-android']) {
+    const profile = resolveBuildProfile(eas, profileName);
+    const profileEnv = profile?.env || {};
+    fail(
+      profile
+        && profile.environment === 'production'
+        && profile.env.MENORAH_MOBILE_ENVIRONMENT === 'production'
+        && isExpectedHttpsApiUrl(
+          profileEnv.EXPO_PUBLIC_IOS_API_BASE_URL,
+          'api-ios.menorah.me'
+        )
+        && isExpectedHttpsApiUrl(
+          profileEnv.EXPO_PUBLIC_ANDROID_API_BASE_URL,
+          'api-android.menorah.me'
+        )
+        && !profileEnv.EXPO_PUBLIC_API_BASE_URL,
+      `${profileName} must retain the approved production platform API URLs in the production EAS environment`
+    );
+  }
+  fail(
+    appConfig.includes("require('./scripts/release-environment.cjs')") &&
+      appConfig.includes('readReleaseEnvironment(process.env)') &&
+      RELEASE_URL_VARIABLES.every((name) =>
+        androidBuildWorkflow.includes(`${name}: \${{ vars.${name} }}`)
+      ) &&
+      [
+        'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID',
+        'EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID',
+      ].every((name) =>
+        androidBuildWorkflow.includes(`${name}: \${{ vars.${name} }}`)
+      ) &&
+      androidBuildWorkflow.includes('NODE_ENV: production') &&
+      androidBuildWorkflow.includes('MENORAH_MOBILE_ENVIRONMENT: production') &&
+      androidBuildWorkflow.includes('environment: android-release-signing') &&
+      androidBuildWorkflow.includes('GITHUB_TRIGGER_REF: ${{ github.ref }}') &&
+      androidBuildWorkflow.includes('GITHUB_TRIGGER_SHA: ${{ github.sha }}') &&
+      androidBuildWorkflow.includes(
+        'ANDROID_RELEASE_SIGNING_READY: ${{ vars.ANDROID_RELEASE_SIGNING_READY }}'
+      ) &&
+      androidBuildWorkflow.includes(
+        '"$GITHUB_TRIGGER_REF" != "refs/heads/main" || "$RELEASE_SHA" != "$GITHUB_TRIGGER_SHA"'
+      ) &&
+      androidBuildWorkflow.includes(
+        '"$ANDROID_RELEASE_SIGNING_READY" != "protected-main-only"'
+      ) &&
+      androidBuildWorkflow.includes('release_sha:') &&
+      androidBuildWorkflow.includes('ref: ${{ inputs.release_sha }}') &&
+      androidBuildWorkflow.includes('persist-credentials: false') &&
+      androidBuildWorkflow.includes("readAndroidReleaseEnvironment(process.env)") &&
+      androidBuildWorkflow.indexOf('Validate release environment') <
+        androidBuildWorkflow.indexOf('Decode keystore'),
+    'manual Android release builds must bind an exact approved SHA and validate protected release variables before accessing signing material'
+  );
   fail(
     envSource.includes("Platform.OS === 'ios'") &&
       envSource.includes('EXPO_PUBLIC_IOS_API_BASE_URL') &&
@@ -632,7 +732,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  containsProductionReleaseHost,
   privacyReasons,
+  resolveBuildProfile,
   validateProject,
   valuesAfterKey,
 };

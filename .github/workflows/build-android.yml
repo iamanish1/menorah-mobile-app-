@@ -2,6 +2,11 @@ name: Build Android AAB
 
 on:
   workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact approved 40-character release commit SHA
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -9,9 +14,51 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: android-release-signing
+    env:
+      NODE_ENV: production
+      MENORAH_MOBILE_ENVIRONMENT: production
+      GITHUB_TRIGGER_REF: ${{ github.ref }}
+      GITHUB_TRIGGER_SHA: ${{ github.sha }}
+      ANDROID_RELEASE_SIGNING_READY: ${{ vars.ANDROID_RELEASE_SIGNING_READY }}
+      EXPO_PUBLIC_IOS_API_BASE_URL: ${{ vars.EXPO_PUBLIC_IOS_API_BASE_URL }}
+      EXPO_PUBLIC_ANDROID_API_BASE_URL: ${{ vars.EXPO_PUBLIC_ANDROID_API_BASE_URL }}
+      EXPO_PUBLIC_WEB_BASE_URL: ${{ vars.EXPO_PUBLIC_WEB_BASE_URL }}
+      EXPO_PUBLIC_CHECKOUT_RETURN_URL: ${{ vars.EXPO_PUBLIC_CHECKOUT_RETURN_URL }}
+      EXPO_PUBLIC_JITSI_BASE_URL: ${{ vars.EXPO_PUBLIC_JITSI_BASE_URL }}
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID }}
     steps:
+      - name: Validate approved release SHA
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          if [[ ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::release_sha must be an exact lowercase 40-character commit SHA."
+            exit 1
+          fi
+          if [[ "$GITHUB_TRIGGER_REF" != "refs/heads/main" || "$RELEASE_SHA" != "$GITHUB_TRIGGER_SHA" ]]; then
+            echo "::error::Android release signing is restricted to the exact workflow-dispatch main HEAD."
+            exit 1
+          fi
+          if [[ "$ANDROID_RELEASE_SIGNING_READY" != "protected-main-only" ]]; then
+            echo "::error::Configure ANDROID_RELEASE_SIGNING_READY=protected-main-only only in the protected android-release-signing environment."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify checked-out release SHA
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test -z "$(git status --porcelain)"
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -29,6 +76,12 @@ jobs:
       - name: Install dependencies
         working-directory: menorah/mobile-app
         run: npm ci
+
+      - name: Validate release environment
+        working-directory: menorah/mobile-app
+        run: |
+          node -e "require('./scripts/release-environment.cjs').readAndroidReleaseEnvironment(process.env)"
+          npm run validate:release-config
 
       - name: Decode keystore
         env:
