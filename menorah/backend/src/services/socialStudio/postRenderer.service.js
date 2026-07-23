@@ -1,9 +1,9 @@
 const fs = require('fs/promises');
 const path = require('path');
-const axios = require('axios');
 const sharp = require('sharp');
 const { uploadBuffer } = require('../../utils/cloudinary');
 const { toPlainText } = require('./textUtils');
+const { fetchRemoteImageBuffer } = require('./safeRemoteImageFetch.service');
 
 const SIZE_BY_RATIO = {
   '1:1': { width: 1080, height: 1080 },
@@ -286,15 +286,6 @@ const bufferToJpegDataUri = async ({ buffer, width, heroHeight }) => {
   return `data:image/jpeg;base64,${normalized.toString('base64')}`;
 };
 
-const loadRemoteImageBuffer = async (imageUrl) => {
-  if (!imageUrl) return null;
-  const response = await axios.get(imageUrl, {
-    responseType: 'arraybuffer',
-    timeout: 45000
-  });
-  return Buffer.from(response.data);
-};
-
 const renderHeadline = ({ lines, x, y, fontSize, lineHeight, palette }) => lines
   .map((line, index) => {
     const fill = index === lines.length - 1 && lines.length > 1 ? palette.olive : palette.primary;
@@ -409,11 +400,15 @@ const saveImage = async (buffer, filename, folder) => {
   };
 };
 
-const renderStaticPost = async ({ socialPost, brandGuideline, assets = [], backgroundImageBuffer = null }) => {
+const renderStaticPost = async (
+  { socialPost, brandGuideline, assets = [], backgroundImageBuffer = null },
+  { remoteImageFetcher = fetchRemoteImageBuffer } = {}
+) => {
   const size = SIZE_BY_RATIO[socialPost.aspectRatio] || SIZE_BY_RATIO['4:5'];
   const id = socialPost._id?.toString() || `social-${Date.now()}`;
   const folder = process.env.CLOUDINARY_SOCIAL_STUDIO_FOLDER || 'menorah/social-studio';
-  const sourceBuffer = backgroundImageBuffer || await loadRemoteImageBuffer(socialPost.imageUrl).catch(() => null);
+  const sourceBuffer = backgroundImageBuffer ||
+    (socialPost.imageUrl ? await remoteImageFetcher(socialPost.imageUrl).catch(() => null) : null);
   const heroImageDataUri = await bufferToJpegDataUri({
     buffer: sourceBuffer,
     width: size.width,
