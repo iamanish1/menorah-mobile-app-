@@ -27,6 +27,7 @@ MENORAH_BACKUP_ROOT="${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}"
 MENORAH_DATA_ROOT="${MENORAH_DATA_ROOT:-/opt/menorah/data}"
 BACKUP_REQUIRE_MOUNT="${BACKUP_REQUIRE_MOUNT:-}"
 BACKUP_REQUIRE_ENCRYPTION="${BACKUP_REQUIRE_ENCRYPTION:-}"
+BACKUP_RUN_AS="${BACKUP_RUN_AS:-$(id -u):$(id -g)}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT_DIR="${MENORAH_BACKUP_ROOT}/${BACKUP_TYPE}/${STAMP}"
 MONGO_ARCHIVE="${OUT_DIR}/mongo/menorah-mongo-${STAMP}.archive.gz"
@@ -57,6 +58,11 @@ if [[ "${NODE_ENV:-}" == "production" ]] || is_true "${BACKUP_REQUIRE_ENCRYPTION
   : "${BACKUP_ENCRYPTION_PASSWORD:?BACKUP_ENCRYPTION_PASSWORD is required for production backups}"
 fi
 
+if [[ ! "${BACKUP_RUN_AS}" =~ ^[0-9]+:[0-9]+$ ]]; then
+  echo "BACKUP_RUN_AS must be a numeric uid:gid pair." >&2
+  exit 1
+fi
+
 LOCK_DIR="${MENORAH_BACKUP_ROOT}/metadata"
 mkdir -p "${LOCK_DIR}"
 LOCK_FILE="${LOCK_DIR}/.backup.lock"
@@ -76,8 +82,13 @@ compose_cmd() {
 mkdir -p "${OUT_DIR}/mongo" "${OUT_DIR}/uploads" "${OUT_DIR}/metadata"
 
 echo "Creating MongoDB backup: ${MONGO_ARCHIVE}"
-compose_cmd run --rm --no-deps backup-runner bash -lc \
+compose_cmd run --rm --no-deps --user "${BACKUP_RUN_AS}" backup-runner bash -lc \
   "umask 077; mongodump --uri=\"\$MONGODB_BACKUP_URI\" --archive=\"/backups/${BACKUP_TYPE}/${STAMP}/mongo/$(basename "${MONGO_ARCHIVE}")\" --gzip"
+
+if [[ ! -r "${MONGO_ARCHIVE}" ]]; then
+  echo "MongoDB backup archive was not created as a host-readable file: ${MONGO_ARCHIVE}" >&2
+  exit 1
+fi
 
 if [[ -d "${MENORAH_DATA_ROOT}/uploads" ]]; then
   echo "Creating uploads backup: ${UPLOAD_ARCHIVE}"
