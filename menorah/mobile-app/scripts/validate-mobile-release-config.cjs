@@ -120,10 +120,10 @@ function validateProject(root = projectRoot) {
   const expectedExpoVersions = {
     expo: '~57.0.8',
     'expo-constants': '~57.0.7',
-    'expo-dev-client': '~57.0.8',
+    'expo-dev-client': '~57.0.9',
     'expo-image-picker': '~57.0.6',
     'expo-linking': '~57.0.4',
-    'expo-updates': '~57.0.9',
+    'expo-updates': '~57.0.10',
     'react-native-screens': '~4.26.0',
   };
   for (const [name, expected] of Object.entries(expectedExpoVersions)) {
