@@ -1,6 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { getValidatedClientIp } = require('../shared/app/requestProvenance');
+const {
+  enqueueSecurityAuditEntry,
+  getSecurityAuditSinkSnapshot,
+  resetSecurityAuditSinkForTests,
+  verifyDurableSecurityAuditChain,
+} = require('../services/securityAuditSink');
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const SAFE_DETAIL_KEYS = new Set([
@@ -8,8 +15,10 @@ const SAFE_DETAIL_KEYS = new Set([
   'actorId',
   'actorRole',
   'provider',
+  'permission',
   'reason',
   'resource',
+  'operationalRole',
   'targetId',
   'transport',
 ]);
@@ -139,6 +148,7 @@ const recordSecurityEvent = (eventName, {
   const safeDetails = sanitizeDetails(details);
 
   const entry = signAuditEntry({
+    eventId: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
     category: 'security',
     event,
@@ -149,7 +159,9 @@ const recordSecurityEvent = (eventName, {
     statusCode: Number.isInteger(statusCode) ? statusCode : undefined,
     actorId,
     actorRole,
-    sourceIp: String(req?.ip || req?.socket?.remoteAddress || '').slice(0, 128) || undefined,
+    sourceIp: String(
+      req?.validatedClientIp || getValidatedClientIp(req)
+    ).slice(0, 128) || undefined,
     ...safeDetails,
   });
 
@@ -161,6 +173,7 @@ const recordSecurityEvent = (eventName, {
     output(line);
   }
   appendAuditFile(line);
+  enqueueSecurityAuditEntry(entry);
   return entry;
 };
 
@@ -253,6 +266,7 @@ const securityAuditTrail = (req, res, next) => {
 };
 
 const renderSecurityMetrics = () => {
+  const sink = getSecurityAuditSinkSnapshot();
   const lines = [
     '# HELP menorah_security_events_total Security-relevant application events.',
     '# TYPE menorah_security_events_total counter',
@@ -265,12 +279,29 @@ const renderSecurityMetrics = () => {
       lines.push(`menorah_security_events_total{event="${event}",outcome="${outcome}",service="${service}"} ${value}`);
     });
 
+  lines.push(
+    '# HELP menorah_security_audit_sink_pending Security audit events waiting for durable persistence.',
+    '# TYPE menorah_security_audit_sink_pending gauge',
+    `menorah_security_audit_sink_pending{service="${getServiceName()}"} ${sink.pending}`,
+    '# HELP menorah_security_audit_sink_persisted_total Security audit events durably persisted by this process.',
+    '# TYPE menorah_security_audit_sink_persisted_total counter',
+    `menorah_security_audit_sink_persisted_total{service="${getServiceName()}"} ${sink.persisted}`,
+    '# HELP menorah_security_audit_sink_failures_total Security audit durable-sink failures by bounded reason.',
+    '# TYPE menorah_security_audit_sink_failures_total counter'
+  );
+  Object.entries(sink.failureCounts).forEach(([reason, value]) => {
+    lines.push(
+      `menorah_security_audit_sink_failures_total{reason="${reason}",service="${getServiceName()}"} ${value}`
+    );
+  });
+
   return `${lines.join('\n')}\n`;
 };
 
 const resetSecurityMetricsForTests = () => {
   counters.clear();
   auditChainHead = null;
+  resetSecurityAuditSinkForTests();
 };
 
 module.exports = {
@@ -280,4 +311,5 @@ module.exports = {
   sanitizeDetails,
   securityAuditTrail,
   verifyAuditChain,
+  verifyDurableSecurityAuditChain,
 };

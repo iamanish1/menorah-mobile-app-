@@ -1,4 +1,5 @@
 const path = require('path');
+const net = require('net');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -7,6 +8,7 @@ const compression = require('compression');
 const { mountHealthEndpoints } = require('./health');
 const { csrfProtection, getTrustedWebOrigins } = require('../../config/webSessions');
 const { renderSecurityMetrics, securityAuditTrail } = require('../../utils/securityAudit');
+const { attachValidatedRequestProvenance } = require('./requestProvenance');
 
 const SAFE_INLINE_UPLOAD_EXTENSIONS = new Set([
   '.jpg',
@@ -51,12 +53,20 @@ const createCorsOptions = (corsOrigin) => ({
 
 const getTrustProxySetting = () => {
   const raw = process.env.TRUST_PROXY;
-  if (raw === undefined || raw === null || raw === '') return 1;
+  if (raw === undefined || raw === null || raw === '') return false;
 
   const value = String(raw).trim().toLowerCase();
   if (['false', '0', 'off', 'no'].includes(value)) return false;
-  if (['true', 'on', 'yes'].includes(value)) return true;
+  if (process.env.NODE_ENV === 'production') {
+    if (!net.isIP(value)) {
+      throw new Error(
+        'TRUST_PROXY must be the exact immediate reverse-proxy IP in production'
+      );
+    }
+    return value;
+  }
 
+  if (['true', 'on', 'yes'].includes(value)) return true;
   const hops = Number.parseInt(value, 10);
   return Number.isFinite(hops) && hops >= 0 ? hops : raw;
 };
@@ -69,6 +79,7 @@ const createExpressApp = ({ serviceName, getHealthState }) => {
   app.set('trust proxy', getTrustProxySetting());
   app.set('serviceName', serviceName);
 
+  app.use(attachValidatedRequestProvenance);
   app.use(securityAuditTrail);
 
   app.use(cors(corsOptions));

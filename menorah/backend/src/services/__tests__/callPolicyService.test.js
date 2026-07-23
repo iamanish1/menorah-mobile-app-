@@ -96,6 +96,37 @@ describe('callPolicyService', () => {
     });
   });
 
+  test('ignores arbitrary raw geolocation headers', () => {
+    const policy = resolveCallPolicy({
+      user: { country: 'IN', phone: '+919876543210' },
+      req: {
+        headers: {
+          'cf-ipcountry': 'AE',
+          'x-country-code': 'AE',
+        },
+      },
+    });
+
+    expect(policy).toMatchObject({
+      region: 'IN',
+      provider: 'livekit',
+      joinMode: 'in_app',
+    });
+  });
+
+  test('accepts country provenance attached by the trusted proxy middleware', () => {
+    const policy = resolveCallPolicy({
+      user: { country: 'IN', phone: '+919876543210' },
+      req: { clientCountry: 'AE' },
+    });
+
+    expect(policy).toMatchObject({
+      region: 'AE',
+      provider: 'zoom',
+      joinMode: 'external_link',
+    });
+  });
+
   test('LiveKit guard throws before token minting for blocked-country policies', () => {
     expect(() => assertLiveKitAllowed({ user: { country: 'AE' } })).toThrow('LiveKit blocked by call policy');
     expect(() => assertLiveKitAllowed({ user: { country: 'IN' } })).not.toThrow();

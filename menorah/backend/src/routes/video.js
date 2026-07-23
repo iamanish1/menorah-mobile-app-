@@ -266,16 +266,12 @@ const authorizeLoadedCall = ({ req, res, booking, requesterUserId = req.user?._i
   return null;
 };
 
-const getRequestCountry = (req) =>
-  req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || req.headers['x-country-code'] || '';
-
 const buildGuardInput = (req, booking, access) => ({
   user: booking.user,
   booking,
   tokenExpiresAt: access?.closesAt,
   req: {
-    headers: req.headers,
-    ipCountry: getRequestCountry(req),
+    clientCountry: req.clientCountry,
     user: req.user
   }
 });

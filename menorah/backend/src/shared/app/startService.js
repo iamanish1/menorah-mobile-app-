@@ -1,6 +1,5 @@
 const rateLimit = require('express-rate-limit');
 const { RedisStore } = require('rate-limit-redis');
-const net = require('net');
 require('dotenv').config();
 
 const connectDB = require('../../config/database');
@@ -10,6 +9,7 @@ const notFound = require('../../middleware/notFound');
 const chatRoutes = require('../../routes/chat');
 const { validateStartupEnv } = require('./startupValidation');
 const { createExpressApp } = require('./createExpressApp');
+const { getValidatedClientIp } = require('./requestProvenance');
 const { createHttpServer } = require('./createHttpServer');
 const {
   createSocketServer,
@@ -38,22 +38,8 @@ const makeRateLimitStore = (redisReady) =>
     ? { store: new RedisStore({ sendCommand: (...args) => getRedisClient().sendCommand(args) }) }
     : {};
 
-const firstHeaderValue = (value) => {
-  const rawValue = Array.isArray(value) ? value[0] : value;
-  const candidate = String(rawValue || '')
-    .split(',')
-    .map((item) => item.trim())
-    .find(Boolean) || '';
-  return net.isIP(candidate) ? candidate : '';
-};
-
-const getRateLimitClientIp = (req) => (
-  firstHeaderValue(req.headers['cf-connecting-ip'])
-  || firstHeaderValue(req.headers['x-forwarded-for'])
-  || req.ip
-  || req.socket?.remoteAddress
-  || 'unknown'
-);
+const getRateLimitClientIp = (req) =>
+  req.validatedClientIp || getValidatedClientIp(req);
 
 const rateLimitKeyGenerator = (req) => rateLimit.ipKeyGenerator(getRateLimitClientIp(req));
 

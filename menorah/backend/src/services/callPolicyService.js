@@ -59,15 +59,6 @@ const getBlockedCountryProvider = (env = process.env) => {
   return providerEnabled(configured, env) ? configured : 'disabled';
 };
 
-const getHeaderCountry = (req) => {
-  if (!req?.headers) return '';
-  return req.headers['cf-ipcountry']
-    || req.headers['x-vercel-ip-country']
-    || req.headers['x-country-code']
-    || req.headers['x-geo-country']
-    || '';
-};
-
 const collectSignals = ({ user, booking, req, env = process.env } = {}) => {
   const countries = [
     user?.country,
@@ -77,9 +68,7 @@ const collectSignals = ({ user, booking, req, env = process.env } = {}) => {
     booking?.region,
     booking?.callRegion,
     booking?.videoCall?.region,
-    req?.country,
-    req?.ipCountry,
-    getHeaderCountry(req)
+    req?.clientCountry
   ].filter(Boolean);
 
   const phones = [

@@ -8,6 +8,7 @@ const {
   verifyAuditChain,
 } = require('../securityAudit');
 const { buildPasswordResetUrl } = require('../email');
+const { attachValidatedRequestProvenance } = require('../../shared/app/requestProvenance');
 
 describe('security audit logging', () => {
   const originalEnv = process.env;
@@ -102,6 +103,29 @@ describe('security audit logging', () => {
     });
   });
 
+  test('retains bounded operational-role denial evidence', () => {
+    recordSecurityEvent('admin_permission_denied', {
+      req: { method: 'GET', originalUrl: '/api/admin/revenue' },
+      outcome: 'failure',
+      statusCode: 403,
+      details: {
+        reason: 'admin_permission_required',
+        permission: 'finance_read',
+        operationalRole: 'support',
+        token: 'must-not-be-recorded',
+      },
+    });
+
+    const entry = JSON.parse(warnSpy.mock.calls[0][0]);
+    expect(entry).toMatchObject({
+      event: 'admin_permission_denied',
+      permission: 'finance_read',
+      operationalRole: 'support',
+      reason: 'admin_permission_required',
+    });
+    expect(JSON.stringify(entry)).not.toContain('must-not-be-recorded');
+  });
+
   test('keeps successful account deletion classified as session revocation', async () => {
     const app = express();
     app.use(securityAuditTrail);
@@ -125,6 +149,43 @@ describe('security audit logging', () => {
         action: 'account_disabled',
       }),
     ]));
+  });
+
+  test('does not audit a direct caller under a spoofed forwarded IP', async () => {
+    const app = express();
+    app.set('trust proxy', false);
+    app.use(attachValidatedRequestProvenance);
+    app.post('/audit', (req, res) => {
+      recordSecurityEvent('manual_probe', { req });
+      res.sendStatus(204);
+    });
+
+    await request(app)
+      .post('/audit')
+      .set('X-Forwarded-For', '203.0.113.10')
+      .set('CF-Connecting-IP', '203.0.113.11')
+      .expect(204);
+
+    const entry = JSON.parse(infoSpy.mock.calls[0][0]);
+    expect(entry.sourceIp).not.toBe('203.0.113.10');
+    expect(entry.sourceIp).not.toBe('203.0.113.11');
+  });
+
+  test('audits the client IP supplied through the explicitly trusted proxy', async () => {
+    const app = express();
+    app.set('trust proxy', 'loopback');
+    app.use(attachValidatedRequestProvenance);
+    app.post('/audit', (req, res) => {
+      recordSecurityEvent('manual_probe', { req });
+      res.sendStatus(204);
+    });
+
+    await request(app)
+      .post('/audit')
+      .set('X-Forwarded-For', '203.0.113.10')
+      .expect(204);
+
+    expect(JSON.parse(infoSpy.mock.calls[0][0]).sourceIp).toBe('203.0.113.10');
   });
 });
 
@@ -154,6 +215,7 @@ describe('password reset email URLs', () => {
   });
 
   test('upgrades a legacy query-string template to a fragment', () => {
+    process.env.NODE_ENV = 'test';
     process.env.PASSWORD_RESET_URL_TEMPLATE =
       'https://app.menorah.me/reset-password?token={token}';
     const resetUrl = new URL(buildPasswordResetUrl('reset-token'));
@@ -162,10 +224,9 @@ describe('password reset email URLs', () => {
     expect(resetUrl.hash).toBe('#token=reset-token');
   });
 
-  test('refuses non-HTTPS production reset destinations', () => {
+  test('fails closed for non-canonical production reset destinations', () => {
     process.env.PASSWORD_RESET_BASE_URL = 'http://untrusted.example/reset-password';
-    const resetUrl = new URL(buildPasswordResetUrl('reset-token'));
-
-    expect(resetUrl.origin).toBe('https://menorah.me');
+    expect(() => buildPasswordResetUrl('reset-token'))
+      .toThrow(/PASSWORD_RESET_BASE_URL must equal https:\/\/app\.menorah\.me/);
   });
 });
