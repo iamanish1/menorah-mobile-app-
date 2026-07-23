@@ -146,6 +146,20 @@ export function validateFunctionalWorkflow(
   for (const expected of ['actionlint', 'test:release-workflow', 'test:tunnel-config', 'test:mongo-identities', 'test:backup-lifecycle', 'test:monitoring', 'validate-compose.sh', 'caddy-config-validator', 'git archive', 'bash -n', 'shellcheck']) {
     requireText(commands['release-infrastructure'], new RegExp(escapeRegExp(expected), 'i'), `release infrastructure job must run ${expected}`);
   }
+  for (const expected of [
+    '--entrypoint /bin/shellcheck',
+    'record-backup-result.sh',
+    'backup-now.sh',
+    'export-backup-metrics.sh',
+    'test-backup-lifecycle.sh',
+    'test-monitoring-native.sh',
+  ]) {
+    requireText(
+      commands['release-infrastructure'],
+      new RegExp(escapeRegExp(expected)),
+      `release infrastructure ShellCheck must include ${expected}`,
+    );
+  }
   requireText(commands['release-infrastructure'], /test ! -e .*home\.env/, 'clean archive must prove ignored home.env is absent');
 
   const aggregate = workflow.jobs['required-functional-release-gates'];

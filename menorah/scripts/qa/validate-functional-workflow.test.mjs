@@ -49,6 +49,18 @@ test('rejects integration databases outside the suites disposable namespaces', (
   );
 });
 
+test('rejects a ShellCheck image invoked as a Bash script runner', () => {
+  const weakened = rawWorkflow.replace(
+    '--network none --entrypoint /bin/shellcheck',
+    '--network none',
+  );
+  assert.notEqual(weakened, rawWorkflow);
+  assert.throws(
+    () => validate(parse(weakened), weakened),
+    /--entrypoint \/bin\/shellcheck/,
+  );
+});
+
 test('rejects removal of the tracked-fixture clean-archive assertion', () => {
   const weakened = rawWorkflow.replace(
     'test ! -e "${archive_root}/menorah/deploy/env/home.env"',
