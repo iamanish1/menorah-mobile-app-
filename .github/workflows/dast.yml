@@ -20,23 +20,114 @@ jobs:
     env:
       DAST_TARGET_URL: ${{ vars.DAST_TARGET_URL }}
       DAST_TRUSTED_ORIGIN: ${{ vars.DAST_TRUSTED_ORIGIN }}
+      DAST_ALLOWED_HOSTS: ${{ vars.DAST_ALLOWED_HOSTS }}
       DAST_EMAIL: ${{ secrets.DAST_EMAIL }}
       DAST_PASSWORD: ${{ secrets.DAST_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - name: Validate dedicated staging target
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$DAST_TARGET_URL" || -z "$DAST_TRUSTED_ORIGIN" || -z "$DAST_EMAIL" || -z "$DAST_PASSWORD" ]]; then
-            echo "::error::Configure DAST_TARGET_URL, DAST_TRUSTED_ORIGIN, DAST_EMAIL, and DAST_PASSWORD in the staging-security environment."
+          if [[ -z "$DAST_TARGET_URL" || -z "$DAST_TRUSTED_ORIGIN" || -z "$DAST_ALLOWED_HOSTS" || -z "$DAST_EMAIL" || -z "$DAST_PASSWORD" ]]; then
+            echo "::error::Configure DAST_TARGET_URL, DAST_TRUSTED_ORIGIN, DAST_ALLOWED_HOSTS, DAST_EMAIL, and DAST_PASSWORD in the staging-security environment."
             exit 1
           fi
-          case "$DAST_TARGET_URL" in
-            https://*staging*|https://*security-test*) ;;
-            *) echo "::error::DAST_TARGET_URL must be a dedicated HTTPS staging or security-test host."; exit 1 ;;
-          esac
+          node <<'NODE'
+          const productionHosts = new Set([
+            'menorah.me',
+            'www.menorah.me',
+            'app.menorah.me',
+            'admin.menorah.me',
+            'counsellor.menorah.me',
+            'api.menorah.me',
+            'api-ios.menorah.me',
+            'api-android.menorah.me',
+            'api-web.menorah.me',
+            'api-admin.menorah.me',
+            'calls.menorah.me',
+            'vps.menorah.me',
+          ]);
+          const stagingHostToken = /(?:^|[.-])(?:staging|security-test)(?:[.-]|$)/i;
+          const allowedHosts = new Set(
+            process.env.DAST_ALLOWED_HOSTS
+              .split(',')
+              .map((host) => host.trim().toLowerCase())
+              .filter(Boolean)
+          );
+          if (allowedHosts.size === 0) {
+            throw new Error('DAST_ALLOWED_HOSTS must contain at least one reviewed hostname.');
+          }
+          for (const hostname of allowedHosts) {
+            if (
+              hostname.endsWith('.')
+              || productionHosts.has(hostname)
+              || !stagingHostToken.test(hostname)
+            ) {
+              throw new Error(`DAST_ALLOWED_HOSTS contains an unsafe hostname: ${hostname}`);
+            }
+          }
+
+          function parseExactStagingOrigin(variableName) {
+            const value = process.env[variableName];
+            let parsed;
+            try {
+              parsed = new URL(value);
+            } catch {
+              throw new Error(`${variableName} must be a valid URL.`);
+            }
+
+            if (parsed.protocol !== 'https:') {
+              throw new Error(`${variableName} must use HTTPS.`);
+            }
+            if (parsed.username || parsed.password) {
+              throw new Error(`${variableName} must not contain credentials.`);
+            }
+            if (parsed.search || parsed.hash) {
+              throw new Error(`${variableName} must not contain a query string or fragment.`);
+            }
+            if (parsed.pathname !== '/' || parsed.port || value !== parsed.origin) {
+              throw new Error(`${variableName} must be an exact HTTPS origin with no path or explicit port.`);
+            }
+
+            const hostname = parsed.hostname.toLowerCase();
+            if (hostname.endsWith('.') || productionHosts.has(hostname)) {
+              throw new Error(`${variableName} must not use a Menorah production host.`);
+            }
+            if (!stagingHostToken.test(hostname)) {
+              throw new Error(`${variableName} hostname must contain an exact staging or security-test token.`);
+            }
+            if (!allowedHosts.has(hostname)) {
+              throw new Error(`${variableName} hostname is not in DAST_ALLOWED_HOSTS.`);
+            }
+            return parsed.origin;
+          }
+
+          parseExactStagingOrigin('DAST_TARGET_URL');
+          parseExactStagingOrigin('DAST_TRUSTED_ORIGIN');
+          NODE
+      - name: Attest staging deployment identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEADERS="$RUNNER_TEMP/dast-staging-attestation.headers"
+          curl --fail --silent --show-error \
+            --dump-header "$HEADERS" \
+            --output /dev/null \
+            "$DAST_TARGET_URL/health/ready"
+          ATTESTED_ENVIRONMENT="$(
+            tr -d '\r' < "$HEADERS" \
+              | awk -F ': *' 'tolower($1) == "x-menorah-deployment-environment" { print tolower($2) }' \
+              | tail -n 1
+          )"
+          rm -f "$HEADERS"
+          if [[ "$ATTESTED_ENVIRONMENT" != "staging" ]]; then
+            echo "::error::DAST target did not attest DEPLOYMENT_ENVIRONMENT=staging."
+            exit 1
+          fi
       - name: Create short-lived browser session
         shell: bash
         run: |

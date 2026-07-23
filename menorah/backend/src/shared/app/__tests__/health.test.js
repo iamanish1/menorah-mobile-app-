@@ -45,6 +45,7 @@ describe('health endpoints', () => {
   });
 
   test('/health/ready returns 503 when MongoDB is unavailable', async () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
     const app = buildHealthApp({
       serviceName: 'api-web',
       serviceRuntime: 'test',
@@ -54,6 +55,7 @@ describe('health endpoints', () => {
     });
 
     const res = await request(app).get('/health/ready').expect(503);
+    expect(res.headers['x-menorah-deployment-environment']).toBe('staging');
     expect(res.body.checks.mongo.status).toBe('fail');
   });
 

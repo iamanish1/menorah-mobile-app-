@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +14,8 @@ const REPO_ROOT = resolve(SCRIPT_DIR, '../../..');
 const paths = {
   workflow: resolve(REPO_ROOT, '.github/workflows/deploy.yml'),
   securityWorkflow: resolve(REPO_ROOT, '.github/workflows/security.yml'),
+  dastWorkflow: resolve(REPO_ROOT, '.github/workflows/dast.yml'),
+  androidBuildWorkflow: resolve(REPO_ROOT, '.github/workflows/build-android.yml'),
   branchProtection: resolve(REPO_ROOT, '.github/BRANCH_PROTECTION.md'),
   pullRequestTemplate: resolve(REPO_ROOT, '.github/pull_request_template.md'),
   releaseEvidenceTemplate: resolve(REPO_ROOT, '.github/RELEASE_EVIDENCE_TEMPLATE.md'),
@@ -57,7 +60,10 @@ const paths = {
   operatorRunbook: resolve(REPO_ROOT, 'menorah/docs/production-update-runbook.md'),
 };
 
-const read = (path) => readFile(path, 'utf8');
+const normalizeLineEndings = (value) =>
+  String(value || '').replace(/\r\n?/g, '\n');
+const read = async (path) =>
+  normalizeLineEndings(await readFile(path, 'utf8'));
 
 function requirePattern(text, pattern, message) {
   assert.match(text, pattern, message);
@@ -65,6 +71,44 @@ function requirePattern(text, pattern, message) {
 
 function rejectPattern(text, pattern, message) {
   assert.doesNotMatch(text, pattern, message);
+}
+
+const sha256 = (value) =>
+  createHash('sha256').update(String(value || '')).digest('hex');
+
+const secretReferenceInRun = /\$\{\{[^}]*\bsecrets\s*(?:\.|\[)/i;
+
+function rejectSecretReferencesInRuns(steps, sourceName) {
+  for (const step of steps ?? []) {
+    assert.doesNotMatch(
+      step.run ?? '',
+      secretReferenceInRun,
+      `${sourceName} step ${step.name ?? '<unnamed>'} must not interpolate a secret directly in run`,
+    );
+  }
+}
+
+function rejectContinueOnError(job, sourceName) {
+  assert.equal(
+    job?.['continue-on-error'],
+    undefined,
+    `${sourceName} job must not use continue-on-error`,
+  );
+  for (const step of job?.steps ?? []) {
+    assert.equal(
+      step['continue-on-error'],
+      undefined,
+      `${sourceName} step ${step.name ?? '<unnamed>'} must not use continue-on-error`,
+    );
+  }
+}
+
+function assertExactStepKeys(step, expectedKeys, sourceName) {
+  assert.deepEqual(
+    Object.keys(step).sort(),
+    [...expectedKeys].sort(),
+    `${sourceName} step ${step.name ?? '<unnamed>'} has unexpected fields`,
+  );
 }
 
 function validatePinnedRuntimeImages(compose, sourceName) {
@@ -282,7 +326,459 @@ function validateGovernance(
   requirePattern(releaseEvidenceTemplate, /> OWNER ACTION:/, 'release authorization must remain an owner action');
 }
 
+export function validateDastWorkflow(workflow, rawWorkflow) {
+  assert.equal(workflow.name, 'Authenticated staging DAST');
+  assert.deepEqual(
+    Object.keys(workflow).sort(),
+    ['name', 'on', 'permissions', 'concurrency', 'jobs'].sort(),
+    'DAST workflow fields must remain exact',
+  );
+  assert.deepEqual(workflow.on, {
+    schedule: [{ cron: '41 3 * * 3' }],
+    workflow_dispatch: null,
+  }, 'DAST must remain scheduled/manual only');
+  assert.deepEqual(workflow.permissions, { contents: 'read' });
+  assert.deepEqual(
+    Object.keys(workflow.jobs || {}),
+    ['zap'],
+    'DAST must not gain an unreviewed job',
+  );
+
+  const job = workflow.jobs?.zap;
+  assert.ok(job, 'DAST workflow must retain the authenticated ZAP job');
+  rejectContinueOnError(job, 'DAST');
+  assert.deepEqual(
+    Object.keys(job).sort(),
+    ['name', 'runs-on', 'environment', 'env', 'steps'].sort(),
+    'DAST job fields must remain exact',
+  );
+  assert.equal(job.name, 'OWASP ZAP authenticated scan');
+  assert.equal(job['runs-on'], 'ubuntu-latest');
+  assert.equal(job.environment, 'staging-security');
+  assert.deepEqual(job.env, {
+    DAST_TARGET_URL: '${{ vars.DAST_TARGET_URL }}',
+    DAST_TRUSTED_ORIGIN: '${{ vars.DAST_TRUSTED_ORIGIN }}',
+    DAST_ALLOWED_HOSTS: '${{ vars.DAST_ALLOWED_HOSTS }}',
+    DAST_EMAIL: '${{ secrets.DAST_EMAIL }}',
+    DAST_PASSWORD: '${{ secrets.DAST_PASSWORD }}',
+  });
+  const expectedStepNames = [
+    'Checkout',
+    'Validate dedicated staging target',
+    'Attest staging deployment identity',
+    'Create short-lived browser session',
+    'Run authenticated active scan',
+    'Revoke DAST session',
+  ];
+  assert.deepEqual(
+    (job.steps || []).map((step) => step.name),
+    expectedStepNames,
+    'DAST step order and credential boundary must remain exact',
+  );
+  rejectSecretReferencesInRuns(job.steps, 'DAST');
+  assert.deepEqual(workflow.concurrency, {
+    group: 'menorah-staging-dast',
+    'cancel-in-progress': false,
+  }, 'DAST concurrency must remain exact');
+
+  const expectedUses = new Map([
+    ['Checkout', 'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0'],
+  ]);
+  for (const step of job.steps ?? []) {
+    const expectedAction = expectedUses.get(step.name);
+    const expectedIf = step.name === 'Revoke DAST session' ? 'always()' : undefined;
+    const expectedShell = step.name === 'Checkout' ? undefined : 'bash';
+    const expectedWith = step.name === 'Checkout'
+      ? { 'persist-credentials': false }
+      : undefined;
+    const expectedKeys = ['name', expectedAction ? 'uses' : 'run'];
+    if (expectedShell !== undefined) expectedKeys.push('shell');
+    if (expectedIf !== undefined) expectedKeys.push('if');
+    if (expectedWith !== undefined) expectedKeys.push('with');
+
+    assert.equal(
+      step.uses,
+      expectedAction,
+      `DAST step ${step.name} must use the exact reviewed action`,
+    );
+    assert.equal(
+      step.if,
+      expectedIf,
+      `DAST step ${step.name} must retain its exact condition`,
+    );
+    assert.equal(
+      step.shell,
+      expectedShell,
+      `DAST step ${step.name} must retain its exact shell`,
+    );
+    assert.equal(
+      step.env,
+      undefined,
+      `DAST step ${step.name} must not gain step-level environment values`,
+    );
+    assert.deepEqual(
+      step.with,
+      expectedWith,
+      `DAST step ${step.name} must retain its exact action inputs`,
+    );
+    if (expectedAction) {
+      assert.equal(step.run, undefined, `DAST action step ${step.name} must not contain run`);
+    } else {
+      assert.equal(typeof step.run, 'string', `DAST command step ${step.name} must retain run`);
+    }
+    assertExactStepKeys(step, expectedKeys, 'DAST');
+  }
+  const expectedRunDigests = new Map([
+    ['Validate dedicated staging target', '270b2ec6fc152dfaa47620c09ae86381bdcb4b70647f760985f470aa7ea2900f'],
+    ['Attest staging deployment identity', '2794803321bdeccdcfa923625a2f986a968db47cfb0d120d89b33936bbf39616'],
+    ['Create short-lived browser session', '0123ca07270521d6907e75e368e0b7f45f2266f2c7f1371606e68e1c6c55f51a'],
+    ['Run authenticated active scan', '8f50bb5a43a76646c6913c85483d9f7b7af5a09ce7dd8b21fb5f74d15151e644'],
+    ['Revoke DAST session', '50407b5cbd59abe36f6c591634c8fd58dc299a4db9f8c53294112527b8daa0b7'],
+  ]);
+  for (const [stepName, expectedDigest] of expectedRunDigests) {
+    const step = job.steps.find((candidate) => candidate.name === stepName);
+    assert.equal(
+      sha256(step?.run),
+      expectedDigest,
+      `${stepName} changed; review and re-pin its credential-bound command digest`,
+    );
+  }
+
+  const guard = job.steps?.find((step) => step.name === 'Validate dedicated staging target')?.run;
+  assert.ok(guard, 'DAST workflow must validate its environment-owned target origins');
+  rejectPattern(
+    guard,
+    /case\s+"\$DAST_TARGET_URL"/,
+    'DAST target validation must not rely on a substring shell glob',
+  );
+  requirePattern(guard, /new URL\(value\)/, 'DAST target validation must parse URLs structurally');
+  requirePattern(
+    guard,
+    /value !== parsed\.origin/,
+    'DAST target validation must require an exact canonical origin',
+  );
+  requirePattern(
+    guard,
+    /parsed\.username \|\| parsed\.password/,
+    'DAST target validation must reject embedded credentials',
+  );
+  requirePattern(
+    guard,
+    /parsed\.search \|\| parsed\.hash/,
+    'DAST target validation must reject query strings and fragments',
+  );
+  requirePattern(guard, /parsed\.port/, 'DAST target validation must reject explicit ports');
+  requirePattern(
+    guard,
+    /productionHosts\.has\(hostname\)/,
+    'DAST target validation must reject known Menorah production hosts',
+  );
+  requirePattern(
+    guard,
+    /allowedHosts\.has\(hostname\)/,
+    'DAST target validation must bind both origins to a reviewed exact-host allowlist',
+  );
+  for (const productionHost of [
+    'menorah.me',
+    'www.menorah.me',
+    'app.menorah.me',
+    'admin.menorah.me',
+    'counsellor.menorah.me',
+    'api.menorah.me',
+    'api-ios.menorah.me',
+    'api-android.menorah.me',
+    'api-web.menorah.me',
+    'api-admin.menorah.me',
+    'calls.menorah.me',
+    'vps.menorah.me',
+  ]) {
+    assert.ok(
+      guard.includes(`'${productionHost}'`),
+      `DAST target validation must reject production host ${productionHost}`,
+    );
+  }
+  requirePattern(
+    guard,
+    /parseExactStagingOrigin\('DAST_TARGET_URL'\)/,
+    'DAST target URL must use the exact-origin guard',
+  );
+  requirePattern(
+    guard,
+    /parseExactStagingOrigin\('DAST_TRUSTED_ORIGIN'\)/,
+    'DAST trusted origin must use the same exact-origin guard',
+  );
+
+  const attestation = job.steps?.find(
+    (step) => step.name === 'Attest staging deployment identity'
+  )?.run ?? '';
+  requirePattern(
+    attestation,
+    /\$DAST_TARGET_URL\/health\/ready/,
+    'DAST must attest the selected target before login',
+  );
+  requirePattern(
+    attestation,
+    /x-menorah-deployment-environment/,
+    'DAST must read the backend deployment-environment attestation',
+  );
+  requirePattern(
+    attestation,
+    /\[\[ "\$ATTESTED_ENVIRONMENT" != "staging" \]\]/,
+    'DAST must reject any target that does not attest staging',
+  );
+  assert.ok(
+    job.steps.findIndex((step) => step.name === 'Attest staging deployment identity')
+      < job.steps.findIndex((step) => step.name === 'Create short-lived browser session'),
+    'DAST target attestation must complete before credentials are sent',
+  );
+
+  const guardProgram = guard.match(/node <<'NODE'\n([\s\S]*?)\nNODE(?:\n|$)/)?.[1];
+  assert.ok(guardProgram, 'DAST exact-origin guard must be an executable Node program');
+  new Script(guardProgram, { filename: 'dast-origin-guard.js' });
+
+  const activeScan = job.steps?.find((step) => step.name === 'Run authenticated active scan')?.run ?? '';
+  requirePattern(activeScan, /docker run --rm/, 'DAST must retain its isolated active scan');
+  requirePattern(
+    activeScan,
+    /ghcr\.io\/zaproxy\/zaproxy:[^@\s]+@sha256:[0-9a-f]{64}/,
+    'DAST scanner image must remain immutable',
+  );
+  requirePattern(
+    activeScan,
+    /zap\.sh -cmd -autorun \/zap\/wrk\/zap\.yml/,
+    'DAST must retain the authenticated ZAP active scan plan',
+  );
+  requirePattern(
+    rawWorkflow,
+    /cp \.github\/security\/zap-authenticated-plan\.yml/,
+    'DAST must retain the reviewed authenticated scan plan',
+  );
+
+  return guardProgram;
+}
+
+export function validateAndroidBuildWorkflow(workflow, rawWorkflow) {
+  assert.equal(workflow.name, 'Build Android AAB');
+  assert.deepEqual(
+    Object.keys(workflow).sort(),
+    ['name', 'on', 'permissions', 'jobs'].sort(),
+    'Android signing workflow fields must remain exact',
+  );
+  assert.deepEqual(workflow.on, {
+    workflow_dispatch: {
+      inputs: {
+        release_sha: {
+          description: 'Exact approved 40-character release commit SHA',
+          required: true,
+          type: 'string',
+        },
+      },
+    },
+  }, 'Android signing must remain manual with one exact-SHA input');
+  assert.deepEqual(workflow.permissions, { contents: 'read' });
+  assert.deepEqual(
+    Object.keys(workflow.jobs || {}),
+    ['build'],
+    'Android signing must not gain an unreviewed job',
+  );
+
+  const job = workflow.jobs?.build;
+  assert.ok(job, 'Android signing must retain its build job');
+  rejectContinueOnError(job, 'Android signing');
+  assert.deepEqual(
+    Object.keys(job).sort(),
+    ['runs-on', 'environment', 'env', 'steps'].sort(),
+    'Android signing job fields must remain exact',
+  );
+  assert.equal(job['runs-on'], 'ubuntu-latest');
+  assert.equal(job.environment, 'android-release-signing');
+  assert.deepEqual(job.env, {
+    NODE_ENV: 'production',
+    MENORAH_MOBILE_ENVIRONMENT: 'production',
+    GITHUB_TRIGGER_REF: '${{ github.ref }}',
+    GITHUB_TRIGGER_SHA: '${{ github.sha }}',
+    ANDROID_RELEASE_SIGNING_READY: '${{ vars.ANDROID_RELEASE_SIGNING_READY }}',
+    EXPO_PUBLIC_IOS_API_BASE_URL: '${{ vars.EXPO_PUBLIC_IOS_API_BASE_URL }}',
+    EXPO_PUBLIC_ANDROID_API_BASE_URL: '${{ vars.EXPO_PUBLIC_ANDROID_API_BASE_URL }}',
+    EXPO_PUBLIC_WEB_BASE_URL: '${{ vars.EXPO_PUBLIC_WEB_BASE_URL }}',
+    EXPO_PUBLIC_CHECKOUT_RETURN_URL: '${{ vars.EXPO_PUBLIC_CHECKOUT_RETURN_URL }}',
+    EXPO_PUBLIC_JITSI_BASE_URL: '${{ vars.EXPO_PUBLIC_JITSI_BASE_URL }}',
+    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: '${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}',
+    EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: '${{ vars.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID }}',
+  });
+
+  const expectedStepNames = [
+    'Validate approved release SHA',
+    'Checkout',
+    'Verify checked-out release SHA',
+    'Setup Node.js',
+    'Setup Java',
+    'Install dependencies',
+    'Validate release environment',
+    'Decode keystore',
+    'Make gradlew executable',
+    'Build Android AAB',
+    'Remove signing material',
+    'Upload AAB artifact',
+  ];
+  assert.deepEqual(
+    (job.steps || []).map((step) => step.name),
+    expectedStepNames,
+    'Android signing step order and secret boundary must remain exact',
+  );
+  rejectSecretReferencesInRuns(job.steps, 'Android signing');
+  const expectedUses = new Map([
+    ['Checkout', 'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683'],
+    ['Setup Node.js', 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020'],
+    ['Setup Java', 'actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9'],
+    ['Upload AAB artifact', 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02'],
+  ]);
+  const expectedEnvs = new Map([
+    ['Validate approved release SHA', {
+      RELEASE_SHA: '${{ inputs.release_sha }}',
+    }],
+    ['Verify checked-out release SHA', {
+      RELEASE_SHA: '${{ inputs.release_sha }}',
+    }],
+    ['Decode keystore', {
+      ANDROID_KEYSTORE_BASE64: '${{ secrets.ANDROID_KEYSTORE_BASE64 }}',
+    }],
+    ['Build Android AAB', {
+      ANDROID_KEYSTORE_FILE: '${{ runner.temp }}/menorah-release.keystore',
+      ANDROID_KEYSTORE_PASSWORD: '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}',
+      ANDROID_KEY_ALIAS: '${{ secrets.ANDROID_KEY_ALIAS }}',
+      ANDROID_KEY_PASSWORD: '${{ secrets.ANDROID_KEY_PASSWORD }}',
+    }],
+  ]);
+  const expectedWith = new Map([
+    ['Checkout', {
+      ref: '${{ inputs.release_sha }}',
+      'fetch-depth': 1,
+      'persist-credentials': false,
+    }],
+    ['Setup Node.js', {
+      'node-version': 20,
+      cache: 'npm',
+      'cache-dependency-path': 'menorah/mobile-app/package-lock.json',
+    }],
+    ['Setup Java', {
+      distribution: 'temurin',
+      'java-version': 17,
+    }],
+    ['Upload AAB artifact', {
+      name: 'android-release',
+      path: 'menorah/mobile-app/android/app/build/outputs/bundle/release/*.aab',
+    }],
+  ]);
+  const expectedWorkingDirectories = new Map([
+    ['Install dependencies', 'menorah/mobile-app'],
+    ['Validate release environment', 'menorah/mobile-app'],
+    ['Build Android AAB', 'menorah/mobile-app/android'],
+  ]);
+  const expectedRuns = new Map([
+    ['Validate approved release SHA', [
+      'if [[ ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then',
+      '  echo "::error::release_sha must be an exact lowercase 40-character commit SHA."',
+      '  exit 1',
+      'fi',
+      'if [[ "$GITHUB_TRIGGER_REF" != "refs/heads/main" || "$RELEASE_SHA" != "$GITHUB_TRIGGER_SHA" ]]; then',
+      '  echo "::error::Android release signing is restricted to the exact workflow-dispatch main HEAD."',
+      '  exit 1',
+      'fi',
+      'if [[ "$ANDROID_RELEASE_SIGNING_READY" != "protected-main-only" ]]; then',
+      '  echo "::error::Configure ANDROID_RELEASE_SIGNING_READY=protected-main-only only in the protected android-release-signing environment."',
+      '  exit 1',
+      'fi',
+      '',
+    ].join('\n')],
+    ['Verify checked-out release SHA', [
+      'test "$(git rev-parse HEAD)" = "$RELEASE_SHA"',
+      'test -z "$(git status --porcelain)"',
+      '',
+    ].join('\n')],
+    ['Install dependencies', 'npm ci'],
+    ['Validate release environment', [
+      'node -e "require(\'./scripts/release-environment.cjs\').readAndroidReleaseEnvironment(process.env)"',
+      'npm run validate:release-config',
+      '',
+    ].join('\n')],
+    ['Decode keystore', [
+      'umask 077',
+      'test -n "${ANDROID_KEYSTORE_BASE64}"',
+      'printf \'%s\' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${RUNNER_TEMP}/menorah-release.keystore"',
+      'test -s "${RUNNER_TEMP}/menorah-release.keystore"',
+      '',
+    ].join('\n')],
+    ['Make gradlew executable', 'chmod +x menorah/mobile-app/android/gradlew'],
+    ['Build Android AAB', './gradlew bundleRelease --stacktrace --no-daemon'],
+    ['Remove signing material', 'rm -f "${RUNNER_TEMP}/menorah-release.keystore"'],
+  ]);
+
+  for (const step of job.steps || []) {
+    const expectedAction = expectedUses.get(step.name);
+    const expectedEnv = expectedEnvs.get(step.name);
+    const expectedInput = expectedWith.get(step.name);
+    const expectedWorkingDirectory = expectedWorkingDirectories.get(step.name);
+    const expectedRun = expectedRuns.get(step.name);
+    const expectedIf = step.name === 'Remove signing material' ? 'always()' : undefined;
+    const expectedKeys = ['name', expectedAction ? 'uses' : 'run'];
+    if (expectedEnv !== undefined) expectedKeys.push('env');
+    if (expectedInput !== undefined) expectedKeys.push('with');
+    if (expectedWorkingDirectory !== undefined) expectedKeys.push('working-directory');
+    if (expectedIf !== undefined) expectedKeys.push('if');
+
+    assert.equal(
+      step.uses,
+      expectedAction,
+      `Android signing step ${step.name} must use the exact reviewed action`,
+    );
+    assert.deepEqual(
+      step.env,
+      expectedEnv,
+      `Android signing step ${step.name} must retain its exact environment boundary`,
+    );
+    assert.deepEqual(
+      step.with,
+      expectedInput,
+      `Android signing step ${step.name} must retain its exact action inputs`,
+    );
+    assert.equal(
+      step['working-directory'],
+      expectedWorkingDirectory,
+      `Android signing step ${step.name} must retain its exact working directory`,
+    );
+    assert.equal(
+      step.if,
+      expectedIf,
+      `Android signing step ${step.name} must retain its exact condition`,
+    );
+    assert.equal(
+      step.shell,
+      undefined,
+      `Android signing step ${step.name} must not override its reviewed shell`,
+    );
+    const commandMessage = step.name === 'Validate approved release SHA'
+      ? 'Android signing input must equal the workflow-dispatch main HEAD; approved release guard command changed'
+      : `Android signing step ${step.name} command changed from the reviewed implementation`;
+    assert.equal(step.run, expectedRun, commandMessage);
+    assertExactStepKeys(step, expectedKeys, 'Android signing');
+  }
+
+  const secretReferences = [
+    ...rawWorkflow.matchAll(
+      /\$\{\{\s*secrets\s*(?:\.\s*([A-Z0-9_]+)|\[\s*['"]([A-Z0-9_]+)['"]\s*\])\s*\}\}/gi,
+    ),
+  ].map((match) => match[1] ?? match[2]);
+  assert.deepEqual(secretReferences.sort(), [
+    'ANDROID_KEYSTORE_BASE64',
+    'ANDROID_KEYSTORE_PASSWORD',
+    'ANDROID_KEY_ALIAS',
+    'ANDROID_KEY_PASSWORD',
+  ].sort(), 'Android workflow may consume only the four reviewed signing secrets');
+}
+
 export function validateUpdateScript(script) {
+  script = normalizeLineEndings(script);
   const requiredPatterns = [
     [/\bDEPLOY_RELEASE_SHA\b/, 'exact reviewed SHA input'],
     [/\bDEPLOY_MIGRATION_APPROVED_SHA\b/, 'explicit migration approval'],
@@ -926,6 +1422,8 @@ async function main() {
   const [
     rawWorkflow,
     rawSecurityWorkflow,
+    rawDastWorkflow,
+    rawAndroidBuildWorkflow,
     branchProtection,
     pullRequestTemplate,
     releaseEvidenceTemplate,
@@ -953,6 +1451,8 @@ async function main() {
   ] = await Promise.all([
     read(paths.workflow),
     read(paths.securityWorkflow),
+    read(paths.dastWorkflow),
+    read(paths.androidBuildWorkflow),
     read(paths.branchProtection),
     read(paths.pullRequestTemplate),
     read(paths.releaseEvidenceTemplate),
@@ -985,6 +1485,11 @@ async function main() {
     branchProtection,
     pullRequestTemplate,
     releaseEvidenceTemplate,
+  );
+  validateDastWorkflow(parse(rawDastWorkflow), rawDastWorkflow);
+  validateAndroidBuildWorkflow(
+    parse(rawAndroidBuildWorkflow),
+    rawAndroidBuildWorkflow,
   );
   validateBootstrapScript(firstRunScript);
   validateBackupSchedule(backupScheduleScript);

