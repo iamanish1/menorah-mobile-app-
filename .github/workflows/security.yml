@@ -3,7 +3,7 @@ name: Security gates
 on:
   pull_request:
   push:
-    branches: [main, security/account-auth-hardening]
+    branches: [main, 'release/**', security/account-auth-hardening]
   schedule:
     - cron: '23 2 * * 1'
   workflow_dispatch:
@@ -22,8 +22,8 @@ jobs:
           fetch-depth: 0
       - name: Scan all reachable commits
         run: >-
-          docker run --rm
-          -v "$PWD:/repo"
+          docker run --rm --network none
+          -v "$PWD:/repo:ro"
           ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
           git /repo --redact --no-banner --exit-code 1
 
@@ -36,7 +36,7 @@ jobs:
       - name: Run Semgrep
         run: >-
           docker run --rm
-          -v "$PWD:/src"
+          -v "$PWD:/src:ro"
           semgrep/semgrep:1.164.0@sha256:207983631beecdbe7fa29196c7f4a7a5f29033933cdb76c687ce4a672e07618d
           semgrep scan --config p/owasp-top-ten --error --metrics=off
           /src/menorah/backend/src
@@ -94,7 +94,7 @@ jobs:
           docker run --rm
           -v /var/run/docker.sock:/var/run/docker.sock
           aquasec/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e
-          image --scanners vuln --exit-code 1 --ignore-unfixed
+          image --scanners vuln --exit-code 1
           --severity HIGH,CRITICAL --skip-version-check
           "menorah-${{ matrix.name }}:${GITHUB_SHA}"
       - name: Generate CycloneDX SBOM
@@ -137,3 +137,37 @@ jobs:
       - name: Run Expo diagnostics
         working-directory: menorah/mobile-app
         run: npx expo-doctor
+
+  required-security-gates:
+    name: Required security gates
+    if: ${{ always() }}
+    needs:
+      - secret-scan
+      - sast
+      - dependency-audit
+      - container-security
+      - mobile-diagnostics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every security job to pass
+        shell: bash
+        env:
+          SECRET_SCAN_RESULT: ${{ needs.secret-scan.result }}
+          SAST_RESULT: ${{ needs.sast.result }}
+          DEPENDENCY_AUDIT_RESULT: ${{ needs.dependency-audit.result }}
+          CONTAINER_SECURITY_RESULT: ${{ needs.container-security.result }}
+          MOBILE_DIAGNOSTICS_RESULT: ${{ needs.mobile-diagnostics.result }}
+        run: |
+          set -euo pipefail
+          for result in \
+            "${SECRET_SCAN_RESULT}" \
+            "${SAST_RESULT}" \
+            "${DEPENDENCY_AUDIT_RESULT}" \
+            "${CONTAINER_SECURITY_RESULT}" \
+            "${MOBILE_DIAGNOSTICS_RESULT}"; do
+            if [[ "${result}" != "success" ]]; then
+              echo "::error::At least one required security job did not pass."
+              exit 1
+            fi
+          done

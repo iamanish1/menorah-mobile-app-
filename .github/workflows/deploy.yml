@@ -1,435 +1,96 @@
-name: Build & Deploy — Backend
+name: Production Release Readiness
 
 on:
+  pull_request:
   push:
-    branches: [main]
-    paths:
-      - 'menorah/backend/**'
-      - 'nginx/**'
-      - 'scripts/vps-setup.sh'
-      - 'gcp/cloudrun.yaml'
-      - '.github/workflows/deploy.yml'
+    branches:
+      - main
+      - 'release/**'
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Reviewed full 40-character commit SHA to validate
+        required: true
+        type: string
 
-  workflow_dispatch:    # manual trigger from GitHub Actions UI
+permissions:
+  contents: read
 
-env:
-  # GitHub Container Registry (for VPS pull)
-  GHCR_REGISTRY: ghcr.io
-  GHCR_IMAGE:    ${{ github.repository_owner }}/menorah-api
-
-  # GCP Artifact Registry (for Cloud Run)
-  # GCP_AR_REGION, GCP_PROJECT_ID, GCP_REGION come from GitHub Secrets
-  AR_IMAGE:      ${{ secrets.GCP_AR_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/menorah/menorah-api
+concurrency:
+  group: production-release-readiness-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 1 — Build Docker image and push to BOTH registries
-  # ════════════════════════════════════════════════════════════════════════════
-  build:
-    name: Build & push image
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write          # push to GHCR
-      id-token: write          # needed for GCP Workload Identity (if used later)
+  release-readiness:
+    name: Production release readiness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CANDIDATE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_sha || github.sha }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # ── Auth to GHCR ─────────────────────────────────────────────────────
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GHCR_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PAT }}
-
-      # ── Auth to GCP Artifact Registry ─────────────────────────────────────
-      - name: Authenticate to GCP
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: 'projects/873291355021/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
-          service_account: 'github-actions@menorah-health.iam.gserviceaccount.com'
-          token_format: 'access_token'
-
-      - name: Log in to Artifact Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ secrets.GCP_AR_REGION }}-docker.pkg.dev
-          username: oauth2accesstoken
-          password: ${{ steps.auth.outputs.access_token }}
-
-      # ── Build once, push to both registries ───────────────────────────────
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push to GHCR + Artifact Registry
-        uses: docker/build-push-action@v5
-        with:
-          context:    ./menorah/backend
-          file:       ./menorah/backend/Dockerfile
-          push:       true
-          tags: |
-            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE }}:sha-${{ github.sha }}
-            ${{ env.AR_IMAGE }}:sha-${{ github.sha }}
-          labels: |
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          # GitHub Actions layer cache — fast rebuilds
-          cache-from: type=gha
-          cache-to:   type=gha,mode=max
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 2 — Deploy to VPS  (runs in parallel with Job 3)
-  # ════════════════════════════════════════════════════════════════════════════
-  deploy-vps:
-    name: Deploy → VPS
-    needs: build
-    runs-on: ubuntu-latest
-    environment: production
-
-    steps:
-      - name: SSH to VPS and deploy
-        uses: appleboy/ssh-action@v1
-        with:
-          host:     ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key:      ${{ secrets.VPS_SSH_KEY }}
-          port:     ${{ secrets.VPS_PORT || 22 }}
-          script: |
-            set -e
-            COMMIT_SHA="${{ github.sha }}"
-            IMAGE="${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE }}:sha-${COMMIT_SHA}"
-
-            echo "==> Logging into GHCR"
-            echo "${{ secrets.GHCR_PAT }}" \
-              | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            echo "==> Pulling image ${IMAGE}"
-            docker pull "${IMAGE}"
-
-            echo "==> Checking article AI configuration"
-            if grep -q '^OPENAI_API_KEY=.' /opt/menorah/.env; then
-              echo "==> OPENAI_API_KEY is configured"
-            else
-              echo "::warning::OPENAI_API_KEY is not configured; CMS AI article generation will fail"
-            fi
-
-            echo "==> Checking Social Studio AI configuration"
-            if grep -q '^SOCIAL_STUDIO_OPENAI_API_KEY=.' /opt/menorah/.env; then
-              echo "==> SOCIAL_STUDIO_OPENAI_API_KEY is configured"
-            elif grep -q '^OPENAI_API_KEY=.' /opt/menorah/.env; then
-              echo "::warning::SOCIAL_STUDIO_OPENAI_API_KEY is not configured; Social Studio will fall back to OPENAI_API_KEY"
-            else
-              echo "::warning::SOCIAL_STUDIO_OPENAI_API_KEY is not configured; AI Social Studio generation will fail"
-            fi
-
-            echo "==> Ensuring local Redis is running"
-            REDIS_IMAGE="redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99"
-            docker pull "$REDIS_IMAGE"
-            if docker inspect menorah-redis >/dev/null 2>&1; then
-              docker start menorah-redis >/dev/null 2>&1 || true
-            else
-              docker run -d \
-                --name menorah-redis \
-                --restart unless-stopped \
-                -p 127.0.0.1:6379:6379 \
-                -v menorah-redis-data:/data \
-                "$REDIS_IMAGE" \
-                redis-server --appendonly yes
-            fi
-
-            echo "==> Waiting for Redis"
-            for i in $(seq 1 20); do
-              if docker exec menorah-redis redis-cli ping | grep -q PONG; then
-                echo "==> Redis is ready"
-                break
-              fi
-              if [ "$i" -eq 20 ]; then
-                echo "::error::Redis did not become ready"
-                docker logs menorah-redis || true
-                exit 1
-              fi
-              sleep 2
-            done
-
-            echo "==> Stopping old container"
-            docker stop menorah-api 2>/dev/null || true
-            docker rm   menorah-api 2>/dev/null || true
-
-            echo "==> Stopping legacy PM2 backend if present"
-            if command -v pm2 >/dev/null 2>&1; then
-              pm2 list || true
-              LEGACY_PM2_IDS="$(pm2 jlist 2>/dev/null | node -e '
-                const fs = require("fs");
-                const raw = fs.readFileSync(0, "utf8").trim();
-                if (!raw) process.exit(0);
-                const apps = JSON.parse(raw);
-                const legacyNeedles = [
-                  "/root/menorah-mobile-app-/menorah/backend",
-                  "menorah/backend/src/server",
-                  "menorah-api"
-                ];
-                const ids = apps
-                  .filter((app) => {
-                    const env = app.pm2_env || {};
-                    const fields = [
-                      app.name,
-                      env.name,
-                      env.cwd,
-                      env.pm_exec_path,
-                      ...(Array.isArray(env.args) ? env.args : [])
-                    ].filter(Boolean).join(" ");
-                    return legacyNeedles.some((needle) => fields.includes(needle));
-                  })
-                  .map((app) => app.pm_id);
-                process.stdout.write(ids.join(" "));
-              ' || true)"
-              if [ -n "$LEGACY_PM2_IDS" ]; then
-                echo "==> Removing legacy PM2 app ids: ${LEGACY_PM2_IDS}"
-                pm2 delete ${LEGACY_PM2_IDS} 2>/dev/null || true
-              fi
-              pm2 delete menorah-api 2>/dev/null || true
-              pm2 save --force 2>/dev/null || true
-            fi
-
-            echo "==> Freeing API port 3000 if a legacy Menorah backend is still bound"
-            for attempt in 1 2 3; do
-              PORT_PIDS="$(fuser 3000/tcp 2>/dev/null || true)"
-              if [ -z "$PORT_PIDS" ]; then
-                echo "==> Port 3000 is free"
-                break
-              fi
-
-              for pid in $PORT_PIDS; do
-                CMD="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
-                CWD="$(readlink -f "/proc/${pid}/cwd" 2>/dev/null || true)"
-                PPID="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
-                echo "==> Port 3000 owner pid=${pid} ppid=${PPID} cwd=${CWD} cmd=${CMD}"
-
-                if echo "${CMD} ${CWD}" | grep -Eq 'menorah-mobile-app-.*/menorah/backend|menorah/backend/src/server|menorah-api'; then
-                  kill -TERM "$pid" 2>/dev/null || true
-                  if [ -n "$PPID" ] && [ "$PPID" != "1" ]; then
-                    PCMD="$(tr '\0' ' ' < "/proc/${PPID}/cmdline" 2>/dev/null || true)"
-                    echo "==> Legacy parent pid=${PPID} cmd=${PCMD}"
-                    if echo "$PCMD" | grep -Eiq 'pm2|node'; then
-                      kill -TERM "$PPID" 2>/dev/null || true
-                    fi
-                  fi
-                else
-                  echo "::error::Port 3000 is occupied by an unknown process; refusing to kill it"
-                  exit 1
-                fi
-              done
-              sleep 3
-            done
-
-            if fuser 3000/tcp >/dev/null 2>&1; then
-              echo "==> Legacy backend still owns port 3000; forcing shutdown"
-              fuser -k 3000/tcp 2>/dev/null || true
-              sleep 3
-            fi
-
-            if fuser 3000/tcp >/dev/null 2>&1; then
-              echo "::error::Port 3000 is still occupied after cleanup"
-              fuser -v 3000/tcp 2>/dev/null || true
-              exit 1
-            fi
-
-            echo "==> Starting new container (network=host, uses local Redis)"
-            mkdir -p /opt/menorah/uploads /opt/menorah/logs
-            chmod 777 /opt/menorah/uploads
-            docker run -d \
-              --name menorah-api \
-              --restart unless-stopped \
-              --network host \
-              --env-file /opt/menorah/.env \
-              -e NODE_ENV=production \
-              -e PORT=3000 \
-              -e REDIS_URL=redis://127.0.0.1:6379 \
-              -v /opt/menorah/logs:/app/logs \
-              -v /opt/menorah/uploads:/app/uploads \
-              "${IMAGE}"
-
-            echo "==> Updating nginx config"
-            NGINX_TMP="/tmp/menorah-nginx-${COMMIT_SHA}.conf"
-            curl -fsSL \
-              "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/menorah/backend/nginx.conf" \
-              -o "${NGINX_TMP}"
-
-            if command -v sudo >/dev/null 2>&1; then
-              SUDO="sudo -n"
-            else
-              SUDO=""
-            fi
-
-            if ${SUDO} sh -c "cp '${NGINX_TMP}' /etc/nginx/sites-available/menorah && ln -sf /etc/nginx/sites-available/menorah /etc/nginx/sites-enabled/menorah && nginx -t && systemctl reload nginx"; then
-              echo "==> nginx config updated and reloaded ✅"
-            else
-              echo "::error::nginx reload failed. Run on VPS: sudo cp ${NGINX_TMP} /etc/nginx/sites-available/menorah && sudo nginx -t && sudo systemctl reload nginx"
-              exit 1
-            fi
-
-            echo "==> Health check (waiting 15s for startup)"
-            for i in $(seq 1 18); do
-              if curl -sf http://localhost:3000/health | grep -q '"status":"OK"' \
-                && curl -sf "http://localhost:3000/api/articles?limit=1" | grep -q '"success":true'; then
-                echo "==> VPS API became ready"
-                break
-              fi
-
-              if [ "$i" -eq 18 ]; then
-                echo "::error::VPS health check failed after 90s"
-                docker ps -a || true
-                docker logs --tail=120 menorah-api || true
-                exit 1
-              fi
-
-              echo "    Attempt ${i}/18 failed; waiting 5s..."
-              sleep 5
-            done
-            sleep 15
-            curl -sf http://localhost:3000/health | grep -q '"status":"OK"'
-            curl -sf "http://localhost:3000/api/articles?limit=1" | grep -q '"success":true'
-            echo "==> VPS health check passed ✅"
-
-            echo "==> Pruning old images"
-            docker image prune -f
-
-      - name: Notify on VPS failure
-        if: failure()
+      - name: Validate immutable candidate input
+        shell: bash
         run: |
-          echo "::error::VPS deploy failed. Check logs: docker logs menorah-api"
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 3 — Deploy to GCP Cloud Run  (runs in parallel with Job 2)
-  # ════════════════════════════════════════════════════════════════════════════
-  deploy-cloudrun:
-    name: Deploy → Cloud Run
-    needs: build
-    runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      - name: Checkout (for cloudrun.yaml)
-        uses: actions/checkout@v4
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: 'projects/873291355021/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
-          service_account: 'github-actions@menorah-health.iam.gserviceaccount.com'
-
-      - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-      # ── Install envsubst (part of gettext-base, not pre-installed) ──────
-      - name: Install gettext-base
-        run: sudo apt-get install -y gettext-base
-
-      # ── Substitute template variables in cloudrun.yaml ────────────────
-      - name: Generate final cloudrun.yaml
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GCP_REGION:     ${{ secrets.GCP_REGION }}
-          GCP_AR_REGION:  ${{ secrets.GCP_AR_REGION }}
-          IMAGE_TAG:      sha-${{ github.sha }}
-        run: |
-          # envsubst replaces ${VAR} placeholders in the YAML with real values
-          envsubst < gcp/cloudrun.yaml > /tmp/cloudrun-final.yaml
-          echo "==> cloudrun.yaml generated (content redacted from logs)"
-
-      # ── Deploy to Cloud Run ───────────────────────────────────────────
-      - name: Deploy to Cloud Run
-        run: |
-          gcloud run services replace /tmp/cloudrun-final.yaml \
-            --region=${{ secrets.GCP_REGION }} \
-            --quiet
-
-          # Allow unauthenticated invocations (traffic comes from Cloudflare Worker)
-          gcloud run services add-iam-policy-binding menorah-api \
-            --region=${{ secrets.GCP_REGION }} \
-            --member="allUsers" \
-            --role="roles/run.invoker" \
-            --quiet 2>/dev/null || true   # idempotent — ignore if already set
-
-      # ── Print Cloud Run URL ───────────────────────────────────────────
-      - name: Get Cloud Run URL
-        id: cloudrun_url
-        run: |
-          URL=$(gcloud run services describe menorah-api \
-            --region=${{ secrets.GCP_REGION }} \
-            --format='value(status.url)')
-          echo "url=${URL}" >> $GITHUB_OUTPUT
-          echo "==> Cloud Run URL: ${URL}"
-
-      # ── Smoke test ────────────────────────────────────────────────────
-      - name: Cloud Run health check
-        run: |
-          URL="${{ steps.cloudrun_url.outputs.url }}"
-          echo "==> Hitting ${URL}/health"
-          # Cloud Run may take 30s to cold-start on first deploy
-          for i in {1..6}; do
-            if curl -sf "${URL}/health" | grep -q '"status":"OK"'; then
-              curl -sf "${URL}/api/articles?limit=1" | grep -q '"success":true'
-              echo "==> Cloud Run health check passed ✅"
-              exit 0
-            fi
-            echo "    Attempt ${i}/6 — waiting 10s..."
-            sleep 10
-          done
-          echo "::error::Cloud Run health check failed after 60s"
-          exit 1
-
-      - name: Remind to update Cloudflare Worker
-        run: |
-          echo ""
-          echo "════════════════════════════════════════════════════════"
-          echo " Cloud Run deployed successfully!"
-          echo " URL: ${{ steps.cloudrun_url.outputs.url }}"
-          echo ""
-          echo " If this is a new Cloud Run URL, update your Cloudflare Worker:"
-          echo "   cd cloudflare"
-          echo "   npx wrangler secret put GCP_URL"
-          echo "   # paste: ${{ steps.cloudrun_url.outputs.url }}"
-          echo "════════════════════════════════════════════════════════"
-
-      - name: Notify on Cloud Run failure
-        if: failure()
-        run: |
-          echo "::error::Cloud Run deploy failed. Check: gcloud run services describe menorah-api --region=${{ secrets.GCP_REGION }}"
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 4 — Summary (runs after both deploys complete)
-  # ════════════════════════════════════════════════════════════════════════════
-  summary:
-    name: Deployment summary
-    needs: [build, deploy-vps, deploy-cloudrun]
-    runs-on: ubuntu-latest
-    if: always()    # run even if one job failed
-
-    steps:
-      - name: Print summary
-        run: |
-          VPS_STATUS="${{ needs.deploy-vps.result }}"
-          GCP_STATUS="${{ needs.deploy-cloudrun.result }}"
-          SHA="sha-${{ github.sha }}"
-
-          echo "╔══════════════════════════════════════════════════╗"
-          echo "║         Menorah Health — Deploy Summary          ║"
-          echo "╠══════════════════════════════════════════════════╣"
-          echo "║ Image tag : ${SHA}"
-          echo "║ VPS       : ${VPS_STATUS}"
-          echo "║ Cloud Run : ${GCP_STATUS}"
-          echo "╚══════════════════════════════════════════════════╝"
-
-          if [[ "$VPS_STATUS" == "failure" || "$GCP_STATUS" == "failure" ]]; then
+          set -euo pipefail
+          if [[ ! "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Candidate must be an exact lowercase 40-character commit SHA."
             exit 1
           fi
+
+      - name: Checkout candidate exactly
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          checked_out_sha="$(git rev-parse HEAD)"
+          test "${checked_out_sha}" = "${CANDIDATE_SHA}"
+          test "${#checked_out_sha}" -eq 40
+          git cat-file -e "${CANDIDATE_SHA}^{commit}"
+          {
+            printf 'event=%s\n' "${GITHUB_EVENT_NAME}"
+            printf 'candidateCommit=%s\n' "${checked_out_sha}"
+            printf 'candidateTree=%s\n' "$(git rev-parse 'HEAD^{tree}')"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Install deterministic validator dependencies
+        working-directory: menorah/scripts/qa
+        run: npm ci --ignore-scripts
+
+      - name: Validate workflow and release safety invariants
+        working-directory: menorah/scripts/qa
+        run: |
+          npm run test:release-workflow
+          npm run test:tunnel-config
+          npm run test:media-recovery
+          docker run --rm --network none \
+            -v "${GITHUB_WORKSPACE}/menorah:/workspace:ro" \
+            -w /workspace \
+            node:22-bookworm@sha256:5647be709086c696ff32edaaf1c70cd26d1da6ab2b39c32f3c7b4c4a31957e37 \
+            bash scripts/qa/test-media-transition.sh
+          npm run test:mongo-identities
+          npm run test:backup-lifecycle
+          npm run test:monitoring
+          bash test-release-scripts.sh
+
+      - name: Validate production Compose configuration
+        run: bash menorah/deploy/ubuntu/validate-compose.sh
+
+      - name: Validate release shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in menorah/deploy/ubuntu/*.sh menorah/scripts/qa/test-release-scripts.sh; do
+            bash -n "${script}"
+          done
+
+# This workflow is intentionally read-only. It never authenticates to a
+# registry, host, cloud account, or production environment and never deploys.
+# The only production release path is the operator-invoked guarded Compose
+# script documented in menorah/docs/production-update-runbook.md.
