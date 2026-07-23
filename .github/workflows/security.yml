@@ -88,7 +88,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Build commit image
-        run: docker build --tag "menorah-${{ matrix.name }}:${GITHUB_SHA}" "${{ matrix.context }}"
+        run: >-
+          docker build
+          --build-arg "NEXT_PUBLIC_CALLS_URL=https://calls.security-test.invalid"
+          --tag "menorah-${{ matrix.name }}:${GITHUB_SHA}"
+          "${{ matrix.context }}"
       - name: Scan image for high and critical vulnerabilities
         run: >-
           docker run --rm

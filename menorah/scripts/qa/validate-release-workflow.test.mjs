@@ -504,6 +504,24 @@ test('rejects a security workflow action pinned only to a moving tag', () => {
   );
 });
 
+test('rejects a production call origin in security image builds', () => {
+  const securityWorkflow = parse(
+    rawSecurityWorkflow.replace(
+      'https://calls.security-test.invalid',
+      'https://calls.menorah.me',
+    ),
+  );
+  assert.throws(
+    () => validateGovernance(
+      securityWorkflow,
+      branchProtection,
+      pullRequestTemplate,
+      releaseEvidenceTemplate,
+    ),
+    /security image builds must use only the reviewed non-routable call origin/,
+  );
+});
+
 test('rejects a workflow that mutates a Compose runtime', () => {
   const workflow = copyWorkflow();
   workflow.jobs['release-readiness'].steps.push({

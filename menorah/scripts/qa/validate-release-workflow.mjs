@@ -285,6 +285,15 @@ function validateGovernance(
     'secret scanner image must be immutable',
   );
 
+  const containerBuildRun = securityWorkflow.jobs?.['container-security']?.steps?.find(
+    (step) => step.name === 'Build commit image',
+  )?.run;
+  assert.equal(
+    containerBuildRun,
+    'docker build --build-arg "NEXT_PUBLIC_CALLS_URL=https://calls.security-test.invalid" --tag "menorah-${{ matrix.name }}:${GITHUB_SHA}" "${{ matrix.context }}"',
+    'security image builds must use only the reviewed non-routable call origin',
+  );
+
   const stableGate = securityWorkflow.jobs?.['required-security-gates'];
   assert.ok(stableGate, 'security workflow must expose one stable required-check job');
   assert.equal(stableGate.name, 'Required security gates');
