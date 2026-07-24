@@ -1113,7 +1113,7 @@ services:
       dockerfile: Dockerfile.monitoring-health
       target: alloy
     restart: unless-stopped
-    user: "0:0"
+    user: "473:473"
     command:
       - run
       - /etc/alloy/config.alloy
@@ -1338,6 +1338,8 @@ networks:
     ipam:
       config:
         - subnet: 10.254.240.0/24
+          aux_addresses:
+            caddy: 10.254.240.10
   data:
     name: menorah-local-staging-data
     internal: true

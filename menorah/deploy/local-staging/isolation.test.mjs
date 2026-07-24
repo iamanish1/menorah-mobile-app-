@@ -589,6 +589,15 @@ test('replica initialization uses the connected database handle', () => {
   );
 });
 
+test('Caddy proxy address is reserved from dynamic network allocation', () => {
+  assert.match(composeSource, /TRUST_PROXY: 10\.254\.240\.10/);
+  assert.match(composeSource, /ipv4_address: 10\.254\.240\.10/);
+  assert.match(
+    composeSource,
+    /subnet: 10\.254\.240\.0\/24\r?\n\s+aux_addresses:\r?\n\s+caddy: 10\.254\.240\.10/,
+  );
+});
+
 test('read-only monitoring services use file-backed Compose configs', () => {
   assert.doesNotMatch(topLevelConfigsSource, /\bcontent:/);
   assert.match(topLevelConfigsSource, /blackbox:\r?\n\s+file: \.\/blackbox\.yml/);

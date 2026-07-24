@@ -130,3 +130,13 @@ test('Prometheus and Alloy wait for healthy monitoring dependencies', () => {
     /loki:\r?\n\s+condition: service_healthy/,
   );
 });
+
+test('Alloy uses the pinned non-root owner of its copied-up data directory', () => {
+  const alloy = serviceBlock('alloy');
+  assert.match(alloy, /user: "473:473"/);
+  assert.doesNotMatch(alloy, /user: "0:0"/);
+  assert.match(
+    alloy,
+    /source: alloy\r?\n\s+target: \/var\/lib\/alloy\/data/,
+  );
+});
