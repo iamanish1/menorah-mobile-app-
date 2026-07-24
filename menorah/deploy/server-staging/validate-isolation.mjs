@@ -101,6 +101,25 @@ export const REQUIRED_NETWORK_SUFFIXES = Object.freeze([
   'restore',
 ]);
 
+const MEDIA_VOLUME_CONTRACTS = Object.freeze([
+  Object.freeze({
+    source: 'staging-uploads',
+    target: '/app/uploads',
+  }),
+  Object.freeze({
+    source: 'staging-managed-media',
+    target: '/app/managed-media',
+  }),
+]);
+
+const MEDIA_WRITER_SERVICES = Object.freeze([
+  'staging-api-ios',
+  'staging-api-android',
+  'staging-api-web',
+  'staging-api-admin',
+  'staging-worker',
+]);
+
 export const REQUIRED_P0_ALERTS = Object.freeze([
   'WorkerQueueBacklogHigh',
   'BackupJobFailed',
@@ -274,12 +293,10 @@ const requireStagingLabels = (
   if (normalized['com.menorah.environment'] !== 'staging') {
     errors.push(`${resourceType} ${resourceName} lacks environment=staging`);
   }
-  if (
-    ![project, REAL_PROJECT].includes(
-      normalized['com.menorah.project'],
-    )
-  ) {
-    errors.push(`${resourceType} ${resourceName} lacks its staging project label`);
+  if (normalized['com.menorah.project'] !== project) {
+    errors.push(
+      `${resourceType} ${resourceName} project label must equal ${project}`,
+    );
   }
   if (normalized['com.menorah.stack'] !== 'server-staging') {
     errors.push(`${resourceType} ${resourceName} lacks server-staging label`);
@@ -339,6 +356,187 @@ const validateRoleUse = (errors, services, environment) => {
           `${serviceName} receives privileged MongoDB credentials`,
         );
       }
+    }
+  }
+};
+
+const completedDependency = (service, dependency) => (
+  service?.depends_on?.[dependency]?.condition
+  === 'service_completed_successfully'
+);
+
+const volumeSourceNames = (volumes, source) => new Set(
+  [
+    source,
+    volumes?.[source]?.name,
+  ].filter(Boolean).map(String),
+);
+
+const contractMountPresent = (
+  service,
+  volumes,
+  contract,
+  { requireWritable = true } = {},
+) => normalizeMounts(service?.volumes).some((mount) => (
+  mount.type === 'volume'
+  && volumeSourceNames(volumes, contract.source).has(String(mount.source))
+  && mount.target === contract.target
+  && (!requireWritable || !mount.readOnly)
+));
+
+const validateBackendRuntimeContracts = (errors, services, volumes) => {
+  const directNodeTasks = [
+    ['staging-migrate', ['node', 'src/database/migrate.js']],
+    ['staging-seed', ['node', 'src/database/seed-server-staging.js']],
+  ];
+  for (const [serviceName, expectedCommand] of directNodeTasks) {
+    const service = services[serviceName];
+    if (!service) {
+      errors.push(`missing backend runtime task ${serviceName}`);
+      continue;
+    }
+    const command = Array.isArray(service.command)
+      ? service.command.map(String)
+      : [];
+    if (
+      command.length !== expectedCommand.length
+      || command.some((token, index) => token !== expectedCommand[index])
+    ) {
+      errors.push(`${serviceName} must invoke its Node script directly`);
+    }
+  }
+
+  const storageInit = services['staging-storage-init'];
+  const permissionsInit = services['staging-media-permissions-init'];
+  if (!storageInit) {
+    errors.push('missing staging-storage-init');
+  }
+  if (!permissionsInit) {
+    errors.push('missing staging-media-permissions-init');
+    return;
+  }
+
+  if (String(permissionsInit.user) !== '0:0') {
+    errors.push('staging-media-permissions-init must run as root');
+  }
+  if (permissionsInit.read_only !== true) {
+    errors.push('staging-media-permissions-init root filesystem must be read-only');
+  }
+  if (permissionsInit.network_mode !== 'none') {
+    errors.push('staging-media-permissions-init must disable networking');
+  }
+  if ((permissionsInit.profiles || []).length > 0) {
+    errors.push('staging-media-permissions-init must run in the default profile');
+  }
+  const capabilities = (permissionsInit.cap_add || [])
+    .map((capability) => String(capability).toUpperCase())
+    .sort();
+  if (
+    capabilities.join(',')
+    !== ['CHOWN', 'DAC_OVERRIDE', 'FOWNER'].sort().join(',')
+  ) {
+    errors.push(
+      'staging-media-permissions-init must have only ownership capabilities',
+    );
+  }
+  const entrypoint = Array.isArray(permissionsInit.entrypoint)
+    ? permissionsInit.entrypoint.map(String)
+    : [];
+  if (
+    entrypoint.length !== 2
+    || entrypoint[0] !== '/bin/sh'
+    || entrypoint[1] !== '-euc'
+  ) {
+    errors.push('staging-media-permissions-init must use the guarded shell entrypoint');
+  }
+  const permissionsCommand = stringValues(permissionsInit.command).join('\n');
+  for (const [pattern, message] of [
+    [/\bid -u menorah\b/, 'resolve the backend user UID'],
+    [/\bid -g menorah\b/, 'resolve the backend user GID'],
+    [/\breadlink -f\b/, 'verify canonical media roots'],
+    [/\bfind\b[\s\S]*-xdev[\s\S]*-type l/, 'reject media-volume symlinks'],
+    [/\bchown -R\b/, 'initialize recursive ownership'],
+    [/\bchmod 0750\b/, 'restrict media-root permissions'],
+  ]) {
+    if (!pattern.test(permissionsCommand)) {
+      errors.push(`staging-media-permissions-init must ${message}`);
+    }
+  }
+  for (const { target } of MEDIA_VOLUME_CONTRACTS) {
+    if (!permissionsCommand.includes(target)) {
+      errors.push(`staging-media-permissions-init must constrain ${target}`);
+    }
+  }
+
+  const permissionsMounts = normalizeMounts(permissionsInit.volumes);
+  if (
+    permissionsMounts.length !== MEDIA_VOLUME_CONTRACTS.length
+    || MEDIA_VOLUME_CONTRACTS.some(
+      (contract) => !contractMountPresent(
+        permissionsInit,
+        volumes,
+        contract,
+      ),
+    )
+  ) {
+    errors.push(
+      'staging-media-permissions-init must mount only the two writable media volumes',
+    );
+  }
+  if (!completedDependency(permissionsInit, 'staging-storage-init')) {
+    errors.push(
+      'staging-media-permissions-init must wait for staging-storage-init completion',
+    );
+  }
+
+  for (const serviceName of MEDIA_WRITER_SERVICES) {
+    const writer = services[serviceName];
+    if (!writer) {
+      errors.push(`missing media writer ${serviceName}`);
+      continue;
+    }
+    if (writer.image !== permissionsInit.image) {
+      errors.push(
+        `${serviceName} and staging-media-permissions-init must use the same backend image`,
+      );
+    }
+    for (const contract of MEDIA_VOLUME_CONTRACTS) {
+      if (!contractMountPresent(writer, volumes, contract)) {
+        errors.push(
+          `${serviceName} must mount ${contract.source} at ${contract.target}`,
+        );
+      }
+    }
+    if (!completedDependency(writer, 'staging-media-permissions-init')) {
+      errors.push(
+        `${serviceName} must wait for staging-media-permissions-init completion`,
+      );
+    }
+  }
+
+  const exemptWriters = new Set([
+    'staging-storage-init',
+    'staging-media-permissions-init',
+    ...MEDIA_WRITER_SERVICES,
+  ]);
+  for (const [serviceName, service] of Object.entries(services)) {
+    if (exemptWriters.has(serviceName)) continue;
+    const mounts = normalizeMounts(service.volumes);
+    const writesMediaVolume = mounts.some((mount) => (
+      mount.type === 'volume'
+      && !mount.readOnly
+      && MEDIA_VOLUME_CONTRACTS.some((contract) => (
+        volumeSourceNames(volumes, contract.source)
+          .has(String(mount.source))
+      ))
+    ));
+    if (
+      writesMediaVolume
+      && !completedDependency(service, 'staging-media-permissions-init')
+    ) {
+      errors.push(
+        `${serviceName} writes a media volume without waiting for ownership initialization`,
+      );
     }
   }
 };
@@ -510,6 +708,12 @@ export const validateRenderedCompose = (
       }
     }
   }
+
+  validateBackendRuntimeContracts(
+    errors,
+    services,
+    model.volumes || {},
+  );
 
   for (const serviceName of [
     'staging-mongo-primary',
@@ -806,10 +1010,28 @@ export const validateMonitoring = ({
   )?.[1] || '';
   if (
     !/^\s*environment:\s*staging\s*$/mi.test(externalLabelsBlock)
-    || !/^\s*compose_project:\s*menorah-staging\s*$/mi
+    || !/^\s*compose_project:\s*(?:"\$\{MENORAH_SERVER_STAGING_PROJECT_NAME\}"|'\$\{MENORAH_SERVER_STAGING_PROJECT_NAME\}'|\$\{MENORAH_SERVER_STAGING_PROJECT_NAME\})\s*$/mi
       .test(externalLabelsBlock)
   ) {
     errors.push('Prometheus external staging labels are missing');
+  }
+  const prometheus = compose.services?.['staging-prometheus'] || {};
+  const prometheusEnvironment = normalizeEnvironment(prometheus.environment);
+  if (
+    prometheusEnvironment.MENORAH_SERVER_STAGING_PROJECT_NAME
+    !== compose.name
+  ) {
+    errors.push(
+      'Prometheus project environment must equal the active Compose project',
+    );
+  }
+  if (
+    !stringValues(prometheus.command)
+      .includes('--enable-feature=expand-external-labels')
+  ) {
+    errors.push(
+      'Prometheus must enable external-label environment expansion',
+    );
   }
   const targets = extractTargets(prometheusSource);
   for (const target of targets) {

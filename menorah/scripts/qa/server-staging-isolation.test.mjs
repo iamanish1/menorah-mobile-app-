@@ -20,6 +20,7 @@ import {
 } from '../../deploy/server-staging/generate-validation-environment.mjs';
 import {
   EXPECTED_PORT_VARIABLES,
+  REAL_PROJECT,
   parseEnvironmentSource,
   validateEnvironmentRecord,
 } from '../../deploy/server-staging/validate-environment.mjs';
@@ -132,21 +133,85 @@ const validCompose = (environment = validEnvironment()) => {
     image: 'redis:7',
     networks: ['staging-data'],
   });
-  services['staging-api-ios'].environment = {
-    MONGODB_URI: environment.MONGODB_URI,
+  services['staging-storage-init'] = safeService(project, {
+    restart: 'no',
+    network_mode: 'none',
+    networks: [],
+  });
+  const mediaVolumes = [
+    {
+      type: 'volume',
+      source: 'staging-uploads',
+      target: '/app/uploads',
+    },
+    {
+      type: 'volume',
+      source: 'staging-managed-media',
+      target: '/app/managed-media',
+    },
+  ];
+  services['staging-media-permissions-init'] = safeService(project, {
+    restart: 'no',
+    user: '0:0',
+    read_only: true,
+    cap_add: ['CHOWN', 'DAC_OVERRIDE', 'FOWNER'],
+    network_mode: 'none',
+    networks: [],
+    entrypoint: ['/bin/sh', '-euc'],
+    command: [`
+      backend_uid="$(id -u menorah)"
+      backend_gid="$(id -g menorah)"
+      readlink -f /app/uploads
+      find /app/uploads /app/managed-media -xdev -type l
+      chown -R "$backend_uid:$backend_gid" /app/uploads /app/managed-media
+      chmod 0750 /app/uploads /app/managed-media
+    `],
+    volumes: mediaVolumes,
+    depends_on: {
+      'staging-storage-init': {
+        condition: 'service_completed_successfully',
+      },
+    },
+  });
+  services['staging-migrate'] = safeService(project, {
+    restart: 'no',
+    command: ['node', 'src/database/migrate.js'],
+    environment: {
+      MONGODB_URI: environment.MONGODB_MIGRATION_URI,
+    },
+    networks: ['staging-data'],
+  });
+  services['staging-seed'] = safeService(project, {
+    restart: 'no',
+    command: ['node', 'src/database/seed-server-staging.js'],
+    networks: ['staging-data'],
+  });
+  for (const serviceName of [
+    'staging-api-ios',
+    'staging-api-android',
+    'staging-api-web',
+    'staging-api-admin',
+    'staging-worker',
+  ]) {
+    services[serviceName].environment = {
+      MONGODB_URI: environment.MONGODB_URI,
+    };
+    services[serviceName].volumes = mediaVolumes.map((volume) => ({
+      ...volume,
+    }));
+    services[serviceName].depends_on = {
+      'staging-media-permissions-init': {
+        condition: 'service_completed_successfully',
+      },
+    };
+  }
+  services['staging-prometheus'].environment = {
+    MENORAH_SERVER_STAGING_PROJECT_NAME: project,
   };
-  services['staging-api-android'].environment = {
-    MONGODB_URI: environment.MONGODB_URI,
-  };
-  services['staging-api-web'].environment = {
-    MONGODB_URI: environment.MONGODB_URI,
-  };
-  services['staging-api-admin'].environment = {
-    MONGODB_URI: environment.MONGODB_URI,
-  };
-  services['staging-worker'].environment = {
-    MONGODB_URI: environment.MONGODB_URI,
-  };
+  services['staging-prometheus'].command = [
+    '--config.file=/etc/prometheus/prometheus.yml',
+    '--enable-feature=expand-external-labels',
+  ];
   const resourceLabels = {
     'com.menorah.environment': 'staging',
     'com.menorah.project': project,
@@ -391,6 +456,18 @@ test('rendered collision model accepts the isolated synthetic baseline', () => {
   );
 });
 
+test('rendered collision model preserves the exact real-project default', () => {
+  const environment = validEnvironment();
+  environment.MENORAH_SERVER_STAGING_PROJECT_NAME = REAL_PROJECT;
+  environment.MENORAH_SERVER_STAGING_RESOURCE_PREFIX = REAL_PROJECT;
+  environment.COMPOSE_PROJECT_NAME = REAL_PROJECT;
+  const model = validCompose(environment);
+  assert.deepEqual(
+    validateRenderedCompose(model, environment, productionMetadata),
+    [],
+  );
+});
+
 const composeMutations = [
   ['project', (model) => { model.name = 'menorah'; }, /rendered Compose name/],
   ['container name', (model) => { model.services['staging-api-admin'].container_name = 'production-admin'; }, /non-staging container_name/],
@@ -410,7 +487,21 @@ const composeMutations = [
   ['unbounded restart', (model) => { model.services['staging-api-web'].restart = 'always'; }, /unbounded restart policy/],
   ['missing limits', (model) => { delete model.services['staging-api-web'].mem_limit; }, /lacks CPU, memory, or PID limits/],
   ['missing labels', (model) => { model.services['staging-api-web'].labels = {}; }, /lacks environment=staging/],
+  ['stale project label', (model) => {
+    model.services['staging-api-web'].labels['com.menorah.project'] =
+      REAL_PROJECT;
+  }, /project label must equal/],
   ['production alias', (model) => { model.services['staging-redis'].networks = { 'staging-data': { aliases: ['redis'] } }; }, /non-staging network alias/],
+  ['npm migration wrapper', (model) => {
+    model.services['staging-migrate'].command = ['npm', 'run', 'migrate'];
+  }, /invoke its Node script directly/],
+  ['expanded media-init capabilities', (model) => {
+    model.services['staging-media-permissions-init'].cap_add.push('SYS_ADMIN');
+  }, /only ownership capabilities/],
+  ['missing media writer ordering', (model) => {
+    delete model.services['staging-worker']
+      .depends_on['staging-media-permissions-init'];
+  }, /staging-worker must wait for staging-media-permissions-init/],
   ['wrong application role', (model, env) => {
     model.services['staging-api-ios'].environment.MONGODB_URI =
       env.MONGODB_BACKUP_URI;
@@ -543,6 +634,32 @@ test('monitoring rejects production targets, missing labels, shared state, crede
   assert.ok(includesError(errors, /missing or shared/));
 });
 
+test('monitoring rejects hardcoded or uninjected Compose project evidence', () => {
+  const model = validCompose();
+  model.services['staging-prometheus']
+    .environment.MENORAH_SERVER_STAGING_PROJECT_NAME = REAL_PROJECT;
+  model.services['staging-prometheus'].command = [];
+  const errors = validateMonitoring({
+    prometheusSource: readStaging('prometheus.yml').replace(
+      'compose_project: "${MENORAH_SERVER_STAGING_PROJECT_NAME}"',
+      `compose_project: ${REAL_PROJECT}`,
+    ),
+    alertmanagerSource: readStaging('alertmanager.yml'),
+    blackboxSource: readStaging('blackbox.yml'),
+    alloySource: readStaging('config.alloy'),
+    lokiSource: readStaging('loki.yml'),
+    alertRulesSource: readFileSync(
+      new URL('../../deploy/monitoring/alert-rules.yml', import.meta.url),
+      'utf8',
+    ),
+    compose: model,
+    productionMetadata,
+  });
+  assert.ok(includesError(errors, /external staging labels/));
+  assert.ok(includesError(errors, /must equal the active Compose project/));
+  assert.ok(includesError(errors, /external-label environment expansion/));
+});
+
 test('tracked example has the exact public port contract and no secret values', () => {
   for (const [key, value] of Object.entries(EXPECTED_PORT_VARIABLES)) {
     assert.match(contractSource, new RegExp(`^${key}=${value.replaceAll('.', '\\.')}$`, 'm'));
@@ -552,6 +669,143 @@ test('tracked example has the exact public port contract and no secret values', 
     contractSource,
     /registry\.example\.invalid\/menorah-staging\/backend@sha256:/,
   );
+});
+
+test('Compose source pins direct Node tasks and project-aware evidence', () => {
+  const composeSource = readStaging('compose.yml');
+  const serviceBlock = (serviceName) => {
+    const match = composeSource.match(new RegExp(
+      `^  ${serviceName}:[\\s\\S]*?(?=^  [a-z0-9][a-z0-9-]*:|^configs:)`,
+      'm',
+    ));
+    assert.ok(match, `missing ${serviceName} source block`);
+    return match[0];
+  };
+  const resourceLabels = composeSource.match(
+    /^x-staging-resource-labels:[\s\S]*?(?=^x-staging-service-labels:)/m,
+  )?.[0] || '';
+  assert.match(
+    composeSource,
+    /^name: "\$\{MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging\}"$/m,
+  );
+  assert.match(
+    resourceLabels,
+    /^  com\.menorah\.project: "\$\{MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging\}"$/m,
+  );
+  assert.doesNotMatch(
+    resourceLabels,
+    /^  com\.menorah\.project: menorah-staging$/m,
+  );
+
+  const migrate = serviceBlock('staging-migrate');
+  const seed = serviceBlock('staging-seed');
+  assert.match(
+    migrate,
+    /^    command: \["node", "src\/database\/migrate\.js"\]$/m,
+  );
+  assert.match(
+    seed,
+    /^    command: \["node", "src\/database\/seed-server-staging\.js"\]$/m,
+  );
+  assert.doesNotMatch(migrate, /\bnpm\b/);
+  assert.doesNotMatch(seed, /\bnpm\b/);
+
+  const prometheus = serviceBlock('staging-prometheus');
+  assert.match(
+    prometheus,
+    /^      - --enable-feature=expand-external-labels$/m,
+  );
+  assert.match(
+    prometheus,
+    /^      MENORAH_SERVER_STAGING_PROJECT_NAME: "\$\{MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging\}"$/m,
+  );
+  assert.match(
+    readStaging('prometheus.yml'),
+    /^    compose_project: "\$\{MENORAH_SERVER_STAGING_PROJECT_NAME\}"$/m,
+  );
+});
+
+test('Compose source initializes media ownership before every backend writer', () => {
+  const composeSource = readStaging('compose.yml');
+  const serviceBlock = (serviceName) => {
+    const match = composeSource.match(new RegExp(
+      `^  ${serviceName}:[\\s\\S]*?(?=^  [a-z0-9][a-z0-9-]*:|^configs:)`,
+      'm',
+    ));
+    assert.ok(match, `missing ${serviceName} source block`);
+    return match[0];
+  };
+  const permissionsInit = serviceBlock(
+    'staging-media-permissions-init',
+  );
+  assert.match(
+    permissionsInit,
+    /^    <<: \[\*staging-service-common, \*backend-build\]$/m,
+  );
+  assert.match(permissionsInit, /^    user: "0:0"$/m);
+  assert.match(permissionsInit, /^    read_only: true$/m);
+  assert.match(permissionsInit, /^    network_mode: none$/m);
+  assert.match(
+    permissionsInit,
+    /^    entrypoint: \["\/bin\/sh", "-euc"\]$/m,
+  );
+  const capAdd = permissionsInit.match(
+    /^    cap_add:\r?\n((?:^      - .*\r?\n?)*)/m,
+  )?.[1]
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => line.replace(/^\s*-\s*/, ''))
+    .sort();
+  assert.deepEqual(capAdd, ['CHOWN', 'DAC_OVERRIDE', 'FOWNER']);
+  for (const command of [
+    'backend_uid="$$(id -u menorah)"',
+    'backend_gid="$$(id -g menorah)"',
+    'readlink -f "$${media_root}"',
+    'find "$${media_root}" -xdev -type l',
+    'chown -R "$${backend_uid}:$${backend_gid}" "$${media_root}"',
+    'chmod 0750 "$${media_root}"',
+  ]) {
+    assert.ok(
+      permissionsInit.includes(command),
+      `media ownership init lacks ${command}`,
+    );
+  }
+  assert.deepEqual(
+    [...permissionsInit.matchAll(/^        source: (staging-[a-z-]+)$/gm)]
+      .map((match) => match[1]),
+    ['staging-uploads', 'staging-managed-media'],
+  );
+  assert.deepEqual(
+    [...permissionsInit.matchAll(/^        target: (\/app\/[a-z-]+)$/gm)]
+      .map((match) => match[1]),
+    ['/app/uploads', '/app/managed-media'],
+  );
+  assert.match(
+    permissionsInit,
+    /staging-storage-init:\r?\n        condition: service_completed_successfully/,
+  );
+
+  for (const serviceName of [
+    'staging-api-ios',
+    'staging-api-android',
+    'staging-api-web',
+    'staging-api-admin',
+    'staging-worker',
+  ]) {
+    const writer = serviceBlock(serviceName);
+    assert.match(
+      writer,
+      /source: staging-uploads\r?\n        target: \/app\/uploads/,
+    );
+    assert.match(
+      writer,
+      /source: staging-managed-media\r?\n        target: \/app\/managed-media/,
+    );
+    assert.match(
+      writer,
+      /staging-media-permissions-init:\r?\n        condition: service_completed_successfully/,
+    );
+  }
 });
 
 test('runtime selectors reach backend and mail-capture services as an exact pair', () => {

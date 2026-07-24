@@ -4,7 +4,7 @@ global:
   external_labels:
     environment: staging
     stack: menorah-staging
-    compose_project: menorah-staging
+    compose_project: "${MENORAH_SERVER_STAGING_PROJECT_NAME}"
     monitoring_scope: server-staging
 
 alerting:

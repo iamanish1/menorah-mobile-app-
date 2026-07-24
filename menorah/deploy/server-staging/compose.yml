@@ -8,7 +8,7 @@ x-generated-env-file: &generated-env-file
 
 x-staging-resource-labels: &staging-resource-labels
   com.menorah.environment: staging
-  com.menorah.project: menorah-staging
+  com.menorah.project: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"
   com.menorah.stack: server-staging
   com.menorah.managed-by: docker-compose
 
@@ -254,6 +254,48 @@ services:
       - type: volume
         source: staging-env-root
         target: /opt/menorah-staging/env
+
+  staging-media-permissions-init:
+    <<: [*staging-service-common, *backend-build]
+    restart: "no"
+    user: "0:0"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    network_mode: none
+    entrypoint: ["/bin/sh", "-euc"]
+    command:
+      - |
+        backend_uid="$$(id -u menorah)"
+        backend_gid="$$(id -g menorah)"
+        test "$${backend_uid}" -gt 0
+        test "$${backend_gid}" -gt 0
+        for media_root in /app/uploads /app/managed-media; do
+          test -d "$${media_root}"
+          test ! -L "$${media_root}"
+          test "$$(readlink -f "$${media_root}")" = "$${media_root}"
+          if find "$${media_root}" -xdev -type l -print -quit | grep -q .; then
+            exit 1
+          fi
+          chown -R "$${backend_uid}:$${backend_gid}" "$${media_root}"
+          chmod 0750 "$${media_root}"
+        done
+    volumes:
+      - type: volume
+        source: staging-uploads
+        target: /app/uploads
+      - type: volume
+        source: staging-managed-media
+        target: /app/managed-media
+    depends_on:
+      staging-storage-init:
+        condition: service_completed_successfully
 
   staging-mongo-primary:
     <<: *staging-service-common
@@ -535,6 +577,8 @@ services:
           - staging-private-api-ios
       staging-data:
     depends_on:
+      staging-media-permissions-init:
+        condition: service_completed_successfully
       staging-mongo-replica-init:
         condition: service_completed_successfully
       staging-redis:
@@ -565,6 +609,8 @@ services:
           - staging-private-api-android
       staging-data:
     depends_on:
+      staging-media-permissions-init:
+        condition: service_completed_successfully
       staging-mongo-replica-init:
         condition: service_completed_successfully
       staging-redis:
@@ -598,6 +644,8 @@ services:
           - staging-private-api-web
       staging-data:
     depends_on:
+      staging-media-permissions-init:
+        condition: service_completed_successfully
       staging-mongo-replica-init:
         condition: service_completed_successfully
       staging-redis:
@@ -634,6 +682,8 @@ services:
           - staging-private-api-admin
       staging-data:
     depends_on:
+      staging-media-permissions-init:
+        condition: service_completed_successfully
       staging-mongo-replica-init:
         condition: service_completed_successfully
       staging-redis:
@@ -669,6 +719,8 @@ services:
           - staging-private-worker
       staging-data:
     depends_on:
+      staging-media-permissions-init:
+        condition: service_completed_successfully
       staging-mongo-replica-init:
         condition: service_completed_successfully
       staging-redis:
@@ -680,7 +732,7 @@ services:
     <<: [*app-security, *backend-build]
     profiles: ["migration", "seed"]
     restart: "no"
-    command: ["npm", "run", "migrate"]
+    command: ["node", "src/database/migrate.js"]
     environment:
       <<: *backend-environment
       SERVICE_NAME: staging-migrate
@@ -703,7 +755,7 @@ services:
     <<: [*app-security, *backend-build]
     profiles: ["seed"]
     restart: "no"
-    command: ["npm", "run", "seed:server-staging"]
+    command: ["node", "src/database/seed-server-staging.js"]
     environment:
       <<: *backend-environment
       SERVICE_NAME: staging-seed
@@ -1080,6 +1132,7 @@ services:
     restart: "on-failure:3"
     environment:
       COMPOSE_PROJECT_NAME: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"
+      MENORAH_LOCAL_STAGING_ENVIRONMENT_ID: ""
       MENORAH_SERVER_STAGING_ENVIRONMENT_ID: "${MENORAH_SERVER_STAGING_ENVIRONMENT_ID:?Generated environment identity required}"
       ALERT_FIXTURE_PORT: "9101"
     read_only: true
@@ -1271,6 +1324,9 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=7d
       - --web.enable-lifecycle
+      - --enable-feature=expand-external-labels
+    environment:
+      MENORAH_SERVER_STAGING_PROJECT_NAME: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"
     read_only: true
     cap_drop:
       - ALL
