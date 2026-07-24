@@ -832,6 +832,11 @@ test('Compose source initializes Caddy state ownership before ingress', () => {
     caddy,
     /staging-logs-init:\r?\n        condition: service_completed_successfully/,
   );
+  assert.match(
+    caddy,
+    /wget --header='Host: app\.staging\.menorah\.me'\r?\n\s+-qO- http:\/\/127\.0\.0\.1\/healthz/,
+  );
+  assert.doesNotMatch(caddy, /--no-check-certificate/);
 });
 
 test('runtime selectors reach backend and mail-capture services as an exact pair', () => {

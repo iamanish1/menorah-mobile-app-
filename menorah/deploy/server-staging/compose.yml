@@ -1089,8 +1089,8 @@ services:
       test:
         - CMD-SHELL
         - >-
-          wget --no-check-certificate --header='Host: app.staging.menorah.me'
-          -qO- https://127.0.0.1/healthz | grep -qx ok
+          wget --header='Host: app.staging.menorah.me'
+          -qO- http://127.0.0.1/healthz | grep -qx ok
       interval: 15s
       timeout: 5s
       retries: 10
