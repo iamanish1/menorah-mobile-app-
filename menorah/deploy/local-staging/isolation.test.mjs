@@ -60,6 +60,9 @@ const restoreSource = readFileSync(
   new URL('./restore-local.sh', import.meta.url),
   'utf8',
 );
+const redisServiceSource = composeSource.match(
+  /\n  redis:\r?\n([\s\S]*?)\n  mail-capture:/,
+)?.[1] || '';
 
 const requiredContractSource = `
 NODE_ENV=
@@ -332,6 +335,15 @@ test('every shared image has only one canonical build owner', () => {
     errorCodes(validateFixture(model))
       .has('duplicate_image_build_owner'),
   );
+});
+
+test('Redis starts directly as its pinned non-root volume identity', () => {
+  assert.match(redisServiceSource, /\n    user: "999:1000"/);
+  assert.match(
+    redisServiceSource,
+    /\/run\/redis:rw,noexec,nosuid,nodev,size=1m,mode=700,uid=999,gid=1000/,
+  );
+  assert.doesNotMatch(redisServiceSource, /\bchown\b|\bsetpriv\b|cap_add:/);
 });
 
 test('mail capture must remain internal, generated, and hardened', () => {

@@ -313,20 +313,14 @@ services:
       - |
         umask 077
         printf 'appendonly yes\nrequirepass %s\n' "$$REDIS_PASSWORD" >/run/redis/redis.conf
-        chown redis:redis /run/redis /run/redis/redis.conf
-        chmod 0700 /run/redis
         chmod 0400 /run/redis/redis.conf
-        exec setpriv --reuid=redis --regid=redis --clear-groups \
-          redis-server /run/redis/redis.conf
+        exec redis-server /run/redis/redis.conf
     environment:
       REDIS_PASSWORD: "${REDIS_PASSWORD:?Generated Redis password required}"
     read_only: true
+    user: "999:1000"
     cap_drop:
       - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
     security_opt:
       - no-new-privileges:true
     pids_limit: 128
@@ -335,7 +329,7 @@ services:
         source: redis
         target: /data
     tmpfs:
-      - /run/redis:rw,noexec,nosuid,nodev,size=1m,mode=700
+      - /run/redis:rw,noexec,nosuid,nodev,size=1m,mode=700,uid=999,gid=1000
     networks:
       - data
     healthcheck:
