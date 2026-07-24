@@ -114,6 +114,8 @@ describe('startup validation', () => {
   const configureServerStagingEnvironment = ({
     project = 'menorah-server-staging-validation',
   } = {}) => {
+    const isValidationProject =
+      project === 'menorah-server-staging-validation';
     const hosts = {
       ROOT_DOMAIN: 'staging.menorah.me',
       WWW_DOMAIN: 'www.staging.menorah.me',
@@ -126,7 +128,7 @@ describe('startup validation', () => {
       API_ADMIN_DOMAIN: 'api-admin.staging.menorah.me',
       CALLS_DOMAIN: 'calls.staging.menorah.me',
     };
-    const suffix = project === 'menorah-server-staging-validation'
+    const suffix = isValidationProject
       ? ':38443'
       : '';
     const httpsOrigin = (host) => `https://${host}${suffix}`;
@@ -166,8 +168,15 @@ describe('startup validation', () => {
         `${httpsOrigin(hosts.COUNSELLOR_DOMAIN)}=counsellor`,
         `${httpsOrigin(hosts.ADMIN_DOMAIN)}=admin`,
       ].join(','),
-      RESEND_API_URL: 'http://staging-mail-capture:8025/emails',
-      RESEND_API_KEY: `re_server_staging_${'a'.repeat(40)}`,
+      RESEND_PROVIDER_ENABLED:
+        isValidationProject ? 'false' : 'true',
+      RESEND_MODE: 'sandbox',
+      RESEND_API_URL: isValidationProject
+        ? 'http://staging-mail-capture:8025/emails'
+        : 'https://api.resend.com/emails',
+      RESEND_API_KEY: isValidationProject
+        ? `re_server_staging_${'a'.repeat(40)}`
+        : `re_${'e'.repeat(40)}`,
       RAZORPAY_KEY_ID: 'rzp_test_A1b2C3d4E5f6G7',
       RAZORPAY_X_KEY_ID: '',
       NEXT_PUBLIC_RAZORPAY_KEY_ID: 'rzp_test_A1b2C3d4E5f6G7',
@@ -205,6 +214,37 @@ describe('startup validation', () => {
       'RAZORPAY_X_KEY_SECRET',
       'RAZORPAY_X_WEBHOOK_SECRET',
       'RAZORPAY_PAYOUT_ACCOUNT_NUMBER',
+      'CHECKOUT_RETURN_URL',
+    ].forEach((key) => delete process.env[key]);
+  };
+
+  const removeServerStagingApiProviderEnvironment = () => {
+    [
+      'RESEND_PROVIDER_ENABLED',
+      'RESEND_MODE',
+      'RESEND_API_URL',
+      'RESEND_API_KEY',
+      'RESEND_WEBHOOK_SECRET',
+      'EMAIL_FROM',
+      'CONTACT_TO_EMAIL',
+      'MEDIA_STORAGE_BACKEND',
+      'MEDIA_PUBLIC_BASE_URL',
+      'CLOUDINARY_CLOUD_NAME',
+      'CLOUDINARY_API_KEY',
+      'CLOUDINARY_API_SECRET',
+      'CLOUDINARY_UPLOAD_PREFIX',
+      'CHECKOUT_RETURN_URL',
+    ].forEach((key) => delete process.env[key]);
+  };
+
+  const disableRealServerStagingResend = () => {
+    process.env.RESEND_PROVIDER_ENABLED = 'false';
+    [
+      'RESEND_API_URL',
+      'RESEND_API_KEY',
+      'RESEND_WEBHOOK_SECRET',
+      'EMAIL_FROM',
+      'CONTACT_TO_EMAIL',
     ].forEach((key) => delete process.env[key]);
   };
 
@@ -719,16 +759,14 @@ describe('startup validation', () => {
 
   test('keeps complete real server staging portless', () => {
     process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
-    configureServerStagingEnvironment({
-      project: 'menorah-staging',
-    });
+    configureExactSyntheticServerStagingEnvironment();
 
     expect(() => validateStartupEnv({
       serviceName: 'api-web',
     })).not.toThrow();
   });
 
-  test('accepts explicit disabled providers in exact synthetic server staging', () => {
+  test('accepts enabled Resend sandbox delivery in exact real server staging', () => {
     process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
     configureExactSyntheticServerStagingEnvironment();
 
@@ -736,6 +774,63 @@ describe('startup validation', () => {
       serviceName: 'api-ios',
       requirePaymentEnv: false,
     })).not.toThrow();
+  });
+
+  test.each([
+    'api-ios',
+    'api-android',
+    'api-web',
+    'api-admin',
+  ])('accepts explicit disabled Resend with empty delivery config on %s', (
+    serviceName
+  ) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    disableRealServerStagingResend();
+
+    expect(() => validateStartupEnv({
+      serviceName,
+    })).not.toThrow();
+  });
+
+  test.each([
+    undefined,
+    '',
+    'TRUE',
+    '1',
+  ])('requires an exact real server-staging Resend decision: %s', (
+    value
+  ) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    if (value === undefined) {
+      delete process.env.RESEND_PROVIDER_ENABLED;
+    } else {
+      process.env.RESEND_PROVIDER_ENABLED = value;
+    }
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-android',
+    })).toThrow(
+      /RESEND_PROVIDER_ENABLED must equal true or false/
+    );
+  });
+
+  test.each([
+    ['RESEND_API_URL', 'http://staging-mail-capture:8025/emails'],
+    ['RESEND_API_KEY', `re_${'x'.repeat(40)}`],
+    ['RESEND_WEBHOOK_SECRET', `whsec_${'x'.repeat(32)}`],
+    ['EMAIL_FROM', 'Menorah Staging <noreply@mail.staging.menorah.me>'],
+    ['CONTACT_TO_EMAIL', 'contact@mail.staging.menorah.me'],
+  ])('rejects disabled real Resend carrying %s', (key, value) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    disableRealServerStagingResend();
+    process.env[key] = value;
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-android',
+    })).toThrow(new RegExp(`${key} must be unset`));
   });
 
   test.each([
@@ -765,6 +860,9 @@ describe('startup validation', () => {
     (serviceName) => {
       process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
       configureExactSyntheticServerStagingEnvironment();
+      if (serviceName === 'worker') {
+        removeServerStagingApiProviderEnvironment();
+      }
       process.env.APPLE_SIGN_IN_ENABLED = 'true';
 
       expect(() => validateStartupEnv({
@@ -785,6 +883,8 @@ describe('startup validation', () => {
       'Booking-A1b2C3d4E5f6G7h8';
     process.env.RAZORPAY_WEBHOOK_SECRET =
       'Booking-Webhook-A1b2C3d4E5';
+    process.env.CHECKOUT_RETURN_URL =
+      'https://app.staging.menorah.me/checkout/return';
 
     expect(() => validateStartupEnv({
       serviceName: 'api-ios',
@@ -818,6 +918,8 @@ describe('startup validation', () => {
       'Booking-A1b2C3d4E5f6G7h8';
     process.env.RAZORPAY_WEBHOOK_SECRET =
       'Booking-Webhook-A1b2C3d4E5';
+    process.env.CHECKOUT_RETURN_URL =
+      'https://app.staging.menorah.me/checkout/return';
 
     expect(() => validateStartupEnv({
       serviceName: 'api-ios',
@@ -850,6 +952,9 @@ describe('startup validation', () => {
   ) => {
     process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
     configureExactSyntheticServerStagingEnvironment();
+    if (serviceName === 'worker') {
+      removeServerStagingApiProviderEnvironment();
+    }
 
     expect(() => validateStartupEnv({
       serviceName,
@@ -870,6 +975,9 @@ describe('startup validation', () => {
   ) => {
     process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
     configureExactSyntheticServerStagingEnvironment();
+    if (serviceName === 'worker') {
+      removeServerStagingApiProviderEnvironment();
+    }
     process.env[key] = value;
 
     expect(() => validateStartupEnv({
@@ -916,6 +1024,93 @@ describe('startup validation', () => {
     expect(() => validateStartupEnv({
       serviceName: 'api-admin',
     })).toThrow(/RAZORPAY_KEY_SECRET/);
+  });
+
+  test.each([
+    'worker',
+    'staging-migrate',
+    'staging-seed',
+  ])('boots exact %s without API provider configuration', (serviceName) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    removeServerStagingApiProviderEnvironment();
+
+    expect(() => validateStartupEnv({
+      serviceName,
+      requirePaymentEnv: false,
+    })).not.toThrow();
+  });
+
+  test.each([
+    ['RESEND_API_KEY', `re_${'x'.repeat(40)}`],
+    ['CLOUDINARY_API_SECRET', 'cloudinary-secret'],
+    ['MEDIA_PUBLIC_BASE_URL', 'https://api-web.staging.menorah.me'],
+  ])('rejects worker API provider configuration via %s', (key, value) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    removeServerStagingApiProviderEnvironment();
+    process.env[key] = value;
+
+    expect(() => validateStartupEnv({
+      serviceName: 'worker',
+      requirePaymentEnv: false,
+    })).toThrow(new RegExp(`${key} must be unset for worker`));
+  });
+
+  test('rejects Cloudinary as the worker media backend', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    removeServerStagingApiProviderEnvironment();
+    process.env.MEDIA_STORAGE_BACKEND = 'cloudinary';
+
+    expect(() => validateStartupEnv({
+      serviceName: 'worker',
+      requirePaymentEnv: false,
+    })).toThrow(/MEDIA_STORAGE_BACKEND must not equal cloudinary for worker/);
+  });
+
+  test('requires API provider configuration on server-staging APIs', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    delete process.env.RESEND_API_KEY;
+    delete process.env.MEDIA_STORAGE_BACKEND;
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-android',
+    })).toThrow(/RESEND_API_KEY is missing.*MEDIA_STORAGE_BACKEND/);
+  });
+
+  test('requires checkout return routing only for enabled api-ios booking', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    process.env.BOOKING_PAYMENTS_ENABLED = 'true';
+    process.env.PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS = '5';
+    process.env.RAZORPAY_KEY_ID = 'rzp_test_A1b2C3d4E5f6G7';
+    process.env.RAZORPAY_KEY_SECRET =
+      'Booking-A1b2C3d4E5f6G7h8';
+    process.env.RAZORPAY_WEBHOOK_SECRET =
+      'Booking-Webhook-A1b2C3d4E5';
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-ios',
+    })).toThrow(/CHECKOUT_RETURN_URL/);
+
+    process.env.CHECKOUT_RETURN_URL =
+      'https://app.staging.menorah.me/checkout/return';
+    expect(() => validateStartupEnv({
+      serviceName: 'api-ios',
+    })).not.toThrow();
+  });
+
+  test('rejects checkout return routing on a non-owner staging API', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    process.env.CHECKOUT_RETURN_URL =
+      'https://app.staging.menorah.me/checkout/return';
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-web',
+    })).toThrow(/CHECKOUT_RETURN_URL must be unset for api-web/);
   });
 
   test.each([

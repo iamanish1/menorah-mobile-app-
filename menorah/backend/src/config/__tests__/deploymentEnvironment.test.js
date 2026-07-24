@@ -208,6 +208,24 @@ describe('server-staging deployment environment isolation', () => {
     ).toEqual([]);
   });
 
+  test('allows non-provider service topology only through explicit scope', () => {
+    const environment = validationEnvironment();
+    delete environment.CHECKOUT_RETURN_URL;
+    delete environment.MEDIA_PUBLIC_BASE_URL;
+    delete environment.CONTACT_TO_EMAIL;
+    delete environment.EMAIL_FROM;
+
+    expect(validateStagingEnvironmentIsolation(environment).join('; '))
+      .toMatch(
+        /CHECKOUT_RETURN_URL.*MEDIA_PUBLIC_BASE_URL.*CONTACT_TO_EMAIL.*EMAIL_FROM/
+      );
+    expect(validateStagingEnvironmentIsolation(environment, {
+      requireCheckoutReturnUrl: false,
+      requireEmailRouting: false,
+      requireMediaPublicBaseUrl: false,
+    })).toEqual([]);
+  });
+
   test.each([
     'LIVEKIT_URL',
     'PASSWORD_RESET_BASE_URL',

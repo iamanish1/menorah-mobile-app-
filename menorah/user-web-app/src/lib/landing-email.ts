@@ -6,10 +6,8 @@ const SERVER_STAGING_RESEND_EMAIL_URL =
 const LOCAL_STAGING_ENVIRONMENT_ID = 'menorah-local-staging-v1';
 const SERVER_STAGING_ENVIRONMENT_ID = 'menorah-server-staging-v1';
 const LOCAL_STAGING_HTTPS_PORT = '28443';
-const SERVER_STAGING_PROJECTS = new Set([
-  'menorah-staging',
-  'menorah-server-staging-validation',
-]);
+const SERVER_STAGING_VALIDATION_PROJECT =
+  'menorah-server-staging-validation';
 const LOCAL_STAGING_RESEND_KEY_PATTERN =
   /^re_local_[A-Za-z0-9_-]{32,}$/;
 const SERVER_STAGING_RESEND_KEY_PATTERN =
@@ -124,13 +122,15 @@ function resolveResendEmailUrl(
     configured === SERVER_STAGING_RESEND_EMAIL_URL
     && process.env.NODE_ENV === 'production'
     && deploymentEnvironment === 'staging'
+    && optionalEnv('SERVICE_RUNTIME') === 'server-staging'
+    && optionalEnv('MENORAH_SYNTHETIC_DATA_ONLY') === 'true'
     && !optionalEnv('MENORAH_LOCAL_STAGING_ENVIRONMENT_ID')
     && !optionalEnv('MENORAH_LOCAL_STAGING_HTTPS_PORT')
     && optionalEnv('MENORAH_SERVER_STAGING_ENVIRONMENT_ID')
       === SERVER_STAGING_ENVIRONMENT_ID
-    && SERVER_STAGING_PROJECTS.has(
-      optionalEnv('MENORAH_SERVER_STAGING_PROJECT_NAME') || ''
-    )
+    && optionalEnv('MENORAH_SERVER_STAGING_PROJECT_NAME')
+      === SERVER_STAGING_VALIDATION_PROJECT
+    && optionalEnv('MENORAH_SERVER_STAGING_HTTPS_PORT') === '38443'
     && optionalEnv('MENORAH_STAGING_EMAIL_DOMAIN')
       === 'mail.staging.menorah.me'
     && SERVER_STAGING_RESEND_KEY_PATTERN.test(apiKey)

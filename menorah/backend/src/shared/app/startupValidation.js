@@ -53,6 +53,15 @@ const {
 
 const SERVER_STAGING_BOOKING_PAYMENT_SERVICE = 'api-ios';
 const SERVER_STAGING_PAYOUT_SERVICE = 'api-admin';
+const REAL_SERVER_STAGING_PROJECT = 'menorah-staging';
+const VALIDATION_SERVER_STAGING_PROJECT =
+  'menorah-server-staging-validation';
+const SERVER_STAGING_PROVIDER_API_SERVICES = new Set([
+  'api-ios',
+  'api-android',
+  'api-web',
+  'api-admin',
+]);
 const BOOKING_PAYMENT_PROVIDER_ENV_KEYS = Object.freeze([
   'RAZORPAY_KEY_ID',
   'RAZORPAY_KEY_SECRET',
@@ -64,6 +73,27 @@ const PAYOUT_PROVIDER_ENV_KEYS = Object.freeze([
   'RAZORPAY_X_KEY_SECRET',
   'RAZORPAY_X_WEBHOOK_SECRET',
   'RAZORPAY_PAYOUT_ACCOUNT_NUMBER',
+]);
+const API_PROVIDER_ENV_KEYS = Object.freeze([
+  'RESEND_PROVIDER_ENABLED',
+  'RESEND_MODE',
+  'RESEND_API_URL',
+  'RESEND_API_KEY',
+  'RESEND_WEBHOOK_SECRET',
+  'EMAIL_FROM',
+  'CONTACT_TO_EMAIL',
+  'MEDIA_PUBLIC_BASE_URL',
+  'CLOUDINARY_CLOUD_NAME',
+  'CLOUDINARY_API_KEY',
+  'CLOUDINARY_API_SECRET',
+  'CLOUDINARY_UPLOAD_PREFIX',
+]);
+const DISABLED_REAL_RESEND_ENV_KEYS = Object.freeze([
+  'RESEND_API_URL',
+  'RESEND_API_KEY',
+  'RESEND_WEBHOOK_SECRET',
+  'EMAIL_FROM',
+  'CONTACT_TO_EMAIL',
 ]);
 
 const requireEnv = (key, errors) => {
@@ -388,6 +418,64 @@ const validateServerStagingPaymentScopes = ({
   return true;
 };
 
+const validateServerStagingApiProviderScopes = ({
+  serviceName,
+  errors,
+}) => {
+  if (!isExactServerStagingSyntheticRuntime(process.env)) return false;
+
+  const ownsApiProviders =
+    SERVER_STAGING_PROVIDER_API_SERVICES.has(serviceName);
+  if (ownsApiProviders) return true;
+
+  rejectScopedProviderValues({
+    keys: API_PROVIDER_ENV_KEYS,
+    serviceName,
+    ownerService: 'api-ios/api-android/api-web/api-admin',
+    reason: 'exclusively own email and managed-media provider configuration',
+    errors,
+  });
+  if (
+    String(process.env.MEDIA_STORAGE_BACKEND || '').trim()
+      .toLowerCase() === 'cloudinary'
+  ) {
+    errors.push(
+      `MEDIA_STORAGE_BACKEND must not equal cloudinary for ${serviceName} `
+      + 'in synthetic server staging'
+    );
+  }
+
+  return false;
+};
+
+const validateRealServerStagingResendGate = ({ errors }) => {
+  if (!isExactServerStagingSyntheticRuntime(process.env)) return;
+  if (
+    String(process.env.MENORAH_SERVER_STAGING_PROJECT_NAME || '').trim()
+      !== REAL_SERVER_STAGING_PROJECT
+  ) return;
+
+  const enabled = String(
+    process.env.RESEND_PROVIDER_ENABLED || ''
+  ).trim();
+  if (!['true', 'false'].includes(enabled)) {
+    errors.push(
+      'RESEND_PROVIDER_ENABLED must equal true or false in real server staging'
+    );
+    return;
+  }
+  if (enabled === 'true') return;
+
+  DISABLED_REAL_RESEND_ENV_KEYS.forEach((key) => {
+    if (String(process.env[key] || '').trim()) {
+      errors.push(
+        `${key} must be unset when RESEND_PROVIDER_ENABLED=false `
+        + 'in real server staging'
+      );
+    }
+  });
+};
+
 const validateServerStagingProviderGates = ({
   serviceName,
   errors,
@@ -457,23 +545,91 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
   requireEnv('MONGODB_URI', errors);
 
   if (process.env.NODE_ENV === 'production') {
+    const isExactServerStaging =
+      isExactServerStagingSyntheticRuntime(process.env);
+    const requiresApiProviders = (
+      !isExactServerStaging
+      || SERVER_STAGING_PROVIDER_API_SERVICES.has(serviceName)
+    );
+    const serverStagingProject = String(
+      process.env.MENORAH_SERVER_STAGING_PROJECT_NAME || ''
+    ).trim();
+    const isRealServerStaging = (
+      isExactServerStaging
+      && serverStagingProject === REAL_SERVER_STAGING_PROJECT
+    );
+    const isValidationServerStaging = (
+      isExactServerStaging
+      && serverStagingProject === VALIDATION_SERVER_STAGING_PROJECT
+    );
+    const isRealResendEnabled = (
+      isRealServerStaging
+      && String(process.env.RESEND_PROVIDER_ENABLED || '').trim()
+        === 'true'
+    );
+    const requiresResendDelivery = (
+      !isExactServerStaging
+      || (
+        SERVER_STAGING_PROVIDER_API_SERVICES.has(serviceName)
+        && (isValidationServerStaging || isRealResendEnabled)
+      )
+    );
+    const requiresCheckoutReturnUrl = (
+      !isExactServerStaging
+      || (
+        serviceName === SERVER_STAGING_BOOKING_PAYMENT_SERVICE
+        && process.env[BOOKING_PAYMENT_INITIATION_ENV] === 'true'
+      )
+    );
     if (deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.STAGING) {
-      errors.push(...validateStagingEnvironmentIsolation(process.env));
+      errors.push(...validateStagingEnvironmentIsolation(
+        process.env,
+        isExactServerStaging
+          ? {
+            requireCheckoutReturnUrl: requiresCheckoutReturnUrl,
+            requireEmailRouting: requiresResendDelivery,
+            requireMediaPublicBaseUrl: requiresApiProviders,
+          }
+          : undefined
+      ));
     }
     validateServerStagingProviderGates({ serviceName, errors });
-    [
+    const requiredEnvironmentKeys = [
       'ALLOWED_ORIGINS',
       'REDIS_URL',
-      'RESEND_API_KEY',
-      'EMAIL_FROM',
-      'CONTACT_TO_EMAIL',
-      'CHECKOUT_RETURN_URL',
-    ].forEach((key) =>
+    ];
+    if (requiresResendDelivery) {
+      requiredEnvironmentKeys.push(
+        'RESEND_API_KEY',
+        'EMAIL_FROM',
+        'CONTACT_TO_EMAIL'
+      );
+    }
+    if (requiresCheckoutReturnUrl) {
+      requiredEnvironmentKeys.push('CHECKOUT_RETURN_URL');
+    }
+    requiredEnvironmentKeys.forEach((key) =>
       requireEnv(key, errors)
     );
-    errors.push(...validateResendDeliveryConfiguration(process.env));
+    if (requiresResendDelivery) {
+      errors.push(...validateResendDeliveryConfiguration(process.env));
+    } else if (!requiresApiProviders) {
+      validateServerStagingApiProviderScopes({ serviceName, errors });
+    } else if (isRealServerStaging) {
+      validateRealServerStagingResendGate({ errors });
+    }
+    if (
+      isExactServerStaging
+      && !requiresCheckoutReturnUrl
+      && String(process.env.CHECKOUT_RETURN_URL || '').trim()
+    ) {
+      errors.push(
+        `CHECKOUT_RETURN_URL must be unset for ${serviceName} when `
+        + 'server-staging booking initiation is not owned and enabled'
+      );
+    }
     requireMinimumLength('AUDIT_LOG_SIGNING_KEY', 32, errors);
-    if (serviceName === 'api-web') {
+    if (serviceName === 'api-web' && requiresResendDelivery) {
       requireMinimumLength('RESEND_WEBHOOK_SECRET', 24, errors);
     }
     validateOptionalIntegerRange('SECURITY_AUDIT_PENDING_MAX', 128, 8192, errors);
@@ -540,8 +696,10 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
       errors.push('PASSWORD_RESET_URL_TEMPLATE must be unset in production');
     }
 
-    const mediaStorage = validateMediaStorageConfig(process.env);
-    errors.push(...mediaStorage.errors);
+    if (requiresApiProviders) {
+      const mediaStorage = validateMediaStorageConfig(process.env);
+      errors.push(...mediaStorage.errors);
+    }
     if (String(process.env.COUNSELLOR_MEDIA_STORAGE || '').trim()) {
       errors.push(
         'COUNSELLOR_MEDIA_STORAGE must be unset; MEDIA_STORAGE_BACKEND is the single production media-storage selector'

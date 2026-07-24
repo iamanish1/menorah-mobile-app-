@@ -163,37 +163,34 @@ test('routes only the exact generated local identity to mail capture', async () 
   assert.equal(lastFetchUrl, 'http://mail-capture:8025/emails');
 });
 
-test('routes either exact reviewed server-staging project to its internal capture', async (t) => {
-  for (const projectName of [
-    'menorah-staging',
-    'menorah-server-staging-validation',
-  ]) {
-    await t.test(projectName, async () => {
-      process.env.NODE_ENV = 'production';
-      process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
-      process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID =
-        'menorah-server-staging-v1';
-      process.env.MENORAH_SERVER_STAGING_PROJECT_NAME = projectName;
-      process.env.MENORAH_STAGING_EMAIL_DOMAIN =
-        'mail.staging.menorah.me';
-      process.env.RESEND_API_URL =
-        'http://staging-mail-capture:8025/emails';
-      process.env.RESEND_API_KEY =
-        `re_server_staging_${'b'.repeat(40)}`;
-      process.env.EMAIL_FROM =
-        'Menorah Staging <noreply@mail.staging.menorah.me>';
-      process.env.CONTACT_TO_EMAIL =
-        'contact@mail.staging.menorah.me';
+test('routes only exact server-staging validation to internal capture', async () => {
+  process.env.NODE_ENV = 'production';
+  process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+  process.env.SERVICE_RUNTIME = 'server-staging';
+  process.env.MENORAH_SYNTHETIC_DATA_ONLY = 'true';
+  process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID =
+    'menorah-server-staging-v1';
+  process.env.MENORAH_SERVER_STAGING_PROJECT_NAME =
+    'menorah-server-staging-validation';
+  process.env.MENORAH_SERVER_STAGING_HTTPS_PORT = '38443';
+  process.env.MENORAH_STAGING_EMAIL_DOMAIN =
+    'mail.staging.menorah.me';
+  process.env.RESEND_API_URL =
+    'http://staging-mail-capture:8025/emails';
+  process.env.RESEND_API_KEY =
+    `re_server_staging_${'b'.repeat(40)}`;
+  process.env.EMAIL_FROM =
+    'Menorah Staging <noreply@mail.staging.menorah.me>';
+  process.env.CONTACT_TO_EMAIL =
+    'contact@mail.staging.menorah.me';
 
-      const result = await sendSubmissionEmail(input);
+  const result = await sendSubmissionEmail(input);
 
-      assert.equal(result.sent, true);
-      assert.equal(
-        lastFetchUrl,
-        'http://staging-mail-capture:8025/emails'
-      );
-    });
-  }
+  assert.equal(result.sent, true);
+  assert.equal(
+    lastFetchUrl,
+    'http://staging-mail-capture:8025/emails'
+  );
 });
 
 test('routes the exact real server-staging sandbox to canonical Resend', async () => {
@@ -205,6 +202,40 @@ test('routes the exact real server-staging sandbox to canonical Resend', async (
   assert.equal(result.recipient, 'contact@mail.staging.menorah.me');
   assert.equal(fetchCalls, 1);
   assert.equal(lastFetchUrl, 'https://api.resend.com/emails');
+});
+
+test('skips delivery when real server-staging Resend is disabled', async () => {
+  configureExactRealServerStagingResendSandbox();
+  process.env.RESEND_PROVIDER_ENABLED = 'false';
+  for (const key of [
+    'RESEND_API_URL',
+    'RESEND_API_KEY',
+    'RESEND_WEBHOOK_SECRET',
+    'EMAIL_FROM',
+    'CONTACT_TO_EMAIL',
+  ]) {
+    delete process.env[key];
+  }
+
+  const result = await sendSubmissionEmail(input);
+
+  assert.equal(result.sent, false);
+  assert.match(result.skippedReason, /CONTACT_TO_EMAIL/);
+  assert.equal(fetchCalls, 0);
+});
+
+test('rejects internal capture for the real server-staging project', async () => {
+  configureExactRealServerStagingResendSandbox();
+  process.env.RESEND_API_URL =
+    'http://staging-mail-capture:8025/emails';
+  process.env.RESEND_API_KEY =
+    `re_server_staging_${'b'.repeat(40)}`;
+
+  const result = await sendSubmissionEmail(input);
+
+  assert.equal(result.sent, false);
+  assert.match(result.skippedReason, /endpoint is not approved/);
+  assert.equal(fetchCalls, 0);
 });
 
 test('rejects mutations of the real server-staging Resend sandbox gate', async (t) => {
@@ -337,10 +368,13 @@ test('rejects arbitrary or crossed server-staging capture identities', async (t)
     await t.test(name, async () => {
       process.env.NODE_ENV = 'production';
       process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+      process.env.SERVICE_RUNTIME = 'server-staging';
+      process.env.MENORAH_SYNTHETIC_DATA_ONLY = 'true';
       process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID =
         'menorah-server-staging-v1';
       process.env.MENORAH_SERVER_STAGING_PROJECT_NAME =
-        'menorah-staging';
+        'menorah-server-staging-validation';
+      process.env.MENORAH_SERVER_STAGING_HTTPS_PORT = '38443';
       process.env.MENORAH_STAGING_EMAIL_DOMAIN =
         'mail.staging.menorah.me';
       process.env.RESEND_API_URL =
@@ -391,10 +425,13 @@ test('rejects weak and crossed capture keys for either staging endpoint', async 
       process.env.RESEND_API_URL = url;
       process.env.RESEND_API_KEY = key;
       if (identity === 'server') {
+        process.env.SERVICE_RUNTIME = 'server-staging';
+        process.env.MENORAH_SYNTHETIC_DATA_ONLY = 'true';
         process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID =
           'menorah-server-staging-v1';
         process.env.MENORAH_SERVER_STAGING_PROJECT_NAME =
-          'menorah-staging';
+          'menorah-server-staging-validation';
+        process.env.MENORAH_SERVER_STAGING_HTTPS_PORT = '38443';
         process.env.MENORAH_STAGING_EMAIL_DOMAIN =
           'mail.staging.menorah.me';
         process.env.EMAIL_FROM =

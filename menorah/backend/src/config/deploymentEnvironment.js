@@ -179,7 +179,14 @@ const readLocalStagingHttpsPort = (env, errors) => {
   return raw;
 };
 
-const validateStagingEnvironmentIsolation = (env = process.env) => {
+const validateStagingEnvironmentIsolation = (
+  env = process.env,
+  {
+    requireCheckoutReturnUrl = true,
+    requireEmailRouting = true,
+    requireMediaPublicBaseUrl = true,
+  } = {}
+) => {
   const errors = [];
   const serverStagingIdentity = String(
     env[SERVER_STAGING_ENVIRONMENT_ID_ENV] || ''
@@ -293,13 +300,19 @@ const validateStagingEnvironmentIsolation = (env = process.env) => {
           : httpsOrigin(env.CALLS_DOMAIN)
       ),
     PASSWORD_RESET_BASE_URL: httpsOrigin(env.APP_DOMAIN),
-    CHECKOUT_RETURN_URL: `${httpsOrigin(env.APP_DOMAIN)}/checkout/return`,
     FRONTEND_COUNSELLOR_URL: httpsOrigin(env.COUNSELLOR_DOMAIN),
     FRONTEND_API_WEB_URL: `${httpsOrigin(env.API_WEB_DOMAIN)}/api`,
     FRONTEND_API_ADMIN_URL: `${httpsOrigin(env.API_ADMIN_DOMAIN)}/api`,
     FRONTEND_SOCKET_WEB_URL: httpsOrigin(env.API_WEB_DOMAIN),
-    MEDIA_PUBLIC_BASE_URL: httpsOrigin(env.API_WEB_DOMAIN),
   };
+  if (requireCheckoutReturnUrl) {
+    exactValues.CHECKOUT_RETURN_URL =
+      `${httpsOrigin(env.APP_DOMAIN)}/checkout/return`;
+  }
+  if (requireMediaPublicBaseUrl) {
+    exactValues.MEDIA_PUBLIC_BASE_URL =
+      httpsOrigin(env.API_WEB_DOMAIN);
+  }
   Object.entries(exactValues).forEach(([key, expected]) => {
     if (String(env[key] || '') !== expected) {
       errors.push(`${key} must equal ${expected} in staging`);
@@ -318,22 +331,26 @@ const validateStagingEnvironmentIsolation = (env = process.env) => {
     );
   }
 
-  const contactDomain = getBareEmailDomain(env.CONTACT_TO_EMAIL);
-  if (!contactDomain) {
-    errors.push('CONTACT_TO_EMAIL must be a bare email address in staging');
-  } else if (contactDomain !== stagingEmailDomain) {
-    errors.push(
-      'CONTACT_TO_EMAIL domain must exactly match MENORAH_STAGING_EMAIL_DOMAIN'
-    );
-  }
+  if (requireEmailRouting) {
+    const contactDomain = getBareEmailDomain(env.CONTACT_TO_EMAIL);
+    if (!contactDomain) {
+      errors.push('CONTACT_TO_EMAIL must be a bare email address in staging');
+    } else if (contactDomain !== stagingEmailDomain) {
+      errors.push(
+        'CONTACT_TO_EMAIL domain must exactly match MENORAH_STAGING_EMAIL_DOMAIN'
+      );
+    }
 
-  const senderDomain = getSenderEmailDomain(env.EMAIL_FROM);
-  if (!senderDomain) {
-    errors.push('EMAIL_FROM must contain a valid sender email address in staging');
-  } else if (senderDomain !== stagingEmailDomain) {
-    errors.push(
-      'EMAIL_FROM sender domain must exactly match MENORAH_STAGING_EMAIL_DOMAIN'
-    );
+    const senderDomain = getSenderEmailDomain(env.EMAIL_FROM);
+    if (!senderDomain) {
+      errors.push(
+        'EMAIL_FROM must contain a valid sender email address in staging'
+      );
+    } else if (senderDomain !== stagingEmailDomain) {
+      errors.push(
+        'EMAIL_FROM sender domain must exactly match MENORAH_STAGING_EMAIL_DOMAIN'
+      );
+    }
   }
 
   addExactCsvSetErrors({

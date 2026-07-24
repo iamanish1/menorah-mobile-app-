@@ -301,17 +301,19 @@ const storeMediaBuffer = async (
       unique_filename: false,
       invalidate: false,
     });
-    const publicId = String(
-      result.public_id || `${resolvedCloudinaryFolder}/${basename}`
-    );
+    const expectedPublicId =
+      `${resolvedCloudinaryFolder}/${basename}`;
+    const returnedPublicId =
+      typeof result.public_id === 'string' ? result.public_id : '';
     if (
       approvedServerStagingCloudinary
-      && !publicId.startsWith(`${SERVER_STAGING_CLOUDINARY_PREFIX}/`)
+      && returnedPublicId !== expectedPublicId
     ) {
       throw new Error(
-        'Cloudinary returned a public_id outside the approved server-staging prefix'
+        'Cloudinary returned an unexpected server-staging public_id'
       );
     }
+    const publicId = returnedPublicId || expectedPublicId;
     return {
       url: result.secure_url,
       metadata: buildStorageMetadata({

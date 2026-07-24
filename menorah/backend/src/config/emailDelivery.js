@@ -13,6 +13,8 @@ const SERVER_STAGING_RESEND_EMAIL_URL =
   'http://staging-mail-capture:8025/emails';
 const LOCAL_STAGING_ENVIRONMENT_ID = 'menorah-local-staging-v1';
 const SERVER_STAGING_ENVIRONMENT_ID = 'menorah-server-staging-v1';
+const SERVER_STAGING_VALIDATION_PROJECT =
+  'menorah-server-staging-validation';
 const LOCAL_STAGING_HOST_PATTERN =
   /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.staging\.localhost$/;
 const SERVER_STAGING_HOST_PATTERN =
@@ -63,7 +65,16 @@ const isExactServerStagingIdentity = (env = process.env) => (
   && STAGING_HOST_ENV_KEYS.every((key) =>
     SERVER_STAGING_HOST_PATTERN.test(String(env[key] || ''))
   )
-  && validateStagingEnvironmentIsolation(env).length === 0
+  && validateStagingEnvironmentIsolation(env, {
+    requireCheckoutReturnUrl: false,
+    requireMediaPublicBaseUrl: false,
+  }).length === 0
+);
+
+const isExactServerStagingCaptureIdentity = (env = process.env) => (
+  isExactServerStagingIdentity(env)
+  && String(env.MENORAH_SERVER_STAGING_PROJECT_NAME || '').trim()
+    === SERVER_STAGING_VALIDATION_PROJECT
 );
 
 const isExactRealServerStagingResendSandbox = (
@@ -95,7 +106,7 @@ const resolveResendEmailUrl = (env = process.env) => {
   );
   const isApprovedServerCapture = (
     configuredUrl === SERVER_STAGING_RESEND_EMAIL_URL
-    && isExactServerStagingIdentity(env)
+    && isExactServerStagingCaptureIdentity(env)
   );
   const isApprovedRealServerStagingSandbox = (
     configuredUrl === CANONICAL_RESEND_EMAIL_URL
@@ -138,7 +149,7 @@ const validateResendDeliveryConfiguration = (env = process.env) => {
         'RESEND_API_KEY must use a strong re_local_ key for local staging'
       );
     } else if (
-      isExactServerStagingIdentity(env)
+      isExactServerStagingCaptureIdentity(env)
       && !SERVER_STAGING_RESEND_KEY_PATTERN.test(apiKey)
     ) {
       errors.push(
@@ -176,6 +187,7 @@ module.exports = {
   SERVER_STAGING_RESEND_EMAIL_URL,
   isExactRealServerStagingResendSandbox,
   isExactLocalStagingIdentity,
+  isExactServerStagingCaptureIdentity,
   isExactServerStagingIdentity,
   resolveResendEmailUrl,
   validateResendDeliveryConfiguration,

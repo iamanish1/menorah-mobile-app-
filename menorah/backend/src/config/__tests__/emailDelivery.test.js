@@ -103,6 +103,8 @@ const exactRealResendSandboxEnvironment = () => ({
 describe('Resend delivery routing', () => {
   test('allows only the exact real synthetic server-staging sandbox', () => {
     const environment = exactRealResendSandboxEnvironment();
+    delete environment.CHECKOUT_RETURN_URL;
+    delete environment.MEDIA_PUBLIC_BASE_URL;
 
     expect(isExactRealServerStagingResendSandbox(environment))
       .toBe(true);
@@ -110,6 +112,19 @@ describe('Resend delivery routing', () => {
       .toBe(CANONICAL_RESEND_EMAIL_URL);
     expect(validateResendDeliveryConfiguration(environment))
       .toEqual([]);
+  });
+
+  test('rejects internal capture for the real server-staging project', () => {
+    const environment = {
+      ...exactServerStagingEnvironment(),
+      RESEND_API_URL: SERVER_STAGING_RESEND_EMAIL_URL,
+      RESEND_API_KEY: `re_server_staging_${'b'.repeat(40)}`,
+    };
+
+    expect(() => resolveResendEmailUrl(environment))
+      .toThrow(/allowed only as the exact internal endpoint/);
+    expect(validateResendDeliveryConfiguration(environment).join('; '))
+      .toMatch(/approved real server-staging sandbox delivery/);
   });
 
   test('keeps the validation project on internal capture', () => {

@@ -232,12 +232,11 @@ describe('immutable media storage', () => {
 
   test('uploads real staging media only under the exact prefix', async () => {
     configureExactRealServerStagingCloudinary();
-    uploadBuffer.mockResolvedValue({
+    uploadBuffer.mockImplementation(async (_buffer, options) => ({
       secure_url:
         'https://res.cloudinary.com/menorah-staging/image/upload/object.jpg',
-      public_id:
-        `${SERVER_STAGING_CLOUDINARY_PREFIX}/profile-images/object`,
-    });
+      public_id: `${options.folder}/${options.public_id}`,
+    }));
 
     const stored = await storeMediaBuffer(Buffer.from('cloud-bytes'), {
       service: 'user-profile',
@@ -255,16 +254,28 @@ describe('immutable media storage', () => {
         unique_filename: false,
       })
     );
+    const uploadOptions = uploadBuffer.mock.calls[0][1];
     expect(stored.metadata.publicId)
-      .toBe(`${SERVER_STAGING_CLOUDINARY_PREFIX}/profile-images/object`);
+      .toBe(`${uploadOptions.folder}/${uploadOptions.public_id}`);
+    expect(stored.metadata.publicId)
+      .toMatch(
+        /^menorah-staging\/menorah-server-staging-v1\/profile-images\//
+      );
   });
 
-  test('rejects a Cloudinary public ID outside the exact staging prefix', async () => {
+  test.each([
+    'menorah/production/object',
+    `${SERVER_STAGING_CLOUDINARY_PREFIX}/profile-images/unexpected`,
+    `${SERVER_STAGING_CLOUDINARY_PREFIX}/profile-images/unexpected/object`,
+    `${SERVER_STAGING_CLOUDINARY_PREFIX}/profile-images/../production/object`,
+    '',
+    undefined,
+  ])('rejects unexpected Cloudinary public ID %p', async (publicId) => {
     configureExactRealServerStagingCloudinary();
     uploadBuffer.mockResolvedValue({
       secure_url:
         'https://res.cloudinary.com/production/image/upload/object.jpg',
-      public_id: 'menorah/production/object',
+      public_id: publicId,
     });
 
     await expect(storeMediaBuffer(Buffer.from('cloud-bytes'), {
@@ -273,6 +284,6 @@ describe('immutable media storage', () => {
       extension: '.jpg',
       contentType: 'image/jpeg',
       cloudinaryFolder: 'menorah/profile-images',
-    })).rejects.toThrow(/outside the approved server-staging prefix/);
+    })).rejects.toThrow(/unexpected server-staging public_id/);
   });
 });
