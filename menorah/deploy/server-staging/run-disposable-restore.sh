@@ -196,7 +196,7 @@ fi
 [[ "$(inspect_restore_state "${restore_id}")" == \
   "running|true|healthy|${EXPECTED_PROJECT}|${RESTORE_SERVICE}" ]] \
   || fail 'the restore target changed state during initialization'
-for attempt in $(seq 1 60); do
+for ((attempt = 0; attempt < 60; attempt += 1)); do
   initializer_state="$(
     docker inspect \
       --format '{{.State.Status}}|{{.State.Running}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}' \

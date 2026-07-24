@@ -307,6 +307,16 @@ test('wrapper sources pin exact authority and bounded service sets', () => {
   );
 });
 
+test('wrapper health polling uses a bounded arithmetic loop without unused iterators', () => {
+  for (const source of Object.values(sources)) {
+    assert.doesNotMatch(source, /for attempt in \$\(seq /);
+    assert.match(
+      source,
+      /for \(\(attempt = 0; attempt < 60; attempt \+= 1\)\); do/,
+    );
+  }
+});
+
 test('consistent backup stops, backs up, and restarts exactly six writers', () => {
   const fixture = makeFixture('backup');
   try {

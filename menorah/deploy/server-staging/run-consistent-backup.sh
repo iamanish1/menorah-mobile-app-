@@ -163,7 +163,7 @@ restart_writers() {
     docker start "${stopped_ids[@]}" >/dev/null || recovery_failed=1
   fi
 
-  for attempt in $(seq 1 60); do
+  for ((attempt = 0; attempt < 60; attempt += 1)); do
     all_healthy=true
     for index in "${!writer_ids[@]}"; do
       service="${WRITER_SERVICES[${index}]}"
