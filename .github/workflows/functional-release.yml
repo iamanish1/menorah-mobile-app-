@@ -449,6 +449,9 @@ jobs:
       - name: Install deterministic QA dependencies
         working-directory: menorah/scripts/qa
         run: npm ci --ignore-scripts
+      - name: Install deterministic backend production dependencies
+        working-directory: menorah/backend
+        run: npm ci --omit=dev --ignore-scripts
       - name: Validate every GitHub workflow
         run: >-
           docker run --rm --network none

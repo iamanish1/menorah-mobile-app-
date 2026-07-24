@@ -98,6 +98,33 @@ export function validateFunctionalWorkflow(
     validateCheckout(job, jobId);
   }
 
+  const releaseInfrastructure = workflow.jobs['release-infrastructure'];
+  const backendDependenciesStepName =
+    'Install deterministic backend production dependencies';
+  const backendDependenciesStepIndex = releaseInfrastructure.steps?.findIndex(
+    (step) => step.name === backendDependenciesStepName,
+  );
+  assert.notEqual(
+    backendDependenciesStepIndex,
+    -1,
+    'release infrastructure must install deterministic backend production dependencies',
+  );
+  const backendDependenciesStep =
+    releaseInfrastructure.steps[backendDependenciesStepIndex];
+  assert.equal(backendDependenciesStep['working-directory'], 'menorah/backend');
+  assert.equal(
+    backendDependenciesStep.run,
+    'npm ci --omit=dev --ignore-scripts',
+    'release infrastructure backend production dependencies must come from the lock without lifecycle scripts',
+  );
+  const releaseSuiteStepIndex = releaseInfrastructure.steps?.findIndex(
+    (step) => step.name === 'Run release and infrastructure suites',
+  );
+  assert.ok(
+    backendDependenciesStepIndex < releaseSuiteStepIndex,
+    'release infrastructure must install backend production dependencies before its release suite',
+  );
+
   const commands = Object.fromEntries(
     Object.entries(workflow.jobs).map(([jobId, job]) => [
       jobId,

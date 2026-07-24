@@ -40,6 +40,35 @@ test('accepts the exact-SHA cross-stack functional workflow', () => {
   assert.doesNotThrow(() => validate(parse(rawWorkflow)));
 });
 
+test('rejects a missing or late backend production dependency prerequisite', () => {
+  const missing = parse(rawWorkflow);
+  missing.jobs['release-infrastructure'].steps =
+    missing.jobs['release-infrastructure'].steps.filter(
+      (step) =>
+        step.name !== 'Install deterministic backend production dependencies',
+    );
+  assert.throws(
+    () => validate(missing),
+    /install deterministic backend production dependencies/,
+  );
+
+  const late = parse(rawWorkflow);
+  const steps = late.jobs['release-infrastructure'].steps;
+  const dependencyStepIndex = steps.findIndex(
+    (step) =>
+      step.name === 'Install deterministic backend production dependencies',
+  );
+  const [dependencyStep] = steps.splice(dependencyStepIndex, 1);
+  const suiteStepIndex = steps.findIndex(
+    (step) => step.name === 'Run release and infrastructure suites',
+  );
+  steps.splice(suiteStepIndex + 1, 0, dependencyStep);
+  assert.throws(
+    () => validate(late),
+    /before its release suite/,
+  );
+});
+
 test('rejects a workspace removed from the aggregate gate', () => {
   const workflow = parse(rawWorkflow);
   workflow.jobs['required-functional-release-gates'].needs =
