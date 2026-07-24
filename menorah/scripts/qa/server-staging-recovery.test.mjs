@@ -603,6 +603,22 @@ test('first deployment prepares migration dependencies before migration', () => 
   const runtimeVerification = sources.deploy.indexOf(
     'bash "${RUNTIME_VERIFIER}" "${MANIFEST}"',
   );
+  const firstDeploymentSeedCondition = sources.deploy.indexOf(
+    'if [[ -z "${previous_sha}" ]]; then',
+    runtimeVerification,
+  );
+  const seedRun = sources.deploy.indexOf(
+    '--exit-code-from staging-seed',
+    firstDeploymentSeedCondition,
+  );
+  const seedAssertion = sources.deploy.indexOf(
+    'assert_successful_seed',
+    seedRun,
+  );
+  const deploymentRecord = sources.deploy.indexOf(
+    'deployment_record_temp="$(',
+    seedAssertion,
+  );
 
   assert.ok(datastoreStart >= 0);
   assert.ok(initializer > datastoreStart);
@@ -610,6 +626,10 @@ test('first deployment prepares migration dependencies before migration', () => 
   assert.ok(recoveryValidation > migration);
   assert.ok(applicationStart > recoveryValidation);
   assert.ok(runtimeVerification > applicationStart);
+  assert.ok(firstDeploymentSeedCondition > runtimeVerification);
+  assert.ok(seedRun > firstDeploymentSeedCondition);
+  assert.ok(seedAssertion > seedRun);
+  assert.ok(deploymentRecord > seedAssertion);
   for (const source of [sources.deploy, sources.migration]) {
     assert.match(source, /ps -a -q "\$\{service\}"/);
     assert.match(source, /\.State\.Status/);
@@ -617,6 +637,92 @@ test('first deployment prepares migration dependencies before migration', () => 
     assert.match(source, /staging-mongo-replica-init/);
     assert.match(source, /staging-redis/);
   }
+});
+
+test('first deployment seeds once through the bounded profile service', () => {
+  const collapsed = sources.deploy.replace(/\\\r?\n\s*/g, ' ');
+  assert.match(
+    collapsed,
+    /if \[\[ -z "\$\{previous_sha\}" \]\]; then\s+compose\s+--profile seed\s+up --no-deps --force-recreate --no-build --pull never\s+--abort-on-container-exit\s+--exit-code-from staging-seed\s+staging-seed\s+assert_successful_seed\s+seed_disposition='created-bounded-synthetic-roster'\s+fi/,
+  );
+  assert.match(
+    sources.deploy,
+    /seed_disposition='preserved-existing-bounded-synthetic-roster'\s+if \[\[ -z "\$\{previous_sha\}" \]\]/,
+  );
+  assert.doesNotMatch(
+    collapsed,
+    /--profile seed\s+(?:run|up -d)\b/,
+  );
+  assert.doesNotMatch(
+    collapsed,
+    /(?:staging-seed|assert_successful_seed)\s*(?:\|\| true|&)/,
+  );
+  assert.equal(
+    [...sources.deploy.matchAll(/--exit-code-from staging-seed/g)].length,
+    1,
+  );
+});
+
+test('seed completion is exact, non-restarting, and inside recovery', () => {
+  const assertionStart = sources.deploy.indexOf(
+    'assert_successful_seed() {',
+  );
+  const assertionEnd = sources.deploy.indexOf(
+    '\n}\n\n[[ "$#" -eq 1 ]]',
+    assertionStart,
+  );
+  const assertion = sources.deploy.slice(assertionStart, assertionEnd);
+  assert.match(assertion, /ps -a -q "\$\{service\}"/);
+  assert.match(
+    assertion,
+    /"\$\{#container_ids\[@\]\}" -eq 1/,
+  );
+  assert.match(assertion, /\.State\.ExitCode/);
+  assert.match(assertion, /\.State\.OOMKilled/);
+  assert.match(assertion, /\.RestartCount/);
+  assert.match(assertion, /\.HostConfig\.RestartPolicy\.Name/);
+  assert.match(
+    assertion,
+    /exited\|false\|0\|false\|0\|no\|\$\{EXPECTED_PROJECT\}\|\$\{service\}\|False/,
+  );
+
+  const trapArm = sources.deploy.indexOf(
+    "trap 'status=$?; trap - EXIT; on_exit",
+  );
+  const seedRun = sources.deploy.indexOf('--exit-code-from staging-seed');
+  const recordMove = sources.deploy.indexOf(
+    'mv -- "${deployment_record_temp}" "${DEPLOYMENT_RECORD}"',
+  );
+  const recoveryClear = sources.deploy.indexOf(
+    'rm -f -- "${RECOVERY_MARKER}"',
+  );
+  assert.ok(trapArm >= 0);
+  assert.ok(seedRun > trapArm);
+  assert.ok(recordMove > seedRun);
+  assert.ok(recoveryClear > recordMove);
+  assert.match(
+    sources.deploy,
+    /if \[\[ "\$\{status\}" -ne 0 && "\$\{deployment_succeeded\}" != true \]\]; then\s+stop_application_writers/,
+  );
+});
+
+test('immutable deployment record captures the first-only seed disposition', () => {
+  assert.match(
+    sources.deploy,
+    /SEED_DISPOSITION_VALUE="\$\{seed_disposition\}"/,
+  );
+  assert.match(
+    sources.deploy,
+    /seedDisposition: process\.env\.SEED_DISPOSITION_VALUE/,
+  );
+  assert.match(
+    sources.deploy,
+    /seed_disposition='preserved-existing-bounded-synthetic-roster'/,
+  );
+  assert.match(
+    sources.deploy,
+    /seed_disposition='created-bounded-synthetic-roster'/,
+  );
 });
 
 test('profile artifacts render explicitly and migration owns recovery state', () => {
@@ -748,6 +854,259 @@ test('post-migration resume is marker-bound and never reruns migration', () => {
     assert.match(source, /staging-worker/);
     assert.match(source, /staging-user-web-app/);
   }
+});
+
+test('first-deployment resume seeds after runtime verification and before evidence', () => {
+  const trapArm = sources.resume.indexOf(
+    "trap 'status=$?; trap - EXIT; on_exit",
+  );
+  const runtimeVerification = sources.resume.indexOf(
+    'bash "${RUNTIME_VERIFIER}" "${MANIFEST}"',
+  );
+  const firstDeploymentCondition = sources.resume.indexOf(
+    'if [[ "${deployment_record_exists}" != true'
+      + ' && -z "${current_sha}" ]]; then',
+    runtimeVerification,
+  );
+  const seedRun = sources.resume.indexOf(
+    '--exit-code-from staging-seed',
+    firstDeploymentCondition,
+  );
+  const seedAssertion = sources.resume.indexOf(
+    'assert_successful_seed',
+    seedRun,
+  );
+  const deploymentRecord = sources.resume.indexOf(
+    'deployment_record_temp="$(',
+    seedAssertion,
+  );
+  const recordMove = sources.resume.indexOf(
+    'mv -- "${deployment_record_temp}" "${DEPLOYMENT_RECORD}"',
+    deploymentRecord,
+  );
+  const currentWrite = sources.resume.indexOf(
+    'write_sha_marker "${CURRENT_SHA_FILE}"',
+    recordMove,
+  );
+  const recoveryClear = sources.resume.indexOf(
+    'rm -f -- "${RECOVERY_MARKER}"',
+    currentWrite,
+  );
+
+  assert.ok(trapArm >= 0);
+  assert.ok(runtimeVerification > trapArm);
+  assert.ok(firstDeploymentCondition > runtimeVerification);
+  assert.ok(seedRun > firstDeploymentCondition);
+  assert.ok(seedAssertion > seedRun);
+  assert.ok(deploymentRecord > seedAssertion);
+  assert.ok(recordMove > deploymentRecord);
+  assert.ok(currentWrite > recordMove);
+  assert.ok(recoveryClear > currentWrite);
+});
+
+test('post-migration resume preserves the first-only seed invariant', () => {
+  const collapsed = sources.resume.replace(/\\\r?\n\s*/g, ' ');
+  assert.match(
+    collapsed,
+    /seed_disposition='preserved-existing-bounded-synthetic-roster'\s+if \[\[ "\$\{deployment_record_exists\}" != true && -z "\$\{current_sha\}" \]\]; then\s+if prior_successful_seed_exists; then\s+:\s+else\s+compose\s+--profile seed\s+up --no-deps --force-recreate --no-build --pull never\s+--abort-on-container-exit\s+--exit-code-from staging-seed\s+staging-seed\s+assert_successful_seed\s+fi\s+seed_disposition='created-bounded-synthetic-roster'\s+fi/,
+  );
+  assert.equal(
+    [...sources.resume.matchAll(/--exit-code-from staging-seed/g)].length,
+    1,
+  );
+  assert.doesNotMatch(
+    collapsed,
+    /--profile seed\s+(?:run|up -d)\b/,
+  );
+  assert.doesNotMatch(
+    collapsed,
+    /(?:staging-seed|assert_successful_seed)\s*(?:\|\| true|&)/,
+  );
+  assert.match(
+    sources.resume,
+    /SEED_DISPOSITION_VALUE="\$\{seed_disposition\}"/,
+  );
+  assert.match(
+    sources.resume,
+    /seedDisposition: process\.env\.SEED_DISPOSITION_VALUE/,
+  );
+});
+
+test('resume reuses one exact successful seed and only runs when absent', () => {
+  const helperStart = sources.resume.indexOf(
+    'prior_successful_seed_exists() {',
+  );
+  const helperEnd = sources.resume.indexOf(
+    '\n}\n\n[[ "$#" -eq 1 ]]',
+    helperStart,
+  );
+  const helper = sources.resume.slice(helperStart, helperEnd);
+  assert.match(
+    helper,
+    /container_output="\$\(compose ps -a -q "\$\{service\}"\)"/,
+  );
+  assert.match(helper, /\[\[ -n "\$\{container_output\}" \]\] \|\| return 1/);
+  assert.match(
+    helper,
+    /"\$\{#container_ids\[@\]\}" -eq 1 && -n "\$\{container_ids\[0\]\}"/,
+  );
+  assert.match(helper, /prior synthetic roster seed is ambiguous/);
+  assert.match(helper, /assert_successful_seed/);
+
+  const collapsed = sources.resume.replace(/\\\r?\n\s*/g, ' ');
+  assert.match(
+    collapsed,
+    /if prior_successful_seed_exists; then\s+:\s+else\s+compose\s+--profile seed\s+up [\s\S]*?--exit-code-from staging-seed\s+staging-seed\s+assert_successful_seed\s+fi/,
+  );
+  assert.doesNotMatch(
+    collapsed,
+    /if prior_successful_seed_exists; then\s+(?:compose|docker|assert_successful_seed)/,
+  );
+});
+
+test('prior seed acceptance is bound to immutable candidate image evidence', () => {
+  assert.match(sources.resume, /load_seed_image_identity\(\) \{/);
+  assert.match(
+    sources.resume,
+    /"\$\{service\}" == 'staging-migrate'/,
+  );
+  assert.match(
+    sources.resume,
+    /compose --profile seed config --format json/,
+  );
+  assert.match(
+    sources.resume,
+    /seed\.restart !== "no"/,
+  );
+  assert.match(
+    sources.resume,
+    /!seed\.profiles\.includes\("seed"\)/,
+  );
+  assert.match(
+    sources.resume,
+    /"\$\{rendered_seed_reference\}" == "\$\{migration_reference\}"/,
+  );
+  assert.match(sources.resume, /\{\{\.Config\.Image\}\}/);
+  assert.match(sources.resume, /\{\{\.Image\}\}/);
+  assert.match(
+    sources.resume,
+    /\$\{EXPECTED_SEED_IMAGE_REFERENCE\}\|\$\{EXPECTED_SEED_IMAGE_ID\}\|\$\{EXPECTED_PROJECT\}\|\$\{service\}\|False/,
+  );
+});
+
+test('resume refuses unsafe or cross-candidate prior seed states', () => {
+  const assertionStart = sources.resume.indexOf(
+    'assert_successful_seed() {',
+  );
+  const assertionEnd = sources.resume.indexOf(
+    '\n}\n\nprior_successful_seed_exists() {',
+    assertionStart,
+  );
+  const assertion = sources.resume.slice(assertionStart, assertionEnd);
+  const validIdentity = [
+    'exited',
+    'false',
+    '0',
+    'false',
+    '0',
+    'no',
+    '${EXPECTED_SEED_IMAGE_REFERENCE}',
+    '${EXPECTED_SEED_IMAGE_ID}',
+    '${EXPECTED_PROJECT}',
+    '${service}',
+    'False',
+  ].join('|');
+  assert.ok(assertion.includes(validIdentity));
+  for (const unsafeIdentity of [
+    validIdentity.replace('exited|false', 'running|true'),
+    validIdentity.replace('|0|false|0|no|', '|1|false|0|no|'),
+    validIdentity.replace('|0|false|0|no|', '|0|true|0|no|'),
+    validIdentity.replace('|false|0|no|', '|false|1|no|'),
+    validIdentity.replace('|0|no|', '|0|on-failure|'),
+    validIdentity.replace(
+      '${EXPECTED_SEED_IMAGE_REFERENCE}',
+      'registry.invalid/cross-candidate@sha256:bad',
+    ),
+    validIdentity.replace(
+      '${EXPECTED_SEED_IMAGE_ID}',
+      `sha256:${'f'.repeat(64)}`,
+    ),
+    validIdentity.replace('${EXPECTED_PROJECT}', 'menorah-production'),
+    validIdentity.replace('${service}', 'staging-migrate'),
+    validIdentity.replace('|False', '|True'),
+  ]) {
+    assert.notEqual(unsafeIdentity, validIdentity);
+  }
+  assert.match(
+    assertion,
+    /\[\[ "\$\{identity\}" == \\\s+"exited[\s\S]*\]\] \\\s+\|\| fail 'synthetic roster seed did not complete exactly once'/,
+  );
+});
+
+test('existing resume evidence validates seed disposition without replay', () => {
+  assert.match(
+    sources.resume,
+    /const createdSeedDisposition = 'created-bounded-synthetic-roster';/,
+  );
+  assert.match(
+    sources.resume,
+    /const preservedSeedDisposition =\s+'preserved-existing-bounded-synthetic-roster';/,
+  );
+  assert.match(
+    sources.resume,
+    /record\.previousSha === null\s+&& record\.seedDisposition !== createdSeedDisposition/,
+  );
+  assert.match(
+    sources.resume,
+    /record\.previousSha !== null\s+&& record\.seedDisposition !== preservedSeedDisposition/,
+  );
+  assert.match(
+    sources.resume,
+    /if \[\[ "\$\{deployment_record_exists\}" != true && -z "\$\{current_sha\}" \]\]/,
+  );
+  assert.match(
+    sources.resume,
+    /if \[\[ "\$\{deployment_record_exists\}" != true \]\]; then\s+deployment_record_temp=/,
+  );
+});
+
+test('resume seed failure remains inside the post-migration recovery boundary', () => {
+  const assertionStart = sources.resume.indexOf(
+    'assert_successful_seed() {',
+  );
+  const assertionEnd = sources.resume.indexOf(
+    '\n}\n\nprior_successful_seed_exists() {',
+    assertionStart,
+  );
+  const assertion = sources.resume.slice(assertionStart, assertionEnd);
+  assert.match(assertion, /ps -a -q "\$\{service\}"/);
+  assert.match(
+    assertion,
+    /"\$\{#container_ids\[@\]\}" -eq 1/,
+  );
+  assert.match(assertion, /\.State\.ExitCode/);
+  assert.match(assertion, /\.State\.OOMKilled/);
+  assert.match(assertion, /\.RestartCount/);
+  assert.match(assertion, /\.HostConfig\.RestartPolicy\.Name/);
+  assert.match(assertion, /\{\{\.Config\.Image\}\}/);
+  assert.match(assertion, /\{\{\.Image\}\}/);
+  assert.match(
+    assertion,
+    /exited\|false\|0\|false\|0\|no\|\$\{EXPECTED_SEED_IMAGE_REFERENCE\}\|\$\{EXPECTED_SEED_IMAGE_ID\}\|\$\{EXPECTED_PROJECT\}\|\$\{service\}\|False/,
+  );
+  assert.match(
+    sources.resume,
+    /if \[\[ "\$\{status\}" -ne 0 && "\$\{resume_succeeded\}" != true \]\]; then\s+stop_application_writers/,
+  );
+  assert.match(
+    sources.resume,
+    /Post-migration resume failed; application writers were stopped and \$\{RECOVERY_MARKER\} remains for review/,
+  );
+  assert.equal(
+    [...sources.resume.matchAll(/rm -f -- "\$\{RECOVERY_MARKER\}"/g)]
+      .length,
+    1,
+  );
 });
 
 test('historical rollback is recorded-artifact-only and never builds or pulls', () => {

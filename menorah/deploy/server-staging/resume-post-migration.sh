@@ -75,6 +75,79 @@ stop_application_writers() {
     >/dev/null 2>&1 || true
 }
 
+load_seed_image_identity() {
+  local manifest="$1"
+  local service reference image_id extra
+  local migration_reference='' migration_image_id='' match_count=0
+  local rendered_seed_reference
+
+  while IFS='|' read -r service reference image_id extra; do
+    [[ "${service}" == 'staging-migrate' ]] || continue
+    match_count=$((match_count + 1))
+    migration_reference="${reference}"
+    migration_image_id="${image_id}"
+    [[ -z "${extra:-}" ]] \
+      || fail 'migration image evidence has unexpected fields'
+  done < "${manifest}"
+  [[ "${match_count}" -eq 1 \
+    && "${migration_reference}" =~ @sha256:[0-9a-f]{64}$ \
+    && "${migration_image_id}" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || fail 'exact migration image evidence is unavailable for seed recovery'
+
+  rendered_seed_reference="$(
+    compose --profile seed config --format json \
+      | node -e '
+const fs = require("node:fs");
+const model = JSON.parse(fs.readFileSync(0, "utf8"));
+const seed = model?.services?.["staging-seed"];
+if (
+  !seed
+  || seed.restart !== "no"
+  || !Array.isArray(seed.profiles)
+  || !seed.profiles.includes("seed")
+  || typeof seed.image !== "string"
+  || !seed.image.includes("/menorah-staging/")
+  || !/@sha256:[0-9a-f]{64}$/.test(seed.image)
+) {
+  throw new Error("rendered staging-seed image identity is invalid");
+}
+process.stdout.write(seed.image);
+'
+  )" || fail 'exact rendered seed image identity is unavailable'
+  [[ "${rendered_seed_reference}" == "${migration_reference}" ]] \
+    || fail 'seed image differs from the immutable candidate image'
+  printf '%s|%s\n' "${migration_reference}" "${migration_image_id}"
+}
+
+assert_successful_seed() {
+  local service='staging-seed' container_id identity
+  local -a container_ids=()
+  mapfile -t container_ids < <(compose ps -a -q "${service}")
+  [[ "${#container_ids[@]}" -eq 1 && -n "${container_ids[0]}" ]] \
+    || fail 'synthetic roster seed is missing or ambiguous'
+  container_id="${container_ids[0]}"
+  identity="$(
+    docker inspect \
+      --format '{{.State.Status}}|{{.State.Running}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.RestartCount}}|{{.HostConfig.RestartPolicy.Name}}|{{.Config.Image}}|{{.Image}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}' \
+      "${container_id}"
+  )"
+  [[ "${identity}" == \
+    "exited|false|0|false|0|no|${EXPECTED_SEED_IMAGE_REFERENCE}|${EXPECTED_SEED_IMAGE_ID}|${EXPECTED_PROJECT}|${service}|False" ]] \
+    || fail 'synthetic roster seed did not complete exactly once'
+}
+
+prior_successful_seed_exists() {
+  local service='staging-seed' container_output
+  local -a container_ids=()
+  container_output="$(compose ps -a -q "${service}")" \
+    || fail 'prior synthetic roster seed state is unreadable'
+  [[ -n "${container_output}" ]] || return 1
+  mapfile -t container_ids <<< "${container_output}"
+  [[ "${#container_ids[@]}" -eq 1 && -n "${container_ids[0]}" ]] \
+    || fail 'prior synthetic roster seed is ambiguous'
+  assert_successful_seed
+}
+
 [[ "$#" -eq 1 ]] \
   || fail 'usage: resume-post-migration.sh FULL_GIT_SHA'
 readonly RELEASE_SHA="$1"
@@ -195,6 +268,19 @@ readonly in_progress_sha
 
 readonly MANIFEST="${RELEASE_STATE}/${RELEASE_SHA}.images"
 readonly DEPLOYMENT_RECORD="${RELEASE_STATE}/${RELEASE_SHA}.deployment.json"
+seed_image_identity="$(load_seed_image_identity "${MANIFEST}")"
+IFS='|' read -r \
+  EXPECTED_SEED_IMAGE_REFERENCE \
+  EXPECTED_SEED_IMAGE_ID \
+  seed_image_extra \
+  <<< "${seed_image_identity}"
+[[ -n "${EXPECTED_SEED_IMAGE_REFERENCE}" \
+  && -n "${EXPECTED_SEED_IMAGE_ID}" \
+  && -z "${seed_image_extra:-}" ]] \
+  || fail 'exact seed image evidence could not be parsed'
+readonly EXPECTED_SEED_IMAGE_REFERENCE EXPECTED_SEED_IMAGE_ID
+unset seed_image_identity seed_image_extra
+
 deployment_record_exists=false
 previous_sha=''
 if [[ -e "${DEPLOYMENT_RECORD}" || -L "${DEPLOYMENT_RECORD}" ]]; then
@@ -240,6 +326,25 @@ if (
 ) {
   throw new Error('deployment record previousSha is invalid');
 }
+const createdSeedDisposition = 'created-bounded-synthetic-roster';
+const preservedSeedDisposition =
+  'preserved-existing-bounded-synthetic-roster';
+if (
+  record.previousSha === null
+  && record.seedDisposition !== createdSeedDisposition
+) {
+  throw new Error(
+    'first-deployment record seedDisposition is invalid',
+  );
+}
+if (
+  record.previousSha !== null
+  && record.seedDisposition !== preservedSeedDisposition
+) {
+  throw new Error(
+    'update deployment record seedDisposition is invalid',
+  );
+}
 if (
   typeof record.completedAt !== 'string'
   || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(record.completedAt)
@@ -280,6 +385,23 @@ compose config --quiet
 compose up -d --no-build --pull never --wait --wait-timeout 300
 bash "${RUNTIME_VERIFIER}" "${MANIFEST}"
 
+seed_disposition='preserved-existing-bounded-synthetic-roster'
+if [[ "${deployment_record_exists}" != true && -z "${current_sha}" ]]; then
+  if prior_successful_seed_exists; then
+    :
+  else
+    compose \
+      --profile seed \
+      up --no-deps --force-recreate --no-build --pull never \
+      --abort-on-container-exit \
+      --exit-code-from staging-seed \
+      staging-seed
+    assert_successful_seed
+  fi
+  seed_disposition='created-bounded-synthetic-roster'
+fi
+readonly seed_disposition
+
 if [[ "${deployment_record_exists}" != true ]]; then
   deployment_record_temp="$(
     mktemp "${RELEASE_STATE}/.deployment-${RELEASE_SHA}.XXXXXX"
@@ -287,6 +409,7 @@ if [[ "${deployment_record_exists}" != true ]]; then
   completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   RELEASE_SHA_VALUE="${RELEASE_SHA}" \
   PREVIOUS_SHA_VALUE="${previous_sha}" \
+  SEED_DISPOSITION_VALUE="${seed_disposition}" \
   COMPLETED_AT_VALUE="${completed_at}" \
     node <<'NODE' > "${deployment_record_temp}"
 const record = {
@@ -302,6 +425,7 @@ const record = {
   migrationStatus: 'already-applied-before-resume',
   healthStatus: 'passed',
   recoveryMode: 'post-migration-code-resume',
+  seedDisposition: process.env.SEED_DISPOSITION_VALUE,
   completedAt: process.env.COMPLETED_AT_VALUE,
 };
 process.stdout.write(`${JSON.stringify(record, null, 2)}\n`);

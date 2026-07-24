@@ -109,6 +109,23 @@ assert_successful_initializer() {
     || fail "migration initializer did not complete successfully: ${service}"
 }
 
+assert_successful_seed() {
+  local service='staging-seed' container_id identity
+  local -a container_ids=()
+  mapfile -t container_ids < <(compose ps -a -q "${service}")
+  [[ "${#container_ids[@]}" -eq 1 && -n "${container_ids[0]}" ]] \
+    || fail 'synthetic roster seed is missing or ambiguous'
+  container_id="${container_ids[0]}"
+  identity="$(
+    docker inspect \
+      --format '{{.State.Status}}|{{.State.Running}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.RestartCount}}|{{.HostConfig.RestartPolicy.Name}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}' \
+      "${container_id}"
+  )"
+  [[ "${identity}" == \
+    "exited|false|0|false|0|no|${EXPECTED_PROJECT}|${service}|False" ]] \
+    || fail 'synthetic roster seed did not complete exactly once'
+}
+
 [[ "$#" -eq 1 ]] || fail 'usage: deploy-exact-sha.sh FULL_GIT_SHA'
 readonly RELEASE_SHA="$1"
 [[ "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]] \
@@ -265,12 +282,26 @@ trap 'status=$?; trap - EXIT; on_exit "${status}"; exit "${status}"' EXIT
 compose up -d --no-build --pull never --wait --wait-timeout 300
 bash "${RUNTIME_VERIFIER}" "${MANIFEST}"
 
+seed_disposition='preserved-existing-bounded-synthetic-roster'
+if [[ -z "${previous_sha}" ]]; then
+  compose \
+    --profile seed \
+    up --no-deps --force-recreate --no-build --pull never \
+    --abort-on-container-exit \
+    --exit-code-from staging-seed \
+    staging-seed
+  assert_successful_seed
+  seed_disposition='created-bounded-synthetic-roster'
+fi
+readonly seed_disposition
+
 deployment_record_temp="$(
   mktemp "${RELEASE_STATE}/.deployment-${RELEASE_SHA}.XXXXXX"
 )"
 completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 RELEASE_SHA_VALUE="${RELEASE_SHA}" \
 PREVIOUS_SHA_VALUE="${previous_sha}" \
+SEED_DISPOSITION_VALUE="${seed_disposition}" \
 COMPLETED_AT_VALUE="${completed_at}" \
   node <<'NODE' > "${deployment_record_temp}"
 const record = {
@@ -285,6 +316,7 @@ const record = {
   previousSha: process.env.PREVIOUS_SHA_VALUE || null,
   migrationStatus: 'applied-or-already-applied',
   healthStatus: 'passed',
+  seedDisposition: process.env.SEED_DISPOSITION_VALUE,
   completedAt: process.env.COMPLETED_AT_VALUE,
 };
 process.stdout.write(`${JSON.stringify(record, null, 2)}\n`);
