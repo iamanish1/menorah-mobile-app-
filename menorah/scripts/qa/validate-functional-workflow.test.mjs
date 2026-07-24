@@ -11,10 +11,18 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '../../..');
 const read = async (path) =>
   (await readFile(resolve(REPO_ROOT, path), 'utf8')).replace(/\r\n?/g, '\n');
-const [rawWorkflow, integrationCompose, securityWorkflow] = await Promise.all([
+const [
+  rawWorkflow,
+  integrationCompose,
+  securityWorkflow,
+  userWebPackage,
+  userWebLock,
+] = await Promise.all([
   read('.github/workflows/functional-release.yml'),
   read('menorah/scripts/qa/docker-compose.integration.yml'),
   read('.github/workflows/security.yml'),
+  read('menorah/user-web-app/package.json').then(JSON.parse),
+  read('menorah/user-web-app/package-lock.json').then(JSON.parse),
 ]);
 
 const validate = (workflow, raw = rawWorkflow, security = securityWorkflow) =>
@@ -85,5 +93,13 @@ test('rejects removal of the aggregate security gate', () => {
   assert.throws(
     () => validate(parse(rawWorkflow), rawWorkflow, JSON.stringify(security)),
     /aggregate gate/,
+  );
+});
+
+test('pins the user-web Next PostCSS override to the first path-traversal-safe release', () => {
+  assert.equal(userWebPackage.overrides?.next?.postcss, '8.5.18');
+  assert.equal(
+    userWebLock.packages?.['node_modules/postcss']?.version,
+    '8.5.18',
   );
 });
