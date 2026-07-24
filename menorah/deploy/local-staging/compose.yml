@@ -396,9 +396,11 @@ services:
         source: uploads
         target: /app/uploads
     networks:
-      - ingress
-      - app
-      - data
+      ingress:
+      app:
+        aliases:
+          - private-api-ios
+      data:
     depends_on:
       mongo-replica-init:
         condition: service_completed_successfully
@@ -424,9 +426,11 @@ services:
         source: uploads
         target: /app/uploads
     networks:
-      - ingress
-      - app
-      - data
+      ingress:
+      app:
+        aliases:
+          - private-api-android
+      data:
     depends_on:
       mongo-replica-init:
         condition: service_completed_successfully
@@ -455,9 +459,11 @@ services:
         source: uploads
         target: /app/uploads
     networks:
-      - ingress
-      - app
-      - data
+      ingress:
+      app:
+        aliases:
+          - private-api-web
+      data:
     depends_on:
       mongo-replica-init:
         condition: service_completed_successfully
@@ -489,9 +495,11 @@ services:
         target: /backups
         read_only: true
     networks:
-      - ingress
-      - app
-      - data
+      ingress:
+      app:
+        aliases:
+          - private-api-admin
+      data:
     depends_on:
       mongo-replica-init:
         condition: service_completed_successfully
@@ -607,9 +615,11 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
       - /app/.next/cache:rw,noexec,nosuid,nodev,size=64m,mode=700
     networks:
-      - ingress
-      - app
-      - data
+      ingress:
+      app:
+        aliases:
+          - private-user-web
+      data:
     depends_on:
       mongo-replica-init:
         condition: service_completed_successfully
@@ -654,8 +664,10 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
       - /app/.next/cache:rw,noexec,nosuid,nodev,size=64m,mode=700
     networks:
-      - ingress
-      - app
+      ingress:
+      app:
+        aliases:
+          - private-counsellor-web
     healthcheck:
       test:
         - CMD
@@ -685,8 +697,10 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
       - /app/.next/cache:rw,noexec,nosuid,nodev,size=64m,mode=700
     networks:
-      - ingress
-      - app
+      ingress:
+      app:
+        aliases:
+          - private-admin-panel
     healthcheck:
       test:
         - CMD
@@ -722,8 +736,10 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
     networks:
-      - ingress
-      - app
+      ingress:
+      app:
+        aliases:
+          - private-livekit
     healthcheck:
       test:
         - CMD-SHELL

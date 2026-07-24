@@ -44,6 +44,10 @@ const validatorSource = readFileSync(
   new URL('./validate-isolation.mjs', import.meta.url),
   'utf8',
 );
+const caddySource = readFileSync(
+  new URL('./Caddyfile', import.meta.url),
+  'utf8',
+);
 const dockerIgnoreSource = readFileSync(
   new URL('./.dockerignore', import.meta.url),
   'utf8',
@@ -637,6 +641,36 @@ test('Caddy proxy address is outside the dynamic network allocation range', () =
     composeSource,
     /subnet: 10\.254\.240\.0\/24\r?\n\s+ip_range: 10\.254\.240\.128\/25/,
   );
+});
+
+test('Caddy upstreams use private app-network aliases, not ingress service names', () => {
+  const upstreams = [
+    ['api-ios', 'private-api-ios', 8080],
+    ['api-android', 'private-api-android', 8080],
+    ['api-web', 'private-api-web', 8080],
+    ['api-admin', 'private-api-admin', 8080],
+    ['user-web-app', 'private-user-web', 3002],
+    ['web-app', 'private-counsellor-web', 3001],
+    ['admin-panel', 'private-admin-panel', 3003],
+    ['livekit', 'private-livekit', 7880],
+  ];
+
+  for (const [service, alias, port] of upstreams) {
+    const serviceBlock = composeSource.match(
+      new RegExp(
+        `\\n  ${service}:\\r?\\n([\\s\\S]*?)(?=\\n  [a-z][a-z0-9-]+:\\r?\\n)`,
+      ),
+    )?.[1] || '';
+    assert.match(
+      serviceBlock,
+      new RegExp(`\\n      app:\\r?\\n\\s+aliases:\\r?\\n\\s+- ${alias}\\b`),
+    );
+    assert.match(caddySource, new RegExp(`local_proxy ${alias}:${port}\\b`));
+    assert.doesNotMatch(
+      caddySource,
+      new RegExp(`local_proxy ${service}:${port}\\b`),
+    );
+  }
 });
 
 test('read-only monitoring services use file-backed Compose configs', () => {

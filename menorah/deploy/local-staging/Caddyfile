@@ -68,28 +68,28 @@ root.staging.localhost, www.staging.localhost, app.staging.localhost, admin.stag
 		respond @private_diagnostics 404
 
 		handle @user {
-			import local_proxy user-web-app:3002
+			import local_proxy private-user-web:3002
 		}
 		handle @admin {
-			import local_proxy admin-panel:3003
+			import local_proxy private-admin-panel:3003
 		}
 		handle @counsellor {
-			import local_proxy web-app:3001
+			import local_proxy private-counsellor-web:3001
 		}
 		handle @api_ios {
-			import local_proxy api-ios:8080
+			import local_proxy private-api-ios:8080
 		}
 		handle @api_android {
-			import local_proxy api-android:8080
+			import local_proxy private-api-android:8080
 		}
 		handle @api_web {
-			import local_proxy api-web:8080
+			import local_proxy private-api-web:8080
 		}
 		handle @api_admin {
-			import local_proxy api-admin:8080
+			import local_proxy private-api-admin:8080
 		}
 		handle @calls {
-			import local_proxy livekit:7880
+			import local_proxy private-livekit:7880
 		}
 		handle {
 			respond 421
