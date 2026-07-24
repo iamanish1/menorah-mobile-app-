@@ -21,7 +21,7 @@ access.
 **LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**
 
 The repository-controlled runtime is frozen at
-`48fb83c248b0e969e699433a8bacdd276ed4311d` on
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` on
 `release/final-production-readiness`. Candidate-bound local validation and all
 six push/PR GitHub workflow executions passed for that SHA. The green runs
 previously cited for `3fb99858c6766a341bb7b7dab2377195427f0ea1`
@@ -109,7 +109,7 @@ for the exact evidence required.
 
 | Blocking area | Repository position | Evidence or decision still required |
 | --- | --- | --- |
-| Immutable release | Runtime SHA `48fb83c248b0e969e699433a8bacdd276ed4311d` is frozen; candidate-bound local validation and six push/PR workflow executions passed | Review the local report, record the final documentation HEAD and its current GitHub results, then obtain repository governance and an owner-approved protected release record |
+| Immutable release | Runtime SHA `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` is frozen; candidate-bound local validation and six push/PR workflow executions passed | Review the local report, record the final documentation HEAD and its current GitHub results, then obtain repository governance and an owner-approved protected release record |
 | Configuration | Fail-closed validators and a redacted variable reference exist | `INFRASTRUCTURE ACTION`: validate the actual host configuration without disclosing values |
 | Data and migrations | Ordered migration and preflight controls exist | `INFRASTRUCTURE ACTION`: disposable staging execution, approved maintenance boundary and invariant evidence |
 | Backup and recovery | Signed/encrypted backup and isolated-restore tooling exists | `INFRASTRUCTURE ACTION`: current host backup, off-site copy and successful restore evidence; the newest restore test must be no more than 24 hours old |

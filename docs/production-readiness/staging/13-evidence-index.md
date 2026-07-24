@@ -1,6 +1,6 @@
 # Unified production-readiness evidence index
 
-Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
+Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -25,8 +25,11 @@ with recorded ancestry and a diff confined to `docs/**` or `menorah/docs/**`.
 - `Responsible party` names the accountable role and action label.
 - `Evidence` states the required artifact, UTC time and reviewer.
 - `Location` is a controlled reference, never a secret-bearing URL.
-- `Status` is `NOT COLLECTED`, `PASS`, `FAIL`, `BLOCKED`, `SKIPPED`,
-  `INVALIDATED` or approved `NOT APPLICABLE`.
+- `Status` is `NOT COLLECTED`, `PASS`, `PARTIAL`, `FAIL`, `BLOCKED`,
+  `SKIPPED`, `INVALIDATED` or approved `NOT APPLICABLE`. A qualified
+  `PASS LOCALLY`, `PASS FOR REPOSITORY SCOPE` or
+  `PASS FOR AUTOMATED/TRACKED SCOPE` is permitted only when the row names the
+  exact proved scope and leaves every external remainder explicit.
 - `Severity` is `P0`, `P1` or governance scope.
 - `Renewal / expiry` is the rerun or review interval.
 - `Candidate SHA` refers to the runtime SHA at the top of this file.
@@ -39,25 +42,34 @@ affected rows `INVALIDATED` and rerun them for the new SHA.
 
 ## Current candidate-bound repository observation log
 
-Runtime SHA `48fb83c248b0e969e699433a8bacdd276ed4311d` has six successful
+Runtime SHA `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` has six successful
 attempt-1 workflow executions:
 
 | Event | Release readiness | Functional | Security |
 | --- | --- | --- | --- |
-| Push | [30064845086](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064845086), 1/1 | [30064845082](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064845082), 9/9 | [30064845089](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064845089), 15/15 |
-| Pull request | [30064847263](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064847263), 1/1 | [30064847275](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064847275), 9/9 | [30064847259](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064847259), 15/15 |
+| Push | [30069836961](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069836961), 1/1 | [30069836968](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069836968), 9/9 | [30069836976](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069836976), 15/15 |
+| Pull request | [30069839620](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069839620), 1/1 | [30069839619](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069839619), 9/9 | [30069839629](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069839629), 15/15 |
 
 The local synthetic evidence is recorded in
 [report 28](../28-local-staging-validation-report.md). It does not convert
 approved Ubuntu staging, live, provider, governance or external-review rows to
 `PASS`.
 
+The successful run sets for superseded runtime
+`48fb83c248b0e969e699433a8bacdd276ed4311d`, documentation head
+`2f2c6e45608300a05443aa7a95d2fd4513e28b71`, Caddy reaper runtime
+`a9ea55ea85ab3bd91e68797256e0b8fc9f677966`, and monitoring-visibility
+runtime `fbf2de8c5bb3e50e41fcaa6bc75f739cfdc0aca2` are retained in the
+immutable candidate record. They are **INVALIDATED** for the current runtime:
+the reaper fix superseded `48fb83`, monitoring visibility superseded `a9ea55`,
+and proxy-log readability superseded `fbf2de8`.
+
 ## Historical repository observation log
 
 The following durable GitHub runs checked out historical runtime SHA
 `3fb99858c6766a341bb7b7dab2377195427f0ea1` exactly. They are retained for
 traceability and are **INVALIDATED** for
-`48fb83c248b0e969e699433a8bacdd276ed4311d`. Repository
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`. Repository
 evidence does not convert any staging, live or governance row to `PASS`.
 
 | Evidence | Exact result | Current tracker treatment |
@@ -110,22 +122,22 @@ authorizations to mutate GitHub configuration.
 
 | ID | Requirement | Responsible party | Evidence | Location | Status | Severity | Renewal / expiry | Candidate SHA |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `REP-001` | Exact runtime branch/SHA, docs revision, clean worktree and remote synchronization | Engineering release owner | Git identity, commit inventory and UTC reviewer record | Runtime identity is frozen; final docs HEAD is recorded externally in draft PR #2 | PARTIAL | P0 | Each candidate | `48fb83c248b0e969e699433a8bacdd276ed4311d` |
-| `REP-002` | Backend lint, unit/integration/migration tests and production dependency audit | Backend/QA | Commands, versions, counts, isolated DB identity and full logs | Current functional runs 30064845082 and 30064847275; local limitations in report 28 | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-003` | User, admin and counsellor web lint/type/build/audit | Web/QA | Per-workspace logs and artifact checksums | Current functional runs 30064845082 and 30064847275 | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-004` | Mobile lint/type/contract/config/Doctor/audit | Mobile/QA | Exact-SHA logs, counts and exception register | Current functional runs 30064845082 and 30064847275; physical-device evidence remains open | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-005` | Release/recovery, Mongo identity, tunnel, media, backup, smoke and monitoring tests | Platform/QA | Exact-SHA QA results including expected counts | Current functional runs plus local report 28 | PASS LOCALLY | P0 | Each candidate | Runtime SHA above |
-| `REP-006` | Repository Compose/Caddy/clean-checkout/shell validation | Platform/infrastructure | Exact-SHA tracked-fixture render, Caddy and shell logs | Current release/functional runs plus local report 28 | PASS LOCALLY | P0 | Each candidate | Runtime SHA above; protected-host interpolation remains `STG-002`/`STG-003` |
-| `REP-007` | Secret history, pinned Gitleaks, SAST, dependency, SBOM, image, container and config scans | Security | Clean exact-SHA reports, finding treatment and expiry | Current security runs 30064845089 and 30064847259; tracked-tree Trivy/custom scan in report 28 | PASS FOR AUTOMATED/TRACKED SCOPE | P0 | Each candidate/tool update | Runtime SHA above; independent full-history review and VAPT remain open |
+| `REP-001` | Exact runtime branch/SHA, docs revision, clean worktree and remote synchronization | Engineering release owner | Git identity, commit inventory and UTC reviewer record | Runtime identity is frozen; final docs HEAD is recorded externally in draft PR #2 | PARTIAL | P0 | Each candidate | `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` |
+| `REP-002` | Backend lint, unit/integration/migration tests and production dependency audit | Backend/QA | Commands, versions, counts, isolated DB identity and full logs | Current functional runs 30069836968 and 30069839619; local limitations in report 28 | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-003` | User, admin and counsellor web lint/type/build/audit | Web/QA | Per-workspace logs and artifact checksums | Current functional runs 30069836968 and 30069839619 | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-004` | Mobile lint/type/contract/config/Doctor/audit | Mobile/QA | Exact-SHA logs, counts and exception register | Current functional runs 30069836968 and 30069839619; physical-device evidence remains open | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-005` | Release/recovery, Mongo identity, tunnel, media, backup, smoke and monitoring tests | Platform/QA | Exact-SHA QA results including expected counts | Current functional runs plus local report 28, including the signed restore of one non-empty synthetic managed-media fixture with byte equality | PASS LOCALLY | P0 | Each candidate | Runtime SHA above |
+| `REP-006` | Repository Compose/Caddy/clean-checkout/shell validation | Platform/infrastructure | Exact-SHA tracked-fixture render, Caddy and shell logs | Current release/functional runs plus local report 28, including init-reaper, zero-zombie, shared-UID log readability, and successful Loki proof | PASS LOCALLY | P0 | Each candidate | Runtime SHA above; protected-host interpolation remains `STG-002`/`STG-003` |
+| `REP-007` | Secret history, pinned Gitleaks, SAST, dependency, SBOM, image, container and config scans | Security | Clean exact-SHA reports, finding treatment and expiry | Current security runs 30069836976 and 30069839629; tracked-tree Trivy/custom scan in report 28 | PASS FOR AUTOMATED/TRACKED SCOPE | P0 | Each candidate/tool update | Runtime SHA above; independent full-history review and VAPT remain open |
 | `REP-008` | Read-only deployment workflow and fail-closed legacy-path governance | Release/security | Workflow validation, tombstone tests and immutable candidate record | Current release/functional runs and immutable candidate record | PASS FOR REPOSITORY SCOPE | P0 | Each candidate | Runtime SHA above |
-| `REP-009` | Adversarial workflow regression suite passes after security fixes | Security/release | Pinned workflow-test log | Local `test:release-workflow`: 127/127; current release/functional runs pass | PASS | P0 | Each workflow change | Runtime SHA above |
+| `REP-009` | Adversarial workflow regression suite passes after security fixes | Security/release | Pinned workflow-test log | Local `test:release-workflow`: 133/133; current release/functional runs pass | PASS | P0 | Each workflow change | Runtime SHA above |
 | `REP-010` | Protected `staging-security` environment supports authenticated DAST | `OWNER ACTION`; security | Environment policy, variables/secrets presence and successful run ID | TBD — restricted GitHub evidence | BLOCKED | P0 | Each environment/change | Runtime SHA above |
 | `REP-011` | Android signing is protected-environment, main-HEAD-only and marker-gated | `OWNER ACTION`; `GOOGLE ACTION`; security | Environment protection, secret-scope removal and successful guarded run | TBD — restricted GitHub evidence | BLOCKED | P0 | Each signing/environment change | Runtime SHA above |
 | `REP-012` | Branch protections/rulesets enforce the approved release policy | `OWNER ACTION`; security/release | Read-only before/after protection and bypass inventory | TBD — restricted GitHub evidence | BLOCKED | P0 | Each governance change | Runtime SHA above |
 | `STG-001` | Host/network/domain/database/cache/storage/provider isolation; no production path | `INFRASTRUCTURE ACTION`; privacy custodian | Signed inventories, denied-connectivity proof and two-person review | TBD — restricted infrastructure store | NOT COLLECTED | P0 | Each environment/change | Runtime SHA above |
 | `STG-002` | Per-variable protected environment review and fail-closed startup validation | Infrastructure/security | Completed matrix and negative/positive validator logs | TBD — restricted infrastructure store | NOT COLLECTED | P0 | Each candidate/config change | Runtime SHA above |
 | `STG-003` | Guarded approved-PR-head staging deployment with runtime content proven identical to the exact runtime SHA, plus healthy immutable artifacts | Release/infrastructure | Release metadata, ancestry/path-diff record, phase record, images, health and marker proof | TBD — controlled evidence store | NOT COLLECTED | P0 | Each candidate/deploy | Runtime SHA above |
-| `STG-004` | Synthetic-only fixtures, exact staging-domain account emails, first-admin authority and provenance | QA; security; `PRIVACY ACTION` | Target/domain-bound fixture and admin-bootstrap procedure, roster manifest, email-domain review, target proof and no-production-data attestation | TBD — controlled QA store | BLOCKED | P0 | Each fixture set | Runtime SHA above; candidate seed/admin harnesses prohibited |
+| `STG-004` | Synthetic-only fixtures, exact staging-domain account emails, first-admin authority and provenance | QA; security; `PRIVACY ACTION` | Target/domain-bound fixture and admin-bootstrap procedure, roster manifest, email-domain review, target proof and no-production-data attestation | TBD — controlled QA store | BLOCKED | P0 | Each fixture set | Runtime SHA above; candidate seed/admin harnesses prohibited; local aliases do not prove distinct administrator/super-administrator role semantics |
 | `STG-005` | Authentication, session, registration and outbound-recipient isolation QA | QA/security | `FUN-REG-*`, `FUN-AUTH-*`, `FUN-EMAIL-*` and `SEC-EMAIL-*` result pack including zero provider calls for rejected domains | TBD — controlled QA store | NOT COLLECTED | P0 | Each candidate | Runtime SHA above |
 | `STG-006` | Booking, cancellation, reschedule, pricing, privacy, paid-state and race QA | QA/product/privacy | Requirement map and `FUN-BOOK-*` API/UI/DB/audit evidence | TBD — controlled QA store | NOT COLLECTED | P0 | Each candidate | Runtime SHA above |
 | `STG-007` | Counsellor verification lifecycle and authorization | QA; `CLINICAL ACTION`; `LEGAL ACTION` | `FUN-KYC-*` transitions and approved policy references | TBD — restricted QA store | NOT COLLECTED | P0 | Each candidate/policy | Runtime SHA above |
@@ -137,7 +149,7 @@ authorizations to mutate GitHub configuration.
 | `STG-013` | Encrypted backup, cryptographic health, approved off-host transfer/retrieval and isolated restore | Recovery/infrastructure | `REC-001`–`REC-004`, `REC-017`, source/custody/retrieved archive and media digests, signed metadata and invariants | TBD — restricted recovery store | NOT COLLECTED | P0 | Each deploy/approved age | Runtime SHA above |
 | `STG-014` | Migration, locks, interruption, rollback/resume and artifact retention | Recovery/release | `REC-005`–`REC-013`, phases, markers, images and invariants | TBD — restricted recovery store | NOT COLLECTED | P0 | Each candidate | Runtime SHA above |
 | `STG-015` | Independently target-bound synthetic restore and RPO/RTO drill | Recovery/owner | `REC-014`–`REC-016`, review, acknowledgement and timings | TBD — restricted recovery store | NOT COLLECTED | P0 | Approved recurring exercise | Runtime SHA above |
-| `STG-016` | Monitoring targets/probes, all 69 implemented rules, all 20 required P0 alert mappings and sensitive-data logging checks | Infrastructure/security | 14 jobs, 69 rules, 26-signal coverage register, provider callbacks and controlled canary pack | TBD — restricted monitoring store | NOT COLLECTED | P0 | Each candidate/config change | Runtime SHA above; repository rules complete, isolated-staging proof absent |
+| `STG-016` | Monitoring targets/probes, all 69 implemented rules, all 20 required P0 alert mappings and sensitive-data logging checks | Infrastructure/security | 14 jobs, 69 rules, 26-signal coverage register, provider callbacks and controlled canary pack | TBD — restricted monitoring store | NOT COLLECTED | P0 | Each candidate/config change | Runtime SHA above; repository and local-Docker proof complete for report 28's scope, approved Ubuntu/server-staging proof absent |
 | `STG-017` | Alertmanager/Uptime Kuma firing, delivery, acknowledgement and resolution | Infrastructure/on-call owner | Controlled real-rule and synthetic receiver-side timestamps | TBD — restricted monitoring store | NOT COLLECTED | P0 | Each route/receiver change | Runtime SHA above |
 | `STG-018` | Performance, accessibility and supported-browser results | QA/product | Thresholds, reports and browser/device matrix | TBD — controlled QA store | NOT COLLECTED | P1 | Each material runtime/UI change | Runtime SHA above |
 | `LIVE-001` | Target host, network, Tunnel, DNS, TLS and firewall proof | `INFRASTRUCTURE ACTION` | Read-only production evidence without values | TBD — restricted infrastructure store | NOT COLLECTED | P0 | Each production change | Runtime SHA above |

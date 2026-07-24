@@ -14,7 +14,7 @@ recovery-safety starting point identified for this effort is commit
 `353b19aced537d7acee6310bc0d8acbcc512f739`. Later repository remediation is
 preserved as focused commits on the same release branch. The replacement
 runtime candidate is frozen at
-`48fb83c248b0e969e699433a8bacdd276ed4311d`. Its candidate-bound local
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`. Its candidate-bound local
 validation and all six push/PR GitHub workflow executions passed. Exact-SHA
 release, functional and security aggregate results cited for
 `3fb99858c6766a341bb7b7dab2377195427f0ea1` are historical and

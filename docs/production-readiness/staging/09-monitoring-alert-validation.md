@@ -1,6 +1,6 @@
 # Staging monitoring and alert validation
 
-Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
+Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -37,7 +37,7 @@ validated 14 scrape jobs, 69 rules, 26 coverage records, all 20 required P0
 mappings, configuration mutation tests, Prometheus rule fixtures and the
 pinned native monitoring suite at historical SHA
 `3fb99858c6766a341bb7b7dab2377195427f0ea1`. That result is
-**INVALIDATED** for `48fb83c248b0e969e699433a8bacdd276ed4311d` and cannot be
+**INVALIDATED** for `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` and cannot be
 relabelled. At the current candidate, all 20 required alert fixtures fired and
 resolved in both local Prometheus and local Alertmanager. This does not prove
 protected server receiver delivery, acknowledgement or escalation; exact local
@@ -74,10 +74,12 @@ health, Alloy/Loki ingestion and Uptime Kuma results. Missing series fail.
 ## Required P0 alert rows
 
 All rows below have bounded repository producers, source rules,
-firing/recovery fixtures and runbooks. Controlled isolated-staging execution
-is **NOT RUN** for every row.
+firing/recovery fixtures and runbooks. The local Docker exercise passed all 20
+as recorded in report 28. The `NOT RUN` status in this table refers only to
+approved Ubuntu/server-staging execution with protected receiver and human
+response evidence.
 
-| Rule | Controlled staging firing proof | Controlled recovery proof | Evidence |
+| Rule | Controlled server-staging firing proof | Controlled server-staging recovery proof | Approved Ubuntu/server evidence |
 | --- | --- | --- | --- |
 | `WorkerQueueBacklogHigh` | Create bounded synthetic backlog/age/retry/dead-letter or pause only the disposable worker | Drain fixture, restore heartbeat and receive resolved notification | NOT RUN |
 | `BackupJobFailed` | Run an isolated scheduled-backup failure fixture without modifying a valid archive | Complete a fresh signed/encrypted staging backup and receive resolved notification | NOT RUN |

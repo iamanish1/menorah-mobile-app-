@@ -1,6 +1,6 @@
 # Staging go/no-go record
 
-Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
+Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -39,7 +39,7 @@ Complete in the controlled decision record:
 
 | Field | Record |
 | --- | --- |
-| Runtime candidate branch/SHA | `release/final-production-readiness` / `48fb83c248b0e969e699433a8bacdd276ed4311d` |
+| Runtime candidate branch/SHA | `release/final-production-readiness` / `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` |
 | Docs/PR-head revision | Record the final full `git rev-parse HEAD` externally after the package commit; it cannot be embedded in its own content-addressed commit |
 | Meeting UTC time | TBD |
 | Change/evidence-pack reference | TBD |
@@ -60,7 +60,7 @@ Silence, absence, a template, or a verbal assurance is not approval.
 | Repository checks | Backend/web/admin/counsellor/mobile lint, type, tests, builds, audits; production QA; Compose/Caddy/shell; scans | Engineering + QA + security | SIX PUSH/PR WORKFLOWS PASS; SERVER STAGING STILL NO-GO |
 | Staging isolation | Dedicated host/network/domains/Mongo/Redis/storage/providers/alerts; no production route/data/credential | `INFRASTRUCTURE ACTION`; QA data custodian | LOCAL DOCKER PASS; APPROVED UBUNTU HOST OPEN / NO-GO |
 | Guarded deployment | Exact-SHA release record, image manifest, health and marker consistency | Engineering + infrastructure | OPEN / NO-GO |
-| Functional QA | All P0 auth, booking, KYC, chat/call, privacy and role cases pass; P1 disposition recorded | QA/product owners | LOCAL MATRIX 81 PASS / 14 GAP / 12 BLOCKED; NO-GO |
+| Functional QA | All P0 auth, booking, KYC, chat/call, privacy and role cases pass; P1 disposition recorded | QA/product owners | LOCAL MATRIX 81 STATIC PASS / 14 GAP / 12 BLOCKED; NO-GO |
 | Security QA | All P0 adversarial cases pass; outbound email is exact staging-domain-only; no secret/PII leakage; scan findings treated | Security owner | TRACKED-TREE SECRET SCAN PASS; FULL SERVER/INDEPENDENT COVERAGE OPEN / NO-GO |
 | Payments/providers | Sandbox order/webhook/refund/payout/reconciliation passes; each enabled provider pack complete | Payment/finance + `VENDOR ACTION` | LOCAL STUBS ONLY; REAL SANDBOX/DUAL-CONTROL OPEN / NO-GO |
 | Recovery | Encrypted signed backup, isolated restore, migration, interruption, rollback/resume, media and RPO/RTO rehearsal | Database/recovery + infrastructure | LOCAL SIGNED BACKUP/ISOLATED RESTORE PASS; UBUNTU/OFF-SITE/INTERRUPTION CASES OPEN / NO-GO |

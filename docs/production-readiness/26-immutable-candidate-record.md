@@ -16,9 +16,9 @@ enable providers, submit to a store, or use production data.
 | Field | Value |
 | --- | --- |
 | Branch | `release/final-production-readiness` |
-| Runtime candidate SHA | `48fb83c248b0e969e699433a8bacdd276ed4311d` |
-| Runtime commit time | 2026-07-24 07:41 GST / 2026-07-24 03:41 UTC |
-| Commits ahead of `origin/main` at freeze | 126 |
+| Runtime candidate SHA | `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` |
+| Runtime commit time | 2026-07-24 09:35 GST / 2026-07-24 05:35 UTC |
+| Commits ahead of `origin/main` at freeze | 130 |
 | Documentation HEAD | The exact draft-PR head, recorded in GitHub after the final documentation-only commit |
 | Runtime-to-docs relationship | Runtime SHA must be an ancestor; every intervening path must satisfy the documentation-only allowlist below |
 
@@ -43,7 +43,7 @@ candidate and requires a new SHA plus complete downstream validation.
 Review the boundary with:
 
 ```bash
-readonly RUNTIME_SHA='48fb83c248b0e969e699433a8bacdd276ed4311d'
+readonly RUNTIME_SHA='0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a'
 git diff --name-only \
   "${RUNTIME_SHA}..HEAD"
 ```
@@ -53,25 +53,40 @@ If any returned path is outside the two allowlisted documentation trees, stop.
 ## Current candidate-bound GitHub evidence
 
 All six push and pull-request workflow executions for
-`48fb83c248b0e969e699433a8bacdd276ed4311d` completed successfully on attempt
-1. This is repository automation evidence only; it is not an approval to merge
-or deploy.
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` completed successfully on attempt
+1: 50/50 jobs and 404/404 steps. This is repository automation evidence only;
+it is not an approval to merge or deploy.
 
 | Event | Workflow | Run | Result |
 | --- | --- | --- | --- |
-| Push | Production Release Readiness | [30064845086](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064845086) | PASS, 1/1 jobs |
-| Push | Exact-SHA functional release validation | [30064845082](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064845082) | PASS, 9/9 jobs |
-| Push | Security gates | [30064845089](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064845089) | PASS, 15/15 jobs |
-| Pull request | Production Release Readiness | [30064847263](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064847263) | PASS, 1/1 jobs |
-| Pull request | Exact-SHA functional release validation | [30064847275](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064847275) | PASS, 9/9 jobs |
-| Pull request | Security gates | [30064847259](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064847259) | PASS, 15/15 jobs |
+| Push | Production Release Readiness | [30069836961](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069836961) | PASS, 1/1 jobs and 10/10 steps |
+| Push | Exact-SHA functional release validation | [30069836968](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069836968) | PASS, 9/9 jobs and 88/88 steps |
+| Push | Security gates | [30069836976](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069836976) | PASS, 15/15 jobs and 104/104 steps |
+| Pull request | Production Release Readiness | [30069839620](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069839620) | PASS, 1/1 jobs and 10/10 steps |
+| Pull request | Exact-SHA functional release validation | [30069839619](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069839619) | PASS, 9/9 jobs and 88/88 steps |
+| Pull request | Security gates | [30069839629](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069839629) | PASS, 15/15 jobs and 104/104 steps |
+
+## Superseded runtime and documentation evidence
+
+Runtime `48fb83c248b0e969e699433a8bacdd276ed4311d` and its documentation-only
+successor `2f2c6e45608300a05443aa7a95d2fd4513e28b71` both had 50/50 successful
+push/PR jobs. Later executable Caddy and monitoring changes invalidated both
+sets as final-candidate evidence. The two intervening runtimes are also
+historical only:
+
+| Revision | Push runs | Pull-request runs | Treatment |
+| --- | --- | --- | --- |
+| Runtime `48fb83c248b0e969e699433a8bacdd276ed4311d` | 30064845086, 30064845082, 30064845089 | 30064847263, 30064847275, 30064847259 | **INVALIDATED** after the Caddy reaper change |
+| Documentation `2f2c6e45608300a05443aa7a95d2fd4513e28b71` | 30066516144, 30066516157, 30066516165 | 30066518424, 30066518430, 30066518427 | **INVALIDATED** because it documented the superseded runtime |
+| Runtime `a9ea55ea85ab3bd91e68797256e0b8fc9f677966` | 30066907139, 30066907147, 30066907138 | 30066909073, 30066909086, 30066909094 | **INVALIDATED** after the monitoring-visibility change |
+| Runtime `fbf2de8c5bb3e50e41fcaa6bc75f739cfdc0aca2` | 30068864716, 30068864666, 30068864690 | 30068866416, 30068866415, 30068866435 | **INVALIDATED** after the Caddy log-ownership change |
 
 ## Historical GitHub evidence — invalidated for this candidate
 
 All links below identify the previous runtime SHA
 `3fb99858c6766a341bb7b7dab2377195427f0ea1`, not the current runtime candidate.
 They are retained for traceability and are **INVALIDATED** as evidence for
-`48fb83c248b0e969e699433a8bacdd276ed4311d`. Do not relabel their result,
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`. Do not relabel their result,
 test totals or artifacts.
 
 | Workflow | Historical run | Historical result / current treatment | Material coverage at old SHA only |
@@ -115,9 +130,9 @@ placeholders.
 
 | ID | Repository result | Exact evidence | Remaining proof |
 | --- | --- | --- | --- |
-| CX-P0-01 | PASS locally | Unique project, 29 services, five networks, 12 volumes, loopback-only published ports, no published MongoDB/Redis and all long-running services healthy with zero restarts | Protected Ubuntu target-host render remains staging/live evidence |
-| CX-P0-02 | PASS with explicit gaps/blocks | Requested matrix: 81 PASS, 14 GAP, 12 BLOCKED; API smoke 31/31 and Playwright 7/7 passed | Ubuntu UI/device/provider behavior and the explicit gaps/blocks remain open |
-| CX-P0-03 | PASS locally | Signed backup and isolated restore passed; all required frontend-probe and `BackupJobFailed` alert exercises fired and resolved in both systems | Protected receiver delivery and human response remain external evidence |
+| CX-P0-01 | PASS locally | Unique project, 30 services, five networks, 12 volumes, loopback-only published ports, no published MongoDB/Redis, 23 long-running containers healthy, three expected exited-zero one-shots (`logs-init`, `mongo-replica-init`, and `mongo-restore-replica-init`), zero restarts, one live Caddy workload process, zero zombies, access-log mode/UID/GID `0600/473/473`, and successful Loki ingestion | Protected Ubuntu target-host render remains staging/live evidence |
+| CX-P0-02 | PASS with explicit gaps/blocks | Requested matrix: 81 STATIC PASS, 14 GAP, 12 BLOCKED; API smoke 31/31 and Playwright 7/7 passed; a separate out-of-matrix Phase 5 GAP records that two identities share full-admin authority because no distinct super-admin role exists | Ubuntu UI/device/provider behavior, distinct admin/super-admin role semantics, and the explicit gaps/blocks remain open |
+| CX-P0-03 | PASS locally | Signed backup and isolated restore passed for 18 collections, 89 documents, 117 indexes, and one byte-bearing synthetic managed-media file with matching source/restored bytes; all required frontend-probe and `BackupJobFailed` alert exercises fired and resolved in both systems | Protected receiver delivery and human response remain external evidence; local Docker cannot supply the production rule's 19 public HTTPS probes plus two call probes, so `BlackboxProbeCoverageIncomplete` was the sole allowed local baseline |
 | CX-P0-04 | PASS locally | Required HTTP/auth/privilege alert fixtures fired and resolved in Prometheus and Alertmanager | Ubuntu threshold tuning and controlled human delivery remain staging evidence |
 | CX-P0-05 | PASS for synthetic fixtures only | Queue/provider/email/call fixtures and alert paths passed; optional providers were disabled | Real provider sandbox callbacks and protected receiver delivery remain external evidence |
 | CX-P0-06 | PASS locally; review open | Frozen SHA, documentation-only boundary and six successful push/PR workflow executions exist | Final documentation-head verification, independent review and repository-governance approval |

@@ -1,6 +1,6 @@
 # Staging prerequisites
 
-Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
+Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -82,7 +82,7 @@ staging checkout. Save outputs with UTC time.
 ```bash
 set -euo pipefail
 
-readonly RUNTIME_SHA='48fb83c248b0e969e699433a8bacdd276ed4311d'
+readonly RUNTIME_SHA='0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a'
 readonly CANDIDATE_BRANCH='release/final-production-readiness'
 : "${APPROVED_PR_HEAD_SHA:?Set the externally recorded final docs/PR-head SHA}"
 readonly APPROVED_PR_HEAD_SHA
@@ -112,7 +112,7 @@ Pass only when:
 - `APPROVED_PR_HEAD_SHA` is the full SHA recorded in the approved external
   change record after the evidence-package commit;
 - `HEAD` and the remote branch tip are exactly `APPROVED_PR_HEAD_SHA`;
-- runtime SHA `48fb83c248b0e969e699433a8bacdd276ed4311d` is an ancestor of that
+- runtime SHA `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` is an ancestor of that
   head and every intervening change is confined to `docs/**` or
   `menorah/docs/**`;
 - left/right divergence is `0 0`;

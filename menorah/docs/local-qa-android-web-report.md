@@ -1,7 +1,10 @@
 # Local QA Android/Web Report
 
 > **Historical evidence only.** This report predates the replacement
-> `48fb83c248b0e969e699433a8bacdd276ed4311d` and the isolated
+> `48fb83c248b0e969e699433a8bacdd276ed4311d`, the later
+> `a9ea55ea85ab3bd91e68797256e0b8fc9f677966`,
+> `fbf2de8c5bb3e50e41fcaa6bc75f739cfdc0aca2`, and final
+> `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`, as well as the isolated
 > `menorah-local-staging` Docker
 > topology. Its results, ports and Cloud Run follow-up plan are not evidence for
 > the current candidate and must not be relabelled. Current candidate-bound

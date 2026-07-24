@@ -1,6 +1,6 @@
 # Staging functional QA
 
-Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
+Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -126,7 +126,7 @@ printed or committed.
 set -euo pipefail
 umask 077
 
-readonly RUNTIME_SHA='48fb83c248b0e969e699433a8bacdd276ed4311d'
+readonly RUNTIME_SHA='0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a'
 readonly REPO='/srv/menorah-staging/repository'
 readonly STAGING_ENV='/etc/menorah-staging/staging.env'
 readonly QA_ENV='/etc/menorah-staging/qa.env'

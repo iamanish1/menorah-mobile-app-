@@ -8,7 +8,7 @@ Decision date: 2026-07-24.
 
 This verdict applies to public production launch. Repository remediation has
 materially improved control design. Candidate-bound local validation passed at
-`48fb83c248b0e969e699433a8bacdd276ed4311d`, but it recorded 14 gaps and 12
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`, but it recorded 14 gaps and 12
 blocked assertions. Protected repository governance, approved Ubuntu staging,
 live infrastructure proof, approved operating policies, independent VAPT,
 store validation and vendor evidence are not complete.
@@ -23,7 +23,7 @@ provider changes, DNS/Cloudflare changes or store submission.
 | Repository implementation | Candidate code, tests, configuration and runbooks | Intended behavior under covered test conditions | Live configuration, production data safety, operator execution or policy approval |
 | Desktop validation | Unit/lint/config checks run without production access | Local regression status | Linux host behavior, vendor callbacks, DNS, alert delivery, backups or stores |
 | Historical isolated integration | At old runtime SHA `3fb99858c6766a341bb7b7dab2377195427f0ea1`, all 13 backend integration suites ran against disposable MongoDB and Redis; 45/45 tests passed | Covered behavior of that older SHA under its workflow fixture | Current runtime behavior, production data, host behavior or staging completeness; this evidence is invalidated for the current candidate |
-| Current local synthetic staging | Complete at `48fb83c248b0e969e699433a8bacdd276ed4311d`; report 28 is authoritative | Docker Desktop isolation, migrations/seed, API/browser checks, local stubs, monitoring, backup/restore and explicit gaps/blocks | Ubuntu host behavior, real-provider callbacks, physical devices, independent VAPT, external approval or production readiness |
+| Current local synthetic staging | Complete at `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`; report 28 is authoritative | Docker Desktop isolation, migrations/seed, API/browser checks, local stubs, monitoring, backup/restore and explicit gaps/blocks | Ubuntu host behavior, real-provider callbacks, physical devices, independent VAPT, external approval or production readiness |
 | Live proof | Not completed for this candidate | Nothing may be inferred | Required before any public launch |
 | Governance/external proof | Decisions and sign-offs remain pending | Nothing may be inferred | Cannot be replaced by code or a template |
 
@@ -31,11 +31,11 @@ provider changes, DNS/Cloudflare changes or store submission.
 
 | Gate | Current assessment | Required evidence |
 | --- | --- | --- |
-| Immutable candidate | Runtime SHA frozen; local and six push/PR workflows passed; review incomplete | `48fb83c248b0e969e699433a8bacdd276ed4311d`, final documentation-head verification, independent review and protected release record |
+| Immutable candidate | Runtime SHA frozen; local and six push/PR workflows passed; review incomplete | `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`, final documentation-head verification, independent review and protected release record |
 | Backend regression | Pass for the unchanged backend source at the runtime candidate | 114/127 suites and 1,509/1,554 tests passed; 13 suites/45 integration tests were skipped in the default run and remain a current exact-SHA limitation |
 | Web/admin/counsellor/mobile | Pass for recorded repository automation; device proof open | Recorded lint/type/test checks passed with warnings documented; physical-device, accessibility, responsive and real-provider coverage remains open |
-| Release/recovery scripts | Pass for recorded repository automation and local recovery | Release workflow tests 127/127; signed backup and isolated restore passed; Linux-only paths still require Ubuntu staging |
-| Compose/Caddy/monitoring | Pass locally; protected-host proof open | Full profiles healthy with zero restarts; API smoke 31/31, browser 7/7 and all 20 required alerts fired/resolved; approved Ubuntu staging and live proof remain open |
+| Release/recovery scripts | Pass for recorded repository automation and local recovery | Release workflow tests 133/133; signed backup and isolated restore passed; Linux-only paths still require Ubuntu staging |
+| Compose/Caddy/monitoring | Pass locally; protected-host proof open | Full profiles healthy with zero restarts; Caddy had one workload process and zero zombies, its access log was mode `0600` with UID/GID `473:473`, and Loki ingestion succeeded; API smoke 31/31, browser 7/7 and all 20 required alerts fired/resolved; approved Ubuntu staging and live proof remain open |
 | Migrations | Pass locally | All 11 applied and then all 11 skipped on the local replica-set rerun with ledger/index invariants; approved Ubuntu interruption/rollback/resume and host evidence remain open |
 | Dependency/security scans | Current tracked-tree secret scan passed | Trivy found zero tracked findings and the custom immutable-tree scan found zero non-fixture credential-bearing URI matches; full-history independent review and VAPT remain open |
 

@@ -31,7 +31,7 @@ Rollback and recovery are in
 ## Current reviewed candidate input
 
 The repository-controlled replacement runtime candidate is
-`48fb83c248b0e969e699433a8bacdd276ed4311d` on
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` on
 `release/final-production-readiness`. Its isolated local exercise and all six
 candidate-bound push/PR workflow executions passed. Exact-SHA
 release-readiness, functional aggregate and security aggregate runs cited for
