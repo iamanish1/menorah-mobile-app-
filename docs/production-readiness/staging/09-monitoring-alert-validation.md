@@ -1,10 +1,12 @@
 # Staging monitoring and alert validation
 
-Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
+Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
-Initial state: **not run**
+Approved Ubuntu/server staging state: **not run**. The local Docker exercise
+fired and resolved all 20 required alerts in both Prometheus and Alertmanager;
+protected receiver/human-response evidence remains open.
 
 Repository status: **69 alert rules and all 20 required P0 mappings pass
 source validation**
@@ -28,12 +30,18 @@ This plan does not configure or authorize a production destination.
 - Logs use synthetic data, controlled access, synchronized UTC time and an
   approved staging retention period.
 
-## Repository evidence and native validation
+## Historical repository evidence and current native validation
 
 [Exact-SHA functional run 30051102471](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30051102471)
 validated 14 scrape jobs, 69 rules, 26 coverage records, all 20 required P0
 mappings, configuration mutation tests, Prometheus rule fixtures and the
-pinned native monitoring suite.
+pinned native monitoring suite at historical SHA
+`3fb99858c6766a341bb7b7dab2377195427f0ea1`. That result is
+**INVALIDATED** for `48fb83c248b0e969e699433a8bacdd276ed4311d` and cannot be
+relabelled. At the current candidate, all 20 required alert fixtures fired and
+resolved in both local Prometheus and local Alertmanager. This does not prove
+protected server receiver delivery, acknowledgement or escalation; exact local
+results are in report 28.
 
 Rerun on the approved isolated-staging checkout:
 
@@ -82,12 +90,12 @@ is **NOT RUN** for every row.
 | `PrivilegedRoleChanged` | Perform a pre-approved synthetic privileged-role transition | Reconcile the intended role and receive resolved notification | NOT RUN |
 | `AdminRoleChanged` | Perform a pre-approved synthetic admin-permission transition | Reconcile exact permissions and receive resolved notification | NOT RUN |
 | `UserAuthenticationFailureSpike` | Emit bounded synthetic user failures | Stop fixture, wait the rule window and receive resolved notification | NOT RUN |
-| `AdminAuthenticationFailureSpike` | Emit bounded synthetic admin/password/MFA failures | Stop fixture, wait the rule window and receive resolved notification | NOT RUN |
+| `AdminAuthenticationMfaFailureSpike` | Emit bounded synthetic admin MFA failures | Stop fixture, wait the rule window and receive resolved notification | NOT RUN |
 | `CounsellorAuthenticationFailureSpike` | Emit bounded synthetic counsellor failures | Stop fixture, wait the rule window and receive resolved notification | NOT RUN |
-| `Http401RateHigh` | Send bounded unauthenticated requests to normalized routes | Stop fixture and receive resolved notification | NOT RUN |
-| `Http403RateHigh` | Send bounded wrong-role requests to normalized routes | Stop fixture and receive resolved notification | NOT RUN |
-| `Http429RateHigh` | Trigger an approved bounded staging rate limit | Stop fixture and receive resolved notification | NOT RUN |
-| `Http500RateHigh` | Inject an isolated controlled server failure | Remove injection, prove healthy responses and receive resolved notification | NOT RUN |
+| `ElevatedHttp401Rate` | Send bounded unauthenticated requests to normalized routes | Stop fixture and receive resolved notification | NOT RUN |
+| `ElevatedHttp403Rate` | Send bounded wrong-role requests to normalized routes | Stop fixture and receive resolved notification | NOT RUN |
+| `ElevatedHttp429Rate` | Trigger an approved bounded staging rate limit | Stop fixture and receive resolved notification | NOT RUN |
+| `ElevatedHttp500Rate` | Inject an isolated controlled server failure | Remove injection, prove healthy responses and receive resolved notification | NOT RUN |
 | `UserFrontendProbeFailed` | Stop only the disposable user frontend | Restore exact artifact/probe and receive resolved notification | NOT RUN |
 | `AdminFrontendProbeFailed` | Stop only the disposable admin frontend | Restore exact artifact/probe and receive resolved notification | NOT RUN |
 | `CounsellorFrontendProbeFailed` | Stop only the disposable counsellor frontend | Restore exact artifact/probe and receive resolved notification | NOT RUN |

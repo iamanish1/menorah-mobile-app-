@@ -1,6 +1,6 @@
 # Redacted staging environment matrix
 
-Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
+Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -100,7 +100,7 @@ value.
 | `PRODUCTION_ENV` | Release, backup and restore scripts | R at staging execution; exact protected staging environment-file path despite the legacy variable name | Canonical path, mode and sentinel preflight | Staging change record | Protected production configuration reference - not accessed | Sensitive | Release/infrastructure | Path/mode evidence | REL, REST, BACKUP |
 | `CLOUDFLARE_ENV` | Guarded updater | R at staging execution; exact protected staging Tunnel environment-file path | Canonical path, mode and route preflight | Staging change record | Protected production configuration reference - not accessed | Sensitive | Release/infrastructure | Path/mode evidence | REL, TUN |
 | `DEPLOY_BRANCH` | Guarded updater | R; exactly `release/final-production-readiness` for this runtime candidate | Remote-tip and reviewed-updater guard | Candidate record | Reviewed production configuration - not accessed | No | Release | Git identity evidence | REL |
-| `DEPLOY_RELEASE_SHA` | Guarded updater | R; externally recorded full docs/PR-head SHA, descending from the frozen runtime SHA with only this staging package changed | Full-SHA, remote, ancestry, path-diff and artifact guards | Approved change record | Derived immutable artifact/release record - not accessed | No | Release | Git/artifact evidence | REL |
+| `DEPLOY_RELEASE_SHA` | Guarded updater | R; externally recorded full docs/PR-head SHA, descending from the frozen runtime SHA with changes confined to `docs/**` and `menorah/docs/**` | Full-SHA, remote, ancestry, path-diff and artifact guards | Approved change record | Derived immutable artifact/release record - not accessed | No | Release | Git/artifact evidence | REL |
 | `DEPLOY_MIGRATION_APPROVED_SHA` | Guarded updater | R; exact same approved docs/PR-head SHA after migration review | Exact-SHA migration guard | Approved change record | Reviewed production configuration - not accessed | No | Release/recovery | Approval and phase evidence | REL |
 | `MENORAH_MIGRATION_IMAGE_ID` | One-shot migration Compose override | R only inside `run-recorded-migration.sh`; immutable local Docker content ID read from the checksum-protected release image manifest; must be unset in operator environment files and never replaced by a tag | Runner rejects an inherited value, verifies manifest checksum/basename and exact `api-web` image ID, then invokes migration Compose with `pull_policy: never` | Updater-derived immutable artifact record | Approved production unset decision - not accessed | No | Release/recovery | Manifest checksum, content ID and migration phase evidence | MIG |
 | `DEPLOY_CHANGE_REFERENCE` | Guarded updater | R; approved bounded staging change reference | Release metadata validation | Approved change record | Protected production configuration reference - not accessed | Sensitive | Release/recovery | Change/release evidence | REL |

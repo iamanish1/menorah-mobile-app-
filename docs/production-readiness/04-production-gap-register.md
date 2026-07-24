@@ -26,29 +26,38 @@ Priority meanings:
   deferred only through an authorized, bounded decision that does not waive
   law, safety or store requirements.
 
-The repository-controlled portion of `CX-P0-01` through `CX-P0-06` is complete
-at runtime SHA `3fb99858c6766a341bb7b7dab2377195427f0ea1`. This does not close
-the staging, live, owner, legal/privacy, clinical, VAPT, store, vendor or ISO
-rows below. Exact repository evidence is recorded in
-[the immutable candidate record](./26-immutable-candidate-record.md).
+The replacement runtime candidate is frozen at
+`48fb83c248b0e969e699433a8bacdd276ed4311d`. Its complete isolated local
+exercise passed, with 81 requested assertions classified as **STATIC PASS**,
+14 recorded gaps and 12 recorded blocked items. All six candidate-bound
+push/PR workflow executions
+passed. Earlier completion statements and green workflow runs attached to
+`3fb99858c6766a341bb7b7dab2377195427f0ea1` are historical and
+**INVALIDATED** for this newer runtime. The repository-controlled portion of
+`CX-P0-01` through `CX-P0-06` has current local evidence but still requires
+independent review and the external proof recorded below. This does not close the
+local-staging, Ubuntu staging, live, owner, legal/privacy, clinical, VAPT,
+store, vendor or ISO rows below. Identity and evidence boundaries are recorded
+in [the immutable candidate record](./26-immutable-candidate-record.md) and
+[the local staging validation report](./28-local-staging-validation-report.md).
 
 ## Repository and release-evidence gaps
 
 | ID | Pri. | Current repository evidence | Missing closure evidence | Owner/action |
 | --- | --- | --- | --- | --- |
-| GAP-REL-001 | P0 | Clean runtime SHA is frozen; focused commits, exact-SHA release/functional/security runs and pass/fail/skip records exist | Independent review, documentation-head verification, approved branch/ruleset governance and protected production release identity | Engineering; `OWNER ACTION` for repository governance |
-| GAP-QA-001 | P0 | Exact-SHA backend default plus disposable integration, three web builds, mobile contracts/Doctor, infrastructure and aggregate results pass | Production-like isolated-staging web/mobile/API E2E, device/provider behavior and reviewer acceptance | Engineering and QA |
+| GAP-REL-001 | P0 | Runtime SHA `48fb83c248b0e969e699433a8bacdd276ed4311d` is frozen; current local and six push/PR workflow results exist; old exact-SHA runs are retained only as invalidated history | Independent review, final documentation-head verification, approved branch/ruleset governance and protected production release identity | Engineering; `OWNER ACTION` for repository governance |
+| GAP-QA-001 | P0 | Local matrix: 81 STATIC PASS, 14 GAP and 12 BLOCKED; API smoke 31/31 and Playwright 7/7 passed | Approved Ubuntu staging web/mobile/API E2E, physical-device/provider behavior, accessibility/responsive/load coverage, independent VAPT and reviewer acceptance | Engineering and QA |
 | GAP-DEP-001 | P1 | Dependency audit policy, lockfiles and a bounded Expo transitive exception exist | Fresh production-scope audits and exploitability review for every package at final SHA; supported upgrades/tests and time-bound exceptions | Engineering; security reviewer |
 | GAP-ARC-001 | P1 | Production Compose separates services/networks and hardens containers | Independent architecture/least-privilege review of final rendered model, including web-service DB/email access, external network membership and high-trust components | Engineering; security; `INFRASTRUCTURE ACTION` |
-| GAP-OBS-SIGNAL-001 | P0 | Source has 14 scrape jobs, 69 alert rules, 26 coverage records and machine validation for all 20 required P0 alert gaps | Isolated-staging threshold, firing, recovery, target and provider-callback evidence; approved ownership and live delivery | Engineering; `INFRASTRUCTURE ACTION`; owner placeholders in coverage manifest |
+| GAP-OBS-SIGNAL-001 | P0 | Source has 14 scrape jobs, 69 alert rules and 26 coverage records; all 20 required P0 alerts fired and resolved in local Prometheus and Alertmanager | Approved Ubuntu threshold/target/provider-callback execution, protected human receiver delivery, acknowledgement/escalation and approved ownership | Engineering; `INFRASTRUCTURE ACTION`; owner placeholders in coverage manifest |
 
 ## Live infrastructure and recovery gaps
 
 | ID | Pri. | Current repository evidence | Missing closure evidence | Owner/action |
 | --- | --- | --- | --- | --- |
 | GAP-CFG-001 | P0 | Production startup and Compose validators fail closed on missing, malformed, insecure or placeholder configuration | Validate the fully rendered target-host configuration by name/constraint, mounts, permissions and service identity without disclosing values; prove custody and recovery | `INFRASTRUCTURE ACTION`; `OWNER ACTION` |
-| GAP-DB-001 | P0 | Ordered migrations, preflight, locking, maintenance phases and recovery markers exist | Current backup; disposable replica-set migration; invariant/index report; approved production maintenance execution and post-check | `INFRASTRUCTURE ACTION`; DBA/release approvers |
-| GAP-BKP-001 | P0 | Encrypted/signed backup, host-readable ownership, media manifest, isolated restore and health tooling exist | Successful current host backup, protected off-site copy/retrieval, key-recovery evidence and isolated database/media restore; newest successful restore-test evidence must be no more than 24 hours old | `INFRASTRUCTURE ACTION`; `OWNER ACTION` for RPO/RTO and custody |
+| GAP-DB-001 | P0 | Local replica-set execution applied 11 migrations, skipped the same 11 on rerun, and preserved ledger/index/main-database invariants | Approved Ubuntu execution plus interruption, rollback/resume and protected-host invariant evidence; any production maintenance remains separately authorized | `INFRASTRUCTURE ACTION`; DBA/release approvers |
+| GAP-BKP-001 | P0 | A signed/encrypted local backup and separate-volume/database restore passed with 18 collections, 51 documents and 117 indexes | Approved Ubuntu backup/restore, protected off-site custody/retrieval, independent key recovery, host-loss rehearsal and owner-approved RPO/RTO; newest server restore evidence must meet the approved age | `INFRASTRUCTURE ACTION`; `OWNER ACTION` for RPO/RTO and custody |
 | GAP-ROLL-001 | P0 | Pre-migration rollback and post-migration coordinated recovery are separated | Exercise both paths on an approved Linux staging host; record achieved recovery time, data invariants, operators and failure handling | `INFRASTRUCTURE ACTION`; release/recovery owners |
 | GAP-NET-001 | P0 | Domain manifest, Caddy routes, trusted-proxy validation and Tunnel overlay exist | Read-only Cloudflare/DNS/Tunnel comparison, host/cloud firewall inspection, TLS/public route tests and failed bypass attempts | `INFRASTRUCTURE ACTION`; Cloudflare `VENDOR ACTION` |
 | GAP-CALL-NET-001 | P1 | Self-hosted LiveKit and guarded ticket/state/time authorization exist | Device tests on normal/restrictive networks; direct media port/firewall proof; approved regional fallback behavior and provider evidence | `INFRASTRUCTURE ACTION`; `CLINICAL ACTION`; `VENDOR ACTION` |

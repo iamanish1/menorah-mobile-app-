@@ -2,14 +2,15 @@
 
 Candidate branch: `release/final-production-readiness`
 
-Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
+Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
-Package status: **execution plan only; evidence not yet collected**
+Package status: **local synthetic validation passed; protected Ubuntu staging
+evidence not yet collected**
 
 Repository-remediation status:
-**REPOSITORY REMEDIATION COMPLETE — REVIEW REQUIRED**
+**LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**
 
 Public-production verdict: **NOT READY**
 

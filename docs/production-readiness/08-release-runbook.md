@@ -30,11 +30,14 @@ Rollback and recovery are in
 
 ## Current reviewed candidate input
 
-The repository-controlled runtime candidate is
-`3fb99858c6766a341bb7b7dab2377195427f0ea1` on
-`release/final-production-readiness`. Its exact-SHA release-readiness,
-functional aggregate and security aggregate workflows pass. This identity
-does not satisfy the remaining pre-release stop/go items below and does not
+The repository-controlled replacement runtime candidate is
+`48fb83c248b0e969e699433a8bacdd276ed4311d` on
+`release/final-production-readiness`. Its isolated local exercise and all six
+candidate-bound push/PR workflow executions passed. Exact-SHA
+release-readiness, functional aggregate and security aggregate runs cited for
+`3fb99858c6766a341bb7b7dab2377195427f0ea1` are historical and
+**INVALIDATED** for the current runtime. Current candidate evidence is recorded
+in report 28 and still requires independent review. This identity does not
 authorize execution.
 
 The draft PR records the final documentation HEAD. The runtime-to-docs diff

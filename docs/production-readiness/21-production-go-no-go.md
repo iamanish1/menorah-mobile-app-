@@ -7,11 +7,11 @@ Decision date: 2026-07-24.
 # NOT READY
 
 This verdict applies to public production launch. Repository remediation has
-materially improved control design and the repository-controlled P0 scope is
-complete at a frozen exact-SHA candidate. Independent review, protected
-repository governance, isolated-staging evidence, live infrastructure proof,
-approved operating policies, independent VAPT, store validation and vendor
-evidence are not complete.
+materially improved control design. Candidate-bound local validation passed at
+`48fb83c248b0e969e699433a8bacdd276ed4311d`, but it recorded 14 gaps and 12
+blocked assertions. Protected repository governance, approved Ubuntu staging,
+live infrastructure proof, approved operating policies, independent VAPT,
+store validation and vendor evidence are not complete.
 
 No part of this document authorizes deployment, migration, secret changes,
 provider changes, DNS/Cloudflare changes or store submission.
@@ -22,7 +22,8 @@ provider changes, DNS/Cloudflare changes or store submission.
 | --- | --- | --- | --- |
 | Repository implementation | Candidate code, tests, configuration and runbooks | Intended behavior under covered test conditions | Live configuration, production data safety, operator execution or policy approval |
 | Desktop validation | Unit/lint/config checks run without production access | Local regression status | Linux host behavior, vendor callbacks, DNS, alert delivery, backups or stores |
-| Isolated integration | All 13 backend integration suites ran against disposable MongoDB and Redis; 45/45 tests passed | Covered behavior under the exact workflow fixture | Production data, host behavior or staging completeness |
+| Historical isolated integration | At old runtime SHA `3fb99858c6766a341bb7b7dab2377195427f0ea1`, all 13 backend integration suites ran against disposable MongoDB and Redis; 45/45 tests passed | Covered behavior of that older SHA under its workflow fixture | Current runtime behavior, production data, host behavior or staging completeness; this evidence is invalidated for the current candidate |
+| Current local synthetic staging | Complete at `48fb83c248b0e969e699433a8bacdd276ed4311d`; report 28 is authoritative | Docker Desktop isolation, migrations/seed, API/browser checks, local stubs, monitoring, backup/restore and explicit gaps/blocks | Ubuntu host behavior, real-provider callbacks, physical devices, independent VAPT, external approval or production readiness |
 | Live proof | Not completed for this candidate | Nothing may be inferred | Required before any public launch |
 | Governance/external proof | Decisions and sign-offs remain pending | Nothing may be inferred | Cannot be replaced by code or a template |
 
@@ -30,20 +31,21 @@ provider changes, DNS/Cloudflare changes or store submission.
 
 | Gate | Current assessment | Required evidence |
 | --- | --- | --- |
-| Immutable candidate | Repository complete; review required | Runtime SHA `3fb99858c6766a341bb7b7dab2377195427f0ea1`, documentation-head verification, independent review and protected release record |
-| Backend regression | Pass | 112/112 default suites and 1,426/1,426 tests plus 13/13 disposable integration suites and 45/45 tests |
-| Web/admin/counsellor/mobile | Pass for repository automation | Exact-SHA lint/type/build/audit jobs; mobile 20/20 contracts and 19/19 Doctor |
-| Release/recovery scripts | Pass for repository automation | Exact-SHA Linux safety suites, Bash syntax and pinned ShellCheck |
-| Compose/Caddy/monitoring | Pass for repository automation | Clean-archive Compose, Caddy, 14 jobs, 69 rules, 26 coverage records and all 20 P0 mappings; protected-host/live proof remains open |
-| Migrations | Unit/preflight tests exist | Disposable replica-set execution, invariants, ordering and recovery evidence |
-| Dependency/security scans | Exact-SHA automated gates pass | Gitleaks, Semgrep, production dependency policies, four Trivy image gates and SBOMs pass; independent VAPT remains open |
+| Immutable candidate | Runtime SHA frozen; local and six push/PR workflows passed; review incomplete | `48fb83c248b0e969e699433a8bacdd276ed4311d`, final documentation-head verification, independent review and protected release record |
+| Backend regression | Pass for the unchanged backend source at the runtime candidate | 114/127 suites and 1,509/1,554 tests passed; 13 suites/45 integration tests were skipped in the default run and remain a current exact-SHA limitation |
+| Web/admin/counsellor/mobile | Pass for recorded repository automation; device proof open | Recorded lint/type/test checks passed with warnings documented; physical-device, accessibility, responsive and real-provider coverage remains open |
+| Release/recovery scripts | Pass for recorded repository automation and local recovery | Release workflow tests 127/127; signed backup and isolated restore passed; Linux-only paths still require Ubuntu staging |
+| Compose/Caddy/monitoring | Pass locally; protected-host proof open | Full profiles healthy with zero restarts; API smoke 31/31, browser 7/7 and all 20 required alerts fired/resolved; approved Ubuntu staging and live proof remain open |
+| Migrations | Pass locally | All 11 applied and then all 11 skipped on the local replica-set rerun with ledger/index invariants; approved Ubuntu interruption/rollback/resume and host evidence remain open |
+| Dependency/security scans | Current tracked-tree secret scan passed | Trivy found zero tracked findings and the custom immutable-tree scan found zero non-fixture credential-bearing URI matches; full-history independent review and VAPT remain open |
 
 Repository-controlled P0 decision:
-**REPOSITORY REMEDIATION COMPLETE — REVIEW REQUIRED**.
+**LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**.
 
 Public-production decision remains **NO-GO** because the external and
 operational evidence below is incomplete. Exact repository results are in
-[the immutable candidate record](./26-immutable-candidate-record.md).
+[the immutable candidate record](./26-immutable-candidate-record.md) and
+[the local staging validation report](./28-local-staging-validation-report.md).
 
 ## Live infrastructure blockers
 
@@ -177,7 +179,7 @@ Vendor decision: **NO-GO**.
 
 | Role | Current decision | Reason |
 | --- | --- | --- |
-| Engineering | No-go for public launch; repository remediation complete pending review | Isolated staging, protected governance and external approvals incomplete |
+| Engineering | No-go for public launch; local staging passed and server staging is required | Approved Ubuntu staging, protected governance and external approvals incomplete |
 | Infrastructure | No-go | Live recovery, network, monitoring and log evidence incomplete |
 | Owner/operations | No-go | Policies, roles and risk decisions incomplete |
 | Legal/privacy | No-go | Qualified approvals and operating evidence incomplete |

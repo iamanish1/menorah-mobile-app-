@@ -1,6 +1,6 @@
 # Staging security QA
 
-Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
+Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -85,7 +85,7 @@ set -euo pipefail
 
 readonly GH_REPOSITORY='menorahsoftware-cmyk/menorah-mobile-app-'
 readonly APPROVED_BRANCH='<protected-branch-allowed-by-staging-security>'
-readonly RUNTIME_SHA='3fb99858c6766a341bb7b7dab2377195427f0ea1'
+readonly RUNTIME_SHA='48fb83c248b0e969e699433a8bacdd276ed4311d'
 : "${APPROVED_WORKFLOW_HEAD_SHA:?Set the externally recorded protected workflow-head SHA}"
 readonly APPROVED_WORKFLOW_HEAD_SHA
 
@@ -101,7 +101,7 @@ test "$(git rev-parse "origin/${APPROVED_BRANCH}")" \
   = "${APPROVED_WORKFLOW_HEAD_SHA}"
 git merge-base --is-ancestor "${RUNTIME_SHA}" "${APPROVED_WORKFLOW_HEAD_SHA}"
 git diff --quiet "${RUNTIME_SHA}..${APPROVED_WORKFLOW_HEAD_SHA}" -- \
-  . ':(exclude)docs/production-readiness/staging/**'
+  . ':(exclude)docs/**' ':(exclude)menorah/docs/**'
 
 # Read-only proof that the required environment now exists. Review protection
 # and variable/secret names without printing values.

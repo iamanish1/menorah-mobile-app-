@@ -12,13 +12,18 @@ without treating source code as proof of live operation.
 The remediation workspace is on `release/final-production-readiness`. The
 recovery-safety starting point identified for this effort is commit
 `353b19aced537d7acee6310bc0d8acbcc512f739`. Later repository remediation is
-preserved as focused commits on the same release branch. Repository-controlled
-P0 remediation is frozen at
-`3fb99858c6766a341bb7b7dab2377195427f0ea1`; its exact-SHA release,
-functional and security aggregate gates pass. Those commits remain engineering
-evidence, not an owner-approved production release. The final protected
-release record and repository-governance approval remain external actions.
-See [the immutable candidate record](./26-immutable-candidate-record.md).
+preserved as focused commits on the same release branch. The replacement
+runtime candidate is frozen at
+`48fb83c248b0e969e699433a8bacdd276ed4311d`. Its candidate-bound local
+validation and all six push/PR GitHub workflow executions passed. Exact-SHA
+release, functional and security aggregate results cited for
+`3fb99858c6766a341bb7b7dab2377195427f0ea1` are historical and
+**INVALIDATED** for this newer runtime and were not relabelled. All commits and
+local results remain engineering evidence, not an owner-approved production release.
+The final protected release record and repository-governance approval remain
+external actions. See
+[the immutable candidate record](./26-immutable-candidate-record.md) and
+[the local staging validation report](./28-local-staging-validation-report.md).
 
 ## Evidence classes
 

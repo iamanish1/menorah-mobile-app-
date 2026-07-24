@@ -1,6 +1,6 @@
 # Unified production-readiness evidence index
 
-Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
+Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -37,23 +37,40 @@ evidence. A skipped, failed, blocked or uncollected P0 prevents go-live. When
 runtime code, configuration or artifacts change, retain old evidence, mark
 affected rows `INVALIDATED` and rerun them for the new SHA.
 
-## Current repository observation log
+## Current candidate-bound repository observation log
 
-The following durable GitHub runs checked out runtime SHA
-`3fb99858c6766a341bb7b7dab2377195427f0ea1` exactly. Repository evidence does
-not convert any staging, live or governance row to `PASS`.
+Runtime SHA `48fb83c248b0e969e699433a8bacdd276ed4311d` has six successful
+attempt-1 workflow executions:
+
+| Event | Release readiness | Functional | Security |
+| --- | --- | --- | --- |
+| Push | [30064845086](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064845086), 1/1 | [30064845082](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064845082), 9/9 | [30064845089](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064845089), 15/15 |
+| Pull request | [30064847263](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064847263), 1/1 | [30064847275](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064847275), 9/9 | [30064847259](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30064847259), 15/15 |
+
+The local synthetic evidence is recorded in
+[report 28](../28-local-staging-validation-report.md). It does not convert
+approved Ubuntu staging, live, provider, governance or external-review rows to
+`PASS`.
+
+## Historical repository observation log
+
+The following durable GitHub runs checked out historical runtime SHA
+`3fb99858c6766a341bb7b7dab2377195427f0ea1` exactly. They are retained for
+traceability and are **INVALIDATED** for
+`48fb83c248b0e969e699433a8bacdd276ed4311d`. Repository
+evidence does not convert any staging, live or governance row to `PASS`.
 
 | Evidence | Exact result | Current tracker treatment |
 | --- | --- | --- |
-| [Production Release Readiness 30051102484](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30051102484) | PASS: workflow/release invariants, production Compose and shell syntax | Repository evidence for `REP-005`, `REP-006`, `REP-008` and `REP-009` |
-| [Functional release validation 30051102471](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30051102471) | PASS: all 9 jobs including aggregate | Repository evidence for `REP-002` through `REP-006` and `REP-009` |
-| Backend default | 112/112 suites; 1,426/1,426 tests; lint and production audit pass | No skip |
-| Backend disposable integration | 13/13 suites; 45/45 tests against disposable MongoDB/Redis | All locally skipped integration tests executed here; no skip |
-| User/admin/counsellor web | All three lint/type/build/audit jobs pass | Warnings retained in immutable candidate record |
-| Mobile | Lint/type, 20/20 contracts, 19/19 Doctor and dependency policy pass | 11 constrained moderate transitive findings expire 2026-10-31 |
-| Release/infrastructure | 159 TAP tests plus Compose, Caddy, clean archive, Bash and pinned ShellCheck pass | No ignored `home.env`; no skip |
-| Monitoring | 14 scrape jobs, 69 alerts and 26 records; all 20 P0 mappings validate | Live target, threshold and delivery evidence remains `STG-016`/`STG-017` |
-| [Security gates 30051102473 attempt 2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30051102473) | PASS: all 15 jobs including aggregate | Gitleaks, Semgrep, dependency policy, four Trivy image gates and four SBOMs |
+| [Production Release Readiness 30051102484](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30051102484) | PASS at historical SHA: workflow/release invariants, production Compose and shell syntax | **INVALIDATED** for current `REP-005`, `REP-006`, `REP-008` and `REP-009` |
+| [Functional release validation 30051102471](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30051102471) | PASS at historical SHA: all 9 jobs including aggregate | **INVALIDATED** for current `REP-002` through `REP-006` and `REP-009` |
+| Backend default | PASS at historical SHA: 112/112 suites; 1,426/1,426 tests; lint and production audit pass | **INVALIDATED** for the current candidate; retained only for traceability |
+| Backend disposable integration | PASS at historical SHA: 13/13 suites; 45/45 tests against disposable MongoDB/Redis | **INVALIDATED** for the current candidate; retained only for traceability |
+| User/admin/counsellor web | PASS at historical SHA: all three lint/type/build/audit jobs | **INVALIDATED** for the current candidate; warnings retained in the historical record |
+| Mobile | PASS at historical SHA: lint/type, 20/20 contracts, 19/19 Doctor and dependency policy | **INVALIDATED** for the current candidate; historical exception expires 2026-10-31 |
+| Release/infrastructure | PASS at historical SHA: 159 TAP tests plus Compose, Caddy, clean archive, Bash and pinned ShellCheck | **INVALIDATED** for the current candidate; retained only for traceability |
+| Monitoring | PASS at historical SHA: 14 scrape jobs, 69 alerts and 26 records; all 20 P0 mappings validate | **INVALIDATED** for the current candidate; current local evidence is in report 28 |
+| [Security gates 30051102473 attempt 2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30051102473) | PASS at historical SHA: all 15 jobs including aggregate | **INVALIDATED** for the current candidate; current security runs are recorded above |
 | Security attempt 1 | Backend base-image metadata request timed out before build | Same-SHA failed-job retry passed; retained as a warning, not hidden |
 | Documentation HEAD | Exact draft-PR head; runtime-to-head path diff must satisfy the documentation allowlist | Recorded externally because a commit cannot embed its own SHA |
 
@@ -93,15 +110,15 @@ authorizations to mutate GitHub configuration.
 
 | ID | Requirement | Responsible party | Evidence | Location | Status | Severity | Renewal / expiry | Candidate SHA |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `REP-001` | Exact runtime branch/SHA, docs revision, clean worktree and remote synchronization | Engineering release owner | Git identity, commit inventory and UTC reviewer record | Draft PR plus immutable candidate record | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-002` | Backend lint, unit/integration/migration tests and production dependency audit | Backend/QA | Commands, versions, counts, isolated DB identity and full logs | Functional run 30051102471 | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-003` | User, admin and counsellor web lint/type/build/audit | Web/QA | Per-workspace logs and artifact checksums | Functional run 30051102471 | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-004` | Mobile lint/type/contract/config/Doctor/audit | Mobile/QA | Exact-SHA logs, counts and exception register | Functional run 30051102471 | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-005` | Release/recovery, Mongo identity, tunnel, media, backup, smoke and monitoring tests | Platform/QA | Exact-SHA QA results including expected counts | Functional run 30051102471 | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-006` | Repository Compose/Caddy/clean-checkout/shell validation | Platform/infrastructure | Exact-SHA tracked-fixture render, Caddy and shell logs | Runs 30051102471 and 30051102484 | PASS | P0 | Each candidate | Runtime SHA above; protected-host interpolation remains `STG-002`/`STG-003` |
-| `REP-007` | Secret history, pinned Gitleaks, SAST, dependency, SBOM, image, container and config scans | Security | Clean exact-SHA reports, finding treatment and expiry | Security run 30051102473 attempt 2 | PASS | P0 | Each candidate/tool update | Runtime SHA above |
-| `REP-008` | Read-only deployment workflow and fail-closed legacy-path governance | Release/security | Workflow validation, tombstone tests and immutable candidate record | Runs 30051102471 and 30051102484 | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-009` | Adversarial workflow regression suite passes after security fixes | Security/release | Pinned workflow-test log | Runs 30051102471 and 30051102484 | PASS | P0 | Each workflow change | Runtime SHA above |
+| `REP-001` | Exact runtime branch/SHA, docs revision, clean worktree and remote synchronization | Engineering release owner | Git identity, commit inventory and UTC reviewer record | Runtime identity is frozen; final docs HEAD is recorded externally in draft PR #2 | PARTIAL | P0 | Each candidate | `48fb83c248b0e969e699433a8bacdd276ed4311d` |
+| `REP-002` | Backend lint, unit/integration/migration tests and production dependency audit | Backend/QA | Commands, versions, counts, isolated DB identity and full logs | Current functional runs 30064845082 and 30064847275; local limitations in report 28 | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-003` | User, admin and counsellor web lint/type/build/audit | Web/QA | Per-workspace logs and artifact checksums | Current functional runs 30064845082 and 30064847275 | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-004` | Mobile lint/type/contract/config/Doctor/audit | Mobile/QA | Exact-SHA logs, counts and exception register | Current functional runs 30064845082 and 30064847275; physical-device evidence remains open | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-005` | Release/recovery, Mongo identity, tunnel, media, backup, smoke and monitoring tests | Platform/QA | Exact-SHA QA results including expected counts | Current functional runs plus local report 28 | PASS LOCALLY | P0 | Each candidate | Runtime SHA above |
+| `REP-006` | Repository Compose/Caddy/clean-checkout/shell validation | Platform/infrastructure | Exact-SHA tracked-fixture render, Caddy and shell logs | Current release/functional runs plus local report 28 | PASS LOCALLY | P0 | Each candidate | Runtime SHA above; protected-host interpolation remains `STG-002`/`STG-003` |
+| `REP-007` | Secret history, pinned Gitleaks, SAST, dependency, SBOM, image, container and config scans | Security | Clean exact-SHA reports, finding treatment and expiry | Current security runs 30064845089 and 30064847259; tracked-tree Trivy/custom scan in report 28 | PASS FOR AUTOMATED/TRACKED SCOPE | P0 | Each candidate/tool update | Runtime SHA above; independent full-history review and VAPT remain open |
+| `REP-008` | Read-only deployment workflow and fail-closed legacy-path governance | Release/security | Workflow validation, tombstone tests and immutable candidate record | Current release/functional runs and immutable candidate record | PASS FOR REPOSITORY SCOPE | P0 | Each candidate | Runtime SHA above |
+| `REP-009` | Adversarial workflow regression suite passes after security fixes | Security/release | Pinned workflow-test log | Local `test:release-workflow`: 127/127; current release/functional runs pass | PASS | P0 | Each workflow change | Runtime SHA above |
 | `REP-010` | Protected `staging-security` environment supports authenticated DAST | `OWNER ACTION`; security | Environment policy, variables/secrets presence and successful run ID | TBD — restricted GitHub evidence | BLOCKED | P0 | Each environment/change | Runtime SHA above |
 | `REP-011` | Android signing is protected-environment, main-HEAD-only and marker-gated | `OWNER ACTION`; `GOOGLE ACTION`; security | Environment protection, secret-scope removal and successful guarded run | TBD — restricted GitHub evidence | BLOCKED | P0 | Each signing/environment change | Runtime SHA above |
 | `REP-012` | Branch protections/rulesets enforce the approved release policy | `OWNER ACTION`; security/release | Read-only before/after protection and bypass inventory | TBD — restricted GitHub evidence | BLOCKED | P0 | Each governance change | Runtime SHA above |

@@ -1,10 +1,11 @@
 # Staging backup, restore, migration and recovery
 
-Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
+Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
-Initial state: **not run**
+Approved Ubuntu/server staging state: **not run**. The completed local Docker
+backup/restore/migration result is recorded separately in report 28.
 
 The authoritative control descriptions are
 [10-backup-and-restore-runbook.md](../10-backup-and-restore-runbook.md) and
@@ -34,7 +35,7 @@ Run only on the approved isolated staging host:
 set -euo pipefail
 umask 077
 
-readonly RUNTIME_SHA='3fb99858c6766a341bb7b7dab2377195427f0ea1'
+readonly RUNTIME_SHA='48fb83c248b0e969e699433a8bacdd276ed4311d'
 readonly CANDIDATE_BRANCH='release/final-production-readiness'
 readonly STAGING_REPO='/srv/menorah-staging/repository'
 readonly STAGING_ENV='/etc/menorah-staging/staging.env'
@@ -62,7 +63,7 @@ git -C "${STAGING_REPO}" merge-base --is-ancestor \
   "${RUNTIME_SHA}" "${APPROVED_PR_HEAD_SHA}"
 git -C "${STAGING_REPO}" diff --quiet \
   "${RUNTIME_SHA}..${APPROVED_PR_HEAD_SHA}" -- \
-  . ':(exclude)docs/production-readiness/staging/**'
+  . ':(exclude)docs/**' ':(exclude)menorah/docs/**'
 test -z "$(git -C "${STAGING_REPO}" status --porcelain)"
 
 export MENORAH_RELEASE_REPO_ROOT="${STAGING_REPO}"

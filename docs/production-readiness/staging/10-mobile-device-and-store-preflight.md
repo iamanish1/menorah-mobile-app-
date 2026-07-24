@@ -1,6 +1,6 @@
 # Mobile device and store preflight
 
-Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
+Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -49,7 +49,7 @@ values locally without printing them:
 set -euo pipefail
 umask 077
 
-readonly RUNTIME_SHA='3fb99858c6766a341bb7b7dab2377195427f0ea1'
+readonly RUNTIME_SHA='48fb83c248b0e969e699433a8bacdd276ed4311d'
 readonly REPO='/srv/menorah-staging/repository'
 readonly STAGING_ENV='/etc/menorah-staging/staging.env'
 readonly MOBILE_ENV='/etc/menorah-staging/mobile-preview.env'
@@ -63,7 +63,7 @@ git -C "${REPO}" merge-base --is-ancestor \
   "${RUNTIME_SHA}" "${APPROVED_PR_HEAD_SHA}"
 git -C "${REPO}" diff --quiet \
   "${RUNTIME_SHA}..${APPROVED_PR_HEAD_SHA}" -- \
-  . ':(exclude)docs/production-readiness/staging/**'
+  . ':(exclude)docs/**' ':(exclude)menorah/docs/**'
 test -z "$(git -C "${REPO}" status --porcelain)"
 grep -qx 'MENORAH_STAGING_ONLY' /etc/menorah-staging/STAGING_HOST
 test -r "${STAGING_ENV}" && test -r "${MOBILE_ENV}"

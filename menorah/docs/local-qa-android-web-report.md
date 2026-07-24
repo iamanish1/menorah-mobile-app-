@@ -1,5 +1,13 @@
 # Local QA Android/Web Report
 
+> **Historical evidence only.** This report predates the replacement
+> `48fb83c248b0e969e699433a8bacdd276ed4311d` and the isolated
+> `menorah-local-staging` Docker
+> topology. Its results, ports and Cloud Run follow-up plan are not evidence for
+> the current candidate and must not be relabelled. Current candidate-bound
+> results belong in
+> [the local staging validation report](../../docs/production-readiness/28-local-staging-validation-report.md).
+
 ## Summary
 
 Overall result: PARTIAL

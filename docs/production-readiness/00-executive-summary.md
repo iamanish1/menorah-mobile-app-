@@ -18,18 +18,22 @@ access.
 
 ## Repository-remediation status
 
-**REPOSITORY REMEDIATION COMPLETE — REVIEW REQUIRED**
+**LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**
 
-The repository-controlled P0 scope is frozen at runtime SHA
-`3fb99858c6766a341bb7b7dab2377195427f0ea1` on
-`release/final-production-readiness`. Production Release Readiness, the
-exact-SHA functional aggregate and the security aggregate are green for that
-SHA. After the freeze, only `docs/**` and `menorah/docs/**` may change; any
-runtime, configuration, workflow or test change invalidates the candidate.
+The repository-controlled runtime is frozen at
+`48fb83c248b0e969e699433a8bacdd276ed4311d` on
+`release/final-production-readiness`. Candidate-bound local validation and all
+six push/PR GitHub workflow executions passed for that SHA. The green runs
+previously cited for `3fb99858c6766a341bb7b7dab2377195427f0ea1`
+remain historical evidence for that older SHA and are **INVALIDATED** for the
+current candidate. After this freeze, only `docs/**` and `menorah/docs/**` may
+change; any runtime, configuration, workflow or test change invalidates the
+candidate and requires the affected evidence to be rerun.
 
 See [the immutable candidate record](./26-immutable-candidate-record.md) for
 run links, test totals, warnings, skips, the evidence boundary and remaining
-external proof.
+external proof. The completed local exercise is recorded in
+[the local staging validation report](./28-local-staging-validation-report.md).
 
 ## What this verdict covers
 
@@ -105,7 +109,7 @@ for the exact evidence required.
 
 | Blocking area | Repository position | Evidence or decision still required |
 | --- | --- | --- |
-| Immutable release | Runtime SHA `3fb99858c6766a341bb7b7dab2377195427f0ea1` is frozen with exact-SHA release, functional and security gates green | Independent review, final documentation-head record in the draft PR, repository governance and owner-approved protected release record |
+| Immutable release | Runtime SHA `48fb83c248b0e969e699433a8bacdd276ed4311d` is frozen; candidate-bound local validation and six push/PR workflow executions passed | Review the local report, record the final documentation HEAD and its current GitHub results, then obtain repository governance and an owner-approved protected release record |
 | Configuration | Fail-closed validators and a redacted variable reference exist | `INFRASTRUCTURE ACTION`: validate the actual host configuration without disclosing values |
 | Data and migrations | Ordered migration and preflight controls exist | `INFRASTRUCTURE ACTION`: disposable staging execution, approved maintenance boundary and invariant evidence |
 | Backup and recovery | Signed/encrypted backup and isolated-restore tooling exists | `INFRASTRUCTURE ACTION`: current host backup, off-site copy and successful restore evidence; the newest restore test must be no more than 24 hours old |

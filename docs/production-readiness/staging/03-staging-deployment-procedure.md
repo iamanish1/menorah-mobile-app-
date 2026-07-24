@@ -1,6 +1,6 @@
 # Staging deployment procedure
 
-Runtime candidate SHA: `3fb99858c6766a341bb7b7dab2377195427f0ea1`
+Runtime candidate SHA: `48fb83c248b0e969e699433a8bacdd276ed4311d`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -43,7 +43,7 @@ files must already exist outside Git with protected permissions.
 set -euo pipefail
 umask 077
 
-readonly RUNTIME_SHA='3fb99858c6766a341bb7b7dab2377195427f0ea1'
+readonly RUNTIME_SHA='48fb83c248b0e969e699433a8bacdd276ed4311d'
 readonly CANDIDATE_BRANCH='release/final-production-readiness'
 readonly STAGING_REPO='/srv/menorah-staging/repository'
 readonly STAGING_ENV='/etc/menorah-staging/staging.env'
@@ -92,14 +92,14 @@ git cat-file -e "${RUNTIME_SHA}^{commit}"
 git cat-file -e "${APPROVED_PR_HEAD_SHA}^{commit}"
 git merge-base --is-ancestor "${RUNTIME_SHA}" "${APPROVED_PR_HEAD_SHA}"
 git diff --quiet "${RUNTIME_SHA}..${APPROVED_PR_HEAD_SHA}" -- \
-  . ':(exclude)docs/production-readiness/staging/**'
+  . ':(exclude)docs/**' ':(exclude)menorah/docs/**'
 ```
 
 The checkout must already be at the externally recorded approved PR head. Its
 runtime content remains bound to the frozen runtime SHA only because the
-ancestry and path-diff gates prove that every later change is documentation in
-this package. Do not switch to `main`, merge, cherry-pick or replace either SHA
-to satisfy this gate.
+ancestry and path-diff gates prove that every later change is confined to
+`docs/**` or `menorah/docs/**`. Do not switch to `main`, merge, cherry-pick or
+replace either SHA to satisfy this gate.
 
 ## STAGING-ONLY Linux commands: fail-closed environment preflight
 
