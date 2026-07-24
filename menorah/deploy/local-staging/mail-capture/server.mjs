@@ -11,8 +11,46 @@ const DEFAULT_PORT = 8025;
 const DEFAULT_MAX_MESSAGES = 100;
 const DEFAULT_TTL_MILLISECONDS = 15 * 60 * 1000;
 const MAX_REQUEST_BYTES = 256 * 1024;
-const LOCAL_KEY_PATTERN = /^re_local_[A-Za-z0-9_-]{32,}$/;
 const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+
+export const LOCAL_MAIL_CAPTURE_PROJECT = 'menorah-local-staging';
+export const LOCAL_MAIL_CAPTURE_ENVIRONMENT_ID =
+  'menorah-local-staging-v1';
+export const SERVER_STAGING_MAIL_CAPTURE_ENVIRONMENT_ID =
+  'menorah-server-staging-v1';
+export const SERVER_STAGING_MAIL_CAPTURE_PROJECTS = Object.freeze([
+  'menorah-staging',
+  'menorah-server-staging-validation',
+]);
+
+const MAIL_CAPTURE_PROFILES = Object.freeze([
+  Object.freeze({
+    project: LOCAL_MAIL_CAPTURE_PROJECT,
+    environmentId: LOCAL_MAIL_CAPTURE_ENVIRONMENT_ID,
+    apiKeyPattern: /^re_local_[A-Za-z0-9_-]{32,}$/,
+  }),
+  ...SERVER_STAGING_MAIL_CAPTURE_PROJECTS.map((project) => Object.freeze({
+    project,
+    environmentId: SERVER_STAGING_MAIL_CAPTURE_ENVIRONMENT_ID,
+    apiKeyPattern: /^re_server_staging_[A-Za-z0-9_-]{32,}$/,
+  })),
+]);
+
+const validateMailCaptureIdentity = ({
+  apiKey,
+  composeProject,
+  environmentId,
+}) => {
+  const profile = MAIL_CAPTURE_PROFILES.find((candidate) => (
+    candidate.project === composeProject
+    && candidate.environmentId === environmentId
+  ));
+  if (!profile || !profile.apiKeyPattern.test(String(apiKey || ''))) {
+    throw new Error(
+      'A strong mail-capture key for an exact isolated environment is required',
+    );
+  }
+};
 
 const secureEqual = (actual, expected) => {
   const actualBuffer = Buffer.from(String(actual || ''));
@@ -123,14 +161,14 @@ const bearerToken = (request) => {
 
 export const createMailCaptureServer = ({
   apiKey,
+  composeProject = LOCAL_MAIL_CAPTURE_PROJECT,
+  environmentId = LOCAL_MAIL_CAPTURE_ENVIRONMENT_ID,
   maxMessages = DEFAULT_MAX_MESSAGES,
   ttlMilliseconds = DEFAULT_TTL_MILLISECONDS,
   now = Date.now,
   randomBytesFunction = randomBytes,
 } = {}) => {
-  if (!LOCAL_KEY_PATTERN.test(String(apiKey || ''))) {
-    throw new Error('A strong local mail-capture API key is required');
-  }
+  validateMailCaptureIdentity({ apiKey, composeProject, environmentId });
   if (!Number.isSafeInteger(maxMessages) || maxMessages < 1 || maxMessages > 1000) {
     throw new Error('maxMessages must be an integer from 1 through 1000');
   }
@@ -266,6 +304,18 @@ const isMain = process.argv[1]
 
 if (isMain) {
   const apiKey = process.env.MAIL_CAPTURE_API_KEY;
+  const composeProject = process.env.COMPOSE_PROJECT_NAME
+    || LOCAL_MAIL_CAPTURE_PROJECT;
+  const localEnvironmentId =
+    process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID;
+  const serverEnvironmentId =
+    process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID;
+  if (localEnvironmentId && serverEnvironmentId) {
+    process.exit(1);
+  }
+  const environmentId = localEnvironmentId
+    || serverEnvironmentId
+    || LOCAL_MAIL_CAPTURE_ENVIRONMENT_ID;
   const rawPort = String(process.env.MAIL_CAPTURE_PORT || DEFAULT_PORT);
   const port = /^\d+$/.test(rawPort) ? Number(rawPort) : NaN;
   if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) {
@@ -273,7 +323,11 @@ if (isMain) {
   }
 
   try {
-    const server = createMailCaptureServer({ apiKey });
+    const server = createMailCaptureServer({
+      apiKey,
+      composeProject,
+      environmentId,
+    });
     server.on('error', () => process.exit(1));
     server.listen(port, '0.0.0.0');
   } catch {

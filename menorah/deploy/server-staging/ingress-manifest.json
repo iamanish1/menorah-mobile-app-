@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "environment": "staging",
+  "composeProject": "menorah-staging",
+  "expectedHosts": [
+    "staging.menorah.me",
+    "www.staging.menorah.me",
+    "app.staging.menorah.me",
+    "admin.staging.menorah.me",
+    "counsellor.staging.menorah.me",
+    "api-ios.staging.menorah.me",
+    "api-android.staging.menorah.me",
+    "api-web.staging.menorah.me",
+    "api-admin.staging.menorah.me",
+    "calls.staging.menorah.me"
+  ],
+  "routes": [
+    {
+      "host": "staging.menorah.me",
+      "target": "staging-user-web-app:3002"
+    },
+    {
+      "host": "www.staging.menorah.me",
+      "target": "staging-user-web-app:3002"
+    },
+    {
+      "host": "app.staging.menorah.me",
+      "target": "staging-user-web-app:3002"
+    },
+    {
+      "host": "admin.staging.menorah.me",
+      "target": "staging-admin-panel:3003"
+    },
+    {
+      "host": "counsellor.staging.menorah.me",
+      "target": "staging-web-app:3001"
+    },
+    {
+      "host": "api-ios.staging.menorah.me",
+      "target": "staging-api-ios:8080"
+    },
+    {
+      "host": "api-android.staging.menorah.me",
+      "target": "staging-api-android:8080"
+    },
+    {
+      "host": "api-web.staging.menorah.me",
+      "target": "staging-api-web:8080"
+    },
+    {
+      "host": "api-admin.staging.menorah.me",
+      "target": "staging-api-admin:8080"
+    },
+    {
+      "host": "calls.staging.menorah.me",
+      "target": "staging-livekit:7880"
+    }
+  ],
+  "loopbackIngress": {
+    "tunnelOrigin": "127.0.0.1:38000",
+    "tlsDiagnostics": "127.0.0.1:38443"
+  },
+  "terminalTunnelService": "http_status:404",
+  "dnsConfigured": false,
+  "tunnelConfigured": false
+}

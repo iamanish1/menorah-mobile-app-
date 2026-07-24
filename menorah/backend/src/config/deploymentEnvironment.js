@@ -29,6 +29,17 @@ const BARE_EMAIL_PATTERN = new RegExp(
 const RAZORPAY_TEST_KEY_ID_PATTERN = /^rzp_test_[A-Za-z0-9]{14,64}$/;
 const LOCAL_STAGING_HTTPS_PORT_ENV = 'MENORAH_LOCAL_STAGING_HTTPS_PORT';
 const LOCAL_STAGING_HOST_SUFFIX = '.staging.localhost';
+const SERVER_STAGING_ENVIRONMENT_ID_ENV =
+  'MENORAH_SERVER_STAGING_ENVIRONMENT_ID';
+const SERVER_STAGING_ENVIRONMENT_ID = 'menorah-server-staging-v1';
+const SERVER_STAGING_PROJECT_ENV =
+  'MENORAH_SERVER_STAGING_PROJECT_NAME';
+const SERVER_STAGING_PROJECTS = new Set([
+  'menorah-staging',
+  'menorah-server-staging-validation',
+]);
+const SERVER_STAGING_LIVEKIT_API_URL =
+  'http://staging-livekit:7880';
 
 const getDeploymentEnvironment = (env = process.env) => {
   const value = String(
@@ -97,6 +108,24 @@ const readLocalStagingHttpsPort = (env, errors) => {
 
 const validateStagingEnvironmentIsolation = (env = process.env) => {
   const errors = [];
+  const serverStagingIdentity = String(
+    env[SERVER_STAGING_ENVIRONMENT_ID_ENV] || ''
+  ).trim();
+  const serverStagingProject = String(
+    env[SERVER_STAGING_PROJECT_ENV] || ''
+  ).trim();
+  const isExactServerStagingSelector = (
+    serverStagingIdentity === SERVER_STAGING_ENVIRONMENT_ID
+    && SERVER_STAGING_PROJECTS.has(serverStagingProject)
+  );
+  if (
+    (serverStagingIdentity || serverStagingProject)
+    && !isExactServerStagingSelector
+  ) {
+    errors.push(
+      'Server staging identity and project selectors must match the reviewed namespace'
+    );
+  }
   const allowlistEntries = String(env.MENORAH_STAGING_ALLOWED_HOSTS || '').split(',');
   const allowlist = new Set(allowlistEntries);
 
@@ -152,7 +181,11 @@ const validateStagingEnvironmentIsolation = (env = process.env) => {
     LIVEKIT_URL: wssOrigin(env.CALLS_DOMAIN),
     LIVEKIT_API_URL: localHttpsPort
       ? 'http://livekit:7880'
-      : httpsOrigin(env.CALLS_DOMAIN),
+      : (
+        isExactServerStagingSelector
+          ? SERVER_STAGING_LIVEKIT_API_URL
+          : httpsOrigin(env.CALLS_DOMAIN)
+      ),
     PASSWORD_RESET_BASE_URL: httpsOrigin(env.APP_DOMAIN),
     CHECKOUT_RETURN_URL: `${httpsOrigin(env.APP_DOMAIN)}/checkout/return`,
     FRONTEND_COUNSELLOR_URL: httpsOrigin(env.COUNSELLOR_DOMAIN),
@@ -234,6 +267,8 @@ const validateStagingEnvironmentIsolation = (env = process.env) => {
 module.exports = {
   DEPLOYMENT_ENVIRONMENTS,
   LOCAL_STAGING_HTTPS_PORT_ENV,
+  SERVER_STAGING_ENVIRONMENT_ID_ENV,
+  SERVER_STAGING_LIVEKIT_API_URL,
   STAGING_HOST_ENV_KEYS,
   getDeploymentEnvironment,
   validateStagingEnvironmentIsolation,

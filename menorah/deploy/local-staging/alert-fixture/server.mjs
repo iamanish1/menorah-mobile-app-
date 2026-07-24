@@ -5,13 +5,24 @@ import { pathToFileURL } from 'node:url';
 
 export const EXPECTED_PROJECT = 'menorah-local-staging';
 export const EXPECTED_ENVIRONMENT_ID = 'menorah-local-staging-v1';
+export const SERVER_STAGING_ENVIRONMENT_ID = 'menorah-server-staging-v1';
+export const SERVER_STAGING_PROJECTS = Object.freeze([
+  'menorah-staging',
+  'menorah-server-staging-validation',
+]);
 export const DEFAULT_PORT = 9101;
 
 const MAX_CONTROL_BYTES = 1024;
-const CONTROL_HEADERS = Object.freeze({
-  'x-menorah-compose-project': EXPECTED_PROJECT,
-  'x-menorah-environment-id': EXPECTED_ENVIRONMENT_ID,
-});
+const SUPPORTED_IDENTITIES = Object.freeze([
+  Object.freeze({
+    project: EXPECTED_PROJECT,
+    environmentId: EXPECTED_ENVIRONMENT_ID,
+  }),
+  ...SERVER_STAGING_PROJECTS.map((project) => Object.freeze({
+    project,
+    environmentId: SERVER_STAGING_ENVIRONMENT_ID,
+  })),
+]);
 
 const COUNTER_DELTAS = Object.freeze({
   authUser: 25,
@@ -356,8 +367,8 @@ const writeText = (response, statusCode, body, contentType) => {
   response.end(body);
 };
 
-const hasControlHeaders = (request) => (
-  Object.entries(CONTROL_HEADERS)
+const hasControlHeaders = (request, controlHeaders) => (
+  Object.entries(controlHeaders)
     .every(([name, value]) => request.headers[name] === value)
 );
 
@@ -404,7 +415,21 @@ const actionFromRequest = async (request) => {
 
 export const createAlertFixtureServer = ({
   state = createFixtureState(),
-} = {}) => http.createServer(async (request, response) => {
+  project = EXPECTED_PROJECT,
+  environmentId = EXPECTED_ENVIRONMENT_ID,
+} = {}) => {
+  if (!SUPPORTED_IDENTITIES.some((identity) => (
+    identity.project === project
+    && identity.environmentId === environmentId
+  ))) {
+    throw new Error('Alert fixture refused invalid isolated identity');
+  }
+  const controlHeaders = Object.freeze({
+    'x-menorah-compose-project': project,
+    'x-menorah-environment-id': environmentId,
+  });
+
+  return http.createServer(async (request, response) => {
   if (request.method === 'GET' && request.url === '/healthz') {
     writeText(response, 200, 'ok\n', 'text/plain; charset=utf-8');
     return;
@@ -425,7 +450,7 @@ export const createAlertFixtureServer = ({
     writeEmpty(response, 404);
     return;
   }
-  if (!hasControlHeaders(request)) {
+  if (!hasControlHeaders(request, controlHeaders)) {
     writeEmpty(response, 403);
     return;
   }
@@ -441,7 +466,8 @@ export const createAlertFixtureServer = ({
   } catch {
     writeEmpty(response, 400);
   }
-});
+  });
+};
 
 const isMain = (
   process.argv[1]
@@ -453,16 +479,26 @@ if (isMain) {
     process.env.ALERT_FIXTURE_PORT || String(DEFAULT_PORT),
     10,
   );
+  const localEnvironmentId =
+    process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID;
+  const serverEnvironmentId =
+    process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID;
   if (
-    process.env.COMPOSE_PROJECT_NAME !== EXPECTED_PROJECT
-    || process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID
-      !== EXPECTED_ENVIRONMENT_ID
-    || !Number.isInteger(port)
+    !Number.isInteger(port)
     || port !== DEFAULT_PORT
+    || Boolean(localEnvironmentId) === Boolean(serverEnvironmentId)
   ) {
     process.stderr.write('Local alert fixture refused invalid identity\n');
     process.exit(1);
   }
 
-  createAlertFixtureServer().listen(port, '0.0.0.0');
+  try {
+    createAlertFixtureServer({
+      project: process.env.COMPOSE_PROJECT_NAME,
+      environmentId: localEnvironmentId || serverEnvironmentId,
+    }).listen(port, '0.0.0.0');
+  } catch {
+    process.stderr.write('Local alert fixture refused invalid identity\n');
+    process.exit(1);
+  }
 }

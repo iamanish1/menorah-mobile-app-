@@ -1,0 +1,107 @@
+{
+	admin off
+}
+
+(staging_proxy) {
+	# Never promote browser-supplied forwarding or geolocation headers.
+	request_header -Forwarded
+	request_header -X-Forwarded-For
+	request_header -X-Forwarded-Proto
+	request_header -X-Forwarded-Host
+	request_header -X-Forwarded-Port
+	request_header -X-Real-IP
+	request_header -True-Client-IP
+	request_header -CF-Connecting-IP
+	request_header -CF-IPCountry
+	request_header -X-Vercel-IP-Country
+	request_header -X-Country-Code
+	request_header -X-Geo-Country
+
+	reverse_proxy {args[0]} {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto https
+	}
+}
+
+(staging_routes) {
+	encode gzip zstd
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
+		-Server
+	}
+
+	log {
+		output file /var/log/menorah/caddy-access.log {
+			roll_size 10MiB
+			roll_keep 3
+			roll_keep_for 168h
+		}
+		format filter {
+			request>uri replace REDACTED
+			request>headers>Cookie delete
+			request>headers>Authorization delete
+			request>headers>Proxy-Authorization delete
+			wrap json
+		}
+	}
+
+	@health path /healthz
+	@private_diagnostics path /metrics/* /health/deep
+	@user host staging.menorah.me www.staging.menorah.me app.staging.menorah.me
+	@admin host admin.staging.menorah.me
+	@counsellor host counsellor.staging.menorah.me
+	@api_ios host api-ios.staging.menorah.me
+	@api_android host api-android.staging.menorah.me
+	@api_web host api-web.staging.menorah.me
+	@api_admin host api-admin.staging.menorah.me
+	@calls host calls.staging.menorah.me
+
+	route {
+		respond @health "ok" 200
+		respond @private_diagnostics 404
+
+		handle @user {
+			import staging_proxy staging-user-web-app:3002
+		}
+		handle @admin {
+			import staging_proxy staging-admin-panel:3003
+		}
+		handle @counsellor {
+			import staging_proxy staging-web-app:3001
+		}
+		handle @api_ios {
+			import staging_proxy staging-api-ios:8080
+		}
+		handle @api_android {
+			import staging_proxy staging-api-android:8080
+		}
+		handle @api_web {
+			import staging_proxy staging-api-web:8080
+		}
+		handle @api_admin {
+			import staging_proxy staging-api-admin:8080
+		}
+		handle @calls {
+			import staging_proxy staging-livekit:7880
+		}
+		handle {
+			respond 421
+		}
+	}
+}
+
+# Host-managed cloudflared connects to the loopback-only :80 publication.
+http://staging.menorah.me, http://www.staging.menorah.me, http://app.staging.menorah.me, http://admin.staging.menorah.me, http://counsellor.staging.menorah.me, http://api-ios.staging.menorah.me, http://api-android.staging.menorah.me, http://api-web.staging.menorah.me, http://api-admin.staging.menorah.me, http://calls.staging.menorah.me {
+	import staging_routes
+}
+
+# Local diagnostics use Caddy's isolated internal CA on loopback :38443.
+https://staging.menorah.me, https://www.staging.menorah.me, https://app.staging.menorah.me, https://admin.staging.menorah.me, https://counsellor.staging.menorah.me, https://api-ios.staging.menorah.me, https://api-android.staging.menorah.me, https://api-web.staging.menorah.me, https://api-admin.staging.menorah.me, https://calls.staging.menorah.me {
+	tls internal
+	import staging_routes
+}

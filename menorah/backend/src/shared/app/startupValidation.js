@@ -6,6 +6,7 @@ const CANONICAL_CHECKOUT_RETURN_URL =
 const {
   DEPLOYMENT_ENVIRONMENTS,
   LOCAL_STAGING_HTTPS_PORT_ENV,
+  SERVER_STAGING_ENVIRONMENT_ID_ENV,
   getDeploymentEnvironment,
   validateStagingEnvironmentIsolation,
 } = require('../../config/deploymentEnvironment');
@@ -291,6 +292,14 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
   ) {
     errors.push(
       `${LOCAL_STAGING_HTTPS_PORT_ENV} must be unset outside staging`
+    );
+  }
+  if (
+    deploymentEnvironment !== DEPLOYMENT_ENVIRONMENTS.STAGING
+    && String(process.env[SERVER_STAGING_ENVIRONMENT_ID_ENV] || '').trim()
+  ) {
+    errors.push(
+      `${SERVER_STAGING_ENVIRONMENT_ID_ENV} must be unset outside staging`
     );
   }
 
