@@ -17,6 +17,7 @@ import {
   validatePostMigrationResume,
   validateProductionComposeReleaseSafety,
   validateRecordedMigration,
+  validateRunbook,
   validateRuntimeDirectoryPreparation,
   validateUpdateScript,
   validateWorkflow,
@@ -529,6 +530,61 @@ test('rejects a security workflow action pinned only to a moving tag', () => {
       releaseEvidenceTemplate,
     ),
     /security action must be commit-pinned/,
+  );
+});
+
+test('requires all three stable checks in governance and the operator runbook', () => {
+  const securityWorkflow = parse(rawSecurityWorkflow);
+  assert.doesNotThrow(() =>
+    validateGovernance(
+      securityWorkflow,
+      branchProtection,
+      pullRequestTemplate,
+      releaseEvidenceTemplate,
+    ),
+  );
+  assert.doesNotThrow(() => validateRunbook(operatorRunbook));
+
+  const branchWithoutFunctionalGate = branchProtection.replace(
+    '  - `Required functional release gates`\n',
+    '',
+  );
+  assert.notEqual(branchWithoutFunctionalGate, branchProtection);
+  assert.throws(
+    () =>
+      validateGovernance(
+        securityWorkflow,
+        branchWithoutFunctionalGate,
+        pullRequestTemplate,
+        releaseEvidenceTemplate,
+      ),
+    /stable Required functional release gates check/,
+  );
+
+  const evidenceWithoutFunctionalGate = releaseEvidenceTemplate.replace(
+    '- `Required functional release gates` run:\n',
+    '',
+  );
+  assert.notEqual(evidenceWithoutFunctionalGate, releaseEvidenceTemplate);
+  assert.throws(
+    () =>
+      validateGovernance(
+        securityWorkflow,
+        branchProtection,
+        pullRequestTemplate,
+        evidenceWithoutFunctionalGate,
+      ),
+    /stable Required functional release gates check/,
+  );
+
+  const runbookWithoutFunctionalGate = operatorRunbook.replaceAll(
+    '`Required functional release gates`',
+    '`Omitted functional release gate`',
+  );
+  assert.notEqual(runbookWithoutFunctionalGate, operatorRunbook);
+  assert.throws(
+    () => validateRunbook(runbookWithoutFunctionalGate),
+    /all three stable checks/,
   );
 });
 

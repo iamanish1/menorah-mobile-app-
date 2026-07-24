@@ -32,6 +32,8 @@ readiness rerun requires `candidate_sha` to be an explicitly entered,
 lowercase, full 40-character reviewed commit SHA; it does not accept a branch
 name as release identity.
 
+The stable `Required functional release gates` check aggregates the exact-SHA
+backend, disposable integration, web, mobile, and release-infrastructure jobs.
 The stable `Required security gates` check aggregates the secret-history,
 SAST, dependency, container, and mobile diagnostics jobs. Recommended external
 branch rules and evidence templates live in `.github/BRANCH_PROTECTION.md`,
@@ -61,10 +63,10 @@ treated as failover automation.
 > Quarantine or decommission remaining legacy Cloud Run services only through a
 > separately approved change with retention and recovery evidence.
 
-> INFRASTRUCTURE ACTION: require the stable `Production release readiness` and
-> `Required security gates` checks in branch protection for `main` and
-> protected `release/**` branches. Repository files cannot create or verify
-> those external settings.
+> INFRASTRUCTURE ACTION: require the stable `Production release readiness`,
+> `Required functional release gates`, and `Required security gates` checks in
+> branch protection for `main` and protected `release/**` branches. Repository
+> files cannot create or verify those external settings.
 
 > INFRASTRUCTURE ACTION: install operator-controlled LiveKit, Cloudflare Tunnel,
 > and Alertmanager files outside the checkout with no permissions for other
@@ -78,7 +80,8 @@ treated as failover automation.
 
 Before opening the maintenance window:
 
-- The exact commit passed review and the `Production release readiness` check.
+- The exact commit passed review and the `Production release readiness`,
+  `Required functional release gates`, and `Required security gates` checks.
 - The release SHA is the current tip of the reviewed remote branch and a
   fast-forward descendant of the recorded deployed commit. A moving branch
   name by itself is not release approval.

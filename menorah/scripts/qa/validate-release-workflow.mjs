@@ -60,6 +60,12 @@ const paths = {
   operatorRunbook: resolve(REPO_ROOT, 'menorah/docs/production-update-runbook.md'),
 };
 
+const REQUIRED_STABLE_CHECKS = [
+  'Production release readiness',
+  'Required functional release gates',
+  'Required security gates',
+];
+
 const normalizeLineEndings = (value) =>
   String(value || '').replace(/\r\n?/g, '\n');
 const read = async (path) =>
@@ -312,8 +318,18 @@ function validateGovernance(
   );
 
   requirePattern(branchProtection, /`main` and `release\/\*\*`/, 'branch rules must cover production branches');
-  requirePattern(branchProtection, /`Production release readiness`/, 'branch rules must require the release readiness check');
-  requirePattern(branchProtection, /`Required security gates`/, 'branch rules must require the stable security check');
+  for (const checkName of REQUIRED_STABLE_CHECKS) {
+    requirePattern(
+      branchProtection,
+      new RegExp(`^\\s+- \`${checkName}\`\\s*$`, 'm'),
+      `branch rules must require the stable ${checkName} check`,
+    );
+    requirePattern(
+      releaseEvidenceTemplate,
+      new RegExp(`^- \`${checkName}\` run:\\s*$`, 'm'),
+      `release evidence must record the stable ${checkName} check`,
+    );
+  }
   requirePattern(branchProtection, /Block force pushes and branch deletion/, 'branch rules must prohibit history destruction');
   requirePattern(branchProtection, /> OWNER ACTION:/, 'external GitHub settings must remain an owner action');
   requirePattern(
@@ -1372,7 +1388,11 @@ function validateRunbook(runbook) {
   requirePattern(runbook, /DEPLOY_RELEASE_SHA/, 'runbook must require the reviewed release SHA');
   requirePattern(runbook, /DEPLOY_MIGRATION_APPROVED_SHA/, 'runbook must document migration approval');
   requirePattern(runbook, /manual[\s\S]*candidate_sha[\s\S]*full 40-character reviewed commit SHA/i, 'runbook must document immutable manual CI input');
-  requirePattern(runbook, /`Required security gates`/, 'runbook must identify the stable security check');
+  requirePattern(
+    runbook,
+    /> INFRASTRUCTURE ACTION:[\s\S]{0,250}require the stable `Production release readiness`[\s\S]{0,100}`Required functional release gates`[\s\S]{0,100}`Required security gates`[\s\S]{0,100}checks in[\s\S]{0,20}branch protection/i,
+    'runbook must require all three stable checks in branch protection',
+  );
   requirePattern(runbook, /One-time guarded-tooling adoption/, 'runbook must document first guarded-tooling adoption');
   requirePattern(runbook, /git hash-object/, 'reviewed updater blob identity must be verified');
   requirePattern(runbook, /menorah\/backend\/cloudbuild\.yaml/, 'runbook must classify the legacy Cloud Build definition');
@@ -1551,6 +1571,7 @@ export {
   validatePostMigrationResume,
   validateProductionComposeReleaseSafety,
   validateRecordedMigration,
+  validateRunbook,
   validateRuntimeDirectoryPreparation,
   validateWorkflow,
 };

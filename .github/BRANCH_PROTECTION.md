@@ -27,7 +27,7 @@ Protect production release tags such as `v*` against update and deletion. A tag
 must resolve to the exact reviewed commit recorded in the release evidence.
 
 > OWNER ACTION: create or update the GitHub rulesets, select the responsible
-> reviewers and emergency bypass maintainers, and verify both required check
+> reviewers and emergency bypass maintainers, and verify all three required check
 > names from a pull request before enforcing them. Repository files cannot
 > create, inspect, or attest to these settings.
 
