@@ -576,11 +576,18 @@ test('runtime selectors reach backend and mail-capture services as an exact pair
     assert.match(source, /MENORAH_SERVER_STAGING_ENVIRONMENT_ID:/);
     assert.match(source, /MENORAH_SERVER_STAGING_PROJECT_NAME:/);
   }
+  const selectorTriple =
+    /MENORAH_SERVER_STAGING_ENVIRONMENT_ID:[\s\S]*MENORAH_SERVER_STAGING_PROJECT_NAME:[\s\S]*MENORAH_SERVER_STAGING_HTTPS_PORT:/;
   for (const source of [userWeb, counsellorWeb]) {
-    assert.match(
-      source,
-      /MENORAH_SERVER_STAGING_ENVIRONMENT_ID:[\s\S]*MENORAH_SERVER_STAGING_PROJECT_NAME:[\s\S]*MENORAH_SERVER_STAGING_HTTPS_PORT:/,
-    );
+    const build = source.match(
+      /^    build:[\s\S]*?(?=^    environment:)/m,
+    )?.[0] || '';
+    const runtimeEnvironment = source.match(
+      /^    environment:[\s\S]*?(?=^    [A-Za-z][A-Za-z0-9_-]*:)/m,
+    )?.[0] || '';
+
+    assert.match(build, selectorTriple);
+    assert.match(runtimeEnvironment, selectorTriple);
   }
   assert.match(migrate, /profiles: \["migration", "seed"\]/);
 });

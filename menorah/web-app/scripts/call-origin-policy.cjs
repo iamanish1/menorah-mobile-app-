@@ -21,22 +21,33 @@ function readCallOrigins(
   const localStagingPort = String(
     environment.MENORAH_LOCAL_STAGING_HTTPS_PORT || ''
   ).trim();
+  const serverStagingEnvironmentId = String(
+    environment.MENORAH_SERVER_STAGING_ENVIRONMENT_ID || ''
+  ).trim();
+  const serverStagingProjectName = String(
+    environment.MENORAH_SERVER_STAGING_PROJECT_NAME || ''
+  ).trim();
+  const serverStagingPort = String(
+    environment.MENORAH_SERVER_STAGING_HTTPS_PORT || ''
+  ).trim();
   const isExactLocalStagingOrigin = (
     environment.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID
       === 'menorah-local-staging-v1'
     && localStagingPort === '28443'
+    && !serverStagingEnvironmentId
+    && !serverStagingProjectName
+    && !serverStagingPort
     && parsed.port === localStagingPort
     && parsed.hostname.endsWith('.staging.localhost')
   );
-  const serverStagingPort = String(
-    environment.MENORAH_SERVER_STAGING_HTTPS_PORT || ''
-  ).trim();
   const isExactServerStagingValidationOrigin = (
-    environment.MENORAH_SERVER_STAGING_ENVIRONMENT_ID
-      === 'menorah-server-staging-v1'
-    && environment.MENORAH_SERVER_STAGING_PROJECT_NAME
-      === 'menorah-server-staging-validation'
+    serverStagingEnvironmentId === 'menorah-server-staging-v1'
+    && serverStagingProjectName === 'menorah-server-staging-validation'
     && serverStagingPort === '38443'
+    && !String(
+      environment.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID || ''
+    ).trim()
+    && !localStagingPort
     && parsed.port === serverStagingPort
     && parsed.hostname === 'calls.staging.menorah.me'
   );

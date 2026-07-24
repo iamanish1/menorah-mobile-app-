@@ -54,6 +54,26 @@ for (const [index, { readCallOrigins }] of policies.entries()) {
         }
       )
     );
+    for (const [key, value] of Object.entries({
+      MENORAH_SERVER_STAGING_ENVIRONMENT_ID:
+        'menorah-server-staging-v1',
+      MENORAH_SERVER_STAGING_PROJECT_NAME:
+        'menorah-server-staging-validation',
+      MENORAH_SERVER_STAGING_HTTPS_PORT: '38443',
+    })) {
+      assert.throws(
+        () => readCallOrigins(
+          'wss://calls.staging.localhost:28443',
+          {
+            required: true,
+            environment: {
+              ...environment,
+              [key]: value,
+            },
+          }
+        )
+      );
+    }
   });
 
   test(`web call-origin policy ${index + 1} accepts only the exact server-staging validation origin`, () => {
@@ -94,6 +114,24 @@ for (const [index, { readCallOrigins }] of policies.entries()) {
         () => readCallOrigins(
           'wss://calls.staging.menorah.me:38443',
           { required: true, environment: invalidEnvironment }
+        )
+      );
+    }
+    for (const [key, value] of Object.entries({
+      MENORAH_LOCAL_STAGING_ENVIRONMENT_ID:
+        'menorah-local-staging-v1',
+      MENORAH_LOCAL_STAGING_HTTPS_PORT: '28443',
+    })) {
+      assert.throws(
+        () => readCallOrigins(
+          'wss://calls.staging.menorah.me:38443',
+          {
+            required: true,
+            environment: {
+              ...environment,
+              [key]: value,
+            },
+          }
         )
       );
     }
