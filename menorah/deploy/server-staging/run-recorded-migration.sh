@@ -16,6 +16,7 @@ readonly ALERTMANAGER_RELEASE_PREFLIGHT="${SCRIPT_DIR}/assert-alertmanager-relea
 readonly STATE_ROOT='/opt/menorah-staging/deploy-state'
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
 readonly CURRENT_SHA_FILE='/opt/menorah-staging/deploy-state/current-sha'
+readonly DEPLOY_LOCK='/opt/menorah-staging/deploy-state/.deploy.lock'
 readonly MIGRATION_LOCK='/opt/menorah-staging/deploy-state/.migration.lock'
 readonly APPLIED_MARKER='/opt/menorah-staging/deploy-state/migration-applied-sha'
 readonly IN_PROGRESS_MARKER='/opt/menorah-staging/deploy-state/migration-in-progress-sha'
@@ -28,6 +29,31 @@ readonly RESTORE_REVIEW='/opt/menorah-staging/deploy-state/recovery/restore-requ
 fail() {
   printf '%s\n' "Server-staging migration refused: $*" >&2
   exit 1
+}
+
+acquire_shared_deploy_lock() {
+  local lock_fd_target
+
+  [[ ! -L "${DEPLOY_LOCK}" ]] \
+    || fail 'deployment lock must not be a symlink'
+
+  if [[ -e '/proc/self/fd/9' ]]; then
+    lock_fd_target="$(realpath -e -- '/proc/self/fd/9')" \
+      || fail 'unable to resolve inherited deployment-lock descriptor'
+    [[ "${lock_fd_target}" == "${DEPLOY_LOCK}" ]] \
+      || fail 'inherited descriptor 9 is not the staging deployment lock'
+  else
+    exec 9>>"${DEPLOY_LOCK}"
+  fi
+
+  [[ -f "${DEPLOY_LOCK}" && ! -L "${DEPLOY_LOCK}" ]] \
+    || fail 'deployment lock must be a regular non-symlink file'
+  lock_fd_target="$(realpath -e -- '/proc/self/fd/9')" \
+    || fail 'unable to resolve deployment-lock descriptor'
+  [[ "${lock_fd_target}" == "${DEPLOY_LOCK}" ]] \
+    || fail 'deployment-lock descriptor escaped the staging state root'
+  flock -n 9 \
+    || fail 'another staging deployment, migration, backup, restore, or rollback is running'
 }
 
 read_sha_marker() {
@@ -214,6 +240,11 @@ actual_script_blob="$(
 )"
 [[ "${actual_script_blob}" == "${expected_script_blob}" ]] \
   || fail 'migration script is not from the exact recorded commit'
+
+# Deploy invokes this script while holding descriptor 9. A direct migration
+# invocation opens the same shared lock itself. Reusing only the exact inherited
+# descriptor avoids self-deadlock without accepting an arbitrary caller-owned fd.
+acquire_shared_deploy_lock
 
 for blocking_marker in \
   "${IDENTITY_MARKER}" \
