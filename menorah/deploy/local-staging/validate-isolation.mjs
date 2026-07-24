@@ -1005,7 +1005,7 @@ export const validateRenderedCompose = (
       isIngress
       && (
         network?.external === true
-        || network?.internal !== false
+        || network?.internal === true
         || network?.driver !== 'bridge'
         || JSON.stringify(sortedDriverOptions)
           !== JSON.stringify(expectedSortedDriverOptions)
