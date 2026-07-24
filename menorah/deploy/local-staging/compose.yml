@@ -1338,8 +1338,7 @@ networks:
     ipam:
       config:
         - subnet: 10.254.240.0/24
-          aux_addresses:
-            caddy: 10.254.240.10
+          ip_range: 10.254.240.128/25
   data:
     name: menorah-local-staging-data
     internal: true

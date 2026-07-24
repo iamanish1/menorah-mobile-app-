@@ -589,12 +589,12 @@ test('replica initialization uses the connected database handle', () => {
   );
 });
 
-test('Caddy proxy address is reserved from dynamic network allocation', () => {
+test('Caddy proxy address is outside the dynamic network allocation range', () => {
   assert.match(composeSource, /TRUST_PROXY: 10\.254\.240\.10/);
   assert.match(composeSource, /ipv4_address: 10\.254\.240\.10/);
   assert.match(
     composeSource,
-    /subnet: 10\.254\.240\.0\/24\r?\n\s+aux_addresses:\r?\n\s+caddy: 10\.254\.240\.10/,
+    /subnet: 10\.254\.240\.0\/24\r?\n\s+ip_range: 10\.254\.240\.128\/25/,
   );
 });
 
