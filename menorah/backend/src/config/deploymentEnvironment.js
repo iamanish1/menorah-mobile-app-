@@ -122,6 +122,12 @@ const isExactServerStagingSyntheticRuntime = (env = process.env) => (
   && hasExactServerStagingApplicationMongoTarget(env)
 );
 
+const isExactRealServerStagingSyntheticRuntime = (env = process.env) => (
+  isExactServerStagingSyntheticRuntime(env)
+  && String(env[SERVER_STAGING_PROJECT_ENV] || '').trim()
+    === 'menorah-staging'
+);
+
 const addExactCsvSetErrors = ({ key, value, expected, errors }) => {
   const entries = String(value || '').split(',');
   const actual = new Set(entries);
@@ -373,6 +379,7 @@ module.exports = {
   SERVER_STAGING_VALIDATION_HTTPS_PORT,
   STAGING_HOST_ENV_KEYS,
   getDeploymentEnvironment,
+  isExactRealServerStagingSyntheticRuntime,
   isExactServerStagingValidationSelector,
   isExactServerStagingSyntheticRuntime,
   validateStagingEnvironmentIsolation,

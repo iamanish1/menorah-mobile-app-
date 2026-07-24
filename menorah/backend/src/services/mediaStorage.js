@@ -1,11 +1,16 @@
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
+const {
+  isExactRealServerStagingSyntheticRuntime,
+} = require('../config/deploymentEnvironment');
 const { uploadBuffer } = require('../utils/cloudinary');
 
 const STORAGE_VERSION = 1;
 const SUPPORTED_BACKENDS = new Set(['local', 'cloudinary']);
 const PRODUCTION_BACKEND = 'local';
+const SERVER_STAGING_CLOUDINARY_PREFIX =
+  'menorah-staging/menorah-server-staging-v1';
 
 const normalizeBaseUrl = (value) => {
   const raw = String(value || '').trim();
@@ -35,6 +40,7 @@ const readMediaStorageConfig = (env = process.env) => {
   const publicBaseUrl = normalizeBaseUrl(env.MEDIA_PUBLIC_BASE_URL);
   return {
     backend: backend || (env.NODE_ENV === 'production' ? '' : 'local'),
+    cloudinaryPrefix: String(env.CLOUDINARY_UPLOAD_PREFIX || '').trim(),
     publicBaseUrl,
     uploadRoot: path.resolve(process.cwd(), env.UPLOAD_PATH || './uploads'),
   };
@@ -48,9 +54,19 @@ const validateMediaStorageConfig = (env = process.env) => {
     errors.push('MEDIA_STORAGE_BACKEND must be exactly local or cloudinary');
   }
 
-  if (env.NODE_ENV === 'production' && config.backend !== PRODUCTION_BACKEND) {
+  const approvedServerStagingCloudinary = (
+    config.backend === 'cloudinary'
+    && isExactRealServerStagingSyntheticRuntime(env)
+    && config.cloudinaryPrefix === SERVER_STAGING_CLOUDINARY_PREFIX
+  );
+  if (
+    env.NODE_ENV === 'production'
+    && config.backend !== PRODUCTION_BACKEND
+    && !approvedServerStagingCloudinary
+  ) {
     errors.push(
-      'MEDIA_STORAGE_BACKEND must equal local in production so managed media is included in the signed backup and restore contract'
+      'MEDIA_STORAGE_BACKEND must equal local in production except for the '
+      + 'exact real synthetic server-staging Cloudinary contract'
     );
   }
 
@@ -72,10 +88,24 @@ const validateMediaStorageConfig = (env = process.env) => {
 
   if (config.backend === 'cloudinary') {
     ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'].forEach((key) => {
-      if (!String(env[key] || '').trim()) {
+      const value = String(env[key] || '').trim();
+      if (
+        !value
+        || /^disabled-/i.test(value)
+        || /(?:replace|placeholder|example|your[-_])/i.test(value)
+      ) {
         errors.push(`${key} is required for Cloudinary media storage`);
       }
     });
+    if (
+      env.NODE_ENV === 'production'
+      && config.cloudinaryPrefix !== SERVER_STAGING_CLOUDINARY_PREFIX
+    ) {
+      errors.push(
+        `CLOUDINARY_UPLOAD_PREFIX must equal ${SERVER_STAGING_CLOUDINARY_PREFIX} `
+        + 'for server-staging Cloudinary media'
+      );
+    }
   }
 
   return { config, errors };
@@ -99,6 +129,43 @@ const safeExtension = (value) => {
     throw new Error('Media extension must be an explicit safe extension');
   }
   return normalized;
+};
+
+const safeCloudinaryFolder = ({
+  configuredPrefix,
+  requestedFolder,
+  service,
+  category,
+}) => {
+  if (configuredPrefix !== SERVER_STAGING_CLOUDINARY_PREFIX) {
+    throw new Error('Cloudinary staging prefix is not approved');
+  }
+  const requested = String(
+    requestedFolder || `${service}/${category}`
+  ).trim().replaceAll('\\', '/');
+  const prefixWithSlash = `${configuredPrefix}/`;
+  const relative = requested.startsWith(prefixWithSlash)
+    ? requested.slice(prefixWithSlash.length)
+    : (
+      requested.startsWith('menorah/')
+        ? requested.slice('menorah/'.length)
+        : requested
+    );
+  const segments = relative.split('/');
+  if (
+    segments.length === 0
+    || segments.some(
+      (segment) => (
+        !segment
+        || segment === '.'
+        || segment === '..'
+        || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(segment)
+      )
+    )
+  ) {
+    throw new Error('Cloudinary folder must contain only safe relative segments');
+  }
+  return `${configuredPrefix}/${segments.join('/')}`;
 };
 
 const assertWithinRoot = (root, candidate) => {
@@ -213,16 +280,38 @@ const storeMediaBuffer = async (
   const objectKey = `${safeService}/${safeCategory}/${basename}${safeSuffix}`;
 
   if (config.backend === 'cloudinary') {
+    const approvedServerStagingCloudinary =
+      isExactRealServerStagingSyntheticRuntime(process.env);
+    const resolvedCloudinaryFolder = approvedServerStagingCloudinary
+      ? safeCloudinaryFolder({
+        configuredPrefix: config.cloudinaryPrefix,
+        requestedFolder: cloudinaryFolder,
+        service: safeService,
+        category: safeCategory,
+      })
+      : (
+        cloudinaryFolder
+        || `menorah/${safeService}/${safeCategory}`
+      );
     const result = await uploadBuffer(buffer, {
-      folder: cloudinaryFolder || `menorah/${safeService}/${safeCategory}`,
+      folder: resolvedCloudinaryFolder,
       resource_type: cloudinaryResourceType,
       public_id: basename,
       overwrite: false,
       unique_filename: false,
       invalidate: false,
     });
-    const publicId = result.public_id
-      || `${cloudinaryFolder || `menorah/${safeService}/${safeCategory}`}/${basename}`;
+    const publicId = String(
+      result.public_id || `${resolvedCloudinaryFolder}/${basename}`
+    );
+    if (
+      approvedServerStagingCloudinary
+      && !publicId.startsWith(`${SERVER_STAGING_CLOUDINARY_PREFIX}/`)
+    ) {
+      throw new Error(
+        'Cloudinary returned a public_id outside the approved server-staging prefix'
+      );
+    }
     return {
       url: result.secure_url,
       metadata: buildStorageMetadata({
@@ -259,9 +348,11 @@ const storeMediaBuffer = async (
 
 module.exports = {
   PRODUCTION_BACKEND,
+  SERVER_STAGING_CLOUDINARY_PREFIX,
   STORAGE_VERSION,
   normalizeBaseUrl,
   readMediaStorageConfig,
+  safeCloudinaryFolder,
   storeMediaBuffer,
   validateMediaStorageConfig,
   writeImmutableFile,

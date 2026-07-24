@@ -174,6 +174,40 @@ describe('startup validation', () => {
     });
   };
 
+  const configureExactSyntheticServerStagingEnvironment = ({
+    project = 'menorah-staging',
+  } = {}) => {
+    configureServerStagingEnvironment({ project });
+    Object.assign(process.env, {
+      SERVICE_RUNTIME: 'server-staging',
+      MENORAH_SYNTHETIC_DATA_ONLY: 'true',
+      MONGODB_URI:
+        'mongodb://menorah-staging-app:synthetic@'
+        + 'staging-mongo-primary:27017/menorah_staging'
+        + '?replicaSet=menorah-staging-rs'
+        + '&authSource=admin&retryWrites=true',
+      MONGODB_REPLICA_SET_NAME: 'menorah-staging-rs',
+      MONGODB_READ_PREFERENCE: 'primaryPreferred',
+      MONGODB_RETRY_WRITES: 'true',
+      SOCIAL_STUDIO_ENABLED: 'false',
+      SOCIAL_STUDIO_AUTO_PUBLISH: 'false',
+      ENABLE_SOCIAL_SCHEDULER: 'false',
+      APPLE_SIGN_IN_ENABLED: 'false',
+      RAZORPAY_MODE: 'test',
+      RAZORPAY_X_MODE: 'test',
+    });
+    [
+      'RAZORPAY_KEY_ID',
+      'RAZORPAY_KEY_SECRET',
+      'RAZORPAY_WEBHOOK_SECRET',
+      'RAZORPAY_WEBHOOK_SECRET_PREVIOUS',
+      'RAZORPAY_X_KEY_ID',
+      'RAZORPAY_X_KEY_SECRET',
+      'RAZORPAY_X_WEBHOOK_SECRET',
+      'RAZORPAY_PAYOUT_ACCOUNT_NUMBER',
+    ].forEach((key) => delete process.env[key]);
+  };
+
   beforeEach(() => {
     process.env = {
       ...originalEnv,
@@ -692,6 +726,196 @@ describe('startup validation', () => {
     expect(() => validateStartupEnv({
       serviceName: 'api-web',
     })).not.toThrow();
+  });
+
+  test('accepts explicit disabled providers in exact synthetic server staging', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-ios',
+      requirePaymentEnv: false,
+    })).not.toThrow();
+  });
+
+  test.each([
+    ['SOCIAL_STUDIO_ENABLED', undefined],
+    ['SOCIAL_STUDIO_ENABLED', 'true'],
+    ['SOCIAL_STUDIO_AUTO_PUBLISH', undefined],
+    ['SOCIAL_STUDIO_AUTO_PUBLISH', 'true'],
+    ['ENABLE_SOCIAL_SCHEDULER', undefined],
+    ['ENABLE_SOCIAL_SCHEDULER', 'true'],
+  ])('requires exact social disablement in synthetic server staging: %s=%s', (
+    key,
+    value
+  ) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-web',
+      requirePaymentEnv: false,
+    })).toThrow(new RegExp(`${key} must equal false`));
+  });
+
+  test.each(['api-ios', 'worker'])(
+    'requires Apple sign-in disabled for %s in synthetic server staging',
+    (serviceName) => {
+      process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+      configureExactSyntheticServerStagingEnvironment();
+      process.env.APPLE_SIGN_IN_ENABLED = 'true';
+
+      expect(() => validateStartupEnv({
+        serviceName,
+        requirePaymentEnv: false,
+      })).toThrow(/APPLE_SIGN_IN_ENABLED must equal false/);
+    }
+  );
+
+  test('requires Razorpay test mode when staging booking initiation is enabled', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    process.env.BOOKING_PAYMENTS_ENABLED = 'true';
+    process.env.PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS = '5';
+    process.env.RAZORPAY_MODE = 'live';
+    process.env.RAZORPAY_KEY_ID = 'rzp_test_A1b2C3d4E5f6G7';
+    process.env.RAZORPAY_KEY_SECRET =
+      'Booking-A1b2C3d4E5f6G7h8';
+    process.env.RAZORPAY_WEBHOOK_SECRET =
+      'Booking-Webhook-A1b2C3d4E5';
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-ios',
+    })).toThrow(/RAZORPAY_MODE must equal test/);
+  });
+
+  test('requires RazorpayX test mode when staging payouts are enabled', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    process.env.PAYOUTS_ENABLED = 'true';
+    process.env.RAZORPAY_X_MODE = 'live';
+    process.env.RAZORPAY_X_KEY_ID = 'rzp_test_X1b2C3d4E5f6G7';
+    process.env.RAZORPAY_X_KEY_SECRET =
+      'RazorpayX-A1b2C3d4E5f6G7h8';
+    process.env.RAZORPAY_X_WEBHOOK_SECRET =
+      'RazorpayX-Webhook-A1b2C3d4E5';
+    process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER = '787808008031';
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-admin',
+    })).toThrow(/RAZORPAY_X_MODE must equal test/);
+  });
+
+  test('scopes enabled booking credentials to api-ios in server staging', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    process.env.BOOKING_PAYMENTS_ENABLED = 'true';
+    process.env.PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS = '5';
+    process.env.RAZORPAY_KEY_ID = 'rzp_test_A1b2C3d4E5f6G7';
+    process.env.RAZORPAY_KEY_SECRET =
+      'Booking-A1b2C3d4E5f6G7h8';
+    process.env.RAZORPAY_WEBHOOK_SECRET =
+      'Booking-Webhook-A1b2C3d4E5';
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-ios',
+    })).not.toThrow();
+  });
+
+  test('scopes enabled payout credentials to api-admin in server staging', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    process.env.PAYOUTS_ENABLED = 'true';
+    process.env.RAZORPAY_X_KEY_ID = 'rzp_test_X1b2C3d4E5f6G7';
+    process.env.RAZORPAY_X_KEY_SECRET =
+      'RazorpayX-A1b2C3d4E5f6G7h8';
+    process.env.RAZORPAY_X_WEBHOOK_SECRET =
+      'RazorpayX-Webhook-A1b2C3d4E5';
+    process.env.RAZORPAY_PAYOUT_ACCOUNT_NUMBER = '787808008031';
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-admin',
+    })).not.toThrow();
+  });
+
+  test.each([
+    ['api-web', false],
+    ['api-android', false],
+    ['worker', true],
+  ])('boots %s server staging without either provider secret set', (
+    serviceName,
+    omitPaymentValidation
+  ) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+
+    expect(() => validateStartupEnv({
+      serviceName,
+      requirePaymentEnv: !omitPaymentValidation,
+    })).not.toThrow();
+  });
+
+  test.each([
+    ['api-ios', 'RAZORPAY_X_WEBHOOK_SECRET', 'payout-secret'],
+    ['api-admin', 'RAZORPAY_WEBHOOK_SECRET', 'booking-secret'],
+    ['api-web', 'RAZORPAY_KEY_SECRET', 'booking-secret'],
+    ['api-android', 'RAZORPAY_X_KEY_SECRET', 'payout-secret'],
+    ['worker', 'RAZORPAY_KEY_SECRET', 'booking-secret'],
+  ])('rejects %s receiving cross-role provider value %s', (
+    serviceName,
+    key,
+    value
+  ) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    process.env[key] = value;
+
+    expect(() => validateStartupEnv({
+      serviceName,
+      requirePaymentEnv: serviceName !== 'worker',
+    })).toThrow(new RegExp(`${key} must be unset for ${serviceName}`));
+  });
+
+  test.each([
+    ['api-ios', 'RAZORPAY_KEY_SECRET'],
+    ['api-admin', 'RAZORPAY_X_WEBHOOK_SECRET'],
+  ])('rejects inactive %s provider credentials via %s', (
+    serviceName,
+    key
+  ) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    process.env[key] = 'inactive-provider-secret';
+
+    expect(() => validateStartupEnv({
+      serviceName,
+    })).toThrow(new RegExp(`${key} must be unset for ${serviceName}`));
+  });
+
+  test.each([
+    ['api-web', 'BOOKING_PAYMENTS_ENABLED'],
+    ['api-ios', 'PAYOUTS_ENABLED'],
+  ])('rejects %s enabling provider flag %s owned by another API', (
+    serviceName,
+    key
+  ) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureExactSyntheticServerStagingEnvironment();
+    process.env[key] = 'true';
+
+    expect(() => validateStartupEnv({
+      serviceName,
+    })).toThrow(new RegExp(`${key} must equal false outside`));
+  });
+
+  test('preserves ordinary production booking validation on api-admin', () => {
+    delete process.env.RAZORPAY_KEY_SECRET;
+
+    expect(() => validateStartupEnv({
+      serviceName: 'api-admin',
+    })).toThrow(/RAZORPAY_KEY_SECRET/);
   });
 
   test.each([

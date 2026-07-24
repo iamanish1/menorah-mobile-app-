@@ -10,6 +10,7 @@ const {
   SERVER_STAGING_VALIDATION_HTTPS_PORT,
   getDeploymentEnvironment,
   isExactServerStagingValidationSelector,
+  isExactServerStagingSyntheticRuntime,
   validateStagingEnvironmentIsolation,
 } = require('../../config/deploymentEnvironment');
 const { getTrustedWebSessionOrigins } = require('../../config/webSessions');
@@ -49,6 +50,21 @@ const {
 const {
   validateMediaStorageConfig,
 } = require('../../services/mediaStorage');
+
+const SERVER_STAGING_BOOKING_PAYMENT_SERVICE = 'api-ios';
+const SERVER_STAGING_PAYOUT_SERVICE = 'api-admin';
+const BOOKING_PAYMENT_PROVIDER_ENV_KEYS = Object.freeze([
+  'RAZORPAY_KEY_ID',
+  'RAZORPAY_KEY_SECRET',
+  'RAZORPAY_WEBHOOK_SECRET',
+  'RAZORPAY_WEBHOOK_SECRET_PREVIOUS',
+]);
+const PAYOUT_PROVIDER_ENV_KEYS = Object.freeze([
+  'RAZORPAY_X_KEY_ID',
+  'RAZORPAY_X_KEY_SECRET',
+  'RAZORPAY_X_WEBHOOK_SECRET',
+  'RAZORPAY_PAYOUT_ACCOUNT_NUMBER',
+]);
 
 const requireEnv = (key, errors) => {
   if (!process.env[key]) {
@@ -280,6 +296,121 @@ const validatePayoutConfiguration = ({ serviceName, errors }) => {
   }
 };
 
+const rejectScopedProviderValues = ({
+  keys,
+  serviceName,
+  ownerService,
+  reason,
+  errors,
+}) => {
+  keys.forEach((key) => {
+    if (String(process.env[key] || '').trim()) {
+      errors.push(
+        `${key} must be unset for ${serviceName} in synthetic server `
+        + `staging; ${ownerService} ${reason}`
+      );
+    }
+  });
+};
+
+const validateServerStagingPaymentScopes = ({
+  serviceName,
+  errors,
+}) => {
+  if (!isExactServerStagingSyntheticRuntime(process.env)) return false;
+
+  validatePaymentFeatureFlags(errors);
+
+  const bookingPaymentsEnabled =
+    process.env[BOOKING_PAYMENT_INITIATION_ENV] === 'true';
+  const payoutsEnabled =
+    process.env[PAYOUT_INITIATION_ENV] === 'true';
+  const ownsBookingPayments =
+    serviceName === SERVER_STAGING_BOOKING_PAYMENT_SERVICE;
+  const ownsPayouts = serviceName === SERVER_STAGING_PAYOUT_SERVICE;
+
+  if (!ownsBookingPayments) {
+    if (bookingPaymentsEnabled) {
+      errors.push(
+        `${BOOKING_PAYMENT_INITIATION_ENV} must equal false outside `
+        + `${SERVER_STAGING_BOOKING_PAYMENT_SERVICE} in synthetic `
+        + 'server staging'
+      );
+    }
+    rejectScopedProviderValues({
+      keys: BOOKING_PAYMENT_PROVIDER_ENV_KEYS,
+      serviceName,
+      ownerService: SERVER_STAGING_BOOKING_PAYMENT_SERVICE,
+      reason: 'exclusively owns booking payment credentials',
+      errors,
+    });
+  } else if (bookingPaymentsEnabled) {
+    requireRazorpayKeyId('RAZORPAY_KEY_ID', errors);
+    requireRazorpaySecret('RAZORPAY_KEY_SECRET', errors);
+    requireRazorpaySecret('RAZORPAY_WEBHOOK_SECRET', errors);
+    validateOptionalPreviousWebhookSecret(errors);
+  } else {
+    rejectScopedProviderValues({
+      keys: BOOKING_PAYMENT_PROVIDER_ENV_KEYS,
+      serviceName,
+      ownerService: SERVER_STAGING_BOOKING_PAYMENT_SERVICE,
+      reason: 'may receive them only while booking payments are enabled',
+      errors,
+    });
+  }
+
+  if (!ownsPayouts) {
+    if (payoutsEnabled) {
+      errors.push(
+        `${PAYOUT_INITIATION_ENV} must equal false outside `
+        + `${SERVER_STAGING_PAYOUT_SERVICE} in synthetic server staging`
+      );
+    }
+    rejectScopedProviderValues({
+      keys: PAYOUT_PROVIDER_ENV_KEYS,
+      serviceName,
+      ownerService: SERVER_STAGING_PAYOUT_SERVICE,
+      reason: 'exclusively owns payout credentials',
+      errors,
+    });
+  } else if (payoutsEnabled) {
+    validatePayoutConfiguration({ serviceName, errors });
+  } else {
+    rejectScopedProviderValues({
+      keys: PAYOUT_PROVIDER_ENV_KEYS,
+      serviceName,
+      ownerService: SERVER_STAGING_PAYOUT_SERVICE,
+      reason: 'may receive them only while payouts are enabled',
+      errors,
+    });
+  }
+
+  return true;
+};
+
+const validateServerStagingProviderGates = ({
+  serviceName,
+  errors,
+}) => {
+  if (!isExactServerStagingSyntheticRuntime(process.env)) return;
+
+  requireExactValue('SOCIAL_STUDIO_ENABLED', 'false', errors);
+  requireExactValue('SOCIAL_STUDIO_AUTO_PUBLISH', 'false', errors);
+  requireExactValue('ENABLE_SOCIAL_SCHEDULER', 'false', errors);
+
+  if (['api-ios', 'worker'].includes(serviceName)) {
+    requireExactValue('APPLE_SIGN_IN_ENABLED', 'false', errors);
+  }
+  if (
+    process.env[BOOKING_PAYMENT_INITIATION_ENV] === 'true'
+  ) {
+    requireExactValue('RAZORPAY_MODE', 'test', errors);
+  }
+  if (process.env[PAYOUT_INITIATION_ENV] === 'true') {
+    requireExactValue('RAZORPAY_X_MODE', 'test', errors);
+  }
+};
+
 const parseDurationSeconds = (value) => {
   const match = String(value || '').trim().match(/^(\d+)\s*([smhd])$/i);
   if (!match) return null;
@@ -329,6 +460,7 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
     if (deploymentEnvironment === DEPLOYMENT_ENVIRONMENTS.STAGING) {
       errors.push(...validateStagingEnvironmentIsolation(process.env));
     }
+    validateServerStagingProviderGates({ serviceName, errors });
     [
       'ALLOWED_ORIGINS',
       'REDIS_URL',
@@ -447,7 +579,9 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
       }
     });
 
-    if (requirePaymentEnv) {
+    const hasServerStagingPaymentScopes =
+      validateServerStagingPaymentScopes({ serviceName, errors });
+    if (requirePaymentEnv && !hasServerStagingPaymentScopes) {
       requireRazorpayKeyId('RAZORPAY_KEY_ID', errors);
       requireRazorpaySecret('RAZORPAY_KEY_SECRET', errors);
       requireRazorpaySecret('RAZORPAY_WEBHOOK_SECRET', errors);

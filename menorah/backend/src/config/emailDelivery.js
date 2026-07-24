@@ -2,6 +2,7 @@ const {
   DEPLOYMENT_ENVIRONMENTS,
   STAGING_HOST_ENV_KEYS,
   getDeploymentEnvironment,
+  isExactRealServerStagingSyntheticRuntime,
   validateStagingEnvironmentIsolation,
 } = require('./deploymentEnvironment');
 
@@ -20,6 +21,8 @@ const LOCAL_STAGING_RESEND_KEY_PATTERN =
   /^re_local_[A-Za-z0-9_-]{32,}$/;
 const SERVER_STAGING_RESEND_KEY_PATTERN =
   /^re_server_staging_[A-Za-z0-9_-]{32,}$/;
+const EXTERNAL_RESEND_KEY_PATTERN =
+  /^re_[A-Za-z0-9_-]{32,}$/;
 const SERVER_STAGING_PROJECTS = new Set([
   'menorah-staging',
   'menorah-server-staging-validation',
@@ -63,9 +66,28 @@ const isExactServerStagingIdentity = (env = process.env) => (
   && validateStagingEnvironmentIsolation(env).length === 0
 );
 
+const isExactRealServerStagingResendSandbox = (
+  env = process.env
+) => (
+  isExactRealServerStagingSyntheticRuntime(env)
+  && isExactServerStagingIdentity(env)
+  && String(env.RESEND_PROVIDER_ENABLED || '').trim() === 'true'
+  && String(env.RESEND_MODE || '').trim() === 'sandbox'
+);
+
 const resolveResendEmailUrl = (env = process.env) => {
   const configuredUrl = String(env.RESEND_API_URL || '').trim();
-  if (!configuredUrl) return CANONICAL_RESEND_EMAIL_URL;
+  if (!configuredUrl) {
+    if (
+      String(env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID || '').trim()
+      || String(env.MENORAH_SERVER_STAGING_PROJECT_NAME || '').trim()
+    ) {
+      throw new Error(
+        'Real server staging requires an explicitly approved Resend endpoint'
+      );
+    }
+    return CANONICAL_RESEND_EMAIL_URL;
+  }
 
   const isApprovedLocalCapture = (
     configuredUrl === LOCAL_STAGING_RESEND_EMAIL_URL
@@ -75,10 +97,18 @@ const resolveResendEmailUrl = (env = process.env) => {
     configuredUrl === SERVER_STAGING_RESEND_EMAIL_URL
     && isExactServerStagingIdentity(env)
   );
+  const isApprovedRealServerStagingSandbox = (
+    configuredUrl === CANONICAL_RESEND_EMAIL_URL
+    && isExactRealServerStagingResendSandbox(env)
+  );
+  if (isApprovedRealServerStagingSandbox) {
+    return CANONICAL_RESEND_EMAIL_URL;
+  }
   if (!isApprovedLocalCapture && !isApprovedServerCapture) {
     throw new Error(
       'RESEND_API_URL is allowed only as the exact internal endpoint '
-      + 'for a reviewed Menorah staging identity'
+      + 'for a reviewed Menorah staging identity or as the exact '
+      + 'external endpoint for approved real server-staging sandbox delivery'
     );
   }
 
@@ -115,6 +145,17 @@ const validateResendDeliveryConfiguration = (env = process.env) => {
         'RESEND_API_KEY must use a strong server-staging capture key'
       );
     }
+  } else if (isExactRealServerStagingResendSandbox(env)) {
+    if (
+      !EXTERNAL_RESEND_KEY_PATTERN.test(apiKey)
+      || LOCAL_STAGING_RESEND_KEY_PATTERN.test(apiKey)
+      || SERVER_STAGING_RESEND_KEY_PATTERN.test(apiKey)
+    ) {
+      errors.push(
+        'Approved server-staging Resend sandbox delivery requires a strong '
+        + 'external re_ key that is not a staging mail-capture key'
+      );
+    }
   } else if (
     apiKey.startsWith('re_local_')
     || apiKey.startsWith('re_server_staging_')
@@ -133,6 +174,7 @@ module.exports = {
   LOCAL_STAGING_RESEND_EMAIL_URL,
   SERVER_STAGING_ENVIRONMENT_ID,
   SERVER_STAGING_RESEND_EMAIL_URL,
+  isExactRealServerStagingResendSandbox,
   isExactLocalStagingIdentity,
   isExactServerStagingIdentity,
   resolveResendEmailUrl,

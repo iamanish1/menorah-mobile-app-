@@ -14,6 +14,8 @@ const LOCAL_STAGING_RESEND_KEY_PATTERN =
   /^re_local_[A-Za-z0-9_-]{32,}$/;
 const SERVER_STAGING_RESEND_KEY_PATTERN =
   /^re_server_staging_[A-Za-z0-9_-]{32,}$/;
+const EXTERNAL_RESEND_KEY_PATTERN =
+  /^re_[A-Za-z0-9_-]{32,}$/;
 const dnsHostPattern =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
@@ -58,12 +60,44 @@ function getSenderEmailDomain(value: string) {
   return getBareEmailDomain(displayNameMatch ? displayNameMatch[1] : sender);
 }
 
+function isExactRealServerStagingResendSandbox(
+  apiKey: string,
+  deploymentEnvironment: string
+) {
+  return (
+    process.env.NODE_ENV === 'production'
+    && deploymentEnvironment === 'staging'
+    && optionalEnv('SERVICE_RUNTIME') === 'server-staging'
+    && optionalEnv('MENORAH_SYNTHETIC_DATA_ONLY') === 'true'
+    && !optionalEnv('MENORAH_LOCAL_STAGING_ENVIRONMENT_ID')
+    && !optionalEnv('MENORAH_LOCAL_STAGING_HTTPS_PORT')
+    && optionalEnv('MENORAH_SERVER_STAGING_ENVIRONMENT_ID')
+      === SERVER_STAGING_ENVIRONMENT_ID
+    && optionalEnv('MENORAH_SERVER_STAGING_PROJECT_NAME')
+      === 'menorah-staging'
+    && optionalEnv('MENORAH_SERVER_STAGING_HTTPS_PORT') === '38443'
+    && optionalEnv('MENORAH_STAGING_EMAIL_DOMAIN')
+      === 'mail.staging.menorah.me'
+    && optionalEnv('RESEND_PROVIDER_ENABLED') === 'true'
+    && optionalEnv('RESEND_MODE') === 'sandbox'
+    && EXTERNAL_RESEND_KEY_PATTERN.test(apiKey)
+    && !LOCAL_STAGING_RESEND_KEY_PATTERN.test(apiKey)
+    && !SERVER_STAGING_RESEND_KEY_PATTERN.test(apiKey)
+  );
+}
+
 function resolveResendEmailUrl(
   apiKey: string,
   deploymentEnvironment: string
 ) {
   const configured = optionalEnv('RESEND_API_URL');
   if (!configured) {
+    if (
+      optionalEnv('MENORAH_SERVER_STAGING_ENVIRONMENT_ID')
+      || optionalEnv('MENORAH_SERVER_STAGING_PROJECT_NAME')
+    ) {
+      return undefined;
+    }
     if (
       apiKey.startsWith('re_local_')
       || apiKey.startsWith('re_server_staging_')
@@ -103,6 +137,15 @@ function resolveResendEmailUrl(
   );
   if (exactLocalIdentity) return LOCAL_STAGING_RESEND_EMAIL_URL;
   if (exactServerIdentity) return SERVER_STAGING_RESEND_EMAIL_URL;
+  if (
+    configured === CANONICAL_RESEND_EMAIL_URL
+    && isExactRealServerStagingResendSandbox(
+      apiKey,
+      deploymentEnvironment
+    )
+  ) {
+    return CANONICAL_RESEND_EMAIL_URL;
+  }
   return undefined;
 }
 

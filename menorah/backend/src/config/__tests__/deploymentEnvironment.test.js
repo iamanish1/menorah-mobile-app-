@@ -1,5 +1,6 @@
 const {
   SERVER_STAGING_LIVEKIT_API_URL,
+  isExactRealServerStagingSyntheticRuntime,
   isExactServerStagingSyntheticRuntime,
   validateStagingEnvironmentIsolation,
 } = require('../deploymentEnvironment');
@@ -106,6 +107,36 @@ describe('server-staging deployment environment isolation', () => {
       MONGODB_READ_PREFERENCE: 'primaryPreferred',
       MONGODB_RETRY_WRITES: 'true',
     })).toBe(true);
+  });
+
+  test('recognizes only the real project as the real synthetic runtime', () => {
+    const environment = {
+      NODE_ENV: 'production',
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      SERVICE_RUNTIME: 'server-staging',
+      MENORAH_SYNTHETIC_DATA_ONLY: 'true',
+      MENORAH_SERVER_STAGING_ENVIRONMENT_ID:
+        SERVER_STAGING_ENVIRONMENT_ID,
+      MENORAH_SERVER_STAGING_PROJECT_NAME:
+        SERVER_STAGING_PROJECT,
+      MENORAH_SERVER_STAGING_HTTPS_PORT:
+        SERVER_STAGING_VALIDATION_PORT,
+      MONGODB_URI:
+        'mongodb://menorah-staging-app:synthetic@'
+        + 'staging-mongo-primary:27017/menorah_staging'
+        + '?replicaSet=menorah-staging-rs'
+        + '&authSource=admin&retryWrites=true',
+      MONGODB_REPLICA_SET_NAME: 'menorah-staging-rs',
+      MONGODB_READ_PREFERENCE: 'primaryPreferred',
+      MONGODB_RETRY_WRITES: 'true',
+    };
+
+    expect(isExactRealServerStagingSyntheticRuntime(environment))
+      .toBe(true);
+    environment.MENORAH_SERVER_STAGING_PROJECT_NAME =
+      SERVER_STAGING_VALIDATION_PROJECT;
+    expect(isExactRealServerStagingSyntheticRuntime(environment))
+      .toBe(false);
   });
 
   test.each([

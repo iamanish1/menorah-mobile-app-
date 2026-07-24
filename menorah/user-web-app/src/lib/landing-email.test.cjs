@@ -27,6 +27,8 @@ let lastFetchUrl;
 
 const routingEnvironmentKeys = [
   'DEPLOYMENT_ENVIRONMENT',
+  'SERVICE_RUNTIME',
+  'MENORAH_SYNTHETIC_DATA_ONLY',
   'MENORAH_LOCAL_STAGING_ENVIRONMENT_ID',
   'MENORAH_LOCAL_STAGING_HTTPS_PORT',
   'MENORAH_SERVER_STAGING_ENVIRONMENT_ID',
@@ -34,6 +36,8 @@ const routingEnvironmentKeys = [
   'MENORAH_SERVER_STAGING_HTTPS_PORT',
   'MENORAH_STAGING_EMAIL_DOMAIN',
   'RESEND_API_URL',
+  'RESEND_PROVIDER_ENABLED',
+  'RESEND_MODE',
 ];
 
 const input = {
@@ -67,6 +71,29 @@ beforeEach(() => {
     };
   };
 });
+
+const configureExactRealServerStagingResendSandbox = () => {
+  Object.assign(process.env, {
+    NODE_ENV: 'production',
+    DEPLOYMENT_ENVIRONMENT: 'staging',
+    SERVICE_RUNTIME: 'server-staging',
+    MENORAH_SYNTHETIC_DATA_ONLY: 'true',
+    MENORAH_SERVER_STAGING_ENVIRONMENT_ID:
+      'menorah-server-staging-v1',
+    MENORAH_SERVER_STAGING_PROJECT_NAME: 'menorah-staging',
+    MENORAH_SERVER_STAGING_HTTPS_PORT: '38443',
+    MENORAH_STAGING_EMAIL_DOMAIN: 'mail.staging.menorah.me',
+    RESEND_PROVIDER_ENABLED: 'true',
+    RESEND_MODE: 'sandbox',
+    RESEND_API_URL: 'https://api.resend.com/emails',
+    RESEND_API_KEY: `re_${'e'.repeat(40)}`,
+    EMAIL_FROM:
+      'Menorah Staging <noreply@mail.staging.menorah.me>',
+    CONTACT_TO_EMAIL: 'contact@mail.staging.menorah.me',
+  });
+  delete process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID;
+  delete process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT;
+};
 
 after(() => {
   process.env = originalEnv;
@@ -165,6 +192,114 @@ test('routes either exact reviewed server-staging project to its internal captur
         lastFetchUrl,
         'http://staging-mail-capture:8025/emails'
       );
+    });
+  }
+});
+
+test('routes the exact real server-staging sandbox to canonical Resend', async () => {
+  configureExactRealServerStagingResendSandbox();
+
+  const result = await sendSubmissionEmail(input);
+
+  assert.equal(result.sent, true);
+  assert.equal(result.recipient, 'contact@mail.staging.menorah.me');
+  assert.equal(fetchCalls, 1);
+  assert.equal(lastFetchUrl, 'https://api.resend.com/emails');
+});
+
+test('rejects mutations of the real server-staging Resend sandbox gate', async (t) => {
+  const cases = [
+    [
+      'validation project',
+      () => {
+        process.env.MENORAH_SERVER_STAGING_PROJECT_NAME =
+          'menorah-server-staging-validation';
+      },
+    ],
+    [
+      'missing explicit endpoint',
+      () => {
+        delete process.env.RESEND_API_URL;
+      },
+    ],
+    [
+      'capture key',
+      () => {
+        process.env.RESEND_API_KEY =
+          `re_server_staging_${'b'.repeat(40)}`;
+      },
+    ],
+    [
+      'provider disabled',
+      () => {
+        process.env.RESEND_PROVIDER_ENABLED = 'false';
+      },
+    ],
+    [
+      'non-sandbox mode',
+      () => {
+        process.env.RESEND_MODE = 'live';
+      },
+    ],
+    [
+      'non-synthetic data',
+      () => {
+        process.env.MENORAH_SYNTHETIC_DATA_ONLY = 'false';
+      },
+    ],
+    [
+      'wrong runtime',
+      () => {
+        process.env.SERVICE_RUNTIME = 'home';
+      },
+    ],
+    [
+      'crossed local selector',
+      () => {
+        process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID =
+          'menorah-local-staging-v1';
+      },
+    ],
+  ];
+
+  for (const [name, mutate] of cases) {
+    await t.test(name, async () => {
+      configureExactRealServerStagingResendSandbox();
+      mutate();
+
+      const result = await sendSubmissionEmail(input);
+
+      assert.equal(result.sent, false);
+      assert.match(result.skippedReason, /endpoint is not approved/);
+      assert.equal(fetchCalls, 0);
+    });
+  }
+});
+
+test('keeps real server-staging sender and recipient on the staging domain', async (t) => {
+  const cases = [
+    [
+      'production recipient',
+      'CONTACT_TO_EMAIL',
+      'menorahenquiries@gmail.com',
+    ],
+    [
+      'production sender',
+      'EMAIL_FROM',
+      'Menorah Health <noreply@menorah.me>',
+    ],
+  ];
+
+  for (const [name, key, value] of cases) {
+    await t.test(name, async () => {
+      configureExactRealServerStagingResendSandbox();
+      process.env[key] = value;
+
+      const result = await sendSubmissionEmail(input);
+
+      assert.equal(result.sent, false);
+      assert.match(result.skippedReason, /not isolated/);
+      assert.equal(fetchCalls, 0);
     });
   }
 });

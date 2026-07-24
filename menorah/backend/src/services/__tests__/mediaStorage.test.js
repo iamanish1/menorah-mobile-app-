@@ -8,6 +8,8 @@ jest.mock('../../utils/cloudinary', () => ({
 
 const { uploadBuffer } = require('../../utils/cloudinary');
 const {
+  SERVER_STAGING_CLOUDINARY_PREFIX,
+  safeCloudinaryFolder,
   storeMediaBuffer,
   validateMediaStorageConfig,
   writeImmutableFile,
@@ -33,6 +35,33 @@ describe('immutable media storage', () => {
     process.env = originalEnv;
     await fs.rm(root, { recursive: true, force: true });
   });
+
+  const configureExactRealServerStagingCloudinary = () => {
+    Object.assign(process.env, {
+      NODE_ENV: 'production',
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      SERVICE_RUNTIME: 'server-staging',
+      MENORAH_SYNTHETIC_DATA_ONLY: 'true',
+      MENORAH_SERVER_STAGING_ENVIRONMENT_ID:
+        'menorah-server-staging-v1',
+      MENORAH_SERVER_STAGING_PROJECT_NAME: 'menorah-staging',
+      MENORAH_SERVER_STAGING_HTTPS_PORT: '38443',
+      MONGODB_URI:
+        'mongodb://menorah-staging-app:synthetic@'
+        + 'staging-mongo-primary:27017/menorah_staging'
+        + '?replicaSet=menorah-staging-rs'
+        + '&authSource=admin&retryWrites=true',
+      MONGODB_REPLICA_SET_NAME: 'menorah-staging-rs',
+      MONGODB_READ_PREFERENCE: 'primaryPreferred',
+      MONGODB_RETRY_WRITES: 'true',
+      MEDIA_STORAGE_BACKEND: 'cloudinary',
+      MEDIA_PUBLIC_BASE_URL: 'https://api-web.staging.menorah.me',
+      CLOUDINARY_UPLOAD_PREFIX: SERVER_STAGING_CLOUDINARY_PREFIX,
+      CLOUDINARY_CLOUD_NAME: 'menorah-staging-cloud',
+      CLOUDINARY_API_KEY: 'staging-cloudinary-key',
+      CLOUDINARY_API_SECRET: 'staging-cloudinary-secret',
+    });
+  };
 
   test('writes immutable uniquely named objects with byte metadata', async () => {
     const bytes = Buffer.from('same-media-bytes');
@@ -131,5 +160,119 @@ describe('immutable media storage', () => {
     );
     expect(stored.metadata.backend).toBe('cloudinary');
     expect(stored.metadata.publicId).toBe('menorah/unit/object');
+  });
+
+  test('allows Cloudinary only for the exact real synthetic staging runtime', () => {
+    configureExactRealServerStagingCloudinary();
+
+    expect(validateMediaStorageConfig(process.env).errors).toEqual([]);
+
+    process.env.MENORAH_SERVER_STAGING_PROJECT_NAME =
+      'menorah-server-staging-validation';
+    expect(validateMediaStorageConfig(process.env).errors.join('; '))
+      .toMatch(/must equal local in production/);
+
+    process.env.MENORAH_SERVER_STAGING_PROJECT_NAME = 'menorah-staging';
+    process.env.DEPLOYMENT_ENVIRONMENT = 'production';
+    expect(validateMediaStorageConfig(process.env).errors.join('; '))
+      .toMatch(/must equal local in production/);
+  });
+
+  test('requires the exact Cloudinary staging prefix and usable credentials', () => {
+    configureExactRealServerStagingCloudinary();
+    process.env.CLOUDINARY_UPLOAD_PREFIX =
+      'menorah-staging/another-environment';
+    process.env.CLOUDINARY_API_SECRET = 'REPLACE_WITH_CLOUDINARY_SECRET';
+
+    const errors = validateMediaStorageConfig(process.env).errors.join('; ');
+
+    expect(errors).toMatch(/CLOUDINARY_UPLOAD_PREFIX must equal/);
+    expect(errors).toMatch(/CLOUDINARY_API_SECRET is required/);
+  });
+
+  test.each([
+    [
+      'menorah/profile-images',
+      `${SERVER_STAGING_CLOUDINARY_PREFIX}/profile-images`,
+    ],
+    [
+      `${SERVER_STAGING_CLOUDINARY_PREFIX}/profile-images`,
+      `${SERVER_STAGING_CLOUDINARY_PREFIX}/profile-images`,
+    ],
+    [
+      'social-studio/rendered-posts',
+      `${SERVER_STAGING_CLOUDINARY_PREFIX}/social-studio/rendered-posts`,
+    ],
+  ])('normalizes %s below the exact staging prefix', (
+    requestedFolder,
+    expected
+  ) => {
+    expect(safeCloudinaryFolder({
+      configuredPrefix: SERVER_STAGING_CLOUDINARY_PREFIX,
+      requestedFolder,
+      service: 'unused',
+      category: 'unused',
+    })).toBe(expected);
+  });
+
+  test.each([
+    '../production',
+    '/absolute',
+    'menorah//profile-images',
+    'menorah/Profile-Images',
+    'menorah/profile_images',
+  ])('rejects unsafe Cloudinary folder %s', (requestedFolder) => {
+    expect(() => safeCloudinaryFolder({
+      configuredPrefix: SERVER_STAGING_CLOUDINARY_PREFIX,
+      requestedFolder,
+      service: 'unused',
+      category: 'unused',
+    })).toThrow(/safe relative segments/);
+  });
+
+  test('uploads real staging media only under the exact prefix', async () => {
+    configureExactRealServerStagingCloudinary();
+    uploadBuffer.mockResolvedValue({
+      secure_url:
+        'https://res.cloudinary.com/menorah-staging/image/upload/object.jpg',
+      public_id:
+        `${SERVER_STAGING_CLOUDINARY_PREFIX}/profile-images/object`,
+    });
+
+    const stored = await storeMediaBuffer(Buffer.from('cloud-bytes'), {
+      service: 'user-profile',
+      category: 'images',
+      extension: '.jpg',
+      contentType: 'image/jpeg',
+      cloudinaryFolder: 'menorah/profile-images',
+    });
+
+    expect(uploadBuffer).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      expect.objectContaining({
+        folder: `${SERVER_STAGING_CLOUDINARY_PREFIX}/profile-images`,
+        overwrite: false,
+        unique_filename: false,
+      })
+    );
+    expect(stored.metadata.publicId)
+      .toBe(`${SERVER_STAGING_CLOUDINARY_PREFIX}/profile-images/object`);
+  });
+
+  test('rejects a Cloudinary public ID outside the exact staging prefix', async () => {
+    configureExactRealServerStagingCloudinary();
+    uploadBuffer.mockResolvedValue({
+      secure_url:
+        'https://res.cloudinary.com/production/image/upload/object.jpg',
+      public_id: 'menorah/production/object',
+    });
+
+    await expect(storeMediaBuffer(Buffer.from('cloud-bytes'), {
+      service: 'user-profile',
+      category: 'images',
+      extension: '.jpg',
+      contentType: 'image/jpeg',
+      cloudinaryFolder: 'menorah/profile-images',
+    })).rejects.toThrow(/outside the approved server-staging prefix/);
   });
 });
