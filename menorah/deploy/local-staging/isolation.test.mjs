@@ -48,6 +48,10 @@ const caddySource = readFileSync(
   new URL('./Caddyfile', import.meta.url),
   'utf8',
 );
+const prometheusSource = readFileSync(
+  new URL('./prometheus.yml', import.meta.url),
+  'utf8',
+);
 const dockerIgnoreSource = readFileSync(
   new URL('./.dockerignore', import.meta.url),
   'utf8',
@@ -671,6 +675,21 @@ test('Caddy upstreams use private app-network aliases, not ingress service names
       new RegExp(`local_proxy ${service}:${port}\\b`),
     );
   }
+});
+
+test('Prometheus reaches Alertmanager through its private monitoring alias', () => {
+  const alertmanagerService = composeSource.match(
+    /\n  alertmanager:\r?\n([\s\S]*?)(?=\n  blackbox-exporter:\r?\n)/,
+  )?.[1] || '';
+  assert.match(
+    alertmanagerService,
+    /\n      monitoring:\r?\n\s+aliases:\r?\n\s+- private-alertmanager\b/,
+  );
+  assert.equal(
+    (prometheusSource.match(/private-alertmanager:9093/g) || []).length,
+    2,
+  );
+  assert.doesNotMatch(prometheusSource, /(?:^|\s)- alertmanager:9093\b/m);
 });
 
 test('read-only monitoring services use file-backed Compose configs', () => {

@@ -362,14 +362,11 @@ const expectedAlertsAreQuiet = async () => {
   );
 };
 
-const waitForFixtureScrape = () => waitFor(
-  'Prometheus fixture scrape',
+const waitForPrometheusTarget = (description, query) => waitFor(
+  description,
   async () => {
-    const query = encodeURIComponent(
-      'up{job="local-alert-fixture"} == 1',
-    );
     const payload = await fetchJson(
-      `${PROMETHEUS_URL}/api/v1/query?query=${query}`,
+      `${PROMETHEUS_URL}/api/v1/query?query=${encodeURIComponent(query)}`,
     );
     return (
       payload?.status === 'success'
@@ -380,6 +377,16 @@ const waitForFixtureScrape = () => waitFor(
   {
     timeoutMilliseconds: 120_000,
   },
+);
+
+const waitForFixtureScrape = () => waitForPrometheusTarget(
+  'Prometheus fixture scrape',
+  'up{job="local-alert-fixture"} == 1',
+);
+
+const waitForAlertmanagerScrape = () => waitForPrometheusTarget(
+  'Prometheus Alertmanager scrape',
+  'up{job="alertmanager"} == 1',
 );
 
 const validateRunbooks = (alertsByName) => {
@@ -479,7 +486,10 @@ export const runAlertExercise = async ({
   for (const service of REQUIRED_HEALTHY_SERVICES) {
     await assertContainerIdentityAndHealth(service);
   }
-  await waitForFixtureScrape();
+  await Promise.all([
+    waitForFixtureScrape(),
+    waitForAlertmanagerScrape(),
+  ]);
 
   let frontendsStopped = false;
   let fixtureTriggered = false;

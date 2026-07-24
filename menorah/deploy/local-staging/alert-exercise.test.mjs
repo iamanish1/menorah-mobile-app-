@@ -200,6 +200,26 @@ test('Prometheus scrapes only the internal unexposed alert fixture', () => {
   );
 });
 
+test('runner fails fast unless Prometheus can reach Alertmanager privately', () => {
+  assert.equal(
+    (prometheusSource.match(/private-alertmanager:9093/g) || []).length,
+    2,
+  );
+  assert.doesNotMatch(prometheusSource, /(?:^|\s)- alertmanager:9093\b/m);
+  assert.match(
+    composeSource,
+    /alertmanager:[\s\S]*?monitoring:\r?\n\s+aliases:\r?\n\s+- private-alertmanager\b/,
+  );
+  assert.match(
+    exerciseSource,
+    /'up\{job="alertmanager"\} == 1'/,
+  );
+  assert.match(
+    exerciseSource,
+    /Promise\.all\(\[\s*waitForFixtureScrape\(\),\s*waitForAlertmanagerScrape\(\),\s*\]\)/,
+  );
+});
+
 test('backup telemetry is exact, best-effort, and never logs a body', () => {
   assert.match(
     backupSource,
