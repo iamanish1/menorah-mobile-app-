@@ -87,6 +87,23 @@ export const SECRET_KEYS = Object.freeze([
   'MENORAH_SERVER_STAGING_ADMIN_FULL_2_PASSWORD',
 ]);
 
+const RETENTION_CATEGORIES = Object.freeze([
+  'account_profile',
+  'booking_clinical',
+  'chat_content',
+  'call_metadata',
+  'payment_finance',
+  'security_audit',
+  'privacy_consent_evidence',
+  'privacy_rights_request_payload',
+  'face_check_metadata',
+  'backups',
+  'operational_logs',
+  'vendor_copies',
+]);
+
+const SYNTHETIC_PRIVACY_ADMIN_ID = '7a110ca15a6e000000000104';
+
 const REQUIRED_CONTRACT_KEYS = Object.freeze([
   'NODE_ENV',
   'DEPLOYMENT_ENVIRONMENT',
@@ -105,6 +122,9 @@ const REQUIRED_CONTRACT_KEYS = Object.freeze([
   'MONGODB_REPLICA_SET_NAME',
   'REDIS_STAGING_USERNAME',
   'REDIS_STAGING_PASSWORD',
+  'KYC_CONSENT_VERSION',
+  'PRIVACY_RETENTION_POLICY_JSON',
+  'PRIVACY_ADMIN_PERMISSION_GRANTS_JSON',
   'PROMETHEUS_EXTERNAL_ENVIRONMENT',
   'ALERTMANAGER_ENVIRONMENT',
 ]);
@@ -157,17 +177,24 @@ export const assertDistinctSecrets = (
 
 const retentionPolicy = JSON.stringify({
   version: 'synthetic-server-staging-retention-v1',
-  categories: {
-    account_profile: { mode: 'manual', days: 365 },
-    booking_clinical: { mode: 'manual', days: 365 },
-    chat_content: { mode: 'manual', days: 30 },
-    call_metadata: { mode: 'manual', days: 30 },
-    payment_finance: { mode: 'manual', days: 365 },
-    security_audit: { mode: 'manual', days: 365 },
-    backups: { mode: 'manual', days: 30 },
-    operational_logs: { mode: 'manual', days: 14 },
-  },
+  categories: Object.fromEntries(RETENTION_CATEGORIES.map((category) => [
+    category,
+    {
+      mode: 'manual',
+      policyReference:
+        `synthetic-server-staging-${category}-manual-v1`,
+    },
+  ])),
 });
+
+const privacyPermissionGrants = JSON.stringify([{
+  adminId: SYNTHETIC_PRIVACY_ADMIN_ID,
+  permissions: [
+    'privacy_reader',
+    'privacy_reviewer',
+    'privacy_legal_hold',
+  ],
+}]);
 
 const bookingCatalog = JSON.stringify({
   basic: {
@@ -612,11 +639,10 @@ export const buildValidationEnvironment = ({
     PRIVACY_RETENTION_EXECUTION_ENABLED: 'false',
     PRIVACY_RETENTION_BATCH_SIZE: '25',
     PRIVACY_RETENTION_POLICY_JSON: retentionPolicy,
-    PRIVACY_ADMIN_PERMISSION_GRANTS_JSON: JSON.stringify([]),
+    PRIVACY_ADMIN_PERMISSION_GRANTS_JSON: privacyPermissionGrants,
     ADMIN_ROLE_GRANTS_JSON: JSON.stringify([]),
     BOOKING_SERVICE_CATALOG_JSON: bookingCatalog,
-    KYC_CONSENT_VERSION:
-      'synthetic-server-staging-face-check-v1',
+    KYC_CONSENT_VERSION: 'ordinary-face-check-v1-2026-07-22',
     KYC_RETENTION_DAYS: '365',
     PRIVACY_NOTICE_VERSION:
       'synthetic-server-staging-privacy-notice-v1',

@@ -12,6 +12,31 @@ export const VALIDATION_PROJECT =
   'menorah-server-staging-validation';
 export const ENVIRONMENT_ID = 'menorah-server-staging-v1';
 
+const EXPECTED_KYC_CONSENT_VERSION =
+  'ordinary-face-check-v1-2026-07-22';
+const EXPECTED_PRIVACY_RETENTION_POLICY_VERSION =
+  'synthetic-server-staging-retention-v1';
+const EXPECTED_PRIVACY_RETENTION_CATEGORIES = Object.freeze([
+  'account_profile',
+  'booking_clinical',
+  'chat_content',
+  'call_metadata',
+  'payment_finance',
+  'security_audit',
+  'privacy_consent_evidence',
+  'privacy_rights_request_payload',
+  'face_check_metadata',
+  'backups',
+  'operational_logs',
+  'vendor_copies',
+]);
+const EXPECTED_PRIVACY_ADMIN_ID = '7a110ca15a6e000000000104';
+const EXPECTED_PRIVACY_PERMISSIONS = Object.freeze([
+  'privacy_reader',
+  'privacy_reviewer',
+  'privacy_legal_hold',
+]);
+
 export const EXPECTED_HOSTS = Object.freeze([
   'staging.menorah.me',
   'www.staging.menorah.me',
@@ -128,6 +153,9 @@ export const REQUIRED_KEYS = Object.freeze([
   'BACKUP_INTEGRITY_HMAC_KEY',
   'LIVEKIT_API_KEY',
   'LIVEKIT_API_SECRET',
+  'KYC_CONSENT_VERSION',
+  'PRIVACY_RETENTION_POLICY_JSON',
+  'PRIVACY_ADMIN_PERMISSION_GRANTS_JSON',
   'MEDIA_STORAGE_BUCKET',
   'PROMETHEUS_EXTERNAL_ENVIRONMENT',
   'PROMETHEUS_EXTERNAL_PROJECT',
@@ -351,6 +379,12 @@ const setEqual = (left, right) => (
   && [...left].every((value) => right.has(value))
 );
 
+const isPlainRecord = (value) => (
+  value !== null
+  && typeof value === 'object'
+  && !Array.isArray(value)
+);
+
 export const parseEnvironmentSource = (source, sourceName = '<memory>') => {
   const record = {};
   const lineNumbers = {};
@@ -482,6 +516,95 @@ const validateExternalUrl = (
     || /^[0-9.]+$/.test(url.hostname)
   ) {
     errors.push(`${key} cannot use localhost or an IP callback`);
+  }
+};
+
+const validateSyntheticPrivacyContract = (errors, environment) => {
+  if (
+    environment.KYC_CONSENT_VERSION
+    !== EXPECTED_KYC_CONSENT_VERSION
+  ) {
+    errors.push(
+      `KYC_CONSENT_VERSION must be ${EXPECTED_KYC_CONSENT_VERSION}`,
+    );
+  }
+
+  let retentionPolicy;
+  try {
+    retentionPolicy = JSON.parse(
+      environment.PRIVACY_RETENTION_POLICY_JSON,
+    );
+  } catch {
+    retentionPolicy = null;
+  }
+  const retentionCategories = retentionPolicy?.categories;
+  const retentionCategoryNames = isPlainRecord(retentionCategories)
+    ? Object.keys(retentionCategories)
+    : [];
+  const retentionPolicyValid = (
+    isPlainRecord(retentionPolicy)
+    && setEqual(
+      new Set(Object.keys(retentionPolicy)),
+      new Set(['version', 'categories']),
+    )
+    && retentionPolicy.version
+      === EXPECTED_PRIVACY_RETENTION_POLICY_VERSION
+    && setEqual(
+      new Set(retentionCategoryNames),
+      new Set(EXPECTED_PRIVACY_RETENTION_CATEGORIES),
+    )
+    && EXPECTED_PRIVACY_RETENTION_CATEGORIES.every((category) => {
+      const configuration = retentionCategories[category];
+      return (
+        isPlainRecord(configuration)
+        && setEqual(
+          new Set(Object.keys(configuration)),
+          new Set(['mode', 'policyReference']),
+        )
+        && configuration.mode === 'manual'
+        && configuration.policyReference
+          === `synthetic-server-staging-${category}-manual-v1`
+      );
+    })
+  );
+  if (!retentionPolicyValid) {
+    errors.push(
+      'PRIVACY_RETENTION_POLICY_JSON must be the exact synthetic '
+      + 'server-staging manual-retention policy',
+    );
+  }
+
+  let permissionGrants;
+  try {
+    permissionGrants = JSON.parse(
+      environment.PRIVACY_ADMIN_PERMISSION_GRANTS_JSON,
+    );
+  } catch {
+    permissionGrants = null;
+  }
+  const permissionGrant = permissionGrants?.[0];
+  const permissionGrantValid = (
+    Array.isArray(permissionGrants)
+    && permissionGrants.length === 1
+    && isPlainRecord(permissionGrant)
+    && setEqual(
+      new Set(Object.keys(permissionGrant)),
+      new Set(['adminId', 'permissions']),
+    )
+    && permissionGrant.adminId === EXPECTED_PRIVACY_ADMIN_ID
+    && Array.isArray(permissionGrant.permissions)
+    && permissionGrant.permissions.length
+      === EXPECTED_PRIVACY_PERMISSIONS.length
+    && setEqual(
+      new Set(permissionGrant.permissions),
+      new Set(EXPECTED_PRIVACY_PERMISSIONS),
+    )
+  );
+  if (!permissionGrantValid) {
+    errors.push(
+      'PRIVACY_ADMIN_PERMISSION_GRANTS_JSON must grant all privacy '
+      + 'permissions to the synthetic server-staging primary admin',
+    );
   }
 };
 
@@ -623,6 +746,7 @@ export const validateEnvironmentRecord = (
   ) {
     errors.push('staging email domain must be mail.staging.menorah.me');
   }
+  validateSyntheticPrivacyContract(errors, environment);
 
   for (const [key, expected] of Object.entries(
     EXPECTED_PORT_VARIABLES,
