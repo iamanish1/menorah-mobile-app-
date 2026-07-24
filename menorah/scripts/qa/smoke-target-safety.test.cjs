@@ -438,6 +438,50 @@ test('Playwright server-staging profile installs exact Chromium resolver rules',
   ]);
 });
 
+test('synthetic role Playwright smoke keeps generated credentials out of artifacts', () => {
+  const source = readFileSync(
+    resolve(qaRoot, 'playwright', 'synthetic-role-smoke.spec.js'),
+    'utf8',
+  );
+  assert.match(
+    source,
+    /MENORAH_SERVER_STAGING_USER_A_PASSWORD/,
+  );
+  assert.match(
+    source,
+    /MENORAH_SERVER_STAGING_COUNSELLOR_A_PASSWORD/,
+  );
+  assert.match(
+    source,
+    /test\.use\(\{\s*trace: 'off',\s*video: 'off',\s*screenshot: 'off',\s*\}\)/,
+  );
+  assert.match(
+    source,
+    /await passwordField\.fill\(''\)\.catch\(\(\) => \{\}\)/,
+  );
+  assert.match(
+    source,
+    /input\[type="email"\], input\[autocomplete="email"\]/,
+  );
+  assert.match(
+    source,
+    /input\[type="password"\], input\[autocomplete="current-password"\]/,
+  );
+  assert.match(
+    source,
+    /const initialSessionProbe = page\.waitForResponse[\s\S]*?await initialSessionProbe;[\s\S]*?await emailField\.fill/,
+  );
+  assert.match(source, /pathname === '\/api\/users\/me'/);
+  assert.doesNotMatch(
+    source,
+    /(?:console\.|page\.screenshot|context\.tracing|testInfo\.attach)/,
+  );
+  assert.doesNotMatch(
+    source,
+    /toHaveValue\([^)]*(?:password|credential)/i,
+  );
+});
+
 test('active smoke sources contain no developer-specific mailbox literal', () => {
   const sources = ['production-api-smoke.js', 'production-auth-smoke.js']
     .map((file) => readFileSync(resolve(qaRoot, file), 'utf8'))
