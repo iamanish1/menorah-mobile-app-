@@ -17,6 +17,45 @@ for (const [index, { readCallOrigins }] of policies.entries()) {
     );
   });
 
+  test(`web call-origin policy ${index + 1} accepts only the exact local staging high port`, () => {
+    const environment = {
+      MENORAH_LOCAL_STAGING_ENVIRONMENT_ID:
+        'menorah-local-staging-v1',
+      MENORAH_LOCAL_STAGING_HTTPS_PORT: '28443',
+    };
+    assert.deepEqual(
+      readCallOrigins(
+        'wss://calls.staging.localhost:28443',
+        { required: true, environment }
+      ),
+      [
+        'https://calls.staging.localhost:28443',
+        'wss://calls.staging.localhost:28443',
+      ]
+    );
+    for (const value of [
+      'wss://calls.staging.localhost:28444',
+      'wss://calls.staging.example.test:28443',
+      'wss://calls.menorah.me:28443',
+    ]) {
+      assert.throws(
+        () => readCallOrigins(value, { required: true, environment })
+      );
+    }
+    assert.throws(
+      () => readCallOrigins(
+        'wss://calls.staging.localhost:28443',
+        {
+          required: true,
+          environment: {
+            ...environment,
+            MENORAH_LOCAL_STAGING_ENVIRONMENT_ID: 'other',
+          },
+        }
+      )
+    );
+  });
+
   test(`web call-origin policy ${index + 1} fails closed`, () => {
     assert.throws(
       () => readCallOrigins(undefined, { required: true }),
