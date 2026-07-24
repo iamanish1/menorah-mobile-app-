@@ -316,6 +316,24 @@ test('rendered Compose validator accepts the fully isolated fixture', () => {
   assert.deepEqual(validateFixture(validModel()), []);
 });
 
+test('every shared image has only one canonical build owner', () => {
+  const model = validModel();
+  model.services['api-ios'].image = 'local/backend:test';
+  model.services['api-ios'].build = {
+    context: '../../backend',
+    dockerfile: 'Dockerfile',
+  };
+  model.services['api-web'].image = 'local/backend:test';
+  model.services['api-web'].build = {
+    context: '../../backend',
+    dockerfile: 'Dockerfile',
+  };
+  assert.ok(
+    errorCodes(validateFixture(model))
+      .has('duplicate_image_build_owner'),
+  );
+});
+
 test('mail capture must remain internal, generated, and hardened', () => {
   const missing = validModel();
   delete missing.services['mail-capture'];

@@ -151,9 +151,6 @@ x-app-security: &app-security
 
 x-backend-build: &backend-build
   image: menorah-local-staging/backend:runtime
-  build:
-    context: ../../backend
-    dockerfile: Dockerfile
 
 services:
   mongo-primary:
@@ -444,6 +441,9 @@ services:
 
   api-web:
     <<: [*app-security, *backend-build]
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
     command: ["node", "src/services/api-web/server.js"]
     environment:
       <<: *backend-environment
@@ -1285,9 +1285,6 @@ services:
 
   restore-job:
     image: menorah-local-staging/backup-tools:runtime
-    build:
-      context: .
-      dockerfile: Dockerfile.local-backup
     profiles: ["recovery"]
     restart: "no"
     entrypoint: ["/bin/sh", "/scripts/restore-local.sh"]

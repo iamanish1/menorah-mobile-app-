@@ -1043,6 +1043,24 @@ export const validateRenderedCompose = (
   const services = model.services && typeof model.services === 'object'
     ? model.services
     : {};
+  const buildOwnersByImage = new Map();
+  for (const [serviceName, service] of Object.entries(services)) {
+    if (!service?.build || !String(service?.image || '').trim()) continue;
+    const image = String(service.image).trim();
+    const owners = buildOwnersByImage.get(image) || [];
+    owners.push(serviceName);
+    buildOwnersByImage.set(image, owners);
+  }
+  for (const [image, owners] of buildOwnersByImage.entries()) {
+    if (owners.length > 1) {
+      pushError(
+        errors,
+        'duplicate_image_build_owner',
+        'compose.services',
+        `Image ${image} must have exactly one canonical build owner`,
+      );
+    }
+  }
   let fullStagingEnvironmentCount = 0;
   const backendMailKeys = [];
   for (const [serviceName, service] of Object.entries(services)) {
