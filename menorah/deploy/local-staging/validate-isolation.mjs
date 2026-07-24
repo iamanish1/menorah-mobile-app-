@@ -17,11 +17,23 @@ export const EXPECTED_ENVIRONMENT_ID = 'menorah-local-staging-v1';
 export const EXPECTED_HTTPS_PORT = '28443';
 
 export const EXPECTED_NETWORK_NAMES = Object.freeze([
+  'menorah-local-staging-ingress',
   'menorah-local-staging',
   'menorah-local-staging-data',
   'menorah-local-staging-monitoring',
   'menorah-local-staging-restore',
 ]);
+
+const EXPECTED_INGRESS_NETWORK_NAME = 'menorah-local-staging-ingress';
+const EXPECTED_INGRESS_DRIVER_OPTIONS = Object.freeze({
+  'com.docker.network.bridge.enable_icc': 'false',
+  'com.docker.network.bridge.enable_ip_masquerade': 'false',
+  'com.docker.network.bridge.host_binding_ipv4': '127.0.0.1',
+});
+const EXPECTED_INGRESS_IPAM = Object.freeze([Object.freeze({
+  subnet: '10.254.244.0/24',
+  ip_range: '10.254.244.128/25',
+})]);
 
 export const EXPECTED_VOLUME_NAMES = Object.freeze([
   'menorah-local-staging-mongo',
@@ -983,16 +995,41 @@ export const validateRenderedCompose = (
     );
   }
   for (const [networkKey, network] of Object.entries(networks)) {
+    const isIngress = network?.name === EXPECTED_INGRESS_NETWORK_NAME;
+    const driverOptions = network?.driver_opts || {};
+    const sortedDriverOptions = Object.entries(driverOptions).sort();
+    const expectedSortedDriverOptions = Object.entries(
+      EXPECTED_INGRESS_DRIVER_OPTIONS,
+    ).sort();
+    const invalidIngress = (
+      isIngress
+      && (
+        network?.external === true
+        || network?.internal !== false
+        || network?.driver !== 'bridge'
+        || JSON.stringify(sortedDriverOptions)
+          !== JSON.stringify(expectedSortedDriverOptions)
+        || JSON.stringify(network?.ipam?.config || [])
+          !== JSON.stringify(EXPECTED_INGRESS_IPAM)
+      )
+    );
+    const invalidInternal = (
+      !isIngress
+      && (
+        network?.external === true
+        || network?.internal !== true
+      )
+    );
     if (
-      network?.external === true
-      || network?.internal !== true
+      invalidIngress
+      || invalidInternal
       || !EXPECTED_NETWORK_NAMES.includes(network?.name)
     ) {
       pushError(
         errors,
         'network_not_isolated',
         `compose.networks.${networkKey}`,
-        'Every network must be internal, project-scoped, and Docker-managed',
+        'Networks must be internal or the exact non-masquerading loopback ingress, project-scoped, and Docker-managed',
       );
     }
   }
@@ -1111,6 +1148,23 @@ export const validateRenderedCompose = (
     }
 
     const ports = (service?.ports || []).map(normalizePort);
+    const networkKeys = serviceNetworkKeys(service);
+    if (ports.length > 0 && !networkKeys.includes('ingress')) {
+      pushError(
+        errors,
+        'published_service_ingress_missing',
+        `${field}.networks`,
+        'Every published service must join the hardened ingress network',
+      );
+    }
+    if (ports.length === 0 && networkKeys.includes('ingress')) {
+      pushError(
+        errors,
+        'unpublished_service_on_ingress',
+        `${field}.networks`,
+        'Services without published ports must not join the ingress network',
+      );
+    }
     if (isDataService && ports.length > 0) {
       pushError(
         errors,

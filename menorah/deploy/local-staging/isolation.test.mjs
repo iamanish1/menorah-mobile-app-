@@ -142,13 +142,29 @@ const portModel = Object.freeze({
 
 const validModel = () => {
   const environment = generatedEnvironment();
-  const networkKeys = ['app', 'data', 'monitoring', 'restore'];
+  const networkKeys = ['ingress', 'app', 'data', 'monitoring', 'restore'];
   const networks = Object.fromEntries(
     EXPECTED_NETWORK_NAMES.map((name, index) => [
       networkKeys[index],
       {
         name,
-        internal: true,
+        internal: networkKeys[index] !== 'ingress',
+        ...(networkKeys[index] === 'ingress'
+          ? {
+            driver: 'bridge',
+            driver_opts: {
+              'com.docker.network.bridge.enable_icc': 'false',
+              'com.docker.network.bridge.enable_ip_masquerade': 'false',
+              'com.docker.network.bridge.host_binding_ipv4': '127.0.0.1',
+            },
+            ipam: {
+              config: [{
+                subnet: '10.254.244.0/24',
+                ip_range: '10.254.244.128/25',
+              }],
+            },
+          }
+          : {}),
       },
     ]),
   );
@@ -164,7 +180,7 @@ const validModel = () => {
       {
         image: `local/${serviceName}:test`,
         ports,
-        networks: ['app'],
+        networks: ['ingress', 'app'],
       },
     ]),
   );
@@ -462,6 +478,31 @@ test('published ports require exact service mapping and loopback binding', () =>
   assert.ok(codes.has('non_loopback_port'));
   assert.ok(codes.has('port_not_allowlisted'));
   assert.ok(codes.has('required_port_missing'));
+});
+
+test('published services require the hardened ingress network', () => {
+  const missingIngress = validModel();
+  missingIngress.services['api-ios'].networks = ['app'];
+  assert.ok(
+    errorCodes(validateFixture(missingIngress))
+      .has('published_service_ingress_missing'),
+  );
+
+  const exposedInternalService = validModel();
+  exposedInternalService.services.redis.networks = ['data', 'ingress'];
+  assert.ok(
+    errorCodes(validateFixture(exposedInternalService))
+      .has('unpublished_service_on_ingress'),
+  );
+
+  const masqueradingIngress = validModel();
+  masqueradingIngress.networks.ingress.driver_opts[
+    'com.docker.network.bridge.enable_ip_masquerade'
+  ] = 'true';
+  assert.ok(
+    errorCodes(validateFixture(masqueradingIngress))
+      .has('network_not_isolated'),
+  );
 });
 
 test('MongoDB and Redis cannot publish even loopback ports', () => {

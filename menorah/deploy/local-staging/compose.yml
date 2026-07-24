@@ -396,6 +396,7 @@ services:
         source: uploads
         target: /app/uploads
     networks:
+      - ingress
       - app
       - data
     depends_on:
@@ -423,6 +424,7 @@ services:
         source: uploads
         target: /app/uploads
     networks:
+      - ingress
       - app
       - data
     depends_on:
@@ -453,6 +455,7 @@ services:
         source: uploads
         target: /app/uploads
     networks:
+      - ingress
       - app
       - data
     depends_on:
@@ -486,6 +489,7 @@ services:
         target: /backups
         read_only: true
     networks:
+      - ingress
       - app
       - data
     depends_on:
@@ -517,6 +521,7 @@ services:
         source: backups
         target: /backups
     networks:
+      - ingress
       - app
       - data
     depends_on:
@@ -602,6 +607,7 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
       - /app/.next/cache:rw,noexec,nosuid,nodev,size=64m,mode=700
     networks:
+      - ingress
       - app
       - data
     depends_on:
@@ -648,6 +654,7 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
       - /app/.next/cache:rw,noexec,nosuid,nodev,size=64m,mode=700
     networks:
+      - ingress
       - app
     healthcheck:
       test:
@@ -678,6 +685,7 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
       - /app/.next/cache:rw,noexec,nosuid,nodev,size=64m,mode=700
     networks:
+      - ingress
       - app
     healthcheck:
       test:
@@ -714,6 +722,7 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
     networks:
+      - ingress
       - app
     healthcheck:
       test:
@@ -749,6 +758,7 @@ services:
     ports:
       - "127.0.0.1:${MENORAH_LOCAL_STAGING_HTTPS_PORT:?Generated local HTTPS port required}:443"
     networks:
+      ingress:
       app:
         ipv4_address: 10.254.240.10
         aliases:
@@ -894,6 +904,7 @@ services:
     ports:
       - "127.0.0.1:29093:9093"
     networks:
+      - ingress
       - monitoring
     depends_on:
       alert-sink:
@@ -1038,6 +1049,7 @@ services:
     ports:
       - "127.0.0.1:29090:9090"
     networks:
+      - ingress
       - monitoring
       - app
       - data
@@ -1092,6 +1104,7 @@ services:
     ports:
       - "127.0.0.1:23100:3100"
     networks:
+      - ingress
       - monitoring
     healthcheck:
       test:
@@ -1141,6 +1154,7 @@ services:
     ports:
       - "127.0.0.1:22345:12345"
     networks:
+      - ingress
       - monitoring
     depends_on:
       loki:
@@ -1332,6 +1346,18 @@ secrets:
     file: "${MENORAH_LOCAL_STAGING_BACKUP_HMAC_FILE:?Generate the local backup HMAC file first}"
 
 networks:
+  ingress:
+    name: menorah-local-staging-ingress
+    driver: bridge
+    internal: false
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+    ipam:
+      config:
+        - subnet: 10.254.244.0/24
+          ip_range: 10.254.244.128/25
   app:
     name: menorah-local-staging
     internal: true
