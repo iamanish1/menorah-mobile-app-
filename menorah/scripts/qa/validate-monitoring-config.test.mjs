@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   loadMonitoringDocuments,
@@ -7,6 +8,22 @@ import {
 } from './validate-monitoring-config.mjs';
 
 const cloneDocuments = () => structuredClone(loadMonitoringDocuments());
+
+test('native configuration and backup validators run without network access', () => {
+  const script = readFileSync(
+    new URL('./test-monitoring-native.sh', import.meta.url),
+    'utf8',
+  );
+  const networklessSection = script.split(
+    'test_docker_stats_runtime_contract() {',
+  )[0];
+
+  assert.equal(
+    (networklessSection.match(/docker run --rm --network none/g) || []).length,
+    11,
+  );
+  assert.doesNotMatch(networklessSection, /docker run --rm(?! --network none)/);
+});
 
 test('repository monitoring configuration is internally consistent', () => {
   assert.deepEqual(validateMonitoringDocuments(cloneDocuments()), []);

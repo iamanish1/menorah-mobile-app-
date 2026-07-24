@@ -1,0 +1,4 @@
+*
+!.dockerignore
+!Dockerfile.local-backup
+!Dockerfile.monitoring-health

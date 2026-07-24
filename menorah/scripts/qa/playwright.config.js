@@ -25,7 +25,7 @@ module.exports = defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
-    ignoreHTTPSErrors: false,
+    ignoreHTTPSErrors: Boolean(process.env.QA_LOCAL_STAGING_HTTPS_PORT),
   },
   projects: [
     {

@@ -15,8 +15,10 @@ const PRODUCTION_HOSTS = new Set([
 
 const PRODUCTION_CONFIRMATION = 'ALLOW_APPROVED_PRODUCTION_SMOKE';
 const SYNTHETIC_DATA_CONFIRMATION = 'PROJECT_OWNED_SYNTHETIC_DATA_ONLY';
+const LOCAL_MAIL_CAPTURE_CONFIRMATION =
+  'USE_INTERNAL_SYNTHETIC_OTP_CAPTURE';
 
-function requireHttpsTarget(name, value) {
+function requireHttpsTarget(name, value, { allowedPort = '' } = {}) {
   const candidate = String(value || '').trim();
   if (!candidate) throw new Error(`${name} is required; there is no default target`);
 
@@ -33,11 +35,12 @@ function requireHttpsTarget(name, value) {
     || parsed.password
     || parsed.search
     || parsed.hash
-    || parsed.port
+    || (parsed.port && parsed.port !== allowedPort)
+    || (allowedPort && parsed.port !== allowedPort)
     || parsed.hostname.endsWith('.')
   ) {
     throw new Error(
-      `${name} must be a credential-free HTTPS URL without a port, trailing-dot alias, query, or fragment`
+      `${name} must be a credential-free HTTPS URL with the exact approved port, no trailing-dot alias, query, or fragment`
     );
   }
 
@@ -71,6 +74,15 @@ function validateOptionalSyntheticAdminCredentials(env) {
       'Staging admin smoke requires both synthetic admin credentials and QA_SYNTHETIC_DATA_CONFIRM'
     );
   }
+  if (
+    env.QA_LOCAL_STAGING_HTTPS_PORT
+    && env.QA_LOCAL_STAGING_MAIL_CAPTURE_CONFIRM
+      !== LOCAL_MAIL_CAPTURE_CONFIRMATION
+  ) {
+    throw new Error(
+      'Local staging admin smoke requires the exact internal synthetic OTP capture confirmation'
+    );
+  }
 }
 
 function validateSmokeTargets(env, namedTargets) {
@@ -79,10 +91,29 @@ function validateSmokeTargets(env, namedTargets) {
     throw new Error('QA_TARGET_ENVIRONMENT must be exactly staging or production');
   }
 
+  const localStagingPort = String(
+    env.QA_LOCAL_STAGING_HTTPS_PORT || ''
+  ).trim();
+  if (localStagingPort) {
+    const numericPort = /^\d+$/.test(localStagingPort)
+      ? Number(localStagingPort)
+      : NaN;
+    if (
+      environment !== 'staging'
+      || !Number.isSafeInteger(numericPort)
+      || numericPort < 1024
+      || numericPort > 65535
+    ) {
+      throw new Error(
+        'QA_LOCAL_STAGING_HTTPS_PORT is restricted to high-port staging targets'
+      );
+    }
+  }
+
   const targets = Object.fromEntries(
     Object.entries(namedTargets).map(([name, value]) => [
       name,
-      requireHttpsTarget(name, value),
+      requireHttpsTarget(name, value, { allowedPort: localStagingPort }),
     ])
   );
   const productionTargets = Object.entries(targets).filter(([, value]) =>
@@ -116,6 +147,16 @@ function validateSmokeTargets(env, namedTargets) {
         throw new Error(`QA_STAGING_ALLOWED_HOSTS contains an unsafe host: ${host}`);
       }
     }
+    if (
+      localStagingPort
+      && [...allowedHosts].some(
+        (host) => !host.endsWith('.staging.localhost')
+      )
+    ) {
+      throw new Error(
+        'QA_LOCAL_STAGING_HTTPS_PORT requires only *.staging.localhost hosts'
+      );
+    }
 
     const unapprovedTargets = Object.entries(targets).filter(([, value]) =>
       !allowedHosts.has(new URL(value).hostname.toLowerCase())
@@ -147,6 +188,7 @@ function validateSmokeTargets(env, namedTargets) {
 }
 
 module.exports = {
+  LOCAL_MAIL_CAPTURE_CONFIRMATION,
   PRODUCTION_CONFIRMATION,
   PRODUCTION_HOSTS,
   SYNTHETIC_DATA_CONFIRMATION,

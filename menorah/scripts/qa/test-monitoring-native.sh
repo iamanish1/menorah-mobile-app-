@@ -12,33 +12,33 @@ NODE_IMAGE='node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43
 ALLOY_IMAGE='grafana/alloy:v1.18.0@sha256:491b0578c04983fd54fe99b587b6fab4404dc46d0dc16677bd6b00cc1140b308'
 LOKI_IMAGE='grafana/loki:3.7.3@sha256:70b9f699fc9bb868b62f1cfd4f787dfa50242f1fd92e6089787d5d7daea75fe8'
 
-docker run --rm --entrypoint /bin/promtool \
+docker run --rm --network none --entrypoint /bin/promtool \
   -v "${MONITORING_DIR}:/etc/prometheus:ro" \
   "${PROMETHEUS_IMAGE}" \
   check config /etc/prometheus/prometheus.yml
 
-docker run --rm --entrypoint /bin/promtool \
+docker run --rm --network none --entrypoint /bin/promtool \
   -v "${MONITORING_DIR}:/etc/prometheus:ro" \
   -w /etc/prometheus \
   "${PROMETHEUS_IMAGE}" \
   test rules alert-rules.test.yml
 
-docker run --rm \
+docker run --rm --network none \
   -v "${MONITORING_DIR}:/config:ro" \
   "${BLACKBOX_IMAGE}" \
   --config.file=/config/blackbox.yml --config.check
 
-docker run --rm --entrypoint /bin/amtool \
+docker run --rm --network none --entrypoint /bin/amtool \
   -v "${MONITORING_DIR}:/config:ro" \
   "${ALERTMANAGER_IMAGE}" \
   check-config /config/alertmanager.yml
 
-docker run --rm \
+docker run --rm --network none \
   -v "${LOGGING_DIR}/config.alloy:/etc/alloy/config.alloy:ro" \
   "${ALLOY_IMAGE}" \
   validate /etc/alloy/config.alloy
 
-docker run --rm --entrypoint /usr/bin/loki \
+docker run --rm --network none --entrypoint /usr/bin/loki \
   -v "${LOGGING_DIR}/loki-config.yml:/etc/loki/config.yml:ro" \
   "${LOKI_IMAGE}" \
   -config.file=/etc/loki/config.yml -verify-config
@@ -51,7 +51,7 @@ test_backup_metrics_runtime() {
   }
   trap cleanup_backup_metrics_contract EXIT
 
-  docker run --rm -v "${fixture_volume}:/fixture" "${BUSYBOX_IMAGE}" sh -eu -c '
+  docker run --rm --network none -v "${fixture_volume}:/fixture" "${BUSYBOX_IMAGE}" sh -eu -c '
     mkdir -p /fixture/backups/metadata /fixture/attempts /fixture/textfile
     printf "{\"timestamp\":\"20260723T120000Z\"}\n" \
       > /fixture/backups/metadata/latest-success-daily.json
@@ -68,7 +68,7 @@ test_backup_metrics_runtime() {
     } > /fixture/attempts/latest-attempt-daily.status
   '
 
-  docker run --rm \
+  docker run --rm --network none \
     -v "${MONITORING_DIR}/export-backup-metrics.sh:/scripts/export-backup-metrics.sh:ro" \
     -v "${fixture_volume}:/fixture" \
     -e BACKUP_ROOT=/fixture/backups \
@@ -77,13 +77,13 @@ test_backup_metrics_runtime() {
     "${BUSYBOX_IMAGE}" \
     /bin/sh /scripts/export-backup-metrics.sh
 
-  docker run --rm -v "${fixture_volume}:/fixture:ro" "${BUSYBOX_IMAGE}" \
+  docker run --rm --network none -v "${fixture_volume}:/fixture:ro" "${BUSYBOX_IMAGE}" \
     grep -F 'menorah_backup_metadata_present{backup_type="daily"} 1' \
     /fixture/textfile/menorah-backup.prom >/dev/null
-  docker run --rm -v "${fixture_volume}:/fixture:ro" "${BUSYBOX_IMAGE}" \
+  docker run --rm --network none -v "${fixture_volume}:/fixture:ro" "${BUSYBOX_IMAGE}" \
     grep -F 'menorah_backup_last_attempt_result{backup_type="daily"} 0' \
     /fixture/textfile/menorah-backup.prom >/dev/null
-  docker run --rm -v "${fixture_volume}:/fixture:ro" "${BUSYBOX_IMAGE}" \
+  docker run --rm --network none -v "${fixture_volume}:/fixture:ro" "${BUSYBOX_IMAGE}" \
     grep -F 'menorah_backup_attempt_metadata_present{backup_type="daily"} 1' \
     /fixture/textfile/menorah-backup.prom >/dev/null
 

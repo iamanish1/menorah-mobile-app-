@@ -1,0 +1,1438 @@
+name: menorah-local-staging
+
+# This model is intentionally self-contained and local-only. Invoke it through
+# the local-staging launcher, which supplies the generated synthetic env file
+# with --env-file. The same file exports this absolute path for the few
+# credential-bootstrap containers that must consume the complete identity set.
+x-generated-env-file: &generated-env-file
+  "${MENORAH_LOCAL_STAGING_ENV_FILE:?Generate the local staging env file first}"
+
+x-backend-environment: &backend-environment
+  NODE_ENV: production
+  DEPLOYMENT_ENVIRONMENT: staging
+  MENORAH_LOCAL_STAGING_ENVIRONMENT_ID: "${MENORAH_LOCAL_STAGING_ENVIRONMENT_ID:?Generated environment identity required}"
+  MENORAH_LOCAL_STAGING_HTTPS_PORT: "${MENORAH_LOCAL_STAGING_HTTPS_PORT:?Generated local HTTPS port required}"
+  MENORAH_STAGING_ALLOWED_HOSTS: "${MENORAH_STAGING_ALLOWED_HOSTS:?Required in generated local staging env}"
+  MENORAH_STAGING_EMAIL_DOMAIN: "${MENORAH_STAGING_EMAIL_DOMAIN:?Required in generated local staging env}"
+  SERVICE_RUNTIME: home
+  PORT: "8080"
+  ROOT_DOMAIN: "${ROOT_DOMAIN:?Required in generated local staging env}"
+  WWW_DOMAIN: "${WWW_DOMAIN:?Required in generated local staging env}"
+  APP_DOMAIN: "${APP_DOMAIN:?Required in generated local staging env}"
+  ADMIN_DOMAIN: "${ADMIN_DOMAIN:?Required in generated local staging env}"
+  COUNSELLOR_DOMAIN: "${COUNSELLOR_DOMAIN:?Required in generated local staging env}"
+  API_IOS_DOMAIN: "${API_IOS_DOMAIN:?Required in generated local staging env}"
+  API_ANDROID_DOMAIN: "${API_ANDROID_DOMAIN:?Required in generated local staging env}"
+  API_WEB_DOMAIN: "${API_WEB_DOMAIN:?Required in generated local staging env}"
+  API_ADMIN_DOMAIN: "${API_ADMIN_DOMAIN:?Required in generated local staging env}"
+  CALLS_DOMAIN: "${CALLS_DOMAIN:?Required in generated local staging env}"
+  FRONTEND_API_WEB_URL: "${FRONTEND_API_WEB_URL:?Required in generated local staging env}"
+  FRONTEND_API_ADMIN_URL: "${FRONTEND_API_ADMIN_URL:?Required in generated local staging env}"
+  FRONTEND_COUNSELLOR_URL: "${FRONTEND_COUNSELLOR_URL:?Required in generated local staging env}"
+  FRONTEND_SOCKET_WEB_URL: "${FRONTEND_SOCKET_WEB_URL:?Required in generated local staging env}"
+  LIVEKIT_URL: "${LIVEKIT_URL:?Required in generated local staging env}"
+  LIVEKIT_API_URL: "${LIVEKIT_API_URL:?Required in generated local staging env}"
+  LIVEKIT_API_KEY: "${LIVEKIT_API_KEY:?Required in generated local staging env}"
+  LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:?Required in generated local staging env}"
+  CALLING_REGION_MODE: "${CALLING_REGION_MODE:-local}"
+  LIVEKIT_BLOCKED_COUNTRIES: ""
+  CALL_JOIN_EARLY_MINUTES: "${CALL_JOIN_EARLY_MINUTES:-15}"
+  CALL_JOIN_LATE_GRACE_MINUTES: "${CALL_JOIN_LATE_GRACE_MINUTES:-15}"
+  VIDEO_MEET_TICKET_TTL_SECONDS: "${VIDEO_MEET_TICKET_TTL_SECONDS:-120}"
+  BLOCKED_COUNTRY_CALL_PROVIDER: livekit
+  BLOCK_LIVEKIT_FOR_UAE: "false"
+  BLOCK_LIVEKIT_FOR_UNKNOWN_REGION: "false"
+  UAE_CALL_PROVIDER: livekit
+  UAE_CALLING_ENABLED: "false"
+  VSEE_ENABLED: "false"
+  VSEE_INTEGRATION_MODE: external_link
+  DOXY_ENABLED: "false"
+  ZOOM_ENABLED: "false"
+  GOOGLE_MEET_ENABLED: "false"
+  TEAMS_ENABLED: "false"
+  MONGODB_URI: "${MONGODB_URI:?Required in generated local staging env}"
+  MONGODB_REPLICA_SET_NAME: menorah-rs
+  MONGODB_READ_PREFERENCE: primaryPreferred
+  MONGODB_RETRY_WRITES: "true"
+  REDIS_URL: "${REDIS_URL:?Required in generated local staging env}"
+  SERVER_USAGE_LABEL: Local synthetic staging
+  SERVER_USAGE_PATH: ""
+  JWT_SECRET: "${JWT_SECRET:?Required in generated local staging env}"
+  JWT_REFRESH_SECRET: "${JWT_REFRESH_SECRET:?Required in generated local staging env}"
+  JWT_EXPIRES_IN: "${JWT_EXPIRES_IN:-7d}"
+  JWT_REFRESH_EXPIRES_IN: "${JWT_REFRESH_EXPIRES_IN:-30d}"
+  ADMIN_JWT_EXPIRES_IN: "${ADMIN_JWT_EXPIRES_IN:-30m}"
+  ADMIN_MFA_REQUIRED: "true"
+  TRUST_PROXY: 10.254.240.10
+  GOOGLE_WEB_CLIENT_ID: "${GOOGLE_WEB_CLIENT_ID:-}"
+  GOOGLE_IOS_CLIENT_ID: "${GOOGLE_IOS_CLIENT_ID:-}"
+  GOOGLE_ANDROID_CLIENT_ID: "${GOOGLE_ANDROID_CLIENT_ID:-}"
+  APPLE_IOS_BUNDLE_ID: "${APPLE_IOS_BUNDLE_ID:-com.menorah.health.localstaging}"
+  APPLE_WEB_SERVICE_ID: "${APPLE_WEB_SERVICE_ID:-}"
+  ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:?Required in generated local staging env}"
+  WEB_SESSION_ORIGINS: "${WEB_SESSION_ORIGINS:?Required in generated local staging env}"
+  ENABLE_SOCKET_IO: "${ENABLE_SOCKET_IO:-true}"
+  ENABLE_SOCKET_ADAPTER: "${ENABLE_SOCKET_ADAPTER:-true}"
+  WORKER_MODE: "${WORKER_MODE:-active}"
+  ENABLE_ARTICLE_SCHEDULER: "false"
+  ENABLE_SOCIAL_SCHEDULER: "false"
+  ENABLE_BACKUP_JOBS: "false"
+  ENABLE_EMAIL_JOBS: "false"
+  ENABLE_NOTIFICATION_JOBS: "false"
+  MENORAH_BACKUP_ROOT: /backups
+  BACKUP_AUTOMATION_ENABLED: "false"
+  BACKUP_EXPECT_RAID: "false"
+  BACKUP_RAID_DEVICE: ""
+  BACKUP_MAX_AGE_HOURS: "${BACKUP_MAX_AGE_HOURS:-24}"
+  BACKUP_RESTORE_TEST_MAX_AGE_HOURS: "${BACKUP_RESTORE_TEST_MAX_AGE_HOURS:-24}"
+  BACKUP_DISK_USAGE_MAX_PERCENT: "${BACKUP_DISK_USAGE_MAX_PERCENT:-80}"
+  BACKUP_COLD_STORAGE_LABEL: Local Docker volume
+  SIX_HOURLY_RETENTION_DAYS: "${SIX_HOURLY_RETENTION_DAYS:-7}"
+  DAILY_RETENTION_DAYS: "${DAILY_RETENTION_DAYS:-30}"
+  WEEKLY_RETENTION_DAYS: "${WEEKLY_RETENTION_DAYS:-84}"
+  MONTHLY_RETENTION_DAYS: "${MONTHLY_RETENTION_DAYS:-366}"
+  RAZORPAY_KEY_ID: "${RAZORPAY_KEY_ID:?Synthetic Razorpay test key required}"
+  NEXT_PUBLIC_RAZORPAY_KEY_ID: "${NEXT_PUBLIC_RAZORPAY_KEY_ID:?Synthetic Razorpay test key required}"
+  RAZORPAY_KEY_SECRET: "${RAZORPAY_KEY_SECRET:?Synthetic Razorpay secret required}"
+  RAZORPAY_WEBHOOK_SECRET: "${RAZORPAY_WEBHOOK_SECRET:?Synthetic Razorpay webhook secret required}"
+  RAZORPAY_WEBHOOK_SECRET_PREVIOUS: "${RAZORPAY_WEBHOOK_SECRET_PREVIOUS:-}"
+  RAZORPAY_X_KEY_ID: "${RAZORPAY_X_KEY_ID:-}"
+  RAZORPAY_X_KEY_SECRET: "${RAZORPAY_X_KEY_SECRET:-}"
+  RAZORPAY_PAYOUT_ACCOUNT_NUMBER: "${RAZORPAY_PAYOUT_ACCOUNT_NUMBER:-}"
+  RAZORPAY_X_WEBHOOK_SECRET: "${RAZORPAY_X_WEBHOOK_SECRET:?Synthetic payout webhook secret required}"
+  BOOKING_PAYMENTS_ENABLED: "false"
+  PAYOUTS_ENABLED: "false"
+  PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS: "${PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS:-5}"
+  SUBSCRIPTION_PAYMENTS_ENABLED: "false"
+  BOOKING_SERVICE_CATALOG_JSON: "${BOOKING_SERVICE_CATALOG_JSON:?Synthetic booking catalog required}"
+  CHECKOUT_RETURN_URL: "${CHECKOUT_RETURN_URL:?Required in generated local staging env}"
+  RESEND_API_KEY: "${RESEND_API_KEY:?Synthetic Resend test key required}"
+  RESEND_API_URL: "${RESEND_API_URL:?Internal local mail capture URL required}"
+  RESEND_WEBHOOK_SECRET: "${RESEND_WEBHOOK_SECRET:?Synthetic Resend webhook secret required}"
+  EMAIL_FROM: "${EMAIL_FROM:?Synthetic staging sender required}"
+  CONTACT_TO_EMAIL: "${CONTACT_TO_EMAIL:?Synthetic staging contact required}"
+  PASSWORD_RESET_BASE_URL: "${PASSWORD_RESET_BASE_URL:?Required in generated local staging env}"
+  LUXAND_API_TOKEN: ""
+  OPENAI_API_KEY: ""
+  CLOUDINARY_CLOUD_NAME: ""
+  CLOUDINARY_API_KEY: ""
+  CLOUDINARY_API_SECRET: ""
+  MEDIA_STORAGE_BACKEND: local
+  MEDIA_PUBLIC_BASE_URL: "${MEDIA_PUBLIC_BASE_URL:?Required in generated local staging env}"
+  UPLOAD_PATH: /app/uploads
+  DATA_ENCRYPTION_KEY: "${DATA_ENCRYPTION_KEY:?Synthetic data encryption key required}"
+  AUDIT_LOG_SIGNING_KEY: "${AUDIT_LOG_SIGNING_KEY:?Synthetic audit signing key required}"
+  SECURITY_AUDIT_PENDING_MAX: "${SECURITY_AUDIT_PENDING_MAX:-1024}"
+  MAX_PAYOUT_AMOUNT_PAISE: "${MAX_PAYOUT_AMOUNT_PAISE:?Required in generated local staging env}"
+  KYC_CONSENT_VERSION: "${KYC_CONSENT_VERSION:?Required in generated local staging env}"
+  KYC_RETENTION_DAYS: "${KYC_RETENTION_DAYS:?Required in generated local staging env}"
+  PRIVACY_NOTICE_VERSION: "${PRIVACY_NOTICE_VERSION:?Required in generated local staging env}"
+  ADMIN_ROLE_GRANTS_JSON: "${ADMIN_ROLE_GRANTS_JSON:?Synthetic admin role grants required}"
+  PRIVACY_RETENTION_EXECUTION_ENABLED: "false"
+  PRIVACY_ADMIN_PERMISSION_GRANTS_JSON: "${PRIVACY_ADMIN_PERMISSION_GRANTS_JSON:?Synthetic privacy grants required}"
+  PRIVACY_RETENTION_POLICY_JSON: "${PRIVACY_RETENTION_POLICY_JSON:?Synthetic privacy policy required}"
+  PRIVACY_RETENTION_BATCH_SIZE: "${PRIVACY_RETENTION_BATCH_SIZE:-25}"
+  COUNSELLOR_ONBOARDING_CONSENT_VERSION: "${COUNSELLOR_ONBOARDING_CONSENT_VERSION:?Required in generated local staging env}"
+  COUNSELLOR_CREDENTIAL_POLICY_VERSION: "${COUNSELLOR_CREDENTIAL_POLICY_VERSION:?Required in generated local staging env}"
+  COUNSELLOR_ONBOARDING_NOTICE_URL: "${COUNSELLOR_ONBOARDING_NOTICE_URL:?Required in generated local staging env}"
+
+x-app-security: &app-security
+  restart: unless-stopped
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 256
+  mem_limit: 1g
+  cpus: "1.00"
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+
+x-backend-build: &backend-build
+  image: menorah-local-staging/backend:runtime
+  build:
+    context: ../../backend
+    dockerfile: Dockerfile
+
+services:
+  mongo-primary:
+    image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
+    restart: unless-stopped
+    entrypoint:
+      - bash
+      - -euc
+      - |
+        install -m 400 /mongo-keyfile-source/mongo-keyfile /data/db/mongo-keyfile
+        exec docker-entrypoint.sh mongod \
+          --bind_ip_all \
+          --replSet menorah-rs \
+          --auth \
+          --keyFile /data/db/mongo-keyfile
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_ROOT_USER:?Generated Mongo root user required}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_ROOT_PASSWORD:?Generated Mongo root password required}"
+      MONGO_INITDB_DATABASE: menorah
+      MONGO_ROOT_USER: "${MONGO_ROOT_USER:?Generated Mongo root user required}"
+      MONGO_ROOT_PASSWORD: "${MONGO_ROOT_PASSWORD:?Generated Mongo root password required}"
+    volumes:
+      - type: volume
+        source: mongo
+        target: /data/db
+      - type: bind
+        source: "${MENORAH_LOCAL_STAGING_MONGO_KEYFILE:?Generate the local Mongo keyfile first}"
+        target: /mongo-keyfile-source/mongo-keyfile
+        read_only: true
+    networks:
+      - data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --host 127.0.0.1 --authenticationDatabase admin
+          --username "$$MONGO_ROOT_USER" --password "$$MONGO_ROOT_PASSWORD"
+          --eval "quit(db.adminCommand({ping:1}).ok === 1 ? 0 : 1)"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  mongo-replica-init:
+    image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
+    restart: "no"
+    env_file:
+      - *generated-env-file
+    command:
+      - bash
+      - -euc
+      - |
+        mongosh --nodb --quiet --eval '
+          const admin = connect(
+            "mongodb://mongo-primary:27017/admin?authSource=admin",
+            process.env.MONGO_ROOT_USER,
+            process.env.MONGO_ROOT_PASSWORD
+          );
+          try {
+            admin.adminCommand({ replSetGetStatus: 1 });
+          } catch (error) {
+            if (error.code !== 94 && error.codeName !== "NotYetInitialized") {
+              throw error;
+            }
+            const initiated = admin.adminCommand({
+              replSetInitiate: {
+                _id: "menorah-rs",
+                members: [{ _id: 0, host: "mongo-primary:27017" }],
+              },
+            });
+            if (initiated.ok !== 1) throw new Error(`Replica initiation failed: $${tojson(initiated)}`);
+          }
+        '
+
+        ready=false
+        for attempt in $$(seq 1 60); do
+          if mongosh --nodb --quiet --eval '
+            const admin = connect(
+              "mongodb://mongo-primary:27017/admin?authSource=admin",
+              process.env.MONGO_ROOT_USER,
+              process.env.MONGO_ROOT_PASSWORD
+            );
+            quit(admin.hello().isWritablePrimary ? 0 : 1);
+          '; then
+            ready=true
+            break
+          fi
+          sleep 2
+        done
+        test "$$ready" = true
+
+        mongosh --nodb --quiet --eval '
+          const admin = connect(
+            "mongodb://mongo-primary:27017/admin?authSource=admin",
+            process.env.MONGO_ROOT_USER,
+            process.env.MONGO_ROOT_PASSWORD
+          );
+          const identities = [
+            {
+              user: process.env.MONGO_APP_USER,
+              pwd: process.env.MONGO_APP_PASSWORD,
+              roles: [{ role: "readWrite", db: "menorah" }],
+            },
+            {
+              user: process.env.MONGO_BACKUP_USER,
+              pwd: process.env.MONGO_BACKUP_PASSWORD,
+              roles: [{ role: "backup", db: "admin" }],
+            },
+            {
+              user: process.env.MONGO_RESTORE_USER,
+              pwd: process.env.MONGO_RESTORE_PASSWORD,
+              roles: [
+                { role: "readWrite", db: "menorah" },
+                { role: "dbAdmin", db: "menorah" },
+              ],
+            },
+            {
+              user: process.env.MONGO_MONITOR_USER,
+              pwd: process.env.MONGO_MONITOR_PASSWORD,
+              roles: [
+                { role: "clusterMonitor", db: "admin" },
+                { role: "read", db: "local" },
+              ],
+            },
+          ];
+          const normalize = (roles) => roles
+            .map(({ role, db }) => `$${role}@$${db}`)
+            .sort()
+            .join(",");
+          for (const identity of identities) {
+            if (!identity.user || !identity.pwd) throw new Error("Managed Mongo identity is incomplete");
+            const existing = admin.getUser(identity.user);
+            if (!existing) {
+              admin.createUser(identity);
+            } else if (normalize(existing.roles) !== normalize(identity.roles)) {
+              throw new Error(`Unexpected roles for managed Mongo user $${identity.user}`);
+            }
+            const credential = connect(
+              "mongodb://mongo-primary:27017/admin?authSource=admin",
+              identity.user,
+              identity.pwd
+            );
+            if (credential.runCommand({ connectionStatus: 1 }).ok !== 1) {
+              throw new Error(`Credential verification failed for $${identity.user}`);
+            }
+          }
+        '
+    networks:
+      - data
+    depends_on:
+      mongo-primary:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    restart: unless-stopped
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        umask 077
+        printf 'appendonly yes\nrequirepass %s\n' "$$REDIS_PASSWORD" >/run/redis/redis.conf
+        chown redis:redis /run/redis /run/redis/redis.conf
+        chmod 0700 /run/redis
+        chmod 0400 /run/redis/redis.conf
+        exec setpriv --reuid=redis --regid=redis --clear-groups \
+          redis-server /run/redis/redis.conf
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?Generated Redis password required}"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    volumes:
+      - type: volume
+        source: redis
+        target: /data
+    tmpfs:
+      - /run/redis:rw,noexec,nosuid,nodev,size=1m,mode=700
+    networks:
+      - data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli --no-auth-warning ping | grep -qx PONG
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  mail-capture:
+    image: menorah-local-staging/mail-capture:runtime
+    build:
+      context: ./mail-capture
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: "0.25"
+    environment:
+      NODE_ENV: production
+      MAIL_CAPTURE_PORT: "8025"
+      MAIL_CAPTURE_API_KEY: "${RESEND_API_KEY:?Generated local mail capture key required}"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777
+    networks:
+      - app
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch("http://127.0.0.1:8025/health")
+          .then((response) => process.exit(response.ok ? 0 : 1))
+          .catch(() => process.exit(1))
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  api-ios:
+    <<: [*app-security, *backend-build]
+    command: ["node", "src/services/api-ios/server.js"]
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: api-ios
+      APPLE_SIGN_IN_ENABLED: "false"
+      MONGODB_BACKUP_URI: ""
+      MONGODB_RESTORE_TEST_URI: ""
+      BACKUP_ENCRYPTION_PASSWORD: ""
+    ports:
+      - "127.0.0.1:28080:8080"
+    volumes:
+      - type: volume
+        source: uploads
+        target: /app/uploads
+    networks:
+      - app
+      - data
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      mail-capture:
+        condition: service_healthy
+
+  api-android:
+    <<: [*app-security, *backend-build]
+    command: ["node", "src/services/api-android/server.js"]
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: api-android
+      APPLE_SIGN_IN_ENABLED: "false"
+      MONGODB_BACKUP_URI: ""
+      MONGODB_RESTORE_TEST_URI: ""
+      BACKUP_ENCRYPTION_PASSWORD: ""
+    ports:
+      - "127.0.0.1:28081:8080"
+    volumes:
+      - type: volume
+        source: uploads
+        target: /app/uploads
+    networks:
+      - app
+      - data
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      mail-capture:
+        condition: service_healthy
+
+  api-web:
+    <<: [*app-security, *backend-build]
+    command: ["node", "src/services/api-web/server.js"]
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: api-web
+      APPLE_SIGN_IN_ENABLED: "false"
+      MONGODB_BACKUP_URI: ""
+      MONGODB_RESTORE_TEST_URI: ""
+      BACKUP_ENCRYPTION_PASSWORD: ""
+    ports:
+      - "127.0.0.1:28082:8080"
+    volumes:
+      - type: volume
+        source: uploads
+        target: /app/uploads
+    networks:
+      - app
+      - data
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      mail-capture:
+        condition: service_healthy
+
+  api-admin:
+    <<: [*app-security, *backend-build]
+    command: ["node", "src/services/api-admin/server.js"]
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: api-admin
+      APPLE_SIGN_IN_ENABLED: "false"
+      ENABLE_SOCKET_IO: "false"
+      ENABLE_SOCKET_ADAPTER: "false"
+      MONGODB_BACKUP_URI: ""
+      MONGODB_RESTORE_TEST_URI: ""
+      BACKUP_ENCRYPTION_PASSWORD: ""
+    ports:
+      - "127.0.0.1:28083:8080"
+    volumes:
+      - type: volume
+        source: uploads
+        target: /app/uploads
+      - type: volume
+        source: backups
+        target: /backups
+        read_only: true
+    networks:
+      - app
+      - data
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      mail-capture:
+        condition: service_healthy
+
+  worker:
+    <<: [*app-security, *backend-build]
+    command: ["node", "src/services/worker/worker.js"]
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: worker
+      APPLE_SIGN_IN_ENABLED: "false"
+      WORKER_MODE: active
+      MONGODB_BACKUP_URI: ""
+      MONGODB_RESTORE_TEST_URI: ""
+      BACKUP_ENCRYPTION_PASSWORD: ""
+    ports:
+      - "127.0.0.1:28084:8080"
+    volumes:
+      - type: volume
+        source: uploads
+        target: /app/uploads
+      - type: volume
+        source: backups
+        target: /backups
+    networks:
+      - app
+      - data
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      mail-capture:
+        condition: service_healthy
+
+  migrate-local-staging:
+    <<: [*app-security, *backend-build]
+    profiles: ["seed"]
+    restart: "no"
+    command: ["node", "src/database/migrate.js"]
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: migrate-local-staging
+      APPLE_SIGN_IN_ENABLED: "false"
+      MONGODB_BACKUP_URI: ""
+      MONGODB_RESTORE_TEST_URI: ""
+      BACKUP_ENCRYPTION_PASSWORD: ""
+    networks:
+      - data
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+
+  seed-local-staging:
+    <<: [*app-security, *backend-build]
+    profiles: ["seed"]
+    restart: "no"
+    command: ["node", "src/database/seed-local-staging.js"]
+    env_file:
+      - *generated-env-file
+    networks:
+      - data
+    depends_on:
+      migrate-local-staging:
+        condition: service_completed_successfully
+
+  user-web-app:
+    <<: *app-security
+    image: menorah-local-staging/user-web-app:runtime
+    build:
+      context: ../../user-web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?Required in generated local staging env}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?Required in generated local staging env}"
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: "${NEXT_PUBLIC_RAZORPAY_KEY_ID:?Synthetic Razorpay test key required}"
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ""
+        NEXT_PUBLIC_JITSI_DOMAIN: "${CALLS_DOMAIN:?Required in generated local staging env}"
+        NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?Required in generated local staging env}"
+        NEXT_PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:?Required in generated local staging env}:${MENORAH_LOCAL_STAGING_HTTPS_PORT:?Required in generated local staging env}"
+        NEXT_PUBLIC_SITE_URL: "https://${APP_DOMAIN:?Required in generated local staging env}:${MENORAH_LOCAL_STAGING_HTTPS_PORT:?Required in generated local staging env}"
+        PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:?Required in generated local staging env}:${MENORAH_LOCAL_STAGING_HTTPS_PORT:?Required in generated local staging env}"
+        MENORAH_API_BASE_URL: "${MENORAH_API_BASE_URL:?Internal local API URL required}"
+    environment:
+      PORT: "3002"
+      NODE_ENV: production
+      DEPLOYMENT_ENVIRONMENT: staging
+      MENORAH_LOCAL_STAGING_ENVIRONMENT_ID: "${MENORAH_LOCAL_STAGING_ENVIRONMENT_ID:?Required in generated local staging env}"
+      MENORAH_LOCAL_STAGING_HTTPS_PORT: "${MENORAH_LOCAL_STAGING_HTTPS_PORT:?Required in generated local staging env}"
+      MENORAH_STAGING_EMAIL_DOMAIN: "${MENORAH_STAGING_EMAIL_DOMAIN:?Required in generated local staging env}"
+      MONGODB_URI: "${MONGODB_URI:?Required in generated local staging env}"
+      MONGO_DATABASE: menorah
+      RESEND_API_KEY: "${RESEND_API_KEY:?Synthetic Resend test key required}"
+      RESEND_API_URL: "${RESEND_API_URL:?Internal local mail capture URL required}"
+      EMAIL_FROM: "${EMAIL_FROM:?Synthetic staging sender required}"
+      CONTACT_TO_EMAIL: "${CONTACT_TO_EMAIL:?Synthetic staging contact required}"
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?Required in generated local staging env}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?Required in generated local staging env}"
+      NEXT_PUBLIC_JITSI_DOMAIN: "${CALLS_DOMAIN:?Required in generated local staging env}"
+      NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?Required in generated local staging env}"
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ""
+      MENORAH_API_BASE_URL: "${MENORAH_API_BASE_URL:?Internal local API URL required}"
+    ports:
+      - "127.0.0.1:23002:3002"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+      - /app/.next/cache:rw,noexec,nosuid,nodev,size=64m,mode=700
+    networks:
+      - app
+      - data
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      mail-capture:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3002/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  web-app:
+    <<: *app-security
+    image: menorah-local-staging/counsellor-web:runtime
+    build:
+      context: ../../web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?Required in generated local staging env}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?Required in generated local staging env}"
+        NEXT_PUBLIC_JITSI_DOMAIN: "${CALLS_DOMAIN:?Required in generated local staging env}"
+        NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?Required in generated local staging env}"
+    environment:
+      PORT: "3001"
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?Required in generated local staging env}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?Required in generated local staging env}"
+      NEXT_PUBLIC_JITSI_DOMAIN: "${CALLS_DOMAIN:?Required in generated local staging env}"
+      NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?Required in generated local staging env}"
+    ports:
+      - "127.0.0.1:23001:3001"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+      - /app/.next/cache:rw,noexec,nosuid,nodev,size=64m,mode=700
+    networks:
+      - app
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3001/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  admin-panel:
+    <<: *app-security
+    image: menorah-local-staging/admin-panel:runtime
+    build:
+      context: ../../admin-panel
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:?Required in generated local staging env}"
+    environment:
+      PORT: "3003"
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:?Required in generated local staging env}"
+    ports:
+      - "127.0.0.1:23003:3003"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+      - /app/.next/cache:rw,noexec,nosuid,nodev,size=64m,mode=700
+    networks:
+      - app
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3003/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  livekit:
+    image: livekit/livekit-server:v1.13.3@sha256:483b8b7b5b0654f91f1e8bdc7b46fcd37fd9911612ecf627f97e3185a89825bd
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?Generated LiveKit key required}: ${LIVEKIT_API_SECRET:?Generated LiveKit secret required}"
+      NODE_IP: 127.0.0.1
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - type: bind
+        source: ./livekit.yaml
+        target: /etc/livekit.yaml
+        read_only: true
+    ports:
+      - "127.0.0.1:27880:7880"
+      - "127.0.0.1:27881:27881/tcp"
+      - "127.0.0.1:25000-25100:25000-25100/udp"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
+    networks:
+      - app
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:7880/ | grep -qx OK
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  caddy:
+    image: caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+      - type: volume
+        source: logs
+        target: /var/log/menorah
+    tmpfs:
+      - /config:rw,noexec,nosuid,nodev,size=16m,mode=700
+      - /data:rw,noexec,nosuid,nodev,size=32m,mode=700
+    ports:
+      - "127.0.0.1:${MENORAH_LOCAL_STAGING_HTTPS_PORT:?Generated local HTTPS port required}:443"
+    networks:
+      app:
+        ipv4_address: 10.254.240.10
+        aliases:
+          - root.staging.localhost
+          - www.staging.localhost
+          - app.staging.localhost
+          - admin.staging.localhost
+          - counsellor.staging.localhost
+          - api-ios.staging.localhost
+          - api-android.staging.localhost
+          - api-web.staging.localhost
+          - api-admin.staging.localhost
+          - calls.staging.localhost
+    depends_on:
+      api-ios:
+        condition: service_healthy
+      api-android:
+        condition: service_healthy
+      api-web:
+        condition: service_healthy
+      api-admin:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+      user-web-app:
+        condition: service_healthy
+      web-app:
+        condition: service_healthy
+      admin-panel:
+        condition: service_healthy
+      livekit:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --no-check-certificate -qO- https://app.staging.localhost/healthz | grep -qx ok
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  alert-sink:
+    image: node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
+    restart: unless-stopped
+    user: "65534:65534"
+    command:
+      - node
+      - -e
+      - |
+        const http = require("http");
+        http.createServer((request, response) => {
+          if (request.url === "/healthz") {
+            response.writeHead(200).end("ok");
+            return;
+          }
+          if (request.method !== "POST" || request.url !== "/alerts") {
+            response.writeHead(404).end();
+            return;
+          }
+          let size = 0;
+          request.on("data", (chunk) => {
+            size += chunk.length;
+            if (size > 1024 * 1024) {
+              request.destroy();
+            }
+          });
+          request.on("end", () => {
+            response.writeHead(200).end("accepted");
+          });
+        }).listen(9099, "0.0.0.0");
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777
+    networks:
+      - monitoring
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:9099/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  alert-fixture:
+    image: menorah-local-staging/alert-fixture:runtime
+    build:
+      context: ./alert-fixture
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      COMPOSE_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:?Generated Compose project name required}"
+      MENORAH_LOCAL_STAGING_ENVIRONMENT_ID: "${MENORAH_LOCAL_STAGING_ENVIRONMENT_ID:?Generated environment identity required}"
+      ALERT_FIXTURE_PORT: "9101"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.25
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777
+    networks:
+      - monitoring
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:9101/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  alertmanager:
+    image: prom/alertmanager:v0.32.1@sha256:51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --cluster.listen-address=
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - type: bind
+        source: ./alertmanager.yml
+        target: /etc/alertmanager/alertmanager.yml
+        read_only: true
+      - type: volume
+        source: alertmanager
+        target: /alertmanager
+    ports:
+      - "127.0.0.1:29093:9093"
+    networks:
+      - monitoring
+    depends_on:
+      alert-sink:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q --spider http://127.0.0.1:9093/-/ready
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.28.0@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox_exporter/blackbox.yml
+      - --log.prober=warn
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    configs:
+      - source: blackbox
+        target: /etc/blackbox_exporter/blackbox.yml
+    networks:
+      - monitoring
+      - app
+      - data
+    healthcheck:
+      test:
+        - CMD
+        - /bin/wget
+        - -q
+        - --spider
+        - http://127.0.0.1:9115/-/ready
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  mongodb-exporter:
+    image: menorah-local-staging/mongodb-exporter:runtime
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile.monitoring-health
+      target: mongodb-exporter
+    restart: unless-stopped
+    command:
+      - --collector.diagnosticdata
+      - --collector.replicasetstatus
+      - --compatible-mode
+      - --mongodb.global-conn-pool
+      - --mongodb.connect-timeout-ms=5000
+    environment:
+      MONGODB_URI: "${MONGODB_MONITORING_URI:?Generated Mongo monitoring URI required}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - monitoring
+      - data
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - /usr/local/bin/wget
+        - -q
+        - --spider
+        - http://127.0.0.1:9216/metrics
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  redis-exporter:
+    image: menorah-local-staging/redis-exporter:runtime
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile.monitoring-health
+      target: redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "${REDIS_MONITORING_URL:?Generated Redis monitoring URL required}"
+      REDIS_EXPORTER_CONNECTION_TIMEOUT: 5s
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - monitoring
+      - data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - /usr/local/bin/wget
+        - -q
+        - --spider
+        - http://127.0.0.1:9121/metrics
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  prometheus:
+    image: prom/prometheus:v2.55.1@sha256:2659f4c2ebb718e7695cb9b25ffa7d6be64db013daba13e05c875451cf51b0d3
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - type: bind
+        source: ./prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+        read_only: true
+      - type: bind
+        source: ../monitoring/alert-rules.yml
+        target: /etc/prometheus/alert-rules.yml
+        read_only: true
+      - type: volume
+        source: prometheus
+        target: /prometheus
+    ports:
+      - "127.0.0.1:29090:9090"
+    networks:
+      - monitoring
+      - app
+      - data
+    depends_on:
+      alertmanager:
+        condition: service_healthy
+      alert-fixture:
+        condition: service_healthy
+      blackbox-exporter:
+        condition: service_healthy
+      mongodb-exporter:
+        condition: service_healthy
+      redis-exporter:
+        condition: service_healthy
+      alloy:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q --spider http://127.0.0.1:9090/-/ready
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  loki:
+    image: menorah-local-staging/loki:runtime
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile.monitoring-health
+      target: loki
+    restart: unless-stopped
+    user: "10001:10001"
+    command: ["-config.file=/etc/loki/local-staging.yml"]
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    configs:
+      - source: loki
+        target: /etc/loki/local-staging.yml
+    volumes:
+      - type: volume
+        source: loki
+        target: /loki
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
+    ports:
+      - "127.0.0.1:23100:3100"
+    networks:
+      - monitoring
+    healthcheck:
+      test:
+        - CMD
+        - /usr/local/bin/wget
+        - -q
+        - --spider
+        - http://127.0.0.1:3100/ready
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  alloy:
+    image: menorah-local-staging/alloy:runtime
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile.monitoring-health
+      target: alloy
+    restart: unless-stopped
+    user: "0:0"
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - type: bind
+        source: ./config.alloy
+        target: /etc/alloy/config.alloy
+        read_only: true
+      - type: volume
+        source: alloy
+        target: /var/lib/alloy/data
+      - type: volume
+        source: logs
+        target: /var/log/menorah
+        read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
+    ports:
+      - "127.0.0.1:22345:12345"
+    networks:
+      - monitoring
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - /usr/local/bin/wget
+        - -q
+        - --spider
+        - http://127.0.0.1:12345/-/ready
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  mongo-restore:
+    image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
+    profiles: ["recovery"]
+    restart: unless-stopped
+    command:
+      - mongod
+      - --bind_ip_all
+      - --replSet
+      - menorah-restore-rs
+    volumes:
+      - type: volume
+        source: restore-mongodb
+        target: /data/db
+    networks:
+      - restore
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'mongosh --quiet --host 127.0.0.1 --eval "quit(db.adminCommand({ping:1}).ok === 1 ? 0 : 1)"'
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  mongo-restore-replica-init:
+    image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
+    profiles: ["recovery"]
+    restart: "no"
+    command:
+      - bash
+      - -euc
+      - |
+        mongosh --nodb --quiet --eval '
+          const admin = connect(
+            "mongodb://mongo-restore:27017/admin"
+          );
+          try {
+            admin.adminCommand({ replSetGetStatus: 1 });
+          } catch (error) {
+            if (error.code !== 94 && error.codeName !== "NotYetInitialized") throw error;
+            const initiated = admin.adminCommand({
+              replSetInitiate: {
+                _id: "menorah-restore-rs",
+                members: [{ _id: 0, host: "mongo-restore:27017" }],
+              },
+            });
+            if (initiated.ok !== 1) throw new Error(`Restore replica initiation failed: $${tojson(initiated)}`);
+          }
+        '
+        ready=false
+        for attempt in $$(seq 1 60); do
+          if mongosh --nodb --quiet --eval '
+            const admin = connect("mongodb://mongo-restore:27017/admin");
+            quit(admin.hello().isWritablePrimary ? 0 : 1);
+          '; then
+            ready=true
+            break
+          fi
+          sleep 2
+        done
+        test "$$ready" = true
+    networks:
+      - restore
+    depends_on:
+      mongo-restore:
+        condition: service_healthy
+
+  backup-job:
+    image: menorah-local-staging/backup-tools:runtime
+    build:
+      context: .
+      dockerfile: Dockerfile.local-backup
+    profiles: ["backup"]
+    restart: "no"
+    entrypoint: ["/bin/sh", "/scripts/backup-local.sh"]
+    environment:
+      MONGODB_BACKUP_URI: "${MONGODB_BACKUP_URI:?Generated Mongo backup URI required}"
+      MENORAH_LOCAL_STAGING_ENVIRONMENT_ID: "${MENORAH_LOCAL_STAGING_ENVIRONMENT_ID:?Generated environment identity required}"
+      COMPOSE_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:?Generated Compose project name required}"
+      MENORAH_RUNTIME_CANDIDATE_SHA: "${MENORAH_RUNTIME_CANDIDATE_SHA:?Generated runtime candidate SHA required}"
+      MENORAH_LOCAL_STAGING_WRITERS_QUIESCED: "${MENORAH_LOCAL_STAGING_WRITERS_QUIESCED:-}"
+      MENORAH_LOCAL_STAGING_BACKUP_METRICS_URL: "http://alert-fixture:9101/control/backup"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - type: bind
+        source: ./backup-local.sh
+        target: /scripts/backup-local.sh
+        read_only: true
+      - type: volume
+        source: backups
+        target: /backups
+      - type: volume
+        source: retrieval
+        target: /retrieval
+      - type: volume
+        source: uploads
+        target: /uploads
+        read_only: true
+    secrets:
+      - source: backup-encryption-password
+        target: backup-encryption-password
+        mode: 0400
+      - source: backup-integrity-hmac-key
+        target: backup-integrity-hmac-key
+        mode: 0400
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    networks:
+      - data
+      - monitoring
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      alert-fixture:
+        condition: service_healthy
+
+  restore-job:
+    image: menorah-local-staging/backup-tools:runtime
+    build:
+      context: .
+      dockerfile: Dockerfile.local-backup
+    profiles: ["recovery"]
+    restart: "no"
+    entrypoint: ["/bin/sh", "/scripts/restore-local.sh"]
+    environment:
+      MONGODB_RESTORE_TEST_URI: "${MONGODB_RESTORE_TEST_URI:?Generated Mongo restore URI required}"
+      MENORAH_LOCAL_STAGING_ENVIRONMENT_ID: "${MENORAH_LOCAL_STAGING_ENVIRONMENT_ID:?Generated environment identity required}"
+      COMPOSE_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:?Generated Compose project name required}"
+      MENORAH_RUNTIME_CANDIDATE_SHA: "${MENORAH_RUNTIME_CANDIDATE_SHA:?Generated runtime candidate SHA required}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - type: bind
+        source: ./restore-local.sh
+        target: /scripts/restore-local.sh
+        read_only: true
+      - type: volume
+        source: retrieval
+        target: /retrieval
+        read_only: true
+      - type: volume
+        source: restore-media
+        target: /restore-media
+    secrets:
+      - source: backup-encryption-password
+        target: backup-encryption-password
+        mode: 0400
+      - source: backup-integrity-hmac-key
+        target: backup-integrity-hmac-key
+        mode: 0400
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    networks:
+      - restore
+    depends_on:
+      mongo-restore-replica-init:
+        condition: service_completed_successfully
+
+configs:
+  blackbox:
+    content: |
+      modules:
+        http_success:
+          prober: http
+          timeout: 10s
+          http:
+            method: GET
+            valid_status_codes: [200]
+            follow_redirects: true
+            preferred_ip_protocol: ip4
+            ip_protocol_fallback: true
+        http_ready:
+          prober: http
+          timeout: 10s
+          http:
+            method: GET
+            valid_status_codes: [200]
+            follow_redirects: false
+            preferred_ip_protocol: ip4
+            ip_protocol_fallback: true
+        tcp_connect:
+          prober: tcp
+          timeout: 5s
+          tcp:
+            preferred_ip_protocol: ip4
+            ip_protocol_fallback: true
+  loki:
+    content: |
+      auth_enabled: false
+      server:
+        http_listen_port: 3100
+      common:
+        path_prefix: /loki
+        replication_factor: 1
+        ring:
+          kvstore:
+            store: inmemory
+        storage:
+          filesystem:
+            chunks_directory: /loki/chunks
+            rules_directory: /loki/rules
+      schema_config:
+        configs:
+          - from: "2024-01-01"
+            store: tsdb
+            object_store: filesystem
+            schema: v13
+            index:
+              prefix: index_
+              period: 24h
+      limits_config:
+        allow_structured_metadata: true
+      analytics:
+        reporting_enabled: false
+
+secrets:
+  backup-encryption-password:
+    file: "${MENORAH_LOCAL_STAGING_BACKUP_PASSWORD_FILE:?Generate the local backup password file first}"
+  backup-integrity-hmac-key:
+    file: "${MENORAH_LOCAL_STAGING_BACKUP_HMAC_FILE:?Generate the local backup HMAC file first}"
+
+networks:
+  app:
+    name: menorah-local-staging
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.254.240.0/24
+  data:
+    name: menorah-local-staging-data
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.254.241.0/24
+  monitoring:
+    name: menorah-local-staging-monitoring
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.254.242.0/24
+  restore:
+    name: menorah-local-staging-restore
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.254.243.0/24
+
+volumes:
+  mongo:
+    name: menorah-local-staging-mongo
+  redis:
+    name: menorah-local-staging-redis
+  uploads:
+    name: menorah-local-staging-uploads
+  backups:
+    name: menorah-local-staging-backups
+  retrieval:
+    name: menorah-local-staging-retrieval
+  prometheus:
+    name: menorah-local-staging-prometheus
+  alertmanager:
+    name: menorah-local-staging-alertmanager
+  loki:
+    name: menorah-local-staging-loki
+  alloy:
+    name: menorah-local-staging-alloy
+  restore-mongodb:
+    name: menorah-local-staging-restore-mongodb
+  restore-media:
+    name: menorah-local-staging-restore-media
+  logs:
+    name: menorah-local-staging-logs

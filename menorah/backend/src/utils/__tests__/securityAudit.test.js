@@ -242,6 +242,31 @@ describe('password reset email URLs', () => {
     expect(resetUrl.hash).toBe('#token=reset-token');
   });
 
+  test('supports the exact selected high port only for local staging', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT = '28443';
+    process.env.PASSWORD_RESET_BASE_URL =
+      'https://app.staging.localhost:28443';
+
+    const resetUrl = new URL(buildPasswordResetUrl('reset-token'));
+
+    expect(resetUrl.origin).toBe('https://app.staging.localhost:28443');
+    expect(resetUrl.hash).toBe('#token=reset-token');
+  });
+
+  test.each([
+    'https://app.staging.localhost',
+    'https://app.staging.localhost:28444',
+    'https://app.staging.example.com:28443',
+  ])('rejects a reset origin outside the selected local staging topology: %s', (value) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT = '28443';
+    process.env.PASSWORD_RESET_BASE_URL = value;
+
+    expect(() => buildPasswordResetUrl('reset-token'))
+      .toThrow(/PASSWORD_RESET_BASE_URL/);
+  });
+
   test.each([
     'https://app.menorah.me',
     'https://app.menorah.me.',

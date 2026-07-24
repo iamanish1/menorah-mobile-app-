@@ -4,6 +4,7 @@ const { resolve } = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const {
+  LOCAL_MAIL_CAPTURE_CONFIRMATION,
   PRODUCTION_CONFIRMATION,
   SYNTHETIC_DATA_CONFIRMATION,
   requireSyntheticEmail,
@@ -68,6 +69,68 @@ test('staging rejects unapproved hosts and trailing-dot production aliases', () 
   );
 });
 
+test('local staging accepts only an exact high HTTPS port on staging localhost', () => {
+  assert.deepEqual(
+    validateSmokeTargets({
+      QA_TARGET_ENVIRONMENT: 'staging',
+      QA_LOCAL_STAGING_HTTPS_PORT: '28443',
+      QA_STAGING_ALLOWED_HOSTS: 'api-web.staging.localhost',
+    }, {
+      QA_API_WEB_URL: 'https://api-web.staging.localhost:28443',
+    }),
+    { QA_API_WEB_URL: 'https://api-web.staging.localhost:28443' }
+  );
+  assert.throws(
+    () => validateSmokeTargets({
+      QA_TARGET_ENVIRONMENT: 'staging',
+      QA_LOCAL_STAGING_HTTPS_PORT: '28443',
+      QA_STAGING_ALLOWED_HOSTS: 'api-web.staging.localhost',
+    }, {
+      QA_API_WEB_URL: 'https://api-web.staging.localhost:28444',
+    }),
+    /exact approved port/
+  );
+});
+
+test('local staging port cannot authorize external staging hosts', () => {
+  assert.throws(
+    () => validateSmokeTargets({
+      QA_TARGET_ENVIRONMENT: 'staging',
+      QA_LOCAL_STAGING_HTTPS_PORT: '28443',
+      QA_STAGING_ALLOWED_HOSTS: 'api-web.staging.example.net',
+    }, {
+      QA_API_WEB_URL: 'https://api-web.staging.example.net:28443',
+    }),
+    /requires only \*\.staging\.localhost hosts/
+  );
+});
+
+test('local staging port selector rejects privileged, malformed, and production use', () => {
+  for (const port of ['443', '1023', '65536', 'not-a-port']) {
+    assert.throws(
+      () => validateSmokeTargets({
+        QA_TARGET_ENVIRONMENT: 'staging',
+        QA_LOCAL_STAGING_HTTPS_PORT: port,
+        QA_STAGING_ALLOWED_HOSTS: 'api-web.staging.localhost',
+      }, {
+        QA_API_WEB_URL: `https://api-web.staging.localhost:${port}`,
+      }),
+      /restricted to high-port staging targets/
+    );
+  }
+  assert.throws(
+    () => validateSmokeTargets({
+      QA_TARGET_ENVIRONMENT: 'production',
+      QA_LOCAL_STAGING_HTTPS_PORT: '28443',
+      QA_ALLOW_PRODUCTION_SMOKE: PRODUCTION_CONFIRMATION,
+      QA_PRODUCTION_CHANGE_REFERENCE: 'approved-change-reference',
+    }, {
+      QA_API_WEB_URL: 'https://api-web.menorah.me:28443',
+    }),
+    /restricted to high-port staging targets/
+  );
+});
+
 test('production targets require an exact confirmation and change reference', () => {
   assert.throws(
     () => validateSmokeTargets({ QA_TARGET_ENVIRONMENT: 'production' }, {
@@ -108,6 +171,20 @@ test('optional staging admin login requires a complete synthetic credential pair
     QA_ADMIN_PASSWORD: 'not-a-real-secret',
     QA_SYNTHETIC_DATA_CONFIRM: SYNTHETIC_DATA_CONFIRMATION,
   }));
+  assert.throws(() => validateOptionalSyntheticAdminCredentials({
+    QA_ADMIN_EMAIL: 'admin-full-1@mail.staging.localhost',
+    QA_ADMIN_PASSWORD: 'not-a-real-secret',
+    QA_SYNTHETIC_DATA_CONFIRM: SYNTHETIC_DATA_CONFIRMATION,
+    QA_LOCAL_STAGING_HTTPS_PORT: '28443',
+  }), /internal synthetic OTP capture confirmation/);
+  assert.doesNotThrow(() => validateOptionalSyntheticAdminCredentials({
+    QA_ADMIN_EMAIL: 'admin-full-1@mail.staging.localhost',
+    QA_ADMIN_PASSWORD: 'not-a-real-secret',
+    QA_SYNTHETIC_DATA_CONFIRM: SYNTHETIC_DATA_CONFIRMATION,
+    QA_LOCAL_STAGING_HTTPS_PORT: '28443',
+    QA_LOCAL_STAGING_MAIL_CAPTURE_CONFIRM:
+      LOCAL_MAIL_CAPTURE_CONFIRMATION,
+  }));
 });
 
 test('active smoke commands reject unsafe configuration before fetch', () => {
@@ -136,6 +213,25 @@ test('active smoke commands reject unsafe configuration before fetch', () => {
     assert.notEqual(result.status, 0, script);
     assert.match(`${result.stdout}\n${result.stderr}`, /cannot target production/);
   }
+});
+
+test('local API smoke accepts only the exact isolated loopback ports', () => {
+  const result = spawnSync(
+    process.execPath,
+    [resolve(qaRoot, 'local-api-smoke-test.js')],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        QA_API_WEB_URL: 'https://api-web.menorah.me',
+      },
+    }
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(
+    `${result.stdout}\n${result.stderr}`,
+    /must target exactly http:\/\/127\.0\.0\.1:28082/
+  );
 });
 
 test('Playwright configuration rejects live targets before launching a browser', () => {

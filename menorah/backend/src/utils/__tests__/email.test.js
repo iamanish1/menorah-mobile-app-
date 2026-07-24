@@ -14,6 +14,61 @@ describe('email delivery logging', () => {
     return require('../email');
   };
 
+  const configureLocalStagingMailCapture = () => {
+    const hosts = {
+      ROOT_DOMAIN: 'root.staging.localhost',
+      WWW_DOMAIN: 'www.staging.localhost',
+      APP_DOMAIN: 'app.staging.localhost',
+      ADMIN_DOMAIN: 'admin.staging.localhost',
+      COUNSELLOR_DOMAIN: 'counsellor.staging.localhost',
+      API_IOS_DOMAIN: 'api-ios.staging.localhost',
+      API_ANDROID_DOMAIN: 'api-android.staging.localhost',
+      API_WEB_DOMAIN: 'api-web.staging.localhost',
+      API_ADMIN_DOMAIN: 'api-admin.staging.localhost',
+      CALLS_DOMAIN: 'calls.staging.localhost',
+    };
+    const port = '28443';
+    const origin = (host) => `https://${host}:${port}`;
+    Object.assign(process.env, {
+      ...hosts,
+      NODE_ENV: 'production',
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      MENORAH_LOCAL_STAGING_ENVIRONMENT_ID:
+        'menorah-local-staging-v1',
+      MENORAH_LOCAL_STAGING_HTTPS_PORT: port,
+      MENORAH_STAGING_ALLOWED_HOSTS: Object.values(hosts).join(','),
+      MENORAH_STAGING_EMAIL_DOMAIN: 'mail.staging.localhost',
+      EMAIL_FROM:
+        'Menorah Synthetic <noreply@mail.staging.localhost>',
+      CONTACT_TO_EMAIL: 'sink@mail.staging.localhost',
+      ALLOWED_ORIGINS: [
+        origin(hosts.WWW_DOMAIN),
+        origin(hosts.APP_DOMAIN),
+        origin(hosts.ADMIN_DOMAIN),
+        origin(hosts.COUNSELLOR_DOMAIN),
+      ].join(','),
+      WEB_SESSION_ORIGINS: [
+        `${origin(hosts.WWW_DOMAIN)}=user`,
+        `${origin(hosts.APP_DOMAIN)}=user`,
+        `${origin(hosts.COUNSELLOR_DOMAIN)}=counsellor`,
+        `${origin(hosts.ADMIN_DOMAIN)}=admin`,
+      ].join(','),
+      LIVEKIT_URL: `wss://${hosts.CALLS_DOMAIN}:${port}`,
+      LIVEKIT_API_URL: 'http://livekit:7880',
+      PASSWORD_RESET_BASE_URL: origin(hosts.APP_DOMAIN),
+      CHECKOUT_RETURN_URL:
+        `${origin(hosts.APP_DOMAIN)}/checkout/return`,
+      FRONTEND_COUNSELLOR_URL: origin(hosts.COUNSELLOR_DOMAIN),
+      FRONTEND_API_WEB_URL: `${origin(hosts.API_WEB_DOMAIN)}/api`,
+      FRONTEND_API_ADMIN_URL:
+        `${origin(hosts.API_ADMIN_DOMAIN)}/api`,
+      FRONTEND_SOCKET_WEB_URL: origin(hosts.API_WEB_DOMAIN),
+      MEDIA_PUBLIC_BASE_URL: origin(hosts.API_WEB_DOMAIN),
+      RESEND_API_URL: 'http://mail-capture:8025/emails',
+      RESEND_API_KEY: `re_local_${'a'.repeat(40)}`,
+    });
+  };
+
   beforeEach(() => {
     process.env = {
       ...originalEnv,
@@ -23,6 +78,9 @@ describe('email delivery logging', () => {
       EMAIL_FROM: 'Menorah <noreply@example.com>',
       PASSWORD_RESET_BASE_URL: 'https://app.menorah.me',
     };
+    delete process.env.RESEND_API_URL;
+    delete process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID;
+    delete process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT;
     axiosPost = jest.fn().mockResolvedValue({ status: 200 });
     logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -141,6 +199,82 @@ describe('email delivery logging', () => {
       'https://api.resend.com/emails',
       expect.objectContaining({ to: [recipient] }),
       expect.any(Object)
+    );
+  });
+
+  test('uses the internal capture URL only for the exact local staging identity', async () => {
+    configureLocalStagingMailCapture();
+    const recipient = 'synthetic.user@mail.staging.localhost';
+    const otp = '918273';
+    const { sendOTPEmail } = loadEmail();
+
+    await expect(sendOTPEmail(recipient, otp)).resolves.toBe(true);
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://mail-capture:8025/emails',
+      expect.objectContaining({
+        to: [recipient],
+        html: expect.stringContaining(otp),
+      }),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Bearer re_local_${'a'.repeat(40)}`,
+        }),
+      })
+    );
+    const output = serializeCalls(logSpy);
+    expect(output).not.toContain(recipient);
+    expect(output).not.toContain(otp);
+    expect(output).not.toContain(process.env.RESEND_API_KEY);
+  });
+
+  test.each([
+    'https://api.resend.com/emails',
+    'http://mail-capture:8025/emails',
+    'http://elsewhere:8025/emails',
+  ])('rejects every configured email URL in external production (%s)', async (url) => {
+    process.env.RESEND_API_URL = url;
+    const { sendOTPEmail } = loadEmail();
+
+    await expect(
+      sendOTPEmail('private-recipient@example.com', '918273')
+    ).resolves.toBe(false);
+
+    expect(axiosPost).not.toHaveBeenCalled();
+  });
+
+  test('rejects local capture when the exact generated identity is missing', async () => {
+    configureLocalStagingMailCapture();
+    delete process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID;
+    const { sendOTPEmail } = loadEmail();
+
+    await expect(
+      sendOTPEmail('synthetic.user@mail.staging.localhost', '918273')
+    ).resolves.toBe(false);
+
+    expect(axiosPost).not.toHaveBeenCalled();
+  });
+
+  test('rejects a non-local key before contacting the internal capture', async () => {
+    configureLocalStagingMailCapture();
+    process.env.RESEND_API_KEY = 'ordinary-test-key';
+    const { sendOTPEmail } = loadEmail();
+
+    await expect(
+      sendOTPEmail('synthetic.user@mail.staging.localhost', '918273')
+    ).resolves.toBe(false);
+
+    expect(axiosPost).not.toHaveBeenCalled();
+  });
+
+  test('uses the exact reviewed high-port counsellor staging origin', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    process.env.FRONTEND_COUNSELLOR_URL =
+      'https://counsellor.staging.localhost:28443';
+    const { buildCounsellorAppUrl } = loadEmail();
+
+    expect(buildCounsellorAppUrl('/register')).toBe(
+      'https://counsellor.staging.localhost:28443/register'
     );
   });
 

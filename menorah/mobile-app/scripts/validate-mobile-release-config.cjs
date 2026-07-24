@@ -2,7 +2,9 @@ const { readFileSync, readdirSync } = require('node:fs');
 const { join, resolve } = require('node:path');
 
 const projectRoot = resolve(__dirname, '..');
-const read = (root, relativePath) => readFileSync(join(root, relativePath), 'utf8');
+const normalizeText = (value) => value.replace(/\r\n?/g, '\n');
+const read = (root, relativePath) =>
+  normalizeText(readFileSync(join(root, relativePath), 'utf8'));
 const readJson = (root, relativePath) => JSON.parse(read(root, relativePath));
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -733,6 +735,7 @@ if (require.main === module) {
 
 module.exports = {
   containsProductionReleaseHost,
+  normalizeText,
   privacyReasons,
   resolveBuildProfile,
   validateProject,

@@ -9,6 +9,7 @@ const {
 } = require('../src/lib/deepLinks.js');
 const {
   containsProductionReleaseHost,
+  normalizeText,
   resolveBuildProfile,
   validateProject,
 } = require('./validate-mobile-release-config.cjs');
@@ -20,6 +21,10 @@ const { createSecureTokenStorage } = require('../src/lib/secureTokenPolicy.js');
 
 const projectRoot = resolve(__dirname, '..');
 const validToken = 'a'.repeat(64);
+
+test('release validator normalizes Windows and legacy line endings', () => {
+  assert.equal(normalizeText('first\r\nsecond\rthird\n'), 'first\nsecond\nthird\n');
+});
 
 test('mobile release configuration remains internally consistent', () => {
   assert.deepEqual(validateProject(projectRoot), []);

@@ -1,11 +1,15 @@
 const axios = require('axios');
 const {
   DEPLOYMENT_ENVIRONMENTS,
+  LOCAL_STAGING_HTTPS_PORT_ENV,
   getDeploymentEnvironment,
 } = require('../config/deploymentEnvironment');
+const {
+  resolveResendEmailUrl,
+  validateResendDeliveryConfiguration,
+} = require('../config/emailDelivery');
 const { recordEmailDispatch } = require('./reliabilityMetrics');
 
-const RESEND_EMAIL_URL = 'https://api.resend.com/emails';
 const FROM_NAME = 'Menorah Health';
 const isDev = process.env.NODE_ENV !== 'production';
 const CANONICAL_PASSWORD_RESET_BASE_URL = 'https://app.menorah.me';
@@ -91,10 +95,17 @@ const canDeliverToStagingRecipient = (recipient) => {
 const sendEmail = async (to, subject, html) => {
   recordEmailDispatch({ provider: 'resend', outcome: 'attempted' });
   let deploymentEnvironment;
+  let resendEmailUrl;
   try {
     deploymentEnvironment = getDeploymentEnvironment(process.env);
+    const deliveryErrors =
+      validateResendDeliveryConfiguration(process.env);
+    if (deliveryErrors.length > 0) throw new Error(deliveryErrors[0]);
+    resendEmailUrl = resolveResendEmailUrl(process.env);
   } catch (_error) {
-    console.error('Email delivery environment is invalid. Email sending is disabled.');
+    console.error(
+      'Email delivery environment is invalid. Email sending is disabled.'
+    );
     recordEmailDispatch({ provider: 'resend', outcome: 'disabled' });
     return false;
   }
@@ -121,7 +132,7 @@ const sendEmail = async (to, subject, html) => {
 
   try {
     await axios.post(
-      RESEND_EMAIL_URL,
+      resendEmailUrl,
       {
         from: process.env.EMAIL_FROM,
         to: [to],
@@ -199,16 +210,24 @@ const validateStagingPasswordResetBaseUrl = (base) => {
       `PASSWORD_RESET_BASE_URL must not use the production origin ${CANONICAL_PASSWORD_RESET_BASE_URL} in staging`
     );
   }
+  const localStagingPort = String(
+    process.env[LOCAL_STAGING_HTTPS_PORT_ENV] || ''
+  ).trim();
+  const localPortAllowed = Boolean(
+    localStagingPort
+    && parsedBase.hostname.toLowerCase().endsWith('.staging.localhost')
+    && parsedBase.port === localStagingPort
+  );
   if (
     parsedBase.username
     || parsedBase.password
     || parsedBase.search
     || parsedBase.hash
-    || parsedBase.port
+    || ((localStagingPort || parsedBase.port) && !localPortAllowed)
     || base !== parsedBase.origin
   ) {
     throw new Error(
-      'PASSWORD_RESET_BASE_URL must be an exact origin without credentials, path, port, query, or fragment'
+      'PASSWORD_RESET_BASE_URL must be the exact reviewed staging origin'
     );
   }
 };

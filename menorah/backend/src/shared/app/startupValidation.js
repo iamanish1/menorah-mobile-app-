@@ -5,6 +5,7 @@ const CANONICAL_CHECKOUT_RETURN_URL =
   'https://app.menorah.me/checkout/return';
 const {
   DEPLOYMENT_ENVIRONMENTS,
+  LOCAL_STAGING_HTTPS_PORT_ENV,
   getDeploymentEnvironment,
   validateStagingEnvironmentIsolation,
 } = require('../../config/deploymentEnvironment');
@@ -39,6 +40,9 @@ const {
 const {
   readAdminRoleConfiguration,
 } = require('../../config/adminPermissions');
+const {
+  validateResendDeliveryConfiguration,
+} = require('../../config/emailDelivery');
 const {
   validateMediaStorageConfig,
 } = require('../../services/mediaStorage');
@@ -133,15 +137,23 @@ const validateStagingPasswordResetBaseUrl = (errors) => {
       `PASSWORD_RESET_BASE_URL must not use the production origin ${CANONICAL_PASSWORD_RESET_BASE_URL} in staging`
     );
   }
+  const localStagingPort = String(
+    process.env[LOCAL_STAGING_HTTPS_PORT_ENV] || ''
+  ).trim();
+  const localPortAllowed = Boolean(
+    localStagingPort
+    && parsedBase.hostname.toLowerCase().endsWith('.staging.localhost')
+    && parsedBase.port === localStagingPort
+  );
   if (
     parsedBase.username
     || parsedBase.password
     || parsedBase.search
     || parsedBase.hash
-    || parsedBase.port
+    || ((localStagingPort || parsedBase.port) && !localPortAllowed)
     || configuredBase !== parsedBase.origin
   ) {
-    errors.push('PASSWORD_RESET_BASE_URL must be an exact origin without credentials, path, port, query, or fragment');
+    errors.push('PASSWORD_RESET_BASE_URL must be the exact reviewed staging origin');
   }
 };
 
@@ -273,6 +285,14 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
   ) {
     errors.push('DEPLOYMENT_ENVIRONMENT=staging requires NODE_ENV=production');
   }
+  if (
+    deploymentEnvironment !== DEPLOYMENT_ENVIRONMENTS.STAGING
+    && String(process.env[LOCAL_STAGING_HTTPS_PORT_ENV] || '').trim()
+  ) {
+    errors.push(
+      `${LOCAL_STAGING_HTTPS_PORT_ENV} must be unset outside staging`
+    );
+  }
 
   if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < MIN_JWT_SECRET_LENGTH) {
     errors.push(`JWT_SECRET is missing or shorter than ${MIN_JWT_SECRET_LENGTH} characters`);
@@ -294,6 +314,7 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
     ].forEach((key) =>
       requireEnv(key, errors)
     );
+    errors.push(...validateResendDeliveryConfiguration(process.env));
     requireMinimumLength('AUDIT_LOG_SIGNING_KEY', 32, errors);
     if (serviceName === 'api-web') {
       requireMinimumLength('RESEND_WEBHOOK_SECRET', 24, errors);

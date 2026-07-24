@@ -17,7 +17,8 @@
     "report:payment-reconciliation": "node scripts/payment-reconciliation-report.js",
     "report:payout-reconciliation": "node scripts/payout-reconciliation-report.js",
     "seed": "node src/database/seed.js",
-    "seed:qa": "node src/database/seed-qa.js"
+    "seed:qa": "node src/database/seed-qa.js",
+    "seed:local-staging": "node src/database/seed-local-staging.js"
   },
   "keywords": [
     "menorah",

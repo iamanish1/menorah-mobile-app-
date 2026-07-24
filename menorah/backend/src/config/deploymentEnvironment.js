@@ -27,6 +27,8 @@ const BARE_EMAIL_PATTERN = new RegExp(
   `^[A-Za-z0-9.!#$%&'*+/=?^_\`{|}~-]+@(${DNS_HOST_SOURCE})$`
 );
 const RAZORPAY_TEST_KEY_ID_PATTERN = /^rzp_test_[A-Za-z0-9]{14,64}$/;
+const LOCAL_STAGING_HTTPS_PORT_ENV = 'MENORAH_LOCAL_STAGING_HTTPS_PORT';
+const LOCAL_STAGING_HOST_SUFFIX = '.staging.localhost';
 
 const getDeploymentEnvironment = (env = process.env) => {
   const value = String(
@@ -66,6 +68,31 @@ const getSenderEmailDomain = (value) => {
   const sender = String(value || '').trim();
   const displayNameMatch = sender.match(/^[^<>\r\n]+<([^<>\s]+)>$/);
   return getBareEmailDomain(displayNameMatch ? displayNameMatch[1] : sender);
+};
+
+const readLocalStagingHttpsPort = (env, errors) => {
+  const raw = String(env[LOCAL_STAGING_HTTPS_PORT_ENV] || '').trim();
+  if (!raw) return '';
+
+  const port = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) {
+    errors.push(
+      `${LOCAL_STAGING_HTTPS_PORT_ENV} must be an integer from 1024 through 65535`
+    );
+    return '';
+  }
+
+  const nonLocalHosts = STAGING_HOST_ENV_KEYS.filter(
+    (key) => !String(env[key] || '').endsWith(LOCAL_STAGING_HOST_SUFFIX)
+  );
+  if (nonLocalHosts.length > 0) {
+    errors.push(
+      `${LOCAL_STAGING_HTTPS_PORT_ENV} is allowed only when every staging host ends with ${LOCAL_STAGING_HOST_SUFFIX}`
+    );
+    return '';
+  }
+
+  return raw;
 };
 
 const validateStagingEnvironmentIsolation = (env = process.env) => {
@@ -117,15 +144,22 @@ const validateStagingEnvironmentIsolation = (env = process.env) => {
     );
   }
 
+  const localHttpsPort = readLocalStagingHttpsPort(env, errors);
+  const localPortSuffix = localHttpsPort ? `:${localHttpsPort}` : '';
+  const httpsOrigin = (host) => `https://${host || ''}${localPortSuffix}`;
+  const wssOrigin = (host) => `wss://${host || ''}${localPortSuffix}`;
   const exactValues = {
-    LIVEKIT_URL: `wss://${env.CALLS_DOMAIN || ''}`,
-    LIVEKIT_API_URL: `https://${env.CALLS_DOMAIN || ''}`,
-    PASSWORD_RESET_BASE_URL: `https://${env.APP_DOMAIN || ''}`,
-    CHECKOUT_RETURN_URL: `https://${env.APP_DOMAIN || ''}/checkout/return`,
-    FRONTEND_API_WEB_URL: `https://${env.API_WEB_DOMAIN || ''}/api`,
-    FRONTEND_API_ADMIN_URL: `https://${env.API_ADMIN_DOMAIN || ''}/api`,
-    FRONTEND_SOCKET_WEB_URL: `https://${env.API_WEB_DOMAIN || ''}`,
-    MEDIA_PUBLIC_BASE_URL: `https://${env.API_WEB_DOMAIN || ''}`,
+    LIVEKIT_URL: wssOrigin(env.CALLS_DOMAIN),
+    LIVEKIT_API_URL: localHttpsPort
+      ? 'http://livekit:7880'
+      : httpsOrigin(env.CALLS_DOMAIN),
+    PASSWORD_RESET_BASE_URL: httpsOrigin(env.APP_DOMAIN),
+    CHECKOUT_RETURN_URL: `${httpsOrigin(env.APP_DOMAIN)}/checkout/return`,
+    FRONTEND_COUNSELLOR_URL: httpsOrigin(env.COUNSELLOR_DOMAIN),
+    FRONTEND_API_WEB_URL: `${httpsOrigin(env.API_WEB_DOMAIN)}/api`,
+    FRONTEND_API_ADMIN_URL: `${httpsOrigin(env.API_ADMIN_DOMAIN)}/api`,
+    FRONTEND_SOCKET_WEB_URL: httpsOrigin(env.API_WEB_DOMAIN),
+    MEDIA_PUBLIC_BASE_URL: httpsOrigin(env.API_WEB_DOMAIN),
   };
   Object.entries(exactValues).forEach(([key, expected]) => {
     if (String(env[key] || '') !== expected) {
@@ -167,10 +201,10 @@ const validateStagingEnvironmentIsolation = (env = process.env) => {
     key: 'ALLOWED_ORIGINS',
     value: env.ALLOWED_ORIGINS,
     expected: [
-      `https://${env.WWW_DOMAIN || ''}`,
-      `https://${env.APP_DOMAIN || ''}`,
-      `https://${env.ADMIN_DOMAIN || ''}`,
-      `https://${env.COUNSELLOR_DOMAIN || ''}`,
+      httpsOrigin(env.WWW_DOMAIN),
+      httpsOrigin(env.APP_DOMAIN),
+      httpsOrigin(env.ADMIN_DOMAIN),
+      httpsOrigin(env.COUNSELLOR_DOMAIN),
     ],
     errors,
   });
@@ -178,10 +212,10 @@ const validateStagingEnvironmentIsolation = (env = process.env) => {
     key: 'WEB_SESSION_ORIGINS',
     value: env.WEB_SESSION_ORIGINS,
     expected: [
-      `https://${env.WWW_DOMAIN || ''}=user`,
-      `https://${env.APP_DOMAIN || ''}=user`,
-      `https://${env.COUNSELLOR_DOMAIN || ''}=counsellor`,
-      `https://${env.ADMIN_DOMAIN || ''}=admin`,
+      `${httpsOrigin(env.WWW_DOMAIN)}=user`,
+      `${httpsOrigin(env.APP_DOMAIN)}=user`,
+      `${httpsOrigin(env.COUNSELLOR_DOMAIN)}=counsellor`,
+      `${httpsOrigin(env.ADMIN_DOMAIN)}=admin`,
     ],
     errors,
   });
@@ -199,6 +233,7 @@ const validateStagingEnvironmentIsolation = (env = process.env) => {
 
 module.exports = {
   DEPLOYMENT_ENVIRONMENTS,
+  LOCAL_STAGING_HTTPS_PORT_ENV,
   STAGING_HOST_ENV_KEYS,
   getDeploymentEnvironment,
   validateStagingEnvironmentIsolation,

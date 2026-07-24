@@ -32,6 +32,8 @@ describe('startup validation', () => {
       PASSWORD_RESET_BASE_URL: `https://${stagingHosts.APP_DOMAIN}`,
       CHECKOUT_RETURN_URL:
         `https://${stagingHosts.APP_DOMAIN}/checkout/return`,
+      FRONTEND_COUNSELLOR_URL:
+        `https://${stagingHosts.COUNSELLOR_DOMAIN}`,
       FRONTEND_API_WEB_URL: `https://${stagingHosts.API_WEB_DOMAIN}/api`,
       FRONTEND_API_ADMIN_URL: `https://${stagingHosts.API_ADMIN_DOMAIN}/api`,
       FRONTEND_SOCKET_WEB_URL: `https://${stagingHosts.API_WEB_DOMAIN}`,
@@ -47,6 +49,61 @@ describe('startup validation', () => {
         `https://${stagingHosts.APP_DOMAIN}=user`,
         `https://${stagingHosts.COUNSELLOR_DOMAIN}=counsellor`,
         `https://${stagingHosts.ADMIN_DOMAIN}=admin`,
+      ].join(','),
+      RAZORPAY_KEY_ID: 'rzp_test_A1b2C3d4E5f6G7',
+      RAZORPAY_X_KEY_ID: '',
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: 'rzp_test_A1b2C3d4E5f6G7',
+    });
+  };
+
+  const configureValidLocalStagingEnvironment = () => {
+    const localHosts = {
+      ROOT_DOMAIN: 'root.staging.localhost',
+      WWW_DOMAIN: 'www.staging.localhost',
+      APP_DOMAIN: 'app.staging.localhost',
+      ADMIN_DOMAIN: 'admin.staging.localhost',
+      COUNSELLOR_DOMAIN: 'counsellor.staging.localhost',
+      API_IOS_DOMAIN: 'api-ios.staging.localhost',
+      API_ANDROID_DOMAIN: 'api-android.staging.localhost',
+      API_WEB_DOMAIN: 'api-web.staging.localhost',
+      API_ADMIN_DOMAIN: 'api-admin.staging.localhost',
+      CALLS_DOMAIN: 'calls.staging.localhost',
+    };
+    const port = '28443';
+    const httpsOrigin = (host) => `https://${host}:${port}`;
+    Object.assign(process.env, {
+      ...localHosts,
+      MENORAH_LOCAL_STAGING_HTTPS_PORT: port,
+      MENORAH_LOCAL_STAGING_ENVIRONMENT_ID:
+        'menorah-local-staging-v1',
+      MENORAH_STAGING_ALLOWED_HOSTS: Object.values(localHosts).join(','),
+      MENORAH_STAGING_EMAIL_DOMAIN: 'mail.staging.localhost',
+      CONTACT_TO_EMAIL: 'contact@mail.staging.localhost',
+      EMAIL_FROM: 'Menorah Staging <noreply@mail.staging.localhost>',
+      LIVEKIT_URL: `wss://${localHosts.CALLS_DOMAIN}:${port}`,
+      LIVEKIT_API_URL: 'http://livekit:7880',
+      PASSWORD_RESET_BASE_URL: httpsOrigin(localHosts.APP_DOMAIN),
+      CHECKOUT_RETURN_URL:
+        `${httpsOrigin(localHosts.APP_DOMAIN)}/checkout/return`,
+      FRONTEND_COUNSELLOR_URL:
+        httpsOrigin(localHosts.COUNSELLOR_DOMAIN),
+      FRONTEND_API_WEB_URL:
+        `${httpsOrigin(localHosts.API_WEB_DOMAIN)}/api`,
+      FRONTEND_API_ADMIN_URL:
+        `${httpsOrigin(localHosts.API_ADMIN_DOMAIN)}/api`,
+      FRONTEND_SOCKET_WEB_URL: httpsOrigin(localHosts.API_WEB_DOMAIN),
+      MEDIA_PUBLIC_BASE_URL: httpsOrigin(localHosts.API_WEB_DOMAIN),
+      ALLOWED_ORIGINS: [
+        httpsOrigin(localHosts.WWW_DOMAIN),
+        httpsOrigin(localHosts.APP_DOMAIN),
+        httpsOrigin(localHosts.ADMIN_DOMAIN),
+        httpsOrigin(localHosts.COUNSELLOR_DOMAIN),
+      ].join(','),
+      WEB_SESSION_ORIGINS: [
+        `${httpsOrigin(localHosts.WWW_DOMAIN)}=user`,
+        `${httpsOrigin(localHosts.APP_DOMAIN)}=user`,
+        `${httpsOrigin(localHosts.COUNSELLOR_DOMAIN)}=counsellor`,
+        `${httpsOrigin(localHosts.ADMIN_DOMAIN)}=admin`,
       ].join(','),
       RAZORPAY_KEY_ID: 'rzp_test_A1b2C3d4E5f6G7',
       RAZORPAY_X_KEY_ID: '',
@@ -137,6 +194,9 @@ describe('startup validation', () => {
     delete process.env.PASSWORD_RESET_URL_TEMPLATE;
     delete process.env.COUNSELLOR_MEDIA_STORAGE;
     delete process.env.SOCIAL_STUDIO_STORAGE;
+    delete process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT;
+    delete process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID;
+    delete process.env.RESEND_API_URL;
   });
 
   afterAll(() => {
@@ -231,6 +291,118 @@ describe('startup validation', () => {
     expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
   });
 
+  test('accepts an exact high-port HTTPS topology only for local staging hosts', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidLocalStagingEnvironment();
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
+  });
+
+  test('accepts the internal mail capture only for the exact local staging identity', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidLocalStagingEnvironment();
+    process.env.RESEND_API_URL =
+      'http://mail-capture:8025/emails';
+    process.env.RESEND_API_KEY = `re_local_${'a'.repeat(40)}`;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
+  });
+
+  test.each([
+    'https://api.resend.com/emails',
+    'http://mail-capture:8025',
+    'http://mail-capture:8025/emails/',
+    'http://other-mail-capture:8025/emails',
+  ])('rejects a configured email endpoint outside the one exact local URL (%s)', (url) => {
+    process.env.RESEND_API_URL = url;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/RESEND_API_URL is allowed only/);
+  });
+
+  test('rejects the local mail capture for an ordinary external staging identity', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    process.env.RESEND_API_URL =
+      'http://mail-capture:8025/emails';
+    process.env.RESEND_API_KEY = `re_local_${'a'.repeat(40)}`;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/RESEND_API_URL is allowed only/);
+  });
+
+  test('rejects the local mail capture when the generated environment ID is absent', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidLocalStagingEnvironment();
+    delete process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID;
+    process.env.RESEND_API_URL =
+      'http://mail-capture:8025/emails';
+    process.env.RESEND_API_KEY = `re_local_${'a'.repeat(40)}`;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/RESEND_API_URL is allowed only/);
+  });
+
+  test.each([
+    'ordinary-test-key',
+    're_local_short',
+    `re_test_${'a'.repeat(40)}`,
+  ])('rejects an invalid local mail-capture key (%s)', (apiKey) => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidLocalStagingEnvironment();
+    process.env.RESEND_API_URL =
+      'http://mail-capture:8025/emails';
+    process.env.RESEND_API_KEY = apiKey;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/RESEND_API_KEY must use a strong re_local_ key/);
+  });
+
+  test('rejects a local capture key on the hardcoded external endpoint', () => {
+    process.env.RESEND_API_KEY = `re_local_${'a'.repeat(40)}`;
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/must never be sent to the external Resend endpoint/);
+  });
+
+  test('rejects a local staging port for a non-local staging topology', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidStagingEnvironment();
+    process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT = '28443';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/MENORAH_LOCAL_STAGING_HTTPS_PORT is allowed only/);
+  });
+
+  test.each(['443', '1023', '65536', 'not-a-port'])(
+    'rejects an unsafe local staging HTTPS port %s',
+    (port) => {
+      process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+      configureValidLocalStagingEnvironment();
+      process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT = port;
+
+      expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+        .toThrow(/MENORAH_LOCAL_STAGING_HTTPS_PORT/);
+    }
+  );
+
+  test('rejects a mismatched URL port in a local staging topology', () => {
+    process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+    configureValidLocalStagingEnvironment();
+    process.env.FRONTEND_API_WEB_URL =
+      'https://api-web.staging.localhost:28444/api';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/FRONTEND_API_WEB_URL must equal/);
+  });
+
+  test('rejects the local staging port selector in production', () => {
+    process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT = '28443';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/MENORAH_LOCAL_STAGING_HTTPS_PORT must be unset outside staging/);
+  });
+
   test('rejects staging when every topology variable is omitted', () => {
     process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
     [
@@ -241,6 +413,7 @@ describe('startup validation', () => {
       'LIVEKIT_API_URL',
       'PASSWORD_RESET_BASE_URL',
       'CHECKOUT_RETURN_URL',
+      'FRONTEND_COUNSELLOR_URL',
       'FRONTEND_API_WEB_URL',
       'FRONTEND_API_ADMIN_URL',
       'FRONTEND_SOCKET_WEB_URL',
@@ -275,6 +448,7 @@ describe('startup validation', () => {
       LIVEKIT_URL: 'wss://calls.menorah.me',
       LIVEKIT_API_URL: 'https://calls.menorah.me',
       PASSWORD_RESET_BASE_URL: 'https://app.menorah.me',
+      FRONTEND_COUNSELLOR_URL: 'https://counsellor.menorah.me',
       FRONTEND_API_WEB_URL: 'https://api-web.menorah.me/api',
       FRONTEND_API_ADMIN_URL: 'https://api-admin.menorah.me/api',
       FRONTEND_SOCKET_WEB_URL: 'https://api-web.menorah.me',
@@ -319,6 +493,7 @@ describe('startup validation', () => {
     ['LIVEKIT_API_URL', 'https://calls.other-staging.example.com'],
     ['PASSWORD_RESET_BASE_URL', 'https://other.staging.example.com'],
     ['CHECKOUT_RETURN_URL', 'https://app.menorah.me/checkout/return'],
+    ['FRONTEND_COUNSELLOR_URL', 'https://counsellor.menorah.me'],
     ['FRONTEND_API_WEB_URL', 'https://api-web.staging.example.com'],
     ['FRONTEND_API_ADMIN_URL', 'https://api-web.staging.example.com/api'],
     ['FRONTEND_SOCKET_WEB_URL', 'https://api-admin.staging.example.com'],

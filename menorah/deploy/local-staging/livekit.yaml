@@ -1,0 +1,15 @@
+port: 7880
+
+rtc:
+  tcp_port: 27881
+  port_range_start: 25000
+  port_range_end: 25100
+  use_external_ip: false
+  skip_external_ip_validation: true
+
+room:
+  auto_create: true
+
+logging:
+  level: info
+  json: true

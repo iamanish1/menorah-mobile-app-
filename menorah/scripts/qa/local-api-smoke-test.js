@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 
+const {
+  CONFIRMATION: LOCAL_MAIL_CAPTURE_CONFIRMATION,
+  clearSyntheticMessages,
+  readLatestSyntheticOtp,
+} = require('./local-mail-capture');
+
 const DEFAULTS = {
-  apiIos: 'http://localhost:18080',
-  apiAndroid: 'http://localhost:18084',
-  apiWeb: 'http://localhost:18082',
-  apiAdmin: 'http://localhost:18083',
-  worker: 'http://localhost:18090',
+  apiIos: 'http://127.0.0.1:28080',
+  apiAndroid: 'http://127.0.0.1:28081',
+  apiWeb: 'http://127.0.0.1:28082',
+  apiAdmin: 'http://127.0.0.1:28083',
+  worker: 'http://127.0.0.1:28084',
 };
 
 const config = {
@@ -16,11 +22,24 @@ const config = {
   worker: process.env.QA_WORKER_URL || DEFAULTS.worker,
   adminEmail: process.env.QA_ADMIN_EMAIL,
   normalEmail: process.env.QA_USER_EMAIL,
-  password: process.env.QA_USER_PASSWORD,
+  adminPassword: process.env.QA_ADMIN_PASSWORD,
+  userPassword: process.env.QA_USER_PASSWORD,
+  mailCaptureConfirmation:
+    process.env.QA_LOCAL_STAGING_MAIL_CAPTURE_CONFIRM,
   runId: Date.now() % 100000,
 };
 
 const results = [];
+
+function validateExactLocalTargets(targets = config) {
+  for (const [key, expected] of Object.entries(DEFAULTS)) {
+    if (targets[key] !== expected) {
+      throw new Error(
+        `Local API smoke ${key} must target exactly ${expected}`
+      );
+    }
+  }
+}
 
 function pushResult(status, name, details = '') {
   results.push({ status, name, details });
@@ -97,6 +116,7 @@ function qaForwardedFor(offset) {
 }
 
 async function main() {
+  validateExactLocalTargets();
   console.log('Local API smoke test');
   console.log(`api-ios: ${config.apiIos}`);
   console.log(`api-android: ${config.apiAndroid}`);
@@ -156,22 +176,60 @@ async function main() {
     headers: qaForwardedFor(1),
     body: {},
   });
-  const canRunSeededAuth = config.adminEmail && config.normalEmail && config.password;
+  const canRunSeededAuth = (
+    config.adminEmail
+    && config.normalEmail
+    && config.adminPassword
+    && config.userPassword
+  );
   let adminLogin = null;
   if (canRunSeededAuth) {
+    const useLocalMailCapture = (
+      config.mailCaptureConfirmation
+      === LOCAL_MAIL_CAPTURE_CONFIRMATION
+    );
+    if (useLocalMailCapture) clearSyntheticMessages();
     adminLogin = await expectJsonSuccess('api-admin seeded admin login succeeds', config.apiAdmin, '/api/auth/login', {
       method: 'POST',
       headers: qaForwardedFor(2),
-      body: { email: config.adminEmail, password: config.password },
+      body: { email: config.adminEmail, password: config.adminPassword },
     });
+    if (
+      adminLogin?.payload?.data?.mfaRequired === true
+      && adminLogin.payload.data.challengeId
+    ) {
+      if (useLocalMailCapture) {
+        const otp = readLatestSyntheticOtp(config.adminEmail);
+        adminLogin = await expectJsonSuccess(
+          'api-admin seeded admin MFA succeeds',
+          config.apiAdmin,
+          '/api/auth/login/mfa',
+          {
+            method: 'POST',
+            headers: qaForwardedFor(3),
+            body: {
+              challengeId: adminLogin.payload.data.challengeId,
+              otp,
+            },
+          }
+        );
+      } else {
+        pushResult(
+          'BLOCKED',
+          'api-admin seeded admin MFA succeeds',
+          'set the exact local synthetic mail-capture confirmation'
+        );
+        adminLogin = null;
+      }
+    }
     await expectStatus('api-admin seeded normal user rejected', config.apiAdmin, '/api/auth/login', 403, {
       method: 'POST',
-      headers: qaForwardedFor(3),
-      body: { email: config.normalEmail, password: config.password },
+      headers: qaForwardedFor(4),
+      body: { email: config.normalEmail, password: config.userPassword },
     });
   } else {
-    pushResult('BLOCKED', 'api-admin seeded admin login succeeds', 'set QA_ADMIN_EMAIL, QA_USER_EMAIL, and QA_USER_PASSWORD to run');
-    pushResult('BLOCKED', 'api-admin seeded normal user rejected', 'set QA_ADMIN_EMAIL, QA_USER_EMAIL, and QA_USER_PASSWORD to run');
+    pushResult('BLOCKED', 'api-admin seeded admin login succeeds', 'set QA_ADMIN_EMAIL, QA_ADMIN_PASSWORD, QA_USER_EMAIL, and QA_USER_PASSWORD to run');
+    pushResult('BLOCKED', 'api-admin seeded normal user rejected', 'set QA_ADMIN_EMAIL, QA_ADMIN_PASSWORD, QA_USER_EMAIL, and QA_USER_PASSWORD to run');
   }
   await expectStatus('api-admin register route absent', config.apiAdmin, '/api/auth/register', 404, {
     method: 'POST',

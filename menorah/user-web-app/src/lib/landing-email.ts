@@ -1,4 +1,8 @@
-const RESEND_EMAIL_URL = 'https://api.resend.com/emails';
+const CANONICAL_RESEND_EMAIL_URL = 'https://api.resend.com/emails';
+const LOCAL_STAGING_RESEND_EMAIL_URL =
+  'http://mail-capture:8025/emails';
+const LOCAL_STAGING_ENVIRONMENT_ID = 'menorah-local-staging-v1';
+const LOCAL_STAGING_HTTPS_PORT = '28443';
 const dnsHostPattern =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
@@ -41,6 +45,30 @@ function getSenderEmailDomain(value: string) {
   const sender = value.trim();
   const displayNameMatch = sender.match(/^[^<>\r\n]+<([^<>\s]+)>$/);
   return getBareEmailDomain(displayNameMatch ? displayNameMatch[1] : sender);
+}
+
+function resolveResendEmailUrl(
+  apiKey: string,
+  deploymentEnvironment: string
+) {
+  const configured = optionalEnv('RESEND_API_URL');
+  if (!configured) {
+    if (apiKey.startsWith('re_local_')) return undefined;
+    return CANONICAL_RESEND_EMAIL_URL;
+  }
+  const exactLocalIdentity = (
+    configured === LOCAL_STAGING_RESEND_EMAIL_URL
+    && process.env.NODE_ENV === 'production'
+    && deploymentEnvironment === 'staging'
+    && optionalEnv('MENORAH_LOCAL_STAGING_ENVIRONMENT_ID')
+      === LOCAL_STAGING_ENVIRONMENT_ID
+    && optionalEnv('MENORAH_LOCAL_STAGING_HTTPS_PORT')
+      === LOCAL_STAGING_HTTPS_PORT
+    && optionalEnv('MENORAH_STAGING_EMAIL_DOMAIN')
+      === 'mail.staging.localhost'
+    && /^re_local_[A-Za-z0-9_-]{32,}$/.test(apiKey)
+  );
+  return exactLocalIdentity ? LOCAL_STAGING_RESEND_EMAIL_URL : undefined;
 }
 
 function escapeHtml(value: string) {
@@ -118,6 +146,18 @@ export async function sendSubmissionEmail(input: SubmissionEmailInput): Promise<
       skippedReason: 'DEPLOYMENT_ENVIRONMENT is invalid.',
     };
   }
+  const resendEmailUrl = resolveResendEmailUrl(
+    apiKey,
+    deploymentEnvironment
+  );
+  if (!resendEmailUrl) {
+    return {
+      sent: false,
+      provider: 'resend',
+      recipient,
+      skippedReason: 'Email delivery endpoint is not approved.',
+    };
+  }
 
   if (deploymentEnvironment === 'staging') {
     const stagingEmailDomain = optionalEnv('MENORAH_STAGING_EMAIL_DOMAIN');
@@ -140,7 +180,7 @@ export async function sendSubmissionEmail(input: SubmissionEmailInput): Promise<
   }
 
   try {
-    const response = await fetch(RESEND_EMAIL_URL, {
+    const response = await fetch(resendEmailUrl, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
