@@ -28,6 +28,7 @@ const {
 } = require('../../backend/src/config/adminPermissions.js');
 const {
   ADMIN_ROLE_GRANTS: SEEDED_ADMIN_ROLE_GRANTS,
+  assertSeedAllowed,
 } = require('../../backend/src/database/seed-server-staging.js');
 const {
   validateStartupEnv,
@@ -103,6 +104,13 @@ test('generated admin roles exactly match the seeded synthetic roster', () => {
     configuration.grants.map(({ adminId, role }) => ({ adminId, role })),
     expectedGrants,
   );
+});
+
+test('generated environment satisfies the guarded synthetic seed preflight', () => {
+  assert.doesNotThrow(() => assertSeedAllowed({
+    ...validEnvironment(),
+    MONGO_INITDB_DATABASE: 'menorah_staging',
+  }));
 });
 
 test('generated environment has zero api-web startup errors', () => {

@@ -880,3 +880,25 @@ test('runtime selectors reach backend and mail-capture services as an exact pair
   }
   assert.match(migrate, /profiles: \["migration", "seed"\]/);
 });
+
+test('synthetic account passwords reach only the explicit seed job', () => {
+  const composeSource = readStaging('compose.yml');
+  const backendEnvironment = composeSource.match(
+    /^x-backend-environment:[\s\S]*?(?=^x-app-security:)/m,
+  )?.[0] || '';
+  const seed = composeSource.match(
+    /^  staging-seed:[\s\S]*?(?=^  staging-user-web-app:)/m,
+  )?.[0] || '';
+  const seedPasswordKeys = SECRET_KEYS.filter(
+    (key) => (
+      key.startsWith('MENORAH_SERVER_STAGING_')
+      && key.endsWith('_PASSWORD')
+    ),
+  );
+
+  assert.equal(seedPasswordKeys.length, 10);
+  for (const key of seedPasswordKeys) {
+    assert.match(seed, new RegExp(`${key}: "\\$\\{${key}:\\?`));
+    assert.doesNotMatch(backendEnvironment, new RegExp(`${key}:`));
+  }
+});
