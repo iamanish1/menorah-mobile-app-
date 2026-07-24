@@ -28,15 +28,22 @@ const BARE_EMAIL_PATTERN = new RegExp(
 );
 const RAZORPAY_TEST_KEY_ID_PATTERN = /^rzp_test_[A-Za-z0-9]{14,64}$/;
 const LOCAL_STAGING_HTTPS_PORT_ENV = 'MENORAH_LOCAL_STAGING_HTTPS_PORT';
+const LOCAL_STAGING_ENVIRONMENT_ID_ENV =
+  'MENORAH_LOCAL_STAGING_ENVIRONMENT_ID';
 const LOCAL_STAGING_HOST_SUFFIX = '.staging.localhost';
 const SERVER_STAGING_ENVIRONMENT_ID_ENV =
   'MENORAH_SERVER_STAGING_ENVIRONMENT_ID';
 const SERVER_STAGING_ENVIRONMENT_ID = 'menorah-server-staging-v1';
 const SERVER_STAGING_PROJECT_ENV =
   'MENORAH_SERVER_STAGING_PROJECT_NAME';
+const SERVER_STAGING_HTTPS_PORT_ENV =
+  'MENORAH_SERVER_STAGING_HTTPS_PORT';
+const SERVER_STAGING_VALIDATION_PROJECT =
+  'menorah-server-staging-validation';
+const SERVER_STAGING_VALIDATION_HTTPS_PORT = '38443';
 const SERVER_STAGING_PROJECTS = new Set([
   'menorah-staging',
-  'menorah-server-staging-validation',
+  SERVER_STAGING_VALIDATION_PROJECT,
 ]);
 const SERVER_STAGING_LIVEKIT_API_URL =
   'http://staging-livekit:7880';
@@ -54,6 +61,17 @@ const getDeploymentEnvironment = (env = process.env) => {
 
   return value;
 };
+
+const isExactServerStagingValidationSelector = (env = process.env) => (
+  String(env[SERVER_STAGING_ENVIRONMENT_ID_ENV] || '').trim()
+    === SERVER_STAGING_ENVIRONMENT_ID
+  && String(env[SERVER_STAGING_PROJECT_ENV] || '').trim()
+    === SERVER_STAGING_VALIDATION_PROJECT
+  && String(env[SERVER_STAGING_HTTPS_PORT_ENV] || '').trim()
+    === SERVER_STAGING_VALIDATION_HTTPS_PORT
+  && !String(env[LOCAL_STAGING_ENVIRONMENT_ID_ENV] || '').trim()
+  && !String(env[LOCAL_STAGING_HTTPS_PORT_ENV] || '').trim()
+);
 
 const addExactCsvSetErrors = ({ key, value, expected, errors }) => {
   const entries = String(value || '').split(',');
@@ -118,12 +136,37 @@ const validateStagingEnvironmentIsolation = (env = process.env) => {
     serverStagingIdentity === SERVER_STAGING_ENVIRONMENT_ID
     && SERVER_STAGING_PROJECTS.has(serverStagingProject)
   );
+  const hasExactServerStagingValidationIdentity = (
+    isExactServerStagingSelector
+    && serverStagingProject === SERVER_STAGING_VALIDATION_PROJECT
+  );
   if (
     (serverStagingIdentity || serverStagingProject)
     && !isExactServerStagingSelector
   ) {
     errors.push(
       'Server staging identity and project selectors must match the reviewed namespace'
+    );
+  }
+  if (
+    hasExactServerStagingValidationIdentity
+    && String(env[SERVER_STAGING_HTTPS_PORT_ENV] || '').trim()
+      !== SERVER_STAGING_VALIDATION_HTTPS_PORT
+  ) {
+    errors.push(
+      `${SERVER_STAGING_HTTPS_PORT_ENV} must equal `
+      + `${SERVER_STAGING_VALIDATION_HTTPS_PORT} for the reviewed local validation project`
+    );
+  }
+  if (
+    hasExactServerStagingValidationIdentity
+    && (
+      String(env[LOCAL_STAGING_ENVIRONMENT_ID_ENV] || '').trim()
+      || String(env[LOCAL_STAGING_HTTPS_PORT_ENV] || '').trim()
+    )
+  ) {
+    errors.push(
+      'Server-staging validation selectors must not be combined with local-staging selectors'
     );
   }
   const allowlistEntries = String(env.MENORAH_STAGING_ALLOWED_HOSTS || '').split(',');
@@ -174,9 +217,17 @@ const validateStagingEnvironmentIsolation = (env = process.env) => {
   }
 
   const localHttpsPort = readLocalStagingHttpsPort(env, errors);
-  const localPortSuffix = localHttpsPort ? `:${localHttpsPort}` : '';
-  const httpsOrigin = (host) => `https://${host || ''}${localPortSuffix}`;
-  const wssOrigin = (host) => `wss://${host || ''}${localPortSuffix}`;
+  const stagingExternalPortSuffix = localHttpsPort
+    ? `:${localHttpsPort}`
+    : (
+      isExactServerStagingValidationSelector(env)
+        ? `:${SERVER_STAGING_VALIDATION_HTTPS_PORT}`
+        : ''
+    );
+  const httpsOrigin = (host) =>
+    `https://${host || ''}${stagingExternalPortSuffix}`;
+  const wssOrigin = (host) =>
+    `wss://${host || ''}${stagingExternalPortSuffix}`;
   const exactValues = {
     LIVEKIT_URL: wssOrigin(env.CALLS_DOMAIN),
     LIVEKIT_API_URL: localHttpsPort
@@ -267,9 +318,12 @@ const validateStagingEnvironmentIsolation = (env = process.env) => {
 module.exports = {
   DEPLOYMENT_ENVIRONMENTS,
   LOCAL_STAGING_HTTPS_PORT_ENV,
+  SERVER_STAGING_HTTPS_PORT_ENV,
   SERVER_STAGING_ENVIRONMENT_ID_ENV,
   SERVER_STAGING_LIVEKIT_API_URL,
+  SERVER_STAGING_VALIDATION_HTTPS_PORT,
   STAGING_HOST_ENV_KEYS,
   getDeploymentEnvironment,
+  isExactServerStagingValidationSelector,
   validateStagingEnvironmentIsolation,
 };

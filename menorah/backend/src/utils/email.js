@@ -2,7 +2,9 @@ const axios = require('axios');
 const {
   DEPLOYMENT_ENVIRONMENTS,
   LOCAL_STAGING_HTTPS_PORT_ENV,
+  SERVER_STAGING_VALIDATION_HTTPS_PORT,
   getDeploymentEnvironment,
+  isExactServerStagingValidationSelector,
 } = require('../config/deploymentEnvironment');
 const {
   resolveResendEmailUrl,
@@ -218,12 +220,26 @@ const validateStagingPasswordResetBaseUrl = (base) => {
     && parsedBase.hostname.toLowerCase().endsWith('.staging.localhost')
     && parsedBase.port === localStagingPort
   );
+  const serverStagingValidationPort =
+    isExactServerStagingValidationSelector(process.env)
+      ? SERVER_STAGING_VALIDATION_HTTPS_PORT
+      : '';
+  const serverStagingValidationPortAllowed = Boolean(
+    serverStagingValidationPort
+    && parsedBase.hostname.toLowerCase()
+      === String(process.env.APP_DOMAIN || '').trim().toLowerCase()
+    && parsedBase.port === serverStagingValidationPort
+  );
   if (
     parsedBase.username
     || parsedBase.password
     || parsedBase.search
     || parsedBase.hash
-    || ((localStagingPort || parsedBase.port) && !localPortAllowed)
+    || (
+      (localStagingPort || serverStagingValidationPort || parsedBase.port)
+      && !localPortAllowed
+      && !serverStagingValidationPortAllowed
+    )
     || base !== parsedBase.origin
   ) {
     throw new Error(

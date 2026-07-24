@@ -7,7 +7,9 @@ const {
   DEPLOYMENT_ENVIRONMENTS,
   LOCAL_STAGING_HTTPS_PORT_ENV,
   SERVER_STAGING_ENVIRONMENT_ID_ENV,
+  SERVER_STAGING_VALIDATION_HTTPS_PORT,
   getDeploymentEnvironment,
+  isExactServerStagingValidationSelector,
   validateStagingEnvironmentIsolation,
 } = require('../../config/deploymentEnvironment');
 const { getTrustedWebSessionOrigins } = require('../../config/webSessions');
@@ -146,12 +148,26 @@ const validateStagingPasswordResetBaseUrl = (errors) => {
     && parsedBase.hostname.toLowerCase().endsWith('.staging.localhost')
     && parsedBase.port === localStagingPort
   );
+  const serverStagingValidationPort =
+    isExactServerStagingValidationSelector(process.env)
+      ? SERVER_STAGING_VALIDATION_HTTPS_PORT
+      : '';
+  const serverStagingValidationPortAllowed = Boolean(
+    serverStagingValidationPort
+    && parsedBase.hostname.toLowerCase()
+      === String(process.env.APP_DOMAIN || '').trim().toLowerCase()
+    && parsedBase.port === serverStagingValidationPort
+  );
   if (
     parsedBase.username
     || parsedBase.password
     || parsedBase.search
     || parsedBase.hash
-    || ((localStagingPort || parsedBase.port) && !localPortAllowed)
+    || (
+      (localStagingPort || serverStagingValidationPort || parsedBase.port)
+      && !localPortAllowed
+      && !serverStagingValidationPortAllowed
+    )
     || configuredBase !== parsedBase.origin
   ) {
     errors.push('PASSWORD_RESET_BASE_URL must be the exact reviewed staging origin');

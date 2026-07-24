@@ -82,7 +82,8 @@ describe('email delivery logging', () => {
       API_ADMIN_DOMAIN: 'api-admin.staging.menorah.me',
       CALLS_DOMAIN: 'calls.staging.menorah.me',
     };
-    const origin = (host) => `https://${host}`;
+    const port = '38443';
+    const origin = (host) => `https://${host}:${port}`;
     Object.assign(process.env, {
       ...hosts,
       NODE_ENV: 'production',
@@ -91,6 +92,7 @@ describe('email delivery logging', () => {
         'menorah-server-staging-v1',
       MENORAH_SERVER_STAGING_PROJECT_NAME:
         'menorah-server-staging-validation',
+      MENORAH_SERVER_STAGING_HTTPS_PORT: port,
       MENORAH_STAGING_ALLOWED_HOSTS: Object.values(hosts).join(','),
       MENORAH_STAGING_EMAIL_DOMAIN: 'mail.staging.menorah.me',
       EMAIL_FROM:
@@ -108,7 +110,7 @@ describe('email delivery logging', () => {
         `${origin(hosts.COUNSELLOR_DOMAIN)}=counsellor`,
         `${origin(hosts.ADMIN_DOMAIN)}=admin`,
       ].join(','),
-      LIVEKIT_URL: `wss://${hosts.CALLS_DOMAIN}`,
+      LIVEKIT_URL: `wss://${hosts.CALLS_DOMAIN}:${port}`,
       LIVEKIT_API_URL: 'http://staging-livekit:7880',
       PASSWORD_RESET_BASE_URL: origin(hosts.APP_DOMAIN),
       CHECKOUT_RETURN_URL:
@@ -138,6 +140,7 @@ describe('email delivery logging', () => {
     delete process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT;
     delete process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID;
     delete process.env.MENORAH_SERVER_STAGING_PROJECT_NAME;
+    delete process.env.MENORAH_SERVER_STAGING_HTTPS_PORT;
     axiosPost = jest.fn().mockResolvedValue({ status: 200 });
     logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});

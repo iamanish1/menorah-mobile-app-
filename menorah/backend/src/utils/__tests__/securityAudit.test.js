@@ -200,6 +200,11 @@ describe('password reset email URLs', () => {
       PASSWORD_RESET_BASE_URL: 'https://app.menorah.me',
     };
     delete process.env.PASSWORD_RESET_URL_TEMPLATE;
+    delete process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID;
+    delete process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT;
+    delete process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID;
+    delete process.env.MENORAH_SERVER_STAGING_PROJECT_NAME;
+    delete process.env.MENORAH_SERVER_STAGING_HTTPS_PORT;
   });
 
   afterAll(() => {
@@ -252,6 +257,88 @@ describe('password reset email URLs', () => {
 
     expect(resetUrl.origin).toBe('https://app.staging.localhost:28443');
     expect(resetUrl.hash).toBe('#token=reset-token');
+  });
+
+  test('supports :38443 only for the exact server validation tuple', () => {
+    Object.assign(process.env, {
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      MENORAH_SERVER_STAGING_ENVIRONMENT_ID:
+        'menorah-server-staging-v1',
+      MENORAH_SERVER_STAGING_PROJECT_NAME:
+        'menorah-server-staging-validation',
+      MENORAH_SERVER_STAGING_HTTPS_PORT: '38443',
+      APP_DOMAIN: 'app.staging.menorah.me',
+      PASSWORD_RESET_BASE_URL:
+        'https://app.staging.menorah.me:38443',
+    });
+
+    const resetUrl = new URL(buildPasswordResetUrl('reset-token'));
+
+    expect(resetUrl.origin)
+      .toBe('https://app.staging.menorah.me:38443');
+    expect(resetUrl.pathname).toBe('/reset-password');
+    expect(resetUrl.search).toBe('');
+    expect(resetUrl.hash).toBe('#token=reset-token');
+  });
+
+  test('keeps the real server-staging reset origin portless', () => {
+    Object.assign(process.env, {
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      MENORAH_SERVER_STAGING_ENVIRONMENT_ID:
+        'menorah-server-staging-v1',
+      MENORAH_SERVER_STAGING_PROJECT_NAME: 'menorah-staging',
+      MENORAH_SERVER_STAGING_HTTPS_PORT: '38443',
+      APP_DOMAIN: 'app.staging.menorah.me',
+      PASSWORD_RESET_BASE_URL: 'https://app.staging.menorah.me',
+    });
+
+    const resetUrl = new URL(buildPasswordResetUrl('reset-token'));
+
+    expect(resetUrl.origin).toBe('https://app.staging.menorah.me');
+    expect(resetUrl.hash).toBe('#token=reset-token');
+  });
+
+  test.each([
+    [
+      'real project',
+      'MENORAH_SERVER_STAGING_PROJECT_NAME',
+      'menorah-staging',
+    ],
+    [
+      'wrong identity',
+      'MENORAH_SERVER_STAGING_ENVIRONMENT_ID',
+      'menorah-server-staging-v2',
+    ],
+    [
+      'wrong validation port',
+      'MENORAH_SERVER_STAGING_HTTPS_PORT',
+      '38444',
+    ],
+    [
+      'mixed local selector',
+      'MENORAH_LOCAL_STAGING_ENVIRONMENT_ID',
+      'menorah-local-staging-v1',
+    ],
+  ])('rejects :38443 reset links for a crossed server tuple: %s', (
+    _label,
+    key,
+    value
+  ) => {
+    Object.assign(process.env, {
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      MENORAH_SERVER_STAGING_ENVIRONMENT_ID:
+        'menorah-server-staging-v1',
+      MENORAH_SERVER_STAGING_PROJECT_NAME:
+        'menorah-server-staging-validation',
+      MENORAH_SERVER_STAGING_HTTPS_PORT: '38443',
+      APP_DOMAIN: 'app.staging.menorah.me',
+      PASSWORD_RESET_BASE_URL:
+        'https://app.staging.menorah.me:38443',
+      [key]: value,
+    });
+
+    expect(() => buildPasswordResetUrl('reset-token'))
+      .toThrow(/PASSWORD_RESET_BASE_URL/);
   });
 
   test.each([
