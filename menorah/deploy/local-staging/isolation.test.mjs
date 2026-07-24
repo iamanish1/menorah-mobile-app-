@@ -698,3 +698,27 @@ test('backup and restore bind evidence to a quiesced exact database scope', () =
   );
   assert.doesNotMatch(restoreSource, /--oplogReplay/);
 });
+
+test('backup signature input slurping keeps signature newline handling exact', () => {
+  for (const source of [backupSource, restoreSource]) {
+    assert.match(source, /my \$key = do \{ local \$\/; <\$key_fh> \};/);
+    assert.match(source, /\$payload \.= do \{ local \$\/; <\$fh> \};/);
+    assert.doesNotMatch(source, /local \$\/;\s+my \$key = <\$key_fh>;/);
+  }
+  assert.match(
+    restoreSource,
+    /my \$expected = <\$expected_fh>;\s+chomp \$expected;/,
+  );
+});
+
+test('media restore preserves content without applying archived numeric owners', () => {
+  assert.match(
+    restoreSource,
+    /tar --no-same-owner -C "\$\{RESTORE_MEDIA_ROOT\}"/,
+  );
+  assert.match(restoreSource, /restored-media-manifest\.sha256/);
+  assert.match(
+    restoreSource,
+    /cmp -s\s+.*media-manifest\.sha256.*restored-media-manifest\.sha256/s,
+  );
+});

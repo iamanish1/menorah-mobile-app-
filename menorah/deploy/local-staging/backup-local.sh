@@ -191,14 +191,13 @@ perl -MDigest::SHA=hmac_sha256_hex -e '
   my ($key_path, @paths) = @ARGV;
   open my $key_fh, "<", $key_path or die "integrity key unavailable\n";
   binmode $key_fh;
-  local $/;
-  my $key = <$key_fh>;
+  my $key = do { local $/; <$key_fh> };
   chomp $key;
   my $payload = "";
   for my $path (@paths) {
     open my $fh, "<", $path or die "signed input unavailable\n";
     binmode $fh;
-    $payload .= <$fh>;
+    $payload .= do { local $/; <$fh> };
   }
   print hmac_sha256_hex($payload, $key), "\n";
 ' \

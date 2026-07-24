@@ -66,14 +66,13 @@ perl -MDigest::SHA=hmac_sha256_hex -e '
   my ($key_path, $expected_path, @paths) = @ARGV;
   open my $key_fh, "<", $key_path or die "integrity key unavailable\n";
   binmode $key_fh;
-  local $/;
-  my $key = <$key_fh>;
+  my $key = do { local $/; <$key_fh> };
   chomp $key;
   my $payload = "";
   for my $path (@paths) {
     open my $fh, "<", $path or die "signed input unavailable\n";
     binmode $fh;
-    $payload .= <$fh>;
+    $payload .= do { local $/; <$fh> };
   }
   open my $expected_fh, "<", $expected_path or die "signature unavailable\n";
   my $expected = <$expected_fh>;
@@ -127,7 +126,8 @@ mongorestore \
   || fail 'restore media mount does not resolve to its isolated root'
 find "${RESTORE_MEDIA_ROOT}" -mindepth 1 -maxdepth 1 \
   -exec rm -rf -- {} +
-tar -C "${RESTORE_MEDIA_ROOT}" -xzf "${WORK_DIR}/media.tar.gz"
+tar --no-same-owner -C "${RESTORE_MEDIA_ROOT}" \
+  -xzf "${WORK_DIR}/media.tar.gz"
 (
   cd "${RESTORE_MEDIA_ROOT}"
   find . -type f -print0 \
