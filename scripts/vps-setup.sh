@@ -187,7 +187,7 @@ PORT=3000
 API_BASE_URL=https://api.menorahhealth.app
 
 # ── Database ───────────────────────────────────────────────
-MONGODB_URI=mongodb+srv://USER:PASS@cluster.mongodb.net/?appName=Cluster0
+MONGODB_URI=REPLACE_WITH_MONGODB_CONNECTION_URI
 
 # ── Redis (running on host, accessible via host network) ───
 REDIS_URL=redis://127.0.0.1:6379

@@ -48,6 +48,7 @@ const [
   rawProductionCompose,
   mongoToolCredentialWrapper,
   backupScheduleScript,
+  legacyVpsSetupScript,
 ] = await Promise.all([
   readRepoFile('.github/workflows/deploy.yml'),
   readRepoFile('.github/workflows/security.yml'),
@@ -70,6 +71,7 @@ const [
   readRepoFile('menorah/deploy/docker-compose.production.yml'),
   readRepoFile('menorah/deploy/backup/run-mongo-tool-secure.sh'),
   readRepoFile('menorah/deploy/ubuntu/install-backup-schedule.sh'),
+  readRepoFile('scripts/vps-setup.sh'),
 ]);
 
 const copyWorkflow = () => structuredClone(parse(rawWorkflow));
@@ -113,6 +115,17 @@ function runDastGuard(
 
 test('accepts the repository read-only release readiness workflow', () => {
   validateWorkflow(copyWorkflow(), rawWorkflow);
+});
+
+test('legacy VPS template contains no credential-bearing MongoDB URI', () => {
+  assert.match(
+    legacyVpsSetupScript,
+    /^MONGODB_URI=REPLACE_WITH_MONGODB_CONNECTION_URI$/m,
+  );
+  assert.doesNotMatch(
+    legacyVpsSetupScript,
+    /mongodb(?:\+srv)?:\/\/[^/\s:@]+:[^@\s/]+@/i,
+  );
 });
 
 test('accepts exact environment-owned staging and security-test DAST origins', () => {
