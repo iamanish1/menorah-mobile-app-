@@ -39,12 +39,23 @@ test.describe('configured admin smoke', () => {
     }
     if (useLocalCapture) clearSyntheticMessages();
 
+    const initialSessionProbe = page.waitForResponse(
+      (response) => (
+        new URL(response.url()).pathname === '/api/auth/me'
+        && response.status() < 500
+      ),
+    );
     await page.goto(`${adminUrl}/login`, { waitUntil: 'domcontentloaded' });
-    await page.getByLabel(/email address/i).fill(adminEmail);
-    await page.getByLabel(/^password$/i).fill(adminPassword);
+    await initialSessionProbe;
+    const emailField = page.getByLabel(/email address/i);
+    const passwordField = page.getByLabel(/^password$/i);
+    await emailField.fill(adminEmail);
+    await passwordField.fill(adminPassword);
     await page.waitForTimeout(500);
+    await expect(emailField).toHaveValue(adminEmail);
     expect(sessionProbeCount).toBeLessThanOrEqual(1);
     await page.getByRole('button', { name: /sign in/i }).click();
+    await passwordField.fill('').catch(() => {});
 
     if (useLocalCapture) {
       const codeField = page.getByLabel(/verification code/i);
