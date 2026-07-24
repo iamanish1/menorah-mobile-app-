@@ -17,12 +17,16 @@ const [
   securityWorkflow,
   userWebPackage,
   userWebLock,
+  adminWebPackage,
+  adminWebLock,
 ] = await Promise.all([
   read('.github/workflows/functional-release.yml'),
   read('menorah/scripts/qa/docker-compose.integration.yml'),
   read('.github/workflows/security.yml'),
   read('menorah/user-web-app/package.json').then(JSON.parse),
   read('menorah/user-web-app/package-lock.json').then(JSON.parse),
+  read('menorah/admin-panel/package.json').then(JSON.parse),
+  read('menorah/admin-panel/package-lock.json').then(JSON.parse),
 ]);
 
 const validate = (workflow, raw = rawWorkflow, security = securityWorkflow) =>
@@ -101,5 +105,18 @@ test('pins the user-web Next PostCSS override to the first path-traversal-safe r
   assert.equal(
     userWebLock.packages?.['node_modules/postcss']?.version,
     '8.5.18',
+  );
+});
+
+test('pins admin PostCSS to the first path-traversal-safe release', () => {
+  assert.equal(adminWebPackage.devDependencies?.postcss, '8.5.18');
+  assert.equal(adminWebPackage.overrides?.next?.postcss, '8.5.18');
+  const lockedPostcssVersions = Object.entries(adminWebLock.packages || {})
+    .filter(([name]) => name.endsWith('node_modules/postcss'))
+    .map(([, metadata]) => metadata.version);
+  assert.ok(lockedPostcssVersions.length > 0);
+  assert.deepEqual(
+    [...new Set(lockedPostcssVersions)],
+    ['8.5.18'],
   );
 });
