@@ -751,11 +751,47 @@ services:
       retries: 10
       start_period: 10s
 
+  logs-init:
+    image: caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -euc
+    command:
+      - |
+        test -d /var/log/menorah
+        test ! -L /var/log/menorah
+        chown 0:0 /var/log/menorah
+        chmod 0700 /var/log/menorah
+        find /var/log/menorah -xdev -type f -name 'caddy-access*' \
+          -exec chown 0:0 {} +
+        find /var/log/menorah -xdev -type f -name 'caddy-access*' \
+          -exec chmod 0600 {} +
+        find /var/log/menorah -xdev -type f -name 'caddy-access*' \
+          -exec chown 473:473 {} +
+        chown 473:473 /var/log/menorah
+    user: "0:0"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 16
+    mem_limit: 32m
+    cpus: "0.10"
+    network_mode: none
+    volumes:
+      - type: volume
+        source: logs
+        target: /var/log/menorah
+
   caddy:
     image: caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
     restart: unless-stopped
     init: true
-    user: "0:473"
+    user: "473:473"
     read_only: true
     cap_drop:
       - ALL
@@ -773,8 +809,8 @@ services:
         source: logs
         target: /var/log/menorah
     tmpfs:
-      - /config:rw,noexec,nosuid,nodev,size=16m,mode=700
-      - /data:rw,noexec,nosuid,nodev,size=32m,mode=700
+      - /config:rw,noexec,nosuid,nodev,size=16m,mode=700,uid=473,gid=473
+      - /data:rw,noexec,nosuid,nodev,size=32m,mode=700,uid=473,gid=473
     ports:
       - "127.0.0.1:${MENORAH_LOCAL_STAGING_HTTPS_PORT:?Generated local HTTPS port required}:443"
     networks:
@@ -793,6 +829,8 @@ services:
           - api-admin.staging.localhost
           - calls.staging.localhost
     depends_on:
+      logs-init:
+        condition: service_completed_successfully
       api-ios:
         condition: service_healthy
       api-android:

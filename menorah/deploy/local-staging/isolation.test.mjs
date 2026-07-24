@@ -743,7 +743,10 @@ test('direct monitoring traffic uses only private non-ingress aliases', () => {
   );
 });
 
-test('Caddy access logs are group-readable only by the nonroot Alloy reader', () => {
+test('Caddy and Alloy share a nonroot log owner initialized by a constrained one-shot', () => {
+  const logsInitService = composeSource.match(
+    /\n  logs-init:\r?\n([\s\S]*?)(?=\n  caddy:\r?\n)/,
+  )?.[1] || '';
   const caddyService = composeSource.match(
     /\n  caddy:\r?\n([\s\S]*?)(?=\n  alert-sink:\r?\n)/,
   )?.[1] || '';
@@ -751,10 +754,27 @@ test('Caddy access logs are group-readable only by the nonroot Alloy reader', ()
     /\n  alloy:\r?\n([\s\S]*?)(?=\n  mongo-restore:\r?\n)/,
   )?.[1] || '';
 
-  assert.match(caddyService, /\n    user: "0:473"\r?\n/);
+  assert.match(logsInitService, /\n    user: "0:0"\r?\n/);
+  assert.match(logsInitService, /\n    cap_drop:\r?\n      - ALL\r?\n/);
+  assert.match(logsInitService, /\n    cap_add:\r?\n      - CHOWN\r?\n/);
+  assert.match(logsInitService, /\n    network_mode: none\r?\n/);
+  assert.match(logsInitService, /\n    pids_limit: 16\r?\n/);
+  assert.match(logsInitService, /\n    read_only: true\r?\n/);
+  assert.match(logsInitService, /\bchown 473:473 \/var\/log\/menorah\b/);
+  assert.match(logsInitService, /\bchmod 0700 \/var\/log\/menorah\b/);
+  assert.match(logsInitService, /-name 'caddy-access\*'/);
+  assert.match(caddyService, /\n    user: "473:473"\r?\n/);
   assert.match(alloyService, /\n    user: "473:473"\r?\n/);
-  assert.match(caddySource, /\n\s+mode 0640\b/);
-  assert.doesNotMatch(caddySource, /\n\s+mode 06(?:00|44)\b/);
+  assert.match(
+    caddyService,
+    /\/config:rw,noexec,nosuid,nodev,size=16m,mode=700,uid=473,gid=473/,
+  );
+  assert.match(caddyService, /cap_add:\r?\n\s+- NET_BIND_SERVICE/);
+  assert.match(
+    caddyService,
+    /logs-init:\r?\n\s+condition: service_completed_successfully/,
+  );
+  assert.doesNotMatch(caddySource, /\n\s+mode 0[0-7]{3}\b/);
   assert.match(
     alloyService,
     /source: logs\r?\n\s+target: \/var\/log\/menorah\r?\n\s+read_only: true/,

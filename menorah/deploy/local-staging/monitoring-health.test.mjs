@@ -140,3 +140,22 @@ test('Alloy uses the pinned non-root owner of its copied-up data directory', () 
     /source: alloy\r?\n\s+target: \/var\/lib\/alloy\/data/,
   );
 });
+
+test('Caddy creates and rotates logs as the same non-root identity Alloy uses', () => {
+  const initializer = serviceBlock('logs-init');
+  const caddy = serviceBlock('caddy');
+  const alloy = serviceBlock('alloy');
+
+  assert.match(initializer, /network_mode: none/);
+  assert.match(initializer, /cap_drop:\r?\n\s+- ALL/);
+  assert.match(initializer, /cap_add:\r?\n\s+- CHOWN/);
+  assert.match(initializer, /chown 473:473 \/var\/log\/menorah/);
+  assert.match(initializer, /chmod 0700 \/var\/log\/menorah/);
+  assert.match(initializer, /-name 'caddy-access\*'/);
+  assert.match(caddy, /user: "473:473"/);
+  assert.match(alloy, /user: "473:473"/);
+  assert.match(
+    caddy,
+    /logs-init:\r?\n\s+condition: service_completed_successfully/,
+  );
+});
