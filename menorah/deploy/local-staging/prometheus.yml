@@ -123,11 +123,11 @@ scrape_configs:
     metrics_path: /metrics/security
     static_configs:
       - targets:
-          - api-ios:8080
-          - api-android:8080
-          - api-web:8080
-          - api-admin:8080
-          - worker:8080
+          - private-api-ios:8080
+          - private-api-android:8080
+          - private-api-web:8080
+          - private-api-admin:8080
+          - private-worker:8080
 
   - job_name: local-alert-fixture
     metrics_path: /metrics
@@ -153,12 +153,12 @@ scrape_configs:
   - job_name: alloy
     static_configs:
       - targets:
-          - alloy:12345
+          - private-alloy:12345
 
   - job_name: loki
     static_configs:
       - targets:
-          - loki:3100
+          - private-loki:3100
 
   - job_name: alertmanager
     static_configs:

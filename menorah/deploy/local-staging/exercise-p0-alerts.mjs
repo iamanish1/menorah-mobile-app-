@@ -36,6 +36,10 @@ const DEFAULT_EVIDENCE_FILE = path.join(
 );
 const PROMETHEUS_URL = 'http://127.0.0.1:29090';
 const ALERTMANAGER_URL = 'http://127.0.0.1:29093';
+const EXPECTED_ACTIVE_TARGET_COUNT = 25;
+const ALLOWED_LOCAL_LIMIT_ALERTS = new Set([
+  'BlackboxProbeCoverageIncomplete',
+]);
 const RUNBOOK_BASE =
   'https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/'
   + 'release/final-production-readiness/menorah/docs/'
@@ -285,6 +289,38 @@ const getAlertmanagerAlerts = async () => {
   return payload;
 };
 
+export const activeTargetsAreHealthy = (payload) => {
+  const targets = payload?.data?.activeTargets;
+  return (
+    payload?.status === 'success'
+    && Array.isArray(targets)
+    && targets.length === EXPECTED_ACTIVE_TARGET_COUNT
+    && targets.every((target) => (
+      target?.health === 'up'
+      && typeof target?.labels?.job === 'string'
+      && target.labels.job.length > 0
+      && typeof target?.labels?.instance === 'string'
+      && target.labels.instance.length > 0
+    ))
+  );
+};
+
+const isAllowedLocalLimitAlert = (alert) => (
+  ALLOWED_LOCAL_LIMIT_ALERTS.has(alert?.labels?.alertname)
+);
+
+export const monitoringBaselineIsExact = (
+  prometheusAlerts,
+  alertmanagerAlerts,
+) => (
+  Array.isArray(prometheusAlerts)
+  && Array.isArray(alertmanagerAlerts)
+  && findExpectedAlerts(prometheusAlerts).size === 0
+  && findExpectedAlerts(alertmanagerAlerts).size === 0
+  && prometheusAlerts.every(isAllowedLocalLimitAlert)
+  && alertmanagerAlerts.every(isAllowedLocalLimitAlert)
+);
+
 const waitFor = async (
   description,
   check,
@@ -356,11 +392,18 @@ const expectedAlertsAreQuiet = async () => {
     getPrometheusAlerts(),
     getAlertmanagerAlerts(),
   ]);
-  return (
-    findExpectedAlerts(prometheus).size === 0
-    && findExpectedAlerts(alertmanager).size === 0
-  );
+  return monitoringBaselineIsExact(prometheus, alertmanager);
 };
+
+const waitForAllPrometheusTargets = () => waitFor(
+  'all 25 local Prometheus targets healthy',
+  async () => activeTargetsAreHealthy(
+    await fetchJson(`${PROMETHEUS_URL}/api/v1/targets?state=active`),
+  ),
+  {
+    timeoutMilliseconds: 120_000,
+  },
+);
 
 const waitForPrometheusTarget = (description, query) => waitFor(
   description,
@@ -489,6 +532,7 @@ export const runAlertExercise = async ({
   await Promise.all([
     waitForFixtureScrape(),
     waitForAlertmanagerScrape(),
+    waitForAllPrometheusTargets(),
   ]);
 
   let frontendsStopped = false;
@@ -604,6 +648,7 @@ export const runAlertExercise = async ({
         timeoutMilliseconds: 3 * 60 * 1000,
       },
     );
+    await waitForAllPrometheusTargets();
 
     const evidence = buildEvidence({
       triggeredAt,

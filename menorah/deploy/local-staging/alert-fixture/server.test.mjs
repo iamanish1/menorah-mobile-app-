@@ -23,13 +23,14 @@ const close = (server) => new Promise((resolve, reject) => {
 });
 
 test('trigger crosses every metric-backed P0 threshold without real data', () => {
-  const state = createFixtureState();
-  applyFixtureAction(state, 'trigger');
+  const state = createFixtureState(1_700_000_000);
+  applyFixtureAction(state, 'trigger', 1_700_000_001);
   const metrics = renderMetrics(state, 1_700_000_000);
 
   for (const expected of [
     'menorah_queue_pending_jobs{service="local-alert-fixture",queue="synthetic-p0"} 30',
     'menorah_backup_last_attempt_result{backup_type="local-synthetic"} 0',
+    'menorah_backup_metrics_last_run_timestamp_seconds{backup_type="local-synthetic"} 1700000001',
     'menorah_auth_attempts_total{service="local-alert-fixture",subject="user",method="password",outcome="failure"} 25',
     'menorah_auth_attempts_total{service="local-alert-fixture",subject="counsellor",method="password",outcome="failure"} 15',
     'menorah_auth_attempts_total{service="local-alert-fixture",subject="admin",method="mfa",outcome="failure"} 10',
@@ -54,12 +55,13 @@ test('trigger crosses every metric-backed P0 threshold without real data', () =>
 });
 
 test('reset clears gauges without resetting monotonic counters', () => {
-  const state = createFixtureState();
-  applyFixtureAction(state, 'trigger');
-  applyFixtureAction(state, 'reset');
+  const state = createFixtureState(1_700_000_000);
+  applyFixtureAction(state, 'trigger', 1_700_000_001);
+  applyFixtureAction(state, 'reset', 1_700_000_002);
 
   assert.equal(state.queuePending, 0);
   assert.equal(state.backupLastAttemptResult, 1);
+  assert.equal(state.backupLastRunTimestampSeconds, 1_700_000_002);
   assert.equal(state.counters.http500, 10);
   assert.equal(state.counters.authUser, 25);
 });
@@ -86,11 +88,13 @@ test('active scrapes sustain range-vector signals until reset', () => {
 });
 
 test('backup result control is independent and deterministic', () => {
-  const state = createFixtureState();
-  applyFixtureAction(state, 'backup-failure');
+  const state = createFixtureState(1_700_000_000);
+  applyFixtureAction(state, 'backup-failure', 1_700_000_010);
   assert.equal(state.backupLastAttemptResult, 0);
-  applyFixtureAction(state, 'backup-success');
+  assert.equal(state.backupLastRunTimestampSeconds, 1_700_000_010);
+  applyFixtureAction(state, 'backup-success', 1_700_000_020);
   assert.equal(state.backupLastAttemptResult, 1);
+  assert.equal(state.backupLastRunTimestampSeconds, 1_700_000_020);
   assert.throws(
     () => applyFixtureAction(state, 'production'),
     /unsupported fixture action/,

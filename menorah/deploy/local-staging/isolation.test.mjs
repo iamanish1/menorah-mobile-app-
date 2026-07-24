@@ -52,6 +52,10 @@ const prometheusSource = readFileSync(
   new URL('./prometheus.yml', import.meta.url),
   'utf8',
 );
+const alloySource = readFileSync(
+  new URL('./config.alloy', import.meta.url),
+  'utf8',
+);
 const dockerIgnoreSource = readFileSync(
   new URL('./.dockerignore', import.meta.url),
   'utf8',
@@ -697,6 +701,64 @@ test('Prometheus reaches Alertmanager through its private monitoring alias', () 
     2,
   );
   assert.doesNotMatch(prometheusSource, /(?:^|\s)- alertmanager:9093\b/m);
+});
+
+test('direct monitoring traffic uses only private non-ingress aliases', () => {
+  const routes = [
+    ['api-ios', 'app', 'private-api-ios', 8080],
+    ['api-android', 'app', 'private-api-android', 8080],
+    ['api-web', 'app', 'private-api-web', 8080],
+    ['api-admin', 'app', 'private-api-admin', 8080],
+    ['worker', 'app', 'private-worker', 8080],
+    ['loki', 'monitoring', 'private-loki', 3100],
+    ['alloy', 'monitoring', 'private-alloy', 12345],
+  ];
+
+  for (const [service, network, alias, port] of routes) {
+    const serviceBlock = composeSource.match(
+      new RegExp(
+        `\\n  ${service}:\\r?\\n([\\s\\S]*?)(?=\\n  [a-z][a-z0-9-]+:\\r?\\n)`,
+      ),
+    )?.[1] || '';
+    assert.match(
+      serviceBlock,
+      new RegExp(
+        `\\n      ${network}:\\r?\\n\\s+aliases:\\r?\\n\\s+- ${alias}\\b`,
+      ),
+    );
+    assert.match(prometheusSource, new RegExp(`- ${alias}:${port}\\b`));
+    assert.doesNotMatch(
+      prometheusSource,
+      new RegExp(`(?:^|\\s)- ${service}:${port}\\b`, 'm'),
+    );
+  }
+
+  assert.match(
+    alloySource,
+    /url = "http:\/\/private-loki:3100\/loki\/api\/v1\/push"/,
+  );
+  assert.doesNotMatch(
+    alloySource,
+    /url = "http:\/\/loki:3100\/loki\/api\/v1\/push"/,
+  );
+});
+
+test('Caddy access logs are group-readable only by the nonroot Alloy reader', () => {
+  const caddyService = composeSource.match(
+    /\n  caddy:\r?\n([\s\S]*?)(?=\n  alert-sink:\r?\n)/,
+  )?.[1] || '';
+  const alloyService = composeSource.match(
+    /\n  alloy:\r?\n([\s\S]*?)(?=\n  mongo-restore:\r?\n)/,
+  )?.[1] || '';
+
+  assert.match(caddyService, /\n    user: "0:473"\r?\n/);
+  assert.match(alloyService, /\n    user: "473:473"\r?\n/);
+  assert.match(caddySource, /\n\s+mode 0640\b/);
+  assert.doesNotMatch(caddySource, /\n\s+mode 06(?:00|44)\b/);
+  assert.match(
+    alloyService,
+    /source: logs\r?\n\s+target: \/var\/log\/menorah\r?\n\s+read_only: true/,
+  );
 });
 
 test('read-only monitoring services use file-backed Compose configs', () => {

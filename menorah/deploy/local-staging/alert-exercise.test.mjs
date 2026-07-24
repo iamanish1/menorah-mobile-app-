@@ -4,8 +4,10 @@ import test from 'node:test';
 
 import {
   ALERT_SPECS,
+  activeTargetsAreHealthy,
   buildEvidence,
   findExpectedAlerts,
+  monitoringBaselineIsExact,
 } from './exercise-p0-alerts.mjs';
 
 const exerciseSource = readFileSync(
@@ -96,6 +98,67 @@ test('matching requires synthetic labels and the requested state', () => {
     ),
     false,
   );
+});
+
+test('active Prometheus targets require the exact healthy local inventory', () => {
+  const target = (job, instance, health = 'up') => ({
+    health,
+    labels: { job, instance },
+  });
+  const healthy = {
+    status: 'success',
+    data: {
+      activeTargets: Array.from(
+        { length: 25 },
+        (_, index) => target(`job-${index}`, `instance-${index}`),
+      ),
+    },
+  };
+
+  assert.equal(activeTargetsAreHealthy(healthy), true);
+  assert.equal(activeTargetsAreHealthy({
+    ...healthy,
+    data: { activeTargets: healthy.data.activeTargets.slice(1) },
+  }), false);
+  assert.equal(activeTargetsAreHealthy({
+    ...healthy,
+    data: {
+      activeTargets: healthy.data.activeTargets.map((entry, index) => (
+        index === 7 ? { ...entry, health: 'down' } : entry
+      )),
+    },
+  }), false);
+  assert.equal(activeTargetsAreHealthy({
+    ...healthy,
+    data: {
+      activeTargets: healthy.data.activeTargets.map((entry, index) => (
+        index === 3 ? { ...entry, labels: { job: entry.labels.job } } : entry
+      )),
+    },
+  }), false);
+});
+
+test('monitoring baseline allows only the explicit public-probe limitation', () => {
+  const allowed = {
+    labels: { alertname: 'BlackboxProbeCoverageIncomplete' },
+    state: 'firing',
+  };
+  assert.equal(monitoringBaselineIsExact([allowed], [allowed]), true);
+  assert.equal(monitoringBaselineIsExact([], []), true);
+  assert.equal(monitoringBaselineIsExact([
+    allowed,
+    {
+      labels: { alertname: 'SecurityMetricsScrapeFailed' },
+      state: 'pending',
+    },
+  ], [allowed]), false);
+  assert.equal(monitoringBaselineIsExact([{
+    labels: {
+      alertname: ALERT_SPECS[0].alertName,
+      ...ALERT_SPECS[0].labels,
+    },
+    state: 'pending',
+  }], []), false);
 });
 
 test('evidence contains only alert name, status, timestamps and runbook', () => {
@@ -200,7 +263,7 @@ test('Prometheus scrapes only the internal unexposed alert fixture', () => {
   );
 });
 
-test('runner fails fast unless Prometheus can reach Alertmanager privately', () => {
+test('runner fails fast unless the complete private monitoring path is healthy', () => {
   assert.equal(
     (prometheusSource.match(/private-alertmanager:9093/g) || []).length,
     2,
@@ -216,8 +279,13 @@ test('runner fails fast unless Prometheus can reach Alertmanager privately', () 
   );
   assert.match(
     exerciseSource,
-    /Promise\.all\(\[\s*waitForFixtureScrape\(\),\s*waitForAlertmanagerScrape\(\),\s*\]\)/,
+    /Promise\.all\(\[\s*waitForFixtureScrape\(\),\s*waitForAlertmanagerScrape\(\),\s*waitForAllPrometheusTargets\(\),\s*\]\)/,
   );
+  assert.match(
+    exerciseSource,
+    /targets\.length === EXPECTED_ACTIVE_TARGET_COUNT/,
+  );
+  assert.match(exerciseSource, /await waitForAllPrometheusTargets\(\)/);
 });
 
 test('backup telemetry is exact, best-effort, and never logs a body', () => {

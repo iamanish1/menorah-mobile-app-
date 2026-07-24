@@ -40,6 +40,6 @@ loki.process "local_caddy" {
 
 loki.write "local" {
   endpoint {
-    url = "http://loki:3100/loki/api/v1/push"
+    url = "http://private-loki:3100/loki/api/v1/push"
   }
 }

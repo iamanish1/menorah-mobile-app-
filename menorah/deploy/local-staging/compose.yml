@@ -529,9 +529,11 @@ services:
         source: backups
         target: /backups
     networks:
-      - ingress
-      - app
-      - data
+      ingress:
+      app:
+        aliases:
+          - private-worker
+      data:
     depends_on:
       mongo-replica-init:
         condition: service_completed_successfully
@@ -753,6 +755,7 @@ services:
     image: caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
     restart: unless-stopped
     init: true
+    user: "0:473"
     read_only: true
     cap_drop:
       - ALL
@@ -1123,8 +1126,10 @@ services:
     ports:
       - "127.0.0.1:23100:3100"
     networks:
-      - ingress
-      - monitoring
+      ingress:
+      monitoring:
+        aliases:
+          - private-loki
     healthcheck:
       test:
         - CMD
@@ -1173,8 +1178,10 @@ services:
     ports:
       - "127.0.0.1:22345:12345"
     networks:
-      - ingress
-      - monitoring
+      ingress:
+      monitoring:
+        aliases:
+          - private-alloy
     depends_on:
       loki:
         condition: service_healthy

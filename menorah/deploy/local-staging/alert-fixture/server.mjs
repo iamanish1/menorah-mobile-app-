@@ -187,19 +187,30 @@ const metricLine = (name, labels, value) => (
   `${name}{${renderLabels(labels)}} ${Number(value)}`
 );
 
-export const createFixtureState = () => ({
+export const createFixtureState = (
+  nowSeconds = Date.now() / 1000,
+) => ({
   counters: Object.fromEntries(
     Object.keys(COUNTER_DELTAS).map((key) => [key, 0]),
   ),
   queuePending: 0,
   backupMetadataPresent: 1,
   backupLastAttemptResult: 1,
+  backupLastRunTimestampSeconds: Math.floor(nowSeconds),
   exerciseActive: false,
 });
 
-export const applyFixtureAction = (state, action) => {
+export const applyFixtureAction = (
+  state,
+  action,
+  nowSeconds = Date.now() / 1000,
+) => {
   if (!state || typeof state !== 'object') {
     throw new TypeError('fixture state is required');
+  }
+  const observedAt = Math.floor(nowSeconds);
+  if (!Number.isFinite(observedAt) || observedAt <= 0) {
+    throw new TypeError('fixture timestamp must be a positive finite number');
   }
 
   switch (action) {
@@ -208,6 +219,7 @@ export const applyFixtureAction = (state, action) => {
       state.queuePending = 0;
       state.backupMetadataPresent = 1;
       state.backupLastAttemptResult = 1;
+      state.backupLastRunTimestampSeconds = observedAt;
       state.exerciseActive = false;
       break;
     case 'trigger':
@@ -217,15 +229,18 @@ export const applyFixtureAction = (state, action) => {
       state.queuePending = 30;
       state.backupMetadataPresent = 1;
       state.backupLastAttemptResult = 0;
+      state.backupLastRunTimestampSeconds = observedAt;
       state.exerciseActive = true;
       break;
     case 'backup-failure':
       state.backupMetadataPresent = 1;
       state.backupLastAttemptResult = 0;
+      state.backupLastRunTimestampSeconds = observedAt;
       break;
     case 'backup-success':
       state.backupMetadataPresent = 1;
       state.backupLastAttemptResult = 1;
+      state.backupLastRunTimestampSeconds = observedAt;
       break;
     default:
       throw new RangeError('unsupported fixture action');
@@ -300,6 +315,13 @@ export const renderMetrics = (state, nowSeconds = Date.now() / 1000) => {
         backup_type: 'local-synthetic',
       },
       state.backupLastAttemptResult,
+    ),
+    metricLine(
+      'menorah_backup_metrics_last_run_timestamp_seconds',
+      {
+        backup_type: 'local-synthetic',
+      },
+      state.backupLastRunTimestampSeconds,
     ),
   );
 
