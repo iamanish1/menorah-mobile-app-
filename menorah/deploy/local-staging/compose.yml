@@ -1321,60 +1321,9 @@ services:
 
 configs:
   blackbox:
-    content: |
-      modules:
-        http_success:
-          prober: http
-          timeout: 10s
-          http:
-            method: GET
-            valid_status_codes: [200]
-            follow_redirects: true
-            preferred_ip_protocol: ip4
-            ip_protocol_fallback: true
-        http_ready:
-          prober: http
-          timeout: 10s
-          http:
-            method: GET
-            valid_status_codes: [200]
-            follow_redirects: false
-            preferred_ip_protocol: ip4
-            ip_protocol_fallback: true
-        tcp_connect:
-          prober: tcp
-          timeout: 5s
-          tcp:
-            preferred_ip_protocol: ip4
-            ip_protocol_fallback: true
+    file: ./blackbox.yml
   loki:
-    content: |
-      auth_enabled: false
-      server:
-        http_listen_port: 3100
-      common:
-        path_prefix: /loki
-        replication_factor: 1
-        ring:
-          kvstore:
-            store: inmemory
-        storage:
-          filesystem:
-            chunks_directory: /loki/chunks
-            rules_directory: /loki/rules
-      schema_config:
-        configs:
-          - from: "2024-01-01"
-            store: tsdb
-            object_store: filesystem
-            schema: v13
-            index:
-              prefix: index_
-              period: 24h
-      limits_config:
-        allow_structured_metadata: true
-      analytics:
-        reporting_enabled: false
+    file: ./loki.yml
 
 secrets:
   backup-encryption-password:

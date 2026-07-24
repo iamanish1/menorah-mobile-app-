@@ -63,6 +63,10 @@ const restoreSource = readFileSync(
 const redisServiceSource = composeSource.match(
   /\n  redis:\r?\n([\s\S]*?)\n  mail-capture:/,
 )?.[1] || '';
+const topLevelConfigsSource = composeSource.slice(
+  composeSource.lastIndexOf('\nconfigs:'),
+  composeSource.lastIndexOf('\nsecrets:'),
+);
 
 const requiredContractSource = `
 NODE_ENV=
@@ -583,6 +587,12 @@ test('replica initialization uses the connected database handle', () => {
     (composeSource.match(/adminCommand\(\{\s*replSetInitiate:/g) || []).length,
     2,
   );
+});
+
+test('read-only monitoring services use file-backed Compose configs', () => {
+  assert.doesNotMatch(topLevelConfigsSource, /\bcontent:/);
+  assert.match(topLevelConfigsSource, /blackbox:\r?\n\s+file: \.\/blackbox\.yml/);
+  assert.match(topLevelConfigsSource, /loki:\r?\n\s+file: \.\/loki\.yml/);
 });
 
 test('backup and restore bind evidence to a quiesced exact database scope', () => {
