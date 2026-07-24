@@ -406,6 +406,23 @@ const validateBackendRuntimeContracts = (errors, services, volumes) => {
     }
   }
 
+  const backupJob = services['staging-backup-job'];
+  if (!backupJob) {
+    errors.push('missing staging-backup-job');
+  } else {
+    const backupCapabilities = (backupJob.cap_add || [])
+      .map((capability) => String(capability).toUpperCase())
+      .sort();
+    if (
+      String(backupJob.user) !== '0:0'
+      || backupCapabilities.join(',') !== 'DAC_READ_SEARCH'
+    ) {
+      errors.push(
+        'staging-backup-job must have only root DAC_READ_SEARCH access',
+      );
+    }
+  }
+
   const storageInit = services['staging-storage-init'];
   const permissionsInit = services['staging-media-permissions-init'];
   if (!storageInit) {

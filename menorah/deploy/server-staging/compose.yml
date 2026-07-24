@@ -1644,6 +1644,7 @@ services:
       dockerfile: Dockerfile.backup-tools
     profiles: ["backup"]
     restart: "no"
+    user: "0:0"
     entrypoint: ["/bin/sh", "/scripts/backup-staging.sh"]
     environment:
       MONGODB_STAGING_BACKUP_URI: "${MONGODB_STAGING_BACKUP_URI:?Set the staging-only Mongo backup URI}"
@@ -1669,6 +1670,8 @@ services:
     read_only: true
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_READ_SEARCH
     security_opt:
       - no-new-privileges:true
     volumes:

@@ -173,6 +173,11 @@ const validCompose = (environment = validEnvironment()) => {
       },
     },
   });
+  services['staging-backup-job'] = safeService(project, {
+    restart: 'no',
+    user: '0:0',
+    cap_add: ['DAC_READ_SEARCH'],
+  });
   services['staging-migrate'] = safeService(project, {
     restart: 'no',
     command: ['node', 'src/database/migrate.js'],
@@ -503,6 +508,9 @@ const composeMutations = [
   ['expanded media-init capabilities', (model) => {
     model.services['staging-media-permissions-init'].cap_add.push('SYS_ADMIN');
   }, /only ownership capabilities/],
+  ['expanded backup capabilities', (model) => {
+    model.services['staging-backup-job'].cap_add.push('DAC_OVERRIDE');
+  }, /only root DAC_READ_SEARCH access/],
   ['missing media writer ordering', (model) => {
     delete model.services['staging-worker']
       .depends_on['staging-media-permissions-init'];
@@ -879,6 +887,21 @@ test('Compose source initializes Caddy state ownership before ingress', () => {
     /wget --header='Host: app\.staging\.menorah\.me'\r?\n\s+-qO- http:\/\/127\.0\.0\.1\/healthz/,
   );
   assert.doesNotMatch(caddy, /--no-check-certificate/);
+});
+
+test('Compose source grants backup only staged-media read traversal', () => {
+  const composeSource = readStaging('compose.yml');
+  const backup = composeSource.match(
+    /^  staging-backup-job:[\s\S]*?(?=^  staging-restore-job:)/m,
+  )?.[0] || '';
+
+  assert.match(backup, /^    user: "0:0"$/m);
+  assert.match(backup, /^    cap_drop:\r?\n      - ALL$/m);
+  assert.match(backup, /^    cap_add:\r?\n      - DAC_READ_SEARCH$/m);
+  assert.doesNotMatch(
+    backup,
+    /^\s+- (?:DAC_OVERRIDE|SYS_ADMIN|CHOWN|FOWNER)$/m,
+  );
 });
 
 test('runtime selectors reach backend and mail-capture services as an exact pair', () => {
