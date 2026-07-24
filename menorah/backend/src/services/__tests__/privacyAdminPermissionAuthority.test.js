@@ -3,6 +3,9 @@ const {
   enforcePrivacyAdminPermissionAuthority,
   purgePersistedPrivacyPermissions,
 } = require('../privacyAdminPermissionAuthority');
+const {
+  SERVER_STAGING_PRIVACY_ADMIN_PERMISSION_GRANTS,
+} = require('../../config/serverStagingSyntheticAuthority');
 
 const ADMIN_A = '64f000000000000000000001';
 const ADMIN_B = '64f000000000000000000002';
@@ -36,6 +39,27 @@ const validEnv = (grants = [{
 }]) => ({
   PRIVACY_ADMIN_PERMISSION_GRANTS_JSON: JSON.stringify(grants),
 });
+
+const exactServerStagingEnv = {
+  NODE_ENV: 'production',
+  DEPLOYMENT_ENVIRONMENT: 'staging',
+  SERVICE_RUNTIME: 'server-staging',
+  MENORAH_SYNTHETIC_DATA_ONLY: 'true',
+  MENORAH_SERVER_STAGING_ENVIRONMENT_ID: 'menorah-server-staging-v1',
+  MENORAH_SERVER_STAGING_PROJECT_NAME:
+    'menorah-server-staging-validation',
+  MENORAH_SERVER_STAGING_HTTPS_PORT: '38443',
+  MONGODB_URI:
+    'mongodb://menorah-staging-app:synthetic@staging-mongo-primary:27017/'
+    + 'menorah_staging?replicaSet=menorah-staging-rs'
+    + '&authSource=admin&retryWrites=true',
+  MONGODB_REPLICA_SET_NAME: 'menorah-staging-rs',
+  MONGODB_READ_PREFERENCE: 'primaryPreferred',
+  MONGODB_RETRY_WRITES: 'true',
+  PRIVACY_ADMIN_PERMISSION_GRANTS_JSON: JSON.stringify(
+    SERVER_STAGING_PRIVACY_ADMIN_PERMISSION_GRANTS
+  ),
+};
 
 describe('privacy admin permission authority', () => {
   test('validates current active admins without mutating legacy fields at startup', async () => {
@@ -97,6 +121,68 @@ describe('privacy admin permission authority', () => {
     })).rejects.toMatchObject({
       code: 'PRIVACY_PERMISSION_GRANT_TARGET_INVALID',
     });
+  });
+
+  test('allows an entirely empty roster only in exact synthetic server staging', async () => {
+    const UserModel = makeUserModel({ activeAdminIds: [] });
+    UserModel.exists = jest.fn().mockResolvedValue(null);
+
+    await expect(enforcePrivacyAdminPermissionAuthority({
+      env: {
+        ...exactServerStagingEnv,
+      },
+      UserModel,
+    })).resolves.toEqual({
+      configuredAdminCount: 1,
+    });
+    expect(UserModel.exists).toHaveBeenCalledWith({});
+  });
+
+  test('rejects unrelated users in an exact staging pre-seed database', async () => {
+    const UserModel = makeUserModel({ activeAdminIds: [] });
+    UserModel.exists = jest.fn().mockResolvedValue({
+      _id: '64f000000000000000000199',
+    });
+
+    await expect(enforcePrivacyAdminPermissionAuthority({
+      env: {
+        ...exactServerStagingEnv,
+      },
+      UserModel,
+    })).rejects.toMatchObject({
+      code: 'PRIVACY_PERMISSION_GRANT_TARGET_INVALID',
+    });
+  });
+
+  test('rejects a valid but non-synthetic privacy grant during pre-seed', async () => {
+    const UserModel = makeUserModel({ activeAdminIds: [] });
+    UserModel.exists = jest.fn().mockResolvedValue(null);
+
+    await expect(enforcePrivacyAdminPermissionAuthority({
+      env: {
+        ...exactServerStagingEnv,
+        ...validEnv(),
+      },
+      UserModel,
+    })).rejects.toMatchObject({
+      code: 'PRIVACY_PERMISSION_GRANT_TARGET_INVALID',
+    });
+    expect(UserModel.exists).not.toHaveBeenCalled();
+  });
+
+  test('uses normal target validation after the exact privacy admin exists', async () => {
+    const [{ adminId }] =
+      SERVER_STAGING_PRIVACY_ADMIN_PERMISSION_GRANTS;
+    const UserModel = makeUserModel({ activeAdminIds: [adminId] });
+    UserModel.exists = jest.fn().mockResolvedValue(null);
+
+    await expect(enforcePrivacyAdminPermissionAuthority({
+      env: exactServerStagingEnv,
+      UserModel,
+    })).resolves.toEqual({
+      configuredAdminCount: 1,
+    });
+    expect(UserModel.exists).not.toHaveBeenCalled();
   });
 
   test('refuses startup when a legacy persisted grant remains', async () => {

@@ -40,6 +40,7 @@ x-backend-environment: &backend-environment
   MENORAH_SERVER_STAGING_ENVIRONMENT_ID: "${MENORAH_SERVER_STAGING_ENVIRONMENT_ID:?Generated environment identity required}"
   MENORAH_SERVER_STAGING_PROJECT_NAME: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"
   MENORAH_SERVER_STAGING_HTTPS_PORT: "${MENORAH_SERVER_STAGING_HTTPS_PORT:?Generated local HTTPS port required}"
+  MENORAH_SYNTHETIC_DATA_ONLY: "${MENORAH_SYNTHETIC_DATA_ONLY:?Synthetic-only staging guard required}"
   MENORAH_STAGING_ALLOWED_HOSTS: "${MENORAH_STAGING_ALLOWED_HOSTS:?Required in generated local staging env}"
   MENORAH_STAGING_EMAIL_DOMAIN: "${MENORAH_STAGING_EMAIL_DOMAIN:?Required in generated local staging env}"
   SERVICE_RUNTIME: server-staging

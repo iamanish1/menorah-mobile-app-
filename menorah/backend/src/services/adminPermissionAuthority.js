@@ -2,6 +2,12 @@ const User = require('../models/User');
 const {
   readAdminRoleConfiguration,
 } = require('../config/adminPermissions');
+const {
+  isExactServerStagingSyntheticRuntime,
+} = require('../config/deploymentEnvironment');
+const {
+  hasExactServerStagingAdminRoleGrants,
+} = require('../config/serverStagingSyntheticAuthority');
 
 const makeAuthorityError = (code, message) => {
   const error = new Error(message);
@@ -12,6 +18,7 @@ const makeAuthorityError = (code, message) => {
 const validateConfiguredAdminTargets = async ({
   grants,
   UserModel = User,
+  allowEmptySyntheticRoster = false,
 }) => {
   const adminIds = grants.map(({ adminId }) => adminId);
   const activeAdmins = await UserModel.find({
@@ -24,6 +31,17 @@ const validateConfiguredAdminTargets = async ({
     found.size !== adminIds.length
     || adminIds.some((adminId) => !found.has(adminId))
   ) {
+    // A fresh synthetic server-staging database must become healthy before
+    // its explicit, confirmation-gated seed job runs. Only a wholly empty
+    // user collection may defer target validation; any partial or unexpected
+    // roster remains a startup failure, and production never enables this.
+    if (
+      allowEmptySyntheticRoster
+      && found.size === 0
+      && !(await UserModel.exists({}))
+    ) {
+      return;
+    }
     throw makeAuthorityError(
       'ADMIN_ROLE_GRANT_TARGET_INVALID',
       'Admin role grants reference a missing, inactive, or non-admin account.'
@@ -45,6 +63,9 @@ const enforceAdminPermissionAuthority = async ({
   await validateConfiguredAdminTargets({
     grants: configuration.grants,
     UserModel,
+    allowEmptySyntheticRoster:
+      isExactServerStagingSyntheticRuntime(env)
+      && hasExactServerStagingAdminRoleGrants(configuration.grants),
   });
   return Object.freeze({
     configuredAdminCount: configuration.grants.length,

@@ -1,5 +1,6 @@
 const {
   SERVER_STAGING_LIVEKIT_API_URL,
+  isExactServerStagingSyntheticRuntime,
   validateStagingEnvironmentIsolation,
 } = require('../deploymentEnvironment');
 
@@ -83,6 +84,93 @@ const validationEnvironment = () => baseEnvironment({
 });
 
 describe('server-staging deployment environment isolation', () => {
+  test.each([
+    SERVER_STAGING_PROJECT,
+    SERVER_STAGING_VALIDATION_PROJECT,
+  ])('recognizes the exact synthetic server runtime for %s', (project) => {
+    expect(isExactServerStagingSyntheticRuntime({
+      NODE_ENV: 'production',
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      SERVICE_RUNTIME: 'server-staging',
+      MENORAH_SYNTHETIC_DATA_ONLY: 'true',
+      MENORAH_SERVER_STAGING_ENVIRONMENT_ID:
+        SERVER_STAGING_ENVIRONMENT_ID,
+      MENORAH_SERVER_STAGING_PROJECT_NAME: project,
+      MENORAH_SERVER_STAGING_HTTPS_PORT:
+        SERVER_STAGING_VALIDATION_PORT,
+      MONGODB_URI:
+        'mongodb://menorah-staging-app:synthetic@staging-mongo-primary:27017/'
+        + 'menorah_staging?replicaSet=menorah-staging-rs'
+        + '&authSource=admin&retryWrites=true',
+      MONGODB_REPLICA_SET_NAME: 'menorah-staging-rs',
+      MONGODB_READ_PREFERENCE: 'primaryPreferred',
+      MONGODB_RETRY_WRITES: 'true',
+    })).toBe(true);
+  });
+
+  test.each([
+    ['production deployment', 'DEPLOYMENT_ENVIRONMENT', 'production'],
+    ['non-staging runtime', 'SERVICE_RUNTIME', 'home'],
+    ['non-synthetic data', 'MENORAH_SYNTHETIC_DATA_ONLY', 'false'],
+    ['wrong environment', 'MENORAH_SERVER_STAGING_ENVIRONMENT_ID', 'other'],
+    ['wrong project', 'MENORAH_SERVER_STAGING_PROJECT_NAME', 'menorah'],
+    ['wrong port', 'MENORAH_SERVER_STAGING_HTTPS_PORT', '443'],
+    [
+      'wrong Mongo target',
+      'MONGODB_URI',
+      'mongodb://menorah-staging-app:synthetic@mongo:27017/menorah'
+        + '?replicaSet=menorah&authSource=admin&retryWrites=true',
+    ],
+    [
+      'wrong Mongo role',
+      'MONGODB_URI',
+      'mongodb://menorah-staging-migration:synthetic@'
+        + 'staging-mongo-primary:27017/menorah_staging'
+        + '?replicaSet=menorah-staging-rs'
+        + '&authSource=admin&retryWrites=true',
+    ],
+    [
+      'extra Mongo option',
+      'MONGODB_URI',
+      'mongodb://menorah-staging-app:synthetic@'
+        + 'staging-mongo-primary:27017/menorah_staging'
+        + '?replicaSet=menorah-staging-rs'
+        + '&authSource=admin&retryWrites=true&readPreference=secondary',
+    ],
+    ['wrong Mongo replica', 'MONGODB_REPLICA_SET_NAME', 'menorah'],
+    ['wrong read preference', 'MONGODB_READ_PREFERENCE', 'secondary'],
+    ['wrong retry-writes setting', 'MONGODB_RETRY_WRITES', 'false'],
+    [
+      'local identity crossover',
+      'MENORAH_LOCAL_STAGING_ENVIRONMENT_ID',
+      'menorah-local-staging-v1',
+    ],
+    ['local port crossover', 'MENORAH_LOCAL_STAGING_HTTPS_PORT', '28443'],
+  ])('rejects %s as a synthetic server runtime', (_label, key, value) => {
+    const environment = {
+      NODE_ENV: 'production',
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      SERVICE_RUNTIME: 'server-staging',
+      MENORAH_SYNTHETIC_DATA_ONLY: 'true',
+      MENORAH_SERVER_STAGING_ENVIRONMENT_ID:
+        SERVER_STAGING_ENVIRONMENT_ID,
+      MENORAH_SERVER_STAGING_PROJECT_NAME:
+        SERVER_STAGING_VALIDATION_PROJECT,
+      MENORAH_SERVER_STAGING_HTTPS_PORT:
+        SERVER_STAGING_VALIDATION_PORT,
+      MONGODB_URI:
+        'mongodb://menorah-staging-app:synthetic@staging-mongo-primary:27017/'
+        + 'menorah_staging?replicaSet=menorah-staging-rs'
+        + '&authSource=admin&retryWrites=true',
+      MONGODB_REPLICA_SET_NAME: 'menorah-staging-rs',
+      MONGODB_READ_PREFERENCE: 'primaryPreferred',
+      MONGODB_RETRY_WRITES: 'true',
+      [key]: value,
+    };
+
+    expect(isExactServerStagingSyntheticRuntime(environment)).toBe(false);
+  });
+
   test('accepts the exact local validation selector and :38443 topology', () => {
     expect(
       validateStagingEnvironmentIsolation(validationEnvironment())

@@ -7,6 +7,10 @@ const {
   COUNSELLOR_LICENSE_IDENTITY_COLLATION,
   isApprovedVerificationVersion,
 } = require('../config/counsellorVerification');
+const {
+  SERVER_STAGING_ADMIN_ROLE_GRANTS,
+  SERVER_STAGING_ADMIN_USER_IDS,
+} = require('../config/serverStagingSyntheticAuthority');
 
 const SEED_CONFIRMATION =
   'CREATE_SYNTHETIC_ROSTER_ONLY_IN_MENORAH_SERVER_STAGING_V1';
@@ -33,11 +37,7 @@ const USER_IDS = Object.freeze({
   'COUNSELLOR-A': '7a110ca15a6e000000000011',
   'COUNSELLOR-DRAFT': '7a110ca15a6e000000000012',
   'COUNSELLOR-SUSPENDED': '7a110ca15a6e000000000013',
-  'ADMIN-SUPPORT': '7a110ca15a6e000000000101',
-  'ADMIN-FINANCE': '7a110ca15a6e000000000102',
-  'ADMIN-CONTENT': '7a110ca15a6e000000000103',
-  'ADMIN-FULL-1': '7a110ca15a6e000000000104',
-  'ADMIN-FULL-2': '7a110ca15a6e000000000105',
+  ...SERVER_STAGING_ADMIN_USER_IDS,
 });
 
 const COUNSELLOR_IDS = Object.freeze({
@@ -57,33 +57,7 @@ const EVIDENCE_IDS = Object.freeze({
   'COUNSELLOR-SUSPENDED': '7a110ca15a6e000000000403',
 });
 
-const ADMIN_ROLE_GRANTS = Object.freeze([
-  Object.freeze({
-    alias: 'ADMIN-SUPPORT',
-    adminId: USER_IDS['ADMIN-SUPPORT'],
-    role: 'support',
-  }),
-  Object.freeze({
-    alias: 'ADMIN-FINANCE',
-    adminId: USER_IDS['ADMIN-FINANCE'],
-    role: 'finance',
-  }),
-  Object.freeze({
-    alias: 'ADMIN-CONTENT',
-    adminId: USER_IDS['ADMIN-CONTENT'],
-    role: 'content',
-  }),
-  Object.freeze({
-    alias: 'ADMIN-FULL-1',
-    adminId: USER_IDS['ADMIN-FULL-1'],
-    role: 'admin',
-  }),
-  Object.freeze({
-    alias: 'ADMIN-FULL-2',
-    adminId: USER_IDS['ADMIN-FULL-2'],
-    role: 'admin',
-  }),
-]);
+const ADMIN_ROLE_GRANTS = SERVER_STAGING_ADMIN_ROLE_GRANTS;
 
 const PASSWORD_ENV_BY_ALIAS = Object.freeze({
   'USER-A': 'MENORAH_SERVER_STAGING_USER_A_PASSWORD',

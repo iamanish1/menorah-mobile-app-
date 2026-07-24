@@ -2,6 +2,12 @@ const User = require('../models/User');
 const {
   readPrivacyAdminPermissionConfiguration,
 } = require('../config/privacyAdminPermissions');
+const {
+  isExactServerStagingSyntheticRuntime,
+} = require('../config/deploymentEnvironment');
+const {
+  hasExactServerStagingPrivacyAdminPermissionGrants,
+} = require('../config/serverStagingSyntheticAuthority');
 
 const makeAuthorityError = (code, message) => {
   const error = new Error(message);
@@ -47,6 +53,7 @@ const assertNoPersistedPrivacyPermissions = async ({
 const validateConfiguredAdminTargets = async ({
   grants,
   UserModel = User,
+  allowEmptySyntheticRoster = false,
 }) => {
   const adminIds = grants.map(({ adminId }) => adminId);
   const activeAdmins = await UserModel.find({
@@ -59,6 +66,16 @@ const validateConfiguredAdminTargets = async ({
     found.size !== adminIds.length
     || adminIds.some((adminId) => !found.has(adminId))
   ) {
+    // Match the operational-authority bootstrap boundary: an exact synthetic
+    // server-staging runtime may precede its explicit seed only while the
+    // entire user collection is empty. Partial state and production fail.
+    if (
+      allowEmptySyntheticRoster
+      && found.size === 0
+      && !(await UserModel.exists({}))
+    ) {
+      return;
+    }
     throw makeAuthorityError(
       'PRIVACY_PERMISSION_GRANT_TARGET_INVALID',
       'Privacy permission grants reference a missing, inactive, or non-admin account.'
@@ -84,6 +101,11 @@ const enforcePrivacyAdminPermissionAuthority = async ({
   await validateConfiguredAdminTargets({
     grants: configuration.grants,
     UserModel,
+    allowEmptySyntheticRoster:
+      isExactServerStagingSyntheticRuntime(env)
+      && hasExactServerStagingPrivacyAdminPermissionGrants(
+        configuration.grants
+      ),
   });
   return Object.freeze({
     configuredAdminCount: configuration.grants.length,

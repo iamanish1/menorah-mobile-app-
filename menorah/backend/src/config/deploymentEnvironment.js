@@ -73,6 +73,55 @@ const isExactServerStagingValidationSelector = (env = process.env) => (
   && !String(env[LOCAL_STAGING_HTTPS_PORT_ENV] || '').trim()
 );
 
+const hasExactServerStagingApplicationMongoTarget = (env) => {
+  try {
+    const mongodbUrl = new URL(String(env.MONGODB_URI || '').trim());
+    const queryKeys = [...mongodbUrl.searchParams.keys()];
+    return (
+      mongodbUrl.protocol === 'mongodb:'
+      && mongodbUrl.hostname === 'staging-mongo-primary'
+      && mongodbUrl.port === '27017'
+      && mongodbUrl.pathname === '/menorah_staging'
+      && mongodbUrl.username === 'menorah-staging-app'
+      && Boolean(mongodbUrl.password)
+      && !mongodbUrl.hash
+      && queryKeys.length === 3
+      && new Set(queryKeys).size === 3
+      && mongodbUrl.searchParams.getAll('replicaSet').length === 1
+      && mongodbUrl.searchParams.get('replicaSet') === 'menorah-staging-rs'
+      && mongodbUrl.searchParams.getAll('authSource').length === 1
+      && mongodbUrl.searchParams.get('authSource') === 'admin'
+      && mongodbUrl.searchParams.getAll('retryWrites').length === 1
+      && mongodbUrl.searchParams.get('retryWrites') === 'true'
+      && String(env.MONGODB_REPLICA_SET_NAME || '').trim()
+        === 'menorah-staging-rs'
+      && String(env.MONGODB_READ_PREFERENCE || '').trim()
+        === 'primaryPreferred'
+      && String(env.MONGODB_RETRY_WRITES || '').trim() === 'true'
+    );
+  } catch {
+    return false;
+  }
+};
+
+const isExactServerStagingSyntheticRuntime = (env = process.env) => (
+  String(env.NODE_ENV || '').trim() === 'production'
+  && String(env.DEPLOYMENT_ENVIRONMENT || '').trim()
+    === DEPLOYMENT_ENVIRONMENTS.STAGING
+  && String(env.SERVICE_RUNTIME || '').trim() === 'server-staging'
+  && String(env.MENORAH_SYNTHETIC_DATA_ONLY || '').trim() === 'true'
+  && String(env[SERVER_STAGING_ENVIRONMENT_ID_ENV] || '').trim()
+    === SERVER_STAGING_ENVIRONMENT_ID
+  && SERVER_STAGING_PROJECTS.has(
+    String(env[SERVER_STAGING_PROJECT_ENV] || '').trim()
+  )
+  && String(env[SERVER_STAGING_HTTPS_PORT_ENV] || '').trim()
+    === SERVER_STAGING_VALIDATION_HTTPS_PORT
+  && !String(env[LOCAL_STAGING_ENVIRONMENT_ID_ENV] || '').trim()
+  && !String(env[LOCAL_STAGING_HTTPS_PORT_ENV] || '').trim()
+  && hasExactServerStagingApplicationMongoTarget(env)
+);
+
 const addExactCsvSetErrors = ({ key, value, expected, errors }) => {
   const entries = String(value || '').split(',');
   const actual = new Set(entries);
@@ -325,5 +374,6 @@ module.exports = {
   STAGING_HOST_ENV_KEYS,
   getDeploymentEnvironment,
   isExactServerStagingValidationSelector,
+  isExactServerStagingSyntheticRuntime,
   validateStagingEnvironmentIsolation,
 };

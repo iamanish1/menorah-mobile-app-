@@ -835,6 +835,10 @@ test('runtime selectors reach backend and mail-capture services as an exact pair
     assert.match(source, /MENORAH_SERVER_STAGING_ENVIRONMENT_ID:/);
     assert.match(source, /MENORAH_SERVER_STAGING_PROJECT_NAME:/);
   }
+  assert.match(
+    backendEnvironment,
+    /MENORAH_SYNTHETIC_DATA_ONLY: "\$\{MENORAH_SYNTHETIC_DATA_ONLY:\?Synthetic-only staging guard required\}"/,
+  );
   const selectorTriple =
     /MENORAH_SERVER_STAGING_ENVIRONMENT_ID:[\s\S]*MENORAH_SERVER_STAGING_PROJECT_NAME:[\s\S]*MENORAH_SERVER_STAGING_HTTPS_PORT:/;
   for (const source of [userWeb, counsellorWeb]) {
