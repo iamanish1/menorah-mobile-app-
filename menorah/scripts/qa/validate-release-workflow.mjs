@@ -234,6 +234,31 @@ function validateWorkflow(workflow, rawWorkflow) {
   assert.equal(checkoutStep?.with?.['fetch-depth'], 2);
   assert.equal(checkoutStep?.with?.['persist-credentials'], false);
 
+  const backendDependenciesStepName =
+    'Install deterministic backend production dependencies';
+  const backendDependenciesStepIndex = job.steps?.findIndex(
+    (step) => step.name === backendDependenciesStepName,
+  );
+  assert.notEqual(
+    backendDependenciesStepIndex,
+    -1,
+    'readiness must install deterministic backend production dependencies',
+  );
+  const backendDependenciesStep = job.steps[backendDependenciesStepIndex];
+  assert.equal(backendDependenciesStep['working-directory'], 'menorah/backend');
+  assert.equal(
+    backendDependenciesStep.run,
+    'npm ci --omit=dev --ignore-scripts',
+    'readiness backend production dependencies must come from the lock without lifecycle scripts',
+  );
+  const releaseValidationStepIndex = job.steps?.findIndex(
+    (step) => step.name === 'Validate workflow and release safety invariants',
+  );
+  assert.ok(
+    backendDependenciesStepIndex < releaseValidationStepIndex,
+    'readiness must install backend production dependencies before release safety validation',
+  );
+
   const runs = (job.steps ?? []).map((step) => step.run ?? '').join('\n');
   requirePattern(runs, /\^\[0-9a-f\]\{40\}\$/, 'workflow must reject a moving ref or abbreviated SHA before checkout');
   requirePattern(runs, /test "\$\{checked_out_sha\}" = "\$\{CANDIDATE_SHA\}"/, 'workflow must verify the exact candidate SHA');

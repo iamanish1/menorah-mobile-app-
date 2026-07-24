@@ -63,6 +63,10 @@ jobs:
         working-directory: menorah/scripts/qa
         run: npm ci --ignore-scripts
 
+      - name: Install deterministic backend production dependencies
+        working-directory: menorah/backend
+        run: npm ci --omit=dev --ignore-scripts
+
       - name: Validate workflow and release safety invariants
         working-directory: menorah/scripts/qa
         run: |

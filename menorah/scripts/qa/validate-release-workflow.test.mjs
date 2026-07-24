@@ -118,6 +118,35 @@ test('accepts the repository read-only release readiness workflow', () => {
   validateWorkflow(copyWorkflow(), rawWorkflow);
 });
 
+test('rejects a missing or late backend production dependency prerequisite', () => {
+  const missing = copyWorkflow();
+  missing.jobs['release-readiness'].steps =
+    missing.jobs['release-readiness'].steps.filter(
+      (step) =>
+        step.name !== 'Install deterministic backend production dependencies',
+    );
+  assert.throws(
+    () => validateWorkflow(missing, rawWorkflow),
+    /install deterministic backend production dependencies/,
+  );
+
+  const late = copyWorkflow();
+  const steps = late.jobs['release-readiness'].steps;
+  const dependencyStepIndex = steps.findIndex(
+    (step) =>
+      step.name === 'Install deterministic backend production dependencies',
+  );
+  const [dependencyStep] = steps.splice(dependencyStepIndex, 1);
+  const validationStepIndex = steps.findIndex(
+    (step) => step.name === 'Validate workflow and release safety invariants',
+  );
+  steps.splice(validationStepIndex + 1, 0, dependencyStep);
+  assert.throws(
+    () => validateWorkflow(late, rawWorkflow),
+    /before release safety validation/,
+  );
+});
+
 test('legacy VPS template contains no credential-bearing MongoDB URI', () => {
   assert.match(
     legacyVpsSetupScript,
