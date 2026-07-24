@@ -69,6 +69,10 @@ export const STATE_PATHS = Object.freeze({
     '/opt/menorah-staging/deploy-state/.backup.lock',
   restoreLock:
     '/opt/menorah-staging/deploy-state/.restore.lock',
+  backupSession:
+    '/opt/menorah-staging/deploy-state/recovery/backup-session',
+  restoreSession:
+    '/opt/menorah-staging/deploy-state/recovery/restore-session',
   rollbackInProgress:
     '/opt/menorah-staging/deploy-state/rollback-in-progress-sha',
   recovery:

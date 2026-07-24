@@ -14,6 +14,7 @@ readonly RETRIEVAL_ROOT='/opt/menorah-staging/data/backup-retrieval'
 readonly RESTORE_ROOT='/opt/menorah-staging/data/restore'
 readonly RESTORE_MEDIA_ROOT='/opt/menorah-staging/data/restore-media'
 readonly STATE_ROOT='/opt/menorah-staging/deploy-state'
+readonly RECOVERY_ROOT='/opt/menorah-staging/deploy-state/recovery'
 readonly LOGS_ROOT='/opt/menorah-staging/logs'
 readonly ENV_ROOT='/opt/menorah-staging/env'
 readonly APP_ROOT='/opt/menorah-staging/app'
@@ -22,6 +23,7 @@ readonly REPLICA_SET='menorah-staging-rs'
 readonly RESTORE_REPLICA_SET='menorah-staging-restore-rs'
 readonly RESTORE_SERVICE='staging-mongo-restore'
 readonly RESTORE_LOCK='/opt/menorah-staging/deploy-state/.restore.lock'
+readonly RESTORE_SESSION='/opt/menorah-staging/deploy-state/recovery/restore-session'
 readonly RESTORE_MARKER='/opt/menorah-staging/deploy-state/recovery/restore-in-progress.json'
 readonly RESTORE_REVIEW='/opt/menorah-staging/deploy-state/recovery/restore-requires-review.json'
 readonly RESTORE_REVIEW_TEMP="/opt/menorah-staging/deploy-state/recovery/.restore-requires-review.$$.tmp"
@@ -45,6 +47,35 @@ require_exact_directory() {
     || fail "${label} cannot be resolved"
   [ "${resolved}" = "${expected}" ] \
     || fail "${label} resolves outside the reviewed staging root"
+}
+
+require_bound_restore_session() {
+  session_id="${MENORAH_STAGING_RESTORE_SESSION_ID-}"
+  case "${ACTIVE_PROJECT}" in
+    "${SERVER_PROJECT}")
+      [ "${MENORAH_STAGING_RESTORE_SESSION_ID+x}" = x ] \
+        || fail 'server restore requires a wrapper-owned session'
+      printf '%s' "${session_id}" \
+        | grep -Eq '^[0-9a-f]{40}-[0-9]+$' \
+        || fail 'restore session identity is invalid'
+      [ -f "${RESTORE_SESSION}" ] && [ ! -L "${RESTORE_SESSION}" ] \
+        || fail 'server restore session marker is unavailable'
+      [ "$(realpath -e -- "${RESTORE_SESSION}")" = "${RESTORE_SESSION}" ] \
+        || fail 'server restore session marker is not canonical'
+      session_line_count="$(wc -l < "${RESTORE_SESSION}")"
+      [ "${session_line_count}" -eq 1 ] \
+        || fail 'server restore session marker must contain one LF record'
+      expected_session="restore-session-v1|${SERVER_PROJECT}|${EXPECTED_ENVIRONMENT_ID}|${MENORAH_SERVER_STAGING_RUNTIME_SHA}|${session_id}|target=${RESTORE_SERVICE}"
+      [ "$(sed -n '1p' "${RESTORE_SESSION}")" = "${expected_session}" ] \
+        || fail 'server restore session marker is not bound to this operation'
+      ;;
+    "${VALIDATION_PROJECT}")
+      [ "${MENORAH_STAGING_RESTORE_SESSION_ID+x}" != x ] \
+        || fail 'validation restore must use the bounded direct-rehearsal path'
+      [ ! -e "${RESTORE_SESSION}" ] && [ ! -L "${RESTORE_SESSION}" ] \
+        || fail 'validation restore is blocked by a stale session marker'
+      ;;
+  esac
 }
 
 require_regular_bundle_member() {
@@ -226,6 +257,7 @@ require_exact_directory "${STATE_ROOT}/recovery" "${STATE_ROOT}/recovery" \
 printf '%s' "${MENORAH_SERVER_STAGING_RUNTIME_SHA}" \
   | grep -Eq '^[0-9a-f]{40}$' \
   || fail 'runtime SHA must be a full lowercase Git SHA'
+require_bound_restore_session
 [ "${MONGODB_STAGING_RESTORE_URI+x}" = x ] \
   || fail 'MONGODB_STAGING_RESTORE_URI is required'
 printf '%s' "${MONGODB_STAGING_RESTORE_URI}" \
@@ -239,7 +271,7 @@ printf '%s' "${MONGODB_STAGING_RESTORE_URI}" \
 readonly BUNDLE="${RETRIEVAL_ROOT}/${STAMP}"
 readonly WORK_DIR="${RESTORE_ROOT}/.work-${STAMP}"
 readonly MONGO_CONFIG="${RESTORE_ROOT}/.mongorestore-${STAMP}.yml"
-readonly RESTORE_MARKER_TEMP="${RESTORE_ROOT}/.restore-marker-${STAMP}.json"
+readonly RESTORE_MARKER_TEMP="${RECOVERY_ROOT}/.restore-marker-${STAMP}-$$.json"
 case "${BUNDLE}" in
   /opt/menorah-staging/data/backup-retrieval/[0-9]*Z) ;;
   *) fail 'unsafe retrieval bundle path' ;;
@@ -247,6 +279,10 @@ esac
 case "${WORK_DIR}" in
   /opt/menorah-staging/data/restore/.work-[0-9]*Z) ;;
   *) fail 'unsafe restore work path' ;;
+esac
+case "${RESTORE_MARKER_TEMP}" in
+  /opt/menorah-staging/deploy-state/recovery/.restore-marker-[0-9]*Z-[0-9]*.json) ;;
+  *) fail 'unsafe restore marker staging path' ;;
 esac
 [ -d "${BUNDLE}" ] && [ ! -L "${BUNDLE}" ] \
   || fail 'the explicit retrieval bundle is unavailable'
@@ -304,9 +340,13 @@ cleanup() {
         printf '%s\n' \
           'Server-staging restore review marker could not be restricted.' >&2
         status=1
-      elif ! mv -- "${RESTORE_REVIEW_TEMP}" "${RESTORE_REVIEW}"; then
+      elif ! ln -- "${RESTORE_REVIEW_TEMP}" "${RESTORE_REVIEW}"; then
         printf '%s\n' \
           'Server-staging restore review marker could not be published.' >&2
+        status=1
+      elif ! rm -- "${RESTORE_REVIEW_TEMP}"; then
+        printf '%s\n' \
+          'Server-staging restore review staging link could not be removed.' >&2
         status=1
       fi
     fi
@@ -338,7 +378,16 @@ EOF
 chmod 600 "${RESTORE_MARKER_TEMP}"
 [ ! -e "${RESTORE_MARKER}" ] \
   || fail 'a staging restore is already in progress'
-mv -- "${RESTORE_MARKER_TEMP}" "${RESTORE_MARKER}"
+ln -- "${RESTORE_MARKER_TEMP}" "${RESTORE_MARKER}" \
+  || fail 'restore marker could not be reserved atomically'
+rm -- "${RESTORE_MARKER_TEMP}" \
+  || fail 'restore marker staging link could not be removed'
+[ ! -e "${RESTORE_MARKER_TEMP}" ] && [ ! -L "${RESTORE_MARKER_TEMP}" ] \
+  || fail 'restore marker staging link remains'
+[ -f "${RESTORE_MARKER}" ] && [ ! -L "${RESTORE_MARKER}" ] \
+  || fail 'restore marker was not published as a regular file'
+[ "$(realpath -e -- "${RESTORE_MARKER}")" = "${RESTORE_MARKER}" ] \
+  || fail 'restore marker is not canonical'
 
 perl -MDigest::SHA=hmac_sha256_hex -e '
   use strict;

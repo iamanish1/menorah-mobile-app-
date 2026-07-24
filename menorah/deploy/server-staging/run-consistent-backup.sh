@@ -1,4 +1,16 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# shellcheck shell=bash
+if [ "${1-}" != '__menorah_server_staging_clean_bash_v1__' ] \
+  || [ -z "${BASH_VERSION-}" ]
+then
+  exec /usr/bin/env -i \
+    PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+    HOME=/root TMPDIR=/tmp LC_ALL=C \
+    COMPOSE_PROJECT_NAME=menorah-staging \
+    /bin/bash --noprofile --norc "$0" \
+    '__menorah_server_staging_clean_bash_v1__' "$@"
+fi
+shift
 set -euo pipefail
 
 umask 077
@@ -17,11 +29,16 @@ readonly CONTEXT_ASSERTION="${SCRIPT_DIR}/assert-context.mjs"
 readonly RUNTIME_VERIFIER="${SCRIPT_DIR}/verify-runtime-services.sh"
 readonly STATE_ROOT='/opt/menorah-staging/deploy-state'
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
+readonly RECOVERY_ROOT='/opt/menorah-staging/deploy-state/recovery'
 readonly DEPLOY_LOCK='/opt/menorah-staging/deploy-state/.deploy.lock'
 readonly BACKUP_LOCK='/opt/menorah-staging/deploy-state/.backup.lock'
+readonly RESTORE_LOCK='/opt/menorah-staging/deploy-state/.restore.lock'
+readonly BACKUP_SESSION='/opt/menorah-staging/deploy-state/recovery/backup-session'
+readonly RESTORE_SESSION='/opt/menorah-staging/deploy-state/recovery/restore-session'
 readonly CURRENT_SHA_FILE='/opt/menorah-staging/deploy-state/current-sha'
 readonly RESTORE_MARKER='/opt/menorah-staging/deploy-state/recovery/restore-in-progress.json'
 readonly RESTORE_REVIEW='/opt/menorah-staging/deploy-state/recovery/restore-requires-review.json'
+readonly EXPECTED_WRITER_INVENTORY='staging-api-ios,staging-api-android,staging-api-web,staging-api-admin,staging-worker,staging-user-web-app'
 current_release_sha=''
 readonly -a WRITER_SERVICES=(
   staging-api-ios
@@ -35,6 +52,54 @@ readonly -a WRITER_SERVICES=(
 fail() {
   printf '%s\n' "Consistent server-staging backup refused: $*" >&2
   exit 1
+}
+
+assert_state_absent() {
+  local state_path="$1"
+  [[ ! -e "${state_path}" && ! -L "${state_path}" ]] && return
+  case "${state_path}" in
+    "${BACKUP_LOCK}")
+      fail 'a staging backup is already running or requires lock review' ;;
+    "${BACKUP_SESSION}")
+      fail 'a staging backup session is already active or requires review' ;;
+    *) fail "staging recovery state blocks backup: ${state_path}" ;;
+  esac
+}
+
+publish_backup_session() {
+  local temporary="${RECOVERY_ROOT}/.backup-session.$$.tmp"
+  readonly backup_session_id="${current_release_sha}-$$"
+  readonly backup_session_record="backup-session-v1|${EXPECTED_PROJECT}|${EXPECTED_ENVIRONMENT_ID}|${current_release_sha}|${backup_session_id}|writers=${EXPECTED_WRITER_INVENTORY}"
+
+  assert_state_absent "${BACKUP_SESSION}"
+  [[ ! -e "${temporary}" && ! -L "${temporary}" ]] \
+    || fail 'backup session staging path already exists'
+  if ! (set -C; printf '%s\n' "${backup_session_record}" > "${temporary}"); then
+    fail 'backup session staging path could not be reserved'
+  fi
+  chmod 0600 "${temporary}"
+  ln -- "${temporary}" "${BACKUP_SESSION}" \
+    || fail 'backup session marker could not be reserved atomically'
+  rm -- "${temporary}" \
+    || fail 'backup session staging link could not be removed'
+  [[ ! -e "${temporary}" && ! -L "${temporary}" ]] \
+    || fail 'backup session staging link remains'
+  [[ -f "${BACKUP_SESSION}" && ! -L "${BACKUP_SESSION}" ]] \
+    || fail 'backup session marker was not published safely'
+  [[ "$(realpath -e -- "${BACKUP_SESSION}")" == "${BACKUP_SESSION}" ]] \
+    || fail 'backup session marker is not canonical'
+}
+
+clear_owned_backup_session() {
+  local -a records=()
+  [[ -f "${BACKUP_SESSION}" && ! -L "${BACKUP_SESSION}" ]] || return 1
+  [[ "$(realpath -e -- "${BACKUP_SESSION}")" == "${BACKUP_SESSION}" ]] \
+    || return 1
+  mapfile -t records < "${BACKUP_SESSION}"
+  [[ "${#records[@]}" -eq 1 \
+    && "${records[0]}" == "${backup_session_record}" ]] \
+    || return 1
+  rm -f -- "${BACKUP_SESSION}"
 }
 
 compose() {
@@ -145,7 +210,7 @@ do
 done
 unset process_control_key \
   MENORAH_STAGING_ROOTS_ACK MENORAH_STAGING_BACKUP_ACK \
-  MENORAH_STAGING_WRITERS_QUIESCED
+  MENORAH_STAGING_WRITERS_QUIESCED MENORAH_STAGING_BACKUP_SESSION_ID
 
 [[ -f "${ENV_FILE}" && ! -L "${ENV_FILE}" ]] \
   || fail 'the exact staging environment file is unavailable'
@@ -166,21 +231,37 @@ unset process_control_key \
   || fail 'the staging deployment-state root is unavailable'
 [[ "$(realpath -e -- "${STATE_ROOT}")" == "${STATE_ROOT}" ]] \
   || fail 'the staging deployment-state root is not canonical'
-for blocking_state in "${RESTORE_MARKER}" "${RESTORE_REVIEW}"; do
-  [[ ! -e "${blocking_state}" && ! -L "${blocking_state}" ]] \
-    || fail "staging recovery state blocks backup: ${blocking_state}"
+[[ -d "${RECOVERY_ROOT}" && ! -L "${RECOVERY_ROOT}" ]] \
+  || fail 'the staging recovery-state root is unavailable'
+[[ "$(realpath -e -- "${RECOVERY_ROOT}")" == "${RECOVERY_ROOT}" ]] \
+  || fail 'the staging recovery-state root is not canonical'
+for blocking_state in \
+  "${BACKUP_LOCK}" \
+  "${BACKUP_SESSION}" \
+  "${RESTORE_LOCK}" \
+  "${RESTORE_SESSION}" \
+  "${RESTORE_MARKER}" \
+  "${RESTORE_REVIEW}"
+do
+  assert_state_absent "${blocking_state}"
 done
-[[ ! -L "${DEPLOY_LOCK}" && ! -L "${BACKUP_LOCK}" ]] \
+[[ ! -L "${DEPLOY_LOCK}" \
+  && ! -L "${BACKUP_LOCK}" \
+  && ! -L "${RESTORE_LOCK}" ]] \
   || fail 'staging operation locks must not be symlinks'
 exec 9>>"${DEPLOY_LOCK}"
 flock -n 9 \
   || fail 'another staging deployment, rollback, backup, or restore is running'
-for blocking_state in "${RESTORE_MARKER}" "${RESTORE_REVIEW}"; do
-  [[ ! -e "${blocking_state}" && ! -L "${blocking_state}" ]] \
-    || fail "staging recovery state blocks backup: ${blocking_state}"
+for blocking_state in \
+  "${BACKUP_LOCK}" \
+  "${BACKUP_SESSION}" \
+  "${RESTORE_LOCK}" \
+  "${RESTORE_SESSION}" \
+  "${RESTORE_MARKER}" \
+  "${RESTORE_REVIEW}"
+do
+  assert_state_absent "${blocking_state}"
 done
-[[ ! -e "${BACKUP_LOCK}" ]] \
-  || fail 'a staging backup is already running or requires lock review'
 
 assert_checkout_provenance
 
@@ -218,7 +299,8 @@ server_staging_assert_process_authority "${EXPECTED_PROJECT}" \
   || fail 'unexpected environment identity'
 [[ "${MENORAH_STAGING_ROOTS_ACK+x}" != x \
   && "${MENORAH_STAGING_BACKUP_ACK+x}" != x \
-  && "${MENORAH_STAGING_WRITERS_QUIESCED+x}" != x ]] \
+  && "${MENORAH_STAGING_WRITERS_QUIESCED+x}" != x \
+  && "${MENORAH_STAGING_BACKUP_SESSION_ID+x}" != x ]] \
   || fail 'operation acknowledgments must not be persisted in the environment'
 
 MENORAH_STAGING_ROOTS_ACK='MENORAH_STAGING_ROOTS_REVIEWED' \
@@ -229,6 +311,10 @@ MENORAH_STAGING_WRITERS_QUIESCED='APPLICATION_WRITERS_STOPPED' \
 assert_exact_runtime
 
 declare -a writer_ids=()
+writer_inventory="$(IFS=,; printf '%s' "${WRITER_SERVICES[*]}")"
+[[ "${writer_inventory}" == "${EXPECTED_WRITER_INVENTORY}" ]] \
+  || fail 'backup writer inventory differs from the reviewed quiescence scope'
+unset writer_inventory
 for service in "${WRITER_SERVICES[@]}"; do
   container_id="$(find_exact_service_container "${service}")"
   [[ "$(inspect_writer_state "${container_id}")" == \
@@ -237,6 +323,8 @@ for service in "${WRITER_SERVICES[@]}"; do
   writer_ids+=("${container_id}")
 done
 unset container_id service
+
+publish_backup_session
 
 restart_writers() {
   local original_status="$?" recovery_failed=0 identity index service
@@ -277,9 +365,13 @@ restart_writers() {
   done
   [[ "${all_healthy}" == true ]] || recovery_failed=1
 
+  if [[ "${recovery_failed}" -eq 0 ]]; then
+    clear_owned_backup_session || recovery_failed=1
+  fi
+
   if [[ "${recovery_failed}" -ne 0 ]]; then
     printf '%s\n' \
-      'Consistent server-staging backup failed to restore every writer.' >&2
+      "Consistent server-staging backup failed to restore every writer or clear its owned session; ${BACKUP_SESSION} remains blocking." >&2
     exit 1
   fi
   exit "${original_status}"
@@ -300,8 +392,10 @@ done
 MENORAH_STAGING_ROOTS_ACK='MENORAH_STAGING_ROOTS_REVIEWED' \
 MENORAH_STAGING_BACKUP_ACK='BACKUP_MENORAH_STAGING_SYNTHETIC_DATA' \
 MENORAH_STAGING_WRITERS_QUIESCED='APPLICATION_WRITERS_STOPPED' \
+MENORAH_STAGING_BACKUP_SESSION_ID="${backup_session_id}" \
   compose --profile backup run --rm --no-deps \
     -e MENORAH_STAGING_ROOTS_ACK=MENORAH_STAGING_ROOTS_REVIEWED \
     -e MENORAH_STAGING_BACKUP_ACK=BACKUP_MENORAH_STAGING_SYNTHETIC_DATA \
     -e MENORAH_STAGING_WRITERS_QUIESCED=APPLICATION_WRITERS_STOPPED \
+    -e MENORAH_STAGING_BACKUP_SESSION_ID="${backup_session_id}" \
     staging-backup-job

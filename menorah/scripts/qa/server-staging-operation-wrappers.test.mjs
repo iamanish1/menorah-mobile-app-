@@ -42,6 +42,7 @@ const bashPath = process.platform === 'win32'
 const posix = (value) => value.replaceAll('\\', '/');
 const fixtureSha = 'a'.repeat(40);
 const fixtureBlob = 'b'.repeat(40);
+const cleanBashSentinel = '__menorah_server_staging_clean_bash_v1__';
 
 const mockNode = `#!/usr/bin/env bash
 set -euo pipefail
@@ -263,7 +264,13 @@ fi
 
 trace "run:\${service}:\${MENORAH_STAGING_ROOTS_ACK-}:\
 \${MENORAH_STAGING_BACKUP_ACK-}:\${MENORAH_STAGING_WRITERS_QUIESCED-}:\
-\${MENORAH_STAGING_RESTORE_ACK-}:\${MENORAH_STAGING_RESTORE_TARGET-}"
+\${MENORAH_STAGING_RESTORE_ACK-}:\${MENORAH_STAGING_RESTORE_TARGET-}:\
+\${MENORAH_STAGING_BACKUP_SESSION_ID-}:\${MENORAH_STAGING_RESTORE_SESSION_ID-}"
+if [[ "\${MOCK_DISAPPEAR_RESTORE-}" == true \
+  && "\${service}" == staging-restore-job ]]
+then
+  rm -f -- "$(state_file staging-mongo-restore)"
+fi
 if [[ "\${MOCK_FAIL_JOB-}" == "\${service}" ]]; then
   if [[ "\${service}" == staging-restore-job ]]; then
     printf 'preserve for review\\n' > "\${MOCK_RESTORE_MARKER}"
@@ -279,10 +286,12 @@ const makeFixture = (
     environmentFailure = false,
     existingMarker = false,
     existingOperationLock = false,
+    existingSession = false,
     failJob = '',
     invalidShaMarker = false,
     lockUnavailable = false,
     runtimeFailure = false,
+    disappearRestore = false,
     tamperedWrapper = false,
   } = {},
 ) => {
@@ -301,6 +310,10 @@ const makeFixture = (
   const operationLock = path.join(
     deployStateRoot,
     kind === 'backup' ? '.backup.lock' : '.restore.lock',
+  );
+  const operationSession = path.join(
+    stateDirectory,
+    kind === 'backup' ? 'backup-session' : 'restore-session',
   );
   const currentShaFile = path.join(deployStateRoot, 'current-sha');
   const manifest = path.join(releaseState, `${fixtureSha}.images`);
@@ -343,6 +356,9 @@ const makeFixture = (
   }
   if (existingOperationLock) {
     writeFileSync(operationLock, 'prior operation\n');
+  }
+  if (existingSession) {
+    writeFileSync(operationSession, 'stale operation session\n');
   }
   for (const service of writerServices) {
     writeFileSync(path.join(stateStore, service), 'running');
@@ -416,7 +432,11 @@ const makeFixture = (
 
   const result = spawnSync(
     bashPath,
-    [wrapper, ...(kind === 'restore' ? ['20260724T175050Z'] : [])],
+    [
+      wrapper,
+      cleanBashSentinel,
+      ...(kind === 'restore' ? ['20260724T175050Z'] : []),
+    ],
     {
       encoding: 'utf8',
       env: {
@@ -425,6 +445,7 @@ const makeFixture = (
         MOCK_BLOB: fixtureBlob,
         MOCK_ENV_FILE: posix(environmentFile),
         MOCK_ENV_FAIL: environmentFailure ? 'true' : '',
+        MOCK_DISAPPEAR_RESTORE: disappearRestore ? 'true' : '',
         MOCK_FAIL_JOB: failJob,
         MOCK_GIT_DIRTY: dirtyCheckout ? 'true' : '',
         MOCK_LOCK_UNAVAILABLE: lockUnavailable ? 'true' : '',
@@ -442,6 +463,7 @@ const makeFixture = (
     cleanup: () => rmSync(root, { recursive: true, force: true }),
     deployLock,
     operationLock,
+    operationSession,
     result,
     restoreMarker,
     stateStore,
@@ -499,14 +521,23 @@ test('wrapper sources pin exact authority and bounded service sets', () => {
   ].map((match) => match[1]);
   assert.deepEqual(declaredWriters, writerServices);
   assert.match(sources.backup, /trap restart_writers EXIT/);
-  assert.equal(
-    [
-      ...sources.backup.matchAll(
-        /for blocking_state in "\$\{RESTORE_MARKER\}" "\$\{RESTORE_REVIEW\}"/g,
-      ),
-    ].length,
-    2,
-  );
+  for (const source of Object.values(sources)) {
+    for (const stateName of [
+      'BACKUP_LOCK',
+      'BACKUP_SESSION',
+      'RESTORE_LOCK',
+      'RESTORE_SESSION',
+      'RESTORE_MARKER',
+      'RESTORE_REVIEW',
+    ]) {
+      const reference = `"${'${'}${stateName}}"`;
+      assert.equal(
+        source.split(reference).length - 1 >= 2,
+        true,
+        `${stateName} must be checked before and under the shared lock`,
+      );
+    }
+  }
   assert.match(
     sources.backup,
     /docker stop --time 30 "\$\{writer_ids\[@\]\}"/,
@@ -617,6 +648,11 @@ test('consistent backup stops, backs up, and restarts exactly six writers', () =
       fixture.trace[runIndex],
       /MENORAH_STAGING_ROOTS_REVIEWED:BACKUP_MENORAH_STAGING_SYNTHETIC_DATA:APPLICATION_WRITERS_STOPPED/,
     );
+    assert.match(
+      fixture.trace[runIndex],
+      new RegExp(`:${fixtureSha}-[0-9]+:$`),
+    );
+    assert.equal(existsSync(fixture.operationSession), false);
   } finally {
     fixture.cleanup();
   }
@@ -638,6 +674,7 @@ test('consistent backup failure still restarts the exact stopped writers', () =>
         'running',
       );
     }
+    assert.equal(existsSync(fixture.operationSession), false);
   } finally {
     fixture.cleanup();
   }
@@ -666,6 +703,7 @@ test('disposable restore proves initializer exit then stops only its target', ()
       ],
     );
     assert.equal(existsSync(fixture.restoreMarker), false);
+    assert.equal(existsSync(fixture.operationSession), false);
   } finally {
     fixture.cleanup();
   }
@@ -682,6 +720,7 @@ test('restore failure preserves its marker and still stops only the target', () 
       fixture.trace.filter((line) => line.startsWith('stop:')),
       ['stop:staging-mongo-restore'],
     );
+    assert.equal(existsSync(fixture.operationSession), false);
   } finally {
     fixture.cleanup();
   }
@@ -711,6 +750,24 @@ for (const kind of ['backup', 'restore']) {
       assert.equal(fixture.trace.at(-1), 'preflight:environment');
       assert.equal(fixture.trace.includes(`assert:${kind}`), false);
       assert.equal(fixture.trace.includes('preflight:runtime'), false);
+      assert.equal(
+        fixture.trace.some((line) => /^(?:stop|start|up|run):/.test(line)),
+        false,
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test(`${kind} refuses a stale durable session before mutation`, () => {
+    const fixture = makeFixture(kind, { existingSession: true });
+    try {
+      assert.notEqual(fixture.result.status, 0);
+      assert.match(
+        fixture.result.stderr,
+        new RegExp(`staging ${kind} session is already active`),
+      );
+      assert.equal(existsSync(fixture.operationSession), true);
       assert.equal(
         fixture.trace.some((line) => /^(?:stop|start|up|run):/.test(line)),
         false,
@@ -822,3 +879,17 @@ for (const kind of ['backup', 'restore']) {
     }
   });
 }
+
+test('restore leaves its session when an acquired target disappears', () => {
+  const fixture = makeFixture('restore', { disappearRestore: true });
+  try {
+    assert.notEqual(fixture.result.status, 0);
+    assert.match(
+      fixture.result.stderr,
+      /target disappeared before stopped-state confirmation/,
+    );
+    assert.equal(existsSync(fixture.operationSession), true);
+  } finally {
+    fixture.cleanup();
+  }
+});

@@ -1,4 +1,29 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# shellcheck shell=bash
+if [ "${1-}" != '__menorah_server_staging_clean_bash_v1__' ] \
+  || [ -z "${BASH_VERSION-}" ]
+then
+  case "${MENORAH_STAGING_MANIFEST_ACK-}" in
+    RECORD_MENORAH_STAGING_IMMUTABLE_IMAGES)
+      exec /usr/bin/env -i \
+        PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+        HOME=/root TMPDIR=/tmp LC_ALL=C \
+        COMPOSE_PROJECT_NAME=menorah-staging \
+        MENORAH_STAGING_MANIFEST_ACK=RECORD_MENORAH_STAGING_IMMUTABLE_IMAGES \
+        /bin/bash --noprofile --norc "$0" \
+        '__menorah_server_staging_clean_bash_v1__' "$@"
+      ;;
+    *)
+      exec /usr/bin/env -i \
+        PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+        HOME=/root TMPDIR=/tmp LC_ALL=C \
+        COMPOSE_PROJECT_NAME=menorah-staging \
+        /bin/bash --noprofile --norc "$0" \
+        '__menorah_server_staging_clean_bash_v1__' "$@"
+      ;;
+  esac
+fi
+shift
 set -euo pipefail
 
 umask 077
@@ -15,11 +40,43 @@ readonly PROCESS_AUTHORITY="${SCRIPT_DIR}/assert-process-authority.sh"
 readonly LIFECYCLE_HELPER="${SCRIPT_DIR}/service-lifecycle.mjs"
 readonly ALERTMANAGER_RELEASE_PREFLIGHT="${SCRIPT_DIR}/assert-alertmanager-release-preflight.sh"
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
+readonly DEPLOY_LOCK='/opt/menorah-staging/deploy-state/.deploy.lock'
 readonly MANIFEST_LOCK='/opt/menorah-staging/deploy-state/.manifest.lock'
+readonly BACKUP_LOCK='/opt/menorah-staging/deploy-state/.backup.lock'
+readonly RESTORE_LOCK='/opt/menorah-staging/deploy-state/.restore.lock'
+readonly BACKUP_SESSION='/opt/menorah-staging/deploy-state/recovery/backup-session'
+readonly RESTORE_SESSION='/opt/menorah-staging/deploy-state/recovery/restore-session'
+readonly RESTORE_MARKER='/opt/menorah-staging/deploy-state/recovery/restore-in-progress.json'
+readonly RESTORE_REVIEW='/opt/menorah-staging/deploy-state/recovery/restore-requires-review.json'
 
 fail() {
   printf '%s\n' "Server-staging manifest refused: $*" >&2
   exit 1
+}
+
+acquire_shared_deploy_lock() {
+  local lock_fd_target
+
+  [[ ! -L "${DEPLOY_LOCK}" ]] \
+    || fail 'deployment lock must not be a symlink'
+
+  if [[ -e '/proc/self/fd/9' ]]; then
+    lock_fd_target="$(realpath -e -- '/proc/self/fd/9')" \
+      || fail 'unable to resolve inherited deployment-lock descriptor'
+    [[ "${lock_fd_target}" == "${DEPLOY_LOCK}" ]] \
+      || fail 'inherited descriptor 9 is not the staging deployment lock'
+  else
+    exec 9>>"${DEPLOY_LOCK}"
+  fi
+
+  [[ -f "${DEPLOY_LOCK}" && ! -L "${DEPLOY_LOCK}" ]] \
+    || fail 'deployment lock must be a regular non-symlink file'
+  lock_fd_target="$(realpath -e -- '/proc/self/fd/9')" \
+    || fail 'unable to resolve deployment-lock descriptor'
+  [[ "${lock_fd_target}" == "${DEPLOY_LOCK}" ]] \
+    || fail 'deployment-lock descriptor escaped the staging state root'
+  flock -n 9 \
+    || fail 'another staging deployment, manifest, backup, restore, migration, or rollback is running'
 }
 
 [[ "$#" -eq 1 ]] || fail 'usage: create-image-manifest.sh FULL_GIT_SHA'
@@ -103,10 +160,26 @@ readonly ACTUAL_SCRIPT_BLOB
 bash "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
   || fail 'Alertmanager release preflight failed'
 
+# Deploy invokes this script while already holding descriptor 9. Standalone
+# capture opens the same shared lock and then uses descriptor 8 for its own lock,
+# preserving the deploy lock throughout either path without self-deadlock.
+acquire_shared_deploy_lock
+for blocking_marker in \
+  "${BACKUP_LOCK}" \
+  "${BACKUP_SESSION}" \
+  "${RESTORE_LOCK}" \
+  "${RESTORE_SESSION}" \
+  "${RESTORE_MARKER}" \
+  "${RESTORE_REVIEW}"
+do
+  [[ ! -e "${blocking_marker}" && ! -L "${blocking_marker}" ]] \
+    || fail "staging recovery state blocks manifest capture: ${blocking_marker}"
+done
+
 [[ ! -L "${MANIFEST_LOCK}" ]] \
   || fail 'manifest lock must not be a symlink'
-exec 9>>"${MANIFEST_LOCK}"
-flock -n 9 || fail 'another staging manifest capture is running'
+exec 8>>"${MANIFEST_LOCK}"
+flock -n 8 || fail 'another staging manifest capture is running'
 
 readonly MANIFEST="${RELEASE_STATE}/${RELEASE_SHA}.images"
 readonly CHECKSUM="${MANIFEST}.sha256"

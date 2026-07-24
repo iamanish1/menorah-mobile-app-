@@ -18,7 +18,7 @@ const position = (pattern, label) => {
 
 test('restore publishes its durable marker before destructive operations', () => {
   const marker = position(
-    /mv -- "\$\{RESTORE_MARKER_TEMP\}" "\$\{RESTORE_MARKER\}"/,
+    /ln -- "\$\{RESTORE_MARKER_TEMP\}" "\$\{RESTORE_MARKER\}"/,
     'durable restore marker publication',
   );
   for (const [pattern, label] of [
@@ -47,7 +47,11 @@ test('restore preserves failure evidence with an atomic review marker', () => {
   );
   assert.match(
     source,
-    /mv -- "\$\{RESTORE_REVIEW_TEMP\}" "\$\{RESTORE_REVIEW\}"/,
+    /ln -- "\$\{RESTORE_REVIEW_TEMP\}" "\$\{RESTORE_REVIEW\}"/,
+  );
+  assert.doesNotMatch(
+    source,
+    /mv\s+[^\n]*"\$\{RESTORE_(?:MARKER|REVIEW)_TEMP\}"/,
   );
   assert.doesNotMatch(source, /2>\/dev\/null\s*\|\|\s*:/);
 
@@ -63,7 +67,7 @@ test('restore preserves failure evidence with an atomic review marker', () => {
 
 test('restore authenticates and inspects archives before database reset', () => {
   const marker = position(
-    /mv -- "\$\{RESTORE_MARKER_TEMP\}" "\$\{RESTORE_MARKER\}"/,
+    /ln -- "\$\{RESTORE_MARKER_TEMP\}" "\$\{RESTORE_MARKER\}"/,
     'durable restore marker publication',
   );
   const signature = source.indexOf(

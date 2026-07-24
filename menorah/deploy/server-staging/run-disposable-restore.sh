@@ -1,4 +1,16 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# shellcheck shell=bash
+if [ "${1-}" != '__menorah_server_staging_clean_bash_v1__' ] \
+  || [ -z "${BASH_VERSION-}" ]
+then
+  exec /usr/bin/env -i \
+    PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+    HOME=/root TMPDIR=/tmp LC_ALL=C \
+    COMPOSE_PROJECT_NAME=menorah-staging \
+    /bin/bash --noprofile --norc "$0" \
+    '__menorah_server_staging_clean_bash_v1__' "$@"
+fi
+shift
 set -euo pipefail
 
 umask 077
@@ -20,8 +32,12 @@ readonly INITIALIZER_SERVICE='staging-mongo-restore-replica-init'
 readonly RESTORE_JOB='staging-restore-job'
 readonly STATE_ROOT='/opt/menorah-staging/deploy-state'
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
+readonly RECOVERY_ROOT='/opt/menorah-staging/deploy-state/recovery'
 readonly DEPLOY_LOCK='/opt/menorah-staging/deploy-state/.deploy.lock'
+readonly BACKUP_LOCK='/opt/menorah-staging/deploy-state/.backup.lock'
 readonly RESTORE_LOCK='/opt/menorah-staging/deploy-state/.restore.lock'
+readonly BACKUP_SESSION='/opt/menorah-staging/deploy-state/recovery/backup-session'
+readonly RESTORE_SESSION='/opt/menorah-staging/deploy-state/recovery/restore-session'
 readonly CURRENT_SHA_FILE='/opt/menorah-staging/deploy-state/current-sha'
 readonly RESTORE_MARKER='/opt/menorah-staging/deploy-state/recovery/restore-in-progress.json'
 readonly RESTORE_REVIEW='/opt/menorah-staging/deploy-state/recovery/restore-requires-review.json'
@@ -30,6 +46,58 @@ current_release_sha=''
 fail() {
   printf '%s\n' "Disposable server-staging restore refused: $*" >&2
   exit 1
+}
+
+assert_state_absent() {
+  local state_path="$1"
+  [[ ! -e "${state_path}" && ! -L "${state_path}" ]] && return
+  case "${state_path}" in
+    "${RESTORE_LOCK}")
+      fail 'a staging restore is already running or requires lock review' ;;
+    "${RESTORE_SESSION}")
+      fail 'a staging restore session is already active or requires review' ;;
+    "${RESTORE_MARKER}")
+      fail 'a restore is already in progress' ;;
+    "${RESTORE_REVIEW}")
+      fail 'a prior restore requires review' ;;
+    *) fail "staging recovery state blocks restore: ${state_path}" ;;
+  esac
+}
+
+publish_restore_session() {
+  local temporary="${RECOVERY_ROOT}/.restore-session.$$.tmp"
+  readonly restore_session_id="${current_release_sha}-$$"
+  readonly restore_session_record="restore-session-v1|${EXPECTED_PROJECT}|${EXPECTED_ENVIRONMENT_ID}|${current_release_sha}|${restore_session_id}|target=${RESTORE_SERVICE}"
+
+  assert_state_absent "${RESTORE_SESSION}"
+  [[ ! -e "${temporary}" && ! -L "${temporary}" ]] \
+    || fail 'restore session staging path already exists'
+  if ! (set -C; printf '%s\n' "${restore_session_record}" > "${temporary}"); then
+    fail 'restore session staging path could not be reserved'
+  fi
+  chmod 0600 "${temporary}"
+  ln -- "${temporary}" "${RESTORE_SESSION}" \
+    || fail 'restore session marker could not be reserved atomically'
+  rm -- "${temporary}" \
+    || fail 'restore session staging link could not be removed'
+  [[ ! -e "${temporary}" && ! -L "${temporary}" ]] \
+    || fail 'restore session staging link remains'
+  [[ -f "${RESTORE_SESSION}" && ! -L "${RESTORE_SESSION}" ]] \
+    || fail 'restore session marker was not published safely'
+  [[ "$(realpath -e -- "${RESTORE_SESSION}")" == "${RESTORE_SESSION}" ]] \
+    || fail 'restore session marker is not canonical'
+}
+
+clear_owned_restore_session() {
+  local -a records=()
+  [[ -f "${RESTORE_SESSION}" && ! -L "${RESTORE_SESSION}" ]] || return 1
+  [[ "$(realpath -e -- "${RESTORE_SESSION}")" == "${RESTORE_SESSION}" ]] \
+    || return 1
+  mapfile -t records < "${RESTORE_SESSION}"
+  [[ "${#records[@]}" -eq 1 \
+    && "${records[0]}" == "${restore_session_record}" ]] \
+    || return 1
+  rm -f -- "${RESTORE_SESSION}"
 }
 
 compose() {
@@ -143,7 +211,7 @@ do
 done
 unset process_control_key \
   MENORAH_STAGING_ROOTS_ACK MENORAH_STAGING_RESTORE_ACK \
-  MENORAH_STAGING_RESTORE_TARGET
+  MENORAH_STAGING_RESTORE_TARGET MENORAH_STAGING_RESTORE_SESSION_ID
 
 [[ -f "${ENV_FILE}" && ! -L "${ENV_FILE}" ]] \
   || fail 'the exact staging environment file is unavailable'
@@ -159,26 +227,41 @@ unset process_control_key \
   || fail 'the staging context assertion is unavailable'
 [[ -f "${RUNTIME_VERIFIER}" && ! -L "${RUNTIME_VERIFIER}" ]] \
   || fail 'the staging runtime verifier is unavailable'
-[[ ! -e "${RESTORE_MARKER}" && ! -L "${RESTORE_MARKER}" ]] \
-  || fail 'a restore is already in progress'
-[[ ! -e "${RESTORE_REVIEW}" && ! -L "${RESTORE_REVIEW}" ]] \
-  || fail 'a prior restore requires review'
-
 [[ -d "${STATE_ROOT}" && ! -L "${STATE_ROOT}" ]] \
   || fail 'the staging deployment-state root is unavailable'
 [[ "$(realpath -e -- "${STATE_ROOT}")" == "${STATE_ROOT}" ]] \
   || fail 'the staging deployment-state root is not canonical'
-[[ ! -L "${DEPLOY_LOCK}" && ! -L "${RESTORE_LOCK}" ]] \
+[[ -d "${RECOVERY_ROOT}" && ! -L "${RECOVERY_ROOT}" ]] \
+  || fail 'the staging recovery-state root is unavailable'
+[[ "$(realpath -e -- "${RECOVERY_ROOT}")" == "${RECOVERY_ROOT}" ]] \
+  || fail 'the staging recovery-state root is not canonical'
+for blocking_state in \
+  "${BACKUP_LOCK}" \
+  "${BACKUP_SESSION}" \
+  "${RESTORE_LOCK}" \
+  "${RESTORE_SESSION}" \
+  "${RESTORE_MARKER}" \
+  "${RESTORE_REVIEW}"
+do
+  assert_state_absent "${blocking_state}"
+done
+[[ ! -L "${DEPLOY_LOCK}" \
+  && ! -L "${BACKUP_LOCK}" \
+  && ! -L "${RESTORE_LOCK}" ]] \
   || fail 'staging operation locks must not be symlinks'
 exec 9>>"${DEPLOY_LOCK}"
 flock -n 9 \
   || fail 'another staging deployment, rollback, backup, or restore is running'
-[[ ! -e "${RESTORE_LOCK}" ]] \
-  || fail 'a staging restore is already running or requires lock review'
-[[ ! -e "${RESTORE_MARKER}" && ! -L "${RESTORE_MARKER}" ]] \
-  || fail 'a restore is already in progress'
-[[ ! -e "${RESTORE_REVIEW}" && ! -L "${RESTORE_REVIEW}" ]] \
-  || fail 'a prior restore requires review'
+for blocking_state in \
+  "${BACKUP_LOCK}" \
+  "${BACKUP_SESSION}" \
+  "${RESTORE_LOCK}" \
+  "${RESTORE_SESSION}" \
+  "${RESTORE_MARKER}" \
+  "${RESTORE_REVIEW}"
+do
+  assert_state_absent "${blocking_state}"
+done
 
 assert_checkout_provenance
 
@@ -216,7 +299,8 @@ server_staging_assert_process_authority "${EXPECTED_PROJECT}" \
   || fail 'unexpected environment identity'
 [[ "${MENORAH_STAGING_ROOTS_ACK+x}" != x \
   && "${MENORAH_STAGING_RESTORE_ACK+x}" != x \
-  && "${MENORAH_STAGING_RESTORE_TARGET+x}" != x ]] \
+  && "${MENORAH_STAGING_RESTORE_TARGET+x}" != x \
+  && "${MENORAH_STAGING_RESTORE_SESSION_ID+x}" != x ]] \
   || fail 'operation acknowledgments must not be persisted in the environment'
 
 MENORAH_STAGING_ROOTS_ACK='MENORAH_STAGING_ROOTS_REVIEWED' \
@@ -227,27 +311,34 @@ MENORAH_STAGING_RESTORE_TARGET="${RESTORE_SERVICE}" \
 assert_exact_runtime
 
 restore_id=''
+publish_restore_session
 stop_disposable_target() {
   local original_status="$?" identity
   local -a cleanup_ids=()
   trap - EXIT
   trap '' HUP INT TERM
-  if [[ -z "${restore_id}" ]]; then
-    mapfile -t cleanup_ids < <(
-      docker ps -aq \
-        --filter "label=com.docker.compose.project=${EXPECTED_PROJECT}" \
-        --filter "label=com.docker.compose.service=${RESTORE_SERVICE}"
-    )
-    if [[ "${#cleanup_ids[@]}" -gt 1 ]]; then
+  mapfile -t cleanup_ids < <(
+    docker ps -aq \
+      --filter "label=com.docker.compose.project=${EXPECTED_PROJECT}" \
+      --filter "label=com.docker.compose.service=${RESTORE_SERVICE}"
+  )
+  if [[ "${#cleanup_ids[@]}" -gt 1 ]]; then
+    printf '%s\n' \
+      'Disposable restore target became ambiguous during cleanup.' >&2
+    exit 1
+  fi
+  if [[ "${#cleanup_ids[@]}" -eq 0 && -n "${restore_id}" ]]; then
+    printf '%s\n' \
+      'Acquired disposable restore target disappeared before stopped-state confirmation.' >&2
+    exit 1
+  fi
+  if [[ "${#cleanup_ids[@]}" -eq 1 ]]; then
+    if [[ -n "${restore_id}" && "${cleanup_ids[0]}" != "${restore_id}" ]]; then
       printf '%s\n' \
-        'Disposable restore target became ambiguous during cleanup.' >&2
+        'Disposable restore target identity changed during cleanup.' >&2
       exit 1
     fi
-    if [[ "${#cleanup_ids[@]}" -eq 1 ]]; then
-      restore_id="${cleanup_ids[0]}"
-    fi
-  fi
-  if [[ -n "${restore_id}" ]]; then
+    restore_id="${cleanup_ids[0]}"
     identity="$(inspect_restore_state "${restore_id}")" || identity=''
     case "${identity}" in
       "running|true|"*"|${EXPECTED_PROJECT}|${RESTORE_SERVICE}")
@@ -260,7 +351,20 @@ stop_disposable_target() {
         exit 1
         ;;
     esac
+    identity="$(inspect_restore_state "${restore_id}")" || identity=''
+    [[ "${identity}" == \
+      "exited|false|"*"|${EXPECTED_PROJECT}|${RESTORE_SERVICE}" ]] \
+      || {
+        printf '%s\n' \
+          'Disposable restore target was not confirmed stopped.' >&2
+        exit 1
+      }
   fi
+  clear_owned_restore_session || {
+    printf '%s\n' \
+      "Disposable restore session could not be cleared safely; ${RESTORE_SESSION} remains blocking." >&2
+    exit 1
+  }
   exit "${original_status}"
 }
 trap stop_disposable_target EXIT
@@ -303,8 +407,10 @@ done
 MENORAH_STAGING_ROOTS_ACK='MENORAH_STAGING_ROOTS_REVIEWED' \
 MENORAH_STAGING_RESTORE_ACK='RESTORE_MENORAH_STAGING_TO_DISPOSABLE_TARGET' \
 MENORAH_STAGING_RESTORE_TARGET="${RESTORE_SERVICE}" \
+MENORAH_STAGING_RESTORE_SESSION_ID="${restore_session_id}" \
   compose --profile recovery run --rm --no-deps \
     -e MENORAH_STAGING_ROOTS_ACK=MENORAH_STAGING_ROOTS_REVIEWED \
     -e MENORAH_STAGING_RESTORE_ACK=RESTORE_MENORAH_STAGING_TO_DISPOSABLE_TARGET \
     -e MENORAH_STAGING_RESTORE_TARGET="${RESTORE_SERVICE}" \
+    -e MENORAH_STAGING_RESTORE_SESSION_ID="${restore_session_id}" \
     "${RESTORE_JOB}" "${STAMP}"

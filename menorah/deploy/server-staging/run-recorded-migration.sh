@@ -1,4 +1,29 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# shellcheck shell=bash
+if [ "${1-}" != '__menorah_server_staging_clean_bash_v1__' ] \
+  || [ -z "${BASH_VERSION-}" ]
+then
+  case "${MENORAH_STAGING_MIGRATION_ACK-}" in
+    MIGRATE_MENORAH_STAGING_RECORDED_SHA)
+      exec /usr/bin/env -i \
+        PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+        HOME=/root TMPDIR=/tmp LC_ALL=C \
+        COMPOSE_PROJECT_NAME=menorah-staging \
+        MENORAH_STAGING_MIGRATION_ACK=MIGRATE_MENORAH_STAGING_RECORDED_SHA \
+        /bin/bash --noprofile --norc "$0" \
+        '__menorah_server_staging_clean_bash_v1__' "$@"
+      ;;
+    *)
+      exec /usr/bin/env -i \
+        PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+        HOME=/root TMPDIR=/tmp LC_ALL=C \
+        COMPOSE_PROJECT_NAME=menorah-staging \
+        /bin/bash --noprofile --norc "$0" \
+        '__menorah_server_staging_clean_bash_v1__' "$@"
+      ;;
+  esac
+fi
+shift
 set -euo pipefail
 
 umask 077
@@ -18,6 +43,8 @@ readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
 readonly CURRENT_SHA_FILE='/opt/menorah-staging/deploy-state/current-sha'
 readonly DEPLOY_LOCK='/opt/menorah-staging/deploy-state/.deploy.lock'
 readonly MIGRATION_LOCK='/opt/menorah-staging/deploy-state/.migration.lock'
+readonly BACKUP_LOCK='/opt/menorah-staging/deploy-state/.backup.lock'
+readonly RESTORE_LOCK='/opt/menorah-staging/deploy-state/.restore.lock'
 readonly APPLIED_MARKER='/opt/menorah-staging/deploy-state/migration-applied-sha'
 readonly IN_PROGRESS_MARKER='/opt/menorah-staging/deploy-state/migration-in-progress-sha'
 readonly IDENTITY_MARKER='/opt/menorah-staging/deploy-state/identity-reconciliation-in-progress-sha'
@@ -25,6 +52,8 @@ readonly ROLLBACK_MARKER='/opt/menorah-staging/deploy-state/rollback-in-progress
 readonly RECOVERY_MARKER='/opt/menorah-staging/deploy-state/post-migration-recovery-sha'
 readonly RESTORE_MARKER='/opt/menorah-staging/deploy-state/recovery/restore-in-progress.json'
 readonly RESTORE_REVIEW='/opt/menorah-staging/deploy-state/recovery/restore-requires-review.json'
+readonly BACKUP_SESSION='/opt/menorah-staging/deploy-state/recovery/backup-session'
+readonly RESTORE_SESSION='/opt/menorah-staging/deploy-state/recovery/restore-session'
 
 fail() {
   printf '%s\n' "Server-staging migration refused: $*" >&2
@@ -249,6 +278,10 @@ acquire_shared_deploy_lock
 for blocking_marker in \
   "${IDENTITY_MARKER}" \
   "${ROLLBACK_MARKER}" \
+  "${BACKUP_LOCK}" \
+  "${BACKUP_SESSION}" \
+  "${RESTORE_LOCK}" \
+  "${RESTORE_SESSION}" \
   "${RESTORE_MARKER}" \
   "${RESTORE_REVIEW}"
 do

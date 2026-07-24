@@ -1,4 +1,29 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# shellcheck shell=bash
+if [ "${1-}" != '__menorah_server_staging_clean_bash_v1__' ] \
+  || [ -z "${BASH_VERSION-}" ]
+then
+  case "${MENORAH_STAGING_ROLLBACK_ACK-}" in
+    ROLLBACK_MENORAH_STAGING_RECORDED_ARTIFACTS)
+      exec /usr/bin/env -i \
+        PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+        HOME=/root TMPDIR=/tmp LC_ALL=C \
+        COMPOSE_PROJECT_NAME=menorah-staging \
+        MENORAH_STAGING_ROLLBACK_ACK=ROLLBACK_MENORAH_STAGING_RECORDED_ARTIFACTS \
+        /bin/bash --noprofile --norc "$0" \
+        '__menorah_server_staging_clean_bash_v1__' "$@"
+      ;;
+    *)
+      exec /usr/bin/env -i \
+        PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+        HOME=/root TMPDIR=/tmp LC_ALL=C \
+        COMPOSE_PROJECT_NAME=menorah-staging \
+        /bin/bash --noprofile --norc "$0" \
+        '__menorah_server_staging_clean_bash_v1__' "$@"
+      ;;
+  esac
+fi
+shift
 set -euo pipefail
 
 umask 077
@@ -18,6 +43,8 @@ readonly STATE_ROOT='/opt/menorah-staging/deploy-state'
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
 readonly DEPLOY_LOCK='/opt/menorah-staging/deploy-state/.deploy.lock'
 readonly ROLLBACK_LOCK='/opt/menorah-staging/deploy-state/.rollback.lock'
+readonly BACKUP_LOCK='/opt/menorah-staging/deploy-state/.backup.lock'
+readonly RESTORE_LOCK='/opt/menorah-staging/deploy-state/.restore.lock'
 readonly CURRENT_SHA_FILE='/opt/menorah-staging/deploy-state/current-sha'
 readonly LAST_GOOD_SHA_FILE='/opt/menorah-staging/deploy-state/last-good-sha'
 readonly MIGRATION_IN_PROGRESS='/opt/menorah-staging/deploy-state/migration-in-progress-sha'
@@ -26,6 +53,8 @@ readonly ROLLBACK_MARKER='/opt/menorah-staging/deploy-state/rollback-in-progress
 readonly RECOVERY_MARKER='/opt/menorah-staging/deploy-state/post-migration-recovery-sha'
 readonly RESTORE_MARKER='/opt/menorah-staging/deploy-state/recovery/restore-in-progress.json'
 readonly RESTORE_REVIEW='/opt/menorah-staging/deploy-state/recovery/restore-requires-review.json'
+readonly BACKUP_SESSION='/opt/menorah-staging/deploy-state/recovery/backup-session'
+readonly RESTORE_SESSION='/opt/menorah-staging/deploy-state/recovery/restore-session'
 
 fail() {
   printf '%s\n' "Server-staging rollback refused: $*" >&2
@@ -148,6 +177,10 @@ for blocking_marker in \
   "${MIGRATION_IN_PROGRESS}" \
   "${IDENTITY_MARKER}" \
   "${RECOVERY_MARKER}" \
+  "${BACKUP_LOCK}" \
+  "${BACKUP_SESSION}" \
+  "${RESTORE_LOCK}" \
+  "${RESTORE_SESSION}" \
   "${RESTORE_MARKER}" \
   "${RESTORE_REVIEW}"
 do
@@ -173,6 +206,20 @@ bash "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
   || fail 'staging deployment locks must not be symlinks'
 exec 9>>"${DEPLOY_LOCK}"
 flock -n 9 || fail 'another staging deployment or rollback is running'
+for blocking_marker in \
+  "${MIGRATION_IN_PROGRESS}" \
+  "${IDENTITY_MARKER}" \
+  "${RECOVERY_MARKER}" \
+  "${BACKUP_LOCK}" \
+  "${BACKUP_SESSION}" \
+  "${RESTORE_LOCK}" \
+  "${RESTORE_SESSION}" \
+  "${RESTORE_MARKER}" \
+  "${RESTORE_REVIEW}"
+do
+  [[ ! -e "${blocking_marker}" && ! -L "${blocking_marker}" ]] \
+    || fail "staging recovery state blocks code rollback: ${blocking_marker}"
+done
 exec 8>>"${ROLLBACK_LOCK}"
 flock -n 8 || fail 'another staging rollback is running'
 

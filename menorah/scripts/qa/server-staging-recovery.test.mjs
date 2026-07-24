@@ -105,6 +105,14 @@ test('reviewed staging roots, identities, and state paths are exact', () => {
   assert.notEqual(STATE_PATHS.migrationLock, STATE_PATHS.deployLock);
   assert.notEqual(STATE_PATHS.backupLock, STATE_PATHS.restoreLock);
   assert.equal(
+    STATE_PATHS.backupSession,
+    '/opt/menorah-staging/deploy-state/recovery/backup-session',
+  );
+  assert.equal(
+    STATE_PATHS.restoreSession,
+    '/opt/menorah-staging/deploy-state/recovery/restore-session',
+  );
+  assert.equal(
     IDENTITY_RECONCILIATION_MARKER_BASENAME,
     'identity-reconciliation-in-progress-sha',
   );
@@ -808,7 +816,7 @@ test('release authority paths preflight Alertmanager before mutation', () => {
     {
       source: sources.manifest,
       mutations: [
-        'exec 9>>"${MANIFEST_LOCK}"',
+        'exec 8>>"${MANIFEST_LOCK}"',
         'CONFIG_TEMP="$(mktemp "${RELEASE_STATE}/.compose-${RELEASE_SHA}.XXXXXX")"',
         '  config --format json > "${CONFIG_TEMP}"',
       ],

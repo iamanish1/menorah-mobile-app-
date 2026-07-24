@@ -9,6 +9,7 @@ const readDeploymentScript = (name) => readFileSync(
 
 const migration = readDeploymentScript('run-recorded-migration.sh');
 const deploy = readDeploymentScript('deploy-exact-sha.sh');
+const manifest = readDeploymentScript('create-image-manifest.sh');
 
 test('recorded migration participates in the shared deployment lock', () => {
   assert.match(
@@ -70,6 +71,31 @@ test('exact-SHA deploy retains the shared lock while invoking migration', () => 
   assert.ok(migrationInvocation > lockAcquisition);
   assert.doesNotMatch(
     deploy.slice(lockAcquisition, migrationInvocation),
+    /exec 9>&-/,
+  );
+});
+
+test('manifest capture reuses fd9 and keeps its own lock on fd8', () => {
+  assert.match(
+    manifest,
+    /acquire_shared_deploy_lock\(\) \{[\s\S]*flock -n 9[\s\S]*\}/,
+  );
+  assert.match(
+    manifest,
+    /if \[\[ -e '\/proc\/self\/fd\/9' \]\]; then[\s\S]*inherited descriptor 9 is not the staging deployment lock/,
+  );
+  assert.match(manifest, /else\s+exec 9>>"\$\{DEPLOY_LOCK\}"\s+fi/);
+  assert.match(manifest, /exec 8>>"\$\{MANIFEST_LOCK\}"/);
+  assert.match(manifest, /flock -n 8/);
+  assert.doesNotMatch(manifest, /exec 9>>"\$\{MANIFEST_LOCK\}"/);
+
+  const deployLock = deploy.indexOf('exec 9>>"${DEPLOY_LOCK}"');
+  const manifestInvocation = deploy.indexOf(
+    '"${SCRIPT_DIR}/create-image-manifest.sh" "${RELEASE_SHA}"',
+  );
+  assert.ok(manifestInvocation > deployLock);
+  assert.doesNotMatch(
+    deploy.slice(deployLock, manifestInvocation),
     /exec 9>&-/,
   );
 });

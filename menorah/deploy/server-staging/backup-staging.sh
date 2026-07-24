@@ -15,12 +15,15 @@ readonly RETRIEVAL_ROOT='/opt/menorah-staging/data/backup-retrieval'
 readonly UPLOAD_ROOT='/opt/menorah-staging/data/uploads'
 readonly MANAGED_MEDIA_ROOT='/opt/menorah-staging/data/managed-media'
 readonly STATE_ROOT='/opt/menorah-staging/deploy-state'
+readonly RECOVERY_ROOT='/opt/menorah-staging/deploy-state/recovery'
 readonly LOGS_ROOT='/opt/menorah-staging/logs'
 readonly ENV_ROOT='/opt/menorah-staging/env'
 readonly APP_ROOT='/opt/menorah-staging/app'
 readonly DATABASE='menorah_staging'
 readonly REPLICA_SET='menorah-staging-rs'
 readonly BACKUP_LOCK='/opt/menorah-staging/deploy-state/.backup.lock'
+readonly BACKUP_SESSION='/opt/menorah-staging/deploy-state/recovery/backup-session'
+readonly EXPECTED_WRITER_INVENTORY='staging-api-ios,staging-api-android,staging-api-web,staging-api-admin,staging-worker,staging-user-web-app'
 readonly ENCRYPTION_KEY_FILE='/run/secrets/menorah-staging-backup-encryption-key'
 readonly SIGNING_KEY_FILE='/run/secrets/menorah-staging-backup-signing-key'
 
@@ -41,6 +44,35 @@ require_exact_directory() {
     || fail "${label} cannot be resolved"
   [ "${resolved}" = "${expected}" ] \
     || fail "${label} resolves outside the reviewed staging root"
+}
+
+require_bound_backup_session() {
+  session_id="${MENORAH_STAGING_BACKUP_SESSION_ID-}"
+  case "${ACTIVE_PROJECT}" in
+    "${SERVER_PROJECT}")
+      [ "${MENORAH_STAGING_BACKUP_SESSION_ID+x}" = x ] \
+        || fail 'server backup requires a wrapper-owned session'
+      printf '%s' "${session_id}" \
+        | grep -Eq '^[0-9a-f]{40}-[0-9]+$' \
+        || fail 'backup session identity is invalid'
+      [ -f "${BACKUP_SESSION}" ] && [ ! -L "${BACKUP_SESSION}" ] \
+        || fail 'server backup session marker is unavailable'
+      [ "$(realpath -e -- "${BACKUP_SESSION}")" = "${BACKUP_SESSION}" ] \
+        || fail 'server backup session marker is not canonical'
+      session_line_count="$(wc -l < "${BACKUP_SESSION}")"
+      [ "${session_line_count}" -eq 1 ] \
+        || fail 'server backup session marker must contain one LF record'
+      expected_session="backup-session-v1|${SERVER_PROJECT}|${EXPECTED_ENVIRONMENT_ID}|${MENORAH_SERVER_STAGING_RUNTIME_SHA}|${session_id}|writers=${EXPECTED_WRITER_INVENTORY}"
+      [ "$(sed -n '1p' "${BACKUP_SESSION}")" = "${expected_session}" ] \
+        || fail 'server backup session marker is not bound to this operation'
+      ;;
+    "${VALIDATION_PROJECT}")
+      [ "${MENORAH_STAGING_BACKUP_SESSION_ID+x}" != x ] \
+        || fail 'validation backup must use the bounded direct-rehearsal path'
+      [ ! -e "${BACKUP_SESSION}" ] && [ ! -L "${BACKUP_SESSION}" ] \
+        || fail 'validation backup is blocked by a stale session marker'
+      ;;
+  esac
 }
 
 record_safe_media_tree() {
@@ -136,6 +168,8 @@ require_exact_directory "${MENORAH_STAGING_BACKUP_ROOT}" "${BACKUP_ROOT}" \
   'backup root'
 require_exact_directory "${MENORAH_STAGING_DEPLOY_STATE_ROOT}" "${STATE_ROOT}" \
   'deployment-state root'
+require_exact_directory "${RECOVERY_ROOT}" "${RECOVERY_ROOT}" \
+  'recovery-state root'
 require_exact_directory "${MENORAH_STAGING_LOGS_ROOT}" "${LOGS_ROOT}" \
   'logs root'
 require_exact_directory "${MENORAH_STAGING_ENV_ROOT}" "${ENV_ROOT}" \
@@ -152,6 +186,7 @@ require_exact_directory "${MANAGED_MEDIA_ROOT}" "${MANAGED_MEDIA_ROOT}" \
 printf '%s' "${MENORAH_SERVER_STAGING_RUNTIME_SHA}" \
   | grep -Eq '^[0-9a-f]{40}$' \
   || fail 'runtime SHA must be a full lowercase Git SHA'
+require_bound_backup_session
 [ "${MONGODB_STAGING_BACKUP_URI+x}" = x ] \
   || fail 'MONGODB_STAGING_BACKUP_URI is required'
 printf '%s' "${MONGODB_STAGING_BACKUP_URI}" \
