@@ -14,6 +14,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+  INACTIVE_PROVIDER_SECRET_KEYS,
   SECRET_KEYS,
   assertGeneratedTargetsAbsent,
   buildValidationEnvironment,
@@ -32,11 +33,13 @@ import {
 } from '../../deploy/server-staging/validate-environment.mjs';
 import {
   EXPECTED_PUBLISHED_PORTS,
+  EGRESS_SERVICE_NAMES,
   REQUIRED_NETWORK_SUFFIXES,
   REQUIRED_SERVICE_NETWORKS,
   REQUIRED_VOLUME_SUFFIXES,
   validateProductionMetadata,
   validateIngress,
+  validateLiveKitConfig,
   validateMonitoring,
   validateRenderedCompose,
 } from '../../deploy/server-staging/validate-isolation.mjs';
@@ -122,6 +125,78 @@ const realAlertmanagerEnvironment = (
   ALERTMANAGER_CONFIG_REVIEWED_AT: '2026-07-25T00:00:00.000Z',
   ALERTMANAGER_CONFIG_REVIEW_REFERENCE:
     'staging-alert-config-review-ops-20260725',
+});
+
+const validRealEnvironment = () => {
+  const environment = realAlertmanagerEnvironment();
+  const localRoot =
+    environment.MENORAH_SERVER_STAGING_ROOT.replaceAll('\\', '/');
+  for (const [key, value] of Object.entries(environment)) {
+    if (typeof value !== 'string') continue;
+    const normalized = value.replaceAll('\\', '/');
+    if (
+      normalized === localRoot
+      || normalized.startsWith(`${localRoot}/`)
+    ) {
+      environment[key] = normalized.replace(
+        localRoot,
+        '/opt/menorah-staging',
+      );
+    } else if (value.includes('://')) {
+      environment[key] = value.replaceAll(':38443', '');
+    }
+  }
+  Object.assign(environment, {
+    MENORAH_SERVER_STAGING_ENV_FILE:
+      '/opt/menorah-staging/env/server-staging.env',
+    MENORAH_SERVER_STAGING_MONGO_KEYFILE:
+      '/opt/menorah-staging/env/mongo-keyfile',
+    MENORAH_SERVER_STAGING_BACKUP_PASSWORD_FILE:
+      '/opt/menorah-staging/env/backup-encryption-password',
+    MENORAH_SERVER_STAGING_BACKUP_HMAC_FILE:
+      '/opt/menorah-staging/env/backup-integrity-hmac-key',
+    LIVEKIT_MEDIA_BIND_IP: '192.168.50.10',
+    LIVEKIT_NODE_IP: '8.8.8.8',
+    PROMETHEUS_EXTERNAL_PROJECT: REAL_PROJECT,
+    BACKUP_STATUS_GROUP: REAL_PROJECT,
+    RESEND_API_URL: '',
+    RESEND_API_KEY: '',
+    RESEND_WEBHOOK_SECRET: '',
+    EMAIL_FROM: '',
+    CONTACT_TO_EMAIL: '',
+  });
+  for (const [key, value] of Object.entries(environment)) {
+    if (
+      key.startsWith('MENORAH_SERVER_STAGING_')
+      && key.endsWith('_IMAGE')
+    ) {
+      const imageName = value.split('/').at(-1).split(':')[0];
+      environment[key] =
+        `registry.staging.invalid/menorah-staging/${imageName}`
+        + `@sha256:${'b'.repeat(64)}`;
+    }
+  }
+  return environment;
+};
+
+const enabledRealResendEnvironment = () => ({
+  ...validRealEnvironment(),
+  RESEND_PROVIDER_ENABLED: 'true',
+  RESEND_MODE: 'sandbox',
+  RESEND_API_URL: 'https://api.resend.com/emails',
+  RESEND_API_KEY: `re_${'r'.repeat(40)}`,
+  RESEND_WEBHOOK_SECRET: `resend_stage_${'w'.repeat(32)}`,
+  EMAIL_FROM:
+    'Menorah Staging <noreply@mail.staging.menorah.me>',
+  CONTACT_TO_EMAIL: 'staging-contact@mail.staging.menorah.me',
+});
+
+const enabledRealCloudinaryEnvironment = () => ({
+  ...validRealEnvironment(),
+  MEDIA_STORAGE_BACKEND: 'cloudinary',
+  CLOUDINARY_CLOUD_NAME: 'menorah-staging-cloud',
+  CLOUDINARY_API_KEY: `cloud_key_${'k'.repeat(24)}`,
+  CLOUDINARY_API_SECRET: `cloud_secret_${'s'.repeat(24)}`,
 });
 
 const alertmanagerFsAdapter = (
@@ -224,7 +299,15 @@ const validCompose = (environment = validEnvironment()) => {
       serviceName,
       safeService(project, {
         ports: ports.map(([published, target, protocol]) => ({
-          host_ip: '127.0.0.1',
+          host_ip: (
+            serviceName === 'staging-livekit'
+            && (
+              published === '37881'
+              || protocol === 'udp'
+            )
+          )
+            ? environment.LIVEKIT_MEDIA_BIND_IP
+            : '127.0.0.1',
           published,
           target: Number.isNaN(Number(target)) ? target : Number(target),
           protocol,
@@ -342,6 +425,7 @@ const validCompose = (environment = validEnvironment()) => {
   ]) {
     services[serviceName].environment = {
       MONGODB_URI: environment.MONGODB_URI,
+      TRUST_PROXY: environment.MENORAH_SERVER_STAGING_CADDY_APP_IP,
     };
     services[serviceName].volumes = mediaVolumes.map((volume) => ({
       ...volume,
@@ -352,6 +436,124 @@ const validCompose = (environment = validEnvironment()) => {
       },
     };
   }
+  const disabledBackendEnvironment = {
+    APPLE_SIGN_IN_ENABLED: 'false',
+    ENABLE_SOCIAL_SCHEDULER: 'false',
+    SOCIAL_STUDIO_ENABLED: 'false',
+    SOCIAL_STUDIO_AUTO_PUBLISH: 'false',
+    GOOGLE_WEB_CLIENT_ID: '',
+    GOOGLE_IOS_CLIENT_ID: '',
+    GOOGLE_ANDROID_CLIENT_ID: '',
+    APPLE_IOS_BUNDLE_ID: '',
+    APPLE_WEB_SERVICE_ID: '',
+    APPLE_TEAM_ID: '',
+    APPLE_KEY_ID: '',
+    APPLE_PRIVATE_KEY: '',
+    SOCIAL_STUDIO_OPENAI_API_KEY: '',
+    SOCIAL_TOKEN_ENCRYPTION_KEY: '',
+    META_APP_ID: '',
+    META_APP_SECRET: '',
+  };
+  for (const serviceName of [
+    'staging-api-ios',
+    'staging-api-android',
+    'staging-api-web',
+    'staging-api-admin',
+    'staging-worker',
+    'staging-migrate',
+    'staging-seed',
+  ]) {
+    Object.assign(
+      services[serviceName].environment,
+      disabledBackendEnvironment,
+    );
+  }
+  const selectEnvironment = (keys) => Object.fromEntries(
+    keys.map((key) => [key, environment[key]]),
+  );
+  const bookingKeys = [
+    'BOOKING_PAYMENTS_ENABLED',
+    'SUBSCRIPTION_PAYMENTS_ENABLED',
+    'RAZORPAY_MODE',
+    'RAZORPAY_KEY_ID',
+    'RAZORPAY_KEY_SECRET',
+    'RAZORPAY_WEBHOOK_SECRET',
+    'RAZORPAY_WEBHOOK_SECRET_PREVIOUS',
+    'PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS',
+    'BOOKING_SERVICE_CATALOG_JSON',
+    'CHECKOUT_RETURN_URL',
+  ];
+  const payoutKeys = [
+    'PAYOUTS_ENABLED',
+    'RAZORPAY_X_MODE',
+    'RAZORPAY_X_KEY_ID',
+    'RAZORPAY_X_KEY_SECRET',
+    'RAZORPAY_X_WEBHOOK_SECRET',
+    'RAZORPAY_PAYOUT_ACCOUNT_NUMBER',
+  ];
+  const resendKeys = [
+    'RESEND_PROVIDER_ENABLED',
+    'RESEND_MODE',
+    'RESEND_API_KEY',
+    'RESEND_API_URL',
+    'EMAIL_FROM',
+    'CONTACT_TO_EMAIL',
+  ];
+  const cloudinaryKeys = [
+    'MEDIA_STORAGE_BACKEND',
+    'CLOUDINARY_CLOUD_NAME',
+    'CLOUDINARY_API_KEY',
+    'CLOUDINARY_API_SECRET',
+    'CLOUDINARY_UPLOAD_PREFIX',
+    'MEDIA_PUBLIC_BASE_URL',
+    'UPLOAD_PATH',
+  ];
+  Object.assign(
+    services['staging-api-ios'].environment,
+    selectEnvironment(bookingKeys),
+    selectEnvironment(resendKeys),
+    selectEnvironment(cloudinaryKeys),
+    { PAYOUTS_ENABLED: 'false' },
+  );
+  for (const serviceName of [
+    'staging-api-android',
+    'staging-api-web',
+  ]) {
+    Object.assign(
+      services[serviceName].environment,
+      selectEnvironment(resendKeys),
+      selectEnvironment(cloudinaryKeys),
+      {
+        BOOKING_PAYMENTS_ENABLED: 'false',
+        PAYOUTS_ENABLED: 'false',
+      },
+    );
+  }
+  services['staging-api-web'].environment.RESEND_WEBHOOK_SECRET =
+    environment.RESEND_WEBHOOK_SECRET;
+  Object.assign(
+    services['staging-api-admin'].environment,
+    selectEnvironment(payoutKeys),
+    selectEnvironment(resendKeys),
+    selectEnvironment(cloudinaryKeys),
+    { BOOKING_PAYMENTS_ENABLED: 'false' },
+  );
+  Object.assign(
+    services['staging-worker'].environment,
+    {
+      BOOKING_PAYMENTS_ENABLED: 'false',
+      PAYOUTS_ENABLED: 'false',
+    },
+  );
+  Object.assign(
+    services['staging-user-web-app'].environment,
+    selectEnvironment(resendKeys),
+    { NEXT_PUBLIC_RAZORPAY_KEY_ID:
+      environment.NEXT_PUBLIC_RAZORPAY_KEY_ID },
+  );
+  services['staging-mail-capture'].environment = {
+    MAIL_CAPTURE_API_KEY: environment.MAIL_CAPTURE_API_KEY,
+  };
   const primaryInitializerEnvironment = Object.fromEntries(
     [
       'MONGO_STAGING_ROOT_USER',
@@ -535,6 +737,57 @@ const validCompose = (environment = validEnvironment()) => {
       aliases: ['staging-private-alertmanager'],
     },
   };
+  for (const serviceName of EGRESS_SERVICE_NAMES) {
+    if (serviceName === 'staging-alertmanager') continue;
+    services[serviceName].networks = Object.fromEntries(
+      services[serviceName].networks.map((networkName) => [
+        networkName,
+        networkName === 'staging-egress'
+          ? { gw_priority: 1 }
+          : {},
+      ]),
+    );
+  }
+  services['staging-caddy'].networks = {
+    'staging-ingress': {},
+    'staging-app': {
+      ipv4_address: environment.MENORAH_SERVER_STAGING_CADDY_APP_IP,
+    },
+  };
+  services['staging-blackbox-exporter'].extra_hosts =
+    Object.fromEntries(Object.values({
+      ROOT_DOMAIN: 'staging.menorah.me',
+      WWW_DOMAIN: 'www.staging.menorah.me',
+      APP_DOMAIN: 'app.staging.menorah.me',
+      ADMIN_DOMAIN: 'admin.staging.menorah.me',
+      COUNSELLOR_DOMAIN: 'counsellor.staging.menorah.me',
+      API_IOS_DOMAIN: 'api-ios.staging.menorah.me',
+      API_ANDROID_DOMAIN: 'api-android.staging.menorah.me',
+      API_WEB_DOMAIN: 'api-web.staging.menorah.me',
+      API_ADMIN_DOMAIN: 'api-admin.staging.menorah.me',
+      CALLS_DOMAIN: 'calls.staging.menorah.me',
+    }).map((hostname) => [
+      hostname,
+      environment.MENORAH_SERVER_STAGING_CADDY_APP_IP,
+    ]));
+  services['staging-livekit'].environment = {
+    NODE_IP: environment.LIVEKIT_NODE_IP,
+  };
+  services['staging-livekit'].command = [
+    '--config',
+    environment.LIVEKIT_CONFIG_FILE,
+  ];
+  services['staging-livekit'].volumes = [{
+    type: 'bind',
+    source: path.resolve(
+      'menorah',
+      'deploy',
+      'server-staging',
+      'livekit.yaml',
+    ),
+    target: environment.LIVEKIT_CONFIG_FILE,
+    read_only: true,
+  }];
   const resourceLabels = {
     'com.menorah.environment': 'staging',
     'com.menorah.project': project,
@@ -551,11 +804,12 @@ const validCompose = (environment = validEnvironment()) => {
           driver: 'bridge',
           internal: !['ingress', 'egress'].includes(suffix),
           ...(
-            suffix === 'egress'
+            ['ingress', 'egress'].includes(suffix)
               ? {
                 driver_opts: {
                   'com.docker.network.bridge.enable_icc': 'false',
-                  'com.docker.network.bridge.enable_ip_masquerade': 'true',
+                  'com.docker.network.bridge.enable_ip_masquerade':
+                    suffix === 'egress' ? 'true' : 'false',
                   'com.docker.network.bridge.host_binding_ipv4': '127.0.0.1',
                 },
               }
@@ -564,12 +818,12 @@ const validCompose = (environment = validEnvironment()) => {
           labels: resourceLabels,
           ipam: {
             config: [{
-              subnet: `10.252.${240 + index}.0/24`,
-              ...(
-                suffix === 'egress'
-                  ? { ip_range: '10.252.245.128/25' }
-                  : {}
-              ),
+              subnet: environment[
+                `MENORAH_SERVER_STAGING_${suffix.toUpperCase()}_SUBNET`
+              ],
+              ip_range: environment[
+                `MENORAH_SERVER_STAGING_${suffix.toUpperCase()}_IP_RANGE`
+              ],
             }],
           },
         },
@@ -631,15 +885,18 @@ test('generator builds a complete, unique, synthetic contract', () => {
     environment.MENORAH_RUNTIME_CANDIDATE_SHA,
     fixtureSha,
   );
+  const activeSecretKeys = SECRET_KEYS.filter(
+    (key) => !INACTIVE_PROVIDER_SECRET_KEYS.includes(key),
+  );
   assert.equal(
-    new Set(SECRET_KEYS.map((key) => environment[key])).size,
-    SECRET_KEYS.length,
+    new Set(activeSecretKeys.map((key) => environment[key])).size,
+    activeSecretKeys.length,
   );
   assert.deepEqual(
     validateEnvironmentRecord(environment, { productionMetadata }),
     [],
   );
-  for (const key of SECRET_KEYS) {
+  for (const key of activeSecretKeys) {
     const value = environment[key];
     assert.doesNotMatch(value, /todo|tbd|placeholder|example/i);
     assert.match(
@@ -647,6 +904,60 @@ test('generator builds a complete, unique, synthetic contract', () => {
       /^[0-9a-f]+$/,
     );
   }
+  for (const key of INACTIVE_PROVIDER_SECRET_KEYS) {
+    assert.equal(environment[key], '', key);
+  }
+});
+
+test('real server-staging addresses and disabled providers validate exactly', () => {
+  const environment = validRealEnvironment();
+  assert.deepEqual(
+    validateEnvironmentRecord(environment, {
+      productionMetadata,
+      now: Date.parse('2026-07-25T12:00:00.000Z'),
+    }),
+    [],
+  );
+});
+
+test('real server-staging accepts explicit Resend and Cloudinary sandboxes', () => {
+  for (const environment of [
+    enabledRealResendEnvironment(),
+    enabledRealCloudinaryEnvironment(),
+  ]) {
+    assert.deepEqual(
+      validateEnvironmentRecord(environment, {
+        productionMetadata,
+        now: Date.parse('2026-07-25T12:00:00.000Z'),
+      }),
+      [],
+    );
+  }
+});
+
+test('real server-staging accepts complete test payment sandboxes', () => {
+  const environment = validRealEnvironment();
+  Object.assign(environment, {
+    BOOKING_PAYMENTS_ENABLED: 'true',
+    RAZORPAY_KEY_ID: `rzp_test_${'i'.repeat(24)}`,
+    RAZORPAY_KEY_SECRET: `booking_secret_${'s'.repeat(32)}`,
+    RAZORPAY_WEBHOOK_SECRET: `booking_webhook_${'w'.repeat(32)}`,
+    NEXT_PUBLIC_RAZORPAY_KEY_ID: `rzp_test_${'i'.repeat(24)}`,
+    CHECKOUT_RETURN_URL:
+      'https://app.staging.menorah.me/checkout/return',
+    PAYOUTS_ENABLED: 'true',
+    RAZORPAY_X_KEY_ID: `rzp_test_${'x'.repeat(24)}`,
+    RAZORPAY_X_KEY_SECRET: `payout_secret_${'p'.repeat(32)}`,
+    RAZORPAY_X_WEBHOOK_SECRET: `payout_webhook_${'h'.repeat(32)}`,
+    RAZORPAY_PAYOUT_ACCOUNT_NUMBER: 'staging-payout-account-01',
+  });
+  assert.deepEqual(
+    validateEnvironmentRecord(environment, {
+      productionMetadata,
+      now: Date.parse('2026-07-25T12:00:00.000Z'),
+    }),
+    [],
+  );
 });
 
 test('real Alertmanager source accepts a protected digest-bound external receiver', () => {
@@ -962,7 +1273,6 @@ test('generator uses port 38443 for every externally reached local URL', () => {
     'NEXT_PUBLIC_WEB_BASE_URL',
     'NEXT_PUBLIC_SITE_URL',
     'PASSWORD_RESET_BASE_URL',
-    'CHECKOUT_RETURN_URL',
     'COUNSELLOR_ONBOARDING_NOTICE_URL',
     'MEDIA_PUBLIC_BASE_URL',
     'LIVEKIT_URL',
@@ -983,10 +1293,7 @@ test('generator uses port 38443 for every externally reached local URL', () => {
       '38443',
     );
   }
-  assert.match(
-    environment.CHECKOUT_RETURN_URL,
-    /^https:\/\/app\.staging\.menorah\.me:38443\//,
-  );
+  assert.equal(environment.CHECKOUT_RETURN_URL, '');
   assert.equal(
     environment.LIVEKIT_API_URL,
     'http://staging-livekit:7880',
@@ -1012,7 +1319,6 @@ test('tracked real-server contract keeps external staging URLs portless', () => 
     'NEXT_PUBLIC_WEB_BASE_URL',
     'NEXT_PUBLIC_SITE_URL',
     'PASSWORD_RESET_BASE_URL',
-    'CHECKOUT_RETURN_URL',
     'COUNSELLOR_ONBOARDING_NOTICE_URL',
     'MEDIA_PUBLIC_BASE_URL',
     'LIVEKIT_URL',
@@ -1089,31 +1395,40 @@ test('tracked real-server contract is dry-render complete without persistent aut
     'APPLE_WEB_SERVICE_ID',
     'CLOUDFLARE_ACCOUNT_ID',
     'CLOUDFLARE_TUNNEL_ID',
-    'CLOUDINARY_API_KEY',
-    'CLOUDINARY_API_SECRET',
-    'CLOUDINARY_CLOUD_NAME',
     'GOOGLE_ANDROID_CLIENT_ID',
     'GOOGLE_IOS_CLIENT_ID',
     'GOOGLE_WEB_CLIENT_ID',
     'LUXAND_API_TOKEN',
     'OPENAI_API_KEY',
+  ]) {
+    assert.match(contract[key], /^disabled-for-server-staging/, key);
+  }
+  for (const key of [
+    'CLOUDINARY_API_KEY',
+    'CLOUDINARY_API_SECRET',
+    'CLOUDINARY_CLOUD_NAME',
+    'NEXT_PUBLIC_RAZORPAY_KEY_ID',
+    'RAZORPAY_KEY_ID',
     'RAZORPAY_KEY_SECRET',
     'RAZORPAY_PAYOUT_ACCOUNT_NUMBER',
     'RAZORPAY_WEBHOOK_SECRET',
     'RAZORPAY_WEBHOOK_SECRET_PREVIOUS',
+    'RAZORPAY_X_KEY_ID',
     'RAZORPAY_X_KEY_SECRET',
     'RAZORPAY_X_WEBHOOK_SECRET',
+    'CHECKOUT_RETURN_URL',
+    'CONTACT_TO_EMAIL',
+    'EMAIL_FROM',
+    'RESEND_API_KEY',
+    'RESEND_API_URL',
     'RESEND_WEBHOOK_SECRET',
   ]) {
-    assert.match(contract[key], /^disabled-for-server-staging/, key);
+    assert.equal(contract[key], '', key);
   }
-  assert.match(contract.RAZORPAY_KEY_ID, /^rzp_test_/);
-  assert.match(contract.RAZORPAY_X_KEY_ID, /^rzp_test_/);
-  assert.equal(
-    contract.RESEND_API_URL,
-    'http://staging-mail-capture:8025/emails',
+  assert.match(
+    contract.MAIL_CAPTURE_API_KEY,
+    /^re_server_staging_<replace-with-at-least-32-random-characters>$/,
   );
-  assert.match(contract.RESEND_API_KEY, /^re_server_staging_/);
 });
 
 test('generator refuses overwrite and invalid runtime SHA', async () => {
@@ -1161,7 +1476,59 @@ const environmentMutations = [
   ['localhost callback', (env) => { env.CHECKOUT_RETURN_URL = 'https://localhost/callback'; }, /expected full-label staging host/],
   ['wrong local validation HTTPS port', (env) => { env.MEDIA_PUBLIC_BASE_URL = 'https://api-web.staging.menorah.me:38444'; }, /exact local validation port 38443/],
   ['live payout flag', (env) => { env.PAYOUTS_ENABLED = 'true'; env.RAZORPAY_X_MODE = 'live'; }, /requires RAZORPAY_X_MODE=test/],
-  ['incomplete sandbox', (env) => { env.BOOKING_PAYMENTS_ENABLED = 'true'; env.RAZORPAY_KEY_SECRET = 'disabled-for-synthetic-server-staging'; }, /complete sandbox/],
+  ['incomplete payment test mode', (env) => { env.BOOKING_PAYMENTS_ENABLED = 'true'; env.RAZORPAY_KEY_SECRET = 'disabled-for-synthetic-server-staging'; }, /complete test-mode/],
+  ['inactive booking credential', (env) => {
+    env.RAZORPAY_KEY_ID = `rzp_test_${'b'.repeat(24)}`;
+  }, /BOOKING_PAYMENTS_ENABLED=false requires empty RAZORPAY_KEY_ID/],
+  ['public payment key drift', (env) => {
+    env.NEXT_PUBLIC_RAZORPAY_KEY_ID = `rzp_test_${'p'.repeat(24)}`;
+  }, /public and private Razorpay test key IDs must match exactly/],
+  ['inactive Cloudinary credential', (env) => {
+    env.CLOUDINARY_API_KEY = 'staging-cloudinary-key';
+  }, /local media storage must omit Cloudinary credentials/],
+  ['non-canonical network subnet', (env) => {
+    env.MENORAH_SERVER_STAGING_INGRESS_SUBNET =
+      '10.252.240.1/24';
+  }, /INGRESS_SUBNET must be one canonical RFC1918 \/24/],
+  ['non-private network subnet', (env) => {
+    env.MENORAH_SERVER_STAGING_INGRESS_SUBNET =
+      '100.64.10.0/24';
+  }, /INGRESS_SUBNET must be one canonical RFC1918 \/24/],
+  ['network range outside its subnet', (env) => {
+    env.MENORAH_SERVER_STAGING_APP_IP_RANGE =
+      '10.252.250.128/25';
+  }, /APP_IP_RANGE must be contained by .*APP_SUBNET/],
+  ['overlapping environment networks', (env) => {
+    env.MENORAH_SERVER_STAGING_DATA_SUBNET =
+      env.MENORAH_SERVER_STAGING_APP_SUBNET;
+    env.MENORAH_SERVER_STAGING_DATA_IP_RANGE =
+      env.MENORAH_SERVER_STAGING_APP_IP_RANGE;
+  }, /DATA_SUBNET overlaps .*APP_SUBNET/],
+  ['Caddy address inside dynamic range', (env) => {
+    env.MENORAH_SERVER_STAGING_CADDY_APP_IP =
+      '10.252.241.130';
+  }, /usable app-network host outside its dynamic range/],
+  ['Caddy address on Docker gateway', (env) => {
+    env.MENORAH_SERVER_STAGING_CADDY_APP_IP =
+      '10.252.241.1';
+  }, /usable app-network host outside its dynamic range/],
+  ['local LiveKit public media address', (env) => {
+    env.LIVEKIT_MEDIA_BIND_IP = '192.168.50.10';
+  }, /local validation LiveKit bind and advertised addresses must be 127\.0\.0\.1/],
+  ['backup lock outside deployment state', (env) => {
+    env.BACKUP_LOCK_FILE =
+      `${env.MENORAH_SERVER_STAGING_BACKUP_ROOT}/.backup.lock`;
+  }, /exact deployment-state \.backup\.lock/],
+  ['persistent backup metadata authority', (env) => {
+    env.BACKUP_METADATA_FILE =
+      `${env.MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT}/backup.json`;
+  }, /BACKUP_METADATA_FILE is not a persistent environment authority/],
+  ['mail capture key identity drift', (env) => {
+    env.MAIL_CAPTURE_API_KEY = `re_local_${'m'.repeat(40)}`;
+  }, /strong isolated server-staging capture key/],
+  ['validation Resend capture drift', (env) => {
+    env.RESEND_API_URL = 'https://api.resend.com/emails';
+  }, /exact isolated capture identity/],
   ['generic Tunnel token', (env) => { env.TUNNEL_TOKEN = 'not-allowed-staging-token'; }, /Tunnel token is forbidden/],
   ['production Tunnel ID', (env) => { env.CLOUDFLARE_TUNNEL_ID = productionMetadata.tunnelIds[0]; }, /Tunnel ID collides/],
   ['production state marker', (env) => { env.MENORAH_CURRENT_SHA_FILE = '/opt/menorah/deploy-state/current-sha'; }, /production filesystem root/],
@@ -1172,7 +1539,7 @@ const environmentMutations = [
   ['Git authority', (env) => { env.GIT_DIR = '/opt/menorah/.git'; }, /forbidden in the persistent/],
   ['operation authority', (env) => { env.MENORAH_STAGING_DEPLOY_ACK = 'DEPLOY_EXACT_MENORAH_STAGING_SHA'; }, /forbidden in the persistent/],
   ['non-loopback admin port', (env) => { env.API_ADMIN_LOCAL_PORT = '0.0.0.0:38083'; }, /API_ADMIN_LOCAL_PORT must be/],
-  ['storage prefix', (env) => { env.MEDIA_STORAGE_BACKEND = 'cloudinary'; env.CLOUDINARY_UPLOAD_PREFIX = 'menorah-production'; }, /staging-only prefix/],
+  ['storage prefix', (env) => { env.MEDIA_STORAGE_BACKEND = 'cloudinary'; env.CLOUDINARY_UPLOAD_PREFIX = 'menorah-production'; }, /CLOUDINARY_UPLOAD_PREFIX must equal/],
   ['production storage bucket', (env) => { env.MEDIA_STORAGE_BUCKET = productionMetadata.storageBuckets[0]; }, /staging-only storage/],
   ['mutable image', (env) => { env.MENORAH_SERVER_STAGING_BACKEND_IMAGE = 'menorah/backend:latest'; }, /immutable staging image/],
 ];
@@ -1185,6 +1552,64 @@ for (const [name, mutate, expected] of environmentMutations) {
       environment,
       { productionMetadata },
     );
+    assert.ok(
+      includesError(errors, expected),
+      `expected ${expected}, received:\n${errors.join('\n')}`,
+    );
+  });
+}
+
+const realEnvironmentMutations = [
+  ['internal Resend capture', (env) => {
+    env.RESEND_API_URL = 'http://staging-mail-capture:8025/emails';
+    env.RESEND_API_KEY = env.MAIL_CAPTURE_API_KEY;
+    env.RESEND_WEBHOOK_SECRET = `capture_webhook_${'w'.repeat(32)}`;
+    env.EMAIL_FROM =
+      'Menorah Staging <noreply@mail.staging.menorah.me>';
+    env.CONTACT_TO_EMAIL = 'sink@mail.staging.menorah.me';
+  }, /real server staging with Resend disabled requires empty RESEND_API_URL/],
+  ['disabled Resend residue', (env) => {
+    env.CONTACT_TO_EMAIL = 'sink@mail.staging.menorah.me';
+  }, /Resend disabled requires empty CONTACT_TO_EMAIL/],
+  ['non-canonical media bind', (env) => {
+    env.LIVEKIT_MEDIA_BIND_IP = '192.168.050.10';
+  }, /LIVEKIT_MEDIA_BIND_IP must be a canonical non-special host address/],
+  ['media bind inside Docker network', (env) => {
+    env.LIVEKIT_MEDIA_BIND_IP = '10.252.241.10';
+  }, /outside all six Docker networks/],
+  ['private advertised LiveKit node', (env) => {
+    env.LIVEKIT_NODE_IP = '192.168.50.10';
+  }, /LIVEKIT_NODE_IP must be a canonical globally routable IPv4 address/],
+  ['enabled Resend endpoint drift', (env) => {
+    Object.assign(env, enabledRealResendEnvironment(), {
+      RESEND_API_URL: 'https://api.resend.com/batch',
+    });
+  }, /enabled Resend must use exact endpoint/],
+  ['enabled Resend incomplete routing', (env) => {
+    Object.assign(env, enabledRealResendEnvironment(), {
+      CONTACT_TO_EMAIL: '',
+    });
+  }, /complete staging-domain sender and recipient/],
+  ['enabled Resend weak webhook', (env) => {
+    Object.assign(env, enabledRealResendEnvironment(), {
+      RESEND_WEBHOOK_SECRET: 'weak-webhook-key',
+    });
+  }, /complete external sandbox webhook secret/],
+  ['incomplete Cloudinary sandbox', (env) => {
+    Object.assign(env, enabledRealCloudinaryEnvironment(), {
+      CLOUDINARY_API_SECRET: '',
+    });
+  }, /requires complete staging-only CLOUDINARY_API_SECRET/],
+];
+
+for (const [name, mutate, expected] of realEnvironmentMutations) {
+  test(`real environment rejects ${name}`, () => {
+    const environment = validRealEnvironment();
+    mutate(environment);
+    const errors = validateEnvironmentRecord(environment, {
+      productionMetadata,
+      now: Date.parse('2026-07-25T12:00:00.000Z'),
+    });
     assert.ok(
       includesError(errors, expected),
       `expected ${expected}, received:\n${errors.join('\n')}`,
@@ -1243,13 +1668,37 @@ const composeMutations = [
       'com.docker.network.bridge.enable_ip_masquerade'
     ] = 'false';
   }, /reviewed egress-capable NAT bridge/],
+  ['enabled ingress NAT', (model) => {
+    model.networks['staging-ingress'].driver_opts[
+      'com.docker.network.bridge.enable_ip_masquerade'
+    ] = 'true';
+  }, /reviewed non-NAT ingress bridge/],
+  ['internal ingress network', (model) => {
+    model.networks['staging-ingress'].internal = true;
+  }, /reviewed non-NAT ingress bridge/],
+  ['non-internal data network', (model) => {
+    model.networks['staging-data'].internal = false;
+  }, /staging-data must remain internal and non-egress-capable/],
   ['wrong egress dynamic range', (model) => {
     model.networks['staging-egress'].ipam.config[0].ip_range =
       '10.252.245.0/25';
   }, /dynamic range must exactly match/],
+  ['wrong app dynamic range', (model) => {
+    model.networks['staging-app'].ipam.config[0].ip_range =
+      '10.252.241.0/25';
+  }, /staging-app subnet and dynamic range must exactly match/],
+  ['missing API egress gateway priority', (model) => {
+    delete model.services['staging-api-android']
+      .networks['staging-egress'].gw_priority;
+  }, /staging-api-android must use staging-egress as its explicit default gateway/],
   ['unapproved egress member', (model) => {
-    model.services['staging-api-web'].networks.push('staging-egress');
-  }, /initially contain only staging-alertmanager/],
+    model.services['staging-worker'].networks = {
+      'staging-app': {},
+      'staging-data': {},
+      'staging-ingress': {},
+      'staging-egress': { gw_priority: 1 },
+    };
+  }, /only the six approved provider services/],
   ['production network', (model) => { model.networks['staging-data'].name = 'menorah_db_net'; }, /collides with production/],
   ['production subnet', (model) => { model.networks['staging-data'].ipam = { config: [{ subnet: productionMetadata.networkSubnets[0] }] }; }, /subnet collides with production/],
   ['containing production subnet', (model) => {
@@ -1262,6 +1711,79 @@ const composeMutations = [
       config: [{ subnet: '10.252.241.128/25' }],
     };
   }, /overlaps staging network/],
+  ['wrong Caddy static address', (model) => {
+    model.services['staging-caddy'].networks[
+      'staging-app'
+    ].ipv4_address = '10.252.241.11';
+  }, /staging-caddy must use the exact reviewed static app address/],
+  ['wrong API trusted proxy address', (model) => {
+    model.services['staging-api-ios'].environment.TRUST_PROXY =
+      '10.252.241.11';
+  }, /staging-api-ios TRUST_PROXY must equal the reviewed Caddy address/],
+  ['wrong blackbox staging-host address', (model) => {
+    model.services['staging-blackbox-exporter'].extra_hosts[
+      'calls.staging.menorah.me'
+    ] = '10.252.241.11';
+  }, /blackbox monitoring hosts must resolve only to the reviewed Caddy address/],
+  ['wrong LiveKit media bind', (model) => {
+    model.services['staging-livekit'].ports.find(
+      ({ published }) => published === '37881',
+    ).host_ip = '127.0.0.2';
+  }, /LiveKit must use the exact signaling, config, advertised-IP, and public media contract/],
+  ['wrong LiveKit media target', (model) => {
+    model.services['staging-livekit'].ports.find(
+      ({ published }) => published === '37881',
+    ).target = 7881;
+  }, /LiveKit must use the exact signaling, config, advertised-IP, and public media contract/],
+  ['wrong LiveKit config source', (model) => {
+    model.services['staging-livekit'].volumes[0].source =
+      path.resolve(
+        'menorah',
+        'deploy',
+        'server-staging',
+        'other.yaml',
+      );
+  }, /LiveKit must use the exact signaling, config, advertised-IP, and public media contract/],
+  ['worker Resend secret leakage', (model, env) => {
+    model.services['staging-worker'].environment.RESEND_API_KEY =
+      env.RESEND_API_KEY;
+  }, /staging-worker must not receive provider-scoped RESEND_API_KEY/],
+  ['migration Cloudinary secret leakage', (model, env) => {
+    model.services['staging-migrate'].environment
+      .CLOUDINARY_API_SECRET = env.CLOUDINARY_API_SECRET;
+  }, /staging-migrate must not receive provider-scoped CLOUDINARY_API_SECRET/],
+  ['seed payment secret leakage', (model, env) => {
+    model.services['staging-seed'].environment.RAZORPAY_KEY_SECRET =
+      env.RAZORPAY_KEY_SECRET;
+  }, /staging-seed must not receive provider-scoped RAZORPAY_KEY_SECRET/],
+  ['booking secret leakage to Android API', (model, env) => {
+    model.services['staging-api-android'].environment
+      .RAZORPAY_KEY_SECRET = env.RAZORPAY_KEY_SECRET;
+  }, /staging-api-android must not receive provider-scoped RAZORPAY_KEY_SECRET/],
+  ['missing web Resend webhook scope', (model) => {
+    delete model.services['staging-api-web'].environment
+      .RESEND_WEBHOOK_SECRET;
+  }, /staging-api-web must receive the exact reviewed RESEND_WEBHOOK_SECRET/],
+  ['Resend secret leakage into mail capture', (model, env) => {
+    model.services['staging-mail-capture'].environment.RESEND_API_KEY =
+      env.RESEND_API_KEY;
+  }, /staging-mail-capture must receive only its isolated capture key/],
+  ['mail-capture key leakage into worker', (model, env) => {
+    model.services['staging-worker'].environment
+      .MAIL_CAPTURE_API_KEY = env.MAIL_CAPTURE_API_KEY;
+  }, /staging-worker must not receive provider-scoped MAIL_CAPTURE_API_KEY/],
+  ['payment gate leakage into migration', (model) => {
+    model.services['staging-migrate'].environment
+      .BOOKING_PAYMENTS_ENABLED = 'false';
+  }, /staging-migrate must not receive provider gate BOOKING_PAYMENTS_ENABLED/],
+  ['disabled Apple identity residue', (model) => {
+    model.services['staging-api-admin'].environment.APPLE_TEAM_ID =
+      'staging-apple-team';
+  }, /staging-api-admin must render empty disabled provider identity APPLE_TEAM_ID/],
+  ['enabled social gate', (model) => {
+    model.services['staging-worker'].environment
+      .SOCIAL_STUDIO_ENABLED = 'true';
+  }, /staging-worker must render disabled Apple\/social gate SOCIAL_STUDIO_ENABLED/],
   ['production volume', (model) => { model.volumes['staging-restore-root'].name = 'menorah_restore_test_data'; }, /collides with production/],
   ['Docker socket', (model) => { model.services['staging-alloy'].volumes = [{ type: 'bind', source: '/var/run/docker.sock', target: '/var/run/docker.sock' }]; }, /Docker socket/],
   ['host log mount', (model) => { model.services['staging-alloy'].volumes = [{ type: 'bind', source: '/var/lib/docker/containers', target: '/logs' }]; }, /host-wide Docker logs/],
@@ -1396,6 +1918,26 @@ test('rendered model rejects a bind symlink escaping the staging root', async ()
   } finally {
     await unlink(link).catch(() => {});
     await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('LiveKit config preserves the exact public-media RTC contract', () => {
+  const source = readStaging('livekit.yaml');
+  assert.deepEqual(validateLiveKitConfig(source), []);
+  for (const mutation of [
+    source.replace('use_external_ip: false', 'use_external_ip: true'),
+    source.replace('tcp_port: 37881', 'tcp_port: 7881'),
+    source.replace('port_range_end: 35100', 'port_range_end: 35200'),
+    source.replace(
+      'skip_external_ip_validation: false',
+      'skip_external_ip_validation: false\n  stun_servers: unsafe',
+    ),
+    `${source}\nrtc:\n  tcp_port: 37881\n`,
+  ]) {
+    assert.ok(includesError(
+      validateLiveKitConfig(mutation),
+      /exact reviewed ports and use_external_ip=false/,
+    ));
   }
 });
 

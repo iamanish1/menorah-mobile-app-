@@ -68,6 +68,7 @@ for required_file in \
   "${STAGING_DIR}/tunnel-config.yml.example" \
   "${STAGING_DIR}/prometheus.yml" \
   "${STAGING_DIR}/blackbox.yml" \
+  "${STAGING_DIR}/livekit.yaml" \
   "${STAGING_DIR}/config.alloy" \
   "${STAGING_DIR}/loki.yml" \
   "${MENORAH_ROOT}/deploy/monitoring/alert-rules.yml"; do
@@ -129,6 +130,7 @@ node "${STAGING_DIR}/validate-isolation.mjs" \
   --prometheus "${STAGING_DIR}/prometheus.yml" \
   --alertmanager "${alertmanager_config_source}" \
   --blackbox "${STAGING_DIR}/blackbox.yml" \
+  --livekit "${STAGING_DIR}/livekit.yaml" \
   --alloy "${STAGING_DIR}/config.alloy" \
   --loki "${STAGING_DIR}/loki.yml" \
   --alert-rules "${MENORAH_ROOT}/deploy/monitoring/alert-rules.yml"

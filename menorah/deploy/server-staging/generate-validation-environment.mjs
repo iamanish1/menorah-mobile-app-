@@ -100,6 +100,15 @@ export const SECRET_KEYS = Object.freeze([
   'MENORAH_SERVER_STAGING_ADMIN_FULL_2_PASSWORD',
 ]);
 
+export const INACTIVE_PROVIDER_SECRET_KEYS = Object.freeze([
+  'RAZORPAY_KEY_ID',
+  'RAZORPAY_KEY_SECRET',
+  'RAZORPAY_WEBHOOK_SECRET',
+  'RAZORPAY_X_KEY_ID',
+  'RAZORPAY_X_KEY_SECRET',
+  'RAZORPAY_X_WEBHOOK_SECRET',
+]);
+
 const RETENTION_CATEGORIES = Object.freeze([
   'account_profile',
   'booking_clinical',
@@ -164,6 +173,23 @@ const REQUIRED_CONTRACT_KEYS = Object.freeze([
   'ADMIN_ROLE_GRANTS_JSON',
   'PROMETHEUS_EXTERNAL_ENVIRONMENT',
   'ALERTMANAGER_ENVIRONMENT',
+  'LIVEKIT_MEDIA_BIND_IP',
+  'LIVEKIT_NODE_IP',
+  'MENORAH_SERVER_STAGING_INGRESS_SUBNET',
+  'MENORAH_SERVER_STAGING_INGRESS_IP_RANGE',
+  'MENORAH_SERVER_STAGING_APP_SUBNET',
+  'MENORAH_SERVER_STAGING_APP_IP_RANGE',
+  'MENORAH_SERVER_STAGING_CADDY_APP_IP',
+  'MENORAH_SERVER_STAGING_DATA_SUBNET',
+  'MENORAH_SERVER_STAGING_DATA_IP_RANGE',
+  'MENORAH_SERVER_STAGING_MONITORING_SUBNET',
+  'MENORAH_SERVER_STAGING_MONITORING_IP_RANGE',
+  'MENORAH_SERVER_STAGING_RESTORE_SUBNET',
+  'MENORAH_SERVER_STAGING_RESTORE_IP_RANGE',
+  'MENORAH_SERVER_STAGING_EGRESS_SUBNET',
+  'MENORAH_SERVER_STAGING_EGRESS_IP_RANGE',
+  'MAIL_CAPTURE_API_KEY',
+  'BACKUP_LOCK_FILE',
 ]);
 
 const sha256 = (value) => (
@@ -196,8 +222,15 @@ export const assertDistinctSecrets = (
   values,
   additionalValues = [],
 ) => {
+  const inactiveProviderKeys = new Set(INACTIVE_PROVIDER_SECRET_KEYS);
+  const requiredCandidates = SECRET_KEYS
+    .filter((key) => !inactiveProviderKeys.has(key))
+    .map((key) => values[key]);
   const candidates = [
-    ...SECRET_KEYS.map((key) => values[key]),
+    ...requiredCandidates,
+    ...INACTIVE_PROVIDER_SECRET_KEYS
+      .map((key) => values[key])
+      .filter((value) => value !== ''),
     ...additionalValues,
   ];
   if (
@@ -306,10 +339,9 @@ export const buildValidationEnvironment = ({
         : randomToken(48, randomBytesFunction),
     ]),
   );
-  secrets.RAZORPAY_KEY_ID =
-    `rzp_test_${randomBytesFunction(12).toString('hex')}`;
-  secrets.RAZORPAY_X_KEY_ID =
-    `rzp_test_${randomBytesFunction(12).toString('hex')}`;
+  for (const key of INACTIVE_PROVIDER_SECRET_KEYS) {
+    secrets[key] = '';
+  }
   secrets.RESEND_API_KEY =
     `re_server_staging_${randomToken(32, randomBytesFunction)}`;
   secrets.LIVEKIT_API_KEY =
@@ -407,7 +439,7 @@ export const buildValidationEnvironment = ({
       `${adminOrigin}=admin`,
     ].join(','),
     PASSWORD_RESET_BASE_URL: appOrigin,
-    CHECKOUT_RETURN_URL: `${appOrigin}/checkout/return`,
+    CHECKOUT_RETURN_URL: '',
     COUNSELLOR_ONBOARDING_NOTICE_URL:
       `${counsellorOrigin}/onboarding/privacy`,
 
@@ -422,7 +454,7 @@ export const buildValidationEnvironment = ({
     USER_WEB_APP_LOCAL_PORT: '127.0.0.1:33002',
     ADMIN_PANEL_LOCAL_PORT: '127.0.0.1:33003',
     LIVEKIT_LOCAL_PORT: '127.0.0.1:37880',
-    LIVEKIT_RTC_TCP_LOCAL_PORT: '127.0.0.1:37881',
+    LIVEKIT_MEDIA_BIND_IP: '127.0.0.1',
     LIVEKIT_RTC_UDP_PORT_RANGE: '35000-35100',
     LIVEKIT_RTC_TCP_PORT: '37881',
     PROMETHEUS_LOCAL_PORT: '127.0.0.1:39090',
@@ -431,6 +463,17 @@ export const buildValidationEnvironment = ({
     ALLOY_LOCAL_PORT: '127.0.0.1:32345',
     MENORAH_SERVER_STAGING_HTTPS_PORT: '38443',
     MENORAH_SERVER_STAGING_TUNNEL_ORIGIN_PORT: '38000',
+    MENORAH_SERVER_STAGING_INGRESS_SUBNET: '10.252.240.0/24',
+    MENORAH_SERVER_STAGING_INGRESS_IP_RANGE: '10.252.240.128/25',
+    MENORAH_SERVER_STAGING_APP_SUBNET: '10.252.241.0/24',
+    MENORAH_SERVER_STAGING_APP_IP_RANGE: '10.252.241.128/25',
+    MENORAH_SERVER_STAGING_CADDY_APP_IP: '10.252.241.10',
+    MENORAH_SERVER_STAGING_DATA_SUBNET: '10.252.242.0/24',
+    MENORAH_SERVER_STAGING_DATA_IP_RANGE: '10.252.242.128/25',
+    MENORAH_SERVER_STAGING_MONITORING_SUBNET: '10.252.243.0/24',
+    MENORAH_SERVER_STAGING_MONITORING_IP_RANGE: '10.252.243.128/25',
+    MENORAH_SERVER_STAGING_RESTORE_SUBNET: '10.252.244.0/24',
+    MENORAH_SERVER_STAGING_RESTORE_IP_RANGE: '10.252.244.128/25',
     MENORAH_SERVER_STAGING_EGRESS_SUBNET: '10.252.245.0/24',
     MENORAH_SERVER_STAGING_EGRESS_IP_RANGE: '10.252.245.128/25',
     MENORAH_SERVER_STAGING_BACKEND_IMAGE:
@@ -563,13 +606,15 @@ export const buildValidationEnvironment = ({
     SUBSCRIPTION_PAYMENTS_ENABLED: 'false',
     RAZORPAY_MODE: 'test',
     RAZORPAY_X_MODE: 'test',
-    NEXT_PUBLIC_RAZORPAY_KEY_ID: secrets.RAZORPAY_KEY_ID,
-    RAZORPAY_PAYOUT_ACCOUNT_NUMBER: '1000000000000000',
+    NEXT_PUBLIC_RAZORPAY_KEY_ID: '',
+    RAZORPAY_WEBHOOK_SECRET_PREVIOUS: '',
+    RAZORPAY_PAYOUT_ACCOUNT_NUMBER: '',
     PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS: '5',
     MAX_PAYOUT_AMOUNT_PAISE: '5000000',
     RESEND_PROVIDER_ENABLED: 'false',
     RESEND_MODE: 'sandbox',
     RESEND_API_URL: 'http://staging-mail-capture:8025/emails',
+    MAIL_CAPTURE_API_KEY: secrets.RESEND_API_KEY,
     EMAIL_FROM:
       'Menorah Synthetic Staging <noreply@mail.staging.menorah.me>',
     CONTACT_TO_EMAIL: 'sink@mail.staging.menorah.me',
@@ -588,10 +633,11 @@ export const buildValidationEnvironment = ({
     EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: disabled,
     EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: disabled,
     EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: disabled,
-    CLOUDINARY_CLOUD_NAME: disabled,
-    CLOUDINARY_API_KEY: disabled,
-    CLOUDINARY_API_SECRET: disabled,
-    CLOUDINARY_UPLOAD_PREFIX: 'menorah-staging',
+    CLOUDINARY_CLOUD_NAME: '',
+    CLOUDINARY_API_KEY: '',
+    CLOUDINARY_API_SECRET: '',
+    CLOUDINARY_UPLOAD_PREFIX:
+      'menorah-staging/menorah-server-staging-v1',
     LUXAND_API_TOKEN: disabled,
     LUXAND_DETECT_URL: disabled,
     OPENAI_API_KEY: disabled,
@@ -624,11 +670,8 @@ export const buildValidationEnvironment = ({
     BACKUP_COLD_STORAGE_LABEL:
       'Synthetic isolated server staging retrieval',
     BACKUP_HEALTH_PUSH_URL: disabled,
-    BACKUP_METADATA_FILE: slashPath(
-      path.join(hostBackupRoot, '.metadata.json'),
-    ),
     BACKUP_LOCK_FILE: slashPath(
-      path.join(hostBackupRoot, '.backup.lock'),
+      path.join(hostStateRoot, '.backup.lock'),
     ),
     MENORAH_CURRENT_SHA_FILE: slashPath(
       path.join(hostStateRoot, 'current-sha'),

@@ -13,6 +13,7 @@ import {
 
 import {
   EXPECTED_HOSTS,
+  NETWORK_CONTRACTS,
   REAL_PROJECT,
   VALIDATION_PROJECT,
   assertValidEnvironment,
@@ -41,6 +42,7 @@ const DEFAULTS = Object.freeze({
   blackbox: path.join(MODULE_DIRECTORY, 'blackbox.yml'),
   alloy: path.join(MODULE_DIRECTORY, 'config.alloy'),
   loki: path.join(MODULE_DIRECTORY, 'loki.yml'),
+  livekit: path.join(MODULE_DIRECTORY, 'livekit.yaml'),
   alertRules: path.resolve(
     MODULE_DIRECTORY,
     '..',
@@ -234,16 +236,37 @@ export const REQUIRED_SERVICE_NETWORKS = Object.freeze({
   'staging-mongo-primary': ['staging-data'],
   'staging-mongo-replica-init': ['staging-data'],
   'staging-redis': ['staging-data'],
-  'staging-api-ios': ['staging-app', 'staging-data', 'staging-ingress'],
-  'staging-api-android': ['staging-app', 'staging-data', 'staging-ingress'],
-  'staging-api-web': ['staging-app', 'staging-data', 'staging-ingress'],
-  'staging-api-admin': ['staging-app', 'staging-data', 'staging-ingress'],
+  'staging-api-ios': [
+    'staging-app',
+    'staging-data',
+    'staging-egress',
+    'staging-ingress',
+  ],
+  'staging-api-android': [
+    'staging-app',
+    'staging-data',
+    'staging-egress',
+    'staging-ingress',
+  ],
+  'staging-api-web': [
+    'staging-app',
+    'staging-data',
+    'staging-egress',
+    'staging-ingress',
+  ],
+  'staging-api-admin': [
+    'staging-app',
+    'staging-data',
+    'staging-egress',
+    'staging-ingress',
+  ],
   'staging-worker': ['staging-app', 'staging-data', 'staging-ingress'],
   'staging-migrate': ['staging-data'],
   'staging-seed': ['staging-data'],
   'staging-user-web-app': [
     'staging-app',
     'staging-data',
+    'staging-egress',
     'staging-ingress',
   ],
   'staging-web-app': ['staging-app', 'staging-ingress'],
@@ -275,6 +298,15 @@ export const REQUIRED_SERVICE_NETWORKS = Object.freeze({
   'staging-restore-job': ['staging-restore'],
 });
 
+export const EGRESS_SERVICE_NAMES = Object.freeze([
+  'staging-alertmanager',
+  'staging-api-ios',
+  'staging-api-android',
+  'staging-api-web',
+  'staging-api-admin',
+  'staging-user-web-app',
+]);
+
 const RESOURCE_ENVELOPE = Object.freeze({
   serviceMemoryBytes: 1024 * 1024 * 1024,
   serviceCpus: 1,
@@ -304,6 +336,95 @@ const RESTORE_INITIALIZER_ENVIRONMENT = Object.freeze([
   'MONGO_STAGING_ROOT_PASSWORD',
   'MONGO_STAGING_RESTORE_USER',
   'MONGO_STAGING_RESTORE_PASSWORD',
+]);
+
+const BOOKING_PROVIDER_ENVIRONMENT = Object.freeze([
+  'BOOKING_PAYMENTS_ENABLED',
+  'SUBSCRIPTION_PAYMENTS_ENABLED',
+  'RAZORPAY_MODE',
+  'RAZORPAY_KEY_ID',
+  'RAZORPAY_KEY_SECRET',
+  'PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS',
+  'BOOKING_SERVICE_CATALOG_JSON',
+  'CHECKOUT_RETURN_URL',
+]);
+const BOOKING_WEBHOOK_ENVIRONMENT = Object.freeze([
+  'RAZORPAY_WEBHOOK_SECRET',
+  'RAZORPAY_WEBHOOK_SECRET_PREVIOUS',
+]);
+const PAYOUT_PROVIDER_ENVIRONMENT = Object.freeze([
+  'PAYOUTS_ENABLED',
+  'RAZORPAY_X_MODE',
+  'RAZORPAY_X_KEY_ID',
+  'RAZORPAY_X_KEY_SECRET',
+  'RAZORPAY_X_WEBHOOK_SECRET',
+  'RAZORPAY_PAYOUT_ACCOUNT_NUMBER',
+]);
+const RESEND_PROVIDER_ENVIRONMENT = Object.freeze([
+  'RESEND_PROVIDER_ENABLED',
+  'RESEND_MODE',
+  'RESEND_API_KEY',
+  'RESEND_API_URL',
+  'EMAIL_FROM',
+  'CONTACT_TO_EMAIL',
+]);
+const CLOUDINARY_PROVIDER_ENVIRONMENT = Object.freeze([
+  'MEDIA_STORAGE_BACKEND',
+  'CLOUDINARY_CLOUD_NAME',
+  'CLOUDINARY_API_KEY',
+  'CLOUDINARY_API_SECRET',
+  'CLOUDINARY_UPLOAD_PREFIX',
+  'MEDIA_PUBLIC_BASE_URL',
+  'UPLOAD_PATH',
+]);
+const PROVIDER_ENVIRONMENT_BY_SERVICE = Object.freeze({
+  'staging-api-ios': Object.freeze([
+    ...BOOKING_PROVIDER_ENVIRONMENT,
+    ...BOOKING_WEBHOOK_ENVIRONMENT,
+    ...RESEND_PROVIDER_ENVIRONMENT,
+    ...CLOUDINARY_PROVIDER_ENVIRONMENT,
+  ]),
+  'staging-api-android': Object.freeze([
+    ...RESEND_PROVIDER_ENVIRONMENT,
+    ...CLOUDINARY_PROVIDER_ENVIRONMENT,
+  ]),
+  'staging-api-web': Object.freeze([
+    ...RESEND_PROVIDER_ENVIRONMENT,
+    'RESEND_WEBHOOK_SECRET',
+    ...CLOUDINARY_PROVIDER_ENVIRONMENT,
+  ]),
+  'staging-api-admin': Object.freeze([
+    ...PAYOUT_PROVIDER_ENVIRONMENT,
+    ...RESEND_PROVIDER_ENVIRONMENT,
+    ...CLOUDINARY_PROVIDER_ENVIRONMENT,
+  ]),
+  'staging-user-web-app': Object.freeze([
+    ...RESEND_PROVIDER_ENVIRONMENT,
+    'NEXT_PUBLIC_RAZORPAY_KEY_ID',
+  ]),
+  'staging-mail-capture': Object.freeze([
+    'MAIL_CAPTURE_API_KEY',
+  ]),
+});
+const ALL_SCOPED_PROVIDER_ENVIRONMENT_KEYS = Object.freeze([
+  ...new Set([
+    ...Object.values(PROVIDER_ENVIRONMENT_BY_SERVICE).flat(),
+    'MAIL_CAPTURE_API_KEY',
+  ].filter(
+    (key) => ![
+      'BOOKING_PAYMENTS_ENABLED',
+      'PAYOUTS_ENABLED',
+    ].includes(key),
+  )),
+]);
+const BACKEND_RUNTIME_SERVICE_NAMES = Object.freeze([
+  'staging-api-ios',
+  'staging-api-android',
+  'staging-api-web',
+  'staging-api-admin',
+  'staging-worker',
+  'staging-migrate',
+  'staging-seed',
 ]);
 
 export const REQUIRED_P0_ALERTS = Object.freeze([
@@ -1329,6 +1450,234 @@ const validateBackendRuntimeContracts = (
   }
 };
 
+const validateProviderEnvironmentScope = (
+  errors,
+  services,
+  environment,
+) => {
+  for (const [serviceName, expectedKeys] of Object.entries(
+    PROVIDER_ENVIRONMENT_BY_SERVICE,
+  )) {
+    const serviceEnvironment = normalizeEnvironment(
+      services[serviceName]?.environment,
+    );
+    const expected = new Set(expectedKeys);
+    for (const key of ALL_SCOPED_PROVIDER_ENVIRONMENT_KEYS) {
+      const present = Object.hasOwn(serviceEnvironment, key);
+      if (!expected.has(key)) {
+        if (present) {
+          errors.push(
+            `${serviceName} must not receive provider-scoped ${key}`,
+          );
+        }
+        continue;
+      }
+      if (!present || String(serviceEnvironment[key])
+        !== String(environment[key])) {
+        errors.push(
+          `${serviceName} must receive the exact reviewed ${key}`,
+        );
+      }
+    }
+  }
+
+  for (const [serviceName, service] of Object.entries(services)) {
+    if (Object.hasOwn(PROVIDER_ENVIRONMENT_BY_SERVICE, serviceName)) {
+      continue;
+    }
+    const serviceEnvironment = normalizeEnvironment(service.environment);
+    for (const key of ALL_SCOPED_PROVIDER_ENVIRONMENT_KEYS) {
+      if (Object.hasOwn(serviceEnvironment, key)) {
+        errors.push(
+          `${serviceName} must not receive provider-scoped ${key}`,
+        );
+      }
+    }
+  }
+
+  const mailCaptureEnvironment = normalizeEnvironment(
+    services['staging-mail-capture']?.environment,
+  );
+  if (
+    String(mailCaptureEnvironment.MAIL_CAPTURE_API_KEY)
+    !== String(environment.MAIL_CAPTURE_API_KEY)
+    || Object.hasOwn(mailCaptureEnvironment, 'RESEND_API_KEY')
+  ) {
+    errors.push(
+      'staging-mail-capture must receive only its isolated capture key',
+    );
+  }
+
+  const exactFlags = {
+    'staging-api-ios': {
+      BOOKING_PAYMENTS_ENABLED: environment.BOOKING_PAYMENTS_ENABLED,
+      PAYOUTS_ENABLED: 'false',
+    },
+    'staging-api-android': {
+      BOOKING_PAYMENTS_ENABLED: 'false',
+      PAYOUTS_ENABLED: 'false',
+    },
+    'staging-api-web': {
+      BOOKING_PAYMENTS_ENABLED: 'false',
+      PAYOUTS_ENABLED: 'false',
+    },
+    'staging-api-admin': {
+      BOOKING_PAYMENTS_ENABLED: 'false',
+      PAYOUTS_ENABLED: environment.PAYOUTS_ENABLED,
+    },
+    'staging-worker': {
+      BOOKING_PAYMENTS_ENABLED: 'false',
+      PAYOUTS_ENABLED: 'false',
+    },
+  };
+  for (const [serviceName, expected] of Object.entries(exactFlags)) {
+    const serviceEnvironment = normalizeEnvironment(
+      services[serviceName]?.environment,
+    );
+    for (const [key, value] of Object.entries(expected)) {
+      if (String(serviceEnvironment[key]) !== String(value)) {
+        errors.push(
+          `${serviceName} must render ${key}=${value}`,
+        );
+      }
+    }
+  }
+  for (const [serviceName, service] of Object.entries(services)) {
+    if (Object.hasOwn(exactFlags, serviceName)) continue;
+    const serviceEnvironment = normalizeEnvironment(service.environment);
+    for (const key of [
+      'BOOKING_PAYMENTS_ENABLED',
+      'PAYOUTS_ENABLED',
+    ]) {
+      if (Object.hasOwn(serviceEnvironment, key)) {
+        errors.push(
+          `${serviceName} must not receive provider gate ${key}`,
+        );
+      }
+    }
+  }
+
+  const disabledIdentityKeys = [
+    'GOOGLE_WEB_CLIENT_ID',
+    'GOOGLE_IOS_CLIENT_ID',
+    'GOOGLE_ANDROID_CLIENT_ID',
+    'APPLE_IOS_BUNDLE_ID',
+    'APPLE_WEB_SERVICE_ID',
+    'APPLE_TEAM_ID',
+    'APPLE_KEY_ID',
+    'APPLE_PRIVATE_KEY',
+    'SOCIAL_STUDIO_OPENAI_API_KEY',
+    'SOCIAL_TOKEN_ENCRYPTION_KEY',
+    'META_APP_ID',
+    'META_APP_SECRET',
+  ];
+  for (const serviceName of BACKEND_RUNTIME_SERVICE_NAMES) {
+    const serviceEnvironment = normalizeEnvironment(
+      services[serviceName]?.environment,
+    );
+    for (const key of [
+      'APPLE_SIGN_IN_ENABLED',
+      'ENABLE_SOCIAL_SCHEDULER',
+      'SOCIAL_STUDIO_ENABLED',
+      'SOCIAL_STUDIO_AUTO_PUBLISH',
+    ]) {
+      if (serviceEnvironment[key] !== 'false') {
+        errors.push(
+          `${serviceName} must render disabled Apple/social gate ${key}`,
+        );
+      }
+    }
+    for (const key of disabledIdentityKeys) {
+      if (serviceEnvironment[key] !== '') {
+        errors.push(
+          `${serviceName} must render empty disabled provider identity ${key}`,
+        );
+      }
+    }
+  }
+};
+
+const normalizeExtraHosts = (extraHosts) => {
+  if (!extraHosts) return {};
+  if (!Array.isArray(extraHosts)) return extraHosts;
+  return Object.fromEntries(extraHosts.map((entry) => {
+    const text = String(entry);
+    const separator = text.includes('=')
+      ? text.indexOf('=')
+      : text.lastIndexOf(':');
+    return separator < 0
+      ? [text, '']
+      : [text.slice(0, separator), text.slice(separator + 1)];
+  }));
+};
+
+const validateRenderedNetworkInputs = (
+  errors,
+  services,
+  networks,
+  environment,
+) => {
+  for (const { name, subnetKey, rangeKey } of NETWORK_CONTRACTS) {
+    const config = networks[`staging-${name}`]?.ipam?.config || [];
+    if (
+      config.length !== 1
+      || config[0].subnet !== environment[subnetKey]
+      || (config[0].ip_range || config[0].ipRange)
+        !== environment[rangeKey]
+    ) {
+      errors.push(
+        `staging-${name} subnet and dynamic range must exactly match the reviewed environment`,
+      );
+    }
+  }
+
+  const caddyNetworks = services['staging-caddy']?.networks;
+  if (
+    Array.isArray(caddyNetworks)
+    || caddyNetworks?.['staging-app']?.ipv4_address
+      !== environment.MENORAH_SERVER_STAGING_CADDY_APP_IP
+  ) {
+    errors.push(
+      'staging-caddy must use the exact reviewed static app address',
+    );
+  }
+  for (const serviceName of [
+    'staging-api-ios',
+    'staging-api-android',
+    'staging-api-web',
+    'staging-api-admin',
+  ]) {
+    const serviceEnvironment = normalizeEnvironment(
+      services[serviceName]?.environment,
+    );
+    if (
+      serviceEnvironment.TRUST_PROXY
+      !== environment.MENORAH_SERVER_STAGING_CADDY_APP_IP
+    ) {
+      errors.push(
+        `${serviceName} TRUST_PROXY must equal the reviewed Caddy address`,
+      );
+    }
+  }
+
+  const monitoringHosts = normalizeExtraHosts(
+    services['staging-blackbox-exporter']?.extra_hosts,
+  );
+  if (
+    Object.keys(monitoringHosts).length !== EXPECTED_HOSTS.length
+    || EXPECTED_HOSTS.some(
+      (host) => (
+        monitoringHosts[host]
+        !== environment.MENORAH_SERVER_STAGING_CADDY_APP_IP
+      ),
+    )
+  ) {
+    errors.push(
+      'blackbox monitoring hosts must resolve only to the reviewed Caddy address',
+    );
+  }
+};
+
 export const validateRenderedCompose = (
   model,
   environment,
@@ -1493,10 +1842,40 @@ export const validateRenderedCompose = (
     for (const port of service.ports || []) {
       const normalized = normalizePort(port, serviceName);
       renderedPorts.push(normalized);
-      if (normalized.hostIp !== '127.0.0.1') {
+      const numericPublished = Number(normalized.published);
+      const numericTarget = Number(normalized.target);
+      const exactLiveKitMediaPort = (
+        serviceName === 'staging-livekit'
+        && (
+          (
+            normalized.protocol === 'tcp'
+            && normalized.published === '37881'
+            && normalized.target === '37881'
+          )
+          || (
+            normalized.protocol === 'udp'
+            && (
+              (
+                normalized.published === '35000-35100'
+                && normalized.target === '35000-35100'
+              )
+              || (
+                Number.isInteger(numericPublished)
+                && numericPublished >= 35000
+                && numericPublished <= 35100
+                && numericPublished === numericTarget
+              )
+            )
+          )
+        )
+      );
+      const expectedHostIp = exactLiveKitMediaPort
+        ? environment.LIVEKIT_MEDIA_BIND_IP
+        : '127.0.0.1';
+      if (normalized.hostIp !== expectedHostIp) {
         errors.push(
           `${serviceName} port ${normalized.published}`
-          + ' must bind to 127.0.0.1',
+          + ` must bind to ${expectedHostIp}`,
         );
       }
       const identity = `${normalized.published}/${normalized.protocol}`;
@@ -1543,6 +1922,7 @@ export const validateRenderedCompose = (
     model.volumes || {},
     environment,
   );
+  validateProviderEnvironmentScope(errors, services, environment);
 
   if (aggregateMemoryBytes > RESOURCE_ENVELOPE.aggregateMemoryBytes) {
     errors.push('rendered Compose exceeds the aggregate memory ceiling');
@@ -1597,6 +1977,80 @@ export const validateRenderedCompose = (
   ) {
     errors.push(
       'Alertmanager egress-capable NAT must be its explicit default gateway',
+    );
+  }
+
+  const livekit = services['staging-livekit'];
+  const livekitEnvironment = normalizeEnvironment(livekit?.environment);
+  const livekitCommand = (livekit?.command || []).map(String);
+  const livekitMounts = normalizeMounts(livekit?.volumes).filter(
+    (mount) => mount.target === environment.LIVEKIT_CONFIG_FILE,
+  );
+  const livekitPorts = renderedPorts.filter(
+    ({ serviceName }) => serviceName === 'staging-livekit',
+  );
+  const signalPorts = livekitPorts.filter(
+    (port) => (
+      port.protocol === 'tcp'
+      && port.hostIp === '127.0.0.1'
+      && port.published === '37880'
+      && port.target === '7880'
+    ),
+  );
+  const rtcTcpPorts = livekitPorts.filter(
+    (port) => (
+      port.protocol === 'tcp'
+      && port.hostIp === environment.LIVEKIT_MEDIA_BIND_IP
+      && port.published === '37881'
+      && port.target === '37881'
+    ),
+  );
+  const rtcUdpPorts = livekitPorts.filter((port) => {
+    if (
+      port.protocol !== 'udp'
+      || port.hostIp !== environment.LIVEKIT_MEDIA_BIND_IP
+    ) {
+      return false;
+    }
+    if (
+      port.published === '35000-35100'
+      && port.target === '35000-35100'
+    ) {
+      return true;
+    }
+    const published = Number(port.published);
+    return (
+      Number.isInteger(published)
+      && published >= 35000
+      && published <= 35100
+      && port.target === port.published
+    );
+  });
+  const exactUdpSet = (
+    rtcUdpPorts.length === 1
+    && rtcUdpPorts[0].published === '35000-35100'
+  ) || (
+    rtcUdpPorts.length === 101
+    && new Set(rtcUdpPorts.map(({ published }) => published)).size === 101
+  );
+  if (
+    livekitEnvironment.NODE_IP !== environment.LIVEKIT_NODE_IP
+    || livekitCommand.length !== 2
+    || livekitCommand[0] !== '--config'
+    || livekitCommand[1] !== environment.LIVEKIT_CONFIG_FILE
+    || livekitMounts.length !== 1
+    || livekitMounts[0].type !== 'bind'
+    || !livekitMounts[0].readOnly
+    || normalizeComparable(livekitMounts[0].source)
+      !== normalizeComparable(DEFAULTS.livekit)
+    || signalPorts.length !== 1
+    || rtcTcpPorts.length !== 1
+    || !exactUdpSet
+    || livekitPorts.length
+      !== signalPorts.length + rtcTcpPorts.length + rtcUdpPorts.length
+  ) {
+    errors.push(
+      'LiveKit must use the exact signaling, config, advertised-IP, and public media contract',
     );
   }
 
@@ -1681,6 +2135,43 @@ export const validateRenderedCompose = (
       errors.push(`missing isolated ${suffix} network`);
     }
   }
+  validateRenderedNetworkInputs(
+    errors,
+    services,
+    networks,
+    environment,
+  );
+  const ingress = networks['staging-ingress'] || {};
+  const ingressOptions =
+    ingress.driver_opts || ingress.driverOpts || {};
+  if (
+    ingress.internal === true
+    || ingress.driver !== 'bridge'
+    || String(
+      ingressOptions['com.docker.network.bridge.enable_ip_masquerade'],
+    ) !== 'false'
+    || String(
+      ingressOptions['com.docker.network.bridge.enable_icc'],
+    ) !== 'false'
+    || ingressOptions['com.docker.network.bridge.host_binding_ipv4']
+      !== '127.0.0.1'
+  ) {
+    errors.push(
+      'staging-ingress must be the reviewed non-NAT ingress bridge with ICC disabled',
+    );
+  }
+  for (const networkName of [
+    'staging-app',
+    'staging-data',
+    'staging-monitoring',
+    'staging-restore',
+  ]) {
+    if (networks[networkName]?.internal !== true) {
+      errors.push(
+        `${networkName} must remain internal and non-egress-capable`,
+      );
+    }
+  }
   const egress = networks['staging-egress'] || {};
   const egressOptions = egress.driver_opts || egress.driverOpts || {};
   const egressIpam = egress.ipam?.config || [];
@@ -1717,14 +2208,31 @@ export const validateRenderedCompose = (
         ? service.networks.includes('staging-egress')
         : Object.hasOwn(service.networks || {}, 'staging-egress')
     ))
-    .map(([serviceName]) => serviceName);
+    .map(([serviceName]) => serviceName)
+    .sort();
+  const expectedEgressMembers = [...EGRESS_SERVICE_NAMES].sort();
   if (
-    egressMembers.length !== 1
-    || egressMembers[0] !== 'staging-alertmanager'
+    !equalSets(
+      new Set(egressMembers),
+      new Set(expectedEgressMembers),
+    )
   ) {
     errors.push(
-      'staging-egress must initially contain only staging-alertmanager',
+      'staging-egress must contain only the six approved provider services',
     );
+  }
+  for (const serviceName of expectedEgressMembers) {
+    const serviceNetworks = services[serviceName]?.networks;
+    if (
+      Array.isArray(serviceNetworks)
+      || Number(
+        serviceNetworks?.['staging-egress']?.gw_priority,
+      ) !== 1
+    ) {
+      errors.push(
+        `${serviceName} must use staging-egress as its explicit default gateway`,
+      );
+    }
   }
 
   const volumes = model.volumes || {};
@@ -2156,6 +2664,47 @@ export const validateMonitoring = ({
   return errors;
 };
 
+export const validateLiveKitConfig = (source) => {
+  const errors = [];
+  const text = String(source || '');
+  if (text.includes('\t')) {
+    errors.push('LiveKit config must not contain tabs');
+    return errors;
+  }
+  const rtcMatch = text.match(
+    /^rtc:\s*\r?\n((?:^[ ]{2}[a-z0-9_]+:\s*[^\r\n]*\r?\n?)+)/m,
+  );
+  const rtcBlocks = text.match(/^rtc:\s*$/gm) || [];
+  const entries = rtcMatch
+    ? [...rtcMatch[1].matchAll(
+      /^[ ]{2}([a-z0-9_]+):\s*([^\r\n]+)$/gm,
+    )]
+    : [];
+  const actual = Object.fromEntries(
+    entries.map(([, key, value]) => [key, value.trim()]),
+  );
+  const expected = {
+    tcp_port: '37881',
+    port_range_start: '35000',
+    port_range_end: '35100',
+    use_external_ip: 'false',
+    skip_external_ip_validation: 'false',
+  };
+  if (
+    rtcBlocks.length !== 1
+    || entries.length !== Object.keys(expected).length
+    || Object.keys(actual).length !== Object.keys(expected).length
+    || Object.entries(expected).some(
+      ([key, value]) => actual[key] !== value,
+    )
+  ) {
+    errors.push(
+      'LiveKit rtc config must retain the exact reviewed ports and use_external_ip=false',
+    );
+  }
+  return errors;
+};
+
 export const validateAll = ({
   compose,
   environment,
@@ -2168,6 +2717,7 @@ export const validateAll = ({
   blackboxSource,
   alloySource,
   lokiSource,
+  livekitSource,
   alertRulesSource,
 }) => {
   const errors = [];
@@ -2200,6 +2750,7 @@ export const validateAll = ({
     environment,
     productionMetadata,
   }));
+  errors.push(...validateLiveKitConfig(livekitSource));
   return [...new Set(errors)];
 };
 
@@ -2217,6 +2768,7 @@ const parseArguments = (argv) => {
     '--blackbox': 'blackbox',
     '--alloy': 'alloy',
     '--loki': 'loki',
+    '--livekit': 'livekit',
     '--alert-rules': 'alertRules',
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -2250,6 +2802,7 @@ if (isMain) {
       blackboxSource: readText(files.blackbox),
       alloySource: readText(files.alloy),
       lokiSource: readText(files.loki),
+      livekitSource: readText(files.livekit),
       alertRulesSource: readText(files.alertRules),
     };
     const errors = validateAll(inputs);

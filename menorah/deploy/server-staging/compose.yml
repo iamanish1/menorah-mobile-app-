@@ -92,12 +92,16 @@ x-backend-environment: &backend-environment
   JWT_REFRESH_EXPIRES_IN: "${JWT_REFRESH_EXPIRES_IN:-30d}"
   ADMIN_JWT_EXPIRES_IN: "${ADMIN_JWT_EXPIRES_IN:-30m}"
   ADMIN_MFA_REQUIRED: "true"
-  TRUST_PROXY: "${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
-  GOOGLE_WEB_CLIENT_ID: "${GOOGLE_WEB_CLIENT_ID:-}"
-  GOOGLE_IOS_CLIENT_ID: "${GOOGLE_IOS_CLIENT_ID:-}"
-  GOOGLE_ANDROID_CLIENT_ID: "${GOOGLE_ANDROID_CLIENT_ID:-}"
-  APPLE_IOS_BUNDLE_ID: "${APPLE_IOS_BUNDLE_ID:-com.menorah.health.serverstaging}"
-  APPLE_WEB_SERVICE_ID: "${APPLE_WEB_SERVICE_ID:-}"
+  TRUST_PROXY: "${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
+  GOOGLE_WEB_CLIENT_ID: ""
+  GOOGLE_IOS_CLIENT_ID: ""
+  GOOGLE_ANDROID_CLIENT_ID: ""
+  APPLE_SIGN_IN_ENABLED: "false"
+  APPLE_IOS_BUNDLE_ID: ""
+  APPLE_WEB_SERVICE_ID: ""
+  APPLE_TEAM_ID: ""
+  APPLE_KEY_ID: ""
+  APPLE_PRIVATE_KEY: ""
   ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:?Required in generated local staging env}"
   WEB_SESSION_ORIGINS: "${WEB_SESSION_ORIGINS:?Required in generated local staging env}"
   ENABLE_SOCKET_IO: "${ENABLE_SOCKET_IO:-true}"
@@ -105,6 +109,12 @@ x-backend-environment: &backend-environment
   WORKER_MODE: "${WORKER_MODE:-active}"
   ENABLE_ARTICLE_SCHEDULER: "false"
   ENABLE_SOCIAL_SCHEDULER: "false"
+  SOCIAL_STUDIO_ENABLED: "false"
+  SOCIAL_STUDIO_AUTO_PUBLISH: "false"
+  SOCIAL_STUDIO_OPENAI_API_KEY: ""
+  SOCIAL_TOKEN_ENCRYPTION_KEY: ""
+  META_APP_ID: ""
+  META_APP_SECRET: ""
   ENABLE_BACKUP_JOBS: "false"
   ENABLE_EMAIL_JOBS: "false"
   ENABLE_NOTIFICATION_JOBS: "false"
@@ -120,35 +130,9 @@ x-backend-environment: &backend-environment
   DAILY_RETENTION_DAYS: "${DAILY_RETENTION_DAYS:-30}"
   WEEKLY_RETENTION_DAYS: "${WEEKLY_RETENTION_DAYS:-84}"
   MONTHLY_RETENTION_DAYS: "${MONTHLY_RETENTION_DAYS:-366}"
-  RAZORPAY_KEY_ID: "${RAZORPAY_KEY_ID:?Synthetic Razorpay test key required}"
-  NEXT_PUBLIC_RAZORPAY_KEY_ID: "${NEXT_PUBLIC_RAZORPAY_KEY_ID:?Synthetic Razorpay test key required}"
-  RAZORPAY_KEY_SECRET: "${RAZORPAY_KEY_SECRET:?Synthetic Razorpay secret required}"
-  RAZORPAY_WEBHOOK_SECRET: "${RAZORPAY_WEBHOOK_SECRET:?Synthetic Razorpay webhook secret required}"
-  RAZORPAY_WEBHOOK_SECRET_PREVIOUS: "${RAZORPAY_WEBHOOK_SECRET_PREVIOUS:-}"
-  RAZORPAY_X_KEY_ID: "${RAZORPAY_X_KEY_ID:-}"
-  RAZORPAY_X_KEY_SECRET: "${RAZORPAY_X_KEY_SECRET:-}"
-  RAZORPAY_PAYOUT_ACCOUNT_NUMBER: "${RAZORPAY_PAYOUT_ACCOUNT_NUMBER:-}"
-  RAZORPAY_X_WEBHOOK_SECRET: "${RAZORPAY_X_WEBHOOK_SECRET:?Synthetic payout webhook secret required}"
-  BOOKING_PAYMENTS_ENABLED: "false"
-  PAYOUTS_ENABLED: "false"
-  PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS: "${PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS:-5}"
-  SUBSCRIPTION_PAYMENTS_ENABLED: "false"
-  BOOKING_SERVICE_CATALOG_JSON: "${BOOKING_SERVICE_CATALOG_JSON:?Synthetic booking catalog required}"
-  CHECKOUT_RETURN_URL: "${CHECKOUT_RETURN_URL:?Required in generated local staging env}"
-  RESEND_API_KEY: "${RESEND_API_KEY:?Synthetic Resend test key required}"
-  RESEND_API_URL: "${RESEND_API_URL:?Internal local mail capture URL required}"
-  RESEND_WEBHOOK_SECRET: "${RESEND_WEBHOOK_SECRET:?Synthetic Resend webhook secret required}"
-  EMAIL_FROM: "${EMAIL_FROM:?Synthetic staging sender required}"
-  CONTACT_TO_EMAIL: "${CONTACT_TO_EMAIL:?Synthetic staging contact required}"
   PASSWORD_RESET_BASE_URL: "${PASSWORD_RESET_BASE_URL:?Required in generated local staging env}"
   LUXAND_API_TOKEN: ""
   OPENAI_API_KEY: ""
-  CLOUDINARY_CLOUD_NAME: ""
-  CLOUDINARY_API_KEY: ""
-  CLOUDINARY_API_SECRET: ""
-  MEDIA_STORAGE_BACKEND: local
-  MEDIA_PUBLIC_BASE_URL: "${MEDIA_PUBLIC_BASE_URL:?Required in generated local staging env}"
-  UPLOAD_PATH: /app/uploads
   DATA_ENCRYPTION_KEY: "${DATA_ENCRYPTION_KEY:?Synthetic data encryption key required}"
   AUDIT_LOG_SIGNING_KEY: "${AUDIT_LOG_SIGNING_KEY:?Synthetic audit signing key required}"
   SECURITY_AUDIT_PENDING_MAX: "${SECURITY_AUDIT_PENDING_MAX:-1024}"
@@ -164,6 +148,45 @@ x-backend-environment: &backend-environment
   COUNSELLOR_ONBOARDING_CONSENT_VERSION: "${COUNSELLOR_ONBOARDING_CONSENT_VERSION:?Required in generated local staging env}"
   COUNSELLOR_CREDENTIAL_POLICY_VERSION: "${COUNSELLOR_CREDENTIAL_POLICY_VERSION:?Required in generated local staging env}"
   COUNSELLOR_ONBOARDING_NOTICE_URL: "${COUNSELLOR_ONBOARDING_NOTICE_URL:?Required in generated local staging env}"
+
+x-booking-provider-environment: &booking-provider-environment
+  BOOKING_PAYMENTS_ENABLED: "${BOOKING_PAYMENTS_ENABLED:?Booking payment gate required}"
+  SUBSCRIPTION_PAYMENTS_ENABLED: "false"
+  RAZORPAY_MODE: "${RAZORPAY_MODE:?Razorpay test mode required}"
+  RAZORPAY_KEY_ID: "${RAZORPAY_KEY_ID:-}"
+  RAZORPAY_KEY_SECRET: "${RAZORPAY_KEY_SECRET:-}"
+  PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS: "${PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS:?Payment webhook retry limit required}"
+  BOOKING_SERVICE_CATALOG_JSON: "${BOOKING_SERVICE_CATALOG_JSON:?Synthetic booking catalog required}"
+  CHECKOUT_RETURN_URL: "${CHECKOUT_RETURN_URL:-}"
+
+x-booking-webhook-environment: &booking-webhook-environment
+  RAZORPAY_WEBHOOK_SECRET: "${RAZORPAY_WEBHOOK_SECRET:-}"
+  RAZORPAY_WEBHOOK_SECRET_PREVIOUS: "${RAZORPAY_WEBHOOK_SECRET_PREVIOUS:-}"
+
+x-payout-provider-environment: &payout-provider-environment
+  PAYOUTS_ENABLED: "${PAYOUTS_ENABLED:?Payout gate required}"
+  RAZORPAY_X_MODE: "${RAZORPAY_X_MODE:?RazorpayX test mode required}"
+  RAZORPAY_X_KEY_ID: "${RAZORPAY_X_KEY_ID:-}"
+  RAZORPAY_X_KEY_SECRET: "${RAZORPAY_X_KEY_SECRET:-}"
+  RAZORPAY_X_WEBHOOK_SECRET: "${RAZORPAY_X_WEBHOOK_SECRET:-}"
+  RAZORPAY_PAYOUT_ACCOUNT_NUMBER: "${RAZORPAY_PAYOUT_ACCOUNT_NUMBER:-}"
+
+x-resend-provider-environment: &resend-provider-environment
+  RESEND_PROVIDER_ENABLED: "${RESEND_PROVIDER_ENABLED:?Resend provider gate required}"
+  RESEND_MODE: "${RESEND_MODE:?Resend sandbox mode required}"
+  RESEND_API_KEY: "${RESEND_API_KEY:-}"
+  RESEND_API_URL: "${RESEND_API_URL:-}"
+  EMAIL_FROM: "${EMAIL_FROM:-}"
+  CONTACT_TO_EMAIL: "${CONTACT_TO_EMAIL:-}"
+
+x-cloudinary-provider-environment: &cloudinary-provider-environment
+  MEDIA_STORAGE_BACKEND: "${MEDIA_STORAGE_BACKEND:?Media storage backend required}"
+  CLOUDINARY_CLOUD_NAME: "${CLOUDINARY_CLOUD_NAME:-}"
+  CLOUDINARY_API_KEY: "${CLOUDINARY_API_KEY:-}"
+  CLOUDINARY_API_SECRET: "${CLOUDINARY_API_SECRET:-}"
+  CLOUDINARY_UPLOAD_PREFIX: "${CLOUDINARY_UPLOAD_PREFIX:?Cloudinary staging prefix required}"
+  MEDIA_PUBLIC_BASE_URL: "${MEDIA_PUBLIC_BASE_URL:?Staging media public URL required}"
+  UPLOAD_PATH: /app/uploads
 
 x-app-security: &app-security
   <<: *staging-service-common
@@ -547,7 +570,7 @@ services:
       COMPOSE_PROJECT_NAME: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"
       MENORAH_SERVER_STAGING_ENVIRONMENT_ID: "${MENORAH_SERVER_STAGING_ENVIRONMENT_ID:?Generated environment identity required}"
       MAIL_CAPTURE_PORT: "8025"
-      MAIL_CAPTURE_API_KEY: "${RESEND_API_KEY:?Generated local mail capture key required}"
+      MAIL_CAPTURE_API_KEY: "${MAIL_CAPTURE_API_KEY:?Isolated mail capture key required}"
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777
     networks:
@@ -570,9 +593,15 @@ services:
     <<: [*app-security, *backend-build]
     command: ["node", "src/services/api-ios/server.js"]
     environment:
-      <<: *backend-environment
+      <<:
+        - *backend-environment
+        - *booking-provider-environment
+        - *booking-webhook-environment
+        - *resend-provider-environment
+        - *cloudinary-provider-environment
       SERVICE_NAME: api-ios
       APPLE_SIGN_IN_ENABLED: "false"
+      PAYOUTS_ENABLED: "false"
     ports:
       - "127.0.0.1:38080:8080"
     volumes:
@@ -588,6 +617,8 @@ services:
         aliases:
           - staging-private-api-ios
       staging-data:
+      staging-egress:
+        gw_priority: 1
     depends_on:
       staging-media-permissions-init:
         condition: service_completed_successfully
@@ -602,9 +633,14 @@ services:
     <<: [*app-security, *backend-build]
     command: ["node", "src/services/api-android/server.js"]
     environment:
-      <<: *backend-environment
+      <<:
+        - *backend-environment
+        - *resend-provider-environment
+        - *cloudinary-provider-environment
       SERVICE_NAME: api-android
       APPLE_SIGN_IN_ENABLED: "false"
+      BOOKING_PAYMENTS_ENABLED: "false"
+      PAYOUTS_ENABLED: "false"
     ports:
       - "127.0.0.1:38081:8080"
     volumes:
@@ -620,6 +656,8 @@ services:
         aliases:
           - staging-private-api-android
       staging-data:
+      staging-egress:
+        gw_priority: 1
     depends_on:
       staging-media-permissions-init:
         condition: service_completed_successfully
@@ -637,9 +675,15 @@ services:
       dockerfile: Dockerfile
     command: ["node", "src/services/api-web/server.js"]
     environment:
-      <<: *backend-environment
+      <<:
+        - *backend-environment
+        - *resend-provider-environment
+        - *cloudinary-provider-environment
       SERVICE_NAME: api-web
       APPLE_SIGN_IN_ENABLED: "false"
+      BOOKING_PAYMENTS_ENABLED: "false"
+      PAYOUTS_ENABLED: "false"
+      RESEND_WEBHOOK_SECRET: "${RESEND_WEBHOOK_SECRET:-}"
     ports:
       - "127.0.0.1:38082:8080"
     volumes:
@@ -655,6 +699,8 @@ services:
         aliases:
           - staging-private-api-web
       staging-data:
+      staging-egress:
+        gw_priority: 1
     depends_on:
       staging-media-permissions-init:
         condition: service_completed_successfully
@@ -669,9 +715,14 @@ services:
     <<: [*app-security, *backend-build]
     command: ["node", "src/services/api-admin/server.js"]
     environment:
-      <<: *backend-environment
+      <<:
+        - *backend-environment
+        - *payout-provider-environment
+        - *resend-provider-environment
+        - *cloudinary-provider-environment
       SERVICE_NAME: api-admin
       APPLE_SIGN_IN_ENABLED: "false"
+      BOOKING_PAYMENTS_ENABLED: "false"
       ENABLE_SOCKET_IO: "false"
       ENABLE_SOCKET_ADAPTER: "false"
     ports:
@@ -693,6 +744,8 @@ services:
         aliases:
           - staging-private-api-admin
       staging-data:
+      staging-egress:
+        gw_priority: 1
     depends_on:
       staging-media-permissions-init:
         condition: service_completed_successfully
@@ -711,6 +764,8 @@ services:
       SERVICE_NAME: worker
       APPLE_SIGN_IN_ENABLED: "false"
       WORKER_MODE: active
+      BOOKING_PAYMENTS_ENABLED: "false"
+      PAYOUTS_ENABLED: "false"
     ports:
       - "127.0.0.1:38084:8080"
     volumes:
@@ -802,7 +857,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?Required in generated local staging env}"
         NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?Required in generated local staging env}"
-        NEXT_PUBLIC_RAZORPAY_KEY_ID: "${NEXT_PUBLIC_RAZORPAY_KEY_ID:?Synthetic Razorpay test key required}"
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: "${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}"
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ""
         NEXT_PUBLIC_JITSI_DOMAIN: "${CALLS_DOMAIN:?Required in generated local staging env}"
         NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?Required in generated local staging env}"
@@ -817,16 +872,21 @@ services:
       PORT: "3002"
       NODE_ENV: production
       DEPLOYMENT_ENVIRONMENT: staging
+      SERVICE_RUNTIME: server-staging
+      MENORAH_SYNTHETIC_DATA_ONLY: "${MENORAH_SYNTHETIC_DATA_ONLY:?Synthetic-only staging guard required}"
       MENORAH_SERVER_STAGING_ENVIRONMENT_ID: "${MENORAH_SERVER_STAGING_ENVIRONMENT_ID:?Required in generated local staging env}"
       MENORAH_SERVER_STAGING_PROJECT_NAME: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"
       MENORAH_SERVER_STAGING_HTTPS_PORT: "${MENORAH_SERVER_STAGING_HTTPS_PORT:?Required in generated local staging env}"
       MENORAH_STAGING_EMAIL_DOMAIN: "${MENORAH_STAGING_EMAIL_DOMAIN:?Required in generated local staging env}"
       MONGODB_URI: "${MONGODB_URI:?Required in generated local staging env}"
       MONGO_DATABASE: menorah_staging
-      RESEND_API_KEY: "${RESEND_API_KEY:?Synthetic Resend test key required}"
-      RESEND_API_URL: "${RESEND_API_URL:?Internal local mail capture URL required}"
-      EMAIL_FROM: "${EMAIL_FROM:?Synthetic staging sender required}"
-      CONTACT_TO_EMAIL: "${CONTACT_TO_EMAIL:?Synthetic staging contact required}"
+      RESEND_PROVIDER_ENABLED: "${RESEND_PROVIDER_ENABLED:?Resend provider gate required}"
+      RESEND_MODE: "${RESEND_MODE:?Resend sandbox mode required}"
+      RESEND_API_KEY: "${RESEND_API_KEY:-}"
+      RESEND_API_URL: "${RESEND_API_URL:-}"
+      EMAIL_FROM: "${EMAIL_FROM:-}"
+      CONTACT_TO_EMAIL: "${CONTACT_TO_EMAIL:-}"
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: "${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}"
       NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:?Required in generated local staging env}"
       NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:?Required in generated local staging env}"
       NEXT_PUBLIC_JITSI_DOMAIN: "${CALLS_DOMAIN:?Required in generated local staging env}"
@@ -848,6 +908,8 @@ services:
         aliases:
           - staging-private-user-web
       staging-data:
+      staging-egress:
+        gw_priority: 1
     depends_on:
       staging-mongo-replica-init:
         condition: service_completed_successfully
@@ -958,7 +1020,9 @@ services:
     mem_limit: 768m
     mem_reservation: 192m
     cpus: "0.75"
-    command: ["--config", "/etc/livekit.yaml"]
+    command:
+      - --config
+      - "${LIVEKIT_CONFIG_FILE:?LiveKit config target required}"
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?Generated LiveKit key required}: ${LIVEKIT_API_SECRET:?Generated LiveKit secret required}"
       NODE_IP: "${LIVEKIT_NODE_IP:?Set the staging-only LiveKit node address}"
@@ -970,12 +1034,12 @@ services:
     volumes:
       - type: bind
         source: ./livekit.yaml
-        target: /etc/livekit.yaml
+        target: "${LIVEKIT_CONFIG_FILE:?LiveKit config target required}"
         read_only: true
     ports:
       - "127.0.0.1:37880:7880"
-      - "127.0.0.1:37881:37881/tcp"
-      - "127.0.0.1:35000-35100:35000-35100/udp"
+      - "${LIVEKIT_MEDIA_BIND_IP:?Reviewed LiveKit media bind IP required}:37881:37881/tcp"
+      - "${LIVEKIT_MEDIA_BIND_IP:?Reviewed LiveKit media bind IP required}:35000-35100:35000-35100/udp"
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
     networks:
@@ -1084,7 +1148,7 @@ services:
     networks:
       staging-ingress:
       staging-app:
-        ipv4_address: "${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
+        ipv4_address: "${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
     depends_on:
       staging-logs-init:
         condition: service_completed_successfully
@@ -1262,16 +1326,16 @@ services:
       - source: staging-blackbox-config
         target: /etc/blackbox_exporter/blackbox.yml
     extra_hosts:
-      - "staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
-      - "www.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
-      - "app.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
-      - "admin.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
-      - "counsellor.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
-      - "api-ios.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
-      - "api-android.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
-      - "api-web.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
-      - "api-admin.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
-      - "calls.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:-10.252.241.10}"
+      - "staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
+      - "www.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
+      - "app.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
+      - "admin.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
+      - "counsellor.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
+      - "api-ios.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
+      - "api-android.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
+      - "api-web.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
+      - "api-admin.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
+      - "calls.staging.menorah.me=${MENORAH_SERVER_STAGING_CADDY_APP_IP:?Reviewed staging Caddy app IP required}"
     networks:
       - staging-monitoring
       - staging-app
@@ -1894,8 +1958,8 @@ networks:
       com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
     ipam:
       config:
-        - subnet: "${MENORAH_SERVER_STAGING_INGRESS_SUBNET:-10.252.240.0/24}"
-          ip_range: "${MENORAH_SERVER_STAGING_INGRESS_IP_RANGE:-10.252.240.128/25}"
+        - subnet: "${MENORAH_SERVER_STAGING_INGRESS_SUBNET:?Reviewed staging ingress subnet required}"
+          ip_range: "${MENORAH_SERVER_STAGING_INGRESS_IP_RANGE:?Reviewed staging ingress dynamic range required}"
   staging-app:
     name: "${MENORAH_SERVER_STAGING_RESOURCE_PREFIX:-menorah-staging}-app"
     driver: bridge
@@ -1905,8 +1969,8 @@ networks:
       com.menorah.resource-kind: network
     ipam:
       config:
-        - subnet: "${MENORAH_SERVER_STAGING_APP_SUBNET:-10.252.241.0/24}"
-          ip_range: "${MENORAH_SERVER_STAGING_APP_IP_RANGE:-10.252.241.128/25}"
+        - subnet: "${MENORAH_SERVER_STAGING_APP_SUBNET:?Reviewed staging app subnet required}"
+          ip_range: "${MENORAH_SERVER_STAGING_APP_IP_RANGE:?Reviewed staging app dynamic range required}"
   staging-data:
     name: "${MENORAH_SERVER_STAGING_RESOURCE_PREFIX:-menorah-staging}-data"
     driver: bridge
@@ -1916,7 +1980,8 @@ networks:
       com.menorah.resource-kind: network
     ipam:
       config:
-        - subnet: "${MENORAH_SERVER_STAGING_DATA_SUBNET:-10.252.242.0/24}"
+        - subnet: "${MENORAH_SERVER_STAGING_DATA_SUBNET:?Reviewed staging data subnet required}"
+          ip_range: "${MENORAH_SERVER_STAGING_DATA_IP_RANGE:?Reviewed staging data dynamic range required}"
   staging-monitoring:
     name: "${MENORAH_SERVER_STAGING_RESOURCE_PREFIX:-menorah-staging}-monitoring"
     driver: bridge
@@ -1926,7 +1991,8 @@ networks:
       com.menorah.resource-kind: network
     ipam:
       config:
-        - subnet: "${MENORAH_SERVER_STAGING_MONITORING_SUBNET:-10.252.243.0/24}"
+        - subnet: "${MENORAH_SERVER_STAGING_MONITORING_SUBNET:?Reviewed staging monitoring subnet required}"
+          ip_range: "${MENORAH_SERVER_STAGING_MONITORING_IP_RANGE:?Reviewed staging monitoring dynamic range required}"
   staging-restore:
     name: "${MENORAH_SERVER_STAGING_RESOURCE_PREFIX:-menorah-staging}-restore"
     driver: bridge
@@ -1936,7 +2002,8 @@ networks:
       com.menorah.resource-kind: network
     ipam:
       config:
-        - subnet: "${MENORAH_SERVER_STAGING_RESTORE_SUBNET:-10.252.244.0/24}"
+        - subnet: "${MENORAH_SERVER_STAGING_RESTORE_SUBNET:?Reviewed staging restore subnet required}"
+          ip_range: "${MENORAH_SERVER_STAGING_RESTORE_IP_RANGE:?Reviewed staging restore dynamic range required}"
   staging-egress:
     name: "${MENORAH_SERVER_STAGING_RESOURCE_PREFIX:-menorah-staging}-egress"
     driver: bridge
@@ -1952,8 +2019,8 @@ networks:
       com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
     ipam:
       config:
-        - subnet: "${MENORAH_SERVER_STAGING_EGRESS_SUBNET:-10.252.245.0/24}"
-          ip_range: "${MENORAH_SERVER_STAGING_EGRESS_IP_RANGE:-10.252.245.128/25}"
+        - subnet: "${MENORAH_SERVER_STAGING_EGRESS_SUBNET:?Reviewed staging egress subnet required}"
+          ip_range: "${MENORAH_SERVER_STAGING_EGRESS_IP_RANGE:?Reviewed staging egress dynamic range required}"
 
 volumes:
   staging-filesystem-root:
