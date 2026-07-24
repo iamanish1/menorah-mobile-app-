@@ -49,7 +49,16 @@ const assertPayoutUniquenessPreconditions = async () => {
 };
 
 const reconcilePayoutProviderIndex = async () => {
-  const indexes = await Payout.collection.indexes();
+  let indexes;
+  try {
+    indexes = await Payout.collection.indexes();
+  } catch (error) {
+    if (error?.code === 26 || error?.codeName === 'NamespaceNotFound') {
+      indexes = [];
+    } else {
+      throw error;
+    }
+  }
   const existing = indexes.find((index) => (
     index.key?.razorpayPayoutId === 1 && Object.keys(index.key).length === 1
   ));
