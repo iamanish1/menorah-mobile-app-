@@ -486,6 +486,11 @@ const composeMutations = [
   ['privileged service', (model) => { model.services['staging-api-web'].privileged = true; }, /must not be privileged/],
   ['unbounded restart', (model) => { model.services['staging-api-web'].restart = 'always'; }, /unbounded restart policy/],
   ['missing limits', (model) => { delete model.services['staging-api-web'].mem_limit; }, /lacks CPU, memory, or PID limits/],
+  ['memory reservation above limit', (model) => {
+    model.services['staging-api-web'].mem_limit = 32 * 1024 * 1024;
+    model.services['staging-api-web'].mem_reservation =
+      64 * 1024 * 1024;
+  }, /memory reservation exceeds its memory limit/],
   ['missing labels', (model) => { model.services['staging-api-web'].labels = {}; }, /lacks environment=staging/],
   ['stale project label', (model) => {
     model.services['staging-api-web'].labels['com.menorah.project'] =

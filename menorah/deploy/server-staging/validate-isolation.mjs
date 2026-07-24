@@ -627,6 +627,13 @@ export const validateRenderedCompose = (
       || !service.cpus
     ) {
       errors.push(`${serviceName} lacks CPU, memory, or PID limits`);
+    } else if (
+      service.mem_reservation
+      && Number(service.mem_reservation) > Number(service.mem_limit)
+    ) {
+      errors.push(
+        `${serviceName} memory reservation exceeds its memory limit`,
+      );
     }
     const logging = service.logging || {};
     if (

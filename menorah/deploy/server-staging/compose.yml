@@ -1000,6 +1000,7 @@ services:
       - no-new-privileges:true
     pids_limit: 16
     mem_limit: 32m
+    mem_reservation: 16m
     cpus: "0.10"
     network_mode: none
     volumes:
