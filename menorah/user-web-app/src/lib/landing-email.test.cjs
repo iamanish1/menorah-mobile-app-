@@ -25,6 +25,17 @@ const originalFetch = global.fetch;
 let fetchCalls;
 let lastFetchUrl;
 
+const routingEnvironmentKeys = [
+  'DEPLOYMENT_ENVIRONMENT',
+  'MENORAH_LOCAL_STAGING_ENVIRONMENT_ID',
+  'MENORAH_LOCAL_STAGING_HTTPS_PORT',
+  'MENORAH_SERVER_STAGING_ENVIRONMENT_ID',
+  'MENORAH_SERVER_STAGING_PROJECT_NAME',
+  'MENORAH_SERVER_STAGING_HTTPS_PORT',
+  'MENORAH_STAGING_EMAIL_DOMAIN',
+  'RESEND_API_URL',
+];
+
 const input = {
   subject: 'Synthetic contact',
   source: 'Unit test',
@@ -41,6 +52,9 @@ beforeEach(() => {
     EMAIL_FROM: 'Menorah Staging <noreply@mail.staging.example.com>',
     CONTACT_TO_EMAIL: 'contact@mail.staging.example.com',
   };
+  for (const key of routingEnvironmentKeys) {
+    delete process.env[key];
+  }
   fetchCalls = 0;
   lastFetchUrl = undefined;
   global.fetch = async (url) => {
