@@ -43,6 +43,50 @@ require_exact_directory() {
     || fail "${label} resolves outside the reviewed staging root"
 }
 
+record_safe_media_tree() {
+  root="$1"
+  label="$2"
+  manifest="$3"
+  unsafe_entry="$(
+    find "${root}" -mindepth 1 ! -type d ! -type f -print -quit
+  )"
+  [ -z "${unsafe_entry}" ] \
+    || fail "${label} contains a symbolic link or special filesystem entry"
+  hard_link="$(
+    find "${root}" -mindepth 1 -type f -links +1 -print -quit
+  )"
+  [ -z "${hard_link}" ] \
+    || fail "${label} contains a hard-linked file"
+  if ! find "${root}" -mindepth 1 -print0 \
+    | perl -0ne 'chomp; exit 1 if /[^\x20-\x7e]/ || /\\/'
+  then
+    fail "${label} contains a path that cannot be represented safely"
+  fi
+  (
+    cd "${root}"
+    find . -mindepth 1 -printf '%y|%p\0' | sort -z
+  ) > "${manifest}"
+}
+
+publish_latest_atomically() {
+  root="$1"
+  temporary="$2"
+  label="$3"
+  [ ! -L "${root}/LATEST" ] \
+    || fail "${label} latest pointer must not be a symlink"
+  if [ -e "${root}/LATEST" ]; then
+    [ -f "${root}/LATEST" ] \
+      || fail "${label} latest pointer must be a regular file"
+  fi
+  [ ! -e "${temporary}" ] && [ ! -L "${temporary}" ] \
+    || fail "${label} latest temporary path already exists"
+  set -C
+  printf '%s\n' "${STAMP}" > "${temporary}"
+  set +C
+  chmod 600 "${temporary}"
+  mv -fT -- "${temporary}" "${root}/LATEST"
+}
+
 case "${COMPOSE_PROJECT_NAME-}" in
   "${SERVER_PROJECT}"|"${VALIDATION_PROJECT}") ;;
   *) fail 'unexpected Compose project' ;;
@@ -138,7 +182,8 @@ readonly FINAL_DIR="${BUNDLE_ROOT}/${STAMP}"
 readonly RETRIEVAL_INCOMPLETE="${RETRIEVAL_ROOT}/.incomplete-${STAMP}"
 readonly RETRIEVAL_FINAL="${RETRIEVAL_ROOT}/${STAMP}"
 readonly MONGO_CONFIG="${STATE_ROOT}/.backup-mongodump-${STAMP}-$$.yml"
-readonly LATEST_TEMP="${STATE_ROOT}/.backup-latest-${STAMP}-$$"
+readonly BUNDLE_LATEST_TEMP="${BUNDLE_ROOT}/.LATEST-${STAMP}-$$"
+readonly RETRIEVAL_LATEST_TEMP="${RETRIEVAL_ROOT}/.LATEST-${STAMP}-$$"
 
 case "${INCOMPLETE_DIR}" in
   /opt/menorah-staging/backups/bundles/.incomplete-[0-9]*Z) ;;
@@ -156,7 +201,10 @@ esac
 cleanup() {
   status="$?"
   trap - EXIT HUP INT TERM
-  rm -f -- "${MONGO_CONFIG}" "${LATEST_TEMP}"
+  rm -f -- \
+    "${MONGO_CONFIG}" \
+    "${BUNDLE_LATEST_TEMP}" \
+    "${RETRIEVAL_LATEST_TEMP}"
   if [ -d "${INCOMPLETE_DIR}" ]; then
     rm -rf -- "${INCOMPLETE_DIR}"
   fi
@@ -176,6 +224,15 @@ trap 'exit 1' HUP INT TERM
 [ ! -e "${MONGO_CONFIG}" ] && [ ! -L "${MONGO_CONFIG}" ] \
   || fail 'temporary MongoDB configuration already exists'
 mkdir -- "${INCOMPLETE_DIR}" "${RETRIEVAL_INCOMPLETE}"
+
+record_safe_media_tree \
+  "${UPLOAD_ROOT}" \
+  'upload root' \
+  "${INCOMPLETE_DIR}/uploads-entries.manifest"
+record_safe_media_tree \
+  "${MANAGED_MEDIA_ROOT}" \
+  'managed-media root' \
+  "${INCOMPLETE_DIR}/managed-media-entries.manifest"
 
 escaped_uri="$(
   printf '%s' "${MONGODB_STAGING_BACKUP_URI}" \
@@ -251,6 +308,7 @@ cat > "${INCOMPLETE_DIR}/metadata.json" <<EOF
   "runtimeSha": "${MENORAH_SERVER_STAGING_RUNTIME_SHA}",
   "createdAt": "${STAMP}",
   "mediaScopes": ["uploads", "managed-media"],
+  "mediaEntryManifestFormat": "nul-type-path-v1",
   "syntheticDataOnly": true,
   "consistency": "application-writers-quiesced"
 }
@@ -279,9 +337,11 @@ rm -f -- \
     database.archive.gz.enc \
     database-manifest.json \
     managed-media.tar.gz.enc \
+    managed-media-entries.manifest \
     managed-media-manifest.sha256 \
     metadata.json \
     uploads.tar.gz.enc \
+    uploads-entries.manifest \
     uploads-manifest.sha256 \
     > SHA256SUMS
 )
@@ -306,7 +366,9 @@ perl -MDigest::SHA=hmac_sha256_hex -e '
   "${SIGNING_KEY_FILE}" \
   "${INCOMPLETE_DIR}/metadata.json" \
   "${INCOMPLETE_DIR}/database-manifest.json" \
+  "${INCOMPLETE_DIR}/uploads-entries.manifest" \
   "${INCOMPLETE_DIR}/uploads-manifest.sha256" \
+  "${INCOMPLETE_DIR}/managed-media-entries.manifest" \
   "${INCOMPLETE_DIR}/managed-media-manifest.sha256" \
   "${INCOMPLETE_DIR}/SHA256SUMS" \
   > "${INCOMPLETE_DIR}/signature.hmac-sha256"
@@ -316,18 +378,19 @@ chmod 600 "${INCOMPLETE_DIR}"/*
 mv -- "${INCOMPLETE_DIR}" "${FINAL_DIR}"
 cp -a "${FINAL_DIR}/." "${RETRIEVAL_INCOMPLETE}/"
 mv -- "${RETRIEVAL_INCOMPLETE}" "${RETRIEVAL_FINAL}"
-set -C
-printf '%s\n' "${STAMP}" > "${LATEST_TEMP}"
-set +C
-chmod 600 "${LATEST_TEMP}"
-[ ! -L "${BUNDLE_ROOT}/LATEST" ] \
-  || fail 'backup latest pointer must not be a symlink'
-[ ! -L "${RETRIEVAL_ROOT}/LATEST" ] \
-  || fail 'retrieval latest pointer must not be a symlink'
-cp -- "${LATEST_TEMP}" "${BUNDLE_ROOT}/LATEST"
-cp -- "${LATEST_TEMP}" "${RETRIEVAL_ROOT}/LATEST"
-chmod 600 "${BUNDLE_ROOT}/LATEST" "${RETRIEVAL_ROOT}/LATEST"
+publish_latest_atomically \
+  "${BUNDLE_ROOT}" \
+  "${BUNDLE_LATEST_TEMP}" \
+  'backup'
+publish_latest_atomically \
+  "${RETRIEVAL_ROOT}" \
+  "${RETRIEVAL_LATEST_TEMP}" \
+  'retrieval'
 
 trap - EXIT HUP INT TERM
-rm -f -- "${MONGO_CONFIG}" "${LATEST_TEMP}" "${BACKUP_LOCK}"
+rm -f -- \
+  "${MONGO_CONFIG}" \
+  "${BUNDLE_LATEST_TEMP}" \
+  "${RETRIEVAL_LATEST_TEMP}" \
+  "${BACKUP_LOCK}"
 printf '%s\n' "Server-staging backup complete: ${STAMP}"

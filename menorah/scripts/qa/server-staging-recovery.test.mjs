@@ -50,6 +50,8 @@ const sources = Object.freeze({
   migration: read('run-recorded-migration.sh'),
   resume: read('resume-post-migration.sh'),
   runtimeVerifier: read('verify-runtime-services.sh'),
+  alertmanagerReleasePreflight:
+    read('assert-alertmanager-release-preflight.sh'),
 });
 
 const directoryStat = Object.freeze({
@@ -82,17 +84,18 @@ test('reviewed staging roots, identities, and state paths are exact', () => {
   assert.deepEqual(EXPECTED_CONTEXT, {
     COMPOSE_PROJECT_NAME: 'menorah-staging',
     MENORAH_SERVER_STAGING_ENVIRONMENT_ID: 'menorah-server-staging-v1',
-    MENORAH_STAGING_ROOT: '/opt/menorah-staging',
-    MENORAH_STAGING_APP_ROOT: '/opt/menorah-staging/app',
-    MENORAH_STAGING_DATA_ROOT: '/opt/menorah-staging/data',
-    MENORAH_STAGING_BACKUP_ROOT: '/opt/menorah-staging/backups',
-    MENORAH_STAGING_DEPLOY_STATE_ROOT:
+    MENORAH_SERVER_STAGING_ROOT: '/opt/menorah-staging',
+    MENORAH_SERVER_STAGING_APP_ROOT: '/opt/menorah-staging/app',
+    MENORAH_SERVER_STAGING_DATA_ROOT: '/opt/menorah-staging/data',
+    MENORAH_SERVER_STAGING_BACKUP_ROOT:
+      '/opt/menorah-staging/backups',
+    MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT:
       '/opt/menorah-staging/deploy-state',
-    MENORAH_STAGING_LOGS_ROOT: '/opt/menorah-staging/logs',
-    MENORAH_STAGING_ENV_ROOT: '/opt/menorah-staging/env',
-    MENORAH_STAGING_DATABASE: 'menorah_staging',
-    MENORAH_STAGING_REPLICA_SET: 'menorah-staging-rs',
-    MENORAH_STAGING_ROOTS_ACK: 'MENORAH_STAGING_ROOTS_REVIEWED',
+    MENORAH_SERVER_STAGING_LOGS_ROOT: '/opt/menorah-staging/logs',
+    MENORAH_SERVER_STAGING_ENV_ROOT: '/opt/menorah-staging/env',
+    MONGO_DATABASE: 'menorah_staging',
+    MONGODB_REPLICA_SET_NAME: 'menorah-staging-rs',
+    MONGODB_RESTORE_REPLICA_SET_NAME: 'menorah-staging-restore-rs',
   });
   for (const value of Object.values(STATE_PATHS)) {
     assert.match(value, /^\/opt\/menorah-staging\/deploy-state\//);
@@ -145,7 +148,8 @@ test('all mutating contexts require exact roots and an operation acknowledgment'
 
 test('production backup root and production deployment state are rejected', () => {
   const productionBackup = environmentFor('backup');
-  productionBackup.MENORAH_STAGING_BACKUP_ROOT = '/opt/menorah/backups';
+  productionBackup.MENORAH_SERVER_STAGING_BACKUP_ROOT =
+    '/opt/menorah/backups';
   assert.equal(
     captureCode(() => validateContext(productionBackup, {
       mode: 'backup',
@@ -156,7 +160,7 @@ test('production backup root and production deployment state are rejected', () =
   );
 
   const productionState = environmentFor('deploy');
-  productionState.MENORAH_STAGING_DEPLOY_STATE_ROOT =
+  productionState.MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT =
     '/opt/menorah/deploy-state';
   assert.equal(
     captureCode(() => validateContext(productionState, {
@@ -170,7 +174,7 @@ test('production backup root and production deployment state are rejected', () =
 
 test('production database and production restore target are rejected', () => {
   const productionDatabase = environmentFor('restore');
-  productionDatabase.MENORAH_STAGING_DATABASE = 'menorah';
+  productionDatabase.MONGO_DATABASE = 'menorah';
   assert.equal(
     captureCode(() => validateContext(productionDatabase, {
       mode: 'restore',
@@ -206,8 +210,8 @@ test('ambiguous roots and symlink escapes are rejected', () => {
   const escapingFs = {
     ...canonicalFs,
     realpathSync: (value) => (
-      value === '/opt/menorah-staging/backups'
-        ? '/opt/menorah/backups'
+      value === '/opt/menorah-staging/deploy-state'
+        ? '/opt/menorah/deploy-state'
         : value
     ),
   };
@@ -722,6 +726,193 @@ test('immutable deployment record captures the first-only seed disposition', () 
   assert.match(
     sources.deploy,
     /seed_disposition='created-bounded-synthetic-roster'/,
+  );
+});
+
+test('Alertmanager release preflight is pinned, offline, and redacted', () => {
+  const source = sources.alertmanagerReleasePreflight;
+  assert.match(
+    source,
+    /prom\/alertmanager:v0\.32\.1@sha256:51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286/,
+  );
+  assert.match(source, /--pull never/);
+  assert.match(source, /--network none/);
+  assert.match(source, /--user '65534:65534'/);
+  assert.match(source, /--read-only/);
+  assert.match(source, /--cap-drop ALL/);
+  assert.match(source, /--security-opt no-new-privileges:true/);
+  assert.match(source, /test -r "\$1"/);
+  assert.match(source, /\/bin\/amtool check-config "\$1"/);
+  assert.match(
+    source,
+    /node "\$\{ENVIRONMENT_VALIDATOR\}"[\s\S]*--env "\$\{ENV_FILE\}"[\s\S]*--print-alertmanager-source[\s\S]*2>\/dev\/null/,
+  );
+  assert.match(
+    source,
+    /\/bin\/amtool check-config "\$1" >\/dev\/null 2>&1/,
+  );
+
+  const result = spawnSync(
+    shellPath,
+    [scriptPath('assert-alertmanager-release-preflight.sh'), 'unexpected'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.equal(
+    result.stderr,
+    'Server-staging Alertmanager release preflight refused: '
+      + 'validation failed.\n',
+  );
+});
+
+test('release authority paths preflight Alertmanager before mutation', () => {
+  const invocation = 'bash "${ALERTMANAGER_RELEASE_PREFLIGHT}"';
+  const cases = [
+    {
+      source: sources.deploy,
+      mutations: [
+        'exec 9>>"${DEPLOY_LOCK}"',
+        'compose config --quiet',
+        'pull --policy always',
+        'staging-mongo-primary \\\n  staging-redis',
+      ],
+    },
+    {
+      source: sources.resume,
+      mutations: [
+        'exec 9>>"${DEPLOY_LOCK}"',
+        'compose config --quiet',
+        'compose up -d --no-build --pull never --wait --wait-timeout 300',
+      ],
+    },
+    {
+      source: sources.rollback,
+      mutations: [
+        'exec 9>>"${DEPLOY_LOCK}"',
+        'exec 8>>"${ROLLBACK_LOCK}"',
+        'write_sha_marker \\\n  "${ROLLBACK_MARKER}"',
+        '  config --quiet',
+        '  up -d --force-recreate',
+      ],
+    },
+    {
+      source: sources.migration,
+      mutations: [
+        'exec 8>>"${MIGRATION_LOCK}"',
+        "recovery_sha=''",
+        'write_sha_marker \\\n  "${IN_PROGRESS_MARKER}"',
+        'compose run --rm --no-deps --pull never staging-migrate',
+      ],
+    },
+    {
+      source: sources.manifest,
+      mutations: [
+        'exec 9>>"${MANIFEST_LOCK}"',
+        'CONFIG_TEMP="$(mktemp "${RELEASE_STATE}/.compose-${RELEASE_SHA}.XXXXXX")"',
+        '  config --format json > "${CONFIG_TEMP}"',
+      ],
+    },
+  ];
+  for (const { source, mutations } of cases) {
+    const preflight = source.indexOf(invocation);
+    assert.ok(preflight >= 0, 'preflight invocation must be present');
+    for (const mutation of mutations) {
+      const mutationOffset = source.indexOf(mutation, preflight);
+      assert.ok(
+        mutationOffset > preflight,
+        `mutation must follow preflight: ${mutation}`,
+      );
+    }
+  }
+
+  assert.match(
+    sources.runtimeVerifier,
+    /bash "\$\{ALERTMANAGER_RELEASE_PREFLIGHT\}"[\s\S]*post-start Alertmanager release preflight failed/,
+  );
+  for (const source of [
+    sources.deploy,
+    sources.resume,
+    sources.rollback,
+  ]) {
+    const start = source.indexOf('up -d ');
+    const runtimeVerification = source.indexOf(
+      'bash "${RUNTIME_VERIFIER}" "${MANIFEST}"',
+    );
+    assert.ok(start >= 0);
+    assert.ok(runtimeVerification > start);
+  }
+});
+
+test('deployment evidence binds the reviewed Alertmanager contract', () => {
+  const expectedFields = [
+    ['alertmanagerConfigSha256', 'ALERTMANAGER_CONFIG_SHA256_VALUE'],
+    ['alertmanagerReceiver', 'ALERTMANAGER_RECEIVER_VALUE'],
+    ['alertmanagerEndpointHost', 'ALERTMANAGER_ENDPOINT_HOST_VALUE'],
+    [
+      'alertmanagerConfigReviewedAt',
+      'ALERTMANAGER_CONFIG_REVIEWED_AT_VALUE',
+    ],
+    [
+      'alertmanagerConfigReviewReference',
+      'ALERTMANAGER_CONFIG_REVIEW_REFERENCE_VALUE',
+    ],
+  ];
+  for (const [field, valueVariable] of expectedFields) {
+    for (const source of [
+      sources.deploy,
+      sources.resume,
+      sources.rollback,
+    ]) {
+      assert.match(
+        source,
+        new RegExp(
+          `${field}:[\\s\\n]*process\\.env\\.${valueVariable}`,
+        ),
+      );
+    }
+    assert.match(
+      sources.migration,
+      new RegExp(
+        `${field}:[\\s\\n]*process\\.env\\.${valueVariable}`,
+      ),
+    );
+  }
+  for (const source of [
+    sources.deploy,
+    sources.resume,
+    sources.rollback,
+    sources.migration,
+  ]) {
+    assert.match(
+      source,
+      /ALERTMANAGER_CONFIG_REVIEWED_AT_VALUE="\$\{ALERTMANAGER_CONFIG_REVIEWED_AT\}"/,
+    );
+    assert.match(
+      source,
+      /ALERTMANAGER_CONFIG_REVIEW_REFERENCE_VALUE="\$\{ALERTMANAGER_CONFIG_REVIEW_REFERENCE\}"/,
+    );
+    assert.doesNotMatch(source, /ALERTMANAGER_DELIVERY_VERIFIED_AT/);
+    assert.doesNotMatch(source, /ALERTMANAGER_DELIVERY_TEST_REFERENCE/);
+  }
+});
+
+test('runtime verification enforces one exact Alertmanager digest label', () => {
+  assert.match(
+    sources.runtimeVerifier,
+    /com\.menorah\.alertmanager-config-sha256/,
+  );
+  assert.match(
+    sources.runtimeVerifier,
+    /"\$\{alertmanager_config_digest_label\}" \\\s+== "\$\{ALERTMANAGER_CONFIG_SHA256\}"/,
+  );
+  assert.match(
+    sources.runtimeVerifier,
+    /"\$\{alertmanager_count\}" -eq 1/,
+  );
+  assert.match(
+    sources.runtimeVerifier,
+    /Alertmanager runtime config digest label is invalid/,
   );
 });
 

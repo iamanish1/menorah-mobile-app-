@@ -61,6 +61,44 @@ test('restore preserves failure evidence with an atomic review marker', () => {
   );
 });
 
+test('restore authenticates and inspects archives before database reset', () => {
+  const marker = position(
+    /mv -- "\$\{RESTORE_MARKER_TEMP\}" "\$\{RESTORE_MARKER\}"/,
+    'durable restore marker publication',
+  );
+  const signature = source.indexOf(
+    'perl -MDigest::SHA=hmac_sha256_hex',
+    marker,
+  );
+  const exactChecksums = source.indexOf(
+    '\nassert_exact_checksum_manifest\n',
+    signature,
+  );
+  const checksumVerification = source.indexOf(
+    'sha256sum --strict -c SHA256SUMS',
+    exactChecksums,
+  );
+  const decrypt = source.indexOf(
+    'openssl enc -d -aes-256-cbc',
+    checksumVerification,
+  );
+  const archiveInspection = source.indexOf(
+    'validate_regular_directory_archive \\\n'
+      + '  "${WORK_DIR}/uploads.tar.gz"',
+    decrypt,
+  );
+  const databaseReset = source.indexOf('dropDatabase()', archiveInspection);
+
+  assert.ok(signature > marker);
+  assert.ok(exactChecksums > signature);
+  assert.ok(checksumVerification > exactChecksums);
+  assert.ok(decrypt > checksumVerification);
+  assert.ok(archiveInspection > decrypt);
+  assert.ok(databaseReset > archiveInspection);
+  assert.match(source, /"\\"createdAt\\": \\"\$\{STAMP\}\\""/);
+  assert.match(source, /--stopOnError/);
+});
+
 test('restore keeps its trap armed through ordered success cleanup', () => {
   const finalDatabaseComparison = position(
     /cmp -s \\\n  "\$\{BUNDLE\}\/database-manifest\.json"/,
@@ -78,8 +116,8 @@ test('restore keeps its trap armed through ordered success cleanup', () => {
 
   assert.ok(finalDatabaseComparison < workCleanup);
   assert.ok(workCleanup < configCleanup);
-  assert.ok(configCleanup < lockCleanup);
-  assert.ok(lockCleanup < markerCleanup);
+  assert.ok(configCleanup < markerCleanup);
+  assert.ok(markerCleanup < lockCleanup);
   assert.ok(markerCleanup < success);
 
   const successTail = source.slice(finalDatabaseComparison);

@@ -7,7 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,16 +40,82 @@ const bashPath = process.platform === 'win32'
   ].find(existsSync)
   : '/bin/bash';
 const posix = (value) => value.replaceAll('\\', '/');
+const fixtureSha = 'a'.repeat(40);
+const fixtureBlob = 'b'.repeat(40);
 
 const mockNode = `#!/usr/bin/env bash
 set -euo pipefail
-if [[ "\${2-}" == "--emit0" ]]; then
-  printf '%s\\0%s\\0' \\
-    MENORAH_SERVER_STAGING_ENVIRONMENT_ID menorah-server-staging-v1 \\
-    MENORAH_SERVER_STAGING_DOTENV_LOAD_COMPLETE safe-dotenv-v1
-  exit 0
-fi
-printf 'assert:%s\\n' "\${2-}" >> "\${MOCK_TRACE}"
+case "\${1##*/}" in
+  validate-environment.mjs)
+    [[ "\${2-}" == --env && "\${3-}" == "\${MOCK_ENV_FILE}" ]]
+    printf 'preflight:environment\\n' >> "\${MOCK_TRACE}"
+    [[ "\${MOCK_ENV_FAIL-}" != true ]]
+    exit 0
+    ;;
+  load-environment.mjs)
+    [[ "\${2-}" == --emit0 && "\${3-}" == "\${MOCK_ENV_FILE}" ]]
+    values=(
+      COMPOSE_PROJECT_NAME menorah-staging
+      MENORAH_SERVER_STAGING_ENVIRONMENT_ID menorah-server-staging-v1
+      MENORAH_SERVER_STAGING_ROOT /opt/menorah-staging
+      MENORAH_SERVER_STAGING_APP_ROOT /opt/menorah-staging/app
+      MENORAH_SERVER_STAGING_DATA_ROOT /opt/menorah-staging/data
+      MENORAH_SERVER_STAGING_BACKUP_ROOT /opt/menorah-staging/backups
+      MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT /opt/menorah-staging/deploy-state
+      MENORAH_SERVER_STAGING_LOGS_ROOT /opt/menorah-staging/logs
+      MENORAH_SERVER_STAGING_ENV_ROOT /opt/menorah-staging/env
+      MONGO_DATABASE menorah_staging
+      MONGODB_REPLICA_SET_NAME menorah-staging-rs
+      MONGODB_RESTORE_REPLICA_SET_NAME menorah-staging-restore-rs
+      MENORAH_RUNTIME_CANDIDATE_SHA "\${MOCK_SHA}"
+      MENORAH_SERVER_STAGING_RUNTIME_SHA "\${MOCK_SHA}"
+      MENORAH_SERVER_STAGING_DOTENV_LOAD_COMPLETE safe-dotenv-v1
+    )
+    for ((index = 0; index < \${#values[@]}; index += 2)); do
+      printf '%s\\0%s\\0' "\${values[index]}" "\${values[index + 1]}"
+    done
+    exit 0
+    ;;
+  assert-context.mjs)
+    mode="\${2-}"
+    for exact in \\
+      'COMPOSE_PROJECT_NAME=menorah-staging' \\
+      'MENORAH_SERVER_STAGING_ENVIRONMENT_ID=menorah-server-staging-v1' \\
+      'MENORAH_SERVER_STAGING_ROOT=/opt/menorah-staging' \\
+      'MENORAH_SERVER_STAGING_APP_ROOT=/opt/menorah-staging/app' \\
+      'MENORAH_SERVER_STAGING_DATA_ROOT=/opt/menorah-staging/data' \\
+      'MENORAH_SERVER_STAGING_BACKUP_ROOT=/opt/menorah-staging/backups' \\
+      'MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT=/opt/menorah-staging/deploy-state' \\
+      'MENORAH_SERVER_STAGING_LOGS_ROOT=/opt/menorah-staging/logs' \\
+      'MENORAH_SERVER_STAGING_ENV_ROOT=/opt/menorah-staging/env' \\
+      'MONGO_DATABASE=menorah_staging' \\
+      'MONGODB_REPLICA_SET_NAME=menorah-staging-rs' \\
+      'MONGODB_RESTORE_REPLICA_SET_NAME=menorah-staging-restore-rs'
+    do
+      key="\${exact%%=*}"
+      expected="\${exact#*=}"
+      [[ "\${!key-}" == "\${expected}" ]]
+    done
+    case "\${mode}" in
+      backup)
+        [[ "\${MENORAH_STAGING_ROOTS_ACK-}" == MENORAH_STAGING_ROOTS_REVIEWED ]]
+        [[ "\${MENORAH_STAGING_BACKUP_ACK-}" == BACKUP_MENORAH_STAGING_SYNTHETIC_DATA ]]
+        [[ "\${MENORAH_STAGING_WRITERS_QUIESCED-}" == APPLICATION_WRITERS_STOPPED ]]
+        ;;
+      restore)
+        [[ "\${MENORAH_STAGING_ROOTS_ACK-}" == MENORAH_STAGING_ROOTS_REVIEWED ]]
+        [[ "\${MENORAH_STAGING_RESTORE_ACK-}" == RESTORE_MENORAH_STAGING_TO_DISPOSABLE_TARGET ]]
+        [[ "\${MENORAH_STAGING_RESTORE_TARGET-}" == staging-mongo-restore ]]
+        ;;
+      release)
+        [[ "\${3-}" == "\${MOCK_SHA}" ]]
+        ;;
+      *) exit 2 ;;
+    esac
+    printf 'assert:%s\\n' "\${mode}" >> "\${MOCK_TRACE}"
+    ;;
+  *) exit 2 ;;
+esac
 `;
 
 const mockRealpath = `#!/usr/bin/env bash
@@ -61,6 +127,51 @@ printf '%s\\n' "$1"
 
 const mockSleep = `#!/usr/bin/env bash
 exit 0
+`;
+
+const mockGit = `#!/usr/bin/env bash
+set -euo pipefail
+printf 'git:%s\\n' "$*" >> "\${MOCK_TRACE}"
+[[ "\${1-}" == -C ]] && shift 2
+case "\${1-}" in
+  cat-file)
+    [[ "\${2-}" == -e && "\${3-}" == "\${MOCK_SHA}^{commit}" ]]
+    ;;
+  rev-parse)
+    if [[ "\${2-}" == HEAD ]]; then
+      printf '%s\\n' "\${MOCK_SHA}"
+    else
+      [[ "\${2-}" == "\${MOCK_SHA}:"* ]]
+      printf '%s\\n' "\${MOCK_BLOB}"
+    fi
+    ;;
+  status)
+    if [[ "\${MOCK_GIT_DIRTY-}" == true ]]; then
+      printf ' M menorah/deploy/server-staging/wrapper.sh\\n'
+    fi
+    ;;
+  hash-object)
+    if [[ "\${MOCK_SCRIPT_TAMPER-}" == true ]]; then
+      printf '%040d\\n' 0
+    else
+      printf '%s\\n' "\${MOCK_BLOB}"
+    fi
+    ;;
+  *) exit 2 ;;
+esac
+`;
+
+const mockFlock = `#!/usr/bin/env bash
+set -euo pipefail
+printf 'lock:deploy\\n' >> "\${MOCK_TRACE}"
+[[ "\${MOCK_LOCK_UNAVAILABLE-}" != true ]]
+`;
+
+const mockRuntimeVerifier = `#!/usr/bin/env bash
+set -euo pipefail
+[[ "$#" -eq 1 && "$1" == "\${MOCK_MANIFEST}" && -f "$1" ]]
+printf 'preflight:runtime\\n' >> "\${MOCK_TRACE}"
+[[ "\${MOCK_RUNTIME_FAIL-}" != true ]]
 `;
 
 const mockDocker = `#!/usr/bin/env bash
@@ -161,15 +272,38 @@ if [[ "\${MOCK_FAIL_JOB-}" == "\${service}" ]]; then
 fi
 `;
 
-const makeFixture = (kind, { failJob = '', existingMarker = false } = {}) => {
+const makeFixture = (
+  kind,
+  {
+    dirtyCheckout = false,
+    environmentFailure = false,
+    existingMarker = false,
+    existingOperationLock = false,
+    failJob = '',
+    invalidShaMarker = false,
+    lockUnavailable = false,
+    runtimeFailure = false,
+    tamperedWrapper = false,
+  } = {},
+) => {
   const root = mkdtempSync(path.join(tmpdir(), 'menorah-operation-wrapper-'));
   const mockBin = path.join(root, 'bin');
   const environmentFile = path.join(root, 'env', 'server-staging.env');
-  const composeFile = path.join(root, 'app', 'compose.yml');
+  const appRoot = path.join(root, 'app');
+  const composeFile = path.join(appRoot, 'compose.yml');
   const scriptDirectory = path.join(root, 'scripts');
-  const stateDirectory = path.join(root, 'deploy-state', 'recovery');
+  const deployStateRoot = path.join(root, 'deploy-state');
+  const releaseState = path.join(deployStateRoot, 'releases');
+  const stateDirectory = path.join(deployStateRoot, 'recovery');
   const stateStore = path.join(root, 'state');
   const trace = path.join(root, 'trace.log');
+  const deployLock = path.join(deployStateRoot, '.deploy.lock');
+  const operationLock = path.join(
+    deployStateRoot,
+    kind === 'backup' ? '.backup.lock' : '.restore.lock',
+  );
+  const currentShaFile = path.join(deployStateRoot, 'current-sha');
+  const manifest = path.join(releaseState, `${fixtureSha}.images`);
   const restoreMarker = path.join(stateDirectory, 'restore-in-progress.json');
   const restoreReview = path.join(
     stateDirectory,
@@ -179,19 +313,36 @@ const makeFixture = (kind, { failJob = '', existingMarker = false } = {}) => {
   mkdirSync(path.dirname(environmentFile), { recursive: true });
   mkdirSync(path.dirname(composeFile), { recursive: true });
   mkdirSync(scriptDirectory, { recursive: true });
+  mkdirSync(releaseState, { recursive: true });
   mkdirSync(stateDirectory, { recursive: true });
   mkdirSync(stateStore, { recursive: true });
   writeFileSync(environmentFile, 'SAFE_FIXTURE=true\n');
   writeFileSync(composeFile, 'services: {}\n');
   writeFileSync(path.join(scriptDirectory, 'load-environment.mjs'), '');
+  writeFileSync(path.join(scriptDirectory, 'validate-environment.mjs'), '');
   writeFileSync(path.join(scriptDirectory, 'assert-context.mjs'), '');
+  writeFileSync(
+    path.join(scriptDirectory, 'verify-runtime-services.sh'),
+    mockRuntimeVerifier,
+    { mode: 0o755 },
+  );
   writeFileSync(
     path.join(scriptDirectory, 'assert-process-authority.sh'),
     processAuthoritySource,
   );
+  writeFileSync(
+    currentShaFile,
+    invalidShaMarker
+      ? `${fixtureSha}\n${fixtureSha}\n`
+      : `${fixtureSha}\n`,
+  );
+  writeFileSync(manifest, 'fixture manifest\n');
   writeFileSync(trace, '');
   if (existingMarker) {
     writeFileSync(restoreMarker, 'prior restore\n');
+  }
+  if (existingOperationLock) {
+    writeFileSync(operationLock, 'prior operation\n');
   }
   for (const service of writerServices) {
     writeFileSync(path.join(stateStore, service), 'running');
@@ -200,6 +351,8 @@ const makeFixture = (kind, { failJob = '', existingMarker = false } = {}) => {
   for (const [name, source] of Object.entries({
     node: mockNode,
     docker: mockDocker,
+    flock: mockFlock,
+    git: mockGit,
     realpath: mockRealpath,
     sleep: mockSleep,
   })) {
@@ -208,6 +361,10 @@ const makeFixture = (kind, { failJob = '', existingMarker = false } = {}) => {
   }
 
   let transformed = sources[kind]
+    .replaceAll(
+      'git -C',
+      `"${posix(path.join(mockBin, 'git'))}" -C`,
+    )
     .replaceAll(
       '/opt/menorah-staging/env/server-staging.env',
       posix(environmentFile),
@@ -221,12 +378,38 @@ const makeFixture = (kind, { failJob = '', existingMarker = false } = {}) => {
       posix(scriptDirectory),
     )
     .replaceAll(
+      '/opt/menorah-staging/deploy-state/releases',
+      posix(releaseState),
+    )
+    .replaceAll(
+      '/opt/menorah-staging/deploy-state/.deploy.lock',
+      posix(deployLock),
+    )
+    .replaceAll(
+      `/opt/menorah-staging/deploy-state/${
+        kind === 'backup' ? '.backup.lock' : '.restore.lock'
+      }`,
+      posix(operationLock),
+    )
+    .replaceAll(
+      '/opt/menorah-staging/deploy-state/current-sha',
+      posix(currentShaFile),
+    )
+    .replaceAll(
       '/opt/menorah-staging/deploy-state/recovery/restore-in-progress.json',
       posix(restoreMarker),
     )
     .replaceAll(
       '/opt/menorah-staging/deploy-state/recovery/restore-requires-review.json',
       posix(restoreReview),
+    )
+    .replaceAll(
+      '/opt/menorah-staging/deploy-state',
+      posix(deployStateRoot),
+    )
+    .replaceAll(
+      '/opt/menorah-staging/app',
+      posix(appRoot),
     );
   const wrapper = path.join(root, `${kind}.sh`);
   writeFileSync(wrapper, transformed, { mode: 0o755 });
@@ -239,8 +422,17 @@ const makeFixture = (kind, { failJob = '', existingMarker = false } = {}) => {
       env: {
         ...process.env,
         PATH: `${mockBin}${path.delimiter}${process.env.PATH}`,
+        MOCK_BLOB: fixtureBlob,
+        MOCK_ENV_FILE: posix(environmentFile),
+        MOCK_ENV_FAIL: environmentFailure ? 'true' : '',
         MOCK_FAIL_JOB: failJob,
+        MOCK_GIT_DIRTY: dirtyCheckout ? 'true' : '',
+        MOCK_LOCK_UNAVAILABLE: lockUnavailable ? 'true' : '',
+        MOCK_MANIFEST: posix(manifest),
         MOCK_RESTORE_MARKER: posix(restoreMarker),
+        MOCK_RUNTIME_FAIL: runtimeFailure ? 'true' : '',
+        MOCK_SCRIPT_TAMPER: tamperedWrapper ? 'true' : '',
+        MOCK_SHA: fixtureSha,
         MOCK_STATE: posix(stateStore),
         MOCK_TRACE: posix(trace),
       },
@@ -248,6 +440,8 @@ const makeFixture = (kind, { failJob = '', existingMarker = false } = {}) => {
   );
   return {
     cleanup: () => rmSync(root, { recursive: true, force: true }),
+    deployLock,
+    operationLock,
     result,
     restoreMarker,
     stateStore,
@@ -262,8 +456,31 @@ test('wrapper sources pin exact authority and bounded service sets', () => {
     assert.match(source, /-f "\$\{REVIEWED_COMPOSE_FILE\}"/);
     assert.match(source, /--env-file "\$\{ENV_FILE\}"/);
     assert.match(source, /load-environment\.mjs/);
+    assert.match(source, /validate-environment\.mjs/);
     assert.match(source, /assert-context\.mjs/);
     assert.match(source, /assert-process-authority\.sh/);
+    assert.match(source, /verify-runtime-services\.sh/);
+    assert.match(
+      source,
+      /readonly DEPLOY_LOCK='\/opt\/menorah-staging\/deploy-state\/\.deploy\.lock'/,
+    );
+    assert.match(source, /exec 9>>"\$\{DEPLOY_LOCK\}"/);
+    assert.match(source, /flock -n 9/);
+    assert.match(source, /deploy-state\/current-sha/);
+    assert.match(source, /git -C "\$\{APP_ROOT\}" rev-parse HEAD/);
+    assert.match(
+      source,
+      /git -C "\$\{APP_ROOT\}" status --porcelain --untracked-files=all/,
+    );
+    assert.match(source, /git -C "\$\{APP_ROOT\}" hash-object/);
+    assert.match(
+      source,
+      /node "\$\{CONTEXT_ASSERTION\}" release "\$\{current_release_sha\}"/,
+    );
+    assert.match(
+      source,
+      /"\$\{RUNTIME_VERIFIER\}" "\$\{manifest\}"/,
+    );
     assert.match(
       source,
       /COMPOSE_PROJECT_NAME="\$\{EXPECTED_PROJECT\}"\nexport COMPOSE_PROJECT_NAME/,
@@ -282,6 +499,14 @@ test('wrapper sources pin exact authority and bounded service sets', () => {
   ].map((match) => match[1]);
   assert.deepEqual(declaredWriters, writerServices);
   assert.match(sources.backup, /trap restart_writers EXIT/);
+  assert.equal(
+    [
+      ...sources.backup.matchAll(
+        /for blocking_state in "\$\{RESTORE_MARKER\}" "\$\{RESTORE_REVIEW\}"/g,
+      ),
+    ].length,
+    2,
+  );
   assert.match(
     sources.backup,
     /docker stop --time 30 "\$\{writer_ids\[@\]\}"/,
@@ -307,6 +532,40 @@ test('wrapper sources pin exact authority and bounded service sets', () => {
   );
 });
 
+test('all mutable Docker work follows environment, context, lock, and runtime preflight', () => {
+  const backupMutation = sources.backup.indexOf(
+    'docker stop --time 30 "${writer_ids[@]}"',
+  );
+  const restoreMutation = sources.restore.indexOf(
+    'compose --profile recovery up -d',
+  );
+  for (const [source, mutation] of [
+    [sources.backup, backupMutation],
+    [sources.restore, restoreMutation],
+  ]) {
+    const lock = source.indexOf('flock -n 9');
+    const provenance = source.indexOf(
+      'assert_checkout_provenance',
+      lock,
+    );
+    const environment = source.indexOf(
+      'node "${ENV_VALIDATOR}" --env "${ENV_FILE}"',
+      provenance,
+    );
+    const context = source.indexOf(
+      'node "${CONTEXT_ASSERTION}"',
+      environment,
+    );
+    const runtime = source.indexOf('assert_exact_runtime', lock);
+    assert.ok(lock >= 0);
+    assert.ok(provenance > lock);
+    assert.ok(environment > provenance);
+    assert.ok(context > environment);
+    assert.ok(runtime > context);
+    assert.ok(mutation > runtime);
+  }
+});
+
 test('wrapper health polling uses a bounded arithmetic loop without unused iterators', () => {
   for (const source of Object.values(sources)) {
     assert.doesNotMatch(source, /for attempt in \$\(seq /);
@@ -323,7 +582,10 @@ test('consistent backup stops, backs up, and restarts exactly six writers', () =
     assert.equal(
       fixture.result.status,
       0,
-      fixture.result.stderr || fixture.result.stdout,
+      [
+        fixture.result.stderr || fixture.result.stdout,
+        `trace=${JSON.stringify(fixture.trace)}`,
+      ].join('\n'),
     );
     const stops = fixture.trace.filter((line) => line.startsWith('stop:'));
     const starts = fixture.trace.filter((line) => line.startsWith('start:'));
@@ -332,6 +594,23 @@ test('consistent backup stops, backs up, and restarts exactly six writers', () =
     const runIndex = fixture.trace.findIndex(
       (line) => line.startsWith('run:staging-backup-job:'),
     );
+    const environmentIndex = fixture.trace.indexOf(
+      'preflight:environment',
+    );
+    const contextIndex = fixture.trace.indexOf('assert:backup');
+    const lockIndex = fixture.trace.indexOf('lock:deploy');
+    const gitIndex = fixture.trace.findIndex(
+      (line) => line.includes('cat-file -e'),
+    );
+    const releaseIndex = fixture.trace.indexOf('assert:release');
+    const runtimeIndex = fixture.trace.indexOf('preflight:runtime');
+    assert.ok(lockIndex >= 0);
+    assert.ok(gitIndex > lockIndex);
+    assert.ok(environmentIndex > gitIndex);
+    assert.ok(contextIndex > environmentIndex);
+    assert.ok(releaseIndex > contextIndex);
+    assert.ok(runtimeIndex > releaseIndex);
+    assert.ok(fixture.trace.indexOf(stops[0]) > runtimeIndex);
     assert.ok(runIndex > fixture.trace.lastIndexOf(stops.at(-1)));
     assert.ok(runIndex < fixture.trace.indexOf(starts[0]));
     assert.match(
@@ -370,7 +649,10 @@ test('disposable restore proves initializer exit then stops only its target', ()
     assert.equal(
       fixture.result.status,
       0,
-      fixture.result.stderr || fixture.result.stdout,
+      [
+        fixture.result.stderr || fixture.result.stdout,
+        `trace=${JSON.stringify(fixture.trace)}`,
+      ].join('\n'),
     );
     assert.deepEqual(
       fixture.trace.filter(
@@ -416,3 +698,127 @@ test('existing restore state refuses all Docker mutation', () => {
     fixture.cleanup();
   }
 });
+
+for (const kind of ['backup', 'restore']) {
+  test(`${kind} refuses a failed full environment preflight before mutation`, () => {
+    const fixture = makeFixture(kind, { environmentFailure: true });
+    try {
+      assert.notEqual(fixture.result.status, 0);
+      assert.match(
+        fixture.result.stderr,
+        /full staging environment preflight failed/,
+      );
+      assert.equal(fixture.trace.at(-1), 'preflight:environment');
+      assert.equal(fixture.trace.includes(`assert:${kind}`), false);
+      assert.equal(fixture.trace.includes('preflight:runtime'), false);
+      assert.equal(
+        fixture.trace.some((line) => /^(?:stop|start|up|run):/.test(line)),
+        false,
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test(`${kind} refuses shared deploy-lock contention before mutation`, () => {
+    const fixture = makeFixture(kind, { lockUnavailable: true });
+    try {
+      assert.notEqual(fixture.result.status, 0);
+      assert.match(
+        fixture.result.stderr,
+        /another staging deployment, rollback, backup, or restore is running/,
+      );
+      assert.equal(
+        fixture.trace.some((line) => /^(?:stop|start|up|run):/.test(line)),
+        false,
+      );
+      assert.equal(fixture.trace.includes('preflight:runtime'), false);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test(`${kind} refuses a stale operation lock before mutation`, () => {
+    const fixture = makeFixture(kind, { existingOperationLock: true });
+    try {
+      assert.notEqual(fixture.result.status, 0);
+      assert.match(
+        fixture.result.stderr,
+        new RegExp(`staging ${kind} is already running`),
+      );
+      assert.equal(
+        fixture.trace.some((line) => /^(?:stop|start|up|run):/.test(line)),
+        false,
+      );
+      assert.equal(fixture.trace.includes('preflight:runtime'), false);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test(`${kind} refuses a dirty exact-release checkout before mutation`, () => {
+    const fixture = makeFixture(kind, { dirtyCheckout: true });
+    try {
+      assert.notEqual(fixture.result.status, 0);
+      assert.match(
+        fixture.result.stderr,
+        new RegExp(`${kind} requires a clean exact-release checkout`),
+      );
+      assert.equal(
+        fixture.trace.some((line) => /^(?:stop|start|up|run):/.test(line)),
+        false,
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test(`${kind} refuses a multi-record current-SHA marker before mutation`, () => {
+    const fixture = makeFixture(kind, { invalidShaMarker: true });
+    try {
+      assert.notEqual(fixture.result.status, 0);
+      assert.match(
+        fixture.result.stderr,
+        /current release marker must contain exactly one SHA record/,
+      );
+      assert.equal(
+        fixture.trace.some((line) => /^(?:stop|start|up|run):/.test(line)),
+        false,
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test(`${kind} refuses a tampered wrapper before mutation`, () => {
+    const fixture = makeFixture(kind, { tamperedWrapper: true });
+    try {
+      assert.notEqual(fixture.result.status, 0);
+      assert.match(
+        fixture.result.stderr,
+        new RegExp(`${kind} wrapper is not from the recorded current release`),
+      );
+      assert.equal(
+        fixture.trace.some((line) => /^(?:stop|start|up|run):/.test(line)),
+        false,
+      );
+      assert.equal(fixture.trace.includes('preflight:runtime'), false);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test(`${kind} refuses runtime-manifest drift before mutation`, () => {
+    const fixture = makeFixture(kind, { runtimeFailure: true });
+    try {
+      assert.notEqual(fixture.result.status, 0);
+      assert.equal(fixture.trace.includes('preflight:runtime'), true);
+      assert.equal(
+        fixture.trace.some((line) => /^(?:stop|start|up|run):/.test(line)),
+        false,
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+}

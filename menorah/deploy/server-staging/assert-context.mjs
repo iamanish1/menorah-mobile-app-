@@ -12,16 +12,17 @@ const SCRIPT_DIRECTORY = path.dirname(SCRIPT_PATH);
 export const EXPECTED_CONTEXT = Object.freeze({
   COMPOSE_PROJECT_NAME: 'menorah-staging',
   MENORAH_SERVER_STAGING_ENVIRONMENT_ID: 'menorah-server-staging-v1',
-  MENORAH_STAGING_ROOT: '/opt/menorah-staging',
-  MENORAH_STAGING_APP_ROOT: '/opt/menorah-staging/app',
-  MENORAH_STAGING_DATA_ROOT: '/opt/menorah-staging/data',
-  MENORAH_STAGING_BACKUP_ROOT: '/opt/menorah-staging/backups',
-  MENORAH_STAGING_DEPLOY_STATE_ROOT: '/opt/menorah-staging/deploy-state',
-  MENORAH_STAGING_LOGS_ROOT: '/opt/menorah-staging/logs',
-  MENORAH_STAGING_ENV_ROOT: '/opt/menorah-staging/env',
-  MENORAH_STAGING_DATABASE: 'menorah_staging',
-  MENORAH_STAGING_REPLICA_SET: 'menorah-staging-rs',
-  MENORAH_STAGING_ROOTS_ACK: 'MENORAH_STAGING_ROOTS_REVIEWED',
+  MENORAH_SERVER_STAGING_ROOT: '/opt/menorah-staging',
+  MENORAH_SERVER_STAGING_APP_ROOT: '/opt/menorah-staging/app',
+  MENORAH_SERVER_STAGING_DATA_ROOT: '/opt/menorah-staging/data',
+  MENORAH_SERVER_STAGING_BACKUP_ROOT: '/opt/menorah-staging/backups',
+  MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT:
+    '/opt/menorah-staging/deploy-state',
+  MENORAH_SERVER_STAGING_LOGS_ROOT: '/opt/menorah-staging/logs',
+  MENORAH_SERVER_STAGING_ENV_ROOT: '/opt/menorah-staging/env',
+  MONGO_DATABASE: 'menorah_staging',
+  MONGODB_REPLICA_SET_NAME: 'menorah-staging-rs',
+  MONGODB_RESTORE_REPLICA_SET_NAME: 'menorah-staging-restore-rs',
 });
 
 export const DERIVED_PATHS = Object.freeze({
@@ -85,16 +86,16 @@ export const EXPECTED_RELEASE_IDENTITY = Object.freeze({
   composeProject: EXPECTED_CONTEXT.COMPOSE_PROJECT_NAME,
   environmentId:
     EXPECTED_CONTEXT.MENORAH_SERVER_STAGING_ENVIRONMENT_ID,
-  filesystemRoot: EXPECTED_CONTEXT.MENORAH_STAGING_ROOT,
-  appRoot: EXPECTED_CONTEXT.MENORAH_STAGING_APP_ROOT,
-  dataRoot: EXPECTED_CONTEXT.MENORAH_STAGING_DATA_ROOT,
-  backupRoot: EXPECTED_CONTEXT.MENORAH_STAGING_BACKUP_ROOT,
+  filesystemRoot: EXPECTED_CONTEXT.MENORAH_SERVER_STAGING_ROOT,
+  appRoot: EXPECTED_CONTEXT.MENORAH_SERVER_STAGING_APP_ROOT,
+  dataRoot: EXPECTED_CONTEXT.MENORAH_SERVER_STAGING_DATA_ROOT,
+  backupRoot: EXPECTED_CONTEXT.MENORAH_SERVER_STAGING_BACKUP_ROOT,
   deployStateRoot:
-    EXPECTED_CONTEXT.MENORAH_STAGING_DEPLOY_STATE_ROOT,
-  logsRoot: EXPECTED_CONTEXT.MENORAH_STAGING_LOGS_ROOT,
-  environmentRoot: EXPECTED_CONTEXT.MENORAH_STAGING_ENV_ROOT,
-  database: EXPECTED_CONTEXT.MENORAH_STAGING_DATABASE,
-  replicaSet: EXPECTED_CONTEXT.MENORAH_STAGING_REPLICA_SET,
+    EXPECTED_CONTEXT.MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT,
+  logsRoot: EXPECTED_CONTEXT.MENORAH_SERVER_STAGING_LOGS_ROOT,
+  environmentRoot: EXPECTED_CONTEXT.MENORAH_SERVER_STAGING_ENV_ROOT,
+  database: EXPECTED_CONTEXT.MONGO_DATABASE,
+  replicaSet: EXPECTED_CONTEXT.MONGODB_REPLICA_SET_NAME,
 });
 
 const PRODUCTION_ROOTS = Object.freeze([
@@ -116,18 +117,20 @@ const VALID_MODES = new Set([
 
 export const EXPECTED_MODE_CONTEXT = Object.freeze({
   backup: Object.freeze({
+    MENORAH_STAGING_ROOTS_ACK:
+      'MENORAH_STAGING_ROOTS_REVIEWED',
     MENORAH_STAGING_BACKUP_ACK:
       'BACKUP_MENORAH_STAGING_SYNTHETIC_DATA',
     MENORAH_STAGING_WRITERS_QUIESCED:
       'APPLICATION_WRITERS_STOPPED',
   }),
   restore: Object.freeze({
+    MENORAH_STAGING_ROOTS_ACK:
+      'MENORAH_STAGING_ROOTS_REVIEWED',
     MENORAH_STAGING_RESTORE_ACK:
       'RESTORE_MENORAH_STAGING_TO_DISPOSABLE_TARGET',
     MENORAH_STAGING_RESTORE_TARGET:
       'staging-mongo-restore',
-    MENORAH_STAGING_RESTORE_REPLICA_SET:
-      'menorah-staging-restore-rs',
   }),
   manifest: Object.freeze({
     MENORAH_STAGING_MANIFEST_ACK:
@@ -280,14 +283,15 @@ export const validateContext = (
     }
   }
 
+  // Only these locations are host-backed. Data, backup, log, retrieval, and
+  // restore paths are exact logical mount targets backed by dedicated Docker
+  // volumes and are verified from the rendered Compose model and in-job
+  // guards, not by checking unrelated same-named host directories.
   for (const key of [
-    'MENORAH_STAGING_ROOT',
-    'MENORAH_STAGING_APP_ROOT',
-    'MENORAH_STAGING_DATA_ROOT',
-    'MENORAH_STAGING_BACKUP_ROOT',
-    'MENORAH_STAGING_DEPLOY_STATE_ROOT',
-    'MENORAH_STAGING_LOGS_ROOT',
-    'MENORAH_STAGING_ENV_ROOT',
+    'MENORAH_SERVER_STAGING_ROOT',
+    'MENORAH_SERVER_STAGING_APP_ROOT',
+    'MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT',
+    'MENORAH_SERVER_STAGING_ENV_ROOT',
   ]) {
     assertCanonicalExistingPath(
       environment[key],
@@ -298,30 +302,9 @@ export const validateContext = (
   }
 
   if (checkDerivedPaths) {
-    const derivedByMode = {
-      backup: [
-        'backupBundles',
-        'retrieval',
-        'uploads',
-      ],
-      restore: [
-        'retrieval',
-        'restore',
-        'restoreMedia',
-      ],
-      manifest: [
-        'releaseState',
-      ],
-      deploy: [
-        'releaseState',
-      ],
-      rollback: [
-        'releaseState',
-      ],
-      migration: [
-        'releaseState',
-      ],
-    };
+    const derivedByMode = Object.fromEntries(
+      [...VALID_MODES].map((validMode) => [validMode, ['releaseState']]),
+    );
     for (const key of derivedByMode[mode]) {
       assertCanonicalExistingPath(
         DERIVED_PATHS[key],
@@ -330,34 +313,32 @@ export const validateContext = (
         fsAdapter,
       );
     }
-    if (['manifest', 'deploy', 'rollback', 'migration'].includes(mode)) {
-      for (const key of ['environmentFile', 'composeFile']) {
-        const value = DERIVED_PATHS[key];
-        assertNoAmbiguousPathSyntax(value, key);
-        if (!fsAdapter.existsSync(value)) {
+    for (const key of ['environmentFile', 'composeFile']) {
+      const value = DERIVED_PATHS[key];
+      assertNoAmbiguousPathSyntax(value, key);
+      if (!fsAdapter.existsSync(value)) {
+        throw makeError(
+          'required_file_missing',
+          `${key} must exist before a mutating operation.`,
+        );
+      }
+      for (const component of pathComponents(value)) {
+        if (fsAdapter.lstatSync(component).isSymbolicLink()) {
           throw makeError(
-            'required_file_missing',
-            `${key} must exist before a mutating operation.`,
+            'symlink_root',
+            `${key} contains a symbolic-link path component.`,
           );
         }
-        for (const component of pathComponents(value)) {
-          if (fsAdapter.lstatSync(component).isSymbolicLink()) {
-            throw makeError(
-              'symlink_root',
-              `${key} contains a symbolic-link path component.`,
-            );
-          }
-        }
-        if (fsAdapter.realpathSync(value) !== value) {
-          throw makeError(
-            'symlink_escape',
-            `${key} does not resolve to its reviewed path.`,
-          );
-        }
-        const stat = fsAdapter.lstatSync(value);
-        if (!stat.isFile()) {
-          throw makeError('required_file_invalid', `${key} must be a file.`);
-        }
+      }
+      if (fsAdapter.realpathSync(value) !== value) {
+        throw makeError(
+          'symlink_escape',
+          `${key} does not resolve to its reviewed path.`,
+        );
+      }
+      const stat = fsAdapter.lstatSync(value);
+      if (!stat.isFile()) {
+        throw makeError('required_file_invalid', `${key} must be a file.`);
       }
     }
   }

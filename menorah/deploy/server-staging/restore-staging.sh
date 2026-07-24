@@ -47,6 +47,111 @@ require_exact_directory() {
     || fail "${label} resolves outside the reviewed staging root"
 }
 
+require_regular_bundle_member() {
+  member="$1"
+  path="${BUNDLE}/${member}"
+  [ -f "${path}" ] && [ ! -L "${path}" ] \
+    || fail "retrieval bundle member is not a regular file: ${member}"
+  [ "$(realpath -e -- "${path}")" = "${path}" ] \
+    || fail "retrieval bundle member escapes its exact path: ${member}"
+}
+
+assert_exact_bundle_members() {
+  for member in \
+    database.archive.gz.enc \
+    database-manifest.json \
+    managed-media.tar.gz.enc \
+    managed-media-entries.manifest \
+    managed-media-manifest.sha256 \
+    metadata.json \
+    SHA256SUMS \
+    signature.hmac-sha256 \
+    uploads.tar.gz.enc \
+    uploads-entries.manifest \
+    uploads-manifest.sha256
+  do
+    require_regular_bundle_member "${member}"
+  done
+  unexpected_member="$(
+    find "${BUNDLE}" -mindepth 1 -maxdepth 1 \
+      ! -name database.archive.gz.enc \
+      ! -name database-manifest.json \
+      ! -name managed-media.tar.gz.enc \
+      ! -name managed-media-entries.manifest \
+      ! -name managed-media-manifest.sha256 \
+      ! -name metadata.json \
+      ! -name SHA256SUMS \
+      ! -name signature.hmac-sha256 \
+      ! -name uploads.tar.gz.enc \
+      ! -name uploads-entries.manifest \
+      ! -name uploads-manifest.sha256 \
+      -print -quit
+  )"
+  [ -z "${unexpected_member}" ] \
+    || fail 'retrieval bundle contains an unexpected member'
+}
+
+assert_exact_checksum_manifest() {
+  perl -e '
+    use strict;
+    use warnings;
+    my @expected = qw(
+      database.archive.gz.enc
+      database-manifest.json
+      managed-media.tar.gz.enc
+      managed-media-entries.manifest
+      managed-media-manifest.sha256
+      metadata.json
+      uploads.tar.gz.enc
+      uploads-entries.manifest
+      uploads-manifest.sha256
+    );
+    my $path = shift @ARGV;
+    open my $fh, "<", $path or die "checksum manifest unavailable\n";
+    for my $expected (@expected) {
+      my $line = <$fh>;
+      die "checksum record missing\n" unless defined $line;
+      die "checksum record is not LF terminated\n"
+        unless $line =~ s/\n\z//;
+      die "checksum record is invalid\n"
+        unless $line =~ m{\A[0-9a-f]{64}  \Q$expected\E\z};
+    }
+    die "unexpected checksum record\n" if defined <$fh>;
+  ' "${BUNDLE}/SHA256SUMS" \
+    || fail 'backup checksum manifest is not the exact reviewed file set'
+}
+
+validate_regular_directory_archive() {
+  archive="$1"
+  label="$2"
+  listing="${WORK_DIR}/.${label}-archive-members"
+  verbose_listing="${WORK_DIR}/.${label}-archive-types"
+  tar --quoting-style=escape -tzf "${archive}" > "${listing}" \
+    || fail "${label} archive cannot be listed"
+  tar --quoting-style=escape -tvzf "${archive}" > "${verbose_listing}" \
+    || fail "${label} archive types cannot be listed"
+  perl -ne '
+    chomp;
+    die "ambiguous archive path\n" if /\\/;
+    next if $_ eq "." || $_ eq "./";
+    die "archive path is not relative\n" unless m{\A\./};
+    my $path = substr($_, 2);
+    $path =~ s{/\z}{};
+    die "archive path is ambiguous\n"
+      if $path eq "" || $path =~ m{(?:\A|/)\.\.?(?:/|\z)};
+  ' "${listing}" \
+    || fail "${label} archive contains an unsafe path"
+  awk '
+    {
+      type = substr($0, 1, 1)
+      if (type != "-" && type != "d") exit 1
+    }
+  ' "${verbose_listing}" \
+    || fail "${label} archive contains a link or special entry"
+  awk 'seen[$0]++ { exit 1 }' "${listing}" \
+    || fail "${label} archive contains a duplicate path"
+}
+
 [ "$#" -eq 1 ] || fail 'usage: restore-staging.sh YYYYMMDDTHHMMSSZ'
 readonly STAMP="$1"
 printf '%s' "${STAMP}" | grep -Eq '^[0-9]{8}T[0-9]{6}Z$' \
@@ -147,6 +252,7 @@ esac
   || fail 'the explicit retrieval bundle is unavailable'
 [ "$(realpath -e -- "${BUNDLE}")" = "${BUNDLE}" ] \
   || fail 'the retrieval bundle escapes staging storage'
+assert_exact_bundle_members
 [ ! -e "${WORK_DIR}" ] && [ ! -L "${WORK_DIR}" ] \
   || fail 'restore work path already exists'
 [ ! -e "${MONGO_CONFIG}" ] && [ ! -L "${MONGO_CONFIG}" ] \
@@ -234,11 +340,6 @@ chmod 600 "${RESTORE_MARKER_TEMP}"
   || fail 'a staging restore is already in progress'
 mv -- "${RESTORE_MARKER_TEMP}" "${RESTORE_MARKER}"
 
-(
-  cd "${BUNDLE}"
-  sha256sum -c SHA256SUMS >/dev/null
-)
-
 perl -MDigest::SHA=hmac_sha256_hex -e '
   use strict;
   use warnings;
@@ -256,7 +357,9 @@ perl -MDigest::SHA=hmac_sha256_hex -e '
   }
   open my $expected_fh, "<", $expected_path
     or die "signature unavailable\n";
-  my $expected = <$expected_fh>;
+  my $expected = do { local $/; <$expected_fh> };
+  die "signature format is invalid\n"
+    unless $expected =~ /\A[0-9a-f]{64}\n\z/;
   chomp $expected;
   die "signature mismatch\n"
     unless hmac_sha256_hex($payload, $key) eq $expected;
@@ -265,9 +368,17 @@ perl -MDigest::SHA=hmac_sha256_hex -e '
   "${BUNDLE}/signature.hmac-sha256" \
   "${BUNDLE}/metadata.json" \
   "${BUNDLE}/database-manifest.json" \
+  "${BUNDLE}/uploads-entries.manifest" \
   "${BUNDLE}/uploads-manifest.sha256" \
+  "${BUNDLE}/managed-media-entries.manifest" \
   "${BUNDLE}/managed-media-manifest.sha256" \
   "${BUNDLE}/SHA256SUMS"
+
+assert_exact_checksum_manifest
+(
+  cd "${BUNDLE}"
+  sha256sum --strict -c SHA256SUMS >/dev/null
+)
 
 for expected_metadata in \
   "\"composeProject\": \"${ACTIVE_PROJECT}\"" \
@@ -279,7 +390,9 @@ for expected_metadata in \
   '"database": "menorah_staging"' \
   '"replicaSet": "menorah-staging-rs"' \
   "\"runtimeSha\": \"${MENORAH_SERVER_STAGING_RUNTIME_SHA}\"" \
+  "\"createdAt\": \"${STAMP}\"" \
   '"mediaScopes": ["uploads", "managed-media"]' \
+  '"mediaEntryManifestFormat": "nul-type-path-v1"' \
   '"syntheticDataOnly": true' \
   '"consistency": "application-writers-quiesced"'
 do
@@ -299,6 +412,13 @@ openssl enc -d -aes-256-cbc -pbkdf2 \
   -in "${BUNDLE}/managed-media.tar.gz.enc" \
   -out "${WORK_DIR}/managed-media.tar.gz" \
   -pass "file:${ENCRYPTION_KEY_FILE}"
+
+validate_regular_directory_archive \
+  "${WORK_DIR}/uploads.tar.gz" \
+  'uploads'
+validate_regular_directory_archive \
+  "${WORK_DIR}/managed-media.tar.gz" \
+  'managed-media'
 
 escaped_uri="$(
   printf '%s' "${MONGODB_STAGING_RESTORE_URI}" \
@@ -322,6 +442,7 @@ mongorestore \
   '--nsInclude=menorah_staging.*' \
   --gzip \
   --drop \
+  --stopOnError \
   >/dev/null
 
 find "${RESTORE_MEDIA_ROOT}" -mindepth 1 -maxdepth 1 \
@@ -329,10 +450,20 @@ find "${RESTORE_MEDIA_ROOT}" -mindepth 1 -maxdepth 1 \
 mkdir -- \
   "${RESTORE_MEDIA_ROOT}/uploads" \
   "${RESTORE_MEDIA_ROOT}/managed-media"
-tar --no-same-owner -C "${RESTORE_MEDIA_ROOT}/uploads" \
+tar --no-same-owner --no-same-permissions --delay-directory-restore \
+  -C "${RESTORE_MEDIA_ROOT}/uploads" \
   -xzf "${WORK_DIR}/uploads.tar.gz"
-tar --no-same-owner -C "${RESTORE_MEDIA_ROOT}/managed-media" \
+tar --no-same-owner --no-same-permissions --delay-directory-restore \
+  -C "${RESTORE_MEDIA_ROOT}/managed-media" \
   -xzf "${WORK_DIR}/managed-media.tar.gz"
+(
+  cd "${RESTORE_MEDIA_ROOT}/uploads"
+  find . -mindepth 1 -printf '%y|%p\0' | sort -z
+) > "${WORK_DIR}/restored-uploads-entries.manifest"
+cmp -s \
+  "${BUNDLE}/uploads-entries.manifest" \
+  "${WORK_DIR}/restored-uploads-entries.manifest" \
+  || fail 'restored uploads do not match their signed entry manifest'
 (
   cd "${RESTORE_MEDIA_ROOT}/uploads"
   find . -type f -print0 \
@@ -343,6 +474,14 @@ cmp -s \
   "${BUNDLE}/uploads-manifest.sha256" \
   "${WORK_DIR}/restored-uploads-manifest.sha256" \
   || fail 'restored uploads do not match their signed manifest'
+(
+  cd "${RESTORE_MEDIA_ROOT}/managed-media"
+  find . -mindepth 1 -printf '%y|%p\0' | sort -z
+) > "${WORK_DIR}/restored-managed-media-entries.manifest"
+cmp -s \
+  "${BUNDLE}/managed-media-entries.manifest" \
+  "${WORK_DIR}/restored-managed-media-entries.manifest" \
+  || fail 'restored managed media does not match its signed entry manifest'
 (
   cd "${RESTORE_MEDIA_ROOT}/managed-media"
   find . -type f -print0 \
@@ -387,6 +526,6 @@ cmp -s \
 
 rm -rf -- "${WORK_DIR}"
 rm -f -- "${MONGO_CONFIG}" "${RESTORE_MARKER_TEMP}"
-rm -f -- "${RESTORE_LOCK}"
 rm -f -- "${RESTORE_MARKER}"
+rm -f -- "${RESTORE_LOCK}"
 printf '%s\n' "Server-staging restore verified: ${STAMP}"
