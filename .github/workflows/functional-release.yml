@@ -524,8 +524,10 @@ jobs:
             menorah/deploy/ubuntu/install-backup-schedule.sh \
             menorah/deploy/ubuntu/prepare-host.sh \
             menorah/deploy/monitoring/export-backup-metrics.sh \
+            menorah/deploy/server-staging/*.sh \
             menorah/scripts/qa/test-backup-lifecycle.sh \
             menorah/scripts/qa/test-monitoring-native.sh \
+            menorah/scripts/qa/validate-server-staging-isolation.sh \
             2>&1 | tee "${RESULT_DIR}/shellcheck.log"
       - name: Upload release-infrastructure results
         if: ${{ always() }}

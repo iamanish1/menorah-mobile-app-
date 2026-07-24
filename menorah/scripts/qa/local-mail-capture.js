@@ -1,4 +1,7 @@
 const { execFileSync } = require('node:child_process');
+const {
+  resolveLocalValidationProfile,
+} = require('./smoke-target-safety');
 
 const PROJECT = 'menorah-local-staging';
 const SERVICE = 'mail-capture';
@@ -6,6 +9,7 @@ const CONFIRMATION = 'USE_INTERNAL_SYNTHETIC_OTP_CAPTURE';
 const SYNTHETIC_EMAIL_SUFFIX = '@mail.staging.localhost';
 
 const requireConfirmation = (env = process.env) => {
+  resolveLocalValidationProfile(env);
   if (env.QA_LOCAL_STAGING_MAIL_CAPTURE_CONFIRM !== CONFIRMATION) {
     throw new Error(
       'Local mail capture requires the exact synthetic OTP confirmation'
@@ -13,13 +17,17 @@ const requireConfirmation = (env = process.env) => {
   }
 };
 
-const findContainer = ({ execute = execFileSync } = {}) => {
+const findContainer = ({
+  env = process.env,
+  execute = execFileSync,
+} = {}) => {
+  const profile = resolveLocalValidationProfile(env);
   const output = execute('docker', [
     'ps',
     '--filter',
-    `label=com.docker.compose.project=${PROJECT}`,
+    `label=com.docker.compose.project=${profile.dockerProject}`,
     '--filter',
-    `label=com.docker.compose.service=${SERVICE}`,
+    `label=com.docker.compose.service=${profile.mailCaptureService}`,
     '--format',
     '{{.ID}}',
   ], {
@@ -42,11 +50,12 @@ const executeCaptureAction = (
   } = {}
 ) => {
   requireConfirmation(env);
+  const profile = resolveLocalValidationProfile(env);
   if (
     recipient
     && (
       recipient !== recipient.trim().toLowerCase()
-      || !recipient.endsWith(SYNTHETIC_EMAIL_SUFFIX)
+      || !recipient.endsWith(profile.syntheticEmailSuffix)
     )
   ) {
     throw new Error('Mail capture accepts only an exact synthetic recipient');
@@ -79,7 +88,7 @@ const executeCaptureAction = (
   return execute('docker', [
     'exec',
     '-i',
-    findContainer({ execute }),
+    findContainer({ env, execute }),
     'node',
     '--input-type=module',
     '--eval',

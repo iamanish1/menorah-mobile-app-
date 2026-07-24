@@ -5,14 +5,19 @@ const {
   clearSyntheticMessages,
   readLatestSyntheticOtp,
 } = require('./local-mail-capture');
+const {
+  resolveLocalValidationProfile,
+} = require('./smoke-target-safety');
 
-const DEFAULTS = {
+const LOCAL_STAGING_DEFAULTS = {
   apiIos: 'http://127.0.0.1:28080',
   apiAndroid: 'http://127.0.0.1:28081',
   apiWeb: 'http://127.0.0.1:28082',
   apiAdmin: 'http://127.0.0.1:28083',
   worker: 'http://127.0.0.1:28084',
 };
+const validationProfile = resolveLocalValidationProfile(process.env);
+const DEFAULTS = validationProfile.apiTargets || LOCAL_STAGING_DEFAULTS;
 
 const config = {
   apiIos: process.env.QA_API_IOS_URL || DEFAULTS.apiIos,

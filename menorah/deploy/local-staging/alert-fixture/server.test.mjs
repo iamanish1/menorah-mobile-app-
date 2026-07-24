@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   EXPECTED_ENVIRONMENT_ID,
   EXPECTED_PROJECT,
+  SERVER_STAGING_ENVIRONMENT_ID,
+  SERVER_STAGING_PROJECTS,
   applyFixtureAction,
   createAlertFixtureServer,
   createFixtureState,
@@ -123,6 +125,57 @@ test('control endpoints require exact local identity and log no bodies', async (
     assert.match(metrics, /local-alert-fixture/);
   } finally {
     await close(server);
+  }
+});
+
+test('server-staging controls accept only exact default or validation identities', async () => {
+  for (const project of SERVER_STAGING_PROJECTS) {
+    const server = createAlertFixtureServer({
+      project,
+      environmentId: SERVER_STAGING_ENVIRONMENT_ID,
+    });
+    const baseUrl = await listen(server);
+    try {
+      const accepted = await fetch(`${baseUrl}/control/trigger`, {
+        method: 'POST',
+        headers: {
+          'X-Menorah-Compose-Project': project,
+          'X-Menorah-Environment-Id': SERVER_STAGING_ENVIRONMENT_ID,
+        },
+      });
+      assert.equal(accepted.status, 204);
+
+      const crossedPair = await fetch(`${baseUrl}/control/reset`, {
+        method: 'POST',
+        headers: {
+          'X-Menorah-Compose-Project': EXPECTED_PROJECT,
+          'X-Menorah-Environment-Id': EXPECTED_ENVIRONMENT_ID,
+        },
+      });
+      assert.equal(crossedPair.status, 403);
+    } finally {
+      await close(server);
+    }
+  }
+
+  for (const options of [
+    {
+      project: 'menorah-arbitrary-staging',
+      environmentId: SERVER_STAGING_ENVIRONMENT_ID,
+    },
+    {
+      project: SERVER_STAGING_PROJECTS[0],
+      environmentId: EXPECTED_ENVIRONMENT_ID,
+    },
+    {
+      project: EXPECTED_PROJECT,
+      environmentId: SERVER_STAGING_ENVIRONMENT_ID,
+    },
+  ]) {
+    assert.throws(
+      () => createAlertFixtureServer(options),
+      /refused invalid isolated identity/,
+    );
   }
 });
 

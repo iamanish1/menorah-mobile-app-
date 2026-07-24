@@ -2,9 +2,16 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import test from 'node:test';
 
-import { createMailCaptureServer } from './server.mjs';
+import {
+  LOCAL_MAIL_CAPTURE_ENVIRONMENT_ID,
+  LOCAL_MAIL_CAPTURE_PROJECT,
+  SERVER_STAGING_MAIL_CAPTURE_ENVIRONMENT_ID,
+  SERVER_STAGING_MAIL_CAPTURE_PROJECTS,
+  createMailCaptureServer,
+} from './server.mjs';
 
 const API_KEY = `re_local_${'a'.repeat(40)}`;
+const SERVER_API_KEY = `re_server_staging_${'b'.repeat(40)}`;
 
 const startServer = async (options = {}) => {
   const server = createMailCaptureServer({
@@ -172,16 +179,58 @@ test('invalid messages fail closed and the in-memory queue is bounded', async ()
   }
 });
 
-test('capture startup rejects weak or non-local credentials', () => {
+test('capture startup accepts only exact identity, project, and key-prefix pairs', () => {
+  assert.doesNotThrow(() => createMailCaptureServer({
+    apiKey: API_KEY,
+    composeProject: LOCAL_MAIL_CAPTURE_PROJECT,
+    environmentId: LOCAL_MAIL_CAPTURE_ENVIRONMENT_ID,
+  }));
+  for (const composeProject of SERVER_STAGING_MAIL_CAPTURE_PROJECTS) {
+    assert.doesNotThrow(() => createMailCaptureServer({
+      apiKey: SERVER_API_KEY,
+      composeProject,
+      environmentId: SERVER_STAGING_MAIL_CAPTURE_ENVIRONMENT_ID,
+    }));
+  }
+
   for (const apiKey of [
     '',
     'ordinary-key',
     're_local_short',
     `re_test_${'a'.repeat(40)}`,
+    `re_live_${'a'.repeat(40)}`,
   ]) {
     assert.throws(
       () => createMailCaptureServer({ apiKey }),
-      /strong local mail-capture API key/,
+      /strong mail-capture key for an exact isolated environment/,
+    );
+  }
+
+  for (const options of [
+    {
+      apiKey: SERVER_API_KEY,
+      composeProject: LOCAL_MAIL_CAPTURE_PROJECT,
+      environmentId: LOCAL_MAIL_CAPTURE_ENVIRONMENT_ID,
+    },
+    {
+      apiKey: API_KEY,
+      composeProject: SERVER_STAGING_MAIL_CAPTURE_PROJECTS[0],
+      environmentId: SERVER_STAGING_MAIL_CAPTURE_ENVIRONMENT_ID,
+    },
+    {
+      apiKey: SERVER_API_KEY,
+      composeProject: 'menorah-arbitrary-staging',
+      environmentId: SERVER_STAGING_MAIL_CAPTURE_ENVIRONMENT_ID,
+    },
+    {
+      apiKey: SERVER_API_KEY,
+      composeProject: SERVER_STAGING_MAIL_CAPTURE_PROJECTS[0],
+      environmentId: LOCAL_MAIL_CAPTURE_ENVIRONMENT_ID,
+    },
+  ]) {
+    assert.throws(
+      () => createMailCaptureServer(options),
+      /strong mail-capture key for an exact isolated environment/,
     );
   }
 });

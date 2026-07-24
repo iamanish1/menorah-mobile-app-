@@ -196,6 +196,8 @@ describe('startup validation', () => {
     delete process.env.SOCIAL_STUDIO_STORAGE;
     delete process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT;
     delete process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID;
+    delete process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID;
+    delete process.env.MENORAH_SERVER_STAGING_PROJECT_NAME;
     delete process.env.RESEND_API_URL;
   });
 
@@ -401,6 +403,16 @@ describe('startup validation', () => {
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' }))
       .toThrow(/MENORAH_LOCAL_STAGING_HTTPS_PORT must be unset outside staging/);
+  });
+
+  test('rejects the server staging identity selector in production', () => {
+    process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID =
+      'menorah-server-staging-v1';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(
+        /MENORAH_SERVER_STAGING_ENVIRONMENT_ID must be unset outside staging/
+      );
   });
 
   test('rejects staging when every topology variable is omitted', () => {

@@ -7,9 +7,20 @@ const {
   readLatestSyntheticOtp,
   requireConfirmation,
 } = require('./local-mail-capture');
+const {
+  SERVER_STAGING_VALIDATION_CONFIRMATION,
+  SERVER_STAGING_VALIDATION_PROJECT,
+} = require('./smoke-target-safety');
 
 const confirmedEnv = {
   QA_LOCAL_STAGING_MAIL_CAPTURE_CONFIRM: CONFIRMATION,
+};
+const confirmedServerEnv = {
+  ...confirmedEnv,
+  QA_TARGET_ENVIRONMENT: 'staging',
+  QA_SERVER_STAGING_VALIDATION_CONFIRM:
+    SERVER_STAGING_VALIDATION_CONFIRMATION,
+  COMPOSE_PROJECT_NAME: SERVER_STAGING_VALIDATION_PROJECT,
 };
 
 test('capture helper requires the exact local synthetic confirmation', () => {
@@ -52,6 +63,59 @@ test('capture helper reads an OTP only from the exact project service', () => {
     '-i',
     'container-id',
   ]);
+});
+
+test('capture helper selects only the server validation project and mailbox', () => {
+  const calls = [];
+  const execute = (command, args) => {
+    calls.push({ command, args });
+    return calls.length === 1 ? 'server-container-id\n' : '654321';
+  };
+
+  assert.equal(
+    readLatestSyntheticOtp('admin-full-1@mail.staging.menorah.me', {
+      env: confirmedServerEnv,
+      execute,
+    }),
+    '654321',
+  );
+  assert.deepEqual(calls[0].args.slice(0, 5), [
+    'ps',
+    '--filter',
+    'label=com.docker.compose.project=menorah-server-staging-validation',
+    '--filter',
+    'label=com.docker.compose.service=staging-mail-capture',
+  ]);
+});
+
+test('capture helper rejects crossed server project and mailbox inputs', () => {
+  assert.throws(
+    () => readLatestSyntheticOtp(
+      'admin-full-1@mail.staging.localhost',
+      {
+        env: confirmedServerEnv,
+        execute: () => {
+          throw new Error('docker must not run');
+        },
+      },
+    ),
+    /only an exact synthetic recipient/,
+  );
+  assert.throws(
+    () => readLatestSyntheticOtp(
+      'admin-full-1@mail.staging.menorah.me',
+      {
+        env: {
+          ...confirmedServerEnv,
+          COMPOSE_PROJECT_NAME: 'menorah-local-staging',
+        },
+        execute: () => {
+          throw new Error('docker must not run');
+        },
+      },
+    ),
+    /COMPOSE_PROJECT_NAME=menorah-server-staging-validation/,
+  );
 });
 
 test('capture clear keeps provider credentials inside the container', () => {

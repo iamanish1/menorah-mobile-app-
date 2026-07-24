@@ -87,7 +87,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for script in menorah/deploy/ubuntu/*.sh menorah/scripts/qa/test-release-scripts.sh; do
+          for script in \
+            menorah/deploy/ubuntu/*.sh \
+            menorah/deploy/server-staging/*.sh \
+            menorah/scripts/qa/test-release-scripts.sh \
+            menorah/scripts/qa/validate-server-staging-isolation.sh
+          do
             bash -n "${script}"
           done
 

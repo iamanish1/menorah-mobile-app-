@@ -69,6 +69,61 @@ describe('email delivery logging', () => {
     });
   };
 
+  const configureServerStagingMailCapture = () => {
+    const hosts = {
+      ROOT_DOMAIN: 'staging.menorah.me',
+      WWW_DOMAIN: 'www.staging.menorah.me',
+      APP_DOMAIN: 'app.staging.menorah.me',
+      ADMIN_DOMAIN: 'admin.staging.menorah.me',
+      COUNSELLOR_DOMAIN: 'counsellor.staging.menorah.me',
+      API_IOS_DOMAIN: 'api-ios.staging.menorah.me',
+      API_ANDROID_DOMAIN: 'api-android.staging.menorah.me',
+      API_WEB_DOMAIN: 'api-web.staging.menorah.me',
+      API_ADMIN_DOMAIN: 'api-admin.staging.menorah.me',
+      CALLS_DOMAIN: 'calls.staging.menorah.me',
+    };
+    const origin = (host) => `https://${host}`;
+    Object.assign(process.env, {
+      ...hosts,
+      NODE_ENV: 'production',
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      MENORAH_SERVER_STAGING_ENVIRONMENT_ID:
+        'menorah-server-staging-v1',
+      MENORAH_SERVER_STAGING_PROJECT_NAME:
+        'menorah-server-staging-validation',
+      MENORAH_STAGING_ALLOWED_HOSTS: Object.values(hosts).join(','),
+      MENORAH_STAGING_EMAIL_DOMAIN: 'mail.staging.menorah.me',
+      EMAIL_FROM:
+        'Menorah Synthetic <noreply@mail.staging.menorah.me>',
+      CONTACT_TO_EMAIL: 'sink@mail.staging.menorah.me',
+      ALLOWED_ORIGINS: [
+        origin(hosts.WWW_DOMAIN),
+        origin(hosts.APP_DOMAIN),
+        origin(hosts.ADMIN_DOMAIN),
+        origin(hosts.COUNSELLOR_DOMAIN),
+      ].join(','),
+      WEB_SESSION_ORIGINS: [
+        `${origin(hosts.WWW_DOMAIN)}=user`,
+        `${origin(hosts.APP_DOMAIN)}=user`,
+        `${origin(hosts.COUNSELLOR_DOMAIN)}=counsellor`,
+        `${origin(hosts.ADMIN_DOMAIN)}=admin`,
+      ].join(','),
+      LIVEKIT_URL: `wss://${hosts.CALLS_DOMAIN}`,
+      LIVEKIT_API_URL: 'http://staging-livekit:7880',
+      PASSWORD_RESET_BASE_URL: origin(hosts.APP_DOMAIN),
+      CHECKOUT_RETURN_URL:
+        `${origin(hosts.APP_DOMAIN)}/checkout/return`,
+      FRONTEND_COUNSELLOR_URL: origin(hosts.COUNSELLOR_DOMAIN),
+      FRONTEND_API_WEB_URL: `${origin(hosts.API_WEB_DOMAIN)}/api`,
+      FRONTEND_API_ADMIN_URL:
+        `${origin(hosts.API_ADMIN_DOMAIN)}/api`,
+      FRONTEND_SOCKET_WEB_URL: origin(hosts.API_WEB_DOMAIN),
+      MEDIA_PUBLIC_BASE_URL: origin(hosts.API_WEB_DOMAIN),
+      RESEND_API_URL: 'http://staging-mail-capture:8025/emails',
+      RESEND_API_KEY: `re_server_staging_${'b'.repeat(40)}`,
+    });
+  };
+
   beforeEach(() => {
     process.env = {
       ...originalEnv,
@@ -81,6 +136,8 @@ describe('email delivery logging', () => {
     delete process.env.RESEND_API_URL;
     delete process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID;
     delete process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT;
+    delete process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID;
+    delete process.env.MENORAH_SERVER_STAGING_PROJECT_NAME;
     axiosPost = jest.fn().mockResolvedValue({ status: 200 });
     logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -228,9 +285,47 @@ describe('email delivery logging', () => {
     expect(output).not.toContain(process.env.RESEND_API_KEY);
   });
 
+  test('uses internal capture for the exact isolated server-staging identity', async () => {
+    configureServerStagingMailCapture();
+    const recipient = 'synthetic.user@mail.staging.menorah.me';
+    const { sendOTPEmail } = loadEmail();
+
+    await expect(sendOTPEmail(recipient, '918273')).resolves.toBe(true);
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://staging-mail-capture:8025/emails',
+      expect.objectContaining({ to: [recipient] }),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Bearer re_server_staging_${'b'.repeat(40)}`,
+        }),
+      })
+    );
+  });
+
+  test.each([
+    ['production project', 'MENORAH_SERVER_STAGING_PROJECT_NAME', 'menorah'],
+    ['wrong identity', 'MENORAH_SERVER_STAGING_ENVIRONMENT_ID', 'menorah-server-staging-v2'],
+    ['production host', 'API_WEB_DOMAIN', 'api-web.menorah.me'],
+  ])(
+    'refuses server-staging capture with %s',
+    async (_label, key, value) => {
+      configureServerStagingMailCapture();
+      process.env[key] = value;
+      const { sendOTPEmail } = loadEmail();
+
+      await expect(
+        sendOTPEmail('synthetic.user@mail.staging.menorah.me', '918273')
+      ).resolves.toBe(false);
+
+      expect(axiosPost).not.toHaveBeenCalled();
+    }
+  );
+
   test.each([
     'https://api.resend.com/emails',
     'http://mail-capture:8025/emails',
+    'http://staging-mail-capture:8025/emails',
     'http://elsewhere:8025/emails',
   ])('rejects every configured email URL in external production (%s)', async (url) => {
     process.env.RESEND_API_URL = url;

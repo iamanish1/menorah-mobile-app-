@@ -10,6 +10,10 @@ const adminEmail = process.env.QA_ADMIN_EMAIL;
 const adminPassword = process.env.QA_ADMIN_PASSWORD;
 const localCaptureConfirmation =
   process.env.QA_LOCAL_STAGING_MAIL_CAPTURE_CONFIRM;
+const isLocalValidation = Boolean(
+  process.env.QA_LOCAL_STAGING_HTTPS_PORT
+  || process.env.QA_SERVER_STAGING_VALIDATION_CONFIRM
+);
 
 test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
@@ -28,7 +32,7 @@ test.describe('configured admin smoke', () => {
       localCaptureConfirmation
       === CONFIRMATION
     );
-    if (process.env.QA_LOCAL_STAGING_HTTPS_PORT && !useLocalCapture) {
+    if (isLocalValidation && !useLocalCapture) {
       throw new Error(
         'Local staging admin smoke requires the exact synthetic OTP capture confirmation'
       );

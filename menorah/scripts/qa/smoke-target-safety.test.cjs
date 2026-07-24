@@ -6,8 +6,13 @@ const test = require('node:test');
 const {
   LOCAL_MAIL_CAPTURE_CONFIRMATION,
   PRODUCTION_CONFIRMATION,
+  SERVER_STAGING_BROWSER_TARGETS,
+  SERVER_STAGING_HOST_RESOLVER_RULES,
+  SERVER_STAGING_VALIDATION_CONFIRMATION,
+  SERVER_STAGING_VALIDATION_PROJECT,
   SYNTHETIC_DATA_CONFIRMATION,
   requireSyntheticEmail,
+  resolveLocalValidationProfile,
   validateOptionalSyntheticAdminCredentials,
   validateSmokeTargets,
 } = require('./smoke-target-safety');
@@ -131,6 +136,111 @@ test('local staging port selector rejects privileged, malformed, and production 
   );
 });
 
+const serverValidationEnv = {
+  QA_TARGET_ENVIRONMENT: 'staging',
+  QA_SERVER_STAGING_VALIDATION_CONFIRM:
+    SERVER_STAGING_VALIDATION_CONFIRMATION,
+  COMPOSE_PROJECT_NAME: SERVER_STAGING_VALIDATION_PROJECT,
+};
+
+test('exact server-staging confirmation selects one bounded validation profile', () => {
+  const profile = resolveLocalValidationProfile(serverValidationEnv);
+  assert.equal(profile.kind, 'server-staging-validation');
+  assert.equal(profile.httpsPort, '38443');
+  assert.equal(profile.dockerProject, SERVER_STAGING_VALIDATION_PROJECT);
+  assert.equal(profile.mailCaptureService, 'staging-mail-capture');
+  assert.equal(profile.syntheticEmailSuffix, '@mail.staging.menorah.me');
+  assert.deepEqual(profile.apiTargets, {
+    apiIos: 'http://127.0.0.1:38080',
+    apiAndroid: 'http://127.0.0.1:38081',
+    apiWeb: 'http://127.0.0.1:38082',
+    apiAdmin: 'http://127.0.0.1:38083',
+    worker: 'http://127.0.0.1:38084',
+  });
+  assert.match(
+    profile.hostResolverRules,
+    /MAP api-web\.staging\.menorah\.me 127\.0\.0\.1/,
+  );
+  assert.equal(
+    profile.hostResolverRules,
+    SERVER_STAGING_HOST_RESOLVER_RULES,
+  );
+  assert.deepEqual(
+    validateSmokeTargets(serverValidationEnv, {
+      ...SERVER_STAGING_BROWSER_TARGETS,
+    }),
+    SERVER_STAGING_BROWSER_TARGETS,
+  );
+});
+
+test('server-staging validation rejects missing, crossed, or malformed confirmation', () => {
+  assert.throws(
+    () => resolveLocalValidationProfile({
+      QA_LOCAL_STAGING_HTTPS_PORT: '38443',
+    }),
+    /requires QA_SERVER_STAGING_VALIDATION_CONFIRM/,
+  );
+  assert.throws(
+    () => resolveLocalValidationProfile({
+      QA_SERVER_STAGING_VALIDATION_CONFIRM: 'yes',
+    }),
+    /must equal USE_EXACT_MENORAH_SERVER_STAGING_VALIDATION/,
+  );
+  assert.throws(
+    () => resolveLocalValidationProfile({
+      ...serverValidationEnv,
+      QA_LOCAL_STAGING_HTTPS_PORT: '28443',
+    }),
+    /exact HTTPS port 38443/,
+  );
+  assert.throws(
+    () => resolveLocalValidationProfile({
+      ...serverValidationEnv,
+      COMPOSE_PROJECT_NAME: 'menorah-local-staging',
+    }),
+    /COMPOSE_PROJECT_NAME=menorah-server-staging-validation/,
+  );
+  assert.throws(
+    () => resolveLocalValidationProfile({
+      ...serverValidationEnv,
+      QA_MAIL_CAPTURE_SERVICE: 'mail-capture',
+    }),
+    /QA_MAIL_CAPTURE_SERVICE=staging-mail-capture/,
+  );
+  assert.throws(
+    () => resolveLocalValidationProfile({
+      ...serverValidationEnv,
+      QA_TARGET_ENVIRONMENT: 'production',
+    }),
+    /restricted to QA_TARGET_ENVIRONMENT=staging/,
+  );
+});
+
+test('server-staging validation rejects wrong domains, ports, and host sets', () => {
+  for (const [name, value] of [
+    ['QA_WWW_URL', 'https://www.staging.localhost:38443'],
+    ['QA_APP_URL', 'https://app.staging.menorah.me:28443'],
+    ['QA_ADMIN_URL', 'https://admin.menorah.me:38443'],
+  ]) {
+    assert.throws(
+      () => validateSmokeTargets(serverValidationEnv, {
+        [name]: value,
+      }),
+      /approved server-staging validation URL|cannot target production|exact approved port/,
+    );
+  }
+  assert.throws(
+    () => validateSmokeTargets({
+      ...serverValidationEnv,
+      QA_STAGING_ALLOWED_HOSTS:
+        'www.staging.menorah.me,app.staging.menorah.me',
+    }, {
+      QA_WWW_URL: SERVER_STAGING_BROWSER_TARGETS.QA_WWW_URL,
+    }),
+    /exact approved staging host set/,
+  );
+});
+
 test('production targets require an exact confirmation and change reference', () => {
   assert.throws(
     () => validateSmokeTargets({ QA_TARGET_ENVIRONMENT: 'production' }, {
@@ -234,6 +344,43 @@ test('local API smoke accepts only the exact isolated loopback ports', () => {
   );
 });
 
+test('local API smoke switches to 38080-38084 only with server confirmation', () => {
+  const wrongServerPort = spawnSync(
+    process.execPath,
+    [resolve(qaRoot, 'local-api-smoke-test.js')],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ...serverValidationEnv,
+        QA_API_WEB_URL: 'http://127.0.0.1:28082',
+      },
+    }
+  );
+  assert.notEqual(wrongServerPort.status, 0);
+  assert.match(
+    `${wrongServerPort.stdout}\n${wrongServerPort.stderr}`,
+    /must target exactly http:\/\/127\.0\.0\.1:38082/,
+  );
+
+  const missingConfirmation = spawnSync(
+    process.execPath,
+    [resolve(qaRoot, 'local-api-smoke-test.js')],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        QA_API_WEB_URL: 'http://127.0.0.1:38082',
+      },
+    }
+  );
+  assert.notEqual(missingConfirmation.status, 0);
+  assert.match(
+    `${missingConfirmation.stdout}\n${missingConfirmation.stderr}`,
+    /must target exactly http:\/\/127\.0\.0\.1:28082/,
+  );
+});
+
 test('Playwright configuration rejects live targets before launching a browser', () => {
   const result = spawnSync(
     process.execPath,
@@ -259,6 +406,36 @@ test('Playwright configuration rejects live targets before launching a browser',
   );
   assert.notEqual(result.status, 0);
   assert.match(`${result.stdout}\n${result.stderr}`, /cannot target production/);
+});
+
+test('Playwright server-staging profile installs exact Chromium resolver rules', () => {
+  const result = spawnSync(
+    process.execPath,
+    ['-e', [
+      "const config = require('./playwright.config.js');",
+      'process.stdout.write(JSON.stringify({',
+      'targets: [process.env.QA_WWW_URL, process.env.QA_APP_URL,',
+      'process.env.QA_ADMIN_URL, process.env.QA_COUNSELLOR_WEB_URL],',
+      'launchOptions: config.projects[0].use.launchOptions,',
+      '}));',
+    ].join(' ')],
+    {
+      cwd: qaRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ...serverValidationEnv,
+      },
+    }
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.deepEqual(output.targets, Object.values(
+    SERVER_STAGING_BROWSER_TARGETS
+  ));
+  assert.deepEqual(output.launchOptions.args, [
+    `--host-resolver-rules=${SERVER_STAGING_HOST_RESOLVER_RULES}`,
+  ]);
 });
 
 test('active smoke sources contain no developer-specific mailbox literal', () => {
