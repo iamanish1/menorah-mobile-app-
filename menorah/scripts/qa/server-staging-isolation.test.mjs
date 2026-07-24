@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   INACTIVE_PROVIDER_SECRET_KEYS,
@@ -47,6 +48,9 @@ import {
 const stagingDirectory = new URL(
   '../../deploy/server-staging/',
   import.meta.url,
+);
+const stagingPath = (name) => fileURLToPath(
+  new URL(name, stagingDirectory),
 );
 const readStaging = (name) => readFileSync(
   new URL(name, stagingDirectory),
@@ -779,12 +783,7 @@ const validCompose = (environment = validEnvironment()) => {
   ];
   services['staging-livekit'].volumes = [{
     type: 'bind',
-    source: path.resolve(
-      'menorah',
-      'deploy',
-      'server-staging',
-      'livekit.yaml',
-    ),
+    source: stagingPath('livekit.yaml'),
     target: environment.LIVEKIT_CONFIG_FILE,
     read_only: true,
   }];
@@ -1737,12 +1736,7 @@ const composeMutations = [
   }, /LiveKit must use the exact signaling, config, advertised-IP, and public media contract/],
   ['wrong LiveKit config source', (model) => {
     model.services['staging-livekit'].volumes[0].source =
-      path.resolve(
-        'menorah',
-        'deploy',
-        'server-staging',
-        'other.yaml',
-      );
+      stagingPath('other.yaml');
   }, /LiveKit must use the exact signaling, config, advertised-IP, and public media contract/],
   ['worker Resend secret leakage', (model, env) => {
     model.services['staging-worker'].environment.RESEND_API_KEY =
