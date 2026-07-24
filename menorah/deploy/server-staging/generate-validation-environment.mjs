@@ -5,6 +5,7 @@ import {
   randomBytes,
 } from 'node:crypto';
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import {
   chmod,
   lstat,
@@ -39,6 +40,14 @@ const CONTRACT_FILE = path.resolve(
 const DEFAULT_GENERATED_DIRECTORY = path.join(
   MODULE_DIRECTORY,
   'generated',
+);
+const TRACKED_ALERTMANAGER_CONFIG = path.join(
+  MODULE_DIRECTORY,
+  'alertmanager.yml',
+);
+const TRACKED_ALERTMANAGER_SOURCE = readFileSync(
+  TRACKED_ALERTMANAGER_CONFIG,
+  'utf8',
 );
 const execFileAsync = promisify(execFile);
 
@@ -422,6 +431,8 @@ export const buildValidationEnvironment = ({
     ALLOY_LOCAL_PORT: '127.0.0.1:32345',
     MENORAH_SERVER_STAGING_HTTPS_PORT: '38443',
     MENORAH_SERVER_STAGING_TUNNEL_ORIGIN_PORT: '38000',
+    MENORAH_SERVER_STAGING_EGRESS_SUBNET: '10.252.245.0/24',
+    MENORAH_SERVER_STAGING_EGRESS_IP_RANGE: '10.252.245.128/25',
     MENORAH_SERVER_STAGING_BACKEND_IMAGE:
       'menorah-server-staging-validation/backend:runtime',
     MENORAH_SERVER_STAGING_USER_WEB_IMAGE:
@@ -650,16 +661,17 @@ export const buildValidationEnvironment = ({
     PROMETHEUS_EXTERNAL_ENVIRONMENT: 'staging',
     PROMETHEUS_EXTERNAL_PROJECT: VALIDATION_PROJECT,
     ALERTMANAGER_ENVIRONMENT: 'staging',
-    ALERTMANAGER_RECEIVER: 'staging-unconfigured-destination',
+    ALERTMANAGER_CONFIG_SOURCE: slashPath(
+      TRACKED_ALERTMANAGER_CONFIG,
+    ),
     ALERTMANAGER_CONFIG_FILE:
       '/etc/alertmanager/alertmanager.yml',
-    ALERTMANAGER_CONFIG_SHA256: sha256(
-      'synthetic-server-staging-alertmanager',
-    ),
-    ALERTMANAGER_DELIVERY_RECEIVER:
-      'staging-unconfigured-destination',
-    ALERTMANAGER_DELIVERY_VERIFIED_AT: '1970-01-01T00:00:00Z',
-    ALERTMANAGER_DELIVERY_TEST_REFERENCE:
+    ALERTMANAGER_CONFIG_SHA256: sha256(TRACKED_ALERTMANAGER_SOURCE),
+    ALERTMANAGER_RECEIVER: 'server-staging-placeholder',
+    ALERTMANAGER_DELIVERY_RECEIVER: 'server-staging-placeholder',
+    ALERTMANAGER_DELIVERY_ENDPOINT_HOST: 'staging-alert-sink',
+    ALERTMANAGER_CONFIG_REVIEWED_AT: '1970-01-01T00:00:00Z',
+    ALERTMANAGER_CONFIG_REVIEW_REFERENCE:
       'synthetic-server-staging-only',
 
     PRIVACY_RETENTION_EXECUTION_ENABLED: 'false',

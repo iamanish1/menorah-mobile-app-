@@ -116,6 +116,11 @@ test('discovery covers collision metadata with allow-listed inspection', () => {
     'ip -4 route show table all',
     'docker-version',
     'local_docker compose version',
+    'docker-security-mode',
+    'local_docker info',
+    '.SecurityOptions',
+    'rootless=',
+    'userns_remap=',
     'docker-compose-projects',
     'docker-projects-from-containers',
     'docker-projects-from-networks',
@@ -338,6 +343,11 @@ case "\${1-}:\${2-}" in
   version:--format)
     printf '%s\n' 'client=shim|server=shim'
     ;;
+  info:--format)
+    printf '%s\n' \
+      'name=seccomp,profile=builtin' \
+      'name=apparmor'
+    ;;
   compose:version)
     printf '%s\n' 'Docker Compose version shim'
     ;;
@@ -489,6 +499,11 @@ esac
       assert.match(result.stdout, /10\.23\.4\.0\/24/);
       assert.match(result.stdout, /\[docker-compose-projects\]/);
       assert.match(result.stdout, /project=shim-project/);
+      assert.match(result.stdout, /\[docker-security-mode\]/);
+      assert.match(result.stdout, /rootless=false/);
+      assert.match(result.stdout, /userns_remap=false/);
+      assert.match(result.stdout, /seccomp=true/);
+      assert.match(result.stdout, /apparmor=true/);
       assert.match(result.stdout, /producer=docker-stats\|status=unavailable\|exit=23/);
       assert.match(result.stdout, /\[REDACTED\]/);
       assert.match(result.stdout, /\[listening-sockets\]/);

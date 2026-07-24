@@ -12,6 +12,7 @@ readonly COMPOSE_FILE='/opt/menorah-staging/app/menorah/deploy/server-staging/co
 readonly SCRIPT_DIR='/opt/menorah-staging/app/menorah/deploy/server-staging'
 readonly ENV_LOADER="${SCRIPT_DIR}/load-environment.mjs"
 readonly PROCESS_AUTHORITY="${SCRIPT_DIR}/assert-process-authority.sh"
+readonly ALERTMANAGER_RELEASE_PREFLIGHT="${SCRIPT_DIR}/assert-alertmanager-release-preflight.sh"
 readonly STATE_ROOT='/opt/menorah-staging/deploy-state'
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
 readonly CURRENT_SHA_FILE='/opt/menorah-staging/deploy-state/current-sha'
@@ -109,6 +110,11 @@ deployment_record_is_complete() {
   [[ "${current_sha}" == "${RELEASE_SHA}" ]] \
     || fail 'successful deployment record disagrees with current release'
   RELEASE_SHA_VALUE="${RELEASE_SHA}" \
+  ALERTMANAGER_CONFIG_SHA256_VALUE="${ALERTMANAGER_CONFIG_SHA256}" \
+  ALERTMANAGER_RECEIVER_VALUE="${ALERTMANAGER_RECEIVER}" \
+  ALERTMANAGER_ENDPOINT_HOST_VALUE="${ALERTMANAGER_DELIVERY_ENDPOINT_HOST}" \
+  ALERTMANAGER_CONFIG_REVIEWED_AT_VALUE="${ALERTMANAGER_CONFIG_REVIEWED_AT}" \
+  ALERTMANAGER_CONFIG_REVIEW_REFERENCE_VALUE="${ALERTMANAGER_CONFIG_REVIEW_REFERENCE}" \
     node - "${deployment_record}" <<'NODE' >/dev/null \
     || fail 'successful deployment record is invalid'
 const fs = require('node:fs');
@@ -123,6 +129,15 @@ const expected = {
   replicaSet: 'menorah-staging-rs',
   releaseSha: process.env.RELEASE_SHA_VALUE,
   healthStatus: 'passed',
+  alertmanagerConfigSha256:
+    process.env.ALERTMANAGER_CONFIG_SHA256_VALUE,
+  alertmanagerReceiver: process.env.ALERTMANAGER_RECEIVER_VALUE,
+  alertmanagerEndpointHost:
+    process.env.ALERTMANAGER_ENDPOINT_HOST_VALUE,
+  alertmanagerConfigReviewedAt:
+    process.env.ALERTMANAGER_CONFIG_REVIEWED_AT_VALUE,
+  alertmanagerConfigReviewReference:
+    process.env.ALERTMANAGER_CONFIG_REVIEW_REFERENCE_VALUE,
 };
 for (const [key, value] of Object.entries(expected)) {
   if (record[key] !== value) process.exit(1);
@@ -147,6 +162,9 @@ done
   || fail 'the safe staging environment loader is unavailable'
 [[ -f "${PROCESS_AUTHORITY}" && ! -L "${PROCESS_AUTHORITY}" ]] \
   || fail 'the staging process-authority guard is unavailable'
+[[ -f "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
+  && ! -L "${ALERTMANAGER_RELEASE_PREFLIGHT}" ]] \
+  || fail 'Alertmanager release preflight is unavailable'
 
 # shellcheck source=/dev/null
 source "${PROCESS_AUTHORITY}"
@@ -206,6 +224,9 @@ do
   [[ ! -e "${blocking_marker}" && ! -L "${blocking_marker}" ]] \
     || fail "staging recovery state blocks migration: ${blocking_marker}"
 done
+
+bash "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
+  || fail 'Alertmanager release preflight failed'
 
 [[ ! -L "${MIGRATION_LOCK}" ]] \
   || fail 'migration lock must not be a symlink'

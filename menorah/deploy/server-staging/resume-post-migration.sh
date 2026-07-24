@@ -13,6 +13,7 @@ readonly SCRIPT_DIR='/opt/menorah-staging/app/menorah/deploy/server-staging'
 readonly ENV_LOADER="${SCRIPT_DIR}/load-environment.mjs"
 readonly PROCESS_AUTHORITY="${SCRIPT_DIR}/assert-process-authority.sh"
 readonly RUNTIME_VERIFIER="${SCRIPT_DIR}/verify-runtime-services.sh"
+readonly ALERTMANAGER_RELEASE_PREFLIGHT="${SCRIPT_DIR}/assert-alertmanager-release-preflight.sh"
 readonly STATE_ROOT='/opt/menorah-staging/deploy-state'
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
 readonly DEPLOY_LOCK='/opt/menorah-staging/deploy-state/.deploy.lock'
@@ -168,6 +169,9 @@ done
   || fail 'the staging process-authority guard is unavailable'
 [[ -f "${RUNTIME_VERIFIER}" && ! -L "${RUNTIME_VERIFIER}" ]] \
   || fail 'runtime service verifier is unavailable'
+[[ -f "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
+  && ! -L "${ALERTMANAGER_RELEASE_PREFLIGHT}" ]] \
+  || fail 'Alertmanager release preflight is unavailable'
 
 # shellcheck source=/dev/null
 source "${PROCESS_AUTHORITY}"
@@ -219,6 +223,9 @@ actual_script_blob="$(
 )"
 [[ "${actual_script_blob}" == "${expected_script_blob}" ]] \
   || fail 'resume script is not from the exact recovery commit'
+
+bash "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
+  || fail 'Alertmanager release preflight failed'
 
 [[ ! -L "${DEPLOY_LOCK}" ]] \
   || fail 'deployment lock must not be a symlink'
@@ -288,6 +295,11 @@ if [[ -e "${DEPLOYMENT_RECORD}" || -L "${DEPLOYMENT_RECORD}" ]]; then
     || fail 'deployment record must be a regular non-symlink file'
   previous_sha="$(
     RELEASE_SHA_VALUE="${RELEASE_SHA}" \
+    ALERTMANAGER_CONFIG_SHA256_VALUE="${ALERTMANAGER_CONFIG_SHA256}" \
+    ALERTMANAGER_RECEIVER_VALUE="${ALERTMANAGER_RECEIVER}" \
+    ALERTMANAGER_ENDPOINT_HOST_VALUE="${ALERTMANAGER_DELIVERY_ENDPOINT_HOST}" \
+    ALERTMANAGER_CONFIG_REVIEWED_AT_VALUE="${ALERTMANAGER_CONFIG_REVIEWED_AT}" \
+    ALERTMANAGER_CONFIG_REVIEW_REFERENCE_VALUE="${ALERTMANAGER_CONFIG_REVIEW_REFERENCE}" \
       node - "${DEPLOYMENT_RECORD}" <<'NODE'
 const fs = require('node:fs');
 const path = process.argv[2];
@@ -302,6 +314,15 @@ const expected = {
   replicaSet: 'menorah-staging-rs',
   releaseSha: process.env.RELEASE_SHA_VALUE,
   healthStatus: 'passed',
+  alertmanagerConfigSha256:
+    process.env.ALERTMANAGER_CONFIG_SHA256_VALUE,
+  alertmanagerReceiver: process.env.ALERTMANAGER_RECEIVER_VALUE,
+  alertmanagerEndpointHost:
+    process.env.ALERTMANAGER_ENDPOINT_HOST_VALUE,
+  alertmanagerConfigReviewedAt:
+    process.env.ALERTMANAGER_CONFIG_REVIEWED_AT_VALUE,
+  alertmanagerConfigReviewReference:
+    process.env.ALERTMANAGER_CONFIG_REVIEW_REFERENCE_VALUE,
 };
 for (const [key, value] of Object.entries(expected)) {
   if (record[key] !== value) {
@@ -410,6 +431,11 @@ if [[ "${deployment_record_exists}" != true ]]; then
   RELEASE_SHA_VALUE="${RELEASE_SHA}" \
   PREVIOUS_SHA_VALUE="${previous_sha}" \
   SEED_DISPOSITION_VALUE="${seed_disposition}" \
+  ALERTMANAGER_CONFIG_SHA256_VALUE="${ALERTMANAGER_CONFIG_SHA256}" \
+  ALERTMANAGER_RECEIVER_VALUE="${ALERTMANAGER_RECEIVER}" \
+  ALERTMANAGER_ENDPOINT_HOST_VALUE="${ALERTMANAGER_DELIVERY_ENDPOINT_HOST}" \
+  ALERTMANAGER_CONFIG_REVIEWED_AT_VALUE="${ALERTMANAGER_CONFIG_REVIEWED_AT}" \
+  ALERTMANAGER_CONFIG_REVIEW_REFERENCE_VALUE="${ALERTMANAGER_CONFIG_REVIEW_REFERENCE}" \
   COMPLETED_AT_VALUE="${completed_at}" \
     node <<'NODE' > "${deployment_record_temp}"
 const record = {
@@ -426,6 +452,15 @@ const record = {
   healthStatus: 'passed',
   recoveryMode: 'post-migration-code-resume',
   seedDisposition: process.env.SEED_DISPOSITION_VALUE,
+  alertmanagerConfigSha256:
+    process.env.ALERTMANAGER_CONFIG_SHA256_VALUE,
+  alertmanagerReceiver: process.env.ALERTMANAGER_RECEIVER_VALUE,
+  alertmanagerEndpointHost:
+    process.env.ALERTMANAGER_ENDPOINT_HOST_VALUE,
+  alertmanagerConfigReviewedAt:
+    process.env.ALERTMANAGER_CONFIG_REVIEWED_AT_VALUE,
+  alertmanagerConfigReviewReference:
+    process.env.ALERTMANAGER_CONFIG_REVIEW_REFERENCE_VALUE,
   completedAt: process.env.COMPLETED_AT_VALUE,
 };
 process.stdout.write(`${JSON.stringify(record, null, 2)}\n`);

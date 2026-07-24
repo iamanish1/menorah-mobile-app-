@@ -17,6 +17,7 @@ import {
   VALIDATION_PROJECT,
   assertValidEnvironment,
   parseEnvironmentFile,
+  validateAlertmanagerConfigContent,
 } from './validate-environment.mjs';
 
 const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
@@ -98,6 +99,7 @@ export const REQUIRED_NETWORK_SUFFIXES = Object.freeze([
   'data',
   'monitoring',
   'restore',
+  'egress',
 ]);
 
 const REQUIRED_MONITORING_PRIVATE_TARGETS = Object.freeze([
@@ -264,7 +266,7 @@ export const REQUIRED_SERVICE_NETWORKS = Object.freeze({
     'staging-ingress',
     'staging-monitoring',
   ],
-  'staging-alertmanager': ['staging-ingress', 'staging-monitoring'],
+  'staging-alertmanager': ['staging-egress', 'staging-monitoring'],
   'staging-alloy': ['staging-ingress', 'staging-monitoring'],
   'staging-loki': ['staging-ingress', 'staging-monitoring'],
   'staging-mongo-restore': ['staging-restore'],
@@ -1552,6 +1554,52 @@ export const validateRenderedCompose = (
     errors.push('rendered Compose exceeds the aggregate PID ceiling');
   }
 
+  const alertmanagerMounts = normalizeMounts(
+    services['staging-alertmanager']?.volumes,
+  ).filter(
+    (mount) => mount.target === '/etc/alertmanager/alertmanager.yml',
+  );
+  if (
+    alertmanagerMounts.length !== 1
+    || alertmanagerMounts[0].type !== 'bind'
+    || normalizePath(alertmanagerMounts[0].source)
+      !== normalizePath(environment.ALERTMANAGER_CONFIG_SOURCE)
+    || !alertmanagerMounts[0].readOnly
+  ) {
+    errors.push(
+      'Alertmanager must bind the reviewed config source read-only to the exact target',
+    );
+  }
+  if (String(services['staging-alertmanager']?.user) !== '65534:65534') {
+    errors.push(
+      'Alertmanager must run as the uid/gid that exclusively owns its config',
+    );
+  }
+  const alertmanagerLabels = normalizeLabels(
+    services['staging-alertmanager']?.labels,
+  );
+  if (
+    alertmanagerLabels[
+      'com.menorah.alertmanager-config-sha256'
+    ] !== environment.ALERTMANAGER_CONFIG_SHA256
+  ) {
+    errors.push(
+      'Alertmanager service must carry the exact reviewed config digest label',
+    );
+  }
+  const alertmanagerNetworks =
+    services['staging-alertmanager']?.networks;
+  if (
+    Array.isArray(alertmanagerNetworks)
+    || Number(
+      alertmanagerNetworks?.['staging-egress']?.gw_priority,
+    ) !== 1
+  ) {
+    errors.push(
+      'Alertmanager egress-capable NAT must be its explicit default gateway',
+    );
+  }
+
   for (const serviceName of [
     'staging-mongo-primary',
     'staging-mongo-restore',
@@ -1632,6 +1680,51 @@ export const validateRenderedCompose = (
     if (!networkNames.includes(`${prefix}-${suffix}`)) {
       errors.push(`missing isolated ${suffix} network`);
     }
+  }
+  const egress = networks['staging-egress'] || {};
+  const egressOptions = egress.driver_opts || egress.driverOpts || {};
+  const egressIpam = egress.ipam?.config || [];
+  if (
+    egress.internal === true
+    || egress.driver !== 'bridge'
+    || String(
+      egressOptions['com.docker.network.bridge.enable_ip_masquerade'],
+    ) !== 'true'
+    || String(
+      egressOptions['com.docker.network.bridge.enable_icc'],
+    ) !== 'false'
+    || egressOptions['com.docker.network.bridge.host_binding_ipv4']
+      !== '127.0.0.1'
+  ) {
+    errors.push(
+      'staging-egress must be the reviewed egress-capable NAT bridge with ICC disabled',
+    );
+  }
+  if (
+    egressIpam.length !== 1
+    || egressIpam[0].subnet
+      !== environment.MENORAH_SERVER_STAGING_EGRESS_SUBNET
+    || (egressIpam[0].ip_range || egressIpam[0].ipRange)
+      !== environment.MENORAH_SERVER_STAGING_EGRESS_IP_RANGE
+  ) {
+    errors.push(
+      'staging-egress subnet and dynamic range must exactly match the reviewed environment',
+    );
+  }
+  const egressMembers = Object.entries(services)
+    .filter(([, service]) => (
+      Array.isArray(service.networks)
+        ? service.networks.includes('staging-egress')
+        : Object.hasOwn(service.networks || {}, 'staging-egress')
+    ))
+    .map(([serviceName]) => serviceName);
+  if (
+    egressMembers.length !== 1
+    || egressMembers[0] !== 'staging-alertmanager'
+  ) {
+    errors.push(
+      'staging-egress must initially contain only staging-alertmanager',
+    );
   }
 
   const volumes = model.volumes || {};
@@ -1928,6 +2021,7 @@ export const validateMonitoring = ({
   lokiSource,
   alertRulesSource,
   compose,
+  environment,
   productionMetadata,
 }) => {
   const errors = [];
@@ -2026,13 +2120,10 @@ export const validateMonitoring = ({
       errors.push(`staging Blackbox coverage is missing ${host}`);
     }
   }
-  if (
-    !/matchers:[\s\S]*environment="staging"/i.test(alertmanagerSource)
-    || !/server-staging-placeholder/.test(alertmanagerSource)
-    || /slack|pagerduty|opsgenie|smtp_|victorops/i.test(alertmanagerSource)
-  ) {
-    errors.push('Alertmanager is not isolated to the staging placeholder');
-  }
+  errors.push(...validateAlertmanagerConfigContent(
+    environment,
+    alertmanagerSource,
+  ));
   if (
     /(?:docker\.sock|\/var\/lib\/docker\/containers)/i.test(alloySource)
     || /environment\s*[:=]\s*production/i.test(alloySource)
@@ -2106,6 +2197,7 @@ export const validateAll = ({
     lokiSource,
     alertRulesSource,
     compose,
+    environment,
     productionMetadata,
   }));
   return [...new Set(errors)];

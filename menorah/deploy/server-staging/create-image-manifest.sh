@@ -13,6 +13,7 @@ readonly SCRIPT_DIR='/opt/menorah-staging/app/menorah/deploy/server-staging'
 readonly ENV_LOADER="${SCRIPT_DIR}/load-environment.mjs"
 readonly PROCESS_AUTHORITY="${SCRIPT_DIR}/assert-process-authority.sh"
 readonly LIFECYCLE_HELPER="${SCRIPT_DIR}/service-lifecycle.mjs"
+readonly ALERTMANAGER_RELEASE_PREFLIGHT="${SCRIPT_DIR}/assert-alertmanager-release-preflight.sh"
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
 readonly MANIFEST_LOCK='/opt/menorah-staging/deploy-state/.manifest.lock'
 
@@ -41,6 +42,9 @@ done
   || fail 'the staging process-authority guard is unavailable'
 [[ -f "${LIFECYCLE_HELPER}" && ! -L "${LIFECYCLE_HELPER}" ]] \
   || fail 'service lifecycle helper is unavailable'
+[[ -f "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
+  && ! -L "${ALERTMANAGER_RELEASE_PREFLIGHT}" ]] \
+  || fail 'Alertmanager release preflight is unavailable'
 
 # shellcheck source=/dev/null
 source "${PROCESS_AUTHORITY}"
@@ -95,6 +99,9 @@ ACTUAL_SCRIPT_BLOB="$(
 readonly ACTUAL_SCRIPT_BLOB
 [[ "${ACTUAL_SCRIPT_BLOB}" == "${EXPECTED_SCRIPT_BLOB}" ]] \
   || fail 'manifest script is not from the exact requested commit'
+
+bash "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
+  || fail 'Alertmanager release preflight failed'
 
 [[ ! -L "${MANIFEST_LOCK}" ]] \
   || fail 'manifest lock must not be a symlink'

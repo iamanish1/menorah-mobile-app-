@@ -67,7 +67,6 @@ for required_file in \
   "${STAGING_DIR}/Caddyfile" \
   "${STAGING_DIR}/tunnel-config.yml.example" \
   "${STAGING_DIR}/prometheus.yml" \
-  "${STAGING_DIR}/alertmanager.yml" \
   "${STAGING_DIR}/blackbox.yml" \
   "${STAGING_DIR}/config.alloy" \
   "${STAGING_DIR}/loki.yml" \
@@ -79,9 +78,18 @@ for required_file in \
   fi
 done
 
-node "${STAGING_DIR}/validate-environment.mjs" \
-  --env "${environment_file}" \
-  --production-metadata "${production_metadata}" >/dev/null
+alertmanager_config_source="$(
+  node "${STAGING_DIR}/validate-environment.mjs" \
+    --env "${environment_file}" \
+    --production-metadata "${production_metadata}" \
+    --print-alertmanager-source
+)"
+if [[ ! -f "${alertmanager_config_source}" \
+  || -L "${alertmanager_config_source}" ]]; then
+  printf 'Reviewed Alertmanager source is not a regular non-symlink file.\n' \
+    >&2
+  exit 1
+fi
 
 temporary_render=""
 cleanup() {
@@ -119,7 +127,7 @@ node "${STAGING_DIR}/validate-isolation.mjs" \
   --caddy "${STAGING_DIR}/Caddyfile" \
   --tunnel "${STAGING_DIR}/tunnel-config.yml.example" \
   --prometheus "${STAGING_DIR}/prometheus.yml" \
-  --alertmanager "${STAGING_DIR}/alertmanager.yml" \
+  --alertmanager "${alertmanager_config_source}" \
   --blackbox "${STAGING_DIR}/blackbox.yml" \
   --alloy "${STAGING_DIR}/config.alloy" \
   --loki "${STAGING_DIR}/loki.yml" \

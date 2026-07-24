@@ -13,6 +13,7 @@ readonly SCRIPT_DIR='/opt/menorah-staging/app/menorah/deploy/server-staging'
 readonly ENV_LOADER="${SCRIPT_DIR}/load-environment.mjs"
 readonly PROCESS_AUTHORITY="${SCRIPT_DIR}/assert-process-authority.sh"
 readonly RUNTIME_VERIFIER="${SCRIPT_DIR}/verify-runtime-services.sh"
+readonly ALERTMANAGER_RELEASE_PREFLIGHT="${SCRIPT_DIR}/assert-alertmanager-release-preflight.sh"
 readonly STATE_ROOT='/opt/menorah-staging/deploy-state'
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
 readonly DEPLOY_LOCK='/opt/menorah-staging/deploy-state/.deploy.lock'
@@ -145,6 +146,9 @@ done
   || fail 'the staging process-authority guard is unavailable'
 [[ -f "${RUNTIME_VERIFIER}" && ! -L "${RUNTIME_VERIFIER}" ]] \
   || fail 'runtime service verifier is unavailable'
+[[ -f "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
+  && ! -L "${ALERTMANAGER_RELEASE_PREFLIGHT}" ]] \
+  || fail 'Alertmanager release preflight is unavailable'
 
 # shellcheck source=/dev/null
 source "${PROCESS_AUTHORITY}"
@@ -207,6 +211,9 @@ do
   [[ ! -e "${blocking_marker}" && ! -L "${blocking_marker}" ]] \
     || fail "staging recovery state blocks deployment: ${blocking_marker}"
 done
+bash "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
+  || fail 'Alertmanager release preflight failed'
+
 [[ ! -L "${DEPLOY_LOCK}" ]] \
   || fail 'deployment lock must not be a symlink'
 exec 9>>"${DEPLOY_LOCK}"
@@ -302,6 +309,11 @@ completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 RELEASE_SHA_VALUE="${RELEASE_SHA}" \
 PREVIOUS_SHA_VALUE="${previous_sha}" \
 SEED_DISPOSITION_VALUE="${seed_disposition}" \
+ALERTMANAGER_CONFIG_SHA256_VALUE="${ALERTMANAGER_CONFIG_SHA256}" \
+ALERTMANAGER_RECEIVER_VALUE="${ALERTMANAGER_RECEIVER}" \
+ALERTMANAGER_ENDPOINT_HOST_VALUE="${ALERTMANAGER_DELIVERY_ENDPOINT_HOST}" \
+ALERTMANAGER_CONFIG_REVIEWED_AT_VALUE="${ALERTMANAGER_CONFIG_REVIEWED_AT}" \
+ALERTMANAGER_CONFIG_REVIEW_REFERENCE_VALUE="${ALERTMANAGER_CONFIG_REVIEW_REFERENCE}" \
 COMPLETED_AT_VALUE="${completed_at}" \
   node <<'NODE' > "${deployment_record_temp}"
 const record = {
@@ -317,6 +329,15 @@ const record = {
   migrationStatus: 'applied-or-already-applied',
   healthStatus: 'passed',
   seedDisposition: process.env.SEED_DISPOSITION_VALUE,
+  alertmanagerConfigSha256:
+    process.env.ALERTMANAGER_CONFIG_SHA256_VALUE,
+  alertmanagerReceiver: process.env.ALERTMANAGER_RECEIVER_VALUE,
+  alertmanagerEndpointHost:
+    process.env.ALERTMANAGER_ENDPOINT_HOST_VALUE,
+  alertmanagerConfigReviewedAt:
+    process.env.ALERTMANAGER_CONFIG_REVIEWED_AT_VALUE,
+  alertmanagerConfigReviewReference:
+    process.env.ALERTMANAGER_CONFIG_REVIEW_REFERENCE_VALUE,
   completedAt: process.env.COMPLETED_AT_VALUE,
 };
 process.stdout.write(`${JSON.stringify(record, null, 2)}\n`);

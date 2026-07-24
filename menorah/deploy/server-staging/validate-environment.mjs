@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import fs, { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   fileURLToPath,
@@ -11,6 +12,16 @@ export const REAL_PROJECT = 'menorah-staging';
 export const VALIDATION_PROJECT =
   'menorah-server-staging-validation';
 export const ENVIRONMENT_ID = 'menorah-server-staging-v1';
+
+const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
+export const REAL_ALERTMANAGER_CONFIG_SOURCE =
+  '/opt/menorah-staging/env/alertmanager.yml';
+export const TRACKED_ALERTMANAGER_CONFIG_SOURCE = path.join(
+  MODULE_DIRECTORY,
+  'alertmanager.yml',
+);
+export const ALERTMANAGER_CONFIG_TARGET =
+  '/etc/alertmanager/alertmanager.yml';
 
 const PROCESS_INFLUENCING_ENVIRONMENT_KEYS = new Set([
   'ALL_PROXY',
@@ -235,7 +246,16 @@ export const REQUIRED_KEYS = Object.freeze([
   'PROMETHEUS_EXTERNAL_ENVIRONMENT',
   'PROMETHEUS_EXTERNAL_PROJECT',
   'ALERTMANAGER_ENVIRONMENT',
+  'ALERTMANAGER_CONFIG_SOURCE',
+  'ALERTMANAGER_CONFIG_FILE',
+  'ALERTMANAGER_CONFIG_SHA256',
   'ALERTMANAGER_RECEIVER',
+  'ALERTMANAGER_DELIVERY_RECEIVER',
+  'ALERTMANAGER_DELIVERY_ENDPOINT_HOST',
+  'ALERTMANAGER_CONFIG_REVIEWED_AT',
+  'ALERTMANAGER_CONFIG_REVIEW_REFERENCE',
+  'MENORAH_SERVER_STAGING_EGRESS_SUBNET',
+  'MENORAH_SERVER_STAGING_EGRESS_IP_RANGE',
   'BACKUP_METADATA_FILE',
   'BACKUP_LOCK_FILE',
   'MENORAH_CURRENT_SHA_FILE',
@@ -430,6 +450,19 @@ const PRODUCTION_DOMAIN_PATTERN =
   /(?:^|[^a-z0-9.-])(?:menorah\.me|www\.menorah\.me|app\.menorah\.me|admin\.menorah\.me|counsellor\.menorah\.me|api(?:-ios|-android|-web|-admin)?\.menorah\.me|calls\.menorah\.me|(?:[a-z0-9-]+\.)*mentle\.org)(?=$|[^a-z0-9.-])/i;
 const LIVE_MODE_PATTERN =
   /(?:^|[-_:/.\s])(live|production|prod)(?:$|[-_:/.\s])/i;
+const ALERTMANAGER_LOCAL_PLACEHOLDER_KEYS = new Set([
+  'ALERTMANAGER_RECEIVER',
+  'ALERTMANAGER_DELIVERY_RECEIVER',
+]);
+const ALERTMANAGER_REAL_RECEIVER_PATTERN =
+  /^(?:menorah|server)-staging-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const ALERTMANAGER_CONFIG_REVIEW_REFERENCE_PATTERN =
+  /^staging-alert-config-review-[a-z0-9][a-z0-9._/-]{7,}$/;
+const ALERTMANAGER_CONFIG_REVIEW_MAX_AGE_MILLISECONDS =
+  30 * 24 * 60 * 60 * 1000;
+const ALERTMANAGER_CONFIG_REVIEW_FUTURE_SKEW_MILLISECONDS =
+  5 * 60 * 1000;
+const ALERTMANAGER_CONFIG_MAX_BYTES = 1024 * 1024;
 
 const normalizePath = (value) => {
   const normalized = String(value).trim().replaceAll('\\', '/');
@@ -458,6 +491,22 @@ const isPlainRecord = (value) => (
   && typeof value === 'object'
   && !Array.isArray(value)
 );
+
+const sha256 = (value) => (
+  createHash('sha256').update(value).digest('hex')
+);
+
+const pathComponents = (absolutePath) => {
+  const normalized = normalizePath(absolutePath);
+  if (!normalized.startsWith('/')) return [normalized];
+  const components = ['/'];
+  let current = '';
+  for (const part of normalized.split('/').filter(Boolean)) {
+    current += `/${part}`;
+    components.push(current);
+  }
+  return components;
+};
 
 export const parseEnvironmentSource = (source, sourceName = '<memory>') => {
   const record = {};
@@ -734,7 +783,10 @@ const validateSyntheticAdminRoleContract = (errors, environment) => {
 
 export const validateEnvironmentRecord = (
   environment,
-  { productionMetadata = {} } = {},
+  {
+    productionMetadata = {},
+    now = Date.now(),
+  } = {},
 ) => {
   const errors = [];
   for (const key of REQUIRED_KEYS) {
@@ -753,7 +805,16 @@ export const validateEnvironmentRecord = (
       errors.push(`${key} must not be empty`);
       continue;
     }
-    if (PLACEHOLDER_PATTERN.test(value)) {
+    const approvedLocalAlertmanagerPlaceholder = (
+      environment.MENORAH_SERVER_STAGING_PROJECT_NAME
+        === VALIDATION_PROJECT
+      && ALERTMANAGER_LOCAL_PLACEHOLDER_KEYS.has(key)
+      && value === 'server-staging-placeholder'
+    );
+    if (
+      PLACEHOLDER_PATTERN.test(value)
+      && !approvedLocalAlertmanagerPlaceholder
+    ) {
       errors.push(`${key} contains an example or placeholder value`);
     }
     if (PRODUCTION_DOMAIN_PATTERN.test(value)) {
@@ -879,6 +940,16 @@ export const validateEnvironmentRecord = (
     if (environment[key] !== expected) {
       errors.push(`${key} must be ${expected}`);
     }
+  }
+  if (
+    environment.MENORAH_SERVER_STAGING_EGRESS_SUBNET
+      !== '10.252.245.0/24'
+    || environment.MENORAH_SERVER_STAGING_EGRESS_IP_RANGE
+      !== '10.252.245.128/25'
+  ) {
+    errors.push(
+      'server-staging egress must retain the reviewed provisional CIDR',
+    );
   }
 
   const root = environment.MENORAH_SERVER_STAGING_ROOT;
@@ -1201,12 +1272,352 @@ export const validateEnvironmentRecord = (
     errors.push('Prometheus external project label must match Compose');
   }
   if (
-    environment.ALERTMANAGER_RECEIVER
-    !== 'staging-unconfigured-destination'
+    environment.ALERTMANAGER_CONFIG_FILE
+      !== ALERTMANAGER_CONFIG_TARGET
   ) {
-    errors.push('Alertmanager receiver must be a staging-only value');
+    errors.push('Alertmanager container config target is invalid');
+  }
+  if (
+    !/^[a-f0-9]{64}$/.test(
+      environment.ALERTMANAGER_CONFIG_SHA256 || '',
+    )
+  ) {
+    errors.push('Alertmanager config digest must be one SHA-256 value');
+  }
+  if (project === VALIDATION_PROJECT) {
+    if (
+      normalizePath(environment.ALERTMANAGER_CONFIG_SOURCE)
+        !== normalizePath(TRACKED_ALERTMANAGER_CONFIG_SOURCE)
+      || environment.ALERTMANAGER_RECEIVER
+        !== 'server-staging-placeholder'
+      || environment.ALERTMANAGER_DELIVERY_RECEIVER
+        !== 'server-staging-placeholder'
+      || environment.ALERTMANAGER_DELIVERY_ENDPOINT_HOST
+        !== 'staging-alert-sink'
+      || environment.ALERTMANAGER_CONFIG_REVIEWED_AT
+        !== '1970-01-01T00:00:00Z'
+      || environment.ALERTMANAGER_CONFIG_REVIEW_REFERENCE
+        !== 'synthetic-server-staging-only'
+    ) {
+      errors.push(
+        'local validation must use the tracked isolated Alertmanager sink',
+      );
+    }
+  } else {
+    const receiver = environment.ALERTMANAGER_RECEIVER || '';
+    const endpointHost =
+      environment.ALERTMANAGER_DELIVERY_ENDPOINT_HOST || '';
+    const reviewedAt =
+      environment.ALERTMANAGER_CONFIG_REVIEWED_AT || '';
+    const reviewReference =
+      environment.ALERTMANAGER_CONFIG_REVIEW_REFERENCE || '';
+    const reviewedTimestamp = Date.parse(reviewedAt);
+    const normalizedReviewedAt = reviewedAt.endsWith('Z')
+      && !reviewedAt.includes('.')
+      ? reviewedAt.replace(/Z$/, '.000Z')
+      : reviewedAt;
+    if (
+      normalizePath(environment.ALERTMANAGER_CONFIG_SOURCE)
+        !== REAL_ALERTMANAGER_CONFIG_SOURCE
+    ) {
+      errors.push(
+        `real server staging must use ${REAL_ALERTMANAGER_CONFIG_SOURCE}`,
+      );
+    }
+    if (
+      !ALERTMANAGER_REAL_RECEIVER_PATTERN.test(receiver)
+      || receiver !== environment.ALERTMANAGER_DELIVERY_RECEIVER
+      || /(?:placeholder|unconfigured|production|(?:^|-)prod(?:-|$))/i
+        .test(receiver)
+    ) {
+      errors.push(
+        'Alertmanager delivery receiver must be one matching staging-only identity',
+      );
+    }
+    if (
+      !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(endpointHost)
+      || !endpointHost.includes('.')
+      || endpointHost === 'localhost'
+      || /^[0-9.]+$/.test(endpointHost)
+      || endpointHost.split('.').some(
+        (label) => ['prod', 'production'].includes(label),
+      )
+      || PRODUCTION_DOMAIN_PATTERN.test(endpointHost)
+      || (productionMetadata.caddyHosts || []).includes(endpointHost)
+      || (productionMetadata.tunnelHosts || []).includes(endpointHost)
+    ) {
+      errors.push(
+        'Alertmanager delivery endpoint must be an approved non-production hostname',
+      );
+    }
+    if (
+      !Number.isFinite(reviewedTimestamp)
+      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/
+        .test(reviewedAt)
+      || new Date(reviewedTimestamp).toISOString()
+        !== normalizedReviewedAt
+      || reviewedTimestamp
+        > now + ALERTMANAGER_CONFIG_REVIEW_FUTURE_SKEW_MILLISECONDS
+      || now - reviewedTimestamp
+        > ALERTMANAGER_CONFIG_REVIEW_MAX_AGE_MILLISECONDS
+    ) {
+      errors.push(
+        'Alertmanager config review must be exact, recent, and not future-dated',
+      );
+    }
+    if (
+      !ALERTMANAGER_CONFIG_REVIEW_REFERENCE_PATTERN.test(
+        reviewReference,
+      )
+      || LIVE_MODE_PATTERN.test(reviewReference)
+    ) {
+      errors.push(
+        'Alertmanager config review must use a staging-only reference',
+      );
+    }
   }
 
+  return errors;
+};
+
+const canonicalAlertmanagerLines = (receiver) => [
+  'global:',
+  '  resolve_timeout: 1m',
+  'route:',
+  '  receiver: unmatched-drop',
+  '  group_by:',
+  '    - environment',
+  '    - alertname',
+  '    - service',
+  '    - severity',
+  '  group_wait: 5s',
+  '  group_interval: 30s',
+  '  repeat_interval: 30m',
+  '  routes:',
+  `    - receiver: ${receiver}`,
+  '      matchers:',
+  '        - environment="staging"',
+  'receivers:',
+  '  - name: unmatched-drop',
+  `  - name: ${receiver}`,
+  '    webhook_configs:',
+  '      - url: __REVIEWED_WEBHOOK_URL__',
+  '        send_resolved: true',
+  '        http_config:',
+  '          follow_redirects: false',
+  'inhibit_rules:',
+  '  - source_matchers:',
+  '      - environment="staging"',
+  '      - severity="critical"',
+  '    target_matchers:',
+  '      - environment="staging"',
+  '      - severity="warning"',
+  '    equal:',
+  '      - environment',
+  '      - alertname',
+  '      - service',
+];
+
+const canonicalAlertmanagerSource = (source) => {
+  const rawLines = String(source).split(/\r?\n/);
+  if (
+    rawLines.some((line) => line.includes('\t'))
+    || rawLines.some((line) => /^\s*(?:---|\.\.\.)\s*$/.test(line))
+    || rawLines.some((line) => /:\s*[>|][+-]?\s*$/.test(line))
+    || rawLines.some((line) => (
+      /^\s*[^#\s].*(?:\s[&*!][a-z0-9_-]+|[\[\]{}])/.test(line)
+    ))
+  ) {
+    return {
+      error:
+        'Alertmanager config uses forbidden YAML flow, alias, tag, or folded syntax',
+    };
+  }
+  const lines = rawLines.filter(
+    (line) => line.trim() && !line.trimStart().startsWith('#'),
+  );
+  const urlIndexes = [];
+  const urls = [];
+  lines.forEach((line, index) => {
+    const match = line.match(/^      - url: (\S+)$/);
+    if (match) {
+      urlIndexes.push(index);
+      urls.push(match[1]);
+    }
+  });
+  if (urlIndexes.length === 1) {
+    lines[urlIndexes[0]] = '      - url: __REVIEWED_WEBHOOK_URL__';
+  }
+  return { lines, urls };
+};
+
+export const validateAlertmanagerConfigContent = (
+  environment,
+  source,
+) => {
+  const errors = [];
+  const project = environment.MENORAH_SERVER_STAGING_PROJECT_NAME;
+  const receiver = project === VALIDATION_PROJECT
+    ? 'server-staging-placeholder'
+    : environment.ALERTMANAGER_DELIVERY_RECEIVER || '';
+  const endpointHost =
+    environment.ALERTMANAGER_DELIVERY_ENDPOINT_HOST || '';
+  const text = String(source);
+  if (
+    project !== VALIDATION_PROJECT
+    && (
+      PRODUCTION_DOMAIN_PATTERN.test(text)
+      || /\bproduction\b|\bprod(?:[-_./]|$)/im.test(text)
+    )
+  ) {
+    errors.push(
+      'external Alertmanager config references production delivery state',
+    );
+  }
+  const parsed = canonicalAlertmanagerSource(source);
+  if (parsed.error) {
+    errors.push(parsed.error);
+    return errors;
+  }
+  const expectedLines = canonicalAlertmanagerLines(receiver);
+  if (
+    !receiver
+    || parsed.urls.length !== 1
+    || parsed.lines.length !== expectedLines.length
+    || parsed.lines.some(
+      (line, index) => line !== expectedLines[index],
+    )
+  ) {
+    errors.push(
+      'Alertmanager config must match the exact staging-only canonical route',
+    );
+  }
+  if (parsed.urls.length !== 1) return errors;
+
+  const [value] = parsed.urls;
+  if (project === VALIDATION_PROJECT) {
+    if (value !== 'http://staging-alert-sink:9099/alerts') {
+      errors.push(
+        'local Alertmanager config must use only the tracked isolated sink',
+      );
+    }
+  } else {
+    try {
+      const url = new URL(value);
+      if (
+        url.protocol !== 'https:'
+        || url.hostname !== endpointHost
+        || !['', '443'].includes(url.port)
+        || url.username
+        || url.password
+      ) {
+        errors.push(
+          'external Alertmanager webhook does not match the reviewed HTTPS endpoint',
+        );
+      }
+    } catch {
+      errors.push('external Alertmanager webhook URL is invalid');
+    }
+  }
+  return errors;
+};
+
+export const validateAlertmanagerConfigSource = (
+  environment,
+  {
+    fsAdapter = fs,
+  } = {},
+) => {
+  const errors = [];
+  const project = environment.MENORAH_SERVER_STAGING_PROJECT_NAME;
+  const configuredSource =
+    normalizePath(environment.ALERTMANAGER_CONFIG_SOURCE || '');
+  const expectedSource = normalizePath(
+    project === VALIDATION_PROJECT
+      ? TRACKED_ALERTMANAGER_CONFIG_SOURCE
+      : REAL_ALERTMANAGER_CONFIG_SOURCE,
+  );
+  if (configuredSource !== expectedSource) {
+    return [
+      'Alertmanager config source is not the exact reviewed project path',
+    ];
+  }
+
+  let metadata;
+  let resolved;
+  let contents;
+  try {
+    metadata = fsAdapter.lstatSync(configuredSource);
+    resolved = normalizePath(fsAdapter.realpathSync(configuredSource));
+    contents = fsAdapter.readFileSync(configuredSource);
+  } catch {
+    return [
+      'Alertmanager config source is missing or cannot be inspected',
+    ];
+  }
+  if (
+    !metadata.isFile()
+    || metadata.isSymbolicLink()
+    || resolved !== configuredSource
+  ) {
+    errors.push(
+      'Alertmanager config source must be a canonical regular non-symlink file',
+    );
+  }
+  if (project === REAL_PROJECT) {
+    try {
+      for (
+        const component
+        of pathComponents(configuredSource).slice(0, -1)
+      ) {
+        const componentMetadata = fsAdapter.lstatSync(component);
+        if (
+          componentMetadata.isSymbolicLink()
+          || !componentMetadata.isDirectory()
+          || componentMetadata.uid !== 0
+          || (componentMetadata.mode & 0o022) !== 0
+        ) {
+          errors.push(
+            'Alertmanager config parent directories must be root-owned, non-writable, and non-symlink',
+          );
+          break;
+        }
+      }
+    } catch {
+      errors.push(
+        'Alertmanager config source path components cannot be inspected',
+      );
+    }
+    if (
+      (metadata.mode & 0o777) !== 0o400
+      || metadata.uid !== 65534
+      || metadata.gid !== 65534
+    ) {
+      errors.push(
+        'Alertmanager config source must be uid/gid 65534 with mode 0400',
+      );
+    }
+  }
+  if (
+    !Number.isSafeInteger(metadata.size)
+    || metadata.size <= 0
+    || metadata.size > ALERTMANAGER_CONFIG_MAX_BYTES
+    || contents.length > ALERTMANAGER_CONFIG_MAX_BYTES
+  ) {
+    errors.push(
+      'Alertmanager config source must be non-empty and at most 1 MiB',
+    );
+  }
+  const actualDigest = sha256(contents);
+  if (actualDigest !== environment.ALERTMANAGER_CONFIG_SHA256) {
+    errors.push(
+      'Alertmanager config source digest does not match environment metadata',
+    );
+  }
+  errors.push(...validateAlertmanagerConfigContent(
+    environment,
+    contents,
+  ));
   return errors;
 };
 
@@ -1234,6 +1645,8 @@ const parseArguments = (argv) => {
       options.productionMetadataFile = argv[++index];
     } else if (argument === '--print-project') {
       options.printProject = true;
+    } else if (argument === '--print-alertmanager-source') {
+      options.printAlertmanagerSource = true;
     } else {
       throw new Error(`Unknown argument: ${argument}`);
     }
@@ -1257,7 +1670,21 @@ if (isMain) {
       ? JSON.parse(readFileSync(options.productionMetadataFile, 'utf8'))
       : {};
     assertValidEnvironment(environment, { productionMetadata });
-    if (options.printProject) {
+    const alertmanagerErrors = validateAlertmanagerConfigSource(
+      environment,
+    );
+    if (alertmanagerErrors.length > 0) {
+      throw new Error(
+        'Server-staging Alertmanager source validation failed '
+        + `(${alertmanagerErrors.length}):\n`
+        + alertmanagerErrors.map((error) => `- ${error}`).join('\n'),
+      );
+    }
+    if (options.printAlertmanagerSource) {
+      process.stdout.write(
+        `${environment.ALERTMANAGER_CONFIG_SOURCE}\n`,
+      );
+    } else if (options.printProject) {
       process.stdout.write(
         `${environment.MENORAH_SERVER_STAGING_PROJECT_NAME}\n`,
       );

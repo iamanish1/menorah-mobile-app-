@@ -240,6 +240,43 @@ capture_command compose_version_output 'docker-compose-version' \
   local_docker compose version
 emit_or_none "${compose_version_output}" 'docker-compose-version=unavailable'
 
+section 'docker-security-mode'
+docker_security_options_output=''
+capture_command \
+  docker_security_options_output \
+  'docker-security-options' \
+  local_docker info \
+  --format '{{range .SecurityOptions}}{{println .}}{{end}}'
+docker_rootless=false
+docker_userns=false
+docker_seccomp=false
+docker_apparmor=false
+docker_selinux=false
+while IFS= read -r docker_security_option; do
+  case "${docker_security_option}" in
+    name=rootless) docker_rootless=true ;;
+    name=userns) docker_userns=true ;;
+    name=seccomp,profile=*) docker_seccomp=true ;;
+    name=apparmor) docker_apparmor=true ;;
+    name=selinux) docker_selinux=true ;;
+    *) ;;
+  esac
+done <<< "${docker_security_options_output}"
+printf '%s\n' \
+  "rootless=${docker_rootless}" \
+  "userns_remap=${docker_userns}" \
+  "seccomp=${docker_seccomp}" \
+  "apparmor=${docker_apparmor}" \
+  "selinux=${docker_selinux}"
+unset \
+  docker_security_options_output \
+  docker_security_option \
+  docker_rootless \
+  docker_userns \
+  docker_seccomp \
+  docker_apparmor \
+  docker_selinux
+
 section 'docker-compose-projects'
 container_project_output=''
 capture_command container_project_output 'docker-projects-from-containers' \

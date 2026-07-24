@@ -24,6 +24,8 @@ receivers:
     webhook_configs:
       - url: http://staging-alert-sink:9099/alerts
         send_resolved: true
+        http_config:
+          follow_redirects: false
 
 inhibit_rules:
   - source_matchers:

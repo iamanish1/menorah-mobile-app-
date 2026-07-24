@@ -9,6 +9,7 @@ readonly ENV_FILE='/opt/menorah-staging/env/server-staging.env'
 readonly COMPOSE_FILE='/opt/menorah-staging/app/menorah/deploy/server-staging/compose.yml'
 readonly SCRIPT_DIR='/opt/menorah-staging/app/menorah/deploy/server-staging'
 readonly LIFECYCLE_HELPER="${SCRIPT_DIR}/service-lifecycle.mjs"
+readonly ALERTMANAGER_RELEASE_PREFLIGHT="${SCRIPT_DIR}/assert-alertmanager-release-preflight.sh"
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
 
 fail() {
@@ -36,6 +37,15 @@ manifest_path="$(realpath -e -- "${MANIFEST}")"
 readonly manifest_path
 [[ -f "${LIFECYCLE_HELPER}" && ! -L "${LIFECYCLE_HELPER}" ]] \
   || fail 'service lifecycle helper is unavailable'
+[[ -f "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
+  && ! -L "${ALERTMANAGER_RELEASE_PREFLIGHT}" ]] \
+  || fail 'Alertmanager release preflight is unavailable'
+
+# This invocation occurs after every deploy, resume, or rollback start. It
+# revalidates the protected source, exact digest, readability, and syntax
+# before runtime identity is accepted.
+bash "${ALERTMANAGER_RELEASE_PREFLIGHT}" \
+  || fail 'post-start Alertmanager release preflight failed'
 
 config_temp="$(mktemp "${RELEASE_STATE}/.runtime-config.XXXXXX")"
 plan_temp="$(mktemp "${RELEASE_STATE}/.runtime-plan.XXXXXX")"
@@ -55,6 +65,7 @@ node "${LIFECYCLE_HELPER}" \
   plan "${config_temp}" "${MANIFEST}" > "${plan_temp}"
 
 runtime_count=0
+alertmanager_count=0
 while IFS='|' read -r kind health service reference manifest_image_id extra
 do
   [[ -n "${kind}" \
@@ -89,12 +100,13 @@ do
 
   runtime_identity="$(
     docker inspect \
-      --format '{{.State.Status}}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.Image}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}' \
+      --format '{{.State.Status}}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.Image}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}|{{index .Config.Labels "com.menorah.alertmanager-config-sha256"}}' \
       "${container_ids[0]}"
   )"
   IFS='|' read -r \
     status running health_status actual_image_id project_label service_label \
-    oneoff_label extra_identity <<< "${runtime_identity}"
+    oneoff_label alertmanager_config_digest_label extra_identity \
+    <<< "${runtime_identity}"
   [[ "${status}" == 'running' && "${running}" == 'true' ]] \
     || fail "required runtime service is not running: ${service}"
   [[ "${actual_image_id}" == "${expected_image_id}" \
@@ -110,10 +122,19 @@ do
     [[ "${health}" == 'running' ]] \
       || fail "unknown runtime health requirement: ${service}"
   fi
+  if [[ "${service}" == 'staging-alertmanager' ]]; then
+    alertmanager_count=$((alertmanager_count + 1))
+    [[ "${ALERTMANAGER_CONFIG_SHA256-}" =~ ^[0-9a-f]{64}$ \
+      && "${alertmanager_config_digest_label}" \
+        == "${ALERTMANAGER_CONFIG_SHA256}" ]] \
+      || fail 'Alertmanager runtime config digest label is invalid'
+  fi
 done < "${plan_temp}"
 
 [[ "${runtime_count}" -gt 0 ]] \
   || fail 'service lifecycle plan contains no required runtime services'
+[[ "${alertmanager_count}" -eq 1 ]] \
+  || fail 'service lifecycle plan must contain one Alertmanager runtime'
 
 trap - EXIT HUP INT TERM
 rm -f -- "${config_temp}" "${plan_temp}"

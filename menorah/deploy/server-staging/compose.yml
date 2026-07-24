@@ -1205,6 +1205,10 @@ services:
     <<: *staging-service-common
     image: prom/alertmanager:v0.32.1@sha256:51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286
     restart: "on-failure:3"
+    user: "65534:65534"
+    labels:
+      <<: *staging-service-labels
+      com.menorah.alertmanager-config-sha256: "${ALERTMANAGER_CONFIG_SHA256:?Set the reviewed Alertmanager config digest}"
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
@@ -1216,7 +1220,7 @@ services:
       - no-new-privileges:true
     volumes:
       - type: bind
-        source: ./alertmanager.yml
+        source: "${ALERTMANAGER_CONFIG_SOURCE:?Set the reviewed server-staging Alertmanager config source}"
         target: /etc/alertmanager/alertmanager.yml
         read_only: true
       - type: volume
@@ -1225,7 +1229,8 @@ services:
     ports:
       - "127.0.0.1:39093:9093"
     networks:
-      staging-ingress:
+      staging-egress:
+        gw_priority: 1
       staging-monitoring:
         aliases:
           - staging-private-alertmanager
@@ -1932,6 +1937,23 @@ networks:
     ipam:
       config:
         - subnet: "${MENORAH_SERVER_STAGING_RESTORE_SUBNET:-10.252.244.0/24}"
+  staging-egress:
+    name: "${MENORAH_SERVER_STAGING_RESOURCE_PREFIX:-menorah-staging}-egress"
+    driver: bridge
+    internal: false
+# This bridge is egress-capable NAT, not a destination/FQDN allowlist.
+# Server firewall or proxy restrictions remain discovery-time evidence.
+    labels:
+      <<: *staging-resource-labels
+      com.menorah.resource-kind: network
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+    ipam:
+      config:
+        - subnet: "${MENORAH_SERVER_STAGING_EGRESS_SUBNET:-10.252.245.0/24}"
+          ip_range: "${MENORAH_SERVER_STAGING_EGRESS_IP_RANGE:-10.252.245.128/25}"
 
 volumes:
   staging-filesystem-root:

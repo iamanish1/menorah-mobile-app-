@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {
   mkdir,
@@ -25,6 +26,8 @@ import {
   EXPECTED_PORT_VARIABLES,
   REAL_PROJECT,
   parseEnvironmentSource,
+  validateAlertmanagerConfigContent,
+  validateAlertmanagerConfigSource,
   validateEnvironmentRecord,
 } from '../../deploy/server-staging/validate-environment.mjs';
 import {
@@ -54,12 +57,114 @@ const contractSource = readFileSync(
   'utf8',
 );
 const fixtureSha = 'a'.repeat(40);
+const externalAlertmanagerSource = `global:
+  resolve_timeout: 1m
+
+route:
+  receiver: unmatched-drop
+  group_by:
+    - environment
+    - alertname
+    - service
+    - severity
+  group_wait: 5s
+  group_interval: 30s
+  repeat_interval: 30m
+  routes:
+    - receiver: menorah-staging-operations
+      matchers:
+        - environment="staging"
+
+receivers:
+  - name: unmatched-drop
+  - name: menorah-staging-operations
+    webhook_configs:
+      - url: https://alerts.staging-provider.invalid/hooks/staging-fixture
+        send_resolved: true
+        http_config:
+          follow_redirects: false
+
+inhibit_rules:
+  - source_matchers:
+      - environment="staging"
+      - severity="critical"
+    target_matchers:
+      - environment="staging"
+      - severity="warning"
+    equal:
+      - environment
+      - alertname
+      - service
+`;
 
 const validEnvironment = () => ({
   ...buildValidationEnvironment({
     candidateSha: fixtureSha,
     contractKeys: parseContractKeys(contractSource),
   }).values,
+});
+
+const realAlertmanagerEnvironment = (
+  source = externalAlertmanagerSource,
+) => ({
+  ...validEnvironment(),
+  MENORAH_SERVER_STAGING_PROJECT_NAME: REAL_PROJECT,
+  MENORAH_SERVER_STAGING_RESOURCE_PREFIX: REAL_PROJECT,
+  ALERTMANAGER_CONFIG_SOURCE:
+    '/opt/menorah-staging/env/alertmanager.yml',
+  ALERTMANAGER_CONFIG_SHA256: createHash('sha256')
+    .update(source)
+    .digest('hex'),
+  ALERTMANAGER_RECEIVER: 'menorah-staging-operations',
+  ALERTMANAGER_DELIVERY_RECEIVER: 'menorah-staging-operations',
+  ALERTMANAGER_DELIVERY_ENDPOINT_HOST:
+    'alerts.staging-provider.invalid',
+  ALERTMANAGER_CONFIG_REVIEWED_AT: '2026-07-25T00:00:00.000Z',
+  ALERTMANAGER_CONFIG_REVIEW_REFERENCE:
+    'staging-alert-config-review-ops-20260725',
+});
+
+const alertmanagerFsAdapter = (
+  source,
+  {
+    mode = 0o100400,
+    uid = 65534,
+    gid = 65534,
+    symbolicLink = false,
+    missing = false,
+    parentUid = 0,
+    parentMode = 0o40700,
+    parentSymbolicLink = false,
+    readError = false,
+    reportedSize = Buffer.byteLength(source),
+  } = {},
+) => ({
+  lstatSync(candidate) {
+    if (missing) throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    const isConfig = candidate
+      === '/opt/menorah-staging/env/alertmanager.yml';
+    return {
+      mode: isConfig ? mode : parentMode,
+      uid: isConfig ? uid : parentUid,
+      gid: isConfig ? gid : 0,
+      size: isConfig ? reportedSize : 0,
+      isFile: () => isConfig,
+      isDirectory: () => !isConfig,
+      isSymbolicLink: () => (
+        isConfig ? symbolicLink : parentSymbolicLink
+      ),
+    };
+  },
+  realpathSync(candidate) {
+    return candidate;
+  },
+  readFileSync() {
+    if (readError) throw Object.assign(
+      new Error('unreadable'),
+      { code: 'EACCES' },
+    );
+    return Buffer.from(source, 'utf8');
+  },
 });
 
 const labels = (project) => ({
@@ -412,6 +517,24 @@ const validCompose = (environment = validEnvironment()) => {
     '--config.file=/etc/prometheus/prometheus.yml',
     '--enable-feature=expand-external-labels',
   ];
+  services['staging-alertmanager'].volumes = [{
+    type: 'bind',
+    source: environment.ALERTMANAGER_CONFIG_SOURCE,
+    target: '/etc/alertmanager/alertmanager.yml',
+    read_only: true,
+  }];
+  services['staging-alertmanager'].user = '65534:65534';
+  services['staging-alertmanager'].labels = {
+    ...services['staging-alertmanager'].labels,
+    'com.menorah.alertmanager-config-sha256':
+      environment.ALERTMANAGER_CONFIG_SHA256,
+  };
+  services['staging-alertmanager'].networks = {
+    'staging-egress': { gw_priority: 1 },
+    'staging-monitoring': {
+      aliases: ['staging-private-alertmanager'],
+    },
+  };
   const resourceLabels = {
     'com.menorah.environment': 'staging',
     'com.menorah.project': project,
@@ -425,11 +548,28 @@ const validCompose = (environment = validEnvironment()) => {
         `staging-${suffix}`,
         {
           name: `${prefix}-${suffix}`,
-          internal: suffix !== 'ingress',
+          driver: 'bridge',
+          internal: !['ingress', 'egress'].includes(suffix),
+          ...(
+            suffix === 'egress'
+              ? {
+                driver_opts: {
+                  'com.docker.network.bridge.enable_icc': 'false',
+                  'com.docker.network.bridge.enable_ip_masquerade': 'true',
+                  'com.docker.network.bridge.host_binding_ipv4': '127.0.0.1',
+                },
+              }
+              : {}
+          ),
           labels: resourceLabels,
           ipam: {
             config: [{
               subnet: `10.252.${240 + index}.0/24`,
+              ...(
+                suffix === 'egress'
+                  ? { ip_range: '10.252.245.128/25' }
+                  : {}
+              ),
             }],
           },
         },
@@ -507,6 +647,304 @@ test('generator builds a complete, unique, synthetic contract', () => {
       /^[0-9a-f]+$/,
     );
   }
+});
+
+test('real Alertmanager source accepts a protected digest-bound external receiver', () => {
+  const environment = realAlertmanagerEnvironment();
+  assert.deepEqual(
+    validateAlertmanagerConfigSource(environment, {
+      fsAdapter: alertmanagerFsAdapter(externalAlertmanagerSource),
+    }),
+    [],
+  );
+});
+
+test('real Alertmanager source rejects missing, wrong-path, weak-mode, symlink, and digest drift', () => {
+  const environment = realAlertmanagerEnvironment();
+  const cases = [
+    [
+      { ...environment, ALERTMANAGER_CONFIG_SOURCE: '/tmp/alerts.yml' },
+      alertmanagerFsAdapter(externalAlertmanagerSource),
+      /exact reviewed project path/,
+    ],
+    [
+      environment,
+      alertmanagerFsAdapter(externalAlertmanagerSource, { missing: true }),
+      /missing or cannot be inspected/,
+    ],
+    [
+      environment,
+      alertmanagerFsAdapter(externalAlertmanagerSource, {
+        readError: true,
+      }),
+      /missing or cannot be inspected/,
+    ],
+    [
+      environment,
+      alertmanagerFsAdapter(externalAlertmanagerSource, { mode: 0o100440 }),
+      /uid\/gid 65534 with mode 0400/,
+    ],
+    [
+      environment,
+      alertmanagerFsAdapter(externalAlertmanagerSource, { uid: 65533 }),
+      /uid\/gid 65534 with mode 0400/,
+    ],
+    [
+      environment,
+      alertmanagerFsAdapter(externalAlertmanagerSource, { gid: 65533 }),
+      /uid\/gid 65534 with mode 0400/,
+    ],
+    [
+      environment,
+      alertmanagerFsAdapter(externalAlertmanagerSource, {
+        symbolicLink: true,
+      }),
+      /canonical regular non-symlink/,
+    ],
+    [
+      environment,
+      alertmanagerFsAdapter(externalAlertmanagerSource, {
+        parentSymbolicLink: true,
+      }),
+      /parent directories must be root-owned/,
+    ],
+    [
+      environment,
+      alertmanagerFsAdapter(externalAlertmanagerSource, {
+        parentUid: 1000,
+      }),
+      /parent directories must be root-owned/,
+    ],
+    [
+      environment,
+      alertmanagerFsAdapter(externalAlertmanagerSource, {
+        parentMode: 0o40720,
+      }),
+      /parent directories must be root-owned/,
+    ],
+    [
+      { ...environment, ALERTMANAGER_CONFIG_SHA256: 'b'.repeat(64) },
+      alertmanagerFsAdapter(externalAlertmanagerSource),
+      /digest does not match/,
+    ],
+    [
+      environment,
+      alertmanagerFsAdapter(externalAlertmanagerSource, {
+        reportedSize: 1024 * 1024 + 1,
+      }),
+      /non-empty and at most 1 MiB/,
+    ],
+  ];
+  for (const [candidate, fsAdapter, expected] of cases) {
+    const errors = validateAlertmanagerConfigSource(candidate, {
+      fsAdapter,
+    });
+    assert.ok(
+      includesError(errors, expected),
+      `expected ${expected}, received:\n${errors.join('\n')}`,
+    );
+  }
+});
+
+test('Alertmanager canonical contract rejects route and delivery bypasses', () => {
+  const environment = realAlertmanagerEnvironment();
+  const cases = [
+    [
+      externalAlertmanagerSource
+        .replace(
+          '  receiver: unmatched-drop',
+          '  receiver: menorah-staging-operations',
+        )
+        .replace(
+          '    - receiver: menorah-staging-operations',
+          '    - receiver: unmatched-drop',
+        ),
+      /exact staging-only canonical route/,
+    ],
+    [
+      externalAlertmanagerSource.replace(
+        '        http_config:',
+        '    slack_configs: [{api_url: "https://hooks.invalid"}]\n'
+          + '        http_config:',
+      ),
+      /forbidden YAML flow/,
+    ],
+    [
+      externalAlertmanagerSource.replace(
+        '      matchers:',
+        '      continue: true\n      matchers:',
+      ),
+      /exact staging-only canonical route/,
+    ],
+    [
+      externalAlertmanagerSource.replace(
+        '        send_resolved: true',
+        '        send_resolved: true\n'
+          + '      - url: https://alerts.staging-provider.invalid/second',
+      ),
+      /exact staging-only canonical route/,
+    ],
+    [
+      externalAlertmanagerSource.replace(
+        '      - url: https://',
+        '      - url: >-\n          https://',
+      ),
+      /forbidden YAML flow, alias, tag, or folded syntax/,
+    ],
+    [
+      externalAlertmanagerSource.replace(
+        '  - name: unmatched-drop',
+        '  - &drop name: unmatched-drop',
+      ),
+      /forbidden YAML flow|exact staging-only canonical route/,
+    ],
+    [
+      externalAlertmanagerSource.replace(
+        '          follow_redirects: false',
+        '          follow_redirects: true',
+      ),
+      /exact staging-only canonical route/,
+    ],
+    [
+      externalAlertmanagerSource.replace(
+        '          follow_redirects: false',
+        '          follow_redirects: false\n'
+          + '          proxy_url: http://proxy.invalid',
+      ),
+      /exact staging-only canonical route/,
+    ],
+    [
+      externalAlertmanagerSource.replace(
+        '          follow_redirects: false',
+        '          follow_redirects: false\n'
+          + '          tls_config:\n'
+          + '            insecure_skip_verify: true',
+      ),
+      /exact staging-only canonical route/,
+    ],
+  ];
+  for (const [source, expected] of cases) {
+    const errors = validateAlertmanagerConfigContent(
+      environment,
+      source,
+    );
+    assert.ok(
+      includesError(errors, expected),
+      `expected ${expected}, received:\n${errors.join('\n')}`,
+    );
+  }
+});
+
+test('local Alertmanager canonical contract rejects external HTTP delivery', () => {
+  const source = readStaging('alertmanager.yml').replace(
+    '        send_resolved: true',
+    '        send_resolved: true\n'
+      + '      - url: http://outside.invalid/alerts',
+  );
+  assert.ok(includesError(
+    validateAlertmanagerConfigContent(validEnvironment(), source),
+    /exact staging-only canonical route/,
+  ));
+});
+
+test('real Alertmanager webhook requires exact HTTPS host and default port', () => {
+  const environment = realAlertmanagerEnvironment();
+  assert.deepEqual(
+    validateAlertmanagerConfigContent(
+      environment,
+      externalAlertmanagerSource.replace(
+        'https://alerts.staging-provider.invalid/',
+        'https://alerts.staging-provider.invalid:443/',
+      ),
+    ),
+    [],
+  );
+  for (const replacement of [
+    'http://alerts.staging-provider.invalid/hooks/staging-fixture',
+    'https://other.staging-provider.invalid/hooks/staging-fixture',
+    'https://alerts.staging-provider.invalid:8443/hooks/staging-fixture',
+  ]) {
+    const source = externalAlertmanagerSource.replace(
+      'https://alerts.staging-provider.invalid/hooks/staging-fixture',
+      replacement,
+    );
+    assert.ok(includesError(
+      validateAlertmanagerConfigContent(environment, source),
+      /does not match the reviewed HTTPS endpoint/,
+    ));
+  }
+});
+
+test('real Alertmanager config review metadata must be fresh and not future-dated', () => {
+  const now = Date.parse('2026-07-25T12:00:00.000Z');
+  for (const reviewedAt of [
+    '2026-06-24T11:59:59.000Z',
+    '2026-07-25T12:05:01.000Z',
+  ]) {
+    const environment = {
+      ...realAlertmanagerEnvironment(),
+      ALERTMANAGER_CONFIG_REVIEWED_AT: reviewedAt,
+    };
+    const errors = validateEnvironmentRecord(environment, {
+      productionMetadata,
+      now,
+    });
+    assert.ok(includesError(
+      errors,
+      /config review must be exact, recent, and not future-dated/,
+    ));
+  }
+  const wrongReference = {
+    ...realAlertmanagerEnvironment(),
+    ALERTMANAGER_CONFIG_REVIEW_REFERENCE:
+      'staging-alert-delivery-ops-20260725',
+  };
+  assert.ok(includesError(
+    validateEnvironmentRecord(wrongReference, {
+      productionMetadata,
+      now,
+    }),
+    /config review must use a staging-only reference/,
+  ));
+});
+
+test('real Alertmanager rejects placeholder split and production receiver or token text', () => {
+  const environment = realAlertmanagerEnvironment();
+  const placeholderErrors = validateAlertmanagerConfigContent(
+    environment,
+    readStaging('alertmanager.yml'),
+  );
+  assert.ok(includesError(
+    placeholderErrors,
+    /exact staging-only canonical route/,
+  ));
+
+  const productionReceiver =
+    externalAlertmanagerSource.replaceAll(
+      'menorah-staging-operations',
+      'menorah-production-operations',
+    );
+  const productionReceiverEnvironment = {
+    ...environment,
+    ALERTMANAGER_RECEIVER: 'menorah-production-operations',
+    ALERTMANAGER_DELIVERY_RECEIVER: 'menorah-production-operations',
+  };
+  assert.ok(includesError(
+    validateAlertmanagerConfigContent(
+      productionReceiverEnvironment,
+      productionReceiver,
+    ),
+    /production delivery state/,
+  ));
+
+  const productionToken = externalAlertmanagerSource.replace(
+    'staging-fixture',
+    'prod-token',
+  );
+  assert.ok(includesError(
+    validateAlertmanagerConfigContent(environment, productionToken),
+    /production delivery state/,
+  ));
 });
 
 test('generator uses port 38443 for every externally reached local URL', () => {
@@ -800,6 +1238,18 @@ const composeMutations = [
   ['Mongo port', (model) => { model.services['staging-mongo-primary'].ports = [{ host_ip: '127.0.0.1', published: '27017', target: 27017 }]; }, /must not publish a host port/],
   ['Redis port', (model) => { model.services['staging-redis'].ports = [{ host_ip: '127.0.0.1', published: '6379', target: 6379 }]; }, /must not publish a host port/],
   ['external network', (model) => { model.networks['staging-data'].external = true; }, /must not be external/],
+  ['disabled egress NAT', (model) => {
+    model.networks['staging-egress'].driver_opts[
+      'com.docker.network.bridge.enable_ip_masquerade'
+    ] = 'false';
+  }, /reviewed egress-capable NAT bridge/],
+  ['wrong egress dynamic range', (model) => {
+    model.networks['staging-egress'].ipam.config[0].ip_range =
+      '10.252.245.0/25';
+  }, /dynamic range must exactly match/],
+  ['unapproved egress member', (model) => {
+    model.services['staging-api-web'].networks.push('staging-egress');
+  }, /initially contain only staging-alertmanager/],
   ['production network', (model) => { model.networks['staging-data'].name = 'menorah_db_net'; }, /collides with production/],
   ['production subnet', (model) => { model.networks['staging-data'].ipam = { config: [{ subnet: productionMetadata.networkSubnets[0] }] }; }, /subnet collides with production/],
   ['containing production subnet', (model) => {
@@ -816,6 +1266,22 @@ const composeMutations = [
   ['Docker socket', (model) => { model.services['staging-alloy'].volumes = [{ type: 'bind', source: '/var/run/docker.sock', target: '/var/run/docker.sock' }]; }, /Docker socket/],
   ['host log mount', (model) => { model.services['staging-alloy'].volumes = [{ type: 'bind', source: '/var/lib/docker/containers', target: '/logs' }]; }, /host-wide Docker logs/],
   ['ambiguous bind root', (model) => { model.services['staging-alloy'].volumes = [{ type: 'bind', source: '/', target: '/host' }]; }, /ambiguous broad bind root/],
+  ['wrong Alertmanager config bind', (model) => {
+    model.services['staging-alertmanager'].volumes[0].source =
+      '/opt/menorah-staging/env/other-alertmanager.yml';
+  }, /bind the reviewed config source read-only/],
+  ['writable Alertmanager config bind', (model) => {
+    model.services['staging-alertmanager'].volumes[0].read_only = false;
+  }, /bind the reviewed config source read-only/],
+  ['wrong Alertmanager config digest label', (model) => {
+    model.services['staging-alertmanager'].labels[
+      'com.menorah.alertmanager-config-sha256'
+    ] = 'b'.repeat(64);
+  }, /exact reviewed config digest label/],
+  ['missing Alertmanager egress gateway priority', (model) => {
+    delete model.services['staging-alertmanager']
+      .networks['staging-egress'].gw_priority;
+  }, /explicit default gateway/],
   ['host network', (model) => { model.services['staging-api-web'].network_mode = 'host'; }, /shares a host namespace/],
   ['privileged service', (model) => { model.services['staging-api-web'].privileged = true; }, /must not be privileged/],
   ['unbounded restart', (model) => { model.services['staging-api-web'].restart = 'always'; }, /unbounded restart policy/],
@@ -970,7 +1436,11 @@ const validMonitoringCompose = () => {
   ]) {
     compose.services[serviceName].networks = {
       'staging-monitoring': { aliases: [alias] },
-      'staging-ingress': {},
+      ...(
+        serviceName === 'staging-alertmanager'
+          ? { 'staging-egress': { gw_priority: 1 } }
+          : { 'staging-ingress': {} }
+      ),
     };
   }
   return compose;
@@ -1066,6 +1536,7 @@ test('monitoring sources preserve isolated storage and all 20 P0 alerts', () => 
       'utf8',
     ),
     compose: validMonitoringCompose(),
+    environment: validEnvironment(),
     productionMetadata,
   }), []);
 });
@@ -1086,6 +1557,7 @@ test('monitoring rejects production targets, missing labels, shared state, crede
     lokiSource: readStaging('loki.yml'),
     alertRulesSource: '',
     compose: model,
+    environment: validEnvironment(),
     productionMetadata,
   });
   assert.ok(includesError(errors, /external staging labels/));
@@ -1115,6 +1587,7 @@ test('monitoring rejects hardcoded or uninjected Compose project evidence', () =
       'utf8',
     ),
     compose: model,
+    environment: validEnvironment(),
     productionMetadata,
   });
   assert.ok(includesError(errors, /external staging labels/));
@@ -1124,10 +1597,11 @@ test('monitoring rejects hardcoded or uninjected Compose project evidence', () =
 
 test('monitoring rejects cross-network names and leaked private aliases', () => {
   const model = validMonitoringCompose();
-  model.services['staging-alertmanager']
-    .networks['staging-ingress'].aliases = [
+  model.services['staging-alertmanager'].networks['staging-ingress'] = {
+    aliases: [
       'staging-private-alertmanager',
-    ];
+    ],
+  };
   const errors = validateMonitoring({
     prometheusSource: readStaging('prometheus.yml')
       .replaceAll(
@@ -1143,6 +1617,7 @@ test('monitoring rejects cross-network names and leaked private aliases', () => 
       'utf8',
     ),
     compose: model,
+    environment: validEnvironment(),
     productionMetadata,
   });
 
