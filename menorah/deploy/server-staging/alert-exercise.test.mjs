@@ -310,6 +310,14 @@ test('runner is pinned to validation project, loopback APIs, and frontends', () 
   );
   assert.match(
     exerciseSource,
+    /process\.env\.COMPOSE_PROJECT_NAME\s*\n\s*!== SERVER_STAGING_VALIDATION_PROJECT/,
+  );
+  assert.doesNotMatch(
+    exerciseSource,
+    /environment\.COMPOSE_PROJECT_NAME/,
+  );
+  assert.match(
+    exerciseSource,
     /runCompose\('stop', '--timeout', '30', \.\.\.FRONTEND_SERVICES\)/,
   );
   assert.match(

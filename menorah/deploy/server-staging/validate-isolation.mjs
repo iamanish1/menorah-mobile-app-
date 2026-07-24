@@ -72,7 +72,6 @@ export const REQUIRED_VOLUME_SUFFIXES = Object.freeze([
   'filesystem-root',
   'app-root',
   'data-root',
-  'deploy-state',
   'env-root',
   'mongo',
   'redis',
@@ -195,6 +194,116 @@ const MEDIA_WRITER_SERVICES = Object.freeze([
   'staging-worker',
 ]);
 
+const PRODUCTION_METADATA_ARRAY_FIELDS = Object.freeze([
+  'projectNames',
+  'resourcePrefixes',
+  'containerNames',
+  'hostVisibleServiceNames',
+  'ports',
+  'networkNames',
+  'networkSubnets',
+  'volumeNames',
+  'filesystemRoots',
+  'backupRoots',
+  'restoreRoots',
+  'retrievalRoots',
+  'deploymentStateRoots',
+  'migrationMarkers',
+  'lockFiles',
+  'logDirectories',
+  'databaseNames',
+  'mongoReplicaSets',
+  'mongoIdentities',
+  'redisAuthorities',
+  'caddyHosts',
+  'tunnelHosts',
+  'monitoringLabels',
+  'alertLabels',
+  'providerModes',
+  'callbackUrls',
+  'tunnelIds',
+  'storageBuckets',
+]);
+
+export const REQUIRED_SERVICE_NETWORKS = Object.freeze({
+  'staging-storage-init': [],
+  'staging-media-permissions-init': [],
+  'staging-logs-init': [],
+  'staging-mongo-primary': ['staging-data'],
+  'staging-mongo-replica-init': ['staging-data'],
+  'staging-redis': ['staging-data'],
+  'staging-api-ios': ['staging-app', 'staging-data', 'staging-ingress'],
+  'staging-api-android': ['staging-app', 'staging-data', 'staging-ingress'],
+  'staging-api-web': ['staging-app', 'staging-data', 'staging-ingress'],
+  'staging-api-admin': ['staging-app', 'staging-data', 'staging-ingress'],
+  'staging-worker': ['staging-app', 'staging-data', 'staging-ingress'],
+  'staging-migrate': ['staging-data'],
+  'staging-seed': ['staging-data'],
+  'staging-user-web-app': [
+    'staging-app',
+    'staging-data',
+    'staging-ingress',
+  ],
+  'staging-web-app': ['staging-app', 'staging-ingress'],
+  'staging-admin-panel': ['staging-app', 'staging-ingress'],
+  'staging-livekit': ['staging-app', 'staging-ingress'],
+  'staging-mail-capture': ['staging-app'],
+  'staging-caddy': ['staging-app', 'staging-ingress'],
+  'staging-alert-sink': ['staging-monitoring'],
+  'staging-alert-fixture': ['staging-monitoring'],
+  'staging-mongodb-exporter': ['staging-data', 'staging-monitoring'],
+  'staging-redis-exporter': ['staging-data', 'staging-monitoring'],
+  'staging-blackbox-exporter': [
+    'staging-app',
+    'staging-data',
+    'staging-monitoring',
+  ],
+  'staging-prometheus': [
+    'staging-app',
+    'staging-data',
+    'staging-ingress',
+    'staging-monitoring',
+  ],
+  'staging-alertmanager': ['staging-ingress', 'staging-monitoring'],
+  'staging-alloy': ['staging-ingress', 'staging-monitoring'],
+  'staging-loki': ['staging-ingress', 'staging-monitoring'],
+  'staging-mongo-restore': ['staging-restore'],
+  'staging-mongo-restore-replica-init': ['staging-restore'],
+  'staging-backup-job': ['staging-data', 'staging-monitoring'],
+  'staging-restore-job': ['staging-restore'],
+});
+
+const RESOURCE_ENVELOPE = Object.freeze({
+  serviceMemoryBytes: 1024 * 1024 * 1024,
+  serviceCpus: 1,
+  servicePids: 256,
+  aggregateMemoryBytes: 9 * 1024 * 1024 * 1024,
+  aggregateCpus: 8,
+  aggregatePids: 3584,
+});
+
+const PRIMARY_INITIALIZER_ENVIRONMENT = Object.freeze([
+  'MONGO_STAGING_ROOT_USER',
+  'MONGO_STAGING_ROOT_PASSWORD',
+  'MONGO_STAGING_APP_USER',
+  'MONGO_STAGING_APP_PASSWORD',
+  'MONGO_STAGING_MIGRATION_USER',
+  'MONGO_STAGING_MIGRATION_PASSWORD',
+  'MONGO_STAGING_BACKUP_USER',
+  'MONGO_STAGING_BACKUP_PASSWORD',
+  'MONGO_STAGING_RESTORE_USER',
+  'MONGO_STAGING_RESTORE_PASSWORD',
+  'MONGO_STAGING_MONITOR_USER',
+  'MONGO_STAGING_MONITOR_PASSWORD',
+]);
+
+const RESTORE_INITIALIZER_ENVIRONMENT = Object.freeze([
+  'MONGO_STAGING_ROOT_USER',
+  'MONGO_STAGING_ROOT_PASSWORD',
+  'MONGO_STAGING_RESTORE_USER',
+  'MONGO_STAGING_RESTORE_PASSWORD',
+]);
+
 export const REQUIRED_P0_ALERTS = Object.freeze([
   'WorkerQueueBacklogHigh',
   'BackupJobFailed',
@@ -230,6 +339,103 @@ const isWithin = (candidate, root) => {
   const left = normalizePath(candidate).toLowerCase();
   const right = normalizePath(root).toLowerCase();
   return left === right || left.startsWith(`${right}/`);
+};
+
+const normalizeComparable = (value) => (
+  normalizePath(value).toLowerCase()
+);
+
+const equalSets = (left, right) => (
+  left.size === right.size
+  && [...left].every((value) => right.has(value))
+);
+
+const ipv4ToInteger = (value) => {
+  const parts = String(value).split('.');
+  if (
+    parts.length !== 4
+    || parts.some((part) => !/^(?:0|[1-9][0-9]{0,2})$/.test(part))
+  ) {
+    return null;
+  }
+  const octets = parts.map((part) => Number.parseInt(part, 10));
+  if (octets.some((part) => part > 255)) return null;
+  return octets.reduce(
+    (result, octet) => (result * 256) + octet,
+    0,
+  );
+};
+
+const cidrRange = (value) => {
+  const match = String(value).match(/^([^/]+)\/([0-9]|[12][0-9]|3[0-2])$/);
+  if (!match) return null;
+  const address = ipv4ToInteger(match[1]);
+  if (address === null) return null;
+  const prefix = Number.parseInt(match[2], 10);
+  const size = 2 ** (32 - prefix);
+  const start = Math.floor(address / size) * size;
+  return [start, start + size - 1];
+};
+
+const cidrsOverlap = (left, right) => {
+  const leftRange = cidrRange(left);
+  const rightRange = cidrRange(right);
+  return Boolean(
+    leftRange
+    && rightRange
+    && leftRange[0] <= rightRange[1]
+    && rightRange[0] <= leftRange[1],
+  );
+};
+
+export const validateProductionMetadata = (metadata) => {
+  const errors = [];
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return ['production metadata must be an object'];
+  }
+  if (metadata.schemaVersion !== 1) {
+    errors.push('production metadata schemaVersion must equal 1');
+  }
+  if (
+    typeof metadata.description !== 'string'
+    || metadata.description.trim() === ''
+  ) {
+    errors.push('production metadata description is required');
+  }
+  for (const field of PRODUCTION_METADATA_ARRAY_FIELDS) {
+    if (!Object.hasOwn(metadata, field) || !Array.isArray(metadata[field])) {
+      errors.push(`production metadata ${field} array is required`);
+      continue;
+    }
+    if (field === 'ports') {
+      for (const port of metadata[field]) {
+        if (
+          !port
+          || typeof port !== 'object'
+          || typeof port.hostIp !== 'string'
+          || !portRange(port.published)
+          || !portRange(port.target)
+          || !['tcp', 'udp'].includes(String(port.protocol || 'tcp'))
+        ) {
+          errors.push('production metadata contains an invalid port record');
+          break;
+        }
+      }
+      continue;
+    }
+    if (metadata[field].some(
+      (entry) => typeof entry !== 'string' || entry.trim() === '',
+    )) {
+      errors.push(`production metadata ${field} contains an invalid value`);
+    }
+    const normalized = metadata[field].map(
+      (entry) => String(entry).trim().toLowerCase(),
+    );
+    if (new Set(normalized).size !== normalized.length) {
+      errors.push(`production metadata ${field} contains duplicates`);
+    }
+  }
+  return errors;
 };
 
 const normalizeLabels = (labels) => {
@@ -385,40 +591,265 @@ const extractNetworkAliases = (networkModel) => {
   );
 };
 
+const environmentValues = (environment, keys) => keys
+  .map((key) => environment[key])
+  .filter((value) => typeof value === 'string' && value.trim() !== '');
+
+const redisAuthorities = (environment) => environmentValues(
+  environment,
+  ['REDIS_URL', 'REDIS_MONITORING_URL'],
+).flatMap((value) => {
+  try {
+    const url = new URL(value);
+    return [url.hostname, url.host];
+  } catch {
+    return [];
+  }
+});
+
+const validateProductionCollisions = (
+  errors,
+  environment,
+  productionMetadata,
+) => {
+  const contracts = [
+    {
+      label: 'Compose project',
+      staging: [environment.MENORAH_SERVER_STAGING_PROJECT_NAME],
+      production: productionMetadata.projectNames,
+    },
+    {
+      label: 'resource prefix',
+      staging: [environment.MENORAH_SERVER_STAGING_RESOURCE_PREFIX],
+      production: productionMetadata.resourcePrefixes,
+    },
+    {
+      label: 'filesystem root',
+      staging: environmentValues(environment, [
+        'MENORAH_SERVER_STAGING_ROOT',
+        'MENORAH_SERVER_STAGING_DATA_ROOT',
+        'MENORAH_SERVER_STAGING_BACKUP_ROOT',
+        'MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT',
+        'MENORAH_SERVER_STAGING_LOGS_ROOT',
+        'MENORAH_SERVER_STAGING_ENV_ROOT',
+        'MENORAH_SERVER_STAGING_APP_ROOT',
+        'MENORAH_DATA_ROOT',
+        'MENORAH_BACKUP_ROOT',
+        'MENORAH_DEPLOY_STATE_ROOT',
+        'MENORAH_LOG_ROOT',
+        'MENORAH_ENV_ROOT',
+        'MENORAH_APP_ROOT',
+      ]),
+      production: productionMetadata.filesystemRoots,
+      pathLike: true,
+      containment: true,
+    },
+    {
+      label: 'backup root',
+      staging: environmentValues(environment, [
+        'MENORAH_SERVER_STAGING_BACKUP_ROOT',
+        'MENORAH_BACKUP_ROOT',
+      ]),
+      production: productionMetadata.backupRoots,
+      pathLike: true,
+      containment: true,
+    },
+    {
+      label: 'restore root',
+      staging: environmentValues(environment, ['MENORAH_RESTORE_ROOT']),
+      production: productionMetadata.restoreRoots,
+      pathLike: true,
+      containment: true,
+    },
+    {
+      label: 'retrieval root',
+      staging: environmentValues(environment, ['MENORAH_RETRIEVAL_ROOT']),
+      production: productionMetadata.retrievalRoots,
+      pathLike: true,
+      containment: true,
+    },
+    {
+      label: 'deployment-state root',
+      staging: environmentValues(environment, [
+        'MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT',
+        'MENORAH_DEPLOY_STATE_ROOT',
+      ]),
+      production: productionMetadata.deploymentStateRoots,
+      pathLike: true,
+      containment: true,
+    },
+    {
+      label: 'migration marker',
+      staging: environmentValues(environment, [
+        'MENORAH_MIGRATION_APPLIED_MARKER',
+        'MENORAH_MIGRATION_IN_PROGRESS_MARKER',
+        'MENORAH_IDENTITY_RECONCILIATION_MARKER',
+        'MENORAH_POST_MIGRATION_RECOVERY_MARKER',
+      ]),
+      production: productionMetadata.migrationMarkers,
+      pathLike: true,
+    },
+    {
+      label: 'lock file',
+      staging: environmentValues(environment, [
+        'BACKUP_LOCK_FILE',
+        'MENORAH_DEPLOY_LOCK_FILE',
+        'MENORAH_ROLLBACK_LOCK_FILE',
+      ]),
+      production: productionMetadata.lockFiles,
+      pathLike: true,
+    },
+    {
+      label: 'log directory',
+      staging: environmentValues(environment, [
+        'MENORAH_SERVER_STAGING_LOGS_ROOT',
+        'MENORAH_LOG_ROOT',
+      ]),
+      production: productionMetadata.logDirectories,
+      pathLike: true,
+      containment: true,
+    },
+    {
+      label: 'database name',
+      staging: environmentValues(environment, [
+        'MONGO_DATABASE',
+        'MONGO_RESTORE_DATABASE',
+      ]),
+      production: productionMetadata.databaseNames,
+    },
+    {
+      label: 'Mongo replica set',
+      staging: environmentValues(environment, [
+        'MONGODB_REPLICA_SET_NAME',
+        'MONGODB_RESTORE_REPLICA_SET_NAME',
+      ]),
+      production: productionMetadata.mongoReplicaSets,
+    },
+    {
+      label: 'Mongo identity',
+      staging: environmentValues(environment, [
+        'MONGO_STAGING_ROOT_USER',
+        'MONGO_STAGING_APP_USER',
+        'MONGO_STAGING_MIGRATION_USER',
+        'MONGO_STAGING_BACKUP_USER',
+        'MONGO_STAGING_RESTORE_USER',
+        'MONGO_STAGING_MONITOR_USER',
+      ]),
+      production: productionMetadata.mongoIdentities,
+    },
+    {
+      label: 'Redis authority',
+      staging: redisAuthorities(environment),
+      production: productionMetadata.redisAuthorities,
+    },
+    {
+      label: 'monitoring label',
+      staging: [
+        `environment=${environment.PROMETHEUS_EXTERNAL_ENVIRONMENT}`,
+        `project=${environment.PROMETHEUS_EXTERNAL_PROJECT}`,
+      ],
+      production: productionMetadata.monitoringLabels,
+    },
+    {
+      label: 'alert label',
+      staging: [`environment=${environment.ALERTMANAGER_ENVIRONMENT}`],
+      production: productionMetadata.alertLabels,
+    },
+    {
+      label: 'provider mode',
+      staging: [
+        `razorpay=${environment.RAZORPAY_MODE}`,
+        `razorpayx=${environment.RAZORPAY_X_MODE}`,
+        `resend=${environment.RESEND_MODE}`,
+      ],
+      production: productionMetadata.providerModes,
+    },
+    {
+      label: 'callback URL',
+      staging: Object.entries(environment)
+        .filter(([key, value]) => (
+          /(?:URL|ORIGIN)$/.test(key)
+          && typeof value === 'string'
+          && /^(?:https?|wss):\/\//i.test(value)
+        ))
+        .map(([, value]) => value),
+      production: productionMetadata.callbackUrls,
+    },
+  ];
+
+  for (const contract of contracts) {
+    const production = (contract.production || []).map(normalizeComparable);
+    for (const stagingValue of contract.staging.filter(Boolean)) {
+      const staging = normalizeComparable(stagingValue);
+      const collides = production.some((productionValue) => (
+        contract.containment
+          ? (
+            isWithin(staging, productionValue)
+            || isWithin(productionValue, staging)
+          )
+          : staging === productionValue
+      ));
+      if (collides) {
+        errors.push(`${contract.label} collides with production metadata`);
+      }
+    }
+  }
+};
+
 const validateRoleUse = (errors, services, environment) => {
   const contracts = [
-    [/^staging-api-|^staging-worker$/, 'MONGO_STAGING_APP_USER'],
-    [/^staging-migrate$/, 'MONGO_STAGING_MIGRATION_USER'],
-    [/^staging-backup-job$/, 'MONGO_STAGING_BACKUP_USER'],
-    [/^staging-mongodb-exporter$/, 'MONGO_STAGING_MONITOR_USER'],
-    [/^staging-restore-job$/, 'MONGO_STAGING_RESTORE_USER'],
+    [
+      /^staging-api-|^staging-worker$|^staging-user-web-app$/,
+      'MONGO_STAGING_APP_USER',
+      'MONGODB_URI',
+    ],
+    [
+      /^staging-(?:migrate|seed)$/,
+      'MONGO_STAGING_MIGRATION_USER',
+      'MONGODB_URI',
+    ],
+    [
+      /^staging-backup-job$/,
+      'MONGO_STAGING_BACKUP_USER',
+      'MONGODB_STAGING_BACKUP_URI',
+    ],
+    [
+      /^staging-mongodb-exporter$/,
+      'MONGO_STAGING_MONITOR_USER',
+      'MONGODB_URI',
+    ],
+    [
+      /^staging-restore-job$/,
+      'MONGO_STAGING_RESTORE_USER',
+      'MONGODB_STAGING_RESTORE_URI',
+    ],
   ];
   for (const [serviceName, service] of Object.entries(services)) {
     const serviceEnvironment = normalizeEnvironment(service.environment);
-    for (const [pattern, userKey] of contracts) {
+    for (const [pattern, userKey, uriKey] of contracts) {
       if (!pattern.test(serviceName)) continue;
-      const uris = Object.entries(serviceEnvironment)
-        .filter(([key, value]) => (
-          /MONGODB.*URI/.test(key)
-          && typeof value === 'string'
-          && value.startsWith('mongodb')
-        ));
-      for (const [key, value] of uris) {
-        try {
-          if (
-            decodeURIComponent(new URL(value).username)
-            !== environment[userKey]
-          ) {
-            errors.push(
-              `${serviceName} ${key} uses the wrong MongoDB role`,
-            );
-          }
-        } catch {
-          errors.push(`${serviceName} ${key} is not a valid MongoDB URI`);
+      const value = serviceEnvironment[uriKey];
+      if (typeof value !== 'string' || !value.startsWith('mongodb')) {
+        errors.push(`${serviceName} must receive ${uriKey}`);
+        continue;
+      }
+      try {
+        if (
+          decodeURIComponent(new URL(value).username)
+          !== environment[userKey]
+        ) {
+          errors.push(
+            `${serviceName} ${uriKey} uses the wrong MongoDB role`,
+          );
         }
+      } catch {
+        errors.push(`${serviceName} ${uriKey} is not a valid MongoDB URI`);
       }
     }
-    if (/^staging-api-|^staging-worker$/.test(serviceName)) {
+    if (
+      /^staging-api-|^staging-worker$|^staging-user-web-app$/
+        .test(serviceName)
+    ) {
       const forbidden = Object.entries(serviceEnvironment).filter(
         ([key, value]) => (
           /(?:ROOT|MIGRATION|BACKUP|RESTORE|MONITOR).*(?:PASSWORD|URI)/.test(key)
@@ -459,7 +890,266 @@ const contractMountPresent = (
   && (!requireWritable || !mount.readOnly)
 ));
 
-const validateBackendRuntimeContracts = (errors, services, volumes) => {
+const serviceNetworkNames = (service) => {
+  if (!service?.networks) return new Set();
+  return new Set(
+    Array.isArray(service.networks)
+      ? service.networks.map(String)
+      : Object.keys(service.networks),
+  );
+};
+
+const validateNetworkTopology = (errors, services) => {
+  for (const [serviceName, expectedNames] of Object.entries(
+    REQUIRED_SERVICE_NETWORKS,
+  )) {
+    const service = services[serviceName];
+    if (!service) {
+      errors.push(`missing required staging service ${serviceName}`);
+      continue;
+    }
+    const actual = serviceNetworkNames(service);
+    const expected = new Set(expectedNames);
+    if (!equalSets(actual, expected)) {
+      errors.push(`${serviceName} has an invalid network topology`);
+    }
+    if (
+      expected.size === 0
+      && service.network_mode !== 'none'
+    ) {
+      errors.push(`${serviceName} must use network_mode=none`);
+    }
+  }
+};
+
+const mountMatches = (mount, volumes, contract) => {
+  if (
+    mount.type !== contract.type
+    || mount.target !== contract.target
+    || mount.readOnly !== contract.readOnly
+  ) {
+    return false;
+  }
+  if (contract.type === 'bind') {
+    return (
+      normalizeComparable(mount.source)
+      === normalizeComparable(contract.source)
+    );
+  }
+  return volumeSourceNames(volumes, contract.source)
+    .has(String(mount.source));
+};
+
+const validateRequiredMounts = (
+  errors,
+  serviceName,
+  service,
+  volumes,
+  contracts,
+) => {
+  const mounts = normalizeMounts(service?.volumes);
+  for (const contract of contracts) {
+    const matching = mounts.filter(
+      (mount) => mountMatches(mount, volumes, contract),
+    );
+    if (matching.length !== 1) {
+      errors.push(
+        `${serviceName} must mount ${contract.target} exactly once as `
+        + `${contract.readOnly ? 'read-only' : 'writable'}`,
+      );
+    }
+  }
+};
+
+const validateRecoveryMounts = (
+  errors,
+  services,
+  volumes,
+  environment,
+) => {
+  const stateContract = {
+    type: 'bind',
+    source: environment.MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT,
+    target: '/opt/menorah-staging/deploy-state',
+    readOnly: false,
+  };
+  const stateOwners = [
+    'staging-storage-init',
+    'staging-backup-job',
+    'staging-restore-job',
+  ];
+  for (const serviceName of stateOwners) {
+    validateRequiredMounts(
+      errors,
+      serviceName,
+      services[serviceName],
+      volumes,
+      [stateContract],
+    );
+  }
+  for (const [serviceName, service] of Object.entries(services)) {
+    const stateMounts = normalizeMounts(service.volumes).filter(
+      (mount) => (
+        mount.target === stateContract.target
+        && !mount.readOnly
+      ),
+    );
+    if (stateMounts.length > 0 && !stateOwners.includes(serviceName)) {
+      errors.push(
+        `${serviceName} has unauthorized writable deployment-state access`,
+      );
+    }
+  }
+  if (volumes['staging-deploy-state']) {
+    errors.push('deployment state must not use a hidden Compose volume');
+  }
+
+  const backupContracts = [
+    ['staging-filesystem-root', '/opt/menorah-staging', true],
+    ['staging-app-root', '/opt/menorah-staging/app', true],
+    ['staging-data-root', '/opt/menorah-staging/data', true],
+    ['staging-backups', '/opt/menorah-staging/backups', false],
+    [
+      'staging-retrieval',
+      '/opt/menorah-staging/data/backup-retrieval',
+      false,
+    ],
+    ['staging-uploads', '/opt/menorah-staging/data/uploads', true],
+    [
+      'staging-managed-media',
+      '/opt/menorah-staging/data/managed-media',
+      true,
+    ],
+    ['staging-logs', '/opt/menorah-staging/logs', true],
+    ['staging-env-root', '/opt/menorah-staging/env', true],
+  ].map(([source, target, readOnly]) => ({
+    type: 'volume',
+    source,
+    target,
+    readOnly,
+  }));
+  validateRequiredMounts(
+    errors,
+    'staging-backup-job',
+    services['staging-backup-job'],
+    volumes,
+    backupContracts,
+  );
+
+  const restoreContracts = [
+    ['staging-filesystem-root', '/opt/menorah-staging', true],
+    ['staging-app-root', '/opt/menorah-staging/app', true],
+    ['staging-data-root', '/opt/menorah-staging/data', true],
+    ['staging-backups', '/opt/menorah-staging/backups', true],
+    [
+      'staging-retrieval',
+      '/opt/menorah-staging/data/backup-retrieval',
+      true,
+    ],
+    ['staging-restore-root', '/opt/menorah-staging/data/restore', false],
+    [
+      'staging-restore-media',
+      '/opt/menorah-staging/data/restore-media',
+      false,
+    ],
+    ['staging-logs', '/opt/menorah-staging/logs', true],
+    ['staging-env-root', '/opt/menorah-staging/env', true],
+  ].map(([source, target, readOnly]) => ({
+    type: 'volume',
+    source,
+    target,
+    readOnly,
+  }));
+  validateRequiredMounts(
+    errors,
+    'staging-restore-job',
+    services['staging-restore-job'],
+    volumes,
+    restoreContracts,
+  );
+};
+
+const validateInitializerIsolation = (errors, services) => {
+  const contracts = [
+    {
+      serviceName: 'staging-mongo-replica-init',
+      environment: PRIMARY_INITIALIZER_ENVIRONMENT,
+      profile: null,
+      dependency: 'staging-mongo-primary',
+      identity: [
+        'menorah-staging-rs',
+        'staging-mongo-primary:27017',
+      ],
+    },
+    {
+      serviceName: 'staging-mongo-restore-replica-init',
+      environment: RESTORE_INITIALIZER_ENVIRONMENT,
+      profile: 'recovery',
+      dependency: 'staging-mongo-restore',
+      identity: [
+        'menorah-staging-restore-rs',
+        'staging-mongo-restore:27017',
+      ],
+    },
+  ];
+  for (const contract of contracts) {
+    const service = services[contract.serviceName];
+    if (!service) continue;
+    if (service.env_file) {
+      errors.push(`${contract.serviceName} must not load a broad env file`);
+    }
+    const actualKeys = new Set(
+      Object.keys(normalizeEnvironment(service.environment)),
+    );
+    const expectedKeys = new Set(contract.environment);
+    if (!equalSets(actualKeys, expectedKeys)) {
+      errors.push(
+        `${contract.serviceName} must receive only its exact Mongo identities`,
+      );
+    }
+    const profiles = new Set((service.profiles || []).map(String));
+    const expectedProfiles = new Set(
+      contract.profile ? [contract.profile] : [],
+    );
+    if (!equalSets(profiles, expectedProfiles)) {
+      errors.push(`${contract.serviceName} has an invalid profile`);
+    }
+    if (
+      String(service.restart ?? 'no') !== 'no'
+      || service?.depends_on?.[contract.dependency]?.condition
+        !== 'service_healthy'
+    ) {
+      errors.push(
+        `${contract.serviceName} must be a dependency-gated one-shot`,
+      );
+    }
+    const command = stringValues(service.command).join('\n');
+    for (const identity of contract.identity) {
+      if (!command.includes(identity)) {
+        errors.push(
+          `${contract.serviceName} must verify ${identity}`,
+        );
+      }
+    }
+  }
+  if (
+    !completedDependency(
+      services['staging-restore-job'],
+      'staging-mongo-restore-replica-init',
+    )
+  ) {
+    errors.push(
+      'staging-restore-job must wait for restore replica initialization',
+    );
+  }
+};
+
+const validateBackendRuntimeContracts = (
+  errors,
+  services,
+  volumes,
+  environment,
+) => {
   const directNodeTasks = [
     ['staging-migrate', ['node', 'src/database/migrate.js']],
     ['staging-seed', ['node', 'src/database/seed-server-staging.js']],
@@ -497,6 +1187,10 @@ const validateBackendRuntimeContracts = (errors, services, volumes) => {
       );
     }
   }
+
+  validateNetworkTopology(errors, services);
+  validateRecoveryMounts(errors, services, volumes, environment);
+  validateInitializerIsolation(errors, services);
 
   const storageInit = services['staging-storage-init'];
   const permissionsInit = services['staging-media-permissions-init'];
@@ -638,9 +1332,17 @@ export const validateRenderedCompose = (
   environment,
   productionMetadata,
 ) => {
-  const errors = [];
+  const metadata = (
+    productionMetadata
+    && typeof productionMetadata === 'object'
+    && !Array.isArray(productionMetadata)
+  ) ? productionMetadata : {};
+  const errors = [
+    ...validateProductionMetadata(productionMetadata),
+  ];
   const project = environment.MENORAH_SERVER_STAGING_PROJECT_NAME;
   const prefix = environment.MENORAH_SERVER_STAGING_RESOURCE_PREFIX;
+  validateProductionCollisions(errors, environment, metadata);
   if (model.name !== project) {
     errors.push(`rendered Compose name must be ${project}`);
   }
@@ -664,6 +1366,9 @@ export const validateRenderedCompose = (
   );
   const renderedPorts = [];
   const bindMounts = [];
+  let aggregateMemoryBytes = 0;
+  let aggregateCpus = 0;
+  let aggregatePids = 0;
   for (const [serviceName, service] of Object.entries(services)) {
     const labels = normalizeLabels(service.labels);
     requireStagingLabels(
@@ -680,7 +1385,7 @@ export const validateRenderedCompose = (
       errors.push(`${serviceName} has a non-staging container_name`);
     }
     if (
-      (productionMetadata.containerNames || [])
+      (metadata.containerNames || [])
         .includes(service.container_name)
     ) {
       errors.push(`${serviceName} container_name collides with production`);
@@ -713,19 +1418,41 @@ export const validateRenderedCompose = (
     ) {
       errors.push(`${serviceName} must set no-new-privileges`);
     }
+    const pidsLimit = Number(service.pids_limit);
+    const memoryLimit = Number(service.mem_limit);
+    const memoryReservation = Number(service.mem_reservation);
+    const cpus = Number(service.cpus);
     if (
-      !service.pids_limit
-      || !service.mem_limit
-      || !service.cpus
-    ) {
-      errors.push(`${serviceName} lacks CPU, memory, or PID limits`);
-    } else if (
-      service.mem_reservation
-      && Number(service.mem_reservation) > Number(service.mem_limit)
+      !Number.isFinite(pidsLimit)
+      || pidsLimit <= 0
+      || !Number.isFinite(memoryLimit)
+      || memoryLimit <= 0
+      || !Number.isFinite(memoryReservation)
+      || memoryReservation <= 0
+      || !Number.isFinite(cpus)
+      || cpus <= 0
     ) {
       errors.push(
-        `${serviceName} memory reservation exceeds its memory limit`,
+        `${serviceName} lacks CPU, memory, or PID limits or a memory reservation`,
       );
+    } else {
+      aggregateMemoryBytes += memoryLimit;
+      aggregateCpus += cpus;
+      aggregatePids += pidsLimit;
+      if (memoryReservation > memoryLimit) {
+        errors.push(
+          `${serviceName} memory reservation exceeds its memory limit`,
+        );
+      }
+      if (memoryLimit > RESOURCE_ENVELOPE.serviceMemoryBytes) {
+        errors.push(`${serviceName} exceeds the per-service memory ceiling`);
+      }
+      if (cpus > RESOURCE_ENVELOPE.serviceCpus) {
+        errors.push(`${serviceName} exceeds the per-service CPU ceiling`);
+      }
+      if (pidsLimit > RESOURCE_ENVELOPE.servicePids) {
+        errors.push(`${serviceName} exceeds the per-service PID ceiling`);
+      }
     }
     const logging = service.logging || {};
     if (
@@ -755,7 +1482,7 @@ export const validateRenderedCompose = (
         errors.push(`${serviceName} exposes non-staging network alias ${alias}`);
       }
       if (
-        (productionMetadata.hostVisibleServiceNames || []).includes(alias)
+        (metadata.hostVisibleServiceNames || []).includes(alias)
       ) {
         errors.push(`${serviceName} alias collides with production`);
       }
@@ -812,7 +1539,18 @@ export const validateRenderedCompose = (
     errors,
     services,
     model.volumes || {},
+    environment,
   );
+
+  if (aggregateMemoryBytes > RESOURCE_ENVELOPE.aggregateMemoryBytes) {
+    errors.push('rendered Compose exceeds the aggregate memory ceiling');
+  }
+  if (aggregateCpus > RESOURCE_ENVELOPE.aggregateCpus) {
+    errors.push('rendered Compose exceeds the aggregate CPU ceiling');
+  }
+  if (aggregatePids > RESOURCE_ENVELOPE.aggregatePids) {
+    errors.push('rendered Compose exceeds the aggregate PID ceiling');
+  }
 
   for (const serviceName of [
     'staging-mongo-primary',
@@ -840,7 +1578,7 @@ export const validateRenderedCompose = (
     }
   }
   for (const port of renderedPorts) {
-    for (const productionPort of productionMetadata.ports || []) {
+    for (const productionPort of metadata.ports || []) {
       if (portsOverlap(port, productionPort)) {
         errors.push(
           `${port.serviceName} port ${port.published}/${port.protocol}`
@@ -852,6 +1590,7 @@ export const validateRenderedCompose = (
 
   const networks = model.networks || {};
   const networkNames = [];
+  const stagingSubnets = [];
   for (const [key, network] of Object.entries(networks)) {
     const name = topLevelResourceName(key, network);
     networkNames.push(name);
@@ -859,16 +1598,34 @@ export const validateRenderedCompose = (
       errors.push(`network ${name} is not staging-prefixed`);
     }
     if (network.external) errors.push(`network ${name} must not be external`);
-    if ((productionMetadata.networkNames || []).includes(name)) {
+    if ((metadata.networkNames || []).includes(name)) {
       errors.push(`network ${name} collides with production`);
     }
     requireStagingLabels(errors, 'network', name, network.labels, project);
-    for (const config of network.ipam?.config || []) {
-      if (
-        (productionMetadata.networkSubnets || []).includes(config.subnet)
-      ) {
+    const ipamConfigs = network.ipam?.config || [];
+    if (ipamConfigs.length !== 1) {
+      errors.push(`network ${name} must define exactly one IPv4 subnet`);
+    }
+    for (const config of ipamConfigs) {
+      if (!cidrRange(config.subnet)) {
+        errors.push(`network ${name} has an invalid IPv4 subnet`);
+      }
+      if ((metadata.networkSubnets || []).some(
+        (productionSubnet) => cidrsOverlap(
+          config.subnet,
+          productionSubnet,
+        ),
+      )) {
         errors.push(`network ${name} subnet collides with production`);
       }
+      for (const existing of stagingSubnets) {
+        if (cidrsOverlap(config.subnet, existing.subnet)) {
+          errors.push(
+            `network ${name} subnet overlaps staging network ${existing.name}`,
+          );
+        }
+      }
+      stagingSubnets.push({ name, subnet: config.subnet });
     }
   }
   for (const suffix of REQUIRED_NETWORK_SUFFIXES) {
@@ -886,7 +1643,7 @@ export const validateRenderedCompose = (
       errors.push(`volume ${name} is not staging-prefixed`);
     }
     if (volume.external) errors.push(`volume ${name} must not be external`);
-    if ((productionMetadata.volumeNames || []).includes(name)) {
+    if ((metadata.volumeNames || []).includes(name)) {
       errors.push(`volume ${name} collides with production`);
     }
     requireStagingLabels(errors, 'volume', name, volume.labels, project);
@@ -909,7 +1666,7 @@ export const validateRenderedCompose = (
     if (!allowed) {
       errors.push(`${mount.serviceName} bind source escapes staging/repository roots`);
     }
-    for (const productionRoot of productionMetadata.filesystemRoots || []) {
+    for (const productionRoot of metadata.filesystemRoots || []) {
       if (isWithin(source, productionRoot)) {
         errors.push(`${mount.serviceName} bind source enters production root`);
       }
@@ -925,7 +1682,7 @@ export const validateRenderedCompose = (
   }
 
   const allStrings = stringValues(model);
-  for (const productionRoot of productionMetadata.filesystemRoots || []) {
+  for (const productionRoot of metadata.filesystemRoots || []) {
     const normalizedProductionRoot = normalizePath(productionRoot);
     if (allStrings.some(
       (value) => (
@@ -959,6 +1716,32 @@ const caddyHostSet = (source) => new Set(
   [...String(source).matchAll(/https?:\/\/([a-z0-9.-]+)(?=[,\s{])/gi)]
     .map((match) => match[1]),
 );
+
+const caddyRouteMap = (source) => {
+  const matchers = new Map();
+  for (const match of String(source).matchAll(
+    /^\s*@([a-z0-9_]+)\s+host\s+([^\r\n]+)$/gmi,
+  )) {
+    matchers.set(
+      match[1],
+      match[2].trim().split(/\s+/).filter(Boolean),
+    );
+  }
+  const routes = new Map();
+  for (const match of String(source).matchAll(
+    /handle\s+@([a-z0-9_]+)\s*\{[\s\S]*?import\s+staging_proxy\s+([^\s}]+)/gi,
+  )) {
+    const hosts = matchers.get(match[1]) || [];
+    for (const host of hosts) {
+      if (routes.has(host)) {
+        routes.set(host, '<duplicate>');
+      } else {
+        routes.set(host, match[2]);
+      }
+    }
+  }
+  return routes;
+};
 
 const tunnelRoutes = (source) => {
   const routes = [];
@@ -1059,6 +1842,18 @@ export const validateIngress = ({
     || setDifference(caddyHosts, expected).length
   ) {
     errors.push('Caddy hosts do not exactly match the manifest');
+  }
+  const expectedCaddyRoutes = new Map(
+    (manifest.routes || []).map(({ host, target }) => [host, target]),
+  );
+  const renderedCaddyRoutes = caddyRouteMap(caddySource);
+  if (
+    expectedCaddyRoutes.size !== renderedCaddyRoutes.size
+    || [...expectedCaddyRoutes].some(
+      ([host, target]) => renderedCaddyRoutes.get(host) !== target,
+    )
+  ) {
+    errors.push('Caddy host-to-target mappings do not match the manifest');
   }
 
   const routes = tunnelRoutes(tunnelSource);

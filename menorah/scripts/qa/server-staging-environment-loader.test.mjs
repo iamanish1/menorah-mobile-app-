@@ -158,11 +158,39 @@ test('invalid, reserved, process-influencing, and duplicate keys are rejected', 
     'BASH_ENV=/tmp/payload\n',
     'LD_PRELOAD=/tmp/payload.so\n',
     'GIT_CONFIG_COUNT=1\n',
+    'GIT_DIR=/tmp/untrusted-git-dir\n',
+    'DOCKER_HOST=tcp://production-docker.invalid:2376\n',
+    'BUILDKIT_HOST=tcp://production-builder.invalid:1234\n',
+    'COMPOSE_FILE=/tmp/production-compose.yml\n',
+    'COMPOSE_PROJECT_NAME=menorah\n',
+    'HTTP_PROXY=http://production-proxy.invalid:8080\n',
+    'SSH_AUTH_SOCK=/tmp/untrusted-agent.sock\n',
     'SAFE=first\nSAFE=second\n',
   ]) {
     assert.throws(
       () => parseEnvironment(source),
       { code: 'invalid_server_staging_environment' },
+    );
+  }
+});
+
+test('persistent operation acknowledgements never load from the env file', () => {
+  for (const key of [
+    'BACKUP_RESTORE_ACKNOWLEDGEMENT',
+    'MENORAH_SERVER_STAGING_ALERT_EXERCISE_CONFIRM',
+    'MENORAH_STAGING_BACKUP_ACK',
+    'MENORAH_STAGING_DEPLOY_ACK',
+    'MENORAH_STAGING_MANIFEST_ACK',
+    'MENORAH_STAGING_MIGRATION_ACK',
+    'MENORAH_STAGING_RESTORE_ACK',
+    'MENORAH_STAGING_ROLLBACK_ACK',
+    'MENORAH_STAGING_ROOTS_ACK',
+    'MENORAH_STAGING_WRITERS_QUIESCED',
+  ]) {
+    assert.throws(
+      () => parseEnvironment(`${key}=forged-persistent-authority\n`),
+      { code: 'invalid_server_staging_environment' },
+      key,
     );
   }
 });
@@ -212,7 +240,10 @@ test('all environment-consuming shell scripts use only the safe loader path', as
   for (const name of [
     'create-image-manifest.sh',
     'deploy-exact-sha.sh',
+    'resume-post-migration.sh',
     'rollback-recorded.sh',
+    'run-consistent-backup.sh',
+    'run-disposable-restore.sh',
     'run-recorded-migration.sh',
   ]) {
     const source = await readFile(
@@ -226,7 +257,14 @@ test('all environment-consuming shell scripts use only the safe loader path', as
     assert.match(source, /printf -v "\$\{environment_key\}"/);
     assert.match(source, /export "\$\{environment_key\?\}"/);
     assert.match(source, /safe-dotenv-v1/);
-    assert.doesNotMatch(source, /(?:^|\n)\s*(?:source|\.)\s+/);
+    assert.match(
+      source,
+      /^source "\$\{PROCESS_AUTHORITY\}"$/m,
+    );
+    assert.doesNotMatch(
+      source.replace(/^source "\$\{PROCESS_AUTHORITY\}"$/m, ''),
+      /(?:^|\n)\s*(?:source|\.)\s+/,
+    );
     assert.doesNotMatch(source, /(?:^|\n)\s*eval\b/);
     assert.doesNotMatch(source, /set\s+-a/);
   }

@@ -19,6 +19,10 @@ import {
 } from 'node:url';
 import { promisify } from 'node:util';
 
+import {
+  IDENTITY_RECONCILIATION_MARKER_BASENAME,
+} from './assert-context.mjs';
+
 export const VALIDATION_PROJECT = 'menorah-server-staging-validation';
 export const VALIDATION_RESOURCE_PREFIX =
   'menorah-server-staging-validation';
@@ -328,7 +332,6 @@ export const buildValidationEnvironment = ({
     DEPLOYMENT_ENVIRONMENT: 'staging',
     SERVICE_RUNTIME: 'server-staging',
     MENORAH_SYNTHETIC_DATA_ONLY: 'true',
-    COMPOSE_PROJECT_NAME: VALIDATION_PROJECT,
     MENORAH_SERVER_STAGING_PROJECT_NAME: VALIDATION_PROJECT,
     MENORAH_SERVER_STAGING_RESOURCE_PREFIX: VALIDATION_RESOURCE_PREFIX,
     MENORAH_SERVER_STAGING_ENVIRONMENT_ID: ENVIRONMENT_ID,
@@ -616,9 +619,6 @@ export const buildValidationEnvironment = ({
     BACKUP_LOCK_FILE: slashPath(
       path.join(hostBackupRoot, '.backup.lock'),
     ),
-    BACKUP_RESTORE_ACKNOWLEDGEMENT:
-      'RESTORE_ONLY_MENORAH_SERVER_STAGING',
-
     MENORAH_CURRENT_SHA_FILE: slashPath(
       path.join(hostStateRoot, 'current-sha'),
     ),
@@ -634,7 +634,7 @@ export const buildValidationEnvironment = ({
     MENORAH_IDENTITY_RECONCILIATION_MARKER: slashPath(
       path.join(
         hostStateRoot,
-        'mongo-identity-reconciliation-in-progress-sha',
+        IDENTITY_RECONCILIATION_MARKER_BASENAME,
       ),
     ),
     MENORAH_POST_MIGRATION_RECOVERY_MARKER: slashPath(

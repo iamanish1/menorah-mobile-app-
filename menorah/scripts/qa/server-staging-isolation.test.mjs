@@ -19,6 +19,9 @@ import {
   parseContractKeys,
 } from '../../deploy/server-staging/generate-validation-environment.mjs';
 import {
+  IDENTITY_RECONCILIATION_MARKER_BASENAME,
+} from '../../deploy/server-staging/assert-context.mjs';
+import {
   EXPECTED_PORT_VARIABLES,
   REAL_PROJECT,
   parseEnvironmentSource,
@@ -27,7 +30,9 @@ import {
 import {
   EXPECTED_PUBLISHED_PORTS,
   REQUIRED_NETWORK_SUFFIXES,
+  REQUIRED_SERVICE_NETWORKS,
   REQUIRED_VOLUME_SUFFIXES,
+  validateProductionMetadata,
   validateIngress,
   validateMonitoring,
   validateRenderedCompose,
@@ -72,6 +77,7 @@ const safeService = (project, overrides = {}) => ({
   security_opt: ['no-new-privileges:true'],
   pids_limit: 64,
   mem_limit: 64 * 1024 * 1024,
+  mem_reservation: 32 * 1024 * 1024,
   cpus: 0.25,
   logging: {
     driver: 'local',
@@ -121,6 +127,14 @@ const validCompose = (environment = validEnvironment()) => {
       }),
     ],
   ));
+  for (const [serviceName, networks] of Object.entries(
+    REQUIRED_SERVICE_NETWORKS,
+  )) {
+    if (!services[serviceName]) {
+      services[serviceName] = safeService(project);
+    }
+    services[serviceName].networks = [...networks];
+  }
   services['staging-mongo-primary'] = safeService(project, {
     image: 'mongo:7',
     networks: ['staging-data'],
@@ -134,6 +148,16 @@ const validCompose = (environment = validEnvironment()) => {
     networks: ['staging-data'],
   });
   services['staging-storage-init'] = safeService(project, {
+    restart: 'no',
+    network_mode: 'none',
+    networks: [],
+    volumes: [{
+      type: 'bind',
+      source: environment.MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT,
+      target: '/opt/menorah-staging/deploy-state',
+    }],
+  });
+  services['staging-logs-init'] = safeService(project, {
     restart: 'no',
     network_mode: 'none',
     networks: [],
@@ -177,6 +201,10 @@ const validCompose = (environment = validEnvironment()) => {
     restart: 'no',
     user: '0:0',
     cap_add: ['DAC_READ_SEARCH'],
+    networks: ['staging-data', 'staging-monitoring'],
+    environment: {
+      MONGODB_STAGING_BACKUP_URI: environment.MONGODB_BACKUP_URI,
+    },
   });
   services['staging-migrate'] = safeService(project, {
     restart: 'no',
@@ -189,8 +217,17 @@ const validCompose = (environment = validEnvironment()) => {
   services['staging-seed'] = safeService(project, {
     restart: 'no',
     command: ['node', 'src/database/seed-server-staging.js'],
+    environment: {
+      MONGODB_URI: environment.MONGODB_MIGRATION_URI,
+    },
     networks: ['staging-data'],
   });
+  services['staging-user-web-app'].environment = {
+    MONGODB_URI: environment.MONGODB_URI,
+  };
+  services['staging-mongodb-exporter'].environment = {
+    MONGODB_URI: environment.MONGODB_MONITORING_URI,
+  };
   for (const serviceName of [
     'staging-api-ios',
     'staging-api-android',
@@ -210,6 +247,164 @@ const validCompose = (environment = validEnvironment()) => {
       },
     };
   }
+  const primaryInitializerEnvironment = Object.fromEntries(
+    [
+      'MONGO_STAGING_ROOT_USER',
+      'MONGO_STAGING_ROOT_PASSWORD',
+      'MONGO_STAGING_APP_USER',
+      'MONGO_STAGING_APP_PASSWORD',
+      'MONGO_STAGING_MIGRATION_USER',
+      'MONGO_STAGING_MIGRATION_PASSWORD',
+      'MONGO_STAGING_BACKUP_USER',
+      'MONGO_STAGING_BACKUP_PASSWORD',
+      'MONGO_STAGING_RESTORE_USER',
+      'MONGO_STAGING_RESTORE_PASSWORD',
+      'MONGO_STAGING_MONITOR_USER',
+      'MONGO_STAGING_MONITOR_PASSWORD',
+    ].map((key) => [key, environment[key]]),
+  );
+  services['staging-mongo-replica-init'] = safeService(project, {
+    restart: 'no',
+    networks: ['staging-data'],
+    environment: primaryInitializerEnvironment,
+    command: [
+      'verify menorah-staging-rs staging-mongo-primary:27017',
+    ],
+    depends_on: {
+      'staging-mongo-primary': { condition: 'service_healthy' },
+    },
+  });
+  services['staging-mongo-restore'] = safeService(project, {
+    image: 'mongo:7',
+    profiles: ['recovery'],
+    networks: ['staging-restore'],
+  });
+  services['staging-mongo-restore-replica-init'] = safeService(project, {
+    restart: 'no',
+    profiles: ['recovery'],
+    networks: ['staging-restore'],
+    environment: Object.fromEntries(
+      [
+        'MONGO_STAGING_ROOT_USER',
+        'MONGO_STAGING_ROOT_PASSWORD',
+        'MONGO_STAGING_RESTORE_USER',
+        'MONGO_STAGING_RESTORE_PASSWORD',
+      ].map((key) => [key, environment[key]]),
+    ),
+    command: [
+      'verify menorah-staging-restore-rs staging-mongo-restore:27017',
+    ],
+    depends_on: {
+      'staging-mongo-restore': { condition: 'service_healthy' },
+    },
+  });
+  const volumeMount = (source, target, readOnly) => ({
+    type: 'volume',
+    source,
+    target,
+    read_only: readOnly,
+  });
+  services['staging-backup-job'].volumes = [
+    volumeMount(
+      'staging-filesystem-root',
+      '/opt/menorah-staging',
+      true,
+    ),
+    volumeMount(
+      'staging-app-root',
+      '/opt/menorah-staging/app',
+      true,
+    ),
+    volumeMount(
+      'staging-data-root',
+      '/opt/menorah-staging/data',
+      true,
+    ),
+    volumeMount(
+      'staging-backups',
+      '/opt/menorah-staging/backups',
+      false,
+    ),
+    volumeMount(
+      'staging-retrieval',
+      '/opt/menorah-staging/data/backup-retrieval',
+      false,
+    ),
+    volumeMount(
+      'staging-uploads',
+      '/opt/menorah-staging/data/uploads',
+      true,
+    ),
+    volumeMount(
+      'staging-managed-media',
+      '/opt/menorah-staging/data/managed-media',
+      true,
+    ),
+    {
+      type: 'bind',
+      source: environment.MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT,
+      target: '/opt/menorah-staging/deploy-state',
+    },
+    volumeMount('staging-logs', '/opt/menorah-staging/logs', true),
+    volumeMount('staging-env-root', '/opt/menorah-staging/env', true),
+  ];
+  services['staging-restore-job'] = safeService(project, {
+    restart: 'no',
+    profiles: ['recovery'],
+    networks: ['staging-restore'],
+    environment: {
+      MONGODB_STAGING_RESTORE_URI: environment.MONGODB_RESTORE_URI,
+    },
+    volumes: [
+      volumeMount(
+        'staging-filesystem-root',
+        '/opt/menorah-staging',
+        true,
+      ),
+      volumeMount(
+        'staging-app-root',
+        '/opt/menorah-staging/app',
+        true,
+      ),
+      volumeMount(
+        'staging-data-root',
+        '/opt/menorah-staging/data',
+        true,
+      ),
+      volumeMount(
+        'staging-backups',
+        '/opt/menorah-staging/backups',
+        true,
+      ),
+      volumeMount(
+        'staging-retrieval',
+        '/opt/menorah-staging/data/backup-retrieval',
+        true,
+      ),
+      volumeMount(
+        'staging-restore-root',
+        '/opt/menorah-staging/data/restore',
+        false,
+      ),
+      volumeMount(
+        'staging-restore-media',
+        '/opt/menorah-staging/data/restore-media',
+        false,
+      ),
+      {
+        type: 'bind',
+        source: environment.MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT,
+        target: '/opt/menorah-staging/deploy-state',
+      },
+      volumeMount('staging-logs', '/opt/menorah-staging/logs', true),
+      volumeMount('staging-env-root', '/opt/menorah-staging/env', true),
+    ],
+    depends_on: {
+      'staging-mongo-restore-replica-init': {
+        condition: 'service_completed_successfully',
+      },
+    },
+  });
   services['staging-prometheus'].environment = {
     MENORAH_SERVER_STAGING_PROJECT_NAME: project,
   };
@@ -226,12 +421,17 @@ const validCompose = (environment = validEnvironment()) => {
     name: project,
     services,
     networks: Object.fromEntries(REQUIRED_NETWORK_SUFFIXES.map(
-      (suffix) => [
+      (suffix, index) => [
         `staging-${suffix}`,
         {
           name: `${prefix}-${suffix}`,
           internal: suffix !== 'ingress',
           labels: resourceLabels,
+          ipam: {
+            config: [{
+              subnet: `10.252.${240 + index}.0/24`,
+            }],
+          },
         },
       ],
     )),
@@ -272,6 +472,17 @@ test('strict parser accepts generated JSON strings but never shell syntax', () =
 
 test('generator builds a complete, unique, synthetic contract', () => {
   const environment = validEnvironment();
+  assert.equal(Object.hasOwn(environment, 'COMPOSE_PROJECT_NAME'), false);
+  assert.equal(
+    Object.hasOwn(environment, 'BACKUP_RESTORE_ACKNOWLEDGEMENT'),
+    false,
+  );
+  assert.equal(
+    path.posix.basename(
+      environment.MENORAH_IDENTITY_RECONCILIATION_MARKER,
+    ),
+    IDENTITY_RECONCILIATION_MARKER_BASENAME,
+  );
   assert.equal(
     environment.MENORAH_SERVER_STAGING_PROJECT_NAME,
     'menorah-server-staging-validation',
@@ -372,6 +583,101 @@ test('tracked real-server contract keeps external staging URLs portless', () => 
   }
 });
 
+test('tracked real-server contract is dry-render complete without persistent authority', () => {
+  const contract = parseEnvironmentSource(contractSource);
+  const composeSource = readStaging('compose.yml');
+  const requiredComposeKeys = new Set(
+    [...composeSource.matchAll(
+      /\$\{([A-Z][A-Z0-9_]*):\?[^}]*\}/g,
+    )].map((match) => match[1]),
+  );
+  const syntheticSeedInputs = [
+    'MENORAH_SERVER_STAGING_ADMIN_CONTENT_PASSWORD',
+    'MENORAH_SERVER_STAGING_ADMIN_FINANCE_PASSWORD',
+    'MENORAH_SERVER_STAGING_ADMIN_FULL_1_PASSWORD',
+    'MENORAH_SERVER_STAGING_ADMIN_FULL_2_PASSWORD',
+    'MENORAH_SERVER_STAGING_ADMIN_SUPPORT_PASSWORD',
+    'MENORAH_SERVER_STAGING_COUNSELLOR_A_PASSWORD',
+    'MENORAH_SERVER_STAGING_COUNSELLOR_DRAFT_PASSWORD',
+    'MENORAH_SERVER_STAGING_COUNSELLOR_SUSPENDED_PASSWORD',
+    'MENORAH_SERVER_STAGING_SEED_CONFIRM',
+    'MENORAH_SERVER_STAGING_USER_A_PASSWORD',
+    'MENORAH_SERVER_STAGING_USER_B_PASSWORD',
+  ].sort();
+  const missingRequiredKeys = [...requiredComposeKeys]
+    .filter((key) => !Object.hasOwn(contract, key))
+    .sort();
+
+  assert.equal(
+    contract.MENORAH_SERVER_STAGING_PROJECT_NAME,
+    REAL_PROJECT,
+  );
+  assert.equal(
+    path.posix.basename(
+      contract.MENORAH_IDENTITY_RECONCILIATION_MARKER,
+    ),
+    IDENTITY_RECONCILIATION_MARKER_BASENAME,
+  );
+  assert.deepEqual(missingRequiredKeys, []);
+  for (const key of syntheticSeedInputs) {
+    assert.equal(Object.hasOwn(contract, key), false, key);
+    assert.match(
+      composeSource,
+      new RegExp(`\\$\\{${key}:-\\}`),
+      `${key} must remain a command-scoped seed input`,
+    );
+  }
+  for (const key of [
+    'BACKUP_RESTORE_ACKNOWLEDGEMENT',
+    'COMPOSE_FILE',
+    'COMPOSE_PROJECT_NAME',
+    'DOCKER_HOST',
+    'GIT_DIR',
+    'MENORAH_STAGING_BACKUP_ACK',
+    'MENORAH_STAGING_DEPLOY_ACK',
+    'MENORAH_STAGING_MANIFEST_ACK',
+    'MENORAH_STAGING_MIGRATION_ACK',
+    'MENORAH_STAGING_RESTORE_ACK',
+    'MENORAH_STAGING_ROLLBACK_ACK',
+    'MENORAH_STAGING_ROOTS_ACK',
+  ]) {
+    assert.equal(Object.hasOwn(contract, key), false, key);
+  }
+
+  for (const key of [
+    'APPLE_KEY_ID',
+    'APPLE_PRIVATE_KEY',
+    'APPLE_TEAM_ID',
+    'APPLE_WEB_SERVICE_ID',
+    'CLOUDFLARE_ACCOUNT_ID',
+    'CLOUDFLARE_TUNNEL_ID',
+    'CLOUDINARY_API_KEY',
+    'CLOUDINARY_API_SECRET',
+    'CLOUDINARY_CLOUD_NAME',
+    'GOOGLE_ANDROID_CLIENT_ID',
+    'GOOGLE_IOS_CLIENT_ID',
+    'GOOGLE_WEB_CLIENT_ID',
+    'LUXAND_API_TOKEN',
+    'OPENAI_API_KEY',
+    'RAZORPAY_KEY_SECRET',
+    'RAZORPAY_PAYOUT_ACCOUNT_NUMBER',
+    'RAZORPAY_WEBHOOK_SECRET',
+    'RAZORPAY_WEBHOOK_SECRET_PREVIOUS',
+    'RAZORPAY_X_KEY_SECRET',
+    'RAZORPAY_X_WEBHOOK_SECRET',
+    'RESEND_WEBHOOK_SECRET',
+  ]) {
+    assert.match(contract[key], /^disabled-for-server-staging/, key);
+  }
+  assert.match(contract.RAZORPAY_KEY_ID, /^rzp_test_/);
+  assert.match(contract.RAZORPAY_X_KEY_ID, /^rzp_test_/);
+  assert.equal(
+    contract.RESEND_API_URL,
+    'http://staging-mail-capture:8025/emails',
+  );
+  assert.match(contract.RESEND_API_KEY, /^re_server_staging_/);
+});
+
 test('generator refuses overwrite and invalid runtime SHA', async () => {
   assert.throws(
     () => buildValidationEnvironment({
@@ -404,7 +710,6 @@ const environmentMutations = [
   ['production project', (env) => {
     env.MENORAH_SERVER_STAGING_PROJECT_NAME = 'menorah';
     env.MENORAH_SERVER_STAGING_RESOURCE_PREFIX = 'menorah';
-    env.COMPOSE_PROJECT_NAME = 'menorah';
   }, /collides with production/],
   ['database name', (env) => { env.MONGO_DATABASE = 'menorah'; }, /database must be menorah_staging/],
   ['replica set', (env) => { env.MONGODB_REPLICA_SET_NAME = 'menorah-rs'; }, /replica set must be/],
@@ -423,7 +728,11 @@ const environmentMutations = [
   ['production Tunnel ID', (env) => { env.CLOUDFLARE_TUNNEL_ID = productionMetadata.tunnelIds[0]; }, /Tunnel ID collides/],
   ['production state marker', (env) => { env.MENORAH_CURRENT_SHA_FILE = '/opt/menorah/deploy-state/current-sha'; }, /production filesystem root/],
   ['production restore target', (env) => { env.MENORAH_RESTORE_ROOT = '/opt/menorah/data/restore'; }, /production filesystem root/],
-  ['ambiguous restore ack', (env) => { env.BACKUP_RESTORE_ACKNOWLEDGEMENT = 'yes'; }, /exact staging acknowledgement/],
+  ['persistent restore ack', (env) => { env.BACKUP_RESTORE_ACKNOWLEDGEMENT = 'yes'; }, /forbidden in the persistent/],
+  ['Compose authority', (env) => { env.COMPOSE_PROJECT_NAME = REAL_PROJECT; }, /forbidden in the persistent/],
+  ['Docker authority', (env) => { env.DOCKER_HOST = 'tcp://production.invalid:2376'; }, /forbidden in the persistent/],
+  ['Git authority', (env) => { env.GIT_DIR = '/opt/menorah/.git'; }, /forbidden in the persistent/],
+  ['operation authority', (env) => { env.MENORAH_STAGING_DEPLOY_ACK = 'DEPLOY_EXACT_MENORAH_STAGING_SHA'; }, /forbidden in the persistent/],
   ['non-loopback admin port', (env) => { env.API_ADMIN_LOCAL_PORT = '0.0.0.0:38083'; }, /API_ADMIN_LOCAL_PORT must be/],
   ['storage prefix', (env) => { env.MEDIA_STORAGE_BACKEND = 'cloudinary'; env.CLOUDINARY_UPLOAD_PREFIX = 'menorah-production'; }, /staging-only prefix/],
   ['production storage bucket', (env) => { env.MEDIA_STORAGE_BUCKET = productionMetadata.storageBuckets[0]; }, /staging-only storage/],
@@ -465,7 +774,6 @@ test('rendered collision model preserves the exact real-project default', () => 
   const environment = validEnvironment();
   environment.MENORAH_SERVER_STAGING_PROJECT_NAME = REAL_PROJECT;
   environment.MENORAH_SERVER_STAGING_RESOURCE_PREFIX = REAL_PROJECT;
-  environment.COMPOSE_PROJECT_NAME = REAL_PROJECT;
   const model = validCompose(environment);
   assert.deepEqual(
     validateRenderedCompose(model, environment, productionMetadata),
@@ -473,7 +781,18 @@ test('rendered collision model preserves the exact real-project default', () => 
   );
 });
 
+test('production collision metadata is fail-closed and structurally complete', () => {
+  assert.deepEqual(validateProductionMetadata(productionMetadata), []);
+  const errors = validateProductionMetadata({});
+  assert.ok(includesError(errors, /schemaVersion/));
+  assert.ok(includesError(errors, /projectNames array is required/));
+  assert.ok(includesError(errors, /callbackUrls array is required/));
+});
+
 const composeMutations = [
+  ['production retrieval root metadata', (_model, env) => {
+    env.MENORAH_RETRIEVAL_ROOT = productionMetadata.retrievalRoots[0];
+  }, /retrieval root collides with production metadata/],
   ['project', (model) => { model.name = 'menorah'; }, /rendered Compose name/],
   ['container name', (model) => { model.services['staging-api-admin'].container_name = 'production-admin'; }, /non-staging container_name/],
   ['production port', (model) => { model.services['staging-api-admin'].ports[0].published = '18083'; }, /collides with production metadata/],
@@ -483,6 +802,16 @@ const composeMutations = [
   ['external network', (model) => { model.networks['staging-data'].external = true; }, /must not be external/],
   ['production network', (model) => { model.networks['staging-data'].name = 'menorah_db_net'; }, /collides with production/],
   ['production subnet', (model) => { model.networks['staging-data'].ipam = { config: [{ subnet: productionMetadata.networkSubnets[0] }] }; }, /subnet collides with production/],
+  ['containing production subnet', (model) => {
+    model.networks['staging-data'].ipam = {
+      config: [{ subnet: '10.250.240.0/23' }],
+    };
+  }, /subnet collides with production/],
+  ['overlapping staging subnet', (model) => {
+    model.networks['staging-data'].ipam = {
+      config: [{ subnet: '10.252.241.128/25' }],
+    };
+  }, /overlaps staging network/],
   ['production volume', (model) => { model.volumes['staging-restore-root'].name = 'menorah_restore_test_data'; }, /collides with production/],
   ['Docker socket', (model) => { model.services['staging-alloy'].volumes = [{ type: 'bind', source: '/var/run/docker.sock', target: '/var/run/docker.sock' }]; }, /Docker socket/],
   ['host log mount', (model) => { model.services['staging-alloy'].volumes = [{ type: 'bind', source: '/var/lib/docker/containers', target: '/logs' }]; }, /host-wide Docker logs/],
@@ -496,6 +825,13 @@ const composeMutations = [
     model.services['staging-api-web'].mem_reservation =
       64 * 1024 * 1024;
   }, /memory reservation exceeds its memory limit/],
+  ['per-service memory ceiling', (model) => {
+    model.services['staging-api-web'].mem_limit =
+      (1024 * 1024 * 1024) + 1;
+  }, /per-service memory ceiling/],
+  ['aggregate CPU ceiling', (model) => {
+    model.services['staging-api-web'].cpus = 0.51;
+  }, /aggregate CPU ceiling/],
   ['missing labels', (model) => { model.services['staging-api-web'].labels = {}; }, /lacks environment=staging/],
   ['stale project label', (model) => {
     model.services['staging-api-web'].labels['com.menorah.project'] =
@@ -519,6 +855,34 @@ const composeMutations = [
     model.services['staging-api-ios'].environment.MONGODB_URI =
       env.MONGODB_BACKUP_URI;
   }, /wrong MongoDB role/],
+  ['missing application URI', (model) => {
+    delete model.services['staging-user-web-app'].environment.MONGODB_URI;
+  }, /staging-user-web-app must receive MONGODB_URI/],
+  ['restore datastore topology', (model) => {
+    model.services['staging-mongo-restore'].networks = ['staging-data'];
+  }, /invalid network topology/],
+  ['broad initializer environment', (model) => {
+    model.services['staging-mongo-replica-init']
+      .environment.JWT_SECRET = 'synthetic-not-a-real-secret';
+  }, /only its exact Mongo identities/],
+  ['hidden deployment-state volume', (model) => {
+    model.volumes['staging-deploy-state'] = {
+      name: 'menorah-staging-deploy-state',
+      labels: model.volumes['staging-data-root'].labels,
+    };
+  }, /must not use a hidden Compose volume/],
+  ['missing host-visible deployment state', (model) => {
+    model.services['staging-backup-job'].volumes =
+      model.services['staging-backup-job'].volumes.filter(
+        (mount) => mount.target !== '/opt/menorah-staging/deploy-state',
+      );
+  }, /deploy-state exactly once as writable/],
+  ['writable backup application root', (model) => {
+    const mount = model.services['staging-backup-job'].volumes.find(
+      (candidate) => candidate.target === '/opt/menorah-staging/app',
+    );
+    mount.read_only = false;
+  }, /app exactly once as read-only/],
 ];
 
 for (const [name, mutate, expected] of composeMutations) {
@@ -621,6 +985,30 @@ test('ingress sources match the exact host and target manifest', () => {
     productionMetadata,
   });
   assert.deepEqual(errors, []);
+});
+
+test('ingress rejects host-to-target swaps even when both sets are unchanged', () => {
+  const caddy = readStaging('Caddyfile')
+    .replaceAll(
+      'staging-private-admin-panel:3003',
+      'staging-private-swap-placeholder:3999',
+    )
+    .replaceAll(
+      'staging-private-counsellor-web:3001',
+      'staging-private-admin-panel:3003',
+    )
+    .replaceAll(
+      'staging-private-swap-placeholder:3999',
+      'staging-private-counsellor-web:3001',
+    );
+  const errors = validateIngress({
+    manifest: JSON.parse(readStaging('ingress-manifest.json')),
+    caddySource: caddy,
+    tunnelSource: readStaging('tunnel-config.yml.example'),
+    compose: validIngressCompose(),
+    productionMetadata,
+  });
+  assert.ok(includesError(errors, /host-to-target mappings/));
 });
 
 test('ingress targets use app-network-only private aliases', () => {
@@ -1011,7 +1399,7 @@ test('synthetic account passwords reach only the explicit seed job', () => {
 
   assert.equal(seedPasswordKeys.length, 10);
   for (const key of seedPasswordKeys) {
-    assert.match(seed, new RegExp(`${key}: "\\$\\{${key}:\\?`));
+    assert.match(seed, new RegExp(`${key}: "\\$\\{${key}:-\\}"`));
     assert.doesNotMatch(backendEnvironment, new RegExp(`${key}:`));
   }
 });

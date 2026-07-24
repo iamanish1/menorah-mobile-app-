@@ -12,6 +12,58 @@ export const VALIDATION_PROJECT =
   'menorah-server-staging-validation';
 export const ENVIRONMENT_ID = 'menorah-server-staging-v1';
 
+const PROCESS_INFLUENCING_ENVIRONMENT_KEYS = new Set([
+  'ALL_PROXY',
+  'BASHOPTS',
+  'BASH_ENV',
+  'CDPATH',
+  'ENV',
+  'GLOBIGNORE',
+  'HOME',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'IFS',
+  'NODE_OPTIONS',
+  'NODE_PATH',
+  'NO_PROXY',
+  'PATH',
+  'PROMPT_COMMAND',
+  'PS4',
+  'SHELLOPTS',
+  'SSH_ASKPASS',
+  'SSH_AUTH_SOCK',
+  'TMP',
+  'TEMP',
+  'TMPDIR',
+  'USERPROFILE',
+  'XDG_CONFIG_HOME',
+]);
+const PROCESS_INFLUENCING_ENVIRONMENT_PREFIXES = Object.freeze([
+  'BASH_FUNC_',
+  'BUILDKIT_',
+  'BUILDX_',
+  'COMPOSE_',
+  'DOCKER_',
+  'DYLD_',
+  'GIT_',
+  'LD_',
+]);
+const PERSISTENT_OPERATION_ENVIRONMENT_KEYS = new Set([
+  'BACKUP_RESTORE_ACKNOWLEDGEMENT',
+  'MENORAH_SERVER_STAGING_ALERT_EXERCISE_CONFIRM',
+  'MENORAH_STAGING_WRITERS_QUIESCED',
+]);
+
+export const isForbiddenServerStagingEnvironmentKey = (key) => (
+  PROCESS_INFLUENCING_ENVIRONMENT_KEYS.has(key)
+  || PROCESS_INFLUENCING_ENVIRONMENT_PREFIXES.some(
+    (prefix) => key.startsWith(prefix),
+  )
+  || PERSISTENT_OPERATION_ENVIRONMENT_KEYS.has(key)
+  || /^MENORAH_STAGING_[A-Z0-9_]+_ACK$/.test(key)
+  || /_ACKNOWLEDGEMENT$/.test(key)
+);
+
 const EXPECTED_KYC_CONSENT_VERSION =
   'ordinary-face-check-v1-2026-07-22';
 const EXPECTED_PRIVACY_RETENTION_POLICY_VERSION =
@@ -186,7 +238,6 @@ export const REQUIRED_KEYS = Object.freeze([
   'ALERTMANAGER_RECEIVER',
   'BACKUP_METADATA_FILE',
   'BACKUP_LOCK_FILE',
-  'BACKUP_RESTORE_ACKNOWLEDGEMENT',
   'MENORAH_CURRENT_SHA_FILE',
   'MENORAH_LAST_GOOD_SHA_FILE',
   'MENORAH_MIGRATION_APPLIED_MARKER',
@@ -692,6 +743,12 @@ export const validateEnvironmentRecord = (
     }
   }
   for (const [key, value] of Object.entries(environment)) {
+    if (isForbiddenServerStagingEnvironmentKey(key)) {
+      errors.push(
+        `${key} is forbidden in the persistent server-staging environment`,
+      );
+      continue;
+    }
     if (typeof value !== 'string' || value.trim() === '') {
       errors.push(`${key} must not be empty`);
       continue;
@@ -749,12 +806,6 @@ export const validateEnvironmentRecord = (
     environment.MENORAH_SERVER_STAGING_RESOURCE_PREFIX !== project
   ) {
     errors.push('resource prefix must equal the isolated Compose project');
-  }
-  if (
-    Object.hasOwn(environment, 'COMPOSE_PROJECT_NAME')
-    && environment.COMPOSE_PROJECT_NAME !== project
-  ) {
-    errors.push('COMPOSE_PROJECT_NAME disagrees with staging project');
   }
   if (
     (productionMetadata.projectNames || []).includes(project)
@@ -910,13 +961,6 @@ export const validateEnvironmentRecord = (
       errors.push(`${key} must stay in staging deployment state`);
     }
   }
-  if (
-    environment.BACKUP_RESTORE_ACKNOWLEDGEMENT
-    !== 'RESTORE_ONLY_MENORAH_SERVER_STAGING'
-  ) {
-    errors.push('restore requires the exact staging acknowledgement');
-  }
-
   const identityUsers = [];
   for (const [identity, [userKey, passwordKey]] of Object.entries(
     MONGO_IDENTITIES,

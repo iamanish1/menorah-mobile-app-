@@ -43,6 +43,9 @@ export const DERIVED_PATHS = Object.freeze({
     '/opt/menorah-staging/data/uploads',
 });
 
+export const IDENTITY_RECONCILIATION_MARKER_BASENAME =
+  'identity-reconciliation-in-progress-sha';
+
 export const STATE_PATHS = Object.freeze({
   currentSha:
     '/opt/menorah-staging/deploy-state/current-sha',
@@ -54,7 +57,7 @@ export const STATE_PATHS = Object.freeze({
     '/opt/menorah-staging/deploy-state/migration-in-progress-sha',
   identityReconciliation:
     '/opt/menorah-staging/deploy-state/'
-      + 'identity-reconciliation-in-progress-sha',
+      + IDENTITY_RECONCILIATION_MARKER_BASENAME,
   deployLock:
     '/opt/menorah-staging/deploy-state/.deploy.lock',
   rollbackLock:

@@ -24,6 +24,7 @@ readonly RESTORE_SERVICE='staging-mongo-restore'
 readonly RESTORE_LOCK='/opt/menorah-staging/deploy-state/.restore.lock'
 readonly RESTORE_MARKER='/opt/menorah-staging/deploy-state/recovery/restore-in-progress.json'
 readonly RESTORE_REVIEW='/opt/menorah-staging/deploy-state/recovery/restore-requires-review.json'
+readonly RESTORE_REVIEW_TEMP="/opt/menorah-staging/deploy-state/recovery/.restore-requires-review.$$.tmp"
 readonly ENCRYPTION_KEY_FILE='/run/secrets/menorah-staging-backup-encryption-key'
 readonly SIGNING_KEY_FILE='/run/secrets/menorah-staging-backup-signing-key'
 
@@ -152,10 +153,14 @@ esac
   || fail 'restore configuration path already exists'
 [ ! -e "${RESTORE_MARKER_TEMP}" ] && [ ! -L "${RESTORE_MARKER_TEMP}" ] \
   || fail 'restore marker staging path already exists'
-[ ! -L "${RESTORE_MARKER}" ] && [ ! -L "${RESTORE_REVIEW}" ] \
+[ ! -L "${RESTORE_MARKER}" ] \
+  && [ ! -L "${RESTORE_REVIEW}" ] \
+  && [ ! -L "${RESTORE_REVIEW_TEMP}" ] \
   || fail 'restore state markers must never be symlinks'
 [ ! -e "${RESTORE_REVIEW}" ] \
   || fail 'a prior restore requires review'
+[ ! -e "${RESTORE_REVIEW_TEMP}" ] \
+  || fail 'a restore review staging path already exists'
 
 case "${RESTORE_LOCK}" in
   /opt/menorah-staging/deploy-state/.restore.lock) ;;
@@ -170,13 +175,38 @@ chmod 600 "${RESTORE_LOCK}"
 cleanup() {
   status="$?"
   trap - EXIT HUP INT TERM
-  rm -f -- "${MONGO_CONFIG}" "${RESTORE_MARKER_TEMP}"
+  rm -f -- \
+    "${MONGO_CONFIG}" \
+    "${RESTORE_MARKER_TEMP}" \
+    "${RESTORE_REVIEW_TEMP}"
   if [ -d "${WORK_DIR}" ]; then
     rm -rf -- "${WORK_DIR}"
   fi
   if [ "${status}" -ne 0 ] && [ -f "${RESTORE_MARKER}" ]; then
-    cp -- "${RESTORE_MARKER}" "${RESTORE_REVIEW}" 2>/dev/null || :
+    set -C
+    if ! : > "${RESTORE_REVIEW_TEMP}" 2>/dev/null; then
+      printf '%s\n' \
+        'Server-staging restore review marker could not be reserved.' >&2
+      status=1
+    else
+      set +C
+      if ! cp -- "${RESTORE_MARKER}" "${RESTORE_REVIEW_TEMP}"; then
+        printf '%s\n' \
+          'Server-staging restore review marker could not be copied.' >&2
+        status=1
+      elif ! chmod 600 "${RESTORE_REVIEW_TEMP}"; then
+        printf '%s\n' \
+          'Server-staging restore review marker could not be restricted.' >&2
+        status=1
+      elif ! mv -- "${RESTORE_REVIEW_TEMP}" "${RESTORE_REVIEW}"; then
+        printf '%s\n' \
+          'Server-staging restore review marker could not be published.' >&2
+        status=1
+      fi
+    fi
+    set +C
   fi
+  rm -f -- "${RESTORE_REVIEW_TEMP}"
   rm -f -- "${RESTORE_LOCK}"
   exit "${status}"
 }
@@ -355,10 +385,8 @@ cmp -s \
   "${WORK_DIR}/restored-database-manifest.json" \
   || fail 'restored database counts or indexes differ from the backup'
 
-trap - EXIT HUP INT TERM
 rm -rf -- "${WORK_DIR}"
-rm -f -- \
-  "${MONGO_CONFIG}" \
-  "${RESTORE_MARKER}" \
-  "${RESTORE_LOCK}"
+rm -f -- "${MONGO_CONFIG}" "${RESTORE_MARKER_TEMP}"
+rm -f -- "${RESTORE_LOCK}"
+rm -f -- "${RESTORE_MARKER}"
 printf '%s\n' "Server-staging restore verified: ${STAMP}"

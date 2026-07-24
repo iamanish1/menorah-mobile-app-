@@ -107,8 +107,11 @@ test('generated admin roles exactly match the seeded synthetic roster', () => {
 });
 
 test('generated environment satisfies the guarded synthetic seed preflight', () => {
+  const environment = validEnvironment();
   assert.doesNotThrow(() => assertSeedAllowed({
-    ...validEnvironment(),
+    ...environment,
+    COMPOSE_PROJECT_NAME:
+      environment.MENORAH_SERVER_STAGING_PROJECT_NAME,
     MONGO_INITDB_DATABASE: 'menorah_staging',
   }));
 });

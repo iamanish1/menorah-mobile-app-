@@ -13,7 +13,7 @@
     "test:media-recovery": "node validate-media-recovery-config.mjs",
     "test:media-transition": "bash test-media-transition.sh",
     "test:mongo-identities": "node --test mongo-managed-identities.test.mjs",
-    "test:server-staging-contract": "node --test server-staging-isolation.test.mjs server-staging-recovery.test.mjs server-staging-discovery.test.mjs server-staging-environment-loader.test.mjs server-staging-startup-contract.test.mjs ../../deploy/server-staging/alert-exercise.test.mjs",
+    "test:server-staging-contract": "node --test server-staging-isolation.test.mjs server-staging-recovery.test.mjs server-staging-discovery.test.mjs server-staging-environment-loader.test.mjs server-staging-startup-contract.test.mjs server-staging-operation-wrappers.test.mjs server-staging-process-authority.test.mjs server-staging-restore-sequencing.test.mjs ../../deploy/server-staging/alert-exercise.test.mjs",
     "test:local-staging-contract": "node --test ../../deploy/local-staging/isolation.test.mjs ../../deploy/local-staging/mail-capture/server.test.mjs ../../deploy/local-staging/monitoring-health.test.mjs ../../deploy/local-staging/alert-fixture/server.test.mjs ../../deploy/local-staging/alert-exercise.test.mjs",
     "test:release-workflow": "node validate-release-workflow.mjs && node validate-functional-workflow.mjs && node --test validate-release-workflow.test.mjs validate-functional-workflow.test.mjs compose-clean-checkout.test.mjs && npm run test:local-staging-contract && npm run test:server-staging-contract",
     "test:tunnel-config": "node --test validate-cloudflare-tunnel-config.test.mjs",

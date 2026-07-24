@@ -28,11 +28,11 @@ x-staging-service-common: &staging-service-common
     options:
       max-size: "10m"
       max-file: "3"
-  pids_limit: 128
-  mem_limit: 512m
-  mem_reservation: 64m
-  cpus: "0.50"
-  cpu_shares: 128
+  pids_limit: 64
+  mem_limit: 192m
+  mem_reservation: 48m
+  cpus: "0.15"
+  cpu_shares: 64
 
 x-backend-environment: &backend-environment
   NODE_ENV: production
@@ -172,10 +172,10 @@ x-app-security: &app-security
     - ALL
   security_opt:
     - no-new-privileges:true
-  pids_limit: 256
-  mem_limit: 512m
-  mem_reservation: 128m
-  cpus: "0.50"
+  pids_limit: 192
+  mem_limit: 384m
+  mem_reservation: 96m
+  cpus: "0.30"
   tmpfs:
     - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
 
@@ -246,8 +246,8 @@ services:
       - type: volume
         source: staging-restore-media
         target: /opt/menorah-staging/data/restore-media
-      - type: volume
-        source: staging-deploy-state
+      - type: bind
+        source: "${MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT:?Set the isolated staging deploy-state host root}"
         target: /opt/menorah-staging/deploy-state
       - type: volume
         source: staging-logs
@@ -302,10 +302,10 @@ services:
     <<: *staging-service-common
     image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
     restart: "on-failure:3"
-    pids_limit: 256
-    mem_limit: 1g
-    mem_reservation: 512m
-    cpus: "1.00"
+    pids_limit: 192
+    mem_limit: 768m
+    mem_reservation: 384m
+    cpus: "0.75"
     cap_add:
       - CHOWN
       - DAC_OVERRIDE
@@ -354,8 +354,19 @@ services:
     <<: *staging-service-common
     image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
     restart: "no"
-    env_file:
-      - *generated-env-file
+    environment:
+      MONGO_STAGING_ROOT_USER: "${MONGO_STAGING_ROOT_USER:?Generated Mongo root user required}"
+      MONGO_STAGING_ROOT_PASSWORD: "${MONGO_STAGING_ROOT_PASSWORD:?Generated Mongo root password required}"
+      MONGO_STAGING_APP_USER: "${MONGO_STAGING_APP_USER:?Generated Mongo application user required}"
+      MONGO_STAGING_APP_PASSWORD: "${MONGO_STAGING_APP_PASSWORD:?Generated Mongo application password required}"
+      MONGO_STAGING_MIGRATION_USER: "${MONGO_STAGING_MIGRATION_USER:?Generated Mongo migration user required}"
+      MONGO_STAGING_MIGRATION_PASSWORD: "${MONGO_STAGING_MIGRATION_PASSWORD:?Generated Mongo migration password required}"
+      MONGO_STAGING_BACKUP_USER: "${MONGO_STAGING_BACKUP_USER:?Generated Mongo backup user required}"
+      MONGO_STAGING_BACKUP_PASSWORD: "${MONGO_STAGING_BACKUP_PASSWORD:?Generated Mongo backup password required}"
+      MONGO_STAGING_RESTORE_USER: "${MONGO_STAGING_RESTORE_USER:?Generated Mongo restore user required}"
+      MONGO_STAGING_RESTORE_PASSWORD: "${MONGO_STAGING_RESTORE_PASSWORD:?Generated Mongo restore password required}"
+      MONGO_STAGING_MONITOR_USER: "${MONGO_STAGING_MONITOR_USER:?Generated Mongo monitor user required}"
+      MONGO_STAGING_MONITOR_PASSWORD: "${MONGO_STAGING_MONITOR_PASSWORD:?Generated Mongo monitor password required}"
     command:
       - bash
       - -euc
@@ -765,17 +776,17 @@ services:
       MONGO_INITDB_DATABASE: menorah_staging
       MENORAH_RUNTIME_CANDIDATE_SHA: "${MENORAH_RUNTIME_CANDIDATE_SHA:?Set the exact runtime candidate SHA}"
       MENORAH_SYNTHETIC_DATA_ONLY: "true"
-      MENORAH_SERVER_STAGING_SEED_CONFIRM: "${MENORAH_SERVER_STAGING_SEED_CONFIRM:?Explicit synthetic staging seed confirmation required}"
-      MENORAH_SERVER_STAGING_USER_A_PASSWORD: "${MENORAH_SERVER_STAGING_USER_A_PASSWORD:?Synthetic USER-A password required}"
-      MENORAH_SERVER_STAGING_USER_B_PASSWORD: "${MENORAH_SERVER_STAGING_USER_B_PASSWORD:?Synthetic USER-B password required}"
-      MENORAH_SERVER_STAGING_COUNSELLOR_A_PASSWORD: "${MENORAH_SERVER_STAGING_COUNSELLOR_A_PASSWORD:?Synthetic COUNSELLOR-A password required}"
-      MENORAH_SERVER_STAGING_COUNSELLOR_DRAFT_PASSWORD: "${MENORAH_SERVER_STAGING_COUNSELLOR_DRAFT_PASSWORD:?Synthetic COUNSELLOR-DRAFT password required}"
-      MENORAH_SERVER_STAGING_COUNSELLOR_SUSPENDED_PASSWORD: "${MENORAH_SERVER_STAGING_COUNSELLOR_SUSPENDED_PASSWORD:?Synthetic COUNSELLOR-SUSPENDED password required}"
-      MENORAH_SERVER_STAGING_ADMIN_SUPPORT_PASSWORD: "${MENORAH_SERVER_STAGING_ADMIN_SUPPORT_PASSWORD:?Synthetic ADMIN-SUPPORT password required}"
-      MENORAH_SERVER_STAGING_ADMIN_FINANCE_PASSWORD: "${MENORAH_SERVER_STAGING_ADMIN_FINANCE_PASSWORD:?Synthetic ADMIN-FINANCE password required}"
-      MENORAH_SERVER_STAGING_ADMIN_CONTENT_PASSWORD: "${MENORAH_SERVER_STAGING_ADMIN_CONTENT_PASSWORD:?Synthetic ADMIN-CONTENT password required}"
-      MENORAH_SERVER_STAGING_ADMIN_FULL_1_PASSWORD: "${MENORAH_SERVER_STAGING_ADMIN_FULL_1_PASSWORD:?Synthetic ADMIN-FULL-1 password required}"
-      MENORAH_SERVER_STAGING_ADMIN_FULL_2_PASSWORD: "${MENORAH_SERVER_STAGING_ADMIN_FULL_2_PASSWORD:?Synthetic ADMIN-FULL-2 password required}"
+      MENORAH_SERVER_STAGING_SEED_CONFIRM: "${MENORAH_SERVER_STAGING_SEED_CONFIRM:-}"
+      MENORAH_SERVER_STAGING_USER_A_PASSWORD: "${MENORAH_SERVER_STAGING_USER_A_PASSWORD:-}"
+      MENORAH_SERVER_STAGING_USER_B_PASSWORD: "${MENORAH_SERVER_STAGING_USER_B_PASSWORD:-}"
+      MENORAH_SERVER_STAGING_COUNSELLOR_A_PASSWORD: "${MENORAH_SERVER_STAGING_COUNSELLOR_A_PASSWORD:-}"
+      MENORAH_SERVER_STAGING_COUNSELLOR_DRAFT_PASSWORD: "${MENORAH_SERVER_STAGING_COUNSELLOR_DRAFT_PASSWORD:-}"
+      MENORAH_SERVER_STAGING_COUNSELLOR_SUSPENDED_PASSWORD: "${MENORAH_SERVER_STAGING_COUNSELLOR_SUSPENDED_PASSWORD:-}"
+      MENORAH_SERVER_STAGING_ADMIN_SUPPORT_PASSWORD: "${MENORAH_SERVER_STAGING_ADMIN_SUPPORT_PASSWORD:-}"
+      MENORAH_SERVER_STAGING_ADMIN_FINANCE_PASSWORD: "${MENORAH_SERVER_STAGING_ADMIN_FINANCE_PASSWORD:-}"
+      MENORAH_SERVER_STAGING_ADMIN_CONTENT_PASSWORD: "${MENORAH_SERVER_STAGING_ADMIN_CONTENT_PASSWORD:-}"
+      MENORAH_SERVER_STAGING_ADMIN_FULL_1_PASSWORD: "${MENORAH_SERVER_STAGING_ADMIN_FULL_1_PASSWORD:-}"
+      MENORAH_SERVER_STAGING_ADMIN_FULL_2_PASSWORD: "${MENORAH_SERVER_STAGING_ADMIN_FULL_2_PASSWORD:-}"
     networks:
       - staging-data
     depends_on:
@@ -943,10 +954,10 @@ services:
     <<: *staging-service-common
     image: livekit/livekit-server:v1.13.3@sha256:483b8b7b5b0654f91f1e8bdc7b46fcd37fd9911612ecf627f97e3185a89825bd
     restart: "on-failure:3"
-    pids_limit: 256
-    mem_limit: 1g
-    mem_reservation: 256m
-    cpus: "1.00"
+    pids_limit: 192
+    mem_limit: 768m
+    mem_reservation: 192m
+    cpus: "0.75"
     command: ["--config", "/etc/livekit.yaml"]
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?Generated LiveKit key required}: ${LIVEKIT_API_SECRET:?Generated LiveKit secret required}"
@@ -1512,6 +1523,10 @@ services:
     image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
     profiles: ["recovery"]
     restart: "on-failure:3"
+    pids_limit: 128
+    mem_limit: 384m
+    mem_reservation: 128m
+    cpus: "0.30"
     cap_add:
       - CHOWN
       - DAC_OVERRIDE
@@ -1561,8 +1576,11 @@ services:
     image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
     profiles: ["recovery"]
     restart: "no"
-    env_file:
-      - *generated-env-file
+    environment:
+      MONGO_STAGING_ROOT_USER: "${MONGO_STAGING_ROOT_USER:?Generated Mongo root user required}"
+      MONGO_STAGING_ROOT_PASSWORD: "${MONGO_STAGING_ROOT_PASSWORD:?Generated Mongo root password required}"
+      MONGO_STAGING_RESTORE_USER: "${MONGO_STAGING_RESTORE_USER:?Generated Mongo restore user required}"
+      MONGO_STAGING_RESTORE_PASSWORD: "${MONGO_STAGING_RESTORE_PASSWORD:?Generated Mongo restore password required}"
     command:
       - bash
       - -euc
@@ -1609,6 +1627,14 @@ services:
             process.env.MONGO_STAGING_ROOT_USER,
             process.env.MONGO_STAGING_ROOT_PASSWORD
           );
+          const hello = admin.hello();
+          if (
+            !hello.isWritablePrimary
+            || hello.setName !== "menorah-staging-restore-rs"
+            || hello.primary !== "staging-mongo-restore:27017"
+          ) {
+            throw new Error("Disposable restore replica identity is invalid");
+          }
           const expectedRoles = [
             { role: "readWrite", db: "menorah_staging" },
             { role: "dbAdmin", db: "menorah_staging" },
@@ -1620,6 +1646,14 @@ services:
               pwd: process.env.MONGO_STAGING_RESTORE_PASSWORD,
               roles: expectedRoles,
             });
+          } else {
+            const normalize = (roles) => roles
+              .map(({ role, db }) => `$${role}@$${db}`)
+              .sort()
+              .join(",");
+            if (normalize(existing.roles) !== normalize(expectedRoles)) {
+              throw new Error("Disposable restore credential roles are invalid");
+            }
           }
           const credential = connect(
             "mongodb://staging-mongo-restore:27017/admin?authSource=admin",
@@ -1682,12 +1716,15 @@ services:
       - type: volume
         source: staging-filesystem-root
         target: /opt/menorah-staging
+        read_only: true
       - type: volume
         source: staging-app-root
         target: /opt/menorah-staging/app
+        read_only: true
       - type: volume
         source: staging-data-root
         target: /opt/menorah-staging/data
+        read_only: true
       - type: volume
         source: staging-backups
         target: /opt/menorah-staging/backups
@@ -1702,15 +1739,17 @@ services:
         source: staging-managed-media
         target: /opt/menorah-staging/data/managed-media
         read_only: true
-      - type: volume
-        source: staging-deploy-state
+      - type: bind
+        source: "${MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT:?Set the isolated staging deploy-state host root}"
         target: /opt/menorah-staging/deploy-state
       - type: volume
         source: staging-logs
         target: /opt/menorah-staging/logs
+        read_only: true
       - type: volume
         source: staging-env-root
         target: /opt/menorah-staging/env
+        read_only: true
     secrets:
       - source: staging-backup-encryption-password
         target: menorah-staging-backup-encryption-key
@@ -1771,12 +1810,15 @@ services:
       - type: volume
         source: staging-filesystem-root
         target: /opt/menorah-staging
+        read_only: true
       - type: volume
         source: staging-app-root
         target: /opt/menorah-staging/app
+        read_only: true
       - type: volume
         source: staging-data-root
         target: /opt/menorah-staging/data
+        read_only: true
       - type: volume
         source: staging-backups
         target: /opt/menorah-staging/backups
@@ -1791,15 +1833,17 @@ services:
       - type: volume
         source: staging-restore-media
         target: /opt/menorah-staging/data/restore-media
-      - type: volume
-        source: staging-deploy-state
+      - type: bind
+        source: "${MENORAH_SERVER_STAGING_DEPLOY_STATE_ROOT:?Set the isolated staging deploy-state host root}"
         target: /opt/menorah-staging/deploy-state
       - type: volume
         source: staging-logs
         target: /opt/menorah-staging/logs
+        read_only: true
       - type: volume
         source: staging-env-root
         target: /opt/menorah-staging/env
+        read_only: true
     secrets:
       - source: staging-backup-encryption-password
         target: menorah-staging-backup-encryption-key
@@ -1900,9 +1944,6 @@ volumes:
     labels: *staging-volume-labels
   staging-data-root:
     name: "${MENORAH_SERVER_STAGING_RESOURCE_PREFIX:-menorah-staging}-data-root"
-    labels: *staging-volume-labels
-  staging-deploy-state:
-    name: "${MENORAH_SERVER_STAGING_RESOURCE_PREFIX:-menorah-staging}-deploy-state"
     labels: *staging-volume-labels
   staging-env-root:
     name: "${MENORAH_SERVER_STAGING_RESOURCE_PREFIX:-menorah-staging}-env-root"

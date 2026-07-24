@@ -4,35 +4,13 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import {
+  isForbiddenServerStagingEnvironmentKey,
   parseEnvironmentSource,
 } from './validate-environment.mjs';
 
 export const COMPLETION_KEY =
   'MENORAH_SERVER_STAGING_DOTENV_LOAD_COMPLETE';
 export const COMPLETION_VALUE = 'safe-dotenv-v1';
-
-const FORBIDDEN_KEYS = new Set([
-  'BASHOPTS',
-  'BASH_ENV',
-  'CDPATH',
-  'ENV',
-  'GLOBIGNORE',
-  'IFS',
-  'NODE_OPTIONS',
-  'NODE_PATH',
-  'PATH',
-  'PROMPT_COMMAND',
-  'PS4',
-  'SHELLOPTS',
-]);
-
-const isForbiddenKey = (key) => (
-  FORBIDDEN_KEYS.has(key)
-  || key.startsWith('BASH_FUNC_')
-  || key.startsWith('DYLD_')
-  || key.startsWith('GIT_CONFIG_')
-  || key.startsWith('LD_')
-);
 
 const parseFailure = (reason) => {
   const error = new Error(
@@ -58,7 +36,10 @@ export const parseEnvironment = (source) => {
     throw error;
   }
   for (const [key, value] of Object.entries(record)) {
-    if (key === COMPLETION_KEY || isForbiddenKey(key)) {
+    if (
+      key === COMPLETION_KEY
+      || isForbiddenServerStagingEnvironmentKey(key)
+    ) {
       throw parseFailure('reserved or process-influencing key');
     }
     if (value.includes('\0')) {
