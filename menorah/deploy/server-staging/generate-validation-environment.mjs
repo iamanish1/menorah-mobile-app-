@@ -104,6 +104,29 @@ const RETENTION_CATEGORIES = Object.freeze([
 
 const SYNTHETIC_PRIVACY_ADMIN_ID = '7a110ca15a6e000000000104';
 
+const SYNTHETIC_ADMIN_ROLE_GRANTS = Object.freeze([
+  Object.freeze({
+    adminId: '7a110ca15a6e000000000101',
+    role: 'support',
+  }),
+  Object.freeze({
+    adminId: '7a110ca15a6e000000000102',
+    role: 'finance',
+  }),
+  Object.freeze({
+    adminId: '7a110ca15a6e000000000103',
+    role: 'content',
+  }),
+  Object.freeze({
+    adminId: '7a110ca15a6e000000000104',
+    role: 'admin',
+  }),
+  Object.freeze({
+    adminId: '7a110ca15a6e000000000105',
+    role: 'admin',
+  }),
+]);
+
 const REQUIRED_CONTRACT_KEYS = Object.freeze([
   'NODE_ENV',
   'DEPLOYMENT_ENVIRONMENT',
@@ -125,6 +148,7 @@ const REQUIRED_CONTRACT_KEYS = Object.freeze([
   'KYC_CONSENT_VERSION',
   'PRIVACY_RETENTION_POLICY_JSON',
   'PRIVACY_ADMIN_PERMISSION_GRANTS_JSON',
+  'ADMIN_ROLE_GRANTS_JSON',
   'PROMETHEUS_EXTERNAL_ENVIRONMENT',
   'ALERTMANAGER_ENVIRONMENT',
 ]);
@@ -195,6 +219,8 @@ const privacyPermissionGrants = JSON.stringify([{
     'privacy_legal_hold',
   ],
 }]);
+
+const adminRoleGrants = JSON.stringify(SYNTHETIC_ADMIN_ROLE_GRANTS);
 
 const bookingCatalog = JSON.stringify({
   basic: {
@@ -640,7 +666,7 @@ export const buildValidationEnvironment = ({
     PRIVACY_RETENTION_BATCH_SIZE: '25',
     PRIVACY_RETENTION_POLICY_JSON: retentionPolicy,
     PRIVACY_ADMIN_PERMISSION_GRANTS_JSON: privacyPermissionGrants,
-    ADMIN_ROLE_GRANTS_JSON: JSON.stringify([]),
+    ADMIN_ROLE_GRANTS_JSON: adminRoleGrants,
     BOOKING_SERVICE_CATALOG_JSON: bookingCatalog,
     KYC_CONSENT_VERSION: 'ordinary-face-check-v1-2026-07-22',
     KYC_RETENTION_DAYS: '365',

@@ -24,6 +24,12 @@ const {
   readPrivacyAdminPermissionConfiguration,
 } = require('../../backend/src/config/privacyAdminPermissions.js');
 const {
+  readAdminRoleConfiguration,
+} = require('../../backend/src/config/adminPermissions.js');
+const {
+  ADMIN_ROLE_GRANTS: SEEDED_ADMIN_ROLE_GRANTS,
+} = require('../../backend/src/database/seed-server-staging.js');
+const {
   validateStartupEnv,
 } = require('../../backend/src/shared/app/startupValidation.js');
 
@@ -83,6 +89,22 @@ test('generated privacy and KYC values satisfy backend contracts', () => {
   );
 });
 
+test('generated admin roles exactly match the seeded synthetic roster', () => {
+  const environment = validEnvironment();
+  const expectedGrants = SEEDED_ADMIN_ROLE_GRANTS.map(
+    ({ adminId, role }) => ({ adminId, role }),
+  );
+  const generatedGrants = JSON.parse(environment.ADMIN_ROLE_GRANTS_JSON);
+  const configuration = readAdminRoleConfiguration(environment);
+
+  assert.deepEqual(generatedGrants, expectedGrants);
+  assert.equal(configuration.configured, true);
+  assert.deepEqual(
+    configuration.grants.map(({ adminId, role }) => ({ adminId, role })),
+    expectedGrants,
+  );
+});
+
 test('generated environment has zero api-web startup errors', () => {
   const environment = validEnvironment();
 
@@ -92,6 +114,18 @@ test('generated environment has zero api-web startup errors', () => {
       () => validateStartupEnv({ serviceName: 'api-web' }),
     ),
     'generated server-staging environment must pass api-web startup',
+  );
+});
+
+test('generated environment has zero api-admin startup errors', () => {
+  const environment = validEnvironment();
+
+  assert.doesNotThrow(
+    () => withIsolatedProcessEnvironment(
+      environment,
+      () => validateStartupEnv({ serviceName: 'api-admin' }),
+    ),
+    'generated server-staging environment must pass api-admin startup',
   );
 });
 
@@ -131,6 +165,33 @@ test('server-staging validator rejects empty privacy grants', () => {
       (error) => error.startsWith(
         'PRIVACY_ADMIN_PERMISSION_GRANTS_JSON ',
       ),
+    ),
+    true,
+  );
+});
+
+test('server-staging validator rejects empty admin-role grants', () => {
+  const environment = validEnvironment();
+  environment.ADMIN_ROLE_GRANTS_JSON = '[]';
+
+  assert.equal(
+    validateEnvironmentRecord(environment).some(
+      (error) => error.startsWith('ADMIN_ROLE_GRANTS_JSON '),
+    ),
+    true,
+  );
+});
+
+test('server-staging validator rejects admin-role roster drift', () => {
+  const environment = validEnvironment();
+  const grants = JSON.parse(environment.ADMIN_ROLE_GRANTS_JSON);
+  grants[0].role = 'admin';
+  environment.ADMIN_ROLE_GRANTS_JSON = JSON.stringify(grants);
+
+  assert.equal(readAdminRoleConfiguration(environment).configured, true);
+  assert.equal(
+    validateEnvironmentRecord(environment).some(
+      (error) => error.startsWith('ADMIN_ROLE_GRANTS_JSON '),
     ),
     true,
   );

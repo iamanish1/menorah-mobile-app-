@@ -36,6 +36,28 @@ const EXPECTED_PRIVACY_PERMISSIONS = Object.freeze([
   'privacy_reviewer',
   'privacy_legal_hold',
 ]);
+const EXPECTED_ADMIN_ROLE_GRANTS = Object.freeze([
+  Object.freeze({
+    adminId: '7a110ca15a6e000000000101',
+    role: 'support',
+  }),
+  Object.freeze({
+    adminId: '7a110ca15a6e000000000102',
+    role: 'finance',
+  }),
+  Object.freeze({
+    adminId: '7a110ca15a6e000000000103',
+    role: 'content',
+  }),
+  Object.freeze({
+    adminId: '7a110ca15a6e000000000104',
+    role: 'admin',
+  }),
+  Object.freeze({
+    adminId: '7a110ca15a6e000000000105',
+    role: 'admin',
+  }),
+]);
 
 export const EXPECTED_HOSTS = Object.freeze([
   'staging.menorah.me',
@@ -156,6 +178,7 @@ export const REQUIRED_KEYS = Object.freeze([
   'KYC_CONSENT_VERSION',
   'PRIVACY_RETENTION_POLICY_JSON',
   'PRIVACY_ADMIN_PERMISSION_GRANTS_JSON',
+  'ADMIN_ROLE_GRANTS_JSON',
   'MEDIA_STORAGE_BUCKET',
   'PROMETHEUS_EXTERNAL_ENVIRONMENT',
   'PROMETHEUS_EXTERNAL_PROJECT',
@@ -608,6 +631,56 @@ const validateSyntheticPrivacyContract = (errors, environment) => {
   }
 };
 
+const validateSyntheticAdminRoleContract = (errors, environment) => {
+  let adminRoleGrants;
+  try {
+    adminRoleGrants = JSON.parse(environment.ADMIN_ROLE_GRANTS_JSON);
+  } catch {
+    adminRoleGrants = null;
+  }
+
+  const actualGrants = new Map();
+  const entriesValid = (
+    Array.isArray(adminRoleGrants)
+    && adminRoleGrants.length === EXPECTED_ADMIN_ROLE_GRANTS.length
+    && adminRoleGrants.every((grant) => {
+      if (
+        !isPlainRecord(grant)
+        || !setEqual(
+          new Set(Object.keys(grant)),
+          new Set(['adminId', 'role']),
+        )
+        || typeof grant.adminId !== 'string'
+        || typeof grant.role !== 'string'
+        || actualGrants.has(grant.adminId)
+      ) {
+        return false;
+      }
+      actualGrants.set(grant.adminId, grant.role);
+      return true;
+    })
+  );
+  const expectedGrants = new Map(
+    EXPECTED_ADMIN_ROLE_GRANTS.map(({ adminId, role }) => [
+      adminId,
+      role,
+    ]),
+  );
+  const contractValid = (
+    entriesValid
+    && actualGrants.size === expectedGrants.size
+    && [...expectedGrants].every(
+      ([adminId, role]) => actualGrants.get(adminId) === role,
+    )
+  );
+  if (!contractValid) {
+    errors.push(
+      'ADMIN_ROLE_GRANTS_JSON must exactly match the five-member '
+      + 'synthetic server-staging admin roster',
+    );
+  }
+};
+
 export const validateEnvironmentRecord = (
   environment,
   { productionMetadata = {} } = {},
@@ -747,6 +820,7 @@ export const validateEnvironmentRecord = (
     errors.push('staging email domain must be mail.staging.menorah.me');
   }
   validateSyntheticPrivacyContract(errors, environment);
+  validateSyntheticAdminRoleContract(errors, environment);
 
   for (const [key, expected] of Object.entries(
     EXPECTED_PORT_VARIABLES,
