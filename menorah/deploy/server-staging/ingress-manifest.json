@@ -17,43 +17,43 @@
   "routes": [
     {
       "host": "staging.menorah.me",
-      "target": "staging-user-web-app:3002"
+      "target": "staging-private-user-web:3002"
     },
     {
       "host": "www.staging.menorah.me",
-      "target": "staging-user-web-app:3002"
+      "target": "staging-private-user-web:3002"
     },
     {
       "host": "app.staging.menorah.me",
-      "target": "staging-user-web-app:3002"
+      "target": "staging-private-user-web:3002"
     },
     {
       "host": "admin.staging.menorah.me",
-      "target": "staging-admin-panel:3003"
+      "target": "staging-private-admin-panel:3003"
     },
     {
       "host": "counsellor.staging.menorah.me",
-      "target": "staging-web-app:3001"
+      "target": "staging-private-counsellor-web:3001"
     },
     {
       "host": "api-ios.staging.menorah.me",
-      "target": "staging-api-ios:8080"
+      "target": "staging-private-api-ios:8080"
     },
     {
       "host": "api-android.staging.menorah.me",
-      "target": "staging-api-android:8080"
+      "target": "staging-private-api-android:8080"
     },
     {
       "host": "api-web.staging.menorah.me",
-      "target": "staging-api-web:8080"
+      "target": "staging-private-api-web:8080"
     },
     {
       "host": "api-admin.staging.menorah.me",
-      "target": "staging-api-admin:8080"
+      "target": "staging-private-api-admin:8080"
     },
     {
       "host": "calls.staging.menorah.me",
-      "target": "staging-livekit:7880"
+      "target": "staging-private-livekit:7880"
     }
   ],
   "loopbackIngress": {

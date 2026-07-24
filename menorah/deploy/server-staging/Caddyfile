@@ -66,28 +66,28 @@
 		respond @private_diagnostics 404
 
 		handle @user {
-			import staging_proxy staging-user-web-app:3002
+			import staging_proxy staging-private-user-web:3002
 		}
 		handle @admin {
-			import staging_proxy staging-admin-panel:3003
+			import staging_proxy staging-private-admin-panel:3003
 		}
 		handle @counsellor {
-			import staging_proxy staging-web-app:3001
+			import staging_proxy staging-private-counsellor-web:3001
 		}
 		handle @api_ios {
-			import staging_proxy staging-api-ios:8080
+			import staging_proxy staging-private-api-ios:8080
 		}
 		handle @api_android {
-			import staging_proxy staging-api-android:8080
+			import staging_proxy staging-private-api-android:8080
 		}
 		handle @api_web {
-			import staging_proxy staging-api-web:8080
+			import staging_proxy staging-private-api-web:8080
 		}
 		handle @api_admin {
-			import staging_proxy staging-api-admin:8080
+			import staging_proxy staging-private-api-admin:8080
 		}
 		handle @calls {
-			import staging_proxy staging-livekit:7880
+			import staging_proxy staging-private-livekit:7880
 		}
 		handle {
 			respond 421

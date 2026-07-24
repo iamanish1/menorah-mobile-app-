@@ -561,21 +561,63 @@ test('rendered model rejects a bind symlink escaping the staging root', async ()
   }
 });
 
+const validIngressCompose = () => {
+  const compose = validCompose();
+  compose.services['staging-caddy'].networks = {
+    'staging-app': {},
+    'staging-ingress': {},
+  };
+  for (const [serviceName, alias] of [
+    ['staging-user-web-app', 'staging-private-user-web'],
+    ['staging-admin-panel', 'staging-private-admin-panel'],
+    ['staging-web-app', 'staging-private-counsellor-web'],
+    ['staging-api-ios', 'staging-private-api-ios'],
+    ['staging-api-android', 'staging-private-api-android'],
+    ['staging-api-web', 'staging-private-api-web'],
+    ['staging-api-admin', 'staging-private-api-admin'],
+    ['staging-livekit', 'staging-private-livekit'],
+  ]) {
+    compose.services[serviceName].networks = {
+      'staging-app': { aliases: [alias] },
+      'staging-ingress': {},
+    };
+  }
+  return compose;
+};
+
 test('ingress sources match the exact host and target manifest', () => {
   const errors = validateIngress({
     manifest: JSON.parse(readStaging('ingress-manifest.json')),
     caddySource: readStaging('Caddyfile'),
     tunnelSource: readStaging('tunnel-config.yml.example'),
-    compose: validCompose(),
+    compose: validIngressCompose(),
     productionMetadata,
   });
   assert.deepEqual(errors, []);
 });
 
+test('ingress targets use app-network-only private aliases', () => {
+  const compose = validIngressCompose();
+  compose.services['staging-user-web-app']
+    .networks['staging-app'].aliases = [];
+  const errors = validateIngress({
+    manifest: JSON.parse(readStaging('ingress-manifest.json')),
+    caddySource: readStaging('Caddyfile'),
+    tunnelSource: readStaging('tunnel-config.yml.example'),
+    compose,
+    productionMetadata,
+  });
+
+  assert.ok(includesError(
+    errors,
+    /not owned by exactly one staging-app service/,
+  ));
+});
+
 test('ingress rejects host, target, port, Tunnel fallback, and TLS drift', () => {
   const manifest = JSON.parse(readStaging('ingress-manifest.json'));
   manifest.routes[0].target = 'api-web:8080';
-  const compose = validCompose();
+  const compose = validIngressCompose();
   compose.services['staging-caddy'].ports[0].host_ip = '0.0.0.0';
   const errors = validateIngress({
     manifest,

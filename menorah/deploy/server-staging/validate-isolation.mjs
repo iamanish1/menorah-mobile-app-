@@ -921,9 +921,41 @@ export const validateIngress = ({
   const targets = new Set(
     (manifest.routes || []).map((route) => route.target),
   );
+  const services = compose.services || {};
+  if (!Object.hasOwn(
+    services['staging-caddy']?.networks || {},
+    'staging-app',
+  )) {
+    errors.push('Caddy must join the private staging-app network');
+  }
   for (const target of targets) {
     if (!String(target).startsWith('staging-')) {
       errors.push(`manifest target ${target} is not staging-prefixed`);
+    }
+    const privateTarget = String(target).match(
+      /^(staging-private-[a-z0-9-]+):([1-9][0-9]*)$/,
+    );
+    if (!privateTarget) {
+      errors.push(
+        `manifest target ${target} must use a private staging-app alias`,
+      );
+    } else {
+      const [, alias] = privateTarget;
+      const owners = Object.entries(services).filter(([, service]) => (
+        service.networks?.['staging-app']?.aliases || []
+      ).includes(alias));
+      if (owners.length !== 1) {
+        errors.push(
+          `manifest target ${target} is not owned by exactly one staging-app service`,
+        );
+      }
+      if (owners.some(([, service]) => (
+        service.networks?.['staging-ingress']?.aliases || []
+      ).includes(alias))) {
+        errors.push(
+          `manifest target ${target} leaks its private alias onto staging-ingress`,
+        );
+      }
     }
     if (!String(caddySource).includes(`staging_proxy ${target}`)) {
       errors.push(`Caddy is missing manifest target ${target}`);
