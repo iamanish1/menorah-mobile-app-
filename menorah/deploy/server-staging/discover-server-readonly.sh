@@ -7,6 +7,22 @@ set -uo pipefail
 exec 2>/dev/null
 export LC_ALL=C
 
+# The reviewed Ubuntu command supplies a clean environment, and the script
+# independently constrains executable lookup before invoking any producer.
+readonly DISCOVERY_EXECUTABLE_PATH='/usr/sbin:/usr/bin:/sbin:/bin'
+export PATH="${DISCOVERY_EXECUTABLE_PATH}"
+hash -r
+
+# A non-interactive Bash may import exported functions before reading stdin.
+# Remove every caller-defined function before declaring this script's helpers.
+INHERITED_FUNCTION_NAMES=()
+mapfile -t INHERITED_FUNCTION_NAMES < <(compgen -A function || :)
+for inherited_function_name in "${INHERITED_FUNCTION_NAMES[@]}"; do
+  unset -f "${inherited_function_name}"
+done
+unset INHERITED_FUNCTION_NAMES inherited_function_name
+unset BASH_ENV ENV CDPATH GLOBIGNORE
+
 DISCOVERY_INCOMPLETE=0
 COMPLETION_EMITTED=0
 

@@ -85,6 +85,14 @@ test('discovery declares a fail-closed, metadata-only contract', () => {
 });
 
 test('Docker and Compose authority is cleared and pinned to the system socket', () => {
+  assert.match(
+    source,
+    /readonly DISCOVERY_EXECUTABLE_PATH='\/usr\/sbin:\/usr\/bin:\/sbin:\/bin'/,
+  );
+  assert.match(source, /export PATH="\$\{DISCOVERY_EXECUTABLE_PATH\}"/);
+  assert.match(source, /mapfile -t INHERITED_FUNCTION_NAMES/);
+  assert.match(source, /unset -f "\$\{inherited_function_name\}"/);
+  assert.match(source, /unset BASH_ENV ENV CDPATH GLOBIGNORE/);
   assert.match(source, /compgen -A variable DOCKER_/);
   assert.match(source, /compgen -A variable COMPOSE_/);
   assert.match(source, /unset "\$\{caller_authority_name\}"/);
@@ -442,6 +450,26 @@ esac
         chmodSync(shimPath, 0o755);
       }
 
+      const instrumentedScriptPath = join(
+        fixtureRoot,
+        'discover-server-readonly.instrumented.sh',
+      );
+      const productionPathDeclaration =
+        "readonly DISCOVERY_EXECUTABLE_PATH='/usr/sbin:/usr/bin:/sbin:/bin'";
+      const instrumentedPathDeclaration =
+        `readonly DISCOVERY_EXECUTABLE_PATH='${toBashPath(shimDirectory)}`
+        + ":/usr/sbin:/usr/bin:/sbin:/bin'";
+      assert.ok(source.includes(productionPathDeclaration));
+      writeFileSync(
+        instrumentedScriptPath,
+        source.replace(
+          productionPathDeclaration,
+          instrumentedPathDeclaration,
+        ),
+        'utf8',
+      );
+      chmodSync(instrumentedScriptPath, 0o755);
+
       const inheritedPath =
         process.env.PATH ??
         process.env.Path ??
@@ -479,7 +507,7 @@ esac
           'export PATH="$1:$PATH"; exec "$BASH" "$2"',
           'discovery-test',
           toBashPath(shimDirectory),
-          toBashPath(scriptPath),
+          toBashPath(instrumentedScriptPath),
         ],
         {
           encoding: 'utf8',
