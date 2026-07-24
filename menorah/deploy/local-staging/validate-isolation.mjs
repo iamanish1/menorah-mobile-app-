@@ -417,7 +417,6 @@ const expectedStagingUrls = () => {
     LIVEKIT_URL:
       `wss://${EXPECTED_DOMAINS.CALLS_DOMAIN}:${EXPECTED_HTTPS_PORT}`,
     LIVEKIT_API_URL: 'http://livekit:7880',
-    MENORAH_API_BASE_URL: 'http://api-web:8080/api',
     PASSWORD_RESET_BASE_URL: origin(EXPECTED_DOMAINS.APP_DOMAIN),
     CHECKOUT_RETURN_URL:
       `${origin(EXPECTED_DOMAINS.APP_DOMAIN)}/checkout/return`,
@@ -586,6 +585,7 @@ export const validateEnvironmentRecord = (
       'CREATE_SYNTHETIC_ROSTER_ONLY_IN_MENORAH_LOCAL_STAGING_V1',
     MEDIA_STORAGE_BACKEND: 'local',
     AI_MOCK_MODE: 'true',
+    MENORAH_API_BASE_URL: 'http://api-web:8080/api',
     ...EXPECTED_DOMAINS,
     ...expectedStagingUrls(),
   };
