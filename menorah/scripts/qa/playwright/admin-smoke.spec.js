@@ -11,11 +11,19 @@ const adminPassword = process.env.QA_ADMIN_PASSWORD;
 const localCaptureConfirmation =
   process.env.QA_LOCAL_STAGING_MAIL_CAPTURE_CONFIRM;
 
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+
 test.describe('configured admin smoke', () => {
   test.skip(!(adminEmail && adminPassword), 'Set QA_ADMIN_EMAIL and QA_ADMIN_PASSWORD to run admin login smoke.');
-  test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
   test('real admin login works when credentials are supplied', async ({ page }) => {
+    let sessionProbeCount = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/api/auth/me') {
+        sessionProbeCount += 1;
+      }
+    });
+
     const useLocalCapture = (
       localCaptureConfirmation
       === CONFIRMATION
@@ -28,12 +36,14 @@ test.describe('configured admin smoke', () => {
     if (useLocalCapture) clearSyntheticMessages();
 
     await page.goto(`${adminUrl}/login`, { waitUntil: 'domcontentloaded' });
-    await page.getByLabel(/email/i).fill(adminEmail);
-    await page.getByLabel(/password/i).fill(adminPassword);
+    await page.getByLabel(/email address/i).fill(adminEmail);
+    await page.getByLabel(/^password$/i).fill(adminPassword);
+    await page.waitForTimeout(500);
+    expect(sessionProbeCount).toBeLessThanOrEqual(1);
     await page.getByRole('button', { name: /sign in/i }).click();
 
     if (useLocalCapture) {
-      const codeField = page.getByLabel(/verification code|mfa|code/i);
+      const codeField = page.getByLabel(/verification code/i);
       await expect(codeField).toBeVisible();
       await expect.poll(
         () => {

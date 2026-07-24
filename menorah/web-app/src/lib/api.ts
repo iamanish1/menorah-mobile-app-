@@ -80,10 +80,19 @@ class ApiClient {
       (error) => {
         // Only redirect on 401, but don't log other errors here
         // Let individual methods handle their own errors
-        if (error.response?.status === 401) {
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login';
-          }
+        const requestUrl = typeof error.config?.url === 'string'
+          ? error.config.url
+          : '';
+        const isAuthenticationAttempt = requestUrl === '/auth/login';
+        const isSessionProbe = requestUrl === '/users/me';
+        if (
+          error.response?.status === 401
+          && !isAuthenticationAttempt
+          && !isSessionProbe
+          && typeof window !== 'undefined'
+          && window.location.pathname !== '/login'
+        ) {
+          window.location.replace('/login');
         }
         // Return the error so individual methods can handle it
         return Promise.reject(error);

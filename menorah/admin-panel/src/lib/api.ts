@@ -25,8 +25,15 @@ class AdminApiClient {
         const requestUrl = typeof err.config?.url === 'string' ? err.config.url : '';
         const isAuthenticationAttempt = requestUrl === '/auth/admin/login'
           || requestUrl === '/auth/admin/login/mfa';
-        if (err.response?.status === 401 && !isAuthenticationAttempt) {
-          if (typeof window !== 'undefined') window.location.href = '/login';
+        const isSessionProbe = requestUrl === '/auth/me';
+        if (
+          err.response?.status === 401
+          && !isAuthenticationAttempt
+          && !isSessionProbe
+          && typeof window !== 'undefined'
+          && window.location.pathname !== '/login'
+        ) {
+          window.location.replace('/login');
         }
         return Promise.reject(err);
       }

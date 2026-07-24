@@ -48,7 +48,20 @@ test.describe('configured public web surfaces', () => {
   });
 
   test('counsellor login page loads', async ({ page }) => {
+    let sessionProbeCount = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/api/users/me') {
+        sessionProbeCount += 1;
+      }
+    });
+
     await waitForUsablePage(page, `${urls.counsellor.replace(/\/+$/, '')}/login`);
-    await expect(page.locator('body')).toContainText(/login|sign in|counsellor|Menorah/i);
+    await expect(
+      page.getByRole('heading', { name: /welcome back|sign in/i })
+    ).toBeVisible();
+    await expectLoginFields(page);
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(/\/login(\?|$)/);
+    expect(sessionProbeCount).toBeLessThanOrEqual(1);
   });
 });

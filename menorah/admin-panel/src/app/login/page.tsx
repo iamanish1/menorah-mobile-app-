@@ -101,8 +101,9 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
+              <label htmlFor="admin-email" className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
               <input
+                id="admin-email"
                 type="email"
                 autoComplete="email"
                 value={email}
@@ -114,9 +115,10 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+              <label htmlFor="admin-password" className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
               <div className="relative">
                 <input
+                  id="admin-password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   value={password}
@@ -127,6 +129,7 @@ export default function LoginPage() {
                 />
                 <button
                   type="button"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
@@ -137,8 +140,9 @@ export default function LoginPage() {
 
             {challengeId && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Verification code</label>
+                <label htmlFor="admin-mfa-code" className="block text-sm font-medium text-gray-700 mb-1.5">Verification code</label>
                 <input
+                  id="admin-mfa-code"
                   type="text"
                   inputMode="numeric"
                   autoComplete="one-time-code"
