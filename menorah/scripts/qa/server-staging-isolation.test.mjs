@@ -813,6 +813,27 @@ test('Compose source initializes media ownership before every backend writer', (
   }
 });
 
+test('Compose source initializes Caddy state ownership before ingress', () => {
+  const composeSource = readStaging('compose.yml');
+  const logsInit = composeSource.match(
+    /^  staging-logs-init:[\s\S]*?(?=^  staging-caddy:)/m,
+  )?.[0] || '';
+  const caddy = composeSource.match(
+    /^  staging-caddy:[\s\S]*?(?=^  staging-alert-sink:)/m,
+  )?.[0] || '';
+
+  assert.match(logsInit, /for caddy_root in \/config \/data/);
+  assert.match(logsInit, /find "\$\${caddy_root}" -xdev -type l/);
+  assert.match(logsInit, /chown -R 473:473 "\$\${caddy_root}"/);
+  assert.match(logsInit, /source: staging-caddy-config\r?\n        target: \/config/);
+  assert.match(logsInit, /source: staging-caddy-data\r?\n        target: \/data/);
+  assert.match(logsInit, /cap_add:\r?\n      - CHOWN\r?\n      - DAC_OVERRIDE\r?\n      - FOWNER/);
+  assert.match(
+    caddy,
+    /staging-logs-init:\r?\n        condition: service_completed_successfully/,
+  );
+});
+
 test('runtime selectors reach backend and mail-capture services as an exact pair', () => {
   const composeSource = readStaging('compose.yml');
   const backendEnvironment = composeSource.match(

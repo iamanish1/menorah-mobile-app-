@@ -991,12 +991,26 @@ services:
         find /var/log/menorah -xdev -type f -name 'caddy-access*' \
           -exec chown 473:473 {} +
         chown 473:473 /var/log/menorah
+        for caddy_root in /config /data; do
+          test -d "$${caddy_root}"
+          test ! -L "$${caddy_root}"
+          test "$$(readlink -f "$${caddy_root}")" = "$${caddy_root}"
+          if find "$${caddy_root}" -xdev -type l -print -quit | grep -q .; then
+            exit 1
+          fi
+          chown -R 0:0 "$${caddy_root}"
+          find "$${caddy_root}" -xdev -type d -exec chmod 0700 {} +
+          find "$${caddy_root}" -xdev -type f -exec chmod 0600 {} +
+          chown -R 473:473 "$${caddy_root}"
+        done
     user: "0:0"
     read_only: true
     cap_drop:
       - ALL
     cap_add:
       - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
     security_opt:
       - no-new-privileges:true
     pids_limit: 16
@@ -1008,6 +1022,12 @@ services:
       - type: volume
         source: staging-logs
         target: /var/log/menorah
+      - type: volume
+        source: staging-caddy-config
+        target: /config
+      - type: volume
+        source: staging-caddy-data
+        target: /data
 
   staging-caddy:
     <<: *staging-service-common
