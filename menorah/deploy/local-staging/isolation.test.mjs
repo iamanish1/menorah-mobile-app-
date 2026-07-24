@@ -647,6 +647,13 @@ test('Caddy proxy address is outside the dynamic network allocation range', () =
   );
 });
 
+test('Caddy uses an init reaper for healthcheck child processes', () => {
+  const caddyService = composeSource.match(
+    /\n  caddy:\r?\n([\s\S]*?)(?=\n  alert-sink:\r?\n)/,
+  )?.[1] || '';
+  assert.match(caddyService, /\n    init: true\b/);
+});
+
 test('Caddy upstreams use private app-network aliases, not ingress service names', () => {
   const upstreams = [
     ['api-ios', 'private-api-ios', 8080],
