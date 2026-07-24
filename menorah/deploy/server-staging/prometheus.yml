@@ -11,7 +11,7 @@ alerting:
   alertmanagers:
     - static_configs:
         - targets:
-            - staging-alertmanager:9093
+            - staging-private-alertmanager:9093
           labels:
             environment: staging
             monitoring_scope: server-staging
@@ -27,23 +27,23 @@ scrape_configs:
     params:
       module: [http_success]
     static_configs:
-      - targets: [http://staging-api-ios:8080/health/ready]
+      - targets: [http://staging-private-api-ios:8080/health/ready]
         labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-ios, probe_module: http_ready}
-      - targets: [http://staging-api-android:8080/health/ready]
+      - targets: [http://staging-private-api-android:8080/health/ready]
         labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-android, probe_module: http_ready}
-      - targets: [http://staging-api-web:8080/health/ready]
+      - targets: [http://staging-private-api-web:8080/health/ready]
         labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-web, probe_module: http_ready}
-      - targets: [http://staging-api-admin:8080/health/ready]
+      - targets: [http://staging-private-api-admin:8080/health/ready]
         labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-admin, probe_module: http_ready}
-      - targets: [http://staging-worker:8080/health/ready]
+      - targets: [http://staging-private-worker:8080/health/ready]
         labels: {environment: staging, monitoring_scope: server-staging, component: worker, service: worker, probe_module: http_ready}
-      - targets: [http://staging-user-web-app:3002/]
+      - targets: [http://staging-private-user-web:3002/]
         labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: landing-page, probe_module: http_success}
-      - targets: [http://staging-user-web-app:3002/]
+      - targets: [http://staging-private-user-web:3002/]
         labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: user-web-app, probe_module: http_success}
-      - targets: [http://staging-web-app:3001/]
+      - targets: [http://staging-private-counsellor-web:3001/]
         labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: counsellor-web, probe_module: http_success}
-      - targets: [http://staging-admin-panel:3003/]
+      - targets: [http://staging-private-admin-panel:3003/]
         labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: admin-panel, probe_module: http_success}
     relabel_configs:
       - source_labels: [probe_module]
@@ -60,7 +60,7 @@ scrape_configs:
     params:
       module: [tcp_connect]
     static_configs:
-      - targets: [staging-livekit:7880]
+      - targets: [staging-private-livekit:7880]
         labels: {environment: staging, monitoring_scope: server-staging, component: calls, service: livekit}
       - targets: [staging-mongo-primary:27017]
         labels: {environment: staging, monitoring_scope: server-staging, component: datastore, service: mongodb}
@@ -124,11 +124,11 @@ scrape_configs:
     metrics_path: /metrics/security
     static_configs:
       - targets:
-          - staging-api-ios:8080
-          - staging-api-android:8080
-          - staging-api-web:8080
-          - staging-api-admin:8080
-          - staging-worker:8080
+          - staging-private-api-ios:8080
+          - staging-private-api-android:8080
+          - staging-private-api-web:8080
+          - staging-private-api-admin:8080
+          - staging-private-worker:8080
         labels: {environment: staging, monitoring_scope: server-staging}
 
   - job_name: staging-alert-fixture
@@ -153,17 +153,17 @@ scrape_configs:
 
   - job_name: alloy
     static_configs:
-      - targets: [staging-alloy:12345]
+      - targets: [staging-private-alloy:12345]
         labels: {environment: staging, monitoring_scope: server-staging}
 
   - job_name: loki
     static_configs:
-      - targets: [staging-loki:3100]
+      - targets: [staging-private-loki:3100]
         labels: {environment: staging, monitoring_scope: server-staging}
 
   - job_name: alertmanager
     static_configs:
-      - targets: [staging-alertmanager:9093]
+      - targets: [staging-private-alertmanager:9093]
         labels: {environment: staging, monitoring_scope: server-staging}
 
   - job_name: prometheus

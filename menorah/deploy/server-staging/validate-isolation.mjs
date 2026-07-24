@@ -101,6 +101,81 @@ export const REQUIRED_NETWORK_SUFFIXES = Object.freeze([
   'restore',
 ]);
 
+const REQUIRED_MONITORING_PRIVATE_TARGETS = Object.freeze([
+  Object.freeze({
+    service: 'staging-api-ios',
+    alias: 'staging-private-api-ios',
+    network: 'staging-app',
+    port: '8080',
+  }),
+  Object.freeze({
+    service: 'staging-api-android',
+    alias: 'staging-private-api-android',
+    network: 'staging-app',
+    port: '8080',
+  }),
+  Object.freeze({
+    service: 'staging-api-web',
+    alias: 'staging-private-api-web',
+    network: 'staging-app',
+    port: '8080',
+  }),
+  Object.freeze({
+    service: 'staging-api-admin',
+    alias: 'staging-private-api-admin',
+    network: 'staging-app',
+    port: '8080',
+  }),
+  Object.freeze({
+    service: 'staging-worker',
+    alias: 'staging-private-worker',
+    network: 'staging-app',
+    port: '8080',
+  }),
+  Object.freeze({
+    service: 'staging-user-web-app',
+    alias: 'staging-private-user-web',
+    network: 'staging-app',
+    port: '3002',
+  }),
+  Object.freeze({
+    service: 'staging-web-app',
+    alias: 'staging-private-counsellor-web',
+    network: 'staging-app',
+    port: '3001',
+  }),
+  Object.freeze({
+    service: 'staging-admin-panel',
+    alias: 'staging-private-admin-panel',
+    network: 'staging-app',
+    port: '3003',
+  }),
+  Object.freeze({
+    service: 'staging-livekit',
+    alias: 'staging-private-livekit',
+    network: 'staging-app',
+    port: '7880',
+  }),
+  Object.freeze({
+    service: 'staging-alertmanager',
+    alias: 'staging-private-alertmanager',
+    network: 'staging-monitoring',
+    port: '9093',
+  }),
+  Object.freeze({
+    service: 'staging-loki',
+    alias: 'staging-private-loki',
+    network: 'staging-monitoring',
+    port: '3100',
+  }),
+  Object.freeze({
+    service: 'staging-alloy',
+    alias: 'staging-private-alloy',
+    network: 'staging-monitoring',
+    port: '12345',
+  }),
+]);
+
 const MEDIA_VOLUME_CONTRACTS = Object.freeze([
   Object.freeze({
     source: 'staging-uploads',
@@ -1098,6 +1173,47 @@ export const validateMonitoring = ({
       && !EXPECTED_HOSTS.includes(host)
     ) {
       errors.push(`Prometheus target ${target} is not staging-only`);
+    }
+  }
+  const monitoringTargets = new Set(extractTargets(
+    `${prometheusSource}\n${alloySource}`,
+  ));
+  for (const {
+    service,
+    alias,
+    network,
+    port,
+  } of REQUIRED_MONITORING_PRIVATE_TARGETS) {
+    const expectedTarget = `${alias}:${port}`;
+    if (!monitoringTargets.has(expectedTarget)) {
+      errors.push(
+        `monitoring must use private target ${expectedTarget}`,
+      );
+    }
+    if (monitoringTargets.has(`${service}:${port}`)) {
+      errors.push(
+        `monitoring must not use cross-network service target ${service}:${port}`,
+      );
+    }
+    const owners = Object.entries(compose.services || {}).filter(
+      ([, candidate]) => (
+        candidate.networks?.[network]?.aliases || []
+      ).includes(alias),
+    );
+    if (
+      owners.length !== 1
+      || owners[0][0] !== service
+    ) {
+      errors.push(
+        `private monitoring alias ${alias} must belong only to ${service} on ${network}`,
+      );
+    }
+    if (owners.some(([, candidate]) => (
+      candidate.networks?.['staging-ingress']?.aliases || []
+    ).includes(alias))) {
+      errors.push(
+        `private monitoring alias ${alias} must not leak onto staging-ingress`,
+      );
     }
   }
   for (const host of productionMetadata.caddyHosts || []) {

@@ -593,6 +593,25 @@ const validIngressCompose = () => {
   return compose;
 };
 
+const validMonitoringCompose = () => {
+  const compose = validIngressCompose();
+  compose.services['staging-worker'].networks = {
+    'staging-app': { aliases: ['staging-private-worker'] },
+    'staging-ingress': {},
+  };
+  for (const [serviceName, alias] of [
+    ['staging-alertmanager', 'staging-private-alertmanager'],
+    ['staging-loki', 'staging-private-loki'],
+    ['staging-alloy', 'staging-private-alloy'],
+  ]) {
+    compose.services[serviceName].networks = {
+      'staging-monitoring': { aliases: [alias] },
+      'staging-ingress': {},
+    };
+  }
+  return compose;
+};
+
 test('ingress sources match the exact host and target manifest', () => {
   const errors = validateIngress({
     manifest: JSON.parse(readStaging('ingress-manifest.json')),
@@ -658,13 +677,13 @@ test('monitoring sources preserve isolated storage and all 20 P0 alerts', () => 
       new URL('../../deploy/monitoring/alert-rules.yml', import.meta.url),
       'utf8',
     ),
-    compose: validCompose(),
+    compose: validMonitoringCompose(),
     productionMetadata,
   }), []);
 });
 
 test('monitoring rejects production targets, missing labels, shared state, credentials, and missing P0 rules', () => {
-  const model = validCompose();
+  const model = validMonitoringCompose();
   model.volumes['staging-alertmanager'].name =
     model.volumes['staging-prometheus'].name;
   const errors = validateMonitoring({
@@ -690,7 +709,7 @@ test('monitoring rejects production targets, missing labels, shared state, crede
 });
 
 test('monitoring rejects hardcoded or uninjected Compose project evidence', () => {
-  const model = validCompose();
+  const model = validMonitoringCompose();
   model.services['staging-prometheus']
     .environment.MENORAH_SERVER_STAGING_PROJECT_NAME = REAL_PROJECT;
   model.services['staging-prometheus'].command = [];
@@ -713,6 +732,35 @@ test('monitoring rejects hardcoded or uninjected Compose project evidence', () =
   assert.ok(includesError(errors, /external staging labels/));
   assert.ok(includesError(errors, /must equal the active Compose project/));
   assert.ok(includesError(errors, /external-label environment expansion/));
+});
+
+test('monitoring rejects cross-network names and leaked private aliases', () => {
+  const model = validMonitoringCompose();
+  model.services['staging-alertmanager']
+    .networks['staging-ingress'].aliases = [
+      'staging-private-alertmanager',
+    ];
+  const errors = validateMonitoring({
+    prometheusSource: readStaging('prometheus.yml')
+      .replaceAll(
+        'staging-private-alertmanager:9093',
+        'staging-alertmanager:9093',
+      ),
+    alertmanagerSource: readStaging('alertmanager.yml'),
+    blackboxSource: readStaging('blackbox.yml'),
+    alloySource: readStaging('config.alloy'),
+    lokiSource: readStaging('loki.yml'),
+    alertRulesSource: readFileSync(
+      new URL('../../deploy/monitoring/alert-rules.yml', import.meta.url),
+      'utf8',
+    ),
+    compose: model,
+    productionMetadata,
+  });
+
+  assert.ok(includesError(errors, /private target/));
+  assert.ok(includesError(errors, /cross-network service target/));
+  assert.ok(includesError(errors, /must not leak onto staging-ingress/));
 });
 
 test('tracked example has the exact public port contract and no secret values', () => {

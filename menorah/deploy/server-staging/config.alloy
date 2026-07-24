@@ -42,6 +42,6 @@ loki.process "staging_caddy" {
 
 loki.write "staging" {
   endpoint {
-    url = "http://staging-loki:3100/loki/api/v1/push"
+    url = "http://staging-private-loki:3100/loki/api/v1/push"
   }
 }
