@@ -240,7 +240,7 @@ perl -MDigest::SHA=hmac_sha256_hex -e '
   "${BUNDLE}/SHA256SUMS"
 
 for expected_metadata in \
-  '"composeProject": "menorah-staging"' \
+  "\"composeProject\": \"${ACTIVE_PROJECT}\"" \
   '"environmentId": "menorah-server-staging-v1"' \
   '"filesystemRoot": "/opt/menorah-staging"' \
   '"dataRoot": "/opt/menorah-staging/data"' \

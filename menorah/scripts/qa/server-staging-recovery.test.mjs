@@ -302,6 +302,57 @@ test('backup and restore accept only the server and validation projects', {
   }
 });
 
+test('restore metadata must match the exact allowed active Compose project', () => {
+  assert.match(
+    sources.restore,
+    /"\\"composeProject\\": \\"\$\{ACTIVE_PROJECT\}\\""/,
+  );
+  assert.doesNotMatch(
+    sources.restore,
+    /^\s*'?"composeProject": "menorah-staging"'?\s*\\$/m,
+  );
+
+  const metadataFor = (composeProject) => JSON.stringify(
+    { composeProject },
+    null,
+    2,
+  );
+  const expectedMetadataLine = (activeProject) => (
+    `"composeProject": "${activeProject}"`
+  );
+  const metadataMatchesActiveProject = (metadata, activeProject) => (
+    metadata.includes(expectedMetadataLine(activeProject))
+  );
+  const allowedProjects = [
+    'menorah-staging',
+    'menorah-server-staging-validation',
+  ];
+
+  for (const activeProject of allowedProjects) {
+    assert.equal(
+      metadataMatchesActiveProject(
+        metadataFor(activeProject),
+        activeProject,
+      ),
+      true,
+    );
+    for (const crossProject of [
+      ...allowedProjects.filter((project) => project !== activeProject),
+      'menorah',
+      'menorah-production',
+      'unreviewed-staging-project',
+    ]) {
+      assert.equal(
+        metadataMatchesActiveProject(
+          metadataFor(crossProject),
+          activeProject,
+        ),
+        false,
+      );
+    }
+  }
+});
+
 test('backup discovery and cleanup are bounded to exact staging roots', () => {
   assert.doesNotMatch(
     sources.backup,
