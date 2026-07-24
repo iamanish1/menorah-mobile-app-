@@ -1,8 +1,19 @@
 const CANONICAL_RESEND_EMAIL_URL = 'https://api.resend.com/emails';
 const LOCAL_STAGING_RESEND_EMAIL_URL =
   'http://mail-capture:8025/emails';
+const SERVER_STAGING_RESEND_EMAIL_URL =
+  'http://staging-mail-capture:8025/emails';
 const LOCAL_STAGING_ENVIRONMENT_ID = 'menorah-local-staging-v1';
+const SERVER_STAGING_ENVIRONMENT_ID = 'menorah-server-staging-v1';
 const LOCAL_STAGING_HTTPS_PORT = '28443';
+const SERVER_STAGING_PROJECTS = new Set([
+  'menorah-staging',
+  'menorah-server-staging-validation',
+]);
+const LOCAL_STAGING_RESEND_KEY_PATTERN =
+  /^re_local_[A-Za-z0-9_-]{32,}$/;
+const SERVER_STAGING_RESEND_KEY_PATTERN =
+  /^re_server_staging_[A-Za-z0-9_-]{32,}$/;
 const dnsHostPattern =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
@@ -53,22 +64,46 @@ function resolveResendEmailUrl(
 ) {
   const configured = optionalEnv('RESEND_API_URL');
   if (!configured) {
-    if (apiKey.startsWith('re_local_')) return undefined;
+    if (
+      apiKey.startsWith('re_local_')
+      || apiKey.startsWith('re_server_staging_')
+    ) {
+      return undefined;
+    }
     return CANONICAL_RESEND_EMAIL_URL;
   }
   const exactLocalIdentity = (
     configured === LOCAL_STAGING_RESEND_EMAIL_URL
     && process.env.NODE_ENV === 'production'
     && deploymentEnvironment === 'staging'
+    && !optionalEnv('MENORAH_SERVER_STAGING_ENVIRONMENT_ID')
+    && !optionalEnv('MENORAH_SERVER_STAGING_PROJECT_NAME')
     && optionalEnv('MENORAH_LOCAL_STAGING_ENVIRONMENT_ID')
       === LOCAL_STAGING_ENVIRONMENT_ID
     && optionalEnv('MENORAH_LOCAL_STAGING_HTTPS_PORT')
       === LOCAL_STAGING_HTTPS_PORT
     && optionalEnv('MENORAH_STAGING_EMAIL_DOMAIN')
       === 'mail.staging.localhost'
-    && /^re_local_[A-Za-z0-9_-]{32,}$/.test(apiKey)
+    && LOCAL_STAGING_RESEND_KEY_PATTERN.test(apiKey)
   );
-  return exactLocalIdentity ? LOCAL_STAGING_RESEND_EMAIL_URL : undefined;
+  const exactServerIdentity = (
+    configured === SERVER_STAGING_RESEND_EMAIL_URL
+    && process.env.NODE_ENV === 'production'
+    && deploymentEnvironment === 'staging'
+    && !optionalEnv('MENORAH_LOCAL_STAGING_ENVIRONMENT_ID')
+    && !optionalEnv('MENORAH_LOCAL_STAGING_HTTPS_PORT')
+    && optionalEnv('MENORAH_SERVER_STAGING_ENVIRONMENT_ID')
+      === SERVER_STAGING_ENVIRONMENT_ID
+    && SERVER_STAGING_PROJECTS.has(
+      optionalEnv('MENORAH_SERVER_STAGING_PROJECT_NAME') || ''
+    )
+    && optionalEnv('MENORAH_STAGING_EMAIL_DOMAIN')
+      === 'mail.staging.menorah.me'
+    && SERVER_STAGING_RESEND_KEY_PATTERN.test(apiKey)
+  );
+  if (exactLocalIdentity) return LOCAL_STAGING_RESEND_EMAIL_URL;
+  if (exactServerIdentity) return SERVER_STAGING_RESEND_EMAIL_URL;
+  return undefined;
 }
 
 function escapeHtml(value: string) {

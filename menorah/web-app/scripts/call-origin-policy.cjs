@@ -28,12 +28,28 @@ function readCallOrigins(
     && parsed.port === localStagingPort
     && parsed.hostname.endsWith('.staging.localhost')
   );
+  const serverStagingPort = String(
+    environment.MENORAH_SERVER_STAGING_HTTPS_PORT || ''
+  ).trim();
+  const isExactServerStagingValidationOrigin = (
+    environment.MENORAH_SERVER_STAGING_ENVIRONMENT_ID
+      === 'menorah-server-staging-v1'
+    && environment.MENORAH_SERVER_STAGING_PROJECT_NAME
+      === 'menorah-server-staging-validation'
+    && serverStagingPort === '38443'
+    && parsed.port === serverStagingPort
+    && parsed.hostname === 'calls.staging.menorah.me'
+  );
 
   if (
     !['https:', 'wss:'].includes(parsed.protocol)
     || parsed.username
     || parsed.password
-    || (parsed.port && !isExactLocalStagingOrigin)
+    || (
+      parsed.port
+      && !isExactLocalStagingOrigin
+      && !isExactServerStagingValidationOrigin
+    )
     || parsed.pathname !== '/'
     || parsed.search
     || parsed.hash

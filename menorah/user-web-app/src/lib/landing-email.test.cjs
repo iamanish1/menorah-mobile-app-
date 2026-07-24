@@ -122,6 +122,175 @@ test('routes only the exact generated local identity to mail capture', async () 
   assert.equal(lastFetchUrl, 'http://mail-capture:8025/emails');
 });
 
+test('routes either exact reviewed server-staging project to its internal capture', async (t) => {
+  for (const projectName of [
+    'menorah-staging',
+    'menorah-server-staging-validation',
+  ]) {
+    await t.test(projectName, async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+      process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID =
+        'menorah-server-staging-v1';
+      process.env.MENORAH_SERVER_STAGING_PROJECT_NAME = projectName;
+      process.env.MENORAH_STAGING_EMAIL_DOMAIN =
+        'mail.staging.menorah.me';
+      process.env.RESEND_API_URL =
+        'http://staging-mail-capture:8025/emails';
+      process.env.RESEND_API_KEY =
+        `re_server_staging_${'b'.repeat(40)}`;
+      process.env.EMAIL_FROM =
+        'Menorah Staging <noreply@mail.staging.menorah.me>';
+      process.env.CONTACT_TO_EMAIL =
+        'contact@mail.staging.menorah.me';
+
+      const result = await sendSubmissionEmail(input);
+
+      assert.equal(result.sent, true);
+      assert.equal(
+        lastFetchUrl,
+        'http://staging-mail-capture:8025/emails'
+      );
+    });
+  }
+});
+
+test('rejects arbitrary or crossed server-staging capture identities', async (t) => {
+  const cases = [
+    [
+      'wrong environment id',
+      'MENORAH_SERVER_STAGING_ENVIRONMENT_ID',
+      'menorah-server-staging-v2',
+    ],
+    [
+      'arbitrary project',
+      'MENORAH_SERVER_STAGING_PROJECT_NAME',
+      'menorah-production',
+    ],
+    [
+      'wrong email domain',
+      'MENORAH_STAGING_EMAIL_DOMAIN',
+      'mail.staging.example.com',
+    ],
+    [
+      'crossed local environment id',
+      'MENORAH_LOCAL_STAGING_ENVIRONMENT_ID',
+      'menorah-local-staging-v1',
+    ],
+    [
+      'crossed local HTTPS port',
+      'MENORAH_LOCAL_STAGING_HTTPS_PORT',
+      '28443',
+    ],
+  ];
+
+  for (const [name, key, value] of cases) {
+    await t.test(name, async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+      process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID =
+        'menorah-server-staging-v1';
+      process.env.MENORAH_SERVER_STAGING_PROJECT_NAME =
+        'menorah-staging';
+      process.env.MENORAH_STAGING_EMAIL_DOMAIN =
+        'mail.staging.menorah.me';
+      process.env.RESEND_API_URL =
+        'http://staging-mail-capture:8025/emails';
+      process.env.RESEND_API_KEY =
+        `re_server_staging_${'b'.repeat(40)}`;
+      process.env.EMAIL_FROM =
+        'Menorah Staging <noreply@mail.staging.menorah.me>';
+      process.env.CONTACT_TO_EMAIL =
+        'contact@mail.staging.menorah.me';
+      process.env[key] = value;
+
+      const result = await sendSubmissionEmail(input);
+
+      assert.equal(result.sent, false);
+      assert.match(result.skippedReason, /endpoint is not approved/);
+      assert.equal(fetchCalls, 0);
+    });
+  }
+});
+
+test('rejects weak and crossed capture keys for either staging endpoint', async (t) => {
+  const cases = [
+    [
+      'server endpoint with local key',
+      'http://staging-mail-capture:8025/emails',
+      `re_local_${'a'.repeat(40)}`,
+      'server',
+    ],
+    [
+      'server endpoint with weak server key',
+      'http://staging-mail-capture:8025/emails',
+      're_server_staging_short',
+      'server',
+    ],
+    [
+      'local endpoint with server key',
+      'http://mail-capture:8025/emails',
+      `re_server_staging_${'b'.repeat(40)}`,
+      'local',
+    ],
+  ];
+
+  for (const [name, url, key, identity] of cases) {
+    await t.test(name, async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
+      process.env.RESEND_API_URL = url;
+      process.env.RESEND_API_KEY = key;
+      if (identity === 'server') {
+        process.env.MENORAH_SERVER_STAGING_ENVIRONMENT_ID =
+          'menorah-server-staging-v1';
+        process.env.MENORAH_SERVER_STAGING_PROJECT_NAME =
+          'menorah-staging';
+        process.env.MENORAH_STAGING_EMAIL_DOMAIN =
+          'mail.staging.menorah.me';
+        process.env.EMAIL_FROM =
+          'Menorah Staging <noreply@mail.staging.menorah.me>';
+        process.env.CONTACT_TO_EMAIL =
+          'contact@mail.staging.menorah.me';
+      } else {
+        process.env.MENORAH_LOCAL_STAGING_ENVIRONMENT_ID =
+          'menorah-local-staging-v1';
+        process.env.MENORAH_LOCAL_STAGING_HTTPS_PORT = '28443';
+        process.env.MENORAH_STAGING_EMAIL_DOMAIN =
+          'mail.staging.localhost';
+        process.env.EMAIL_FROM =
+          'Menorah Staging <noreply@mail.staging.localhost>';
+        process.env.CONTACT_TO_EMAIL =
+          'contact@mail.staging.localhost';
+      }
+
+      const result = await sendSubmissionEmail(input);
+
+      assert.equal(result.sent, false);
+      assert.match(result.skippedReason, /endpoint is not approved/);
+      assert.equal(fetchCalls, 0);
+    });
+  }
+});
+
+test('never sends either staging capture-key family to canonical Resend', async (t) => {
+  for (const apiKey of [
+    `re_local_${'a'.repeat(40)}`,
+    `re_server_staging_${'b'.repeat(40)}`,
+  ]) {
+    await t.test(apiKey.split('_').slice(0, 3).join('_'), async () => {
+      delete process.env.RESEND_API_URL;
+      process.env.RESEND_API_KEY = apiKey;
+
+      const result = await sendSubmissionEmail(input);
+
+      assert.equal(result.sent, false);
+      assert.match(result.skippedReason, /endpoint is not approved/);
+      assert.equal(fetchCalls, 0);
+    });
+  }
+});
+
 test('rejects a mail-capture override outside the exact local identity', async () => {
   process.env.NODE_ENV = 'production';
   process.env.DEPLOYMENT_ENVIRONMENT = 'production';

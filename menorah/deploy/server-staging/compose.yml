@@ -737,12 +737,14 @@ services:
         PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:?Required in generated local staging env}:${MENORAH_SERVER_STAGING_HTTPS_PORT:?Required in generated local staging env}"
         MENORAH_API_BASE_URL: "${MENORAH_API_BASE_URL:?Internal local API URL required}"
         MENORAH_SERVER_STAGING_ENVIRONMENT_ID: "${MENORAH_SERVER_STAGING_ENVIRONMENT_ID:?Required in generated local staging env}"
+        MENORAH_SERVER_STAGING_PROJECT_NAME: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"
         MENORAH_SERVER_STAGING_HTTPS_PORT: "${MENORAH_SERVER_STAGING_HTTPS_PORT:?Required in generated local staging env}"
     environment:
       PORT: "3002"
       NODE_ENV: production
       DEPLOYMENT_ENVIRONMENT: staging
       MENORAH_SERVER_STAGING_ENVIRONMENT_ID: "${MENORAH_SERVER_STAGING_ENVIRONMENT_ID:?Required in generated local staging env}"
+      MENORAH_SERVER_STAGING_PROJECT_NAME: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"
       MENORAH_SERVER_STAGING_HTTPS_PORT: "${MENORAH_SERVER_STAGING_HTTPS_PORT:?Required in generated local staging env}"
       MENORAH_STAGING_EMAIL_DOMAIN: "${MENORAH_STAGING_EMAIL_DOMAIN:?Required in generated local staging env}"
       MONGODB_URI: "${MONGODB_URI:?Required in generated local staging env}"
@@ -800,6 +802,7 @@ services:
         NEXT_PUBLIC_JITSI_DOMAIN: "${CALLS_DOMAIN:?Required in generated local staging env}"
         NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?Required in generated local staging env}"
         MENORAH_SERVER_STAGING_ENVIRONMENT_ID: "${MENORAH_SERVER_STAGING_ENVIRONMENT_ID:?Required in generated local staging env}"
+        MENORAH_SERVER_STAGING_PROJECT_NAME: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"
         MENORAH_SERVER_STAGING_HTTPS_PORT: "${MENORAH_SERVER_STAGING_HTTPS_PORT:?Required in generated local staging env}"
     environment:
       PORT: "3001"
@@ -809,6 +812,7 @@ services:
       NEXT_PUBLIC_JITSI_DOMAIN: "${CALLS_DOMAIN:?Required in generated local staging env}"
       NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL:?Required in generated local staging env}"
       MENORAH_SERVER_STAGING_ENVIRONMENT_ID: "${MENORAH_SERVER_STAGING_ENVIRONMENT_ID:?Required in generated local staging env}"
+      MENORAH_SERVER_STAGING_PROJECT_NAME: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"
       MENORAH_SERVER_STAGING_HTTPS_PORT: "${MENORAH_SERVER_STAGING_HTTPS_PORT:?Required in generated local staging env}"
     pids_limit: 128
     mem_limit: 256m

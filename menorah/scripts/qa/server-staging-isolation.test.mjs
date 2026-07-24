@@ -565,10 +565,22 @@ test('runtime selectors reach backend and mail-capture services as an exact pair
   const migrate = composeSource.match(
     /^  staging-migrate:[\s\S]*?(?=^  staging-seed:)/m,
   )?.[0] || '';
+  const userWeb = composeSource.match(
+    /^  staging-user-web-app:[\s\S]*?(?=^  staging-web-app:)/m,
+  )?.[0] || '';
+  const counsellorWeb = composeSource.match(
+    /^  staging-web-app:[\s\S]*?(?=^  staging-admin-panel:)/m,
+  )?.[0] || '';
 
   for (const source of [backendEnvironment, mailCapture]) {
     assert.match(source, /MENORAH_SERVER_STAGING_ENVIRONMENT_ID:/);
     assert.match(source, /MENORAH_SERVER_STAGING_PROJECT_NAME:/);
+  }
+  for (const source of [userWeb, counsellorWeb]) {
+    assert.match(
+      source,
+      /MENORAH_SERVER_STAGING_ENVIRONMENT_ID:[\s\S]*MENORAH_SERVER_STAGING_PROJECT_NAME:[\s\S]*MENORAH_SERVER_STAGING_HTTPS_PORT:/,
+    );
   }
   assert.match(migrate, /profiles: \["migration", "seed"\]/);
 });
