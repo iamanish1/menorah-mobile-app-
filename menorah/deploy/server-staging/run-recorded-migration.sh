@@ -11,8 +11,10 @@ readonly ENV_FILE='/opt/menorah-staging/env/server-staging.env'
 readonly COMPOSE_FILE='/opt/menorah-staging/app/menorah/deploy/server-staging/compose.yml'
 readonly SCRIPT_DIR='/opt/menorah-staging/app/menorah/deploy/server-staging'
 readonly ENV_LOADER="${SCRIPT_DIR}/load-environment.mjs"
+readonly PROCESS_AUTHORITY="${SCRIPT_DIR}/assert-process-authority.sh"
 readonly STATE_ROOT='/opt/menorah-staging/deploy-state'
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
+readonly CURRENT_SHA_FILE='/opt/menorah-staging/deploy-state/current-sha'
 readonly MIGRATION_LOCK='/opt/menorah-staging/deploy-state/.migration.lock'
 readonly APPLIED_MARKER='/opt/menorah-staging/deploy-state/migration-applied-sha'
 readonly IN_PROGRESS_MARKER='/opt/menorah-staging/deploy-state/migration-in-progress-sha'
@@ -53,6 +55,81 @@ write_sha_marker() {
   mv -f -- "${temporary}" "${target}"
 }
 
+compose() {
+  docker compose \
+    --project-name "${EXPECTED_PROJECT}" \
+    -f "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    "$@"
+}
+
+assert_running_healthy_prerequisite() {
+  local service="$1" container_id identity
+  local -a container_ids=()
+  mapfile -t container_ids < <(compose ps -a -q "${service}")
+  [[ "${#container_ids[@]}" -eq 1 && -n "${container_ids[0]}" ]] \
+    || fail "migration prerequisite is missing or ambiguous: ${service}"
+  container_id="${container_ids[0]}"
+  identity="$(
+    docker inspect \
+      --format '{{.State.Status}}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}' \
+      "${container_id}"
+  )"
+  [[ "${identity}" == \
+    "running|true|healthy|${EXPECTED_PROJECT}|${service}|False" ]] \
+    || fail "migration prerequisite is not healthy: ${service}"
+}
+
+assert_successful_initializer() {
+  local service="$1" container_id identity
+  local -a container_ids=()
+  mapfile -t container_ids < <(compose ps -a -q "${service}")
+  [[ "${#container_ids[@]}" -eq 1 && -n "${container_ids[0]}" ]] \
+    || fail "migration initializer is missing or ambiguous: ${service}"
+  container_id="${container_ids[0]}"
+  identity="$(
+    docker inspect \
+      --format '{{.State.Status}}|{{.State.Running}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}' \
+      "${container_id}"
+  )"
+  [[ "${identity}" == \
+    "exited|false|0|false|${EXPECTED_PROJECT}|${service}|False" ]] \
+    || fail "migration initializer did not complete successfully: ${service}"
+}
+
+deployment_record_is_complete() {
+  local deployment_record current_sha
+  deployment_record="${RELEASE_STATE}/${RELEASE_SHA}.deployment.json"
+  if [[ ! -e "${deployment_record}" && ! -L "${deployment_record}" ]]; then
+    return 1
+  fi
+  [[ -f "${deployment_record}" && ! -L "${deployment_record}" ]] \
+    || fail 'successful deployment record must be a regular non-symlink file'
+  current_sha="$(read_sha_marker "${CURRENT_SHA_FILE}" 'current release')"
+  [[ "${current_sha}" == "${RELEASE_SHA}" ]] \
+    || fail 'successful deployment record disagrees with current release'
+  RELEASE_SHA_VALUE="${RELEASE_SHA}" \
+    node - "${deployment_record}" <<'NODE' >/dev/null \
+    || fail 'successful deployment record is invalid'
+const fs = require('node:fs');
+const record = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const expected = {
+  schemaVersion: 1,
+  composeProject: 'menorah-staging',
+  environmentId: 'menorah-server-staging-v1',
+  filesystemRoot: '/opt/menorah-staging',
+  deployStateRoot: '/opt/menorah-staging/deploy-state',
+  database: 'menorah_staging',
+  replicaSet: 'menorah-staging-rs',
+  releaseSha: process.env.RELEASE_SHA_VALUE,
+  healthStatus: 'passed',
+};
+for (const [key, value] of Object.entries(expected)) {
+  if (record[key] !== value) process.exit(1);
+}
+NODE
+}
+
 [[ "$#" -eq 1 ]] || fail 'usage: run-recorded-migration.sh FULL_GIT_SHA'
 readonly RELEASE_SHA="$1"
 [[ "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]] \
@@ -68,6 +145,13 @@ done
   || fail 'the staging environment file is not canonical'
 [[ -f "${ENV_LOADER}" && ! -L "${ENV_LOADER}" ]] \
   || fail 'the safe staging environment loader is unavailable'
+[[ -f "${PROCESS_AUTHORITY}" && ! -L "${PROCESS_AUTHORITY}" ]] \
+  || fail 'the staging process-authority guard is unavailable'
+
+# shellcheck source=/dev/null
+source "${PROCESS_AUTHORITY}"
+server_staging_assert_process_authority "${EXPECTED_PROJECT}" \
+  || fail 'caller process authority is unsafe'
 
 environment_load_complete=''
 while IFS= read -r -d '' environment_key \
@@ -116,7 +200,6 @@ actual_script_blob="$(
 for blocking_marker in \
   "${IDENTITY_MARKER}" \
   "${ROLLBACK_MARKER}" \
-  "${RECOVERY_MARKER}" \
   "${RESTORE_MARKER}" \
   "${RESTORE_REVIEW}"
 do
@@ -129,9 +212,29 @@ done
 exec 8>>"${MIGRATION_LOCK}"
 flock -n 8 || fail 'another staging migration is running'
 
+recovery_sha=''
+if [[ -e "${RECOVERY_MARKER}" || -L "${RECOVERY_MARKER}" ]]; then
+  recovery_sha="$(
+    read_sha_marker "${RECOVERY_MARKER}" 'post-migration-recovery'
+  )"
+  [[ "${recovery_sha}" == "${RELEASE_SHA}" ]] \
+    || fail 'post-migration recovery marker names a different release'
+fi
+
 if [[ -e "${APPLIED_MARKER}" || -L "${APPLIED_MARKER}" ]]; then
   applied_sha="$(read_sha_marker "${APPLIED_MARKER}" 'migration-applied')"
   if [[ "${applied_sha}" == "${RELEASE_SHA}" ]]; then
+    if [[ -z "${recovery_sha}" ]]; then
+      if deployment_record_is_complete; then
+        recovery_sha='deployment-complete'
+      else
+        write_sha_marker \
+          "${RECOVERY_MARKER}" \
+          "${RELEASE_SHA}" \
+          'post-migration-recovery'
+        recovery_sha="${RELEASE_SHA}"
+      fi
+    fi
     if [[ -e "${IN_PROGRESS_MARKER}" || -L "${IN_PROGRESS_MARKER}" ]]; then
       in_progress_sha="$(
         read_sha_marker "${IN_PROGRESS_MARKER}" 'migration-in-progress'
@@ -145,6 +248,8 @@ if [[ -e "${APPLIED_MARKER}" || -L "${APPLIED_MARKER}" ]]; then
     exit 0
   fi
 fi
+[[ -z "${recovery_sha}" ]] \
+  || fail 'post-migration recovery exists without a matching applied migration'
 if [[ -e "${IN_PROGRESS_MARKER}" || -L "${IN_PROGRESS_MARKER}" ]]; then
   in_progress_sha="$(
     read_sha_marker "${IN_PROGRESS_MARKER}" 'migration-in-progress'
@@ -178,11 +283,7 @@ docker image inspect "${image_id}" >/dev/null \
   || fail 'recorded staging migration image content is unavailable'
 
 rendered_migration_reference="$(
-  docker compose \
-    --project-name "${EXPECTED_PROJECT}" \
-    -f "${COMPOSE_FILE}" \
-    --env-file "${ENV_FILE}" \
-    config --format json \
+  compose --profile migration config --format json \
     | node -e '
       let source = "";
       process.stdin.on("data", (chunk) => { source += chunk; });
@@ -197,16 +298,20 @@ rendered_migration_reference="$(
 [[ "${rendered_migration_reference}" == "${image_reference}" ]] \
   || fail 'rendered migration artifact differs from the recorded manifest'
 
+assert_running_healthy_prerequisite 'staging-mongo-primary'
+assert_running_healthy_prerequisite 'staging-redis'
+assert_successful_initializer 'staging-mongo-replica-init'
+
 write_sha_marker \
   "${IN_PROGRESS_MARKER}" \
   "${RELEASE_SHA}" \
   'migration-in-progress'
 MENORAH_STAGING_MIGRATION_IMAGE_ID="${image_id}" \
-  docker compose \
-    --project-name "${EXPECTED_PROJECT}" \
-    -f "${COMPOSE_FILE}" \
-    --env-file "${ENV_FILE}" \
-    run --rm --no-deps --pull never staging-migrate
+  compose run --rm --no-deps --pull never staging-migrate
+write_sha_marker \
+  "${RECOVERY_MARKER}" \
+  "${RELEASE_SHA}" \
+  'post-migration-recovery'
 write_sha_marker \
   "${APPLIED_MARKER}" \
   "${RELEASE_SHA}" \

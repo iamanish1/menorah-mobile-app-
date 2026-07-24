@@ -12,12 +12,18 @@ import {
   EXPECTED_CONTEXT,
   EXPECTED_MODE_CONTEXT,
   EXPECTED_RELEASE_IDENTITY,
+  IDENTITY_RECONCILIATION_MARKER_BASENAME,
   STATE_PATHS,
   assertCanonicalExistingPath,
   parseManifest,
   validateContext,
   validateReleaseMetadata,
 } from '../../deploy/server-staging/assert-context.mjs';
+import {
+  classifyRenderedServices,
+  parseLifecycleManifest,
+  selectManifestServices,
+} from '../../deploy/server-staging/service-lifecycle.mjs';
 
 const read = (name) => readFileSync(
   new URL(`../../deploy/server-staging/${name}`, import.meta.url),
@@ -42,6 +48,8 @@ const sources = Object.freeze({
   deploy: read('deploy-exact-sha.sh'),
   rollback: read('rollback-recorded.sh'),
   migration: read('run-recorded-migration.sh'),
+  resume: read('resume-post-migration.sh'),
+  runtimeVerifier: read('verify-runtime-services.sh'),
 });
 
 const directoryStat = Object.freeze({
@@ -93,6 +101,24 @@ test('reviewed staging roots, identities, and state paths are exact', () => {
   assert.notEqual(STATE_PATHS.deployLock, STATE_PATHS.rollbackLock);
   assert.notEqual(STATE_PATHS.migrationLock, STATE_PATHS.deployLock);
   assert.notEqual(STATE_PATHS.backupLock, STATE_PATHS.restoreLock);
+  assert.equal(
+    IDENTITY_RECONCILIATION_MARKER_BASENAME,
+    'identity-reconciliation-in-progress-sha',
+  );
+  assert.equal(
+    STATE_PATHS.identityReconciliation,
+    '/opt/menorah-staging/deploy-state/'
+      + IDENTITY_RECONCILIATION_MARKER_BASENAME,
+  );
+  for (const mode of ['deploy', 'rollback', 'migration']) {
+    assert.match(
+      sources[mode],
+      new RegExp(
+        `IDENTITY_MARKER='/opt/menorah-staging/deploy-state/`
+          + `${IDENTITY_RECONCILIATION_MARKER_BASENAME}'`,
+      ),
+    );
+  }
 });
 
 test('all mutating contexts require exact roots and an operation acknowledgment', () => {
@@ -397,6 +423,131 @@ test('release metadata and manifests bind artifacts to staging identity', () => 
   }), true);
 });
 
+test('service lifecycle separates runtime, one-shot, and profile services', () => {
+  const digest = 'b'.repeat(64);
+  const imageId = `sha256:${'c'.repeat(64)}`;
+  const backend =
+    `registry.example/menorah-staging/backend@sha256:${digest}`;
+  const model = {
+    name: 'menorah-staging',
+    services: {
+      'staging-api-web': {
+        image: backend,
+        restart: 'on-failure:3',
+        healthcheck: { test: ['CMD', 'true'] },
+      },
+      'staging-storage-init': {
+        image: `caddy@sha256:${digest}`,
+        restart: 'no',
+      },
+      'staging-media-permissions-init': {
+        image: backend,
+        restart: 'no',
+      },
+      'staging-migrate': {
+        image: backend,
+        restart: 'no',
+        profiles: ['migration'],
+      },
+      'staging-seed': {
+        image: backend,
+        restart: 'no',
+        profiles: ['seed'],
+      },
+    },
+  };
+  const manifest = [
+    `staging-api-web|${backend}|${imageId}`,
+    `staging-migrate|${backend}|${imageId}`,
+    '',
+  ].join('\n');
+
+  assert.equal(parseLifecycleManifest(manifest).length, 2);
+  const plan = Object.fromEntries(
+    classifyRenderedServices(model, manifest)
+      .map((service) => [service.service, service]),
+  );
+  assert.equal(plan['staging-api-web'].kind, 'runtime');
+  assert.equal(plan['staging-api-web'].health, 'healthy');
+  assert.equal(plan['staging-storage-init'].kind, 'oneshot');
+  assert.equal(plan['staging-media-permissions-init'].kind, 'oneshot');
+  assert.equal(plan['staging-migrate'].kind, 'profile');
+  assert.equal(plan['staging-seed'].kind, 'profile');
+  assert.equal(plan['staging-migrate'].imageId, imageId);
+  assert.equal(plan['staging-seed'].imageId, '');
+  assert.deepEqual(
+    selectManifestServices(Object.values(plan))
+      .map(({ service }) => service)
+      .sort(),
+    ['staging-api-web', 'staging-migrate'],
+  );
+
+  assert.throws(
+    () => classifyRenderedServices(
+      model,
+      `staging-migrate|${backend}|${imageId}\n`,
+    ),
+    /manifest omits rendered staging artifact: staging-api-web/,
+  );
+  assert.throws(
+    () => classifyRenderedServices(model, [
+      `staging-api-web|${backend}|${imageId}`,
+      `staging-migrate|registry.example/menorah-staging/backend@sha256:${'d'.repeat(64)}|${imageId}`,
+      '',
+    ].join('\n')),
+    /rendered image differs from the manifest for staging-migrate/,
+  );
+  for (const extraService of [
+    'staging-media-permissions-init',
+    'staging-seed',
+  ]) {
+    assert.throws(
+      () => classifyRenderedServices(model, [
+        `staging-api-web|${backend}|${imageId}`,
+        `staging-migrate|${backend}|${imageId}`,
+        `${extraService}|${backend}|${imageId}`,
+        '',
+      ].join('\n')),
+      new RegExp(
+        `manifest contains non-runtime staging artifact: ${extraService}`,
+      ),
+    );
+  }
+  for (const malformedMigration of [
+    {
+      image: backend,
+      restart: 'on-failure:3',
+      profiles: ['migration'],
+    },
+    {
+      image: backend,
+      restart: 'no',
+      profiles: ['seed'],
+    },
+  ]) {
+    assert.throws(
+      () => classifyRenderedServices({
+        ...model,
+        services: {
+          ...model.services,
+          'staging-migrate': malformedMigration,
+        },
+      }, manifest),
+      /staging-migrate must be a restart:no migration-profile service/,
+    );
+  }
+  assert.throws(
+    () => classifyRenderedServices({
+      ...model,
+      services: {
+        ...model.services,
+        'staging-api-web': { image: backend },
+      },
+    }, manifest),
+    /service lifecycle is ambiguous for staging-api-web/,
+  );
+});
+
 test('production and mutable image artifacts cannot satisfy rollback preflight', () => {
   const digest = 'b'.repeat(64);
   const imageId = `sha256:${'c'.repeat(64)}`;
@@ -417,6 +568,7 @@ test('deployment state markers cannot cross into production recovery', () => {
     sources.deploy,
     sources.rollback,
     sources.migration,
+    sources.resume,
   ]) {
     assert.match(source, /\/opt\/menorah-staging\/deploy-state/);
     assert.doesNotMatch(source, /MENORAH_DEPLOY_STATE_ROOT/);
@@ -428,6 +580,174 @@ test('deployment state markers cannot cross into production recovery', () => {
   assert.match(sources.deploy, /post-migration-recovery-sha/);
   assert.match(sources.rollback, /post-migration-recovery-sha/);
   assert.match(sources.rollback, /blocks code rollback/);
+});
+
+test('first deployment prepares migration dependencies before migration', () => {
+  const datastoreStart = sources.deploy.indexOf(
+    "staging-mongo-primary \\\n  staging-redis",
+  );
+  const initializer = sources.deploy.indexOf(
+    "staging-mongo-replica-init\nassert_successful_initializer",
+  );
+  const migration = sources.deploy.indexOf(
+    '"${SCRIPT_DIR}/run-recorded-migration.sh"',
+  );
+  const recoveryValidation = sources.deploy.indexOf(
+    'recovery_sha="$(read_sha_marker',
+    migration,
+  );
+  const applicationStart = sources.deploy.indexOf(
+    'compose up -d --no-build --pull never --wait --wait-timeout 300',
+    migration,
+  );
+  const runtimeVerification = sources.deploy.indexOf(
+    'bash "${RUNTIME_VERIFIER}" "${MANIFEST}"',
+  );
+
+  assert.ok(datastoreStart >= 0);
+  assert.ok(initializer > datastoreStart);
+  assert.ok(migration > initializer);
+  assert.ok(recoveryValidation > migration);
+  assert.ok(applicationStart > recoveryValidation);
+  assert.ok(runtimeVerification > applicationStart);
+  for (const source of [sources.deploy, sources.migration]) {
+    assert.match(source, /ps -a -q "\$\{service\}"/);
+    assert.match(source, /\.State\.Status/);
+    assert.match(source, /staging-mongo-primary/);
+    assert.match(source, /staging-mongo-replica-init/);
+    assert.match(source, /staging-redis/);
+  }
+});
+
+test('profile artifacts render explicitly and migration owns recovery state', () => {
+  assert.match(sources.manifest, /--profile migration/);
+  assert.match(sources.migration, /--profile migration config --format json/);
+
+  const inProgressWrite = sources.migration.lastIndexOf(
+    'write_sha_marker \\\n  "${IN_PROGRESS_MARKER}"',
+  );
+  const migrationRun = sources.migration.lastIndexOf(
+    'compose run --rm --no-deps --pull never staging-migrate',
+  );
+  const recoveryWrite = sources.migration.lastIndexOf(
+    'write_sha_marker \\\n  "${RECOVERY_MARKER}"',
+  );
+  const appliedWrite = sources.migration.lastIndexOf(
+    'write_sha_marker \\\n  "${APPLIED_MARKER}"',
+  );
+  const inProgressClear = sources.migration.lastIndexOf(
+    'rm -f -- "${IN_PROGRESS_MARKER}"',
+  );
+
+  assert.ok(inProgressWrite >= 0);
+  assert.ok(migrationRun > inProgressWrite);
+  assert.ok(recoveryWrite > migrationRun);
+  assert.ok(appliedWrite > recoveryWrite);
+  assert.ok(inProgressClear > appliedWrite);
+});
+
+test('a second migration invocation preserves completed deployment state', () => {
+  assert.match(
+    sources.migration,
+    /deployment_record_is_complete\(\) \{/,
+  );
+  assert.match(
+    sources.migration,
+    /if deployment_record_is_complete; then\s+recovery_sha='deployment-complete'\s+else\s+write_sha_marker \\\s+"\$\{RECOVERY_MARKER\}"/,
+  );
+  assert.match(
+    sources.migration,
+    /successful deployment record disagrees with current release/,
+  );
+  assert.match(
+    sources.migration,
+    /successful deployment record is invalid/,
+  );
+});
+
+test('runtime verification rejects missing, exited, unhealthy, and drifted services', () => {
+  assert.match(sources.runtimeVerifier, /ps -a -q "\$\{service\}"/);
+  assert.match(
+    sources.runtimeVerifier,
+    /required runtime service is missing or ambiguous/,
+  );
+  assert.match(
+    sources.runtimeVerifier,
+    /"\$\{status\}" == 'running' && "\$\{running\}" == 'true'/,
+  );
+  assert.match(
+    sources.runtimeVerifier,
+    /"\$\{health_status\}" == 'healthy'/,
+  );
+  assert.match(
+    sources.runtimeVerifier,
+    /"\$\{actual_image_id\}" == "\$\{expected_image_id\}"/,
+  );
+  assert.match(
+    sources.runtimeVerifier,
+    /"\$\{service_label\}" == "\$\{service\}"/,
+  );
+  assert.match(
+    sources.runtimeVerifier,
+    /"\$\{oneoff_label\}" == 'False'/,
+  );
+  for (const source of [sources.deploy, sources.rollback, sources.resume]) {
+    assert.match(
+      source,
+      /bash "\$\{RUNTIME_VERIFIER\}" "\$\{MANIFEST\}"/,
+    );
+  }
+});
+
+test('post-migration resume is marker-bound and never reruns migration', () => {
+  assert.match(
+    sources.resume,
+    /RESUME_EXACT_MENORAH_STAGING_SHA_AFTER_MIGRATION/,
+  );
+  assert.match(sources.resume, /migration-applied-sha/);
+  assert.match(sources.resume, /post-migration-recovery-sha/);
+  assert.match(
+    sources.resume,
+    /"\$\{applied_sha\}" == "\$\{RELEASE_SHA\}"/,
+  );
+  assert.match(
+    sources.resume,
+    /"\$\{recovery_sha\}" == "\$\{RELEASE_SHA\}"/,
+  );
+  assert.doesNotMatch(sources.resume, /run-recorded-migration/);
+
+  const applicationStart = sources.resume.indexOf(
+    'compose up -d --no-build --pull never --wait --wait-timeout 300',
+  );
+  const runtimeVerification = sources.resume.indexOf(
+    'bash "${RUNTIME_VERIFIER}" "${MANIFEST}"',
+  );
+  const currentWrite = sources.resume.indexOf(
+    'write_sha_marker "${CURRENT_SHA_FILE}"',
+  );
+  const recoveryClear = sources.resume.indexOf(
+    'rm -f -- "${RECOVERY_MARKER}"',
+  );
+  const inProgressClear = sources.resume.indexOf(
+    'rm -f -- "${MIGRATION_IN_PROGRESS}"',
+  );
+  assert.ok(applicationStart >= 0);
+  assert.ok(runtimeVerification > applicationStart);
+  assert.ok(currentWrite > runtimeVerification);
+  assert.ok(inProgressClear > currentWrite);
+  assert.ok(recoveryClear > currentWrite);
+  assert.match(sources.resume, /deployment_record_exists=true/);
+  assert.match(
+    sources.resume,
+    /existing successful deployment record is invalid/,
+  );
+  for (const source of [sources.deploy, sources.resume]) {
+    assert.match(source, /stop_application_writers/);
+    assert.match(source, /staging-api-ios/);
+    assert.match(source, /staging-api-admin/);
+    assert.match(source, /staging-worker/);
+    assert.match(source, /staging-user-web-app/);
+  }
 });
 
 test('historical rollback is recorded-artifact-only and never builds or pulls', () => {
@@ -447,6 +767,7 @@ test('deploy and migration accept only exact recorded SHAs', () => {
     sources.deploy,
     sources.rollback,
     sources.migration,
+    sources.resume,
   ]) {
     assert.match(source, /\^\[0-9a-f\]\{40\}\$/);
     assert.match(source, /rev-parse HEAD/);

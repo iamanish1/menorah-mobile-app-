@@ -11,6 +11,8 @@ readonly ENV_FILE='/opt/menorah-staging/env/server-staging.env'
 readonly COMPOSE_FILE='/opt/menorah-staging/app/menorah/deploy/server-staging/compose.yml'
 readonly SCRIPT_DIR='/opt/menorah-staging/app/menorah/deploy/server-staging'
 readonly ENV_LOADER="${SCRIPT_DIR}/load-environment.mjs"
+readonly PROCESS_AUTHORITY="${SCRIPT_DIR}/assert-process-authority.sh"
+readonly RUNTIME_VERIFIER="${SCRIPT_DIR}/verify-runtime-services.sh"
 readonly STATE_ROOT='/opt/menorah-staging/deploy-state'
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
 readonly DEPLOY_LOCK='/opt/menorah-staging/deploy-state/.deploy.lock'
@@ -54,6 +56,21 @@ write_sha_marker() {
   mv -f -- "${temporary}" "${target}"
 }
 
+stop_application_writers() {
+  docker compose \
+    --project-name "${EXPECTED_PROJECT}" \
+    -f "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    stop --timeout 30 \
+    staging-api-ios \
+    staging-api-android \
+    staging-api-web \
+    staging-api-admin \
+    staging-worker \
+    staging-user-web-app \
+    >/dev/null 2>&1 || true
+}
+
 [[ "$#" -eq 1 ]] || fail 'usage: rollback-recorded.sh FULL_GIT_SHA'
 readonly TARGET_SHA="$1"
 [[ "${TARGET_SHA}" =~ ^[0-9a-f]{40}$ ]] \
@@ -69,6 +86,15 @@ done
   || fail 'the staging environment file is not canonical'
 [[ -f "${ENV_LOADER}" && ! -L "${ENV_LOADER}" ]] \
   || fail 'the safe staging environment loader is unavailable'
+[[ -f "${PROCESS_AUTHORITY}" && ! -L "${PROCESS_AUTHORITY}" ]] \
+  || fail 'the staging process-authority guard is unavailable'
+[[ -f "${RUNTIME_VERIFIER}" && ! -L "${RUNTIME_VERIFIER}" ]] \
+  || fail 'runtime service verifier is unavailable'
+
+# shellcheck source=/dev/null
+source "${PROCESS_AUTHORITY}"
+server_staging_assert_process_authority "${EXPECTED_PROJECT}" \
+  || fail 'caller process authority is unsafe'
 
 environment_load_complete=''
 while IFS= read -r -d '' environment_key \
@@ -151,8 +177,9 @@ rollback_succeeded=false
 on_exit() {
   local status="$1"
   if [[ "${status}" -ne 0 && "${rollback_succeeded}" != true ]]; then
+    stop_application_writers
     printf '%s\n' \
-      "Recorded rollback failed; ${ROLLBACK_MARKER} remains for review." \
+      "Recorded rollback failed; application writers were stopped and ${ROLLBACK_MARKER} remains for review." \
       >&2
   fi
 }
@@ -181,25 +208,7 @@ docker compose \
   --env-file "${ENV_FILE}" \
   up -d --force-recreate --no-build --pull never --wait --wait-timeout 300
 
-while IFS='|' read -r service _ expected_image_id; do
-  [[ "${service}" != 'staging-migrate' ]] || continue
-  container_id="$(
-    docker compose \
-      --project-name "${EXPECTED_PROJECT}" \
-      -f "${COMPOSE_FILE}" \
-      --env-file "${ENV_FILE}" \
-      ps -q "${service}"
-  )"
-  [[ -n "${container_id}" ]] \
-    || fail "recorded rollback service is not running: ${service}"
-  running_identity="$(
-    docker inspect \
-      --format '{{.State.Running}}|{{.Image}}|{{index .Config.Labels "com.docker.compose.project"}}' \
-      "${container_id}"
-  )"
-  [[ "${running_identity}" == "true|${expected_image_id}|${EXPECTED_PROJECT}" ]] \
-    || fail "rolled-back service does not match its artifact: ${service}"
-done < "${MANIFEST}"
+bash "${RUNTIME_VERIFIER}" "${MANIFEST}"
 
 readonly ROLLBACK_RECORD="${RELEASE_STATE}/${PREVIOUS_CURRENT}-to-${TARGET_SHA}.rollback.json"
 [[ ! -e "${ROLLBACK_RECORD}" && ! -L "${ROLLBACK_RECORD}" ]] \
@@ -231,8 +240,8 @@ NODE
 chmod 0400 "${rollback_record_temp}"
 mv -- "${rollback_record_temp}" "${ROLLBACK_RECORD}"
 write_sha_marker "${CURRENT_SHA_FILE}" "${TARGET_SHA}" 'current'
-rollback_succeeded=true
 rm -f -- "${ROLLBACK_MARKER}"
+rollback_succeeded=true
 trap - EXIT
 printf '%s\n' \
   "Server-staging recorded-artifact rollback passed: ${TARGET_SHA}"

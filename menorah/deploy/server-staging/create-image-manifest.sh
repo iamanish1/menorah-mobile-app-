@@ -11,6 +11,8 @@ readonly ENV_FILE='/opt/menorah-staging/env/server-staging.env'
 readonly COMPOSE_FILE='/opt/menorah-staging/app/menorah/deploy/server-staging/compose.yml'
 readonly SCRIPT_DIR='/opt/menorah-staging/app/menorah/deploy/server-staging'
 readonly ENV_LOADER="${SCRIPT_DIR}/load-environment.mjs"
+readonly PROCESS_AUTHORITY="${SCRIPT_DIR}/assert-process-authority.sh"
+readonly LIFECYCLE_HELPER="${SCRIPT_DIR}/service-lifecycle.mjs"
 readonly RELEASE_STATE='/opt/menorah-staging/deploy-state/releases'
 readonly MANIFEST_LOCK='/opt/menorah-staging/deploy-state/.manifest.lock'
 
@@ -35,6 +37,15 @@ done
 
 [[ -f "${ENV_LOADER}" && ! -L "${ENV_LOADER}" ]] \
   || fail 'the safe staging environment loader is unavailable'
+[[ -f "${PROCESS_AUTHORITY}" && ! -L "${PROCESS_AUTHORITY}" ]] \
+  || fail 'the staging process-authority guard is unavailable'
+[[ -f "${LIFECYCLE_HELPER}" && ! -L "${LIFECYCLE_HELPER}" ]] \
+  || fail 'service lifecycle helper is unavailable'
+
+# shellcheck source=/dev/null
+source "${PROCESS_AUTHORITY}"
+server_staging_assert_process_authority "${EXPECTED_PROJECT}" \
+  || fail 'caller process authority is unsafe'
 
 environment_load_complete=''
 while IFS= read -r -d '' environment_key \
@@ -118,40 +129,11 @@ docker compose \
   --project-name "${EXPECTED_PROJECT}" \
   -f "${COMPOSE_FILE}" \
   --env-file "${ENV_FILE}" \
+  --profile migration \
   config --format json > "${CONFIG_TEMP}"
 
-COMPOSE_CONFIG_PATH="${CONFIG_TEMP}" node <<'NODE' > "${RECORDS_TEMP}"
-const fs = require('fs');
-const model = JSON.parse(
-  fs.readFileSync(process.env.COMPOSE_CONFIG_PATH, 'utf8'),
-);
-if (model.name !== 'menorah-staging') {
-  throw new Error('rendered Compose project is not menorah-staging');
-}
-const records = Object.entries(model.services || {})
-  .filter(([, service]) => (
-    typeof service.image === 'string'
-    && service.image.includes('/menorah-staging/')
-  ))
-  .sort(([left], [right]) => left.localeCompare(right));
-if (records.length === 0) {
-  throw new Error('rendered Compose contains no staging application images');
-}
-if (!records.some(([service]) => service === 'staging-migrate')) {
-  throw new Error('rendered Compose omits the staging migration artifact');
-}
-for (const [service, definition] of records) {
-  const reference = definition.image;
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(service)
-    || !/@sha256:[0-9a-f]{64}$/.test(reference)
-    || /[\s|]/.test(reference)
-    || reference.includes('/menorah/')
-  ) {
-    throw new Error(`invalid staging image identity for ${service}`);
-  }
-  process.stdout.write(`${service}|${reference}\n`);
-}
-NODE
+node "${LIFECYCLE_HELPER}" \
+  manifest "${CONFIG_TEMP}" > "${RECORDS_TEMP}"
 
 while IFS='|' read -r service reference extra; do
   [[ -n "${service}" && -n "${reference}" && -z "${extra:-}" ]] \
