@@ -775,7 +775,7 @@ const validCompose = (environment = validEnvironment()) => {
       'CMD-SHELL',
       EXPECTED_HOSTS.map(
         (hostname) => (
-          `wget --no-check-certificate -qO- `
+          `wget --no-check-certificate -Y off -qO- `
           + `https://${hostname}/healthz | grep -qx ok`
         ),
       ).join(' && '),
@@ -1743,11 +1743,32 @@ const composeMutations = [
       'admin.staging.menorah.me'
     ] = '10.252.241.10';
   }, /staging-caddy TLS readiness hosts must resolve only to its own loopback/],
+  ['duplicate Caddy readiness host', (model) => {
+    const caddy = model.services['staging-caddy'];
+    caddy.extra_hosts = [
+      'admin.staging.menorah.me=203.0.113.1',
+      ...Object.entries(caddy.extra_hosts).map(
+        ([host, address]) => `${host}=${address}`,
+      ),
+    ];
+  }, /staging-caddy TLS readiness hosts must resolve only to its own loopback/],
+  ['Caddy readiness proxy environment', (model) => {
+    model.services['staging-caddy'].environment = {
+      HTTPS_PROXY: 'http://proxy.example:3128',
+    };
+  }, /staging-caddy TLS readiness must not inherit proxy environment/],
   ['incomplete Caddy TLS readiness probe', (model) => {
     model.services['staging-caddy'].healthcheck.test[1] =
       model.services['staging-caddy'].healthcheck.test[1].replace(
         'https://admin.staging.menorah.me/healthz',
         'https://staging.menorah.me/healthz',
+      );
+  }, /staging-caddy healthcheck must prove every reviewed HTTPS certificate ready/],
+  ['proxy-capable Caddy TLS readiness probe', (model) => {
+    model.services['staging-caddy'].healthcheck.test[1] =
+      model.services['staging-caddy'].healthcheck.test[1].replace(
+        'wget --no-check-certificate -Y off -qO-',
+        'wget --no-check-certificate -qO-',
       );
   }, /staging-caddy healthcheck must prove every reviewed HTTPS certificate ready/],
   ['wrong API trusted proxy address', (model) => {
@@ -1839,6 +1860,17 @@ const composeMutations = [
   }, /explicit default gateway/],
   ['host network', (model) => { model.services['staging-api-web'].network_mode = 'host'; }, /shares a host namespace/],
   ['privileged service', (model) => { model.services['staging-api-web'].privileged = true; }, /must not be privileged/],
+  ['disabled no-new-privileges', (model) => {
+    model.services['staging-api-web'].security_opt = [
+      'no-new-privileges:false',
+    ];
+  }, /must set no-new-privileges:true/],
+  ['conflicting no-new-privileges', (model) => {
+    model.services['staging-api-web'].security_opt = [
+      'no-new-privileges:true',
+      'no-new-privileges:false',
+    ];
+  }, /must set no-new-privileges:true/],
   ['unbounded restart', (model) => { model.services['staging-api-web'].restart = 'always'; }, /unbounded restart policy/],
   ['missing limits', (model) => { delete model.services['staging-api-web'].mem_limit; }, /lacks CPU, memory, or PID limits/],
   ['memory reservation above limit', (model) => {
@@ -2439,7 +2471,14 @@ test('Compose source initializes Caddy state and gates every TLS host', () => {
     assert.ok(caddy.includes(`${host}: "127.0.0.1"`));
     assert.ok(caddy.includes(`https://${host}/healthz`));
   }
-  assert.match(caddy, /wget --no-check-certificate -qO-/);
+  assert.equal(
+    [
+      ...caddy.matchAll(
+        /wget --no-check-certificate -Y off -qO-/g,
+      ),
+    ].length,
+    EXPECTED_HOSTS.length,
+  );
   assert.doesNotMatch(caddy, /http:\/\/127\.0\.0\.1\/healthz/);
 });
 

@@ -1188,25 +1188,25 @@ services:
       test:
         - CMD-SHELL
         - >-
-          wget --no-check-certificate -qO-
+          wget --no-check-certificate -Y off -qO-
           https://staging.menorah.me/healthz | grep -qx ok &&
-          wget --no-check-certificate -qO-
+          wget --no-check-certificate -Y off -qO-
           https://www.staging.menorah.me/healthz | grep -qx ok &&
-          wget --no-check-certificate -qO-
+          wget --no-check-certificate -Y off -qO-
           https://app.staging.menorah.me/healthz | grep -qx ok &&
-          wget --no-check-certificate -qO-
+          wget --no-check-certificate -Y off -qO-
           https://admin.staging.menorah.me/healthz | grep -qx ok &&
-          wget --no-check-certificate -qO-
+          wget --no-check-certificate -Y off -qO-
           https://counsellor.staging.menorah.me/healthz | grep -qx ok &&
-          wget --no-check-certificate -qO-
+          wget --no-check-certificate -Y off -qO-
           https://api-ios.staging.menorah.me/healthz | grep -qx ok &&
-          wget --no-check-certificate -qO-
+          wget --no-check-certificate -Y off -qO-
           https://api-android.staging.menorah.me/healthz | grep -qx ok &&
-          wget --no-check-certificate -qO-
+          wget --no-check-certificate -Y off -qO-
           https://api-web.staging.menorah.me/healthz | grep -qx ok &&
-          wget --no-check-certificate -qO-
+          wget --no-check-certificate -Y off -qO-
           https://api-admin.staging.menorah.me/healthz | grep -qx ok &&
-          wget --no-check-certificate -qO-
+          wget --no-check-certificate -Y off -qO-
           https://calls.staging.menorah.me/healthz | grep -qx ok
       interval: 15s
       timeout: 5s

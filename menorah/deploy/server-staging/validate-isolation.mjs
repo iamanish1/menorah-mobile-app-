@@ -1640,10 +1640,14 @@ const validateProviderEnvironmentScope = (
   }
 };
 
-const normalizeExtraHosts = (extraHosts) => {
-  if (!extraHosts) return {};
-  if (!Array.isArray(extraHosts)) return extraHosts;
-  return Object.fromEntries(extraHosts.map((entry) => {
+const extraHostEntries = (extraHosts) => {
+  if (!extraHosts) return [];
+  if (!Array.isArray(extraHosts)) {
+    return Object.entries(extraHosts).map(([host, address]) => (
+      [String(host), String(address)]
+    ));
+  }
+  return extraHosts.map((entry) => {
     const text = String(entry);
     const separator = text.includes('=')
       ? text.indexOf('=')
@@ -1651,8 +1655,12 @@ const normalizeExtraHosts = (extraHosts) => {
     return separator < 0
       ? [text, '']
       : [text.slice(0, separator), text.slice(separator + 1)];
-  }));
+  });
 };
+
+const normalizeExtraHosts = (extraHosts) => (
+  Object.fromEntries(extraHostEntries(extraHosts))
+);
 
 const validateRenderedNetworkInputs = (
   errors,
@@ -1684,11 +1692,14 @@ const validateRenderedNetworkInputs = (
       'staging-caddy must use the exact reviewed static app address',
     );
   }
-  const caddyReadinessHosts = normalizeExtraHosts(
-    services['staging-caddy']?.extra_hosts,
+  const caddy = services['staging-caddy'];
+  const caddyReadinessEntries = extraHostEntries(
+    caddy?.extra_hosts,
   );
+  const caddyReadinessHosts = Object.fromEntries(caddyReadinessEntries);
   if (
-    Object.keys(caddyReadinessHosts).length !== EXPECTED_HOSTS.length
+    caddyReadinessEntries.length !== EXPECTED_HOSTS.length
+    || Object.keys(caddyReadinessHosts).length !== EXPECTED_HOSTS.length
     || EXPECTED_HOSTS.some(
       (host) => caddyReadinessHosts[host] !== '127.0.0.1',
     )
@@ -1697,21 +1708,28 @@ const validateRenderedNetworkInputs = (
       'staging-caddy TLS readiness hosts must resolve only to its own loopback',
     );
   }
-  const caddyHealthTest =
-    services['staging-caddy']?.healthcheck?.test;
-  const caddyHealthCommand = Array.isArray(caddyHealthTest)
-    ? caddyHealthTest.slice(1).join(' ')
-    : '';
+  const caddyEnvironment = normalizeEnvironment(caddy?.environment);
   if (
-    caddyHealthTest?.[0] !== 'CMD-SHELL'
-    || !caddyHealthCommand.includes('--no-check-certificate')
-    || EXPECTED_HOSTS.some(
-      (host) => (
-        caddyHealthCommand.split(
-          `https://${host}/healthz`,
-        ).length !== 2
-      ),
+    Object.keys(caddyEnvironment).some(
+      (key) => /^(?:ALL|FTP|HTTP|HTTPS|NO)_PROXY$/i.test(key),
     )
+  ) {
+    errors.push(
+      'staging-caddy TLS readiness must not inherit proxy environment',
+    );
+  }
+  const caddyHealthTest = caddy?.healthcheck?.test;
+  const expectedCaddyHealthCommand = EXPECTED_HOSTS.map(
+    (host) => (
+      'wget --no-check-certificate -Y off -qO- '
+      + `https://${host}/healthz | grep -qx ok`
+    ),
+  ).join(' && ');
+  if (
+    !Array.isArray(caddyHealthTest)
+    || caddyHealthTest.length !== 2
+    || caddyHealthTest[0] !== 'CMD-SHELL'
+    || caddyHealthTest[1] !== expectedCaddyHealthCommand
   ) {
     errors.push(
       'staging-caddy healthcheck must prove every reviewed HTTPS certificate ready',
@@ -1838,12 +1856,14 @@ export const validateRenderedCompose = (
       errors.push(`${serviceName} must drop all Linux capabilities`);
     }
     const securityOptions = service.security_opt || [];
+    const noNewPrivilegesOptions = securityOptions.filter(
+      (value) => String(value).startsWith('no-new-privileges'),
+    );
     if (
-      !securityOptions.some(
-        (value) => String(value).startsWith('no-new-privileges'),
-      )
+      noNewPrivilegesOptions.length !== 1
+      || String(noNewPrivilegesOptions[0]) !== 'no-new-privileges:true'
     ) {
-      errors.push(`${serviceName} must set no-new-privileges`);
+      errors.push(`${serviceName} must set no-new-privileges:true`);
     }
     const pidsLimit = Number(service.pids_limit);
     const memoryLimit = Number(service.mem_limit);
