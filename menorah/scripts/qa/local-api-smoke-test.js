@@ -31,7 +31,6 @@ const config = {
   userPassword: process.env.QA_USER_PASSWORD,
   mailCaptureConfirmation:
     process.env.QA_LOCAL_STAGING_MAIL_CAPTURE_CONFIRM,
-  runId: Date.now() % 100000,
 };
 
 const results = [];
@@ -54,7 +53,15 @@ function pushResult(status, name, details = '') {
 
 async function request(baseUrl, path, options = {}) {
   const url = `${baseUrl}${path}`;
-  const headers = { ...(options.headers || {}) };
+  const headers = new Headers(options.headers || {});
+  for (const forwardedHeader of [
+    'forwarded',
+    'x-forwarded-for',
+    'x-real-ip',
+  ]) {
+    headers.delete(forwardedHeader);
+  }
+  headers.set('connection', 'close');
   const init = {
     method: options.method || 'GET',
     headers,
@@ -63,7 +70,9 @@ async function request(baseUrl, path, options = {}) {
   };
 
   if (Object.prototype.hasOwnProperty.call(options, 'body')) {
-    headers['content-type'] = headers['content-type'] || 'application/json';
+    if (!headers.has('content-type')) {
+      headers.set('content-type', 'application/json');
+    }
     init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
   }
 
@@ -112,12 +121,6 @@ async function expectJsonSuccess(name, baseUrl, path, options = {}) {
     pushResult('FAIL', name, error.message);
     return null;
   }
-}
-
-function qaForwardedFor(offset) {
-  const third = Math.floor(config.runId / 250) % 250;
-  const fourth = ((config.runId + offset) % 250) + 1;
-  return { 'X-Forwarded-For': `10.254.${third}.${fourth}` };
 }
 
 async function main() {
@@ -178,7 +181,6 @@ async function main() {
   await expectStatus('api-admin auth router mounted for admin login', config.apiAdmin, '/api/auth/me', 401);
   await expectStatus('api-admin auth login validates body', config.apiAdmin, '/api/auth/login', 400, {
     method: 'POST',
-    headers: qaForwardedFor(1),
     body: {},
   });
   const canRunSeededAuth = (
@@ -196,7 +198,6 @@ async function main() {
     if (useLocalMailCapture) clearSyntheticMessages();
     adminLogin = await expectJsonSuccess('api-admin seeded admin login succeeds', config.apiAdmin, '/api/auth/login', {
       method: 'POST',
-      headers: qaForwardedFor(2),
       body: { email: config.adminEmail, password: config.adminPassword },
     });
     if (
@@ -211,7 +212,6 @@ async function main() {
           '/api/auth/login/mfa',
           {
             method: 'POST',
-            headers: qaForwardedFor(3),
             body: {
               challengeId: adminLogin.payload.data.challengeId,
               otp,
@@ -229,7 +229,6 @@ async function main() {
     }
     await expectStatus('api-admin seeded normal user rejected', config.apiAdmin, '/api/auth/login', 403, {
       method: 'POST',
-      headers: qaForwardedFor(4),
       body: { email: config.normalEmail, password: config.userPassword },
     });
   } else {
@@ -238,17 +237,14 @@ async function main() {
   }
   await expectStatus('api-admin register route absent', config.apiAdmin, '/api/auth/register', 404, {
     method: 'POST',
-    headers: qaForwardedFor(4),
     body: {},
   });
   await expectStatus('api-admin forgot password route absent', config.apiAdmin, '/api/auth/forgot-password', 404, {
     method: 'POST',
-    headers: qaForwardedFor(5),
     body: {},
   });
   await expectStatus('api-admin email OTP route absent', config.apiAdmin, '/api/auth/verify-email-otp', 404, {
     method: 'POST',
-    headers: qaForwardedFor(6),
     body: {},
   });
   if (adminLogin?.payload?.data?.token) {
@@ -287,7 +283,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  request,
+  validateExactLocalTargets,
+};

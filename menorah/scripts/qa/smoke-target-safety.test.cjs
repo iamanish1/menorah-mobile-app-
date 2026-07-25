@@ -16,6 +16,9 @@ const {
   validateOptionalSyntheticAdminCredentials,
   validateSmokeTargets,
 } = require('./smoke-target-safety');
+const {
+  request: localApiRequest,
+} = require('./local-api-smoke-test');
 
 const qaRoot = __dirname;
 const syntheticEnv = {
@@ -342,6 +345,36 @@ test('local API smoke accepts only the exact isolated loopback ports', () => {
     `${result.stdout}\n${result.stderr}`,
     /must target exactly http:\/\/127\.0\.0\.1:28082/
   );
+});
+
+test('local API smoke opens a fresh connection and strips spoofed client IP headers', async (t) => {
+  const originalFetch = global.fetch;
+  let requestInit;
+  t.after(() => {
+    global.fetch = originalFetch;
+  });
+  global.fetch = async (_url, init) => {
+    requestInit = init;
+    return new Response('{}', { status: 200 });
+  };
+
+  await localApiRequest(
+    'http://127.0.0.1:28080',
+    '/health/ready',
+    {
+      headers: {
+        Connection: 'keep-alive',
+        Forwarded: 'for=192.0.2.1',
+        'X-Forwarded-For': '192.0.2.2',
+        'X-Real-IP': '192.0.2.3',
+      },
+    },
+  );
+
+  assert.equal(requestInit.headers.get('connection'), 'close');
+  assert.equal(requestInit.headers.has('forwarded'), false);
+  assert.equal(requestInit.headers.has('x-forwarded-for'), false);
+  assert.equal(requestInit.headers.has('x-real-ip'), false);
 });
 
 test('local API smoke switches to 38080-38084 only with server confirmation', () => {
