@@ -141,6 +141,7 @@ x-backend-environment: &backend-environment
   KYC_RETENTION_DAYS: "${KYC_RETENTION_DAYS:?Required in generated local staging env}"
   PRIVACY_NOTICE_VERSION: "${PRIVACY_NOTICE_VERSION:?Required in generated local staging env}"
   ADMIN_ROLE_GRANTS_JSON: "${ADMIN_ROLE_GRANTS_JSON:?Synthetic admin role grants required}"
+  BOOKING_SERVICE_CATALOG_JSON: "${BOOKING_SERVICE_CATALOG_JSON:?Synthetic booking catalog required}"
   PRIVACY_RETENTION_EXECUTION_ENABLED: "false"
   PRIVACY_ADMIN_PERMISSION_GRANTS_JSON: "${PRIVACY_ADMIN_PERMISSION_GRANTS_JSON:?Synthetic privacy grants required}"
   PRIVACY_RETENTION_POLICY_JSON: "${PRIVACY_RETENTION_POLICY_JSON:?Synthetic privacy policy required}"
@@ -156,7 +157,6 @@ x-booking-provider-environment: &booking-provider-environment
   RAZORPAY_KEY_ID: "${RAZORPAY_KEY_ID:-}"
   RAZORPAY_KEY_SECRET: "${RAZORPAY_KEY_SECRET:-}"
   PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS: "${PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS:?Payment webhook retry limit required}"
-  BOOKING_SERVICE_CATALOG_JSON: "${BOOKING_SERVICE_CATALOG_JSON:?Synthetic booking catalog required}"
   CHECKOUT_RETURN_URL: "${CHECKOUT_RETURN_URL:-}"
 
 x-booking-webhook-environment: &booking-webhook-environment

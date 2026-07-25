@@ -470,6 +470,10 @@ const validCompose = (environment = validEnvironment()) => {
     Object.assign(
       services[serviceName].environment,
       disabledBackendEnvironment,
+      {
+        BOOKING_SERVICE_CATALOG_JSON:
+          environment.BOOKING_SERVICE_CATALOG_JSON,
+      },
     );
   }
   const selectEnvironment = (keys) => Object.fromEntries(
@@ -484,7 +488,6 @@ const validCompose = (environment = validEnvironment()) => {
     'RAZORPAY_WEBHOOK_SECRET',
     'RAZORPAY_WEBHOOK_SECRET_PREVIOUS',
     'PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS',
-    'BOOKING_SERVICE_CATALOG_JSON',
     'CHECKOUT_RETURN_URL',
   ];
   const payoutKeys = [
@@ -1742,6 +1745,10 @@ const composeMutations = [
     model.services['staging-worker'].environment.RESEND_API_KEY =
       env.RESEND_API_KEY;
   }, /staging-worker must not receive provider-scoped RESEND_API_KEY/],
+  ['missing shared worker booking catalog', (model) => {
+    delete model.services['staging-worker'].environment
+      .BOOKING_SERVICE_CATALOG_JSON;
+  }, /staging-worker must receive the exact shared booking service catalog/],
   ['migration Cloudinary secret leakage', (model, env) => {
     model.services['staging-migrate'].environment
       .CLOUDINARY_API_SECRET = env.CLOUDINARY_API_SECRET;

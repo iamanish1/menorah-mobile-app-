@@ -345,7 +345,6 @@ const BOOKING_PROVIDER_ENVIRONMENT = Object.freeze([
   'RAZORPAY_KEY_ID',
   'RAZORPAY_KEY_SECRET',
   'PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS',
-  'BOOKING_SERVICE_CATALOG_JSON',
   'CHECKOUT_RETURN_URL',
 ]);
 const BOOKING_WEBHOOK_ENVIRONMENT = Object.freeze([
@@ -1455,6 +1454,20 @@ const validateProviderEnvironmentScope = (
   services,
   environment,
 ) => {
+  for (const serviceName of BACKEND_RUNTIME_SERVICE_NAMES) {
+    const serviceEnvironment = normalizeEnvironment(
+      services[serviceName]?.environment,
+    );
+    if (
+      String(serviceEnvironment.BOOKING_SERVICE_CATALOG_JSON)
+      !== String(environment.BOOKING_SERVICE_CATALOG_JSON)
+    ) {
+      errors.push(
+        `${serviceName} must receive the exact shared booking service catalog`,
+      );
+    }
+  }
+
   for (const [serviceName, expectedKeys] of Object.entries(
     PROVIDER_ENVIRONMENT_BY_SERVICE,
   )) {
