@@ -1750,6 +1750,7 @@ services:
     user: "0:0"
     entrypoint: ["/bin/sh", "/scripts/backup-staging.sh"]
     environment:
+      HOME: /tmp
       MONGODB_STAGING_BACKUP_URI: "${MONGODB_STAGING_BACKUP_URI:?Set the staging-only Mongo backup URI}"
       MENORAH_SERVER_STAGING_ENVIRONMENT_ID: "${MENORAH_SERVER_STAGING_ENVIRONMENT_ID:?Generated environment identity required}"
       COMPOSE_PROJECT_NAME: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"
@@ -1846,6 +1847,7 @@ services:
     restart: "no"
     entrypoint: ["/bin/sh", "/scripts/restore-staging.sh"]
     environment:
+      HOME: /tmp
       MONGODB_STAGING_RESTORE_URI: "${MONGODB_STAGING_RESTORE_URI:?Set the isolated staging restore URI}"
       MENORAH_SERVER_STAGING_ENVIRONMENT_ID: "${MENORAH_SERVER_STAGING_ENVIRONMENT_ID:?Generated environment identity required}"
       COMPOSE_PROJECT_NAME: "${MENORAH_SERVER_STAGING_PROJECT_NAME:-menorah-staging}"

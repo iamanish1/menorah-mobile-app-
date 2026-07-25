@@ -395,6 +395,7 @@ const validCompose = (environment = validEnvironment()) => {
     cap_add: ['DAC_READ_SEARCH'],
     networks: ['staging-data', 'staging-monitoring'],
     environment: {
+      HOME: '/tmp',
       MONGODB_STAGING_BACKUP_URI: environment.MONGODB_BACKUP_URI,
     },
   });
@@ -667,6 +668,7 @@ const validCompose = (environment = validEnvironment()) => {
     profiles: ['recovery'],
     networks: ['staging-restore'],
     environment: {
+      HOME: '/tmp',
       MONGODB_STAGING_RESTORE_URI: environment.MONGODB_RESTORE_URI,
     },
     volumes: [
@@ -1836,6 +1838,9 @@ const composeMutations = [
   ['expanded backup capabilities', (model) => {
     model.services['staging-backup-job'].cap_add.push('DAC_OVERRIDE');
   }, /only root DAC_READ_SEARCH access/],
+  ['backup manifest HOME drift', (model) => {
+    model.services['staging-backup-job'].environment.HOME = '/data/db';
+  }, /staging-backup-job must use writable \/tmp as HOME for clean manifests/],
   ['missing media writer ordering', (model) => {
     delete model.services['staging-worker']
       .depends_on['staging-media-permissions-init'];

@@ -1310,6 +1310,20 @@ const validateBackendRuntimeContracts = (
     }
   }
 
+  for (const serviceName of [
+    'staging-backup-job',
+    'staging-restore-job',
+  ]) {
+    const jobEnvironment = normalizeEnvironment(
+      services[serviceName]?.environment,
+    );
+    if (jobEnvironment.HOME !== '/tmp') {
+      errors.push(
+        `${serviceName} must use writable /tmp as HOME for clean manifests`,
+      );
+    }
+  }
+
   validateNetworkTopology(errors, services);
   validateRecoveryMounts(errors, services, volumes, environment);
   validateInitializerIsolation(errors, services);
