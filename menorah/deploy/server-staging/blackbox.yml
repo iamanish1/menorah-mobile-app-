@@ -17,13 +17,26 @@ modules:
       follow_redirects: false
       preferred_ip_protocol: ip4
       ip_protocol_fallback: true
-  https_staging:
+  https_staging_success:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      follow_redirects: true
+      fail_if_not_ssl: true
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+      tls_config:
+        insecure_skip_verify: true
+  https_staging_ready:
     prober: http
     timeout: 10s
     http:
       method: GET
       valid_status_codes: [200]
       follow_redirects: false
+      fail_if_not_ssl: true
       preferred_ip_protocol: ip4
       ip_protocol_fallback: true
       tls_config:
@@ -35,6 +48,7 @@ modules:
       method: GET
       valid_status_codes: [200]
       follow_redirects: false
+      fail_if_not_ssl: true
       preferred_ip_protocol: ip4
       ip_protocol_fallback: true
       tls_config:

@@ -2116,6 +2116,48 @@ test('monitoring rejects production targets, missing labels, shared state, crede
   assert.ok(includesError(errors, /missing or shared/));
 });
 
+test('monitoring rejects redirect, probe-class, TLS-scope, and inventory-threshold drift', () => {
+  const sharedRules = readFileSync(
+    new URL('../../deploy/monitoring/alert-rules.yml', import.meta.url),
+    'utf8',
+  );
+  const errors = validateMonitoring({
+    prometheusSource: readStaging('prometheus.yml')
+      .replace(
+        'probe_module: https_staging_ready',
+        'probe_module: https_staging_success',
+      )
+      .replace(
+        'replacement: internal-diagnostics',
+        'replacement: public-edge',
+      ),
+    alertmanagerSource: readStaging('alertmanager.yml'),
+    blackboxSource: readStaging('blackbox.yml').replace(
+      /(  https_staging_success:[\s\S]*?follow_redirects:\s*)true/,
+      '$1false',
+    ),
+    alloySource: readStaging('config.alloy'),
+    lokiSource: readStaging('loki.yml'),
+    alertRulesSource: sharedRules
+      .replace(
+        'monitoring_scope="server-staging"}) < 9',
+        'monitoring_scope="server-staging"}) < 19',
+      )
+      .replace(
+        'monitoring_scope!="server-staging"} - time()) < 1209600',
+        'monitoring_scope="server-staging"} - time()) < 1209600',
+      ),
+    compose: validMonitoringCompose(),
+    environment: validEnvironment(),
+    productionMetadata,
+  });
+
+  assert.ok(includesError(errors, /https_staging_success/));
+  assert.ok(includesError(errors, /redirecting frontends/));
+  assert.ok(includesError(errors, /internal TLS scope/));
+  assert.ok(includesError(errors, /scoped staging coverage and TLS/));
+});
+
 test('monitoring rejects hardcoded or uninjected Compose project evidence', () => {
   const model = validMonitoringCompose();
   model.services['staging-prometheus']

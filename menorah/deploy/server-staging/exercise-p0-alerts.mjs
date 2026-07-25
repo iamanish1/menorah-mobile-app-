@@ -270,16 +270,8 @@ export const monitoringBaselineIsExact = (
 ) => (
   Array.isArray(prometheusAlerts)
   && Array.isArray(alertmanagerAlerts)
-  && !ALERT_SPECS.some((spec) => (
-    prometheusAlerts.some((alert) => isExpectedAlert(alert, spec))
-  ))
-  && !ALERT_SPECS.some((spec) => (
-    alertmanagerAlerts.some((alert) => isExpectedAlert(
-      alert,
-      spec,
-      { requireServerScope: true },
-    ))
-  ))
+  && prometheusAlerts.length === 0
+  && alertmanagerAlerts.length === 0
 );
 
 const getPrometheusAlerts = async () => {
@@ -555,6 +547,11 @@ const cleanupExercise = async () => {
     waitForFrontendHealth(),
     waitForAllPrometheusTargets(3 * 60 * 1000),
   ]);
+  await waitFor(
+    'server-staging post-exercise alert quiet state',
+    expectedAlertsAreQuiet,
+    { timeoutMilliseconds: 14 * 60 * 1000 },
+  );
 };
 
 export const runAlertExercise = async () => {

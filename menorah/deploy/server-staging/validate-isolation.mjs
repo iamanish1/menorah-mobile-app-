@@ -2560,6 +2560,81 @@ export const validateMonitoring = ({
   productionMetadata,
 }) => {
   const errors = [];
+  const blackboxModuleBlocks = new Map();
+  let currentBlackboxModule = '';
+  for (const line of String(blackboxSource).split(/\r?\n/)) {
+    const moduleMatch = line.match(/^  ([a-z][a-z0-9_]*):\s*$/);
+    if (moduleMatch) {
+      currentBlackboxModule = moduleMatch[1];
+      blackboxModuleBlocks.set(currentBlackboxModule, `${line}\n`);
+    } else if (currentBlackboxModule) {
+      blackboxModuleBlocks.set(
+        currentBlackboxModule,
+        `${blackboxModuleBlocks.get(currentBlackboxModule)}${line}\n`,
+      );
+    }
+  }
+  for (const [moduleName, followRedirects] of [
+    ['https_staging_success', true],
+    ['https_staging_ready', false],
+    ['https_calls_staging', false],
+  ]) {
+    const block = blackboxModuleBlocks.get(moduleName) || '';
+    if (
+      !new RegExp(`follow_redirects:\\s*${followRedirects}\\b`).test(block)
+      || !/valid_status_codes:\s*\[200\]/.test(block)
+      || !/fail_if_not_ssl:\s*true\b/.test(block)
+      || !/insecure_skip_verify:\s*true\b/.test(block)
+    ) {
+      errors.push(
+        `staging Blackbox module ${moduleName} has invalid HTTPS semantics`,
+      );
+    }
+  }
+  const successProbeAssignments = (
+    String(prometheusSource).match(
+      /\bprobe_module:\s*https_staging_success\b/g,
+    ) || []
+  ).length;
+  const readyProbeAssignments = (
+    String(prometheusSource).match(
+      /\bprobe_module:\s*https_staging_ready\b/g,
+    ) || []
+  ).length;
+  if (
+    successProbeAssignments !== 5
+    || readyProbeAssignments !== 4
+    || !/source_labels:\s*\[probe_module\]\s*\r?\n\s*target_label:\s*__param_module/
+      .test(prometheusSource)
+  ) {
+    errors.push(
+      'staging HTTPS probes must separate redirecting frontends from strict readiness targets',
+    );
+  }
+  const internalTlsScopeAssignments = (
+    String(prometheusSource).match(
+      /target_label:\s*tls_scope\s*\r?\n\s*replacement:\s*internal-diagnostics/g,
+    ) || []
+  ).length;
+  if (internalTlsScopeAssignments !== 2) {
+    errors.push(
+      'staging internal HTTPS probes must carry the internal TLS scope',
+    );
+  }
+  for (const requiredRuleFragment of [
+    'monitoring_scope="server-staging"}) < 9',
+    'monitoring_scope!="server-staging"}) < 19',
+    'monitoring_scope="server-staging"}) < 1',
+    'monitoring_scope!="server-staging"}) < 2',
+    'monitoring_scope!="server-staging"} - time()) < 1209600',
+  ]) {
+    if (!String(alertRulesSource).includes(requiredRuleFragment)) {
+      errors.push(
+        'shared monitoring rules do not preserve scoped staging coverage and TLS semantics',
+      );
+      break;
+    }
+  }
   const externalLabelsBlock = String(prometheusSource).match(
     /^  external_labels:\s*\r?\n((?:^    .*(?:\r?\n|$))*)/m,
   )?.[1] || '';

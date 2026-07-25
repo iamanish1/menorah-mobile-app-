@@ -136,20 +136,22 @@ test('matching requires one exact alert and exact Alertmanager scope', () => {
   );
 });
 
-test('quiet baseline rejects one or duplicate expected alerts', () => {
+test('quiet baseline rejects every active alert from either monitor', () => {
   const alert = exactAlerts()[0];
   const scoped = exactAlerts({ serverScope: true })[0];
+  const unrelated = {
+    labels: {
+      alertname: 'BlackboxProbeCoverageIncomplete',
+      monitoring_scope: 'unrelated',
+    },
+    state: 'firing',
+  };
   assert.equal(monitoringBaselineIsExact([], []), true);
   assert.equal(monitoringBaselineIsExact([alert], []), false);
   assert.equal(monitoringBaselineIsExact([alert, alert], []), false);
   assert.equal(monitoringBaselineIsExact([], [scoped]), false);
-  assert.equal(monitoringBaselineIsExact([], [{
-    ...scoped,
-    labels: {
-      ...scoped.labels,
-      monitoring_scope: 'unrelated',
-    },
-  }]), true);
+  assert.equal(monitoringBaselineIsExact([unrelated], []), false);
+  assert.equal(monitoringBaselineIsExact([], [unrelated]), false);
 });
 
 test('target health requires the exact 35-target server inventory', () => {

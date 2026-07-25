@@ -77,31 +77,35 @@ scrape_configs:
   - job_name: blackbox-https-public
     metrics_path: /probe
     params:
-      module: [https_staging]
+      module: [https_staging_success]
     static_configs:
       - targets: [https://staging.menorah.me/]
-        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: public-site}
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: public-site, probe_module: https_staging_success}
       - targets: [https://www.staging.menorah.me/]
-        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: public-site-www}
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: public-site-www, probe_module: https_staging_success}
       - targets: [https://app.staging.menorah.me/]
-        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: user-web}
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: user-web, probe_module: https_staging_success}
       - targets: [https://admin.staging.menorah.me/]
-        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: admin-web}
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: admin-web, probe_module: https_staging_success}
       - targets: [https://counsellor.staging.menorah.me/]
-        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: counsellor-web}
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: counsellor-web, probe_module: https_staging_success}
       - targets: [https://api-ios.staging.menorah.me/health/ready]
-        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-ios}
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-ios, probe_module: https_staging_ready}
       - targets: [https://api-android.staging.menorah.me/health/ready]
-        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-android}
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-android, probe_module: https_staging_ready}
       - targets: [https://api-web.staging.menorah.me/health/ready]
-        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-web}
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-web, probe_module: https_staging_ready}
       - targets: [https://api-admin.staging.menorah.me/health/ready]
-        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-admin}
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-admin, probe_module: https_staging_ready}
     relabel_configs:
+      - source_labels: [probe_module]
+        target_label: __param_module
       - source_labels: [__address__]
         target_label: __param_target
       - source_labels: [__param_target]
         target_label: instance
+      - target_label: tls_scope
+        replacement: internal-diagnostics
       - target_label: __address__
         replacement: staging-blackbox-exporter:9115
 
@@ -117,6 +121,8 @@ scrape_configs:
         target_label: __param_target
       - source_labels: [__param_target]
         target_label: instance
+      - target_label: tls_scope
+        replacement: internal-diagnostics
       - target_label: __address__
         replacement: staging-blackbox-exporter:9115
 

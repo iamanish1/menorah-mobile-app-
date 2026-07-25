@@ -13,14 +13,28 @@ groups:
           runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#blackboxexporterdown"
 
       - alert: BlackboxProbeCoverageIncomplete
-        expr: (absent(probe_success{job="blackbox-http-internal"}) or count(probe_success{job="blackbox-http-internal"}) < 9) or (absent(probe_success{job="blackbox-tcp-internal"}) or count(probe_success{job="blackbox-tcp-internal"}) < 3) or (absent(probe_success{job="blackbox-https-public"}) or count(probe_success{job="blackbox-https-public"}) < 19) or (absent(probe_success{job="blackbox-https-calls"}) or count(probe_success{job="blackbox-https-calls"}) < 2)
+        expr: >-
+          (absent(probe_success{job="blackbox-http-internal"})
+          or count(probe_success{job="blackbox-http-internal"}) < 9)
+          or (absent(probe_success{job="blackbox-tcp-internal"})
+          or count(probe_success{job="blackbox-tcp-internal"}) < 3)
+          or absent(probe_success{job="blackbox-https-public"})
+          or (count(probe_success{job="blackbox-https-public",monitoring_scope="server-staging"}) > 0
+          and count(probe_success{job="blackbox-https-public",monitoring_scope="server-staging"}) < 9)
+          or (count(probe_success{job="blackbox-https-public",monitoring_scope!="server-staging"}) > 0
+          and count(probe_success{job="blackbox-https-public",monitoring_scope!="server-staging"}) < 19)
+          or absent(probe_success{job="blackbox-https-calls"})
+          or (count(probe_success{job="blackbox-https-calls",monitoring_scope="server-staging"}) > 0
+          and count(probe_success{job="blackbox-https-calls",monitoring_scope="server-staging"}) < 1)
+          or (count(probe_success{job="blackbox-https-calls",monitoring_scope!="server-staging"}) > 0
+          and count(probe_success{job="blackbox-https-calls",monitoring_scope!="server-staging"}) < 2)
         for: 5m
         labels:
           severity: critical
           owner: platform
         annotations:
           summary: "Required blackbox probe coverage is incomplete"
-          description: "At least one required internal, datastore, public, or calls probe target is absent from Prometheus."
+          description: "At least one required internal, datastore, configured HTTPS, or calls probe target is absent from Prometheus."
           runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#blackboxprobecoverageincomplete"
 
       - alert: InternalApiProbeFailed
@@ -121,12 +135,12 @@ groups:
           severity: critical
           owner: platform
         annotations:
-          summary: "Public production endpoint probe failed"
-          description: "{{ $labels.service }} at {{ $labels.instance }} failed its public DNS/TLS/HTTP probe."
+          summary: "Configured HTTPS endpoint probe failed"
+          description: "{{ $labels.service }} at {{ $labels.instance }} failed its configured TLS/routing/HTTP probe."
           runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#publicendpointprobefailed"
 
       - alert: TlsCertificateExpiringSoon
-        expr: (probe_ssl_earliest_cert_expiry{job=~"blackbox-https-public|blackbox-https-calls"} - time()) < 1209600
+        expr: (probe_ssl_earliest_cert_expiry{job=~"blackbox-https-public|blackbox-https-calls",monitoring_scope!="server-staging"} - time()) < 1209600
         for: 30m
         labels:
           severity: warning
