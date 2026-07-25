@@ -39,7 +39,7 @@ const shellPath = process.platform === 'win32'
     'C:\\Program Files\\Git\\bin\\sh.exe',
     'C:\\Program Files\\Git\\usr\\bin\\sh.exe',
   ].find(existsSync)
-  : '/bin/sh';
+  : '/bin/bash';
 
 const sources = Object.freeze({
   backup: read('backup-staging.sh'),
