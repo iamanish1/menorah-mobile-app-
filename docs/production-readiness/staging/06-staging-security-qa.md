@@ -1,10 +1,19 @@
 # Staging security QA
 
-Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
-Initial state: **not run**
+Approved Ubuntu/server and independent assessment state:
+**NOT COLLECTED / NOT RUN**
+
+The exact current
+[security push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293)
+passed 15/15 jobs and 104/104 steps with zero failed, skipped or cancelled
+jobs/steps, but that repository result does not supply DAST, VAPT or server
+evidence. See
+[13-evidence-index.md](./13-evidence-index.md) and the
+[server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md).
 
 This is engineering security regression, not independent VAPT. Independent
 scope and retest are in
@@ -52,9 +61,10 @@ or suppress a result.
 ## Authenticated DAST procedure
 
 Current state: **BLOCKED / EXTERNAL EVIDENCE NOT COLLECTED**. The GitHub
-`staging-security` environment referenced by the workflow is currently absent.
-No DAST variables, secrets, protection rules, reviewer decision or run may be
-inferred. This package does not authorize creation of that environment or any
+environment lookup for `staging-security` returned `404 Not Found`, so the
+environment referenced by the workflow is currently absent. No DAST variables,
+secrets, protection rules, reviewer decision or run may be inferred. This
+package does not authorize creation of that environment or any
 production/provider mutation.
 
 `OWNER ACTION` and security/infrastructure administration must first create a
@@ -85,7 +95,7 @@ set -euo pipefail
 
 readonly GH_REPOSITORY='menorahsoftware-cmyk/menorah-mobile-app-'
 readonly APPROVED_BRANCH='<protected-branch-allowed-by-staging-security>'
-readonly RUNTIME_SHA='0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a'
+readonly RUNTIME_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
 : "${APPROVED_WORKFLOW_HEAD_SHA:?Set the externally recorded protected workflow-head SHA}"
 readonly APPROVED_WORKFLOW_HEAD_SHA
 
@@ -195,7 +205,7 @@ claim a full report that was not produced.
 | `SEC-PROXY-001` | Spoof forwarded IP/proto/host/origin and access internal listener from untrusted network | Only trusted proxy honored; host/origin validation applies; internal endpoints not exposed | Caddy/API and firewall evidence | P0 | NOT RUN |
 | `SEC-HEADERS-001` | Inspect TLS, HSTS on staging-equivalent domain, CSP, framing, MIME sniffing, referrer/cookie flags and CORS | Approved headers/cookies/CORS present without breaking critical journeys | Scanner plus manual browser evidence | P1 | NOT RUN |
 | `SEC-DOS-001` | Bounded concurrency/body-size/slow-request tests under approved rate | Service limits resource use, preserves health and recovers | Host/container graphs and response evidence | P1 | NOT RUN |
-| `SEC-DOCKER-001` | Exercise Docker metrics gateway allowlist and raw inspect/log/archive/export/mutation paths | Only sanitized project-scoped list/state/one-shot stats allowed; all other routes `403` | Gateway tests and isolated network evidence | P0 | NOT RUN |
+| `SEC-DOCKER-001` | Production architecture only: exercise its Docker metrics gateway/exporter boundary; the server-staging overlay deliberately contains neither service | Production gateway exposes only sanitized project-scoped list/state/one-shot stats and rejects all other routes; no server-staging service mounts the Docker socket | Separate production gateway tests; server-staging rendered absence evidence | P0 | NOT APPLICABLE TO SERVER OVERLAY / PRODUCTION EXTERNAL EVIDENCE OPEN |
 | `SEC-SUPPLY-001` | Verify lockfiles, exact image IDs/digests, artifact manifest/checksum and candidate provenance | Running artifacts are immutable and bound to candidate; no moving tag substitutes | Release manifest and checksum | P0 | NOT RUN |
 | `SEC-DEEP-001` | Manipulate web/mobile deep links, callback state and target object after login | Scheme/host/path allowlist and post-login object authorization enforced | Safe denial and app-route evidence | P0 | NOT RUN |
 
@@ -206,14 +216,21 @@ recovery security is executed from
 
 ## Configuration and infrastructure checks
 
-- Confirm MongoDB, Redis, monitoring, dashboards and Docker metrics interfaces
-  have no public listener.
+- Confirm MongoDB, Redis, monitoring and any dashboard interfaces have no
+  public listener. The server-staging overlay has no production Docker metrics
+  gateway/exporter pair and no Uptime Kuma service.
 - Confirm each service has only intended networks, read-only filesystem where
   designed, dropped capabilities, bounded resources and no Docker socket.
-- Confirm the trusted Docker gateway alone has the socket and cannot reach
-  unrelated Compose projects through its exposed API.
-- Confirm staging egress cannot reach production private ranges and only
-  approved sandbox/provider destinations are allowed.
+- Confirm no server-staging service mounts the Docker socket. Validate the
+  production Docker metrics gateway/exporter separately; do not claim its
+  presence or controls from this overlay.
+- Confirm target-host firewall/proxy policy blocks production private ranges
+  and permits only approved sandbox/provider destinations. The Compose
+  `egress` bridge is ordinary NAT-capable Docker networking, not a destination
+  or FQDN allowlist.
+- Confirm the rendered secret boundary: Razorpay only on `staging-api-ios`,
+  RazorpayX only on `staging-api-admin`, the Resend webhook secret only on
+  `staging-api-web`, and no provider secrets on worker, migration or seed.
 - Confirm TLS/certificate, Caddy routes and Cloudflare staging routes match the
   environment inventory.
 - Confirm backups and logs are encrypted/access-controlled and evidence access

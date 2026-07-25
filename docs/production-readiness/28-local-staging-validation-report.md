@@ -1,8 +1,12 @@
 # Local synthetic staging validation report
 
-Report date: **2026-07-24 (Asia/Dubai)**
+Report date: **2026-07-25 (Asia/Dubai)**
 
-Runtime candidate: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+Historical local-staging runtime for sections 1–10:
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` — superseded
+
+Current frozen server-staging-overlay runtime:
+`1ecd0b379369258be466159364a8a48c79fb65aa`
 
 Branch: `release/final-production-readiness`
 
@@ -10,6 +14,13 @@ This report covers only the isolated Docker Desktop environment on the local
 development workstation. It does not authorize a production connection,
 production migration or restore, merge, deployment, provider activation,
 mobile-store submission, or use of real user data.
+
+Sections 1–10 preserve the earlier `0b9f6e4` local rehearsal exactly as
+historical evidence; their observations and totals have not been rewritten or
+attributed to the successor. Section 11 records the successor's separate
+server-staging-overlay validation. No command was run on the shared Ubuntu
+server, no server metadata was collected, and server evidence remains
+**NOT COLLECTED**.
 
 Status terms used below are deliberately distinct:
 
@@ -22,6 +33,10 @@ Status terms used below are deliberately distinct:
   host capability, policy decision, or safe topology was unavailable.
 
 ## 1. Local staging identity
+
+Historical section status: **SUPERSEDED LOCAL EVIDENCE**. The identity and
+counts in sections 1–10 belong only to `0b9f6e4` and the untouched
+`menorah-local-staging` environment.
 
 | Field | Candidate-bound record |
 | --- | --- |
@@ -150,7 +165,7 @@ separation between them was not claimed or tested.
 | Encrypted and signed backup | **RUNTIME PASS** | Stamp `20260724T070020Z`; exit `0`; AES-256-CBC/PBKDF2 archive creation completed in 3.72 seconds; HMAC and content hashes verified without recording keys |
 | Managed-media manifest | **RUNTIME PASS** | Exactly one clearly synthetic byte-bearing fixture was archived and restored; an independent read-only, networkless verifier counted one source and one restored file, returned byte comparison exit `0`, and matched SHA-256 `f6a3696beab87fb37d0ac3bc3db7df406ce7d59149b57c8d7bf724277e604e79` |
 | Separate retrieval storage | **RUNTIME PASS** | Docker volume `menorah-local-staging-retrieval` was used and its retrieved copy verified |
-| Host-readable ownership | **GAP** | A separate restore container read and verified the Docker-managed retrieval volume, but Windows Docker Desktop does not prove numeric ownership/readability at `/srv/menorah-staging/backups` for the eventual Ubuntu host |
+| Host-readable ownership | **GAP** | A separate restore container read and verified the historical Docker-managed retrieval volume, but Windows Docker Desktop did not prove numeric ownership/readability for any eventual Ubuntu host path; the superseded `/srv/menorah-staging/backups` proposal is not the current `/opt/menorah-staging/backups` design |
 | Isolated restore target | **RUNTIME PASS** | Separate restore network plus `restore-mongodb` and `restore-media` volumes; `mongo-restore` started in 9.19 seconds and replica initialization exited `0`; the target was never the main local database |
 | Restore | **RUNTIME PASS** | Exit `0`; 8.72 seconds; 18 collections, 89 documents, 117 indexes; 0 document failures; database and non-empty media manifests matched |
 | Main local database untouched | **RUNTIME PASS** | Final main-database counts exactly matched the pre-restore invariant |
@@ -381,9 +396,10 @@ exact-commit scan result above is exit `0` with 0 findings.
 Every item below was committed and pushed on
 `release/final-production-readiness`. Short SHAs are unique repository commit
 identifiers. Each change invalidated earlier evidence for its affected scope;
-only the final candidate results elsewhere in this report are authoritative.
-The table names the principal changed files; the complete exact inventory for
-any row is reproducible with `git show --name-only <commit>`.
+the table is now preserved as the historical path to the superseded
+`0b9f6e4` local candidate. It is not the successor runtime ledger. The table
+names the principal changed files; the complete exact inventory for any row is
+reproducible with `git show --name-only <commit>`.
 
 | Commit | Severity and principal changed files | Gate defect / reproduction | Fix and regression evidence | Disposition |
 | --- | --- | --- | --- | --- |
@@ -440,7 +456,88 @@ and four of six runs). They are not represented as fully green exact-SHA
 candidates; later cumulative and final candidates supplied the authoritative
 successful checks.
 
-## 11. SHA history, workflows, and PR #2
+## 11. Successor Phase 11 validation, SHA history, workflows, and PR #2
+
+The frozen successor runtime is
+`1ecd0b379369258be466159364a8a48c79fb65aa`. Its server-staging overlay was
+validated locally under exact project
+`menorah-server-staging-validation`; it was never run on the shared server.
+
+### Phase 11 result
+
+| Phase 11 assertion | Result | Successor evidence |
+| --- | --- | --- |
+| 1. Clean checkout | PASS | Exact runtime tree was clean before generated ignored validation state |
+| 2. Overlay renders | PASS | Static validator rendered 32 services |
+| 3. No production reference | PASS | Production metadata fixture collisions: 0 |
+| 4. All services build | PASS | All-profile build passed |
+| 5. Required services start | PASS | Exact retained inventory established |
+| 6. Services healthy | PASS | 22 healthy long-running services; four expected exited-zero one-shots; zero bad state |
+| 7. Migration runs once | PASS | 11 migrations applied |
+| 8. Second migration is safe | PASS | The same 11 migrations skipped |
+| 9. Synthetic seed | PASS | Ten users, three counsellors and two applications created; duplicate invocation refused |
+| 10. Backup and restore | PASS | Backup `20260725T125008Z`; six writers quiesced/recovered; 18 collections/59 restored documents, zero failures |
+| 11. All 20 alerts | PASS | 20 fired/resolved in Prometheus and Alertmanager; 35/35 targets healthy |
+| 12. Smoke suites | PASS | Playwright 9/9 and API 31/31, including MFA and role authentication |
+| 13. Resource limits | PASS | Default runtime: 7,008 MiB limit, 1,984 MiB reservation, 6.30 CPU, 2,832 PIDs; all-profile static: 8,736/2,448 MiB, 7.65 CPU, 3,536 PIDs |
+| 14. MongoDB/Redis ports | PASS | No host publication |
+| 15. Administrative bindings | PASS | All 117 published port instances loopback-only |
+| 16. Networks/volumes isolated | PASS | Default graph references 19 volumes; retained post-migration runtime used five networks/20 volumes including `staging-migration-temp`; recovery/all-profile used six/21 after adding the restore network and `staging-restore-mongodb` |
+| 17. Fixture collisions | PASS | Zero |
+| 18. Shell syntax | PASS | All server-staging shell entry points parsed |
+| 19. ShellCheck | PASS | 23 workflow-selected shell files passed; Bash syntax passed 54/54 repository-wide and 48/48 in workflow scope |
+| 20. Compose/Caddy | PASS | Render and Caddy validation passed |
+| 21. Workflow validators | PASS | Release/workflow contracts 432/432; actionlint 6/6; pinned Linux recovery 34/34 |
+| 22. GitHub gates | PASS | Readiness, functional and security push runs all terminal success |
+| **Total** | **22/22 PASS** | **0 failed; 0 blocked** |
+
+The static isolation summary was 32 services, six networks, 21 volumes, 117
+loopback published port instances, ten ingress hosts and 20 required P0
+alerts, with zero production collisions. The final exact teardown left zero
+validation containers, networks and volumes.
+
+Additional exact-candidate gates passed: tracked blobs 1,131/1,131;
+tunnel 22/22; managed Mongo 22/22; monitoring 42/42; rate-limit 4/4; backend
+default 117 suites/1,716 tests and disposable integration 13 suites/45 tests
+with no skips; mobile payment 7/7, release configuration 21/21 and Expo Doctor
+19/19. Seven production audit-policy roots passed. Full-history Gitleaks found
+zero leaks across 427 commits, Semgrep found zero issues across 77 OWASP
+rules/614 files, four exact-candidate Trivy image scans found zero
+HIGH/CRITICAL issues, and four CycloneDX 1.6 SBOMs parsed successfully.
+
+The legacy local project remained unchanged at 26 containers (23 running and
+three exited zero), five networks and 12 volumes. Its exact container-ID set
+SHA-256 remained
+`109629e5dc63c8581268c42bd18765ccd38921aeb50366d8a752019a25c06ff4`.
+
+### Frozen successor GitHub runs
+
+All three exact-SHA push runs passed, totalling 25/25 jobs and 204/204 steps,
+with zero failed, skipped or cancelled jobs/steps:
+
+- Readiness:
+  [30158172303](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172303)
+  attempt 2,
+  1/1 jobs and 11/11 steps.
+- Functional:
+  [30158172290](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290)
+  attempt 2,
+  9/9 jobs and 89/89 steps.
+- Security:
+  [30158172293](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293),
+  15/15 jobs and 104/104 steps.
+
+The readiness and functional first attempts failed with zero jobs because
+GitHub returned internal-server errors. Their exact workflow blobs were
+unchanged and passed actionlint; unchanged attempt-2 reruns passed every job
+and step. No repository change or waiver was used. The exact runtime
+deployment query returned `[]`.
+
+The documentation HEAD is the documentation-only successor commit containing
+this report; resolve it externally with `git rev-parse HEAD`. That commit must
+also pass its triggered workflows. PR #2 remains draft and unmerged.
+
+### Historical pre-successor SHA record
 
 | Field | Record |
 | --- | --- |
@@ -450,15 +547,21 @@ successful checks.
 | Superseded documentation head | `2f2c6e45608300a05443aa7a95d2fd4513e28b71`; invalidated because it documented the superseded runtime |
 | Superseded runtime candidate | `a9ea55ea85ab3bd91e68797256e0b8fc9f677966`; invalidated by the monitoring-visibility fix |
 | Superseded runtime candidate | `fbf2de8c5bb3e50e41fcaa6bc75f739cfdc0aca2`; invalidated by the proxy-log readability fix |
-| Final runtime candidate | `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` |
+| Historical final local-staging runtime | `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`; superseded by the server-staging overlay |
+| Superseded server-staging candidate | `a1bc1b6ec751926edc9981f57762277060acf9e4`; invalidated by 21 later runtime/config/test/lockfile commits |
+| Intermediate defect-evidence SHA | `299fbf5060392a1ed934bf8448be16057f4194a0`; failed the Linux recovery and brace-advisory gates |
+| Focused Linux-test fix | `fbf2611fe537728f590285fbf83aef04a03e60df`; one recovery-test file |
+| Current frozen runtime candidate | `1ecd0b379369258be466159364a8a48c79fb65aa` |
 | Runtime-to-documentation rule | The successor may change only `docs/**` and `menorah/docs/**`; executable/runtime drift requires a new runtime candidate and complete invalidation |
 | PR | [#2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/pull/2) |
 | PR state at runtime freeze | `OPEN`, `DRAFT`, `MERGEABLE`, `CLEAN`, not merged |
+| PR auto-merge at runtime freeze | Disabled (`autoMergeRequest=null`) |
 | PR base | `main` at `8e292f2de421bc4a0aa148742bbd3cfa82647aa1` |
 | Review state at runtime freeze | No reviewers, reviews, comments, labels, or assignees |
 
-All six final-runtime workflow runs succeeded on their first attempt, 50/50
-jobs and 404/404 steps:
+The six workflow runs below succeeded for historical runtime `0b9f6e4` on
+their first attempt, 50/50 jobs and 404/404 steps. They are preserved as
+superseded evidence:
 
 - Push readiness: [run 30069836961](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069836961), 1/1 jobs and 10/10 steps.
 - Push functional: [run 30069836968](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069836968), 9/9 jobs and 88/88 steps.
@@ -467,16 +570,20 @@ jobs and 404/404 steps:
 - PR functional: [run 30069839619](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069839619), 9/9 jobs and 88/88 steps.
 - PR security: [run 30069839629](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069839629), 15/15 jobs and 104/104 steps.
 
-The documentation-only successor must also pass its own triggered workflows,
-and PR #2 must be updated with its exact head. Nothing in this report
-authorizes merging the draft.
+Those historical runs do not replace the current successor runs above.
+Nothing in this report authorizes merging the draft.
 
 ## 12. Local staging verdict
 
+Current successor status: **SERVER STAGING DESIGN COMPLETE — DISCOVERY
+REQUIRED**.
+
+Superseded pre-overlay verdict:
 **LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**
 
-This verdict means the pinned candidate passed the exercised isolated local
-runtime gates. It does not convert any **GAP** or **BLOCKED** item into a pass.
+This verdict means both the preserved local-staging rehearsal and the frozen
+successor's complete local Phase 11 scope passed as stated. It does not convert
+server evidence or any **GAP** or **BLOCKED** item into a pass.
 
 ## 13. What local Docker did not prove
 
@@ -490,8 +597,8 @@ The local run did not prove:
 - DNS, Cloudflare Tunnel, origin TLS, firewall, public routing, bypass
   resistance, certificate renewal, or external probes;
 - the production probe rule's required 19 public HTTPS targets plus two call
-  targets; the local `BlackboxProbeCoverageIncomplete` baseline remains a
-  server-staging gate;
+  targets; the local staging rule correctly proved its separate nine-public
+  plus one-calls contract and returned to a zero-alert baseline;
 - off-host backup custody, whole-host disaster recovery, repeated recovery
   performance, or an approved RPO/RTO;
 - real Razorpay/RazorpayX, Resend, regional call fallback, Cloudinary, face,
@@ -504,161 +611,107 @@ The local run did not prove:
 - distinct administrator versus super-administrator role semantics; two
   synthetic aliases used the same full-admin role;
 - protected alert delivery, human acknowledgement/escalation, on-call rota,
-  Uptime Kuma, complete protected logs, or India location/retention;
+  separately operated Uptime Kuma, complete protected logs, or India
+  location/retention;
 - full-history secret custody, independent VAPT, remediation retest, or
   residual-risk approval;
 - owner, finance, legal, privacy, clinical, vendor, Apple, Google, ISO/ISMS,
   or business-continuity decisions; or
 - production data safety, production availability, or production readiness.
 
-Windows-specific blockers also remain: the complete native monitoring command
-mutates Docker state and was intentionally decomposed into safe local phases;
-the backup lifecycle shell harness requires Linux `flock`; the media
-permission transition requires root Linux/`setpriv`; and production
-API/auth/provider scripts were deliberately excluded.
+Windows Git Bash could not faithfully supply Linux `flock`, symlink and
+root/`setpriv` semantics. Those repository checks were therefore rerun and
+passed in the pinned, network-isolated `node:22-bookworm` Linux image; native
+Prometheus, Alertmanager, Blackbox and Loki validation also passed. That
+removes a local reproduction ambiguity but does not establish Ubuntu-server
+behavior.
 
-## 14. Server staging plan
+## 14. Server-staging design and discovery gate
 
-Status: **BLOCKED PENDING A REVIEWED CO-HOST-SAFE DESIGN OR, PREFERABLY, A
-SEPARATE STAGING VM/HOST**.
+Status: **SERVER STAGING DESIGN COMPLETE — DISCOVERY REQUIRED**.
 
-The current production topology is unsafe to reuse as-is for a second Compose
-project. The reviewed definition contains shared external-network assumptions,
-root/Docker-socket/host-log exposure, host timers, hard-coded production
-checks, insufficient egress isolation, missing resource limits, and local seed
-identity assumptions. None may be tested against production under this task.
+The authoritative design and exact inspection-only command are in
+[29-server-staging-design-and-discovery-runbook.md](./29-server-staging-design-and-discovery-runbook.md).
+No shared-server discovery was run while preparing this report. No server
+directory, environment, secret, network, volume, container, listener,
+database, cache, DNS record, Cloudflare route, provider account or production
+resource was changed. Server evidence is **NOT COLLECTED**.
 
-The concrete co-host blockers and required successor design are:
-
-| Boundary | Current blocker | Required co-host successor condition |
-| --- | --- | --- |
-| Edge network | Production Compose attaches to fixed external `mentle_internal` | A reviewed override must use a uniquely labelled `menorah-staging-edge` network with non-overlapping IPAM; no staging service may attach to the production network |
-| Docker daemon | `docker-metrics-gateway` mounts the shared host Docker socket | Omit it for co-host staging or provide an independently reviewed constrained metrics boundary; otherwise a separate host is mandatory |
-| Host services | Backup/update units use fixed `menorah-*` names | Namespace every staging unit/timer `menorah-staging-*`, or keep automation disabled and use approved manual staging-only commands |
-| Ports | Production defaults would collide | Proposed staging bindings are loopback TCP `22345`, `23001`–`23003`, `23100`, `27880`, `27881`, `28080`–`28084`, `28443`, `29090`, `29093`, and UDP `25000`–`25100`; every listener must be proven free before `up` |
-| Secrets/config | Several production defaults can resolve outside the staging root | Canonical, non-symlink files must live under `/etc/menorah-staging/secrets/`, including Mongo keyfile, LiveKit, Alertmanager and Tunnel material, with approved owners/modes |
-| Storage/state | String prefixes alone do not prove canonical isolation | Canonicalize and label `/srv/menorah-staging/{data,backups,deploy-state}` plus every named volume; reject any production bind, volume or backup root |
-| Capacity | Most production services lack complete limits | Set and review CPU, memory and PID limits for every service/one-shot, disk reservations and stop thresholds from a host-capacity worksheet before a successor candidate is frozen |
-| Providers/egress | Sandbox/disabled state is not complete for every provider | Fail closed on an exact Razorpay/Resend/LiveKit/optional-provider matrix, staging domains and permitted egress; retain redacted account attestations |
-| Environment parser | Existing procedure sources Docker dotenv as Bash | Add a non-executing structured dotenv validator before any protected value is consumed |
-| Synthetic bootstrap | Current server package prohibits the local seed/admin harness | Add a reviewed, target-bound, value-free staging bootstrap with the bounded fake roster; until then server functional QA remains blocked |
-| Production invariance | Project-scoped checks do not prove the live project stayed unchanged | Capture safe before/after IDs, health/restarts, mounts, networks, listeners and unit/timer metadata for independent comparison |
-
-Required isolated identities are:
-
-| Boundary | Required staging identity |
+| Boundary | Frozen repository design |
 | --- | --- |
+| Runtime | `1ecd0b379369258be466159364a8a48c79fb65aa` |
 | Compose project | `menorah-staging` |
-| Checkout | `/srv/menorah-staging/repository` |
-| Application environment | `/etc/menorah-staging/staging.env` |
-| Cloudflare environment | `/etc/menorah-staging/cloudflare.env` |
-| Data root | `/srv/menorah-staging/data` |
-| Backup root | `/srv/menorah-staging/backups` |
-| Deployment state | `/srv/menorah-staging/deploy-state` |
-| Database/cache | Separate staging MongoDB and Redis |
-| Networks/volumes/domains/providers | Unique staging-only resources, sandbox/stub providers, synthetic data only |
+| Root | `/opt/menorah-staging` |
+| Checkout/environment | `/opt/menorah-staging/app`; `/opt/menorah-staging/env/server-staging.env` |
+| State roots | `/opt/menorah-staging/{data,backups,deploy-state,logs}` |
+| Networks | Six isolated ingress, app, data, monitoring, restore and egress networks; default runtime uses five; provisional CIDRs require real-host review |
+| Volumes | 21 staging-only volumes covering application/data, database/cache, media, backup/retrieval/restore, monitoring, Caddy, logs and deployment state |
+| Ports | Loopback-only TCP bindings and an isolated LiveKit UDP range; exact values remain provisional until Step B proves the host collision-free |
+| Ingress | Ten staging-only hostnames with exact Caddy and Tunnel target contracts |
+| Database/cache | `menorah_staging`, replica sets `menorah-staging-rs` and `menorah-staging-restore-rs`, exact MongoDB users, Redis ACL user `menorah-staging-app` |
+| Monitoring | Separate stores; labels `environment=staging`, `stack=menorah-staging`, `monitoring_scope=server-staging`; 20 P0 alerts |
+| Recovery | Independent image manifests, current/last-good/migration/identity/rollback/recovery markers and locks below the staging deployment-state root |
 
-Required next sequence:
+The egress bridge is NAT-capable, not destination/FQDN-restricted, so
+server-firewall or proxy evidence remains mandatory. Local LiveKit bindings
+are loopback-only and do not prove the reviewed non-loopback/public media path
+that a real server may require.
 
-1. For the requested existing Ubuntu server, design and independently approve
-   a collision-free co-host overlay. If that review cannot prove the shared
-   daemon/host boundary safe, use a separate staging VM/host instead.
-2. Freeze the runtime candidate and exact documentation/PR head; prove
-   ancestry and a documentation-only tree difference.
-3. Provision least-privilege identities, non-overlapping networks, unique
-   domains, staging-only environment files, resource and egress limits, and
-   sandbox provider accounts.
-4. Prove by safe metadata only that no production environment, database,
-   Redis, credential, volume, path, network, domain, or provider is referenced.
-5. Render and review the full configuration without printing secret values.
-6. Execute deployment, migrations, synthetic seed, health, functional,
-   provider, recovery, monitoring, mobile, and security plans.
-7. Retain redacted evidence, resolve every failure, rerun affected gates, and
-   hold the documented staging go/no-go review.
+Static validation covers projects/labels, ports/listeners, network names/CIDRs,
+volumes/canonical roots, database/replica-set/users/URIs, Redis ACL/URL,
+Caddy/Tunnel routes, backup/restore metadata and locks, deployment markers,
+monitoring targets/stores, alert receivers, providers, callbacks, origins,
+public URLs, buckets, environment files and process authority. The repository
+fixture has zero collisions. Only actual Step A output can establish the real
+host input to Step B.
 
-An executable existing-server deployment plan is **BLOCKED** until the co-host
-design exists and is approved. The exact safe handoff available now is the
-following non-accepting, value-free discovery preflight; it deliberately ends
-in **NO-GO** and is not a deployment command set or a co-host-safety proof. Run
-it only on the approved Ubuntu server, never from this desktop, with shell
-tracing disabled:
+- **Step A:** run only the non-mutating discovery command, return redacted
+  output and change nothing.
+- **Step B:** require explicit collision result `PASS` and named human
+  approval; any collision is `NO-GO`.
+- **Step C:** only after approval, prepare the reviewed `/opt/menorah-staging`
+  roots, environment/secrets, ownership, domains and providers.
+- **Step D:** dry-render Compose/Caddy/Tunnel, limits and collisions without
+  starting services.
+- **Step E:** only after a second approval, deploy the exact SHA and prove
+  migration, synthetic initialization, health and production invariance.
+- **Step F:** prove Ubuntu ownership, backup/restore, interruption,
+  crash-resume, rollback/recovery, DNS/TLS/Tunnel, alerts/human delivery,
+  systemd/timers, contention and provider sandbox callbacks.
+- **Step G:** target only project `menorah-staging`, verify production before
+  and after, remove only staging-labelled resources, preserve evidence and
+  obtain separate explicit approval before deleting any staging volume.
 
-Any new co-host overlay, resource-limit or egress-isolation file is a runtime
-change. It must be committed on the release branch, freeze a successor runtime
-SHA and repeat the complete local candidate evidence before these commands may
-accept it; `0b9f6e4` must not be deployed to the shared server as-is.
+The exact recovery acknowledgement is
+`MENORAH_STAGING_RECOVERY_ACK=RESUME_EXACT_MENORAH_STAGING_SHA_AFTER_MIGRATION`.
+The existing `menorah-local-staging` project is outside this procedure and
+must remain untouched.
 
-```bash
-set -euo pipefail
-umask 077
+### Superseded pre-overlay assessment
 
-readonly RUNTIME_SHA='0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a'
-readonly CANDIDATE_BRANCH='release/final-production-readiness'
-readonly STAGING_REPO='/srv/menorah-staging/repository'
-readonly STAGING_ENV='/etc/menorah-staging/staging.env'
-readonly STAGING_CF_ENV='/etc/menorah-staging/cloudflare.env'
-readonly STAGING_SENTINEL='/etc/menorah-staging/STAGING_HOST'
-readonly APPROVED_COMPOSE_PROJECT='menorah-staging'
-: "${APPROVED_PR_HEAD_SHA:?Set the exact reviewed PR #2 documentation HEAD}"
-readonly APPROVED_PR_HEAD_SHA
+The earlier `0b9f6e4` assessment correctly concluded that the production
+Compose definition could not be reused as a second project. At that time the
+repository lacked the dedicated overlay, authority guards, canonical staging
+roots, full resource limits, structured environment loader, isolated
+identities and production-invariance controls now present in the frozen
+successor. Its provisional roots, ports and inline command were rejected and
+have been removed rather than carried forward as operational guidance.
 
-test -f "${STAGING_SENTINEL}"
-grep -qx 'MENORAH_STAGING_ONLY' "${STAGING_SENTINEL}"
-test "$(readlink -f -- "${STAGING_ENV}")" = "${STAGING_ENV}"
-test "$(readlink -f -- "${STAGING_CF_ENV}")" = "${STAGING_CF_ENV}"
-test "$(stat -c '%a' "${STAGING_ENV}")" = '600'
-test "$(stat -c '%a' "${STAGING_CF_ENV}")" = '600'
-test "$(stat -c '%U:%G' "${STAGING_ENV}")" = 'root:menorah-staging'
-test "$(stat -c '%U:%G' "${STAGING_CF_ENV}")" = 'root:menorah-staging'
-test -d "${STAGING_REPO}/.git"
-cd "${STAGING_REPO}"
+The obsolete identity table was removed. Use only the frozen
+`/opt/menorah-staging` identities above.
 
-git fetch --prune origin \
-  "+refs/heads/${CANDIDATE_BRANCH}:refs/remotes/origin/${CANDIDATE_BRANCH}"
-test "$(git rev-parse "refs/remotes/origin/${CANDIDATE_BRANCH}")" \
-  = "${APPROVED_PR_HEAD_SHA}"
-test "$(git rev-parse HEAD)" = "${APPROVED_PR_HEAD_SHA}"
-test -z "$(git status --porcelain)"
-git merge-base --is-ancestor "${RUNTIME_SHA}" "${APPROVED_PR_HEAD_SHA}"
-git diff --quiet "${RUNTIME_SHA}..${APPROVED_PR_HEAD_SHA}" -- \
-  . ':(exclude)docs/**' ':(exclude)menorah/docs/**'
+The current next sequence is the Step A–G gated procedure above and in
+runbook 29.
 
-# Safe metadata inventories for the independent collision review.
-docker ps -a \
-  --format '{{.Label "com.docker.compose.project"}}|{{.Names}}|{{.Ports}}'
-docker network ls --format '{{.Name}}|{{.Driver}}|{{.Scope}}'
-docker volume ls --format '{{.Name}}|{{.Driver}}'
+No server step beyond inspection-only Step A is currently eligible.
 
-for port in 22345 23001 23002 23003 23100 27880 27881 \
-  28080 28081 28082 28083 28084 28443 29090 29093; do
-  if ss -H -ltn "sport = :${port}" | grep -q .; then
-    echo "Required staging TCP port is already in use: ${port}" >&2
-    exit 1
-  fi
-done
-for port in $(seq 25000 25100); do
-  if ss -H -lun "sport = :${port}" | grep -q .; then
-    echo "Required staging UDP port is already in use: ${port}" >&2
-    exit 1
-  fi
-done
+The overlay now exists and passed local validation, but actual server
+collision review remains **BLOCKED PENDING STEP A OUTPUT**. Use only the exact
+inspection-only command in runbook 29. Do not reconstruct the removed
+pre-overlay command.
 
-echo 'NO-GO: reviewed co-host overlay and successor runtime SHA do not exist' >&2
-exit 1
-```
-
-The inventory contains names, project labels and ports only. Any
-production/staging name, path, port, network,
-volume, database, Redis, credential, provider, domain, CPU/memory or egress
-collision stops the handoff. The current discovery preflight always returns
-NO-GO; it cannot authorize deployment or accept `0b9f6e4`. After a named co-host
-overlay is committed as a successor runtime, the full local suite is rerun,
-and the overlay path and successor SHA are added to a separately reviewed
-fail-closed validator, independently adapt and review
-[the staging deployment procedure](./staging/03-staging-deployment-procedure.md)
-for the shared-server boundary. Do not run its deployment commands on the
-production host as currently written, and do not improvise a second Compose
-project from the current production files.
+Any production/staging name, path, port, network, volume, database, Redis,
+credential, provider, domain, capacity or egress collision stops the handoff.
 
 Explicit prohibitions remain: no production volume, database, Redis,
 environment file, provider credential, user data, counsellor data, health

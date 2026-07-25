@@ -1,6 +1,6 @@
 # Production-readiness remediation plan
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-07-25.
 
 ## Purpose and release posture
 
@@ -35,6 +35,19 @@ account, notification path, backup or store release has been verified.
 6. Record failed, skipped and blocked checks as prominently as passing checks.
 7. A policy-dependent technical control stays gated until the policy owner
    approves its inputs.
+
+## Current frozen boundary
+
+The repository-controlled runtime is frozen at
+`1ecd0b379369258be466159364a8a48c79fb65aa`. Exact push runs
+`30158172303`, `30158172290` and `30158172293` passed 25/25 jobs and
+204/204 steps. The functional run recorded 117/117 default backend suites with
+1,716/1,716 tests, 13/13 disposable integration suites with 45/45 tests and
+432/432 core release-contract tests. This completes the current
+repository-controlled remediation evidence; it does not complete server
+discovery, dry render, Ubuntu deployment, DNS/Cloudflare, secret custody,
+provider sandboxes, physical devices, VAPT, owner, legal/privacy, clinical,
+Apple, Google, vendor or ISO evidence.
 
 ## Priority plan
 
@@ -88,7 +101,7 @@ Repository controls in this candidate include:
 
 - JSON readiness checks are probed through Blackbox rather than scraped as
   Prometheus text;
-- 14 Prometheus scrape jobs, 53 validated rules and 26 coverage records;
+- 14 Prometheus scrape jobs, 69 validated rules and 26 coverage records;
 - severity, owner and runbook metadata for alerts;
 - a project-scoped Docker metrics gateway that exposes only a sanitized
   container list, sanitized state and one-shot stats to the exporter;
@@ -137,6 +150,12 @@ Work:
 Actual GitHub rules, Cloudflare, DNS, firewall, host permissions and external
 accounts are `OWNER ACTION`, `INFRASTRUCTURE ACTION` or `VENDOR ACTION`.
 
+At the frozen candidate, the affected Expo-path `brace-expansion` production
+nodes are patched from 5.0.7 to 5.0.8 in both mobile lockfiles. All seven
+production audit-policy roots passed. The remaining reviewed mobile exception
+is the moderate transitive `uuid` advisory `GHSA-w5hq-g745-h8pq`, constrained
+to the approved Expo dependency set and expiring 2026-10-31.
+
 ### Phase 4 — privacy, clinical, payments and continuity governance
 
 Technical workflows must remain conservative until approved inputs exist:
@@ -167,16 +186,24 @@ Entry criteria:
   treatment decision;
 - migrations, backup and restore procedures are approved for staging.
 
-Run the sequence in [the final QA plan](./07-final-qa-plan.md), then:
+The local synthetic sequence in
+[the final QA plan](./07-final-qa-plan.md) is complete for the frozen
+candidate. The next permissible technical step is only the checksum-pinned
+temporary download and read-only discovery command in
+[the server-staging design and discovery runbook](./29-server-staging-design-and-discovery-runbook.md).
+After the returned inventory passes every collision class and receives the
+first human approval:
 
-1. build content-addressed artifacts from one exact SHA;
-2. deploy only to isolated staging;
-3. run migrations once against a disposable or approved staging copy;
-4. execute authentication, authorization, booking, payment, call, chat,
+1. prepare only the approved staging roots and protected inputs;
+2. complete a no-start dry render for the exact frozen SHA;
+3. obtain the separate deployment approval;
+4. build content-addressed artifacts and deploy only to isolated staging;
+5. run migrations once against the approved staging copy;
+6. execute authentication, authorization, booking, payment, call, chat,
    privacy, monitoring and recovery scenarios;
-5. run provider test-mode reconciliation;
-6. complete independent VAPT and closure retest;
-7. preserve redacted results by suite, command, SHA and environment.
+7. run provider test-mode reconciliation;
+8. complete independent VAPT and closure retest;
+9. preserve redacted results by suite, command, SHA and environment.
 
 Any candidate change invalidates downstream build, VAPT and acceptance
 evidence.

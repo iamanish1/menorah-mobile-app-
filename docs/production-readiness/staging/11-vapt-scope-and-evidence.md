@@ -1,12 +1,23 @@
 # VAPT scope and evidence
 
-Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
+
+Independent VAPT authorization, execution and closure retest are
+**NOT COLLECTED / VAPT ACTION REQUIRED**. Do not begin testing until the
+approved server-staging target exists under the
+[server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md).
 
 Required action: `VAPT ACTION`
 
 Initial state: **not commissioned / not run**
+
+The candidate-bound
+[security push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293)
+passed 15/15 jobs and 104/104 steps with no failed, skipped or cancelled
+jobs/steps. It is supporting automated repository evidence only and does not
+change the independent VAPT state.
 
 Independent VAPT must assess the immutable candidate deployed to the approved
 isolated staging environment. Repository tests, automated scanners and an
@@ -116,7 +127,9 @@ confirm the new immutable staging build, retest every affected finding and
 perform agreed regression around the changed boundary. Any report for
 historical SHA `3fb99858c6766a341bb7b7dab2377195427f0ea1` remains historical
 and cannot be relabelled for
-`48fb83c248b0e969e699433a8bacdd276ed4311d` or any later runtime SHA.
+historical successor `48fb83c248b0e969e699433a8bacdd276ed4311d`,
+current runtime `1ecd0b379369258be466159364a8a48c79fb65aa` or any later
+runtime SHA.
 
 ## Required deliverables
 

@@ -1,10 +1,20 @@
 # Staging functional QA
 
-Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
-Initial state: **not run**
+The exact candidate-bound
+[functional push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290)
+passed 9/9 jobs and 89/89 steps. Candidate-bound repository/local evidence
+also passed 117 backend suites with 1,716 tests, 13 disposable-integration
+suites with 45 tests, 31/31 API-smoke assertions and 9/9 Playwright cases.
+Those are automated and local scopes, not completed rows in the functional
+matrix. Approved Ubuntu/server, real-sandbox-provider and physical-device
+functional evidence remains **NOT COLLECTED**; use the
+[server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md).
+
+Server/external matrix state: **not run**
 
 Use the aliases and fixtures in
 [04-staging-data-and-test-accounts.md](./04-staging-data-and-test-accounts.md).
@@ -126,28 +136,38 @@ printed or committed.
 set -euo pipefail
 umask 077
 
-readonly RUNTIME_SHA='0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a'
-readonly REPO='/srv/menorah-staging/repository'
-readonly STAGING_ENV='/etc/menorah-staging/staging.env'
-readonly QA_ENV='/etc/menorah-staging/qa.env'
-: "${APPROVED_PR_HEAD_SHA:?Set the externally recorded deployed docs/PR-head SHA}"
-readonly APPROVED_PR_HEAD_SHA
+readonly RUNTIME_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
+readonly REPO='/opt/menorah-staging/app'
+readonly STAGING_ENV='/opt/menorah-staging/env/server-staging.env'
+readonly QA_ENV='/opt/menorah-staging/env/qa.env'
 
 [[ "${RUNTIME_SHA}" =~ ^[0-9a-f]{40}$ ]]
-[[ "${APPROVED_PR_HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]]
-test "$(git -C "${REPO}" rev-parse HEAD)" = "${APPROVED_PR_HEAD_SHA}"
-git -C "${REPO}" merge-base --is-ancestor \
-  "${RUNTIME_SHA}" "${APPROVED_PR_HEAD_SHA}"
-git -C "${REPO}" diff --quiet \
-  "${RUNTIME_SHA}..${APPROVED_PR_HEAD_SHA}" -- \
-  . ':(exclude)docs/**' ':(exclude)menorah/docs/**'
-test -z "$(git -C "${REPO}" status --porcelain)"
-grep -qx 'MENORAH_STAGING_ONLY' /etc/menorah-staging/STAGING_HOST
+test "$(git -C "${REPO}" rev-parse HEAD)" = "${RUNTIME_SHA}"
+test -z "$(git -C "${REPO}" status --porcelain --untracked-files=all)"
 test -r "${STAGING_ENV}" && test -r "${QA_ENV}"
+test ! -L "${STAGING_ENV}" && test ! -L "${QA_ENV}"
+node "${REPO}/menorah/deploy/server-staging/validate-environment.mjs" \
+  --env "${STAGING_ENV}" >/dev/null
+
+environment_load_complete=''
+while IFS= read -r -d '' environment_key \
+  && IFS= read -r -d '' environment_value
+do
+  if [[ "${environment_key}" == \
+    'MENORAH_SERVER_STAGING_DOTENV_LOAD_COMPLETE' ]]; then
+    environment_load_complete="${environment_value}"
+    continue
+  fi
+  printf -v "${environment_key}" '%s' "${environment_value}"
+  export "${environment_key?}"
+done < <(
+  node "${REPO}/menorah/deploy/server-staging/load-environment.mjs" \
+    --emit0 "${STAGING_ENV}"
+)
+test "${environment_load_complete}" = 'safe-dotenv-v1'
+unset environment_key environment_value environment_load_complete
 
 set -a
-# shellcheck disable=SC1090
-. "${STAGING_ENV}"
 # shellcheck disable=SC1090
 . "${QA_ENV}"
 set +a

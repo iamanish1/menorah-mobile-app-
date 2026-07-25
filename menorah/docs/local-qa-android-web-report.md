@@ -3,12 +3,17 @@
 > **Historical evidence only.** This report predates the replacement
 > `48fb83c248b0e969e699433a8bacdd276ed4311d`, the later
 > `a9ea55ea85ab3bd91e68797256e0b8fc9f677966`,
-> `fbf2de8c5bb3e50e41fcaa6bc75f739cfdc0aca2`, and final
-> `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`, as well as the isolated
+> `fbf2de8c5bb3e50e41fcaa6bc75f739cfdc0aca2`, and former
+> `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` and
+> `a1bc1b6ec751926edc9981f57762277060acf9e4`, as well as the isolated
 > `menorah-local-staging` Docker
 > topology. Its results, ports and Cloud Run follow-up plan are not evidence for
-> the current candidate and must not be relabelled. Current candidate-bound
-> results belong in
+> the current candidate and must not be relabelled. The current frozen runtime
+> is `1ecd0b379369258be466159364a8a48c79fb65aa`; its co-host-safe overlay is
+> locally validated, while Ubuntu discovery and server evidence remain
+> uncollected. Its current local API smoke passed 31/31 and Playwright passed
+> 9/9; those results do not replace physical-device or server proof. Current
+> candidate-bound results belong in
 > [the local staging validation report](../../docs/production-readiness/28-local-staging-validation-report.md).
 
 ## Summary
@@ -29,27 +34,28 @@ All local API and web/admin automated checks now pass. The remaining partial sta
 
 ## Merge Status
 
-Do not merge this branch to `main` yet. The branch is local-staging-ready, but not production-ready.
+Do not merge this branch to `main` yet. The current candidate is locally
+validated but **NOT READY** for public production. The Cloud Run plan below
+belongs only to this historical report and is not a current deployment path.
 
-External validation still required:
+Current external blockers are:
 
-- Public DNS/proxy wiring.
-- Cloud Run staging deploy.
-- Cloud Run standby worker validation.
-- Cloud Run REST-only validation.
-- Public HTTPS health checks.
-- Android emulator QA.
-- iOS simulator or real-device QA.
+- checksum-pinned read-only Ubuntu discovery and collision review;
+- approved no-start dry render and separately approved server-staging
+  deployment;
+- protected secrets, DNS/Cloudflare, firewall/TLS and alert-delivery evidence;
+- payment, payout, email, media and call provider sandbox evidence;
+- Android and iOS physical-device testing;
+- independent VAPT and closure retest;
+- named owner, legal/privacy and clinical approvals;
+- Apple and Google store/account evidence;
+- vendor assurance/exit evidence; and
+- operated ISO/ISMS/BCM evidence.
 
-Next technical phase: create staging Cloud Run services first, not production services:
-
-- `staging-menorah-api-ios`
-- `staging-menorah-api-android`
-- `staging-menorah-api-web`
-- `staging-menorah-api-admin`
-- `staging-menorah-worker`
-
-Cloud Run staging must prove `/health/ready` returns `200` on all APIs, worker stays standby, `/socket.io/` is not exposed, iOS subscription Razorpay routes remain `404`, admin login works with a seeded staging admin, and `/health/deep` leaks no secrets.
+The next permissible technical step is only the immutable-URL, SHA-256-verified
+temporary-download discovery command in the
+[server-staging design and discovery runbook](../../docs/production-readiness/29-server-staging-design-and-discovery-runbook.md).
+It is not a Cloud Run deployment.
 
 ## Environment
 
@@ -256,7 +262,7 @@ BLOCKED: 0
 2. Web user authenticated flows beyond unauthenticated route gates were not expanded in this admin-auth fix pass.
 3. Admin bookings page remains blocked because no admin bookings page exists in the current admin panel routes.
 
-## Next Steps
+## Historical next steps — not current authority
 
 1. Install Android SDK platform tools and an emulator, then rerun Android QA with `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:18084/api`.
 2. Expand web-user authenticated Playwright coverage using the seeded normal QA user.

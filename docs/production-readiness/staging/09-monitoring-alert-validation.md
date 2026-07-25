@@ -1,15 +1,20 @@
 # Staging monitoring and alert validation
 
-Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
 Approved Ubuntu/server staging state: **not run**. The local Docker exercise
-fired and resolved all 20 required alerts in both Prometheus and Alertmanager;
-protected receiver/human-response evidence remains open.
+finished with 35/35 Prometheus targets healthy across 14 scrape jobs, 69 rules
+loaded, 26 coverage records present, all 20 required P0 fixtures fired and
+resolved in both Prometheus and Alertmanager, and zero alerts active before and
+after the exercise. Protected receiver/human-response evidence remains open.
 
-Repository status: **69 alert rules and all 20 required P0 mappings pass
-source validation**
+The server overlay and approval order are defined in the
+[server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md).
+
+Repository status: **14 scrape jobs, 69 alert rules, 26 coverage records and
+all 20 required P0 mappings pass source validation**
 
 The rule-specific response source is
 [the monitoring alert runbook](../../../menorah/docs/monitoring-alert-runbook.md);
@@ -19,13 +24,14 @@ This plan does not configure or authorize a production destination.
 
 ## Required environment
 
-- All 14 expected scrape jobs and blackbox probes run in isolated staging.
+- All 14 expected scrape jobs and blackbox probes expand to exactly 35 healthy
+  targets in isolated staging.
 - MongoDB/Redis exporters use dedicated least-privilege staging identities.
-- Docker metrics gateway/exporter use their isolated two-service network and
-  cannot expose raw Docker operations or other projects.
+- The server-staging overlay has no Docker metrics gateway/exporter pair and no
+  Uptime Kuma service. Those production-monitoring components and their
+  evidence are a separate external production-readiness gap.
 - Alertmanager uses an approved protected **staging** receiver, not
   `unconfigured-destination`.
-- Uptime Kuma has staging-only public monitors and the test receiver.
 - Named primary/alternate responders cover every owner placeholder.
 - Logs use synthetic data, controlled access, synchronized UTC time and an
   approved staging retention period.
@@ -37,11 +43,13 @@ validated 14 scrape jobs, 69 rules, 26 coverage records, all 20 required P0
 mappings, configuration mutation tests, Prometheus rule fixtures and the
 pinned native monitoring suite at historical SHA
 `3fb99858c6766a341bb7b7dab2377195427f0ea1`. That result is
-**INVALIDATED** for `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` and cannot be
-relabelled. At the current candidate, all 20 required alert fixtures fired and
-resolved in both local Prometheus and local Alertmanager. This does not prove
-protected server receiver delivery, acknowledgement or escalation; exact local
-results are in report 28.
+**INVALIDATED** for `1ecd0b379369258be466159364a8a48c79fb65aa` and cannot be
+relabelled. At the current candidate, the
+[exact functional push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290)
+passed 9/9 jobs and 89/89 steps, and the local runtime ended with 35/35
+targets healthy, the 20 required alert fixtures resolved and zero active
+alerts. This does not prove protected server receiver delivery,
+acknowledgement or escalation; exact local results are in report 28.
 
 Rerun on the approved isolated-staging checkout:
 
@@ -67,9 +75,11 @@ For every rule retain:
 - corrective action and UTC recovery/resolved times; and
 - links to the source runbook and controlled evidence location.
 
-Also retain redacted Prometheus targets/rules, blackbox `probe_success`,
-MongoDB/Redis exporter health, Docker gateway coverage, backup cryptographic
-health, Alloy/Loki ingestion and Uptime Kuma results. Missing series fail.
+Also retain the exact 35-target inventory, redacted Prometheus targets/rules,
+blackbox `probe_success`, MongoDB/Redis exporter health, backup cryptographic
+health and Alloy/Loki ingestion. Missing series fail. The server overlay has no
+Docker metrics gateway/exporter or Uptime Kuma; their production evidence must
+remain separately labelled and cannot be inferred here.
 
 ## Required P0 alert rows
 
@@ -112,12 +122,15 @@ Run only after the protected staging receiver and named responder are approved:
 
 ```bash
 # STAGING-ONLY; approved isolated staging host.
-cd /srv/menorah-staging/repository/menorah
+cd /opt/menorah-staging/app
 docker compose \
-  --env-file /etc/menorah-staging/staging.env \
-  -f deploy/docker-compose.production.yml \
-  exec alertmanager \
+  --project-name menorah-staging \
+  --env-file /opt/menorah-staging/env/server-staging.env \
+  -f menorah/deploy/server-staging/compose.yml \
+  exec -T staging-alertmanager \
   amtool alert add MonitoringDeliveryTest \
+    environment=staging stack=menorah-staging \
+    monitoring_scope=server-staging \
     severity=warning owner=platform service=alert-test \
     --annotation=summary="Controlled Menorah staging notification test"
 ```
@@ -139,8 +152,13 @@ India location/180-day production evidence remains `LEGAL ACTION`,
 
 ## Completion gate
 
-Monitoring is **NO-GO** until all 69 rules have controlled firing, receiver
-delivery, human acknowledgement, recovery and resolved evidence; all 20
-required P0 rows are executed; every target/probe is healthy; backup health is
-cryptographically verified; Uptime Kuma is evidenced; and named responders
-replace every owner placeholder.
+Server-staging monitoring is **NO-GO** until all 69 rules load and pass source
+validation; all 20 required P0 rows have controlled firing, receiver delivery,
+human acknowledgement, recovery and resolved evidence; all 35 targets are
+healthy; pre/post exercise alert state is quiet; backup health is
+cryptographically verified; and named responders replace every owner
+placeholder.
+
+Passing that server-staging gate would not close the separate production
+monitoring gap: production Docker metrics gateway/exporter and Uptime Kuma
+evidence still require external collection and review.

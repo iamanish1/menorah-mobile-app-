@@ -1,6 +1,6 @@
 # Production rollback and coordinated recovery runbook
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-07-25.
 
 ## Status and authority
 
@@ -9,10 +9,26 @@ operator procedure; it is not evidence that rollback or recovery has been
 exercised on the production host. No production rollback, migration, restore,
 traffic change or live health test was performed while preparing it.
 
-The only authoritative deployment and rollback tooling is under
-`menorah/deploy/ubuntu/`. GitHub Actions performs readiness validation and does
-not deploy. Run these procedures only on the approved Ubuntu host, from the
-approved checkout, under a recorded incident or change.
+No shared-Ubuntu-host discovery, server-staging rollback, migration recovery,
+or safe-removal exercise has occurred. The current frozen runtime candidate is
+`1ecd0b379369258be466159364a8a48c79fb65aa`; evidence for the previous
+`a1bc1b6ec751926edc9981f57762277060acf9e4` and
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` candidates is superseded.
+
+Production tooling remains under `menorah/deploy/ubuntu/`. The dedicated
+server-staging rollback/recovery tooling is instead:
+
+- `menorah/deploy/server-staging/rollback-recorded.sh`;
+- `menorah/deploy/server-staging/resume-post-migration.sh`;
+- `menorah/deploy/server-staging/run-recorded-migration.sh`;
+- `menorah/deploy/server-staging/run-disposable-restore.sh`; and
+- `menorah/deploy/server-staging/verify-runtime-services.sh`.
+
+Do not substitute a production script, production Compose file, or
+`menorah-local-staging` script for a server-staging operation. GitHub Actions
+performs readiness validation and does not deploy or recover any environment.
+Run future procedures only on the approved Ubuntu host, from the approved
+exact-SHA checkout, under a recorded incident or change.
 
 Required roles:
 
@@ -26,6 +42,90 @@ Required roles:
 Do not use `git reset --hard`, start containers manually, run migrations
 separately, delete state markers, rebuild a historical release, or restore a
 database selected merely because it is the newest file.
+
+## Server-staging rollback authority
+
+Server-staging work follows the ordered Step A–G approval model in
+[29-server-staging-design-and-discovery-runbook.md](./29-server-staging-design-and-discovery-runbook.md):
+
+1. Step A is the immutable-URL, SHA-256-verified temporary download and
+   read-only discovery command from runbook 29, followed by return of redacted
+   output.
+2. Step B requires an explicit collision `PASS` and human approval.
+3. Step C may then prepare only `/opt/menorah-staging` roots, secrets, domains
+   and providers.
+4. Step D is a dry render and must not start services.
+5. Step E requires a second human approval before exact-SHA deployment.
+6. Step F exercises and reviews server evidence, including interruption,
+   rollback and recovery.
+7. Step G removes only project `menorah-staging` and staging-labelled
+   resources, verifies production before and after, preserves evidence, and
+   requires separate explicit approval before deleting any staging volume.
+
+Only Step A is currently eligible. No server-staging command below is
+authorized now.
+
+The server-staging state root is
+`/opt/menorah-staging/deploy-state`. Its current, last-good, migration,
+identity, rollback, post-migration recovery and restore markers are independent
+of production state. Never copy, rename, synthesize or manually edit a marker.
+
+### Recorded pre-migration staging rollback
+
+After the approved Step E deployment exists, the rollback target must be the
+full SHA already recorded in
+`/opt/menorah-staging/deploy-state/last-good-sha`. The checkout must already
+be clean and at that exact target. Run only:
+
+```bash
+cd /opt/menorah-staging/app
+readonly RECORDED_STAGING_LAST_GOOD='<recorded-full-40-character-sha>'
+COMPOSE_PROJECT_NAME=menorah-staging \
+  MENORAH_STAGING_ROLLBACK_ACK=ROLLBACK_MENORAH_STAGING_RECORDED_ARTIFACTS \
+  bash menorah/deploy/server-staging/rollback-recorded.sh \
+  "${RECORDED_STAGING_LAST_GOOD}"
+```
+
+The guard refuses an unrecorded target, absent immutable image manifest,
+unsafe recovery state, dirty/wrong checkout, rebuild or pull. It targets only
+Compose project `menorah-staging`.
+
+### Exact post-migration staging resume
+
+When the candidate migration was recorded and
+`post-migration-recovery-sha` remains, code-only rollback is not the safe
+default. Keep the six application writers stopped and resume only the exact
+recorded candidate:
+
+```bash
+cd /opt/menorah-staging/app
+readonly SERVER_STAGING_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
+COMPOSE_PROJECT_NAME=menorah-staging \
+  MENORAH_STAGING_RECOVERY_ACK=RESUME_EXACT_MENORAH_STAGING_SHA_AFTER_MIGRATION \
+  bash menorah/deploy/server-staging/resume-post-migration.sh \
+  "${SERVER_STAGING_SHA}"
+```
+
+The acknowledgement must be exactly
+`MENORAH_STAGING_RECOVERY_ACK=RESUME_EXACT_MENORAH_STAGING_SHA_AFTER_MIGRATION`.
+The resume verifies the exact checkout, markers, manifest and runtime without
+rerunning migration or pulling/rebuilding images. A failure stops writers
+again and retains recovery authority for review.
+
+### Staging-only removal
+
+Removal is Step G, not a rollback shortcut. Capture the production baseline,
+target Docker operations with `--project-name menorah-staging`, and confirm
+every selected container/network/volume carries the reviewed staging identity
+before acting. Stop and remove containers and networks for that exact project
+only, then prove production IDs, health, restarts, listeners, networks,
+volumes and units remain unchanged. Preserve evidence. Do not use a broad
+Compose project match, prefix glob or host-wide prune. Do not delete any
+staging volume until a named owner grants a separate explicit destructive
+approval.
+
+The existing `menorah-local-staging` project is outside this procedure and
+must remain untouched.
 
 ## Decide which path applies
 

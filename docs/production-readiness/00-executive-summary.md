@@ -1,6 +1,6 @@
 # Production-readiness executive summary
 
-Last reviewed: 2026-07-24.
+Last reviewed: 2026-07-25.
 
 ## Verdict
 
@@ -18,22 +18,36 @@ access.
 
 ## Repository-remediation status
 
-**LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**
+**SERVER STAGING DESIGN COMPLETE — DISCOVERY REQUIRED**
 
 The repository-controlled runtime is frozen at
-`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` on
-`release/final-production-readiness`. Candidate-bound local validation and all
-six push/PR GitHub workflow executions passed for that SHA. The green runs
-previously cited for `3fb99858c6766a341bb7b7dab2377195427f0ea1`
-remain historical evidence for that older SHA and are **INVALIDATED** for the
-current candidate. After this freeze, only `docs/**` and `menorah/docs/**` may
-change; any runtime, configuration, workflow or test change invalidates the
-candidate and requires the affected evidence to be rerun.
+`1ecd0b379369258be466159364a8a48c79fb65aa` on
+`release/final-production-readiness`. Candidate-bound local overlay validation
+passed. Its exact push runs also passed: production release readiness
+`30158172303` (1/1 jobs, 11/11 steps), functional release `30158172290`
+(9/9 jobs, 89/89 steps), and security `30158172293` (15/15 jobs, 104/104
+steps), with zero failed, skipped or cancelled jobs/steps. Evidence for
+`a1bc1b6ec751926edc9981f57762277060acf9e4`,
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` and earlier candidates remains
+historical and superseded; it is not current-candidate evidence. The exact
+functional run recorded 117/117 default backend suites with 1,716/1,716 tests,
+13/13 disposable integration suites with 45/45 tests, and 432/432 core
+release-contract tests. After this freeze, only `docs/**` and
+`menorah/docs/**` may change; any runtime, configuration, workflow or test
+change invalidates the candidate and requires the affected evidence to be
+rerun.
 
 See [the immutable candidate record](./26-immutable-candidate-record.md) for
 run links, test totals, warnings, skips, the evidence boundary and remaining
 external proof. The completed local exercise is recorded in
 [the local staging validation report](./28-local-staging-validation-report.md).
+The isolated Ubuntu overlay and its discovery-first approval sequence are in
+[the server-staging design and discovery runbook](./29-server-staging-design-and-discovery-runbook.md).
+No server discovery, collision approval or deployment has occurred.
+Its all-profile design has 32 services, six networks and 21 volumes. The
+dedicated `staging-egress` bridge is NAT-capable for explicitly scoped
+services, but it is not a destination or FQDN allowlist; target-host
+firewall/proxy restrictions remain uncollected server evidence.
 
 ## What this verdict covers
 
@@ -109,7 +123,8 @@ for the exact evidence required.
 
 | Blocking area | Repository position | Evidence or decision still required |
 | --- | --- | --- |
-| Immutable release | Runtime SHA `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` is frozen; candidate-bound local validation and six push/PR workflow executions passed | Review the local report, record the final documentation HEAD and its current GitHub results, then obtain repository governance and an owner-approved protected release record |
+| Immutable release | Runtime SHA `1ecd0b379369258be466159364a8a48c79fb65aa` is frozen; candidate-bound local validation and three exact push gate families passed | Review the local report, record the final documentation HEAD and its current GitHub results, then obtain repository governance and an owner-approved protected release record |
+| Server staging | A dedicated project, roots, networks, volumes, listeners, data identities, monitoring stores and discovery-first runbook exist | `INFRASTRUCTURE ACTION`: run authorized read-only discovery, return its output, complete every collision check and obtain the two recorded human approvals before preparation and deployment |
 | Configuration | Fail-closed validators and a redacted variable reference exist | `INFRASTRUCTURE ACTION`: validate the actual host configuration without disclosing values |
 | Data and migrations | Ordered migration and preflight controls exist | `INFRASTRUCTURE ACTION`: disposable staging execution, approved maintenance boundary and invariant evidence |
 | Backup and recovery | Signed/encrypted backup and isolated-restore tooling exists | `INFRASTRUCTURE ACTION`: current host backup, off-site copy and successful restore evidence; the newest restore test must be no more than 24 hours old |
@@ -130,16 +145,23 @@ issues and bounded limitations are maintained in
 
 1. Independently review the frozen immutable candidate and its documentation-only boundary.
 2. Preserve the recorded tests, builds, scans, skips and exceptions against that SHA.
-3. Exercise migrations and recovery in an approved disposable environment.
-4. Obtain the outstanding owner, legal, privacy and clinical decisions.
-5. Complete vendor and mobile-store prerequisites.
-6. Complete independent VAPT and retest all critical/high remediation.
-7. Perform the labelled infrastructure actions for configuration, backup,
-   restore, ingress, observability, log retention and rollback.
-8. Rehearse incident and operational procedures with named primary and
-   alternate responders.
-9. Complete [the handover checklist](./19-handover-checklist.md).
-10. Record a cross-functional decision in
+3. Authorize and return the inspection-only server discovery record using the
+   runbook's immutable raw URL, temporary file and exact SHA-256 check. A
+   checksum or download failure must stop before execution; do not prepare
+   resources or otherwise mutate the host.
+4. Complete every collision class as PASS and obtain the first human approval.
+5. Prepare and dry-render only the isolated staging proposal, then obtain the
+   separate deployment approval.
+6. Exercise migrations and recovery in the approved server-staging environment.
+7. Obtain the outstanding owner, legal, privacy and clinical decisions.
+8. Complete vendor and mobile-store prerequisites.
+9. Complete independent VAPT and retest all critical/high remediation.
+10. Perform the labelled infrastructure actions for configuration, backup,
+    restore, ingress, observability, log retention and rollback.
+11. Rehearse incident and operational procedures with named primary and
+    alternate responders.
+12. Complete [the handover checklist](./19-handover-checklist.md).
+13. Record a cross-functional decision in
     [the production go/no-go record](./21-production-go-no-go.md).
 
 Silence, a healthy process, a passing desktop test or the presence of a

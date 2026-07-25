@@ -1,21 +1,34 @@
-# Redacted staging environment matrix
+# Selected redacted staging environment mappings and provenance
 
-Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
-This is the per-variable contract for the isolated staging run. It contains
-safe literals and symbolic relationships, but no credential, secret, private
-key, database URI, account identifier, recipient, provider token or production
-value. The protected execution copy records secret-manager references only.
+This document records selected executable mappings and historical
+production-contract provenance for the isolated staging run. It is not an
+exhaustive per-variable inventory. It contains safe literals and symbolic
+relationships, but no credential, secret, private key, database URI, account
+identifier, recipient, provider token or production value. The protected
+execution copy receives staging-only values through the approved secret path.
 Production values are never read or compared during staging.
 
-At this runtime freeze, 272 unique variable rows cover all 194 unique keys in
-`production.env.example` plus `cloudflare.env.example`, and all 174 unique
-interpolations across the production, Tunnel and migration Compose models.
-The retired developer-home model is outside staging scope; its home-only
-`CADDY_HTTPS_PORT`, `FRONTEND_APP_URL` and `FRONTEND_WWW_URL` overrides are
-explicitly excluded.
+For this candidate, the tracked
+[`server-staging.env.example`](../../../menorah/deploy/env/server-staging.env.example),
+the dedicated
+[`server-staging` overlay](../../../menorah/deploy/server-staging/compose.yml),
+and its validators are authoritative. Any older production-model source tag
+below is contract provenance only, not an instruction to run a production
+Compose file or production script. Server values, secrets, provider accounts,
+DNS/TLS/Tunnel configuration and provisional network ranges remain
+**NOT COLLECTED — DISCOVERY REQUIRED**; use the
+[server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md).
+
+The larger table below is a selected comparison/provenance view and must not
+be used to infer executable completeness. The current tracked authority is the
+268-assignment-key `server-staging.env.example`; its generator produces the
+291-key environment consumed by the dedicated validators and Compose render.
+Those two counts describe different artifacts and are both expected. The
+retired developer-home model is outside staging scope.
 
 Every production-source cell is a redacted source class, never a value:
 reviewed production configuration, protected production configuration,
@@ -24,6 +37,14 @@ record, or approved unset decision. “Not accessed” means the staging exercis
 does not query, copy or compare the corresponding production value.
 
 ## Authoritative source tags
+
+- `SSENV` — [server-staging environment contract](../../../menorah/deploy/env/server-staging.env.example)
+- `SSCOMPOSE` — [server-staging Compose overlay](../../../menorah/deploy/server-staging/compose.yml)
+- `SSVAL` — [environment](../../../menorah/deploy/server-staging/validate-environment.mjs)
+  and [isolation](../../../menorah/deploy/server-staging/validate-isolation.mjs)
+  validators
+- `SSOPS` — [dedicated server-staging operations](../../../menorah/deploy/server-staging/)
+- `SSING` — [server-staging ingress manifest](../../../menorah/deploy/server-staging/ingress-manifest.json)
 
 - `DE` — [deployment-environment validator](../../../menorah/backend/src/config/deploymentEnvironment.js)
 - `SV` — [backend startup validator](../../../menorah/backend/src/shared/app/startupValidation.js)
@@ -53,6 +74,49 @@ does not query, copy or compare the corresponding production value.
 “production source” column deliberately never identifies or reads a production
 secret. `Reference only` always means an access-controlled reference, not the
 value.
+
+For server execution, `SSENV`, `SSCOMPOSE`, `SSVAL`, `SSOPS` and `SSING`
+override older production-provenance tags. A variable absent from `SSENV` must
+be unset unless the dedicated validator explicitly accepts it. In particular,
+the server-staging contract fixes project `menorah-staging`; roots beneath
+`/opt/menorah-staging`; 32 services, six dedicated networks and 21 volumes in
+the all-profile static model; and 26 containers on five networks in the
+default runtime. The default service graph references 19 volumes; the
+validated post-migration runtime retained 20 because
+`staging-migration-temp` persists. The recovery/all-profile model adds the
+sixth (`restore`) network and `staging-restore-mongodb` as the 21st volume.
+Published application/monitoring ports are loopback-only, no database/cache
+port is published, and the ingress contract has 10 exact hosts. Network CIDRs
+are provisional until discovery/collision approval.
+
+## Executable server-staging authority
+
+These selected safe values are copied from the 268-key tracked template. They
+describe the candidate contract, not a deployed server; discovery, collision
+approval and the protected 291-key generated environment remain required.
+
+| Key | Exact candidate value | Status / validation |
+| --- | --- | --- |
+| `MENORAH_SERVER_STAGING_PROJECT_NAME` | `menorah-staging` | Fixed project boundary |
+| `MENORAH_SERVER_STAGING_RESOURCE_PREFIX` | `menorah-staging` | Fixed resource boundary |
+| `MENORAH_SERVER_STAGING_ENVIRONMENT_ID` | `menorah-server-staging-v1` | Fixed environment attestation |
+| `MENORAH_RUNTIME_CANDIDATE_SHA` | `1ecd0b379369258be466159364a8a48c79fb65aa` | Must equal the executable checkout, scripts, images, manifests and release markers |
+| `MENORAH_SERVER_STAGING_RUNTIME_SHA` | `1ecd0b379369258be466159364a8a48c79fb65aa` | Must equal `MENORAH_RUNTIME_CANDIDATE_SHA`; a later docs head is invalid here |
+| `MENORAH_SERVER_STAGING_ROOT` | `/opt/menorah-staging` | Canonical server-staging root |
+| `MENORAH_SERVER_STAGING_INGRESS_SUBNET` / `MENORAH_SERVER_STAGING_INGRESS_IP_RANGE` | `10.252.240.0/24` / `10.252.240.128/25` | Provisional until collision approval |
+| `MENORAH_SERVER_STAGING_APP_SUBNET` / `MENORAH_SERVER_STAGING_APP_IP_RANGE` | `10.252.241.0/24` / `10.252.241.128/25` | Provisional until collision approval |
+| `MENORAH_SERVER_STAGING_CADDY_APP_IP` | `10.252.241.10` | Exact app-network proxy address; source of `TRUST_PROXY` |
+| `MENORAH_SERVER_STAGING_DATA_SUBNET` / `MENORAH_SERVER_STAGING_DATA_IP_RANGE` | `10.252.242.0/24` / `10.252.242.128/25` | Provisional until collision approval |
+| `MENORAH_SERVER_STAGING_MONITORING_SUBNET` / `MENORAH_SERVER_STAGING_MONITORING_IP_RANGE` | `10.252.243.0/24` / `10.252.243.128/25` | Provisional until collision approval |
+| `MENORAH_SERVER_STAGING_RESTORE_SUBNET` / `MENORAH_SERVER_STAGING_RESTORE_IP_RANGE` | `10.252.244.0/24` / `10.252.244.128/25` | Restore profile only; provisional until collision approval |
+| `MENORAH_SERVER_STAGING_EGRESS_SUBNET` / `MENORAH_SERVER_STAGING_EGRESS_IP_RANGE` | `10.252.245.0/24` / `10.252.245.128/25` | Provisional until collision approval |
+
+The `egress` network is an ordinary NAT-capable Docker bridge, not a
+destination or FQDN allowlist. Its members are `staging-api-ios`,
+`staging-api-android`, `staging-api-web`, `staging-api-admin`,
+`staging-user-web` and `staging-alertmanager`; the worker, migration and seed
+services have no egress membership. Approved host firewall/proxy controls and
+denied production/private-route evidence are therefore still mandatory.
 
 ## Deployment identity, hostnames and exact URL mappings
 
@@ -96,13 +160,13 @@ value.
 
 | Variable | Service(s) | Requirement / exact staging mapping | Validation | Staging source | Production source | Secret? | Owner | Evidence | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `MENORAH_RELEASE_REPO_ROOT` | Guarded updater | R at execution; canonical approved staging checkout | Host/sentinel/canonical-path preflight | Staging change record | Protected production configuration reference - not accessed | Sensitive | Release/infrastructure | Path and Git identity | REL |
-| `PRODUCTION_ENV` | Release, backup and restore scripts | R at staging execution; exact protected staging environment-file path despite the legacy variable name | Canonical path, mode and sentinel preflight | Staging change record | Protected production configuration reference - not accessed | Sensitive | Release/infrastructure | Path/mode evidence | REL, REST, BACKUP |
-| `CLOUDFLARE_ENV` | Guarded updater | R at staging execution; exact protected staging Tunnel environment-file path | Canonical path, mode and route preflight | Staging change record | Protected production configuration reference - not accessed | Sensitive | Release/infrastructure | Path/mode evidence | REL, TUN |
-| `DEPLOY_BRANCH` | Guarded updater | R; exactly `release/final-production-readiness` for this runtime candidate | Remote-tip and reviewed-updater guard | Candidate record | Reviewed production configuration - not accessed | No | Release | Git identity evidence | REL |
-| `DEPLOY_RELEASE_SHA` | Guarded updater | R; externally recorded full docs/PR-head SHA, descending from the frozen runtime SHA with changes confined to `docs/**` and `menorah/docs/**` | Full-SHA, remote, ancestry, path-diff and artifact guards | Approved change record | Derived immutable artifact/release record - not accessed | No | Release | Git/artifact evidence | REL |
-| `DEPLOY_MIGRATION_APPROVED_SHA` | Guarded updater | R; exact same approved docs/PR-head SHA after migration review | Exact-SHA migration guard | Approved change record | Reviewed production configuration - not accessed | No | Release/recovery | Approval and phase evidence | REL |
-| `MENORAH_MIGRATION_IMAGE_ID` | One-shot migration Compose override | R only inside `run-recorded-migration.sh`; immutable local Docker content ID read from the checksum-protected release image manifest; must be unset in operator environment files and never replaced by a tag | Runner rejects an inherited value, verifies manifest checksum/basename and exact `api-web` image ID, then invokes migration Compose with `pull_policy: never` | Updater-derived immutable artifact record | Approved production unset decision - not accessed | No | Release/recovery | Manifest checksum, content ID and migration phase evidence | MIG |
+| `MENORAH_RELEASE_REPO_ROOT` | Production guarded updater provenance only | U for server staging; the dedicated checkout is fixed by `MENORAH_SERVER_STAGING_APP_ROOT` | Absence from `SSENV`; server context assertion | Not used by server staging | Protected production configuration reference - not accessed | Sensitive | Release/infrastructure | Server environment validation | REL |
+| `PRODUCTION_ENV` | Production release/backup/restore provenance only | U for server staging; use `MENORAH_SERVER_STAGING_ENV_FILE` | Absence from `SSENV`; server context assertion | Not used by server staging | Protected production configuration reference - not accessed | Sensitive | Release/infrastructure | Server environment validation | REL, REST, BACKUP |
+| `CLOUDFLARE_ENV` | Production updater/Tunnel provenance only | U for server staging; ingress is governed by the dedicated server-staging contract | Absence from `SSENV`; server context assertion | Not used by server staging | Protected production configuration reference - not accessed | Sensitive | Release/infrastructure | Server environment validation | REL, TUN |
+| `DEPLOY_BRANCH` | Production guarded updater provenance only | U for server staging; documentation review may name the release branch, but server artifacts are bound to the exact runtime SHA | Absence from `SSENV`; exact-SHA server assertion | Not used by server staging | Reviewed production configuration - not accessed | No | Release | Git identity evidence | REL |
+| `DEPLOY_RELEASE_SHA` | Production guarded updater provenance only | U for server staging; never set to the later docs/PR-head SHA | Absence from `SSENV`; runtime-SHA pair validates instead | Not used by server staging | Derived immutable artifact/release record - not accessed | No | Release | Server environment/artifact evidence | REL |
+| `DEPLOY_MIGRATION_APPROVED_SHA` | Production guarded updater provenance only | U for server staging; dedicated migration is bound to the exact runtime SHA and immutable server image manifest | Absence from `SSENV`; dedicated migration guards | Not used by server staging | Reviewed production configuration - not accessed | No | Release/recovery | Server migration evidence | REL |
+| `MENORAH_MIGRATION_IMAGE_ID` | Production one-shot migration provenance only | U for server staging; dedicated server migration consumes the checksum-protected server image manifest | Absence from `SSENV`; dedicated migration guards | Not used by server staging | Approved production unset decision - not accessed | No | Release/recovery | Server image-manifest and migration evidence | MIG |
 | `DEPLOY_CHANGE_REFERENCE` | Guarded updater | R; approved bounded staging change reference | Release metadata validation | Approved change record | Protected production configuration reference - not accessed | Sensitive | Release/recovery | Change/release evidence | REL |
 | `MENORAH_DEPLOY_STATE_ROOT` | Release/recovery scripts | R; dedicated staging state root beneath approved staging prefix | Canonical path/symlink guard | Staging host config | Protected production configuration reference - not accessed | Sensitive | Infrastructure/recovery | Path/mode evidence | REL |
 | `MENORAH_DATA_ROOT` | APIs/media/Mongo/Redis/log data | R; dedicated staging data root, no production/shared mount | Canonical path, mount and Compose review | Staging host config | Protected production configuration reference - not accessed | Sensitive | Infrastructure | Mount/volume inventory | DC, PE |
@@ -118,7 +182,8 @@ value.
 | `CLOUDFLARED_TUNNEL_IP` | cloudflared | R; unique address inside staging tunnel subnet | Render/network check | Approved network inventory | Protected production configuration reference - not accessed | Sensitive | Infrastructure | Network evidence | DC, PE |
 | `APP_NETWORK_SUBNET` | Application network | R; staging-only, non-overlapping | Host route and render checks | Approved network inventory | Protected production configuration reference - not accessed | Sensitive | Infrastructure | Route/IPAM evidence | DC, PE |
 | `CADDY_APP_IP` | Caddy/application trust | R; unique address inside staging app subnet | Render/startup validation | Approved network inventory | Protected production configuration reference - not accessed | Sensitive | Infrastructure/security | Network/proxy evidence | DC, PE |
-| `CLOUDFLARE_TUNNEL_TOKEN_FILE` | cloudflared/updater | R; exactly `/etc/menorah-staging/secrets/cloudflare-tunnel-token`, containing only the dedicated staging tunnel token; never use the Compose default `/opt/menorah/secrets/cloudflare-tunnel-token` | Exact canonical regular non-symlink file; non-empty/readable; mode `0440`; owner UID `65532`; Compose secret source and `/run/secrets/cloudflare_tunnel_token` target | Protected staging token-file reference only | Protected production secret-manager/file reference - not accessed | Sensitive; contents Yes | Infrastructure/vendor | Name/mode/owner, secret-mount and redacted staging-account/route proof | TUN, REL |
+| `CLOUDFLARE_TUNNEL_TOKEN_FILE` | Server-staging | U; legacy token-file deployment mode is not part of the dedicated overlay | Dedicated validator and dry-render review | Unset | Protected production secret-manager/file reference - not accessed | Sensitive; contents Yes | Infrastructure/vendor | Unset proof | SSENV, SSVAL |
+| `CLOUDFLARE_TUNNEL_CREDENTIAL_FILE` | Approved external staging Tunnel process | C; exactly `/opt/menorah-staging/env/cloudflared-staging-credentials.json` when `MENORAH_STAGING_TUNNEL_ENABLED=true`; staging credential only | Canonical non-symlink protected file plus exact Tunnel ID/account/route review | Protected staging credential-file reference only | Protected production secret-manager/file reference - not accessed | Yes | Infrastructure/vendor | Name/mode/owner and redacted staging account/route proof | SSENV, SSING, SSVAL |
 | `CLOUDFLARE_ORIGIN_CERT_PATH` | Caddy | C; staging certificate host path | Path/permission and Caddy validation | Protected file reference | Protected production configuration reference - not accessed | Sensitive | Infrastructure | Name/mode/cert metadata | DC, PE |
 | `CLOUDFLARE_ORIGIN_KEY_PATH` | Caddy | C; matching protected staging private-key path | Path/permission and Caddy validation | Protected file reference | Protected production secret-manager/file reference - not accessed | Yes | Infrastructure | Name/mode only | DC, PE |
 | `CLOUDFLARE_ORIGIN_CERT_FILE` | Caddy container | C; when origin-certificate TLS is enabled, derived as the reviewed in-container certificate mount path; otherwise U | Render/Caddy validation | Derived only | Protected production configuration reference - not accessed | Sensitive | Infrastructure | Render evidence | DC, PE |
@@ -192,22 +257,23 @@ value.
 | `COUNSELLOR_ONBOARDING_CONSENT_VERSION` | Verification | R; approved version | Startup/lifecycle tests | Approved policy reference | Reviewed production configuration - not accessed | No | Legal/clinical/owner | Approval/test evidence | SV, PE |
 | `COUNSELLOR_CREDENTIAL_POLICY_VERSION` | Verification | R; approved version | Startup/lifecycle tests | Approved policy reference | Reviewed production configuration - not accessed | No | Legal/clinical/owner | Approval/test evidence | SV, PE |
 | `COUNSELLOR_ONBOARDING_NOTICE_URL` | Verification UI/API | R; approved staging HTTPS notice | Startup/link tests | Approved policy reference | Protected production configuration reference - not accessed | Sensitive | Legal/clinical | Approval/link evidence | SV, PE |
-| `BOOKING_SERVICE_CATALOG_JSON` | Booking/payment APIs | R; approved synthetic INR catalog | Parser and pricing/tamper tests | Protected staging config reference | Protected production configuration reference - not accessed | Sensitive | Product/payment | Catalog version/test evidence | SV, PE |
+| `BOOKING_SERVICE_CATALOG_JSON` | Four APIs, worker, migration and seed | R; approved synthetic INR catalog; shared non-secret configuration across exactly these seven backend services | Parser, render and pricing/tamper tests | Reviewed non-secret staging config | Protected production configuration reference - not accessed | No | Product/payment | Catalog version/test evidence | SSENV, SSCOMPOSE, SSVAL, SV, PE |
 | `BOOKING_PAYMENTS_ENABLED` | Payment APIs | R; explicit owner-controlled staging gate | Startup/payment tests | Staging config | Reviewed production configuration - not accessed | No | Payment/owner | Gate and sandbox evidence | SV, PE |
 | `SUBSCRIPTION_PAYMENTS_ENABLED` | APIs | R; exactly `false` under current contract | Startup failure test | Staging config | Reviewed production configuration - not accessed | No | Payment/owner | Validator evidence | SV, PE |
 | `PAYOUTS_ENABLED` | Admin/payout | R; false until sandbox/owner gates complete, then controlled staging-only enablement | Startup/payout matrix | Staging config | Reviewed production configuration - not accessed | No | Finance/owner | Change and test evidence | SV, PE |
 | `MAX_PAYOUT_AMOUNT_PAISE` | Admin/payout | R; exact approved integer | Startup/cap tests | Approved non-secret config | Reviewed production configuration - not accessed | No | Finance/owner | Approval/test evidence | SV, PE |
 | `PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS` | Payment reconciliation | R when booking payments enabled; bounded integer | Startup/retry tests | Approved staging config | Reviewed production configuration - not accessed | No | Payment owner | Validator/retry evidence | SV, PE |
-| `RAZORPAY_KEY_ID` | Payment APIs | R when payment cases run; must match staging `rzp_test_` pattern | Staging isolation/startup/provider checks | Staging sandbox reference only | Protected production configuration reference - not accessed | Sensitive | Vendor/payment | Test-mode proof | DE, SV, PE |
-| `NEXT_PUBLIC_RAZORPAY_KEY_ID` | Web builds/backend environment | R when checkout UI tested; public test key only and `rzp_test_` pattern | Staging isolation and bundle scan | Staging sandbox public-ID reference | Reviewed production configuration - not accessed | No | Vendor/payment | Bundle/test-mode proof | DE, DC |
-| `RAZORPAY_KEY_SECRET` | Payment APIs | R when enabled; sandbox secret only | Startup/sandbox call | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/payment | Presence/provider evidence | SV, PE |
-| `RAZORPAY_WEBHOOK_SECRET` | Payment webhook | R; staging callback secret only | Signature matrix | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/security | Webhook evidence | SV, PE |
-| `RAZORPAY_WEBHOOK_SECRET_PREVIOUS` | Payment webhook rotation | C; unset except approved staging overlap; distinct from current | Startup/rotation tests | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/security | Rotation evidence | SV, PE |
-| `RAZORPAY_X_KEY_ID` | Payout | C; must match staging `rzp_test_` pattern if set | Staging isolation/startup | Staging sandbox reference only | Protected production configuration reference - not accessed | Sensitive | Vendor/finance | Test-mode proof | DE, SV, PE |
-| `RAZORPAY_X_KEY_SECRET` | Payout | C; sandbox only | Startup/payout tests | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/finance | Provider evidence | SV, PE |
-| `RAZORPAY_PAYOUT_ACCOUNT_NUMBER` | Payout | C; synthetic sandbox destination only | Startup/payout tests | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/finance | Sandbox proof | SV, PE |
-| `RAZORPAY_X_WEBHOOK_SECRET` | Payout webhook | R for delayed/sandbox webhook cases | Signature/replay tests | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/security | Webhook evidence | SV, PE |
-| `RESEND_API_KEY` | Email | R under current startup contract; dedicated staging account/scope | Startup and approved-sink test | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/platform | Sandbox/account proof | SV, PE |
+| `RAZORPAY_KEY_ID` | `staging-api-ios` only | R when payment cases run; must match staging `rzp_test_` pattern | Staging isolation/startup/provider-scope checks | Staging sandbox reference only | Protected production configuration reference - not accessed | Sensitive | Vendor/payment | Test-mode and rendered-scope proof | SSCOMPOSE, SSVAL, DE, SV, PE |
+| `NEXT_PUBLIC_RAZORPAY_KEY_ID` | `staging-user-web` build/runtime only | R when checkout UI is tested; public test key only and `rzp_test_` pattern | Staging isolation and bundle/render scan | Staging sandbox public-ID reference | Reviewed production configuration - not accessed | No | Vendor/payment | Bundle/test-mode proof | SSCOMPOSE, SSVAL, DE, DC |
+| `RAZORPAY_KEY_SECRET` | `staging-api-ios` only | R when enabled; sandbox secret only | Startup/sandbox call and rendered-scope rejection | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/payment | Presence/provider-scope evidence | SSCOMPOSE, SSVAL, SV, PE |
+| `RAZORPAY_WEBHOOK_SECRET` | `staging-api-ios` only | R; staging callback secret only | Signature matrix and rendered-scope rejection | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/security | Webhook/scope evidence | SSCOMPOSE, SSVAL, SV, PE |
+| `RAZORPAY_WEBHOOK_SECRET_PREVIOUS` | `staging-api-ios` only | C; unset except approved staging overlap; distinct from current | Startup/rotation and rendered-scope tests | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/security | Rotation/scope evidence | SSCOMPOSE, SSVAL, SV, PE |
+| `RAZORPAY_X_KEY_ID` | `staging-api-admin` only | C; must match staging `rzp_test_` pattern if set | Staging isolation/startup and rendered-scope checks | Staging sandbox reference only | Protected production configuration reference - not accessed | Sensitive | Vendor/finance | Test-mode/scope proof | SSCOMPOSE, SSVAL, DE, SV, PE |
+| `RAZORPAY_X_KEY_SECRET` | `staging-api-admin` only | C; sandbox only | Startup/payout and rendered-scope tests | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/finance | Provider-scope evidence | SSCOMPOSE, SSVAL, SV, PE |
+| `RAZORPAY_PAYOUT_ACCOUNT_NUMBER` | `staging-api-admin` only | C; synthetic sandbox destination only | Startup/payout and rendered-scope tests | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/finance | Sandbox/scope proof | SSCOMPOSE, SSVAL, SV, PE |
+| `RAZORPAY_X_WEBHOOK_SECRET` | `staging-api-admin` only | R for delayed/sandbox webhook cases | Signature/replay and rendered-scope tests | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/security | Webhook/scope evidence | SSCOMPOSE, SSVAL, SV, PE |
+| `RESEND_API_KEY` | Four APIs and `staging-user-web` | R under current startup contract; dedicated staging account/scope | Startup, approved-sink and rendered-scope tests | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/platform | Sandbox/account/scope proof | SSCOMPOSE, SSVAL, SV, PE |
+| `RESEND_WEBHOOK_SECRET` | `staging-api-web` only | R when the Resend webhook path is exercised; dedicated staging signing secret | Signature/replay and rendered-scope tests | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Vendor/security | Webhook/scope evidence | SSCOMPOSE, SSVAL, SV, PE |
 | `EMAIL_FROM` | Email | R; valid sender whose address domain exactly equals `MENORAH_STAGING_EMAIL_DOMAIN`; display name is allowed, fallback is forbidden | Staging isolation/startup and controlled-sink tests | Approved staging sender reference | Protected production configuration reference - not accessed | Sensitive | Vendor/platform/security | Redacted sender-domain and delivery evidence | DE, SV, DC |
 | `CONTACT_TO_EMAIL` | Landing/user web contact form | R; bare address only and its domain must exactly equal `MENORAH_STAGING_EMAIL_DOMAIN`; fallback and production/shared mailboxes are forbidden | Staging isolation, render and controlled delivery test | Protected staging contact reference | Protected production configuration reference - not accessed | Sensitive | Vendor/platform/security | Redacted recipient-domain and delivery evidence | DE, SV, DC |
 | `LIVEKIT_API_KEY` | Calls | R under current startup contract; staging project/server only | Startup/token/call tests | Staging secret reference only | Protected production secret-manager/file reference - not accessed | Yes | Realtime/vendor | Project/token evidence | SV, PE |
@@ -241,6 +307,12 @@ value.
 | `UPLOAD_PATH` | APIs/worker | R; `/app/uploads` inside container | Startup/media validation | Staging config | Protected production configuration reference - not accessed | Sensitive | Platform | Render/media evidence | SV, DC, PE |
 | `SOCIAL_STUDIO_STORAGE` | APIs | U | Startup failure test | Unset | Approved production unset decision - not accessed | No | Platform/security | Negative preflight | SV |
 | `COUNSELLOR_MEDIA_STORAGE` | APIs | U | Startup failure test | Unset | Approved production unset decision - not accessed | No | Platform/security | Negative preflight | SV |
+
+Rendered scope is part of the contract: Razorpay secrets appear only on
+`staging-api-ios`, RazorpayX secrets only on `staging-api-admin`, and
+`RESEND_WEBHOOK_SECRET` only on `staging-api-web`. `staging-worker`,
+`staging-migrate` and `staging-seed` receive no provider secrets. This boundary
+must be proved from the rendered model, not merely from blank template values.
 
 ## Apple and Google modes
 
@@ -339,6 +411,11 @@ protected environment and removed from repository scope by `OWNER ACTION` /
 
 ## Monitoring, backup and restore control variables
 
+The executable server-staging overlay has neither the production Docker
+metrics gateway/exporter pair nor Uptime Kuma. Do not infer either service from
+the production-provenance rows below. Their production evidence remains a
+separate external gap.
+
 | Variable | Service(s) | Requirement / exact staging mapping | Validation | Staging source | Production source | Secret? | Owner | Evidence | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ALERTMANAGER_CONFIG_FILE` | Alertmanager/release guard | R; protected staging receiver file outside checkout | Delivery config validator/digest | Protected staging file reference | Protected production configuration reference - not accessed | Sensitive | Infrastructure | Mode/digest evidence | MON, PE |
@@ -347,7 +424,7 @@ protected environment and removed from repository scope by `OWNER ACTION` /
 | `ALERTMANAGER_DELIVERY_TEST_REFERENCE` | Release guard | R after test; bounded evidence reference | Delivery validator | Staging evidence reference | Protected production configuration reference - not accessed | Sensitive | Infrastructure/owner | Ack/resolution proof | MON, PE |
 | `ALERTMANAGER_DELIVERY_VERIFIED_AT` | Release guard | R after test; recent RFC3339 time | Delivery validator | Staging evidence reference | Protected production configuration reference - not accessed | Sensitive | Infrastructure/owner | Timestamp proof | MON, PE |
 | `GRAFANA_LOCAL_PORT` | Grafana | O; loopback only | Render/listener checks | Staging host config | Protected production configuration reference - not accessed | Sensitive | Infrastructure | Listener evidence | DC, PE |
-| `UPTIME_KUMA_LOCAL_PORT` | Uptime Kuma | O; loopback only | Render/listener checks | Staging host config | Protected production configuration reference - not accessed | Sensitive | Infrastructure | Listener evidence | DC, PE |
+| `UPTIME_KUMA_LOCAL_PORT` | Production-model provenance only | U for the server-staging overlay, which has no Uptime Kuma service | Absence from `SSENV` and rendered server overlay | Not used by server staging | Protected production configuration reference - not accessed | Sensitive | Infrastructure | Server render evidence; separate production-monitoring gap | DC, PE |
 | `ALERTMANAGER_LOCAL_PORT` | Alertmanager | O; loopback only | Render/listener checks | Staging host config | Protected production configuration reference - not accessed | Sensitive | Infrastructure | Listener evidence | DC, PE |
 | `BACKUP_AUTOMATION_ENABLED` | Host backup schedule | R for full rehearsal; explicit staging setting | Timer/release preflight | Staging host config | Reviewed production configuration - not accessed | No | Recovery/infrastructure | Timer evidence | PE, ER |
 | `BACKUP_METRICS_RUN_AS` | Backup metrics | R; exact staging operator numeric UID:GID | Numeric/ownership checks | Staging host inventory | Protected production configuration reference - not accessed | Sensitive | Recovery/infrastructure | UID/GID/mode evidence | PE, ER |

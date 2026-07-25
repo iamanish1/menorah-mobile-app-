@@ -1,6 +1,6 @@
 # Production monitoring and alerting runbook
 
-Last reviewed: 2026-07-24.
+Last reviewed: 2026-07-25.
 
 ## Current verdict
 
@@ -16,6 +16,14 @@ Alertmanager receiver is `unconfigured-destination` and has no email, chat,
 paging or webhook destination. Uptime Kuma monitors are not evidenced. Live
 targets, notification delivery, acknowledgement and production alert behavior
 were not tested while preparing this document.
+
+Runtime candidate `1ecd0b379369258be466159364a8a48c79fb65aa`
+candidate-bound local server-staging validation passed 35/35 targets and drove
+all 20 required P0 alerts through firing and resolution in Prometheus and the
+isolated Alertmanager sink, returning both systems to zero active alerts.
+That overlay deliberately has neither the production Docker metrics gateway
+nor Uptime Kuma. It does not prove an approved protected receiver, human
+delivery, real-server targets, production probe coverage or response.
 
 The detailed rule-by-rule response source is
 [the monitoring alert runbook](../../menorah/docs/monitoring-alert-runbook.md).

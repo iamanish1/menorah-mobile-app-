@@ -1,11 +1,38 @@
 # Production release runbook
 
-Last reviewed: 2026-07-24.
+Last reviewed: 2026-07-25.
 
 ## Status and authority
 
 This handover document describes the production sequence; it does not authorize
 execution. The current verdict is **NOT READY**.
+
+The only permissible next technical stage is the inspection-first
+server-staging process in
+[29-server-staging-design-and-discovery-runbook.md](./29-server-staging-design-and-discovery-runbook.md).
+No server discovery or server-staging execution has occurred. The
+server-staging design is repository-controlled, but it is not approved for the
+shared Ubuntu host until actual host metadata is returned and its collision
+review explicitly passes.
+
+Server staging must use only:
+
+- Compose project `menorah-staging`;
+- application checkout `/opt/menorah-staging/app`;
+- environment file `/opt/menorah-staging/env/server-staging.env`;
+- data, backup, deployment-state and log roots below
+  `/opt/menorah-staging/`; and
+- scripts under `menorah/deploy/server-staging/`.
+
+The all-profile overlay has 32 services, six networks and 21 volumes. Its
+`staging-egress` bridge is NAT-capable only for explicitly scoped services,
+but it is not a destination or FQDN allowlist. Server firewall/proxy
+restrictions, the reviewed LiveKit media bind/node addresses and collision
+freedom are discovery-time evidence, not repository facts.
+
+The existing `menorah-local-staging` Docker Desktop project is historical
+local evidence and must not be modified, reused, renamed or removed by a
+server-staging procedure.
 
 The sole production deployment method is an authorized operator running:
 
@@ -31,14 +58,20 @@ Rollback and recovery are in
 ## Current reviewed candidate input
 
 The repository-controlled replacement runtime candidate is
-`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` on
-`release/final-production-readiness`. Its isolated local exercise and all six
-candidate-bound push/PR workflow executions passed. Exact-SHA
-release-readiness, functional aggregate and security aggregate runs cited for
-`3fb99858c6766a341bb7b7dab2377195427f0ea1` are historical and
-**INVALIDATED** for the current runtime. Current candidate evidence is recorded
-in report 28 and still requires independent review. This identity does not
-authorize execution.
+`1ecd0b379369258be466159364a8a48c79fb65aa` on
+`release/final-production-readiness`. It supersedes
+`a1bc1b6ec751926edc9981f57762277060acf9e4` and
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`. Its full local Phase 11
+checklist passed 22/22 and its exact-SHA push workflows passed: readiness run
+`30158172303` (1/1 jobs, 11/11 steps), functional run `30158172290` (9/9
+jobs, 89/89 steps), and security run `30158172293` (15/15 jobs, 104/104
+steps), with zero failed, skipped or cancelled jobs/steps. Earlier candidate
+results remain historical and must not be relabelled as current evidence.
+The functional run also recorded 117/117 default backend suites with
+1,716/1,716 tests, 13/13 disposable integration suites with 45/45 tests and
+432/432 core release-contract tests. Current evidence is recorded in report 28
+and still requires independent review. This identity does not authorize
+execution.
 
 The draft PR records the final documentation HEAD. The runtime-to-docs diff
 must contain only `docs/**` or `menorah/docs/**`. Any other change invalidates
@@ -63,6 +96,90 @@ No operator may infer missing policy approval. `OWNER ACTION`,
 `INFRASTRUCTURE ACTION`, `LEGAL ACTION`, `PRIVACY ACTION`, `CLINICAL ACTION`,
 `VAPT ACTION`, `APPLE ACTION`, `GOOGLE ACTION` and `VENDOR ACTION` remain
 distinct.
+
+## Server-staging approval sequence
+
+The stages below are ordered gates. Passing a stage authorizes only review of
+the next stage; it does not authorize production work.
+
+| Step | Permitted work | Exit gate |
+| --- | --- | --- |
+| A — discovery only | Download the exact candidate discovery blob to one temporary file, verify its recorded SHA-256, execute only that verified file, remove it on exit, collect redacted metadata and return it for review | Discovery output received; checksum passed; temporary file removed; no persistent mutation claimed |
+| B — collision review | Compare the real server inventory with the exact rendered overlay across names, labels, ports, networks/CIDRs, volumes, roots, database/cache identities, ingress, monitoring, backup/recovery and providers | Explicit collision result `PASS` plus named human approval; any collision is `NO-GO` |
+| C — prepare staging roots | Only after Step B approval, prepare `/opt/menorah-staging/{app,data,backups,deploy-state,logs,env}`, staging-only secrets, domains and sandbox/disabled provider settings | Ownership/modes and staging-only custody reviewed |
+| D — dry render | Render Compose, validate Caddy and expected Tunnel hosts, verify limits, and rerun collision validators without starting services | Dry-render evidence passes; no container started |
+| E — deploy staging | Only after a second named approval, use `menorah/deploy/server-staging/deploy-exact-sha.sh` for the exact frozen SHA | Exact artifacts, migration, synthetic initialization, health and production-invariance checks pass |
+| F — server evidence | Exercise Ubuntu ownership, backup/restore, migration interruption, crash resume, rollback/recovery, DNS/TLS/Tunnel, alert delivery/human response, systemd/timers, contention and provider sandbox callbacks | Evidence reviewed; gaps remain gaps rather than inferred passes |
+| G — safe removal | Target only project `menorah-staging`, verify production before and after, and remove only staging-labelled resources | Evidence preserved; separate explicit approval obtained before deleting any staging volume |
+
+Step A is the current gate. Do not run Steps C–G now. The complete collision
+matrix is in runbook 29. The exact command below is the only reviewed discovery
+invocation; it deliberately uses an immutable raw URL rather than assuming the
+repository already exists on the server:
+
+```bash
+(
+  set -euo pipefail
+  readonly DISCOVERY_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
+  readonly DISCOVERY_SHA256='b7ba1341ad78aa5698020ec040404c8418365481da2d7b0e7c105fae0d788a17'
+  readonly DISCOVERY_URL="https://raw.githubusercontent.com/menorahsoftware-cmyk/menorah-mobile-app-/${DISCOVERY_SHA}/menorah/deploy/server-staging/discover-server-readonly.sh"
+  discovery_file="$(mktemp)"
+  readonly discovery_file
+  trap 'rm -f -- "${discovery_file}"' EXIT
+  curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    --fail --silent --show-error --location \
+    --output "${discovery_file}" "${DISCOVERY_URL}"
+  printf '%s  %s\n' "${DISCOVERY_SHA256}" "${discovery_file}" \
+    | sha256sum --check --strict
+  sudo /usr/bin/env -i \
+    PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+    /bin/bash --noprofile --norc "${discovery_file}"
+)
+```
+
+A download or checksum failure stops before execution. The trap removes the
+temporary file on success or failure. Do not replace the immutable SHA URL,
+checksum, clean environment or script; do not run any preparation, Compose,
+Docker mutation, DNS, secret or deployment command as part of Step A.
+
+## Server-staging guarded release
+
+After Steps A–D pass and the second approval for Step E is recorded, an
+operator must place a clean exact-SHA checkout at
+`/opt/menorah-staging/app`, with the reviewed non-symlink environment file at
+`/opt/menorah-staging/env/server-staging.env`. Then the only staging deploy
+entry point is:
+
+```bash
+cd /opt/menorah-staging/app
+readonly SERVER_STAGING_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
+COMPOSE_PROJECT_NAME=menorah-staging \
+  MENORAH_STAGING_DEPLOY_ACK=DEPLOY_EXACT_MENORAH_STAGING_SHA \
+  bash menorah/deploy/server-staging/deploy-exact-sha.sh \
+  "${SERVER_STAGING_SHA}"
+```
+
+This is a future approved-host command, not an instruction to run now. The
+script fail-closes on the wrong project, unsafe process authority, noncanonical
+environment file, dirty or wrong checkout, unexpected recovery markers,
+unrecorded artifacts and unhealthy services. It uses the exact project
+`menorah-staging`; it must never be adapted to target a production project.
+
+If deployment is interrupted after the recorded migration boundary, keep
+writers stopped and preserve the recovery marker. The only exact-candidate
+resume is:
+
+```bash
+cd /opt/menorah-staging/app
+readonly SERVER_STAGING_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
+COMPOSE_PROJECT_NAME=menorah-staging \
+  MENORAH_STAGING_RECOVERY_ACK=RESUME_EXACT_MENORAH_STAGING_SHA_AFTER_MIGRATION \
+  bash menorah/deploy/server-staging/resume-post-migration.sh \
+  "${SERVER_STAGING_SHA}"
+```
+
+Do not rerun the migration, delete a marker, rebuild an image, pull a moving
+tag, start a writer manually or substitute another SHA.
 
 ## Required inputs
 

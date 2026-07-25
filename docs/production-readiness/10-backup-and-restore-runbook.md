@@ -1,6 +1,6 @@
 # Production backup and restore runbook
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-07-25.
 
 ## Status
 
@@ -10,9 +10,111 @@ document does not prove that a live encrypted backup, off-site copy or
 production-like restore has succeeded. No production backup or restore was run
 while preparing this handover.
 
+No backup or restore has been run on the shared Ubuntu server. The frozen
+server-staging runtime candidate is
+`1ecd0b379369258be466159364a8a48c79fb65aa`; prior local evidence for
+`a1bc1b6ec751926edc9981f57762277060acf9e4` and
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` is retained only as superseded
+history. At the frozen candidate, the local signed/encrypted backup
+`20260725T125008Z` recovered all six writers, and its disposable restore
+verified 18 collections, 59 documents, zero document failures and both media
+manifests. This is Docker Desktop evidence only, not approved Ubuntu,
+off-site-custody or production evidence.
+
 The detailed implementation source is
 [the production backup/restore runbook](../../menorah/docs/production-backup-restore-runbook.md).
 This document is the release gate and operator checklist.
+
+The dedicated server-staging implementation is under
+`menorah/deploy/server-staging/`, principally:
+
+- `run-consistent-backup.sh` and `backup-staging.sh`;
+- `run-disposable-restore.sh` and `restore-staging.sh`; and
+- the isolated roots `/opt/menorah-staging/backups`,
+  `/opt/menorah-staging/data/backup-retrieval`,
+  `/opt/menorah-staging/data/restore`,
+  `/opt/menorah-staging/data/restore-media`, and
+  `/opt/menorah-staging/deploy-state/recovery`.
+
+These are not production backup or restore paths and must never be redirected
+to production data, credentials, volumes, roots or replica sets.
+
+## Server-staging approval boundary
+
+Backup and restore evidence belongs to Step F of the ordered Step A–G model in
+[29-server-staging-design-and-discovery-runbook.md](./29-server-staging-design-and-discovery-runbook.md):
+
+1. Step A downloads the exact discovery blob to a temporary file, verifies
+   SHA-256
+   `b7ba1341ad78aa5698020ec040404c8418365481da2d7b0e7c105fae0d788a17`,
+   executes only the verified read-only script and removes the file on exit.
+2. Step B requires an explicit collision `PASS` and human approval.
+3. Step C prepares only reviewed `/opt/menorah-staging` roots, environment,
+   secrets, domains and provider settings.
+4. Step D dry-renders and validates the overlay without starting it.
+5. Step E requires a second human approval before exact-SHA deployment.
+6. Step F proves Ubuntu ownership/readability, consistent backup, signed
+   retrieval, disposable restore, interruption/recovery and alert/human
+   response.
+7. Step G removes only exact project `menorah-staging` and staging-labelled
+   resources, verifies production invariance, preserves evidence, and requires
+   separate explicit approval before deleting staging volumes.
+
+Only Step A is currently eligible. The commands below are the future Step F
+procedure after Steps A–E pass; they are not instructions to run now.
+
+## Server-staging consistent backup
+
+The host wrapper is the authoritative server-staging entry point:
+
+```bash
+cd /opt/menorah-staging/app
+bash menorah/deploy/server-staging/run-consistent-backup.sh
+```
+
+It binds itself to project `menorah-staging`, environment identity
+`menorah-server-staging-v1`, runtime SHA, database `menorah_staging`, replica
+set `menorah-staging-rs`, exact roots, signing/encryption keys and backup
+identity. It verifies all six application writers are stopped for the backup
+window, creates the signed/encrypted set, retrieves it through the separate
+retrieval path and recovers writers through the guarded lifecycle. A failure
+does not become a usable backup and must leave evidence for review.
+
+Record the returned timestamp without secret material. Never invoke
+`backup-staging.sh` with hand-assembled production variables; the wrapper
+supplies the reviewed staging acknowledgements and container boundary.
+
+## Server-staging disposable restore
+
+Restore one explicitly selected timestamp from the preceding successful
+backup:
+
+```bash
+cd /opt/menorah-staging/app
+readonly SERVER_STAGING_BACKUP_TIMESTAMP='<YYYYMMDDTHHMMSSZ>'
+bash menorah/deploy/server-staging/run-disposable-restore.sh \
+  "${SERVER_STAGING_BACKUP_TIMESTAMP}"
+```
+
+The wrapper targets only `staging-mongo-restore` in project
+`menorah-staging`, replica set `menorah-staging-restore-rs`, and the isolated
+restore database/media volumes. The restore must verify checksums, HMAC,
+metadata identity, database collections/documents/indexes and both media
+manifests. It must not alter the primary staging database, and it can never
+select or restore a production archive.
+
+A failed restore creates or preserves review state under
+`/opt/menorah-staging/deploy-state/recovery`. Keep writers stopped when a
+deploy/migration recovery marker also exists, preserve the marker, and follow
+[09-rollback-runbook.md](./09-rollback-runbook.md). For an exact
+post-migration code resume, the required acknowledgement is:
+
+```text
+MENORAH_STAGING_RECOVERY_ACK=RESUME_EXACT_MENORAH_STAGING_SHA_AFTER_MIGRATION
+```
+
+Do not delete a recovery marker or claim restore success from decryption,
+archive listing or partial database counts.
 
 ## Recovery object
 

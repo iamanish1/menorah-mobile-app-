@@ -1,272 +1,316 @@
 ## Summary
 
-This draft completes the final production-readiness engineering slice and
-records the results of the isolated synthetic staging rehearsal performed on
-Docker Desktop.
+This draft adds a source-controlled, co-host-safe server-staging overlay and
+records its complete local validation. It does **not** claim that the shared
+Ubuntu server has been inspected, that server staging has been approved or
+deployed, or that production is ready.
 
 - Branch: `release/final-production-readiness`
-- Immutable runtime candidate:
-  `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
-- Documentation HEAD: recorded in PR #2 after this documentation-only commit
-  because a commit cannot embed its own SHA
-- Base branch: `main`
-- Local verdict:
-  **LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**
+- Previous runtime candidate:
+  `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` — superseded
+- Frozen runtime candidate:
+  `1ecd0b379369258be466159364a8a48c79fb65aa`
+- Documentation HEAD: the documentation-only successor commit containing
+  this PR-body source; resolve externally from PR #2 with `git rev-parse HEAD`
+- Base: `main`
+- PR: [#2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/pull/2)
+  is open, draft, unmerged and currently mergeable; auto-merge is disabled
+- Complete current-candidate local matrix: **PASS**
+- Server discovery/evidence: **NOT COLLECTED**
 - Production verdict: **NOT READY**
 
-The runtime candidate is frozen. Documentation-only commits under `docs/**`
-and `menorah/docs/**` may follow without changing it. Any source, workflow,
-test, lockfile, migration, deployment/configuration or provider-behavior
-change invalidates the candidate and requires a complete rerun.
+PR #2 remains open, draft and unmerged. This PR body grants no authority to
+merge, deploy, migrate, restore, alter production or change DNS/Cloudflare.
 
-## Scope
+**THIS DRAFT PR IS NOT AUTHORIZATION TO MERGE OR DEPLOY.**
 
-- Authentication, authorization, session, audit-integrity and SSRF hardening.
-- Booking, pricing, payment, webhook, reconciliation and payout state
-  transitions.
-- Counsellor verification states and evidence gates.
-- Consent, privacy-rights, legal-hold and bounded-retention engineering.
-- Backup, restore, migration, rollback and recovery controls.
-- Twenty launch-critical observability signals with fixtures and runbooks.
-- Mobile release contracts and production configuration validation.
-- Exact-SHA cross-stack CI, Compose validation, supply-chain checks, image
-  scans and SBOMs.
-- An isolated local staging harness that rejects production configuration and
-  uses synthetic data and stubbed providers only.
+## Runtime freeze
 
-## Candidate-bound local staging evidence
+The runtime candidate is frozen at
+`1ecd0b379369258be466159364a8a48c79fb65aa`. Any later source, workflow,
+test, lockfile, package manifest, migration, deployment script, Compose,
+Caddy, monitoring, environment-template or provider-behavior change
+invalidates it and requires a new runtime SHA plus complete downstream
+validation.
 
-All results in this section were produced from runtime candidate
-`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`.
+After the freeze, only narrative changes under `docs/**` and
+`menorah/docs/**` are allowed. Reviewers should resolve the PR head
+externally and verify:
 
-### Isolation, images and health
+```bash
+readonly RUNTIME_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
+git merge-base --is-ancestor "${RUNTIME_SHA}" HEAD
+git diff --name-only "${RUNTIME_SHA}..HEAD"
+```
 
-- Full-profile build passed for all 11 locally built images in 112.95 seconds.
-- Rendered Compose SHA-256:
-  `4b2608b4eeb6e0e3acdac06b047fb9f427f1c373f5b03afc4b38e5c70e02c728`;
-  30 services, five staging-only networks and 12 staging-only volumes.
-- Core startup completed in 16.28 seconds and full startup in 55.64 seconds.
-- Final inventory: 26 containers, comprising 23 running and healthy services
-  plus three expected exited-zero one-shots: `logs-init`,
-  `mongo-replica-init`, and `mongo-restore-replica-init`.
-- There were zero container restarts and zero unhealthy running services.
-- Caddy remained healthy with one workload process and zero zombies/restarts;
-  its access log was mode `0600`, UID/GID `473:473`, and Loki ingestion
-  succeeded.
-- Every published socket was bound to `127.0.0.1`; MongoDB and Redis had no
-  published host ports.
-- The generated environment passed the synthetic-only contract, with optional
-  external providers disabled. No production environment, database, Redis,
-  provider or customer data was loaded or contacted.
+Every returned path must be in one of the two documentation trees.
 
-### Migration and synthetic roster
+The complete ordered 52-commit runtime ledger, purposes and focused/cumulative
+evidence is in
+[the immutable candidate record](./26-immutable-candidate-record.md).
 
-- First migration run applied all 11 versioned migrations in 5.86 seconds.
-- Second migration run skipped the same 11 migrations in 2.93 seconds,
-  proving idempotence.
-- The migration ledger contained 11 unique entries.
-- First seed run created the bounded synthetic roster: 10 users, three
-  counsellors and two application identities in 8.13 seconds.
-- Second seed run failed closed with
-  `LOCAL_STAGING_ROSTER_ALREADY_PRESENT` in 7.74 seconds.
-- Final primary inventory was 18 collections, 89 documents and 117 indexes.
-- The requested administrator and super-administrator identities are distinct
-  aliases but share the current full-admin role; distinct role semantics remain
-  an out-of-matrix Phase 5 gap.
+## Server-staging design
 
-### Functional and browser validation
+**SERVER STAGING DESIGN COMPLETE — DISCOVERY REQUIRED**
 
-- Local API smoke suite: **31/31 passed** in 6.98 seconds.
-- Playwright browser suite: **7/7 passed**, covering public, user, admin and
-  counsellor surfaces, synthetic internal MFA, and authentication-loop
-  regressions, in 15.33 seconds.
-- Final release-workflow test command: **133/133 passed** — 75/75 release plus
-  58/58 local-staging assertions, with no failures or skips.
-- Preliminary misconfigured or state-contaminated API/browser invocations were
-  invalidated and are not included in these totals.
-- Applicable backend unit tests, client type-checks, linters and focused
-  payment/email/release checks passed; platform- or provider-dependent gaps
-  remain listed below.
+The new overlay is independent of both production and the pre-existing
+`menorah-local-staging` Docker Desktop project.
 
-### Alerts
+| Boundary | Server-staging identity |
+| --- | --- |
+| Compose project | `menorah-staging` |
+| Environment identity | `menorah-server-staging-v1` |
+| Root | `/opt/menorah-staging` |
+| Checkout | `/opt/menorah-staging/app` |
+| Environment | `/opt/menorah-staging/env/server-staging.env` |
+| Data | `/opt/menorah-staging/data` |
+| Backups | `/opt/menorah-staging/backups` |
+| Deployment/recovery state | `/opt/menorah-staging/deploy-state` |
+| Logs | `/opt/menorah-staging/logs` |
+| Database | `menorah_staging` |
+| Primary replica set | `menorah-staging-rs` |
+| Disposable restore replica set | `menorah-staging-restore-rs` |
+| Redis ACL identity | `menorah-staging-app` |
+| Networks | Six staging-only networks: ingress, app, data, monitoring, restore and egress; default runtime uses five and recovery adds restore |
+| Volumes | 21 staging-only volumes |
+| Ingress | Ten staging hostnames; exact Caddy and Tunnel host/target contracts |
+| Monitoring | Separate Prometheus, Alertmanager, Loki and Alloy stores; exact staging labels and 20 required P0 alerts |
 
-- All **20/20** required launch-critical alerts were observed firing and then
-  resolving in both Prometheus and Alertmanager:
-  worker backlog, backup failure, payment/provider/webhook failures,
-  email dispatch/delivery failures, call provider/media failures, privileged
-  and admin role changes, user/counsellor/admin authentication failures,
-  elevated HTTP 401/403/429/500 rates, and all three frontend probes.
-- The exact pre/post state was 25/25 Prometheus targets up. The sole allowed
-  local baseline was two instances of `BlackboxProbeCoverageIncomplete`;
-  local Docker cannot supply the production rule's 19 public HTTPS probes plus
-  two call probes.
-- The all-alert exercise completed in 1,357.57 seconds.
-- The negative backup test also caused `BackupJobFailed` to fire in both
-  systems; a successful backup cleared it.
+The proposed network CIDRs and loopback host ports are provisional until
+actual server discovery proves them collision-free. MongoDB and Redis publish
+no host port. All host-published TCP sockets bind to `127.0.0.1`; the isolated
+LiveKit UDP range is also collision-validated.
 
-### Backup and isolated restore
+The egress network is NAT-capable but is not a destination/FQDN allowlist;
+approved server firewall or proxy proof remains open. Only Alertmanager, the
+four APIs and user web join it; the worker does not. Razorpay secrets are
+scoped only to api-ios, RazorpayX only to api-admin, and the Resend webhook
+secret only to api-web. Migration, seed and worker receive no provider
+secrets. Local loopback LiveKit proof does not replace review of the real
+server's media IP/firewall path.
 
-- A backup attempted while application writers were live failed closed with
-  `application writers must be explicitly quiesced` in 2.84 seconds.
-- `BackupJobFailed` fired in both systems in 26.01 seconds.
-- All five writers were then proven stopped before the final successful signed
-  backup: four API services and the worker; stop completed in 3.74 seconds.
-- Backup timestamp: `20260724T070020Z`; signed backup creation took 3.72
-  seconds.
-- Writer recovery took 12.39 seconds; outage from all writers stopped to all
-  writers healthy was 39.70 seconds.
-- Restore into the separate restore-only MongoDB instance passed.
-- Restore verification took 8.72 seconds.
-- Restored inventory matched the manifest: 18 collections, 89 documents and
-  117 indexes, with HMAC, archive hash and media-manifest verification
-  successful and zero document failures. The non-empty media check counted one
-  clearly synthetic source file and one restored file; an independent
-  read-only networkless verifier returned byte comparison exit `0` and the
-  same file hash.
-- `BackupJobFailed` resolved in both systems in 0.94 seconds.
-- The primary staging database was unchanged by the restore rehearsal.
-- After the later non-empty media recovery rerun, all 25 Prometheus targets
-  remained up and only the same two allowed local
-  `BlackboxProbeCoverageIncomplete` baseline instances were active.
+The overlay includes fail-closed environment parsing, project/process
+authority checks, exact-SHA image manifests, recorded migration state,
+crash-resumable deployment, recorded-artifact rollback, exact-candidate
+post-migration resume, quiesced signed backup, disposable restore, synthetic
+initialization, runtime verification and controlled P0 alert exercise.
 
-## Functional evidence matrix
+## Collision controls
 
-This matrix classifies the 107 requested assertions against final automated
-and static evidence. A `GAP` is not represented as a pass; `BLOCKED` requires
-an external system, approval or environment.
+Static and runtime validators reject overlap across:
 
-| Category | Requested | STATIC PASS | FAIL | GAP | BLOCKED |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Authentication | 15 | 10 | 0 | 5 | 0 |
-| Authorization | 8 | 7 | 0 | 0 | 1 |
-| Counsellor lifecycle | 10 | 9 | 0 | 1 | 0 |
-| Booking | 12 | 12 | 0 | 0 | 0 |
-| Payment and payout | 19 | 13 | 0 | 0 | 6 |
-| Chat and calls | 12 | 9 | 0 | 0 | 3 |
-| Privacy | 10 | 9 | 0 | 1 | 0 |
-| Web and API | 11 | 5 | 0 | 6 | 0 |
-| Security | 10 | 7 | 0 | 1 | 2 |
-| **Total** | **107** | **81** | **0** | **14** | **12** |
+- Compose projects, resource prefixes, container/service identities and
+  required labels;
+- TCP/UDP listeners, loopback bindings and unpublished database/cache ports;
+- network names, CIDRs/IP ranges and production network attachment;
+- volumes plus canonical app, environment, data, backup, retrieval, restore,
+  media, log and deployment-state roots, including symlink escape;
+- MongoDB database, host, replica-set, users, exact roles and URIs;
+- Redis host, ACL identity and URL;
+- Caddy/Tunnel hosts, routes, targets, IDs and tokens;
+- backup keys, roots, metadata, locks, `LATEST`, pruning and restore targets;
+- deployment manifests, current/last-good/migration/identity/recovery markers
+  and locks;
+- monitoring targets, labels, stores, receivers and alert routing;
+- provider modes/accounts, callback origins, public URL tuple, storage
+  buckets, environment files and process authority.
 
-The principal gaps or blockers are positive user registration/OTP coverage,
-self-approval, distinct super-admin role semantics, and no-gender automation,
-full responsive/accessibility/load coverage, upload hardening, two-person
-payout and refund flows, real
-payment/email/call/media provider sandboxes, external fallback behavior,
-full-history independent secret review, and independent DAST/VAPT.
+The production metadata fixture reports zero collisions locally. That does not
+predict the real host: Step A discovery and Step B human review remain
+mandatory.
 
-## Security evidence and urgent credential follow-up
+## Current-candidate local evidence
 
-- Trivy `0.70.0` exact-commit repository secret scanning completed in 10.59
-  seconds with exit `0` and zero findings.
-- The immutable-tree credential scan found no non-fixture credential-bearing
-  URI, no tracked runtime environment file and no tracked private key.
-- A credential-bearing legacy external MongoDB URI was discovered in
-  `scripts/vps-setup.sh`, removed without connecting to the endpoint or
-  exposing the credential, and covered by a regression test in
-  `48fb83c248b0e969e699433a8bacdd276ed4311d`.
-- The owner of that external MongoDB account must independently verify whether
-  it remains active, rotate/revoke its credential, and retain auditable
-  evidence. Source removal alone does not complete that operational action.
-- Independent full-history review and DAST/VAPT are not proven by this local
-  rehearsal.
+The complete local matrix passed for the frozen candidate. Its 22 primary
+runtime assertions were:
 
-## Defects fixed during the rehearsal
+1. clean exact-SHA checkout;
+2. overlay render;
+3. zero production path/resource references;
+4. all-profile build;
+5. required service startup;
+6. required health;
+7. first migration;
+8. safe second migration;
+9. bounded synthetic seed;
+10. backup and disposable restore;
+11. all 20 P0 alert contracts/exercise;
+12. user, admin, counsellor, browser and API smoke;
+13. complete service resource limits;
+14. no published MongoDB/Redis ports;
+15. localhost-only administrative TCP bindings;
+16. staging-only networks and volumes;
+17. zero production-fixture collisions;
+18. shell syntax;
+19. ShellCheck;
+20. Compose and Caddy validation;
+21. workflow validators; and
+22. exact-SHA GitHub readiness, functional and security gates.
 
-The rehearsal found and fixed candidate-invalidating defects; evidence from
-the affected earlier SHAs was discarded and the relevant checks were rerun:
+Selected exact local results:
 
-- authentication reload loops in the local browser flow;
-- non-portable signed-recovery verification and restore ownership handling;
-- Alertmanager reachability across the isolated private monitoring network,
-  including fail-fast preflight behavior;
-- private proxy/ingress address validation and related staging boundaries;
-- non-root/cache/configuration issues in Redis and the monitoring images;
-- the credential-bearing legacy external MongoDB URI described above; and
-- a long-duration Caddy health-check leak that accumulated 106 defunct
-  `ssl_client` children, exhausted the 128-PID limit, and made health checks
-  fail; `init: true` plus a regression test fixed and bounded the process
-  lifecycle;
-- raw ingress aliases that left 7/25 scrape targets down, broke Alloy-to-Loki
-  visibility, and polluted the baseline with `BackupMetricsStale`; private
-  aliases, a backup heartbeat, and exact target/baseline validation restored
-  25/25 visibility in `fbf2de8c5bb3e50e41fcaa6bc75f739cfdc0aca2`; and
-- Caddy 2.8 silently ignoring the configured access-log mode and producing a
-  root-owned `0600` log unreadable by Alloy; the isolated `logs-init` service
-  plus shared UID/GID 473 restored rotation-safe log visibility in
-  `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`.
+- Static isolation: 32 services, six networks, 21 volumes, 117
+  loopback-only published port instances, ten ingress hosts, 20 required P0
+  alerts and zero fixture collisions.
+- All-profile image build: passed.
+- Default service graph: 19 named volumes. Retained post-migration runtime:
+  26 containers on five networks and 20 volumes (including
+  `staging-migration-temp`) — 22 healthy, four expected exited-zero one-shots,
+  zero bad state and zero restarts. Recovery/all-profile adds
+  `staging-restore-mongodb` and the restore network for 21/six.
+- Default-runtime caps: 7,008 MiB memory, 1,984 MiB reservation, 6.30 CPU and
+  2,832 PIDs. All-profile static caps: 8,736 MiB, 2,448 MiB reservation,
+  7.65 CPU and 3,536 PIDs.
+- Migration: 11 applied first run, the same 11 safely skipped second run.
+- Synthetic roster: ten users, three counsellors and two applications;
+  duplicate seed refused.
+- Playwright: 9/9 passed.
+- API smoke: 31/31 passed, including admin MFA and exact role authentication.
+- Backup: timestamp `20260725T125008Z`; all six writers quiesced and recovered.
+- Disposable restore: 18 collections and 59 documents matched, zero failures;
+  initializer
+  exited zero; no transient recovery container/state remained.
+- Alert exercise: all 20 fired and resolved in both Prometheus and
+  Alertmanager; 35/35 targets healthy; zero expected active alerts afterward.
+- Teardown: zero validation containers, networks and volumes remained.
+- Static/QA gates: tracked blobs 1,131/1,131; release contracts 432/432;
+  tunnel 22/22; managed Mongo 22/22; monitoring 42/42; Bash 54/54 repository
+  and 48/48 workflow scope; actionlint 6/6; ShellCheck 23/23; pinned Linux
+  recovery 34/34; rate-limit regression 4/4.
+- Security: seven production audit roots passed; Gitleaks found zero leaks in
+  427 commits; Semgrep found zero issues across 77 OWASP rules/614 files;
+  four Trivy scans found zero HIGH/CRITICAL issues; four CycloneDX SBOMs
+  parsed successfully.
 
-The first non-empty media rehearsal used an artificially restrictive `0700`
-test-fixture directory and failed safely before archive finalization. That
-setup attempt was invalidated; ordinary synthetic fixture permissions were
-restored and the complete fresh backup/retrieval/restore/byte-comparison cycle
-above passed. Early SHAs `23caa24`, `94b3652`, and `386e379` also had
-superseded workflow runs cancelled by concurrency; they are not claimed as
-fully green exact-SHA candidates.
+The existing `menorah-local-staging` environment was not modified: 26
+containers (23 running, three exited zero), five networks and 12 volumes
+remained, with exact container-ID set SHA-256
+`109629e5dc63c8581268c42bd18765ccd38921aeb50366d8a752019a25c06ff4`.
 
-The final complete evidence set is bound only to
-`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`. Runtime revisions
-`48fb83c248b0e969e699433a8bacdd276ed4311d`,
-`a9ea55ea85ab3bd91e68797256e0b8fc9f677966`, and
-`fbf2de8c5bb3e50e41fcaa6bc75f739cfdc0aca2`, plus documentation head
-`2f2c6e45608300a05443aa7a95d2fd4513e28b71`, are historical and
-**INVALIDATED** for the current candidate.
+Prior local observations at
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` remain in
+[report 28](./28-local-staging-validation-report.md) as superseded history;
+their counts were not rewritten or attributed to this candidate.
 
-## Exact-SHA GitHub checks
+## Exact-SHA GitHub gates
 
-All six final candidate workflows passed on attempt 1: **50/50 jobs and
-404/404 steps**.
+All three frozen-runtime push workflows are terminal success, with **25/25
+jobs and 204/204 steps** and zero failed, skipped or cancelled jobs/steps:
 
-- [Push — Production Release Readiness, run 30069836961](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069836961)
-- [Push — Exact-SHA Functional Validation, run 30069836968](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069836968)
-- [Push — Security Gates, run 30069836976](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069836976)
-- [Pull request — Production Release Readiness, run 30069839620](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069839620)
-- [Pull request — Exact-SHA Functional Validation, run 30069839619](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069839619)
-- [Pull request — Security Gates, run 30069839629](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30069839629)
+- [Production Release Readiness — run 30158172303, attempt 2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172303):
+  1/1 jobs, 11/11 steps.
+- [Exact-SHA functional release validation — run 30158172290, attempt 2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290):
+  9/9 jobs, 89/89 steps.
+- [Security gates — run 30158172293](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293):
+  15/15 jobs, 104/104 steps.
 
-PR #2 remains open and draft. Passing checks are engineering evidence only;
-they are not a production authorization.
+Readiness and functional attempt 1 each failed with zero materialized jobs and
+a GitHub internal-server-error annotation. Their workflow blobs were
+unchanged, local actionlint passed, and unchanged exact-SHA attempt 2 passed
+every job/step. No repository fix or waiver was used. The exact runtime
+deployment query returned `[]`.
 
-## What remains unproven
+The documentation-only successor must also have green triggered workflows at
+its externally resolved PR head. Passing checks are engineering evidence, not
+merge or deployment approval.
 
-- Approved Ubuntu server staging and a recovery rehearsal on that host.
-- The production probe rule's 19 public HTTPS probes plus two call probes.
-- Safe co-hosting on the existing production server; the current topology is
-  unsuitable without a separately reviewed isolation design. A dedicated
-  staging VM/host is the preferred next environment.
-- Real provider sandbox behavior for payments, payouts/refunds, email,
-  call/media and fallback paths.
-- Independent DAST/VAPT and full-history security review.
-- Android emulator/device UI, signing, TestFlight/internal-track and store
-  completion.
-- Named operational owners, on-call/governance/risk decisions, legal/privacy
-  approval, clinical approval, vendor assurance and operational
-  ISO/ISMS/BCM evidence.
+## Defects found and closed
 
-## Required next gate
+The overlay was repeatedly invalidated and corrected when local or GitHub
+evidence exposed a defect. Material fixes include exact origin/URL selection,
+active-project restore binding, runtime authority, startup contracts,
+admin-grant/bootstrap gating, Caddy ownership/probes, private ingress and
+monitoring aliases, role/MFA smoke, backup traversal, deployment crash resume
+and exact release-gate contexts.
 
-Reproduce the candidate on an approved, isolated Ubuntu staging host using
-staging-only secrets, networks, storage, DNS and provider sandboxes. Repeat
-the migration, synthetic roster, functional/browser, all-alert,
-backup/restore, security and recovery evidence there. Do not reuse production
-databases, Redis, environment files, provider credentials or customer data.
+The user, admin and counsellor workspaces now require patched PostCSS
+`8.5.18`, closing `GHSA-r28c-9q8g-f849` in the affected lockfiles.
+
+Final commit `1ecd0b379369258be466159364a8a48c79fb65aa` closes
+`GHSA-mh99-v99m-4gvg` with a lockfile-only
+`brace-expansion@5.0.7` → `5.0.8` update in exactly
+`menorah/mobile-app/package-lock.json` and
+`menorah/mobile-app/mobile-app/package-lock.json`. All six affected outer and
+five affected nested production paths are patched. No manifest, audit policy
+or exception changed; the separate bounded
+`GHSA-w5hq-g745-h8pq` moderate exception still expires 2026-10-31.
+
+Earlier readiness run `30125885611` and functional run `30125885628` failed
+because their release-infrastructure paths did not install backend
+dependencies required by a startup-contract import. Those failures were not
+waived. Commits `6ff94386187596f841a5cf1742d453b9abc7e69b` and
+`a1bc1b6ec751926edc9981f57762277060acf9e4` fixed the two workflow families;
+the final exact-SHA runs above are the accepted evidence.
+
+## Server runbook and approvals
+
+Server work is deliberately split:
+
+- Step A — run only the non-mutating discovery script, return redacted output,
+  and change nothing.
+- Step B — compare actual host metadata to the overlay; require explicit
+  collision `PASS` and human approval.
+- Step C — only then prepare `/opt/menorah-staging` roots, protected
+  staging-only environment/secrets, domains and providers.
+- Step D — dry-render Compose/Caddy/Tunnel, limits and collision validators;
+  do not start services.
+- Step E — only after a second approval, use the guarded wrapper to start
+  isolated MongoDB/Redis and application services, run the recorded staging
+  migration, create the bounded synthetic roster, and prove health plus
+  production invariance.
+- Step F — collect Ubuntu ownership, backup/restore,
+  migration-interruption/crash-resume/rollback, DNS/TLS/Tunnel,
+  alert/human-delivery, systemd/timer, contention and provider-sandbox
+  evidence.
+- Step G — target only project `menorah-staging`, verify production before and
+  after, remove only staging-labelled resources, preserve evidence, and
+  require separate explicit approval before deleting staging volumes.
+
+The full procedure and exact inspection-only Step A command are in
+[the server-staging design and discovery runbook](./29-server-staging-design-and-discovery-runbook.md).
+Do not run Steps C–G now.
+
+## Open blockers
+
+The following remain unproved and are not converted to passes:
+
+- real-server discovery and co-host collision approval;
+- approved no-start server dry render after discovery/collision review;
+- separately approved server-staging deployment and evidence collection;
+- DNS, TLS, Cloudflare Tunnel, firewall and external probe behavior;
+- protected secret/key custody and rotation;
+- payment, payout/refund, email, call/media, identity and other provider
+  sandbox callbacks;
+- physical iOS/Android device, restrictive-network, signed-build,
+  TestFlight/internal-track and store evidence;
+- independent DAST/VAPT, remediation review and closure retest;
+- named operational owner/on-call/change authority and approved RTO/RPO;
+- legal/privacy retention, consent, processor and data-rights decisions;
+- clinical safety/escalation review;
+- Apple signing/declarations/store review;
+- Google signing/declarations/store review;
+- vendor ownership, contract, data-location, security, deletion and exit
+  evidence; and
+- operational ISO/ISMS/BCM evidence.
 
 ## Review links
 
 - [Immutable candidate record](./26-immutable-candidate-record.md)
+- [Local validation report](./28-local-staging-validation-report.md)
+- [Server-staging design and discovery runbook](./29-server-staging-design-and-discovery-runbook.md)
 - [Release runbook](./08-release-runbook.md)
 - [Rollback runbook](./09-rollback-runbook.md)
 - [Backup and restore runbook](./10-backup-and-restore-runbook.md)
 - [Monitoring runbook](./12-monitoring-and-alerting-runbook.md)
-- [Staging QA package](./staging/README.md)
 - [Evidence index](./staging/13-evidence-index.md)
-- [Local staging validation report](./28-local-staging-validation-report.md)
 - [Production go/no-go](./21-production-go-no-go.md)
 
 ## Warning
 
 **PRODUCTION IS NOT READY. DO NOT MERGE AND DO NOT DEPLOY.**
 
-This draft PR is for review and server-staging preparation only. It grants no
-authority to merge, deploy, enable production providers, or touch production
-data or infrastructure.
+**THIS DRAFT PR IS NOT AUTHORIZATION TO MERGE OR DEPLOY.**
+
+PR #2 must remain draft and unmerged. No server discovery, deployment,
+migration, backup, restore, DNS/Cloudflare change, production access or
+production-data use is claimed.

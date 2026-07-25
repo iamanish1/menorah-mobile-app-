@@ -1,6 +1,6 @@
 # Production go/no-go record
 
-Decision date: 2026-07-24.
+Decision date: 2026-07-25.
 
 ## Verdict
 
@@ -8,10 +8,11 @@ Decision date: 2026-07-24.
 
 This verdict applies to public production launch. Repository remediation has
 materially improved control design. Candidate-bound local validation passed at
-`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`, but it recorded 14 gaps and 12
-blocked assertions. Protected repository governance, approved Ubuntu staging,
-live infrastructure proof, approved operating policies, independent VAPT,
-store validation and vendor evidence are not complete.
+`1ecd0b379369258be466159364a8a48c79fb65aa`, and its three exact push gate runs
+passed. Server discovery has not been performed and no server-staging or
+production fact may be inferred. Protected repository governance, approved
+Ubuntu staging, live infrastructure proof, approved operating policies,
+independent VAPT, store validation and vendor evidence are not complete.
 
 No part of this document authorizes deployment, migration, secret changes,
 provider changes, DNS/Cloudflare changes or store submission.
@@ -22,8 +23,9 @@ provider changes, DNS/Cloudflare changes or store submission.
 | --- | --- | --- | --- |
 | Repository implementation | Candidate code, tests, configuration and runbooks | Intended behavior under covered test conditions | Live configuration, production data safety, operator execution or policy approval |
 | Desktop validation | Unit/lint/config checks run without production access | Local regression status | Linux host behavior, vendor callbacks, DNS, alert delivery, backups or stores |
-| Historical isolated integration | At old runtime SHA `3fb99858c6766a341bb7b7dab2377195427f0ea1`, all 13 backend integration suites ran against disposable MongoDB and Redis; 45/45 tests passed | Covered behavior of that older SHA under its workflow fixture | Current runtime behavior, production data, host behavior or staging completeness; this evidence is invalidated for the current candidate |
-| Current local synthetic staging | Complete at `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`; report 28 is authoritative | Docker Desktop isolation, migrations/seed, API/browser checks, local stubs, monitoring, backup/restore and explicit gaps/blocks | Ubuntu host behavior, real-provider callbacks, physical devices, independent VAPT, external approval or production readiness |
+| Historical candidate evidence | Evidence for `a1bc1b6ec751926edc9981f57762277060acf9e4`, `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`, `3fb99858c6766a341bb7b7dab2377195427f0ea1` and earlier candidates remains recorded as history | Only behavior of the cited older SHA under its stated fixture | Current runtime behavior, production data, host behavior or staging completeness; it is superseded for the current candidate |
+| Current local synthetic staging | Complete at `1ecd0b379369258be466159364a8a48c79fb65aa`; report 28 is authoritative | Docker Desktop isolation, migrations/seed, API/browser checks, local stubs, monitoring, backup/restore and explicit evidence boundaries | Ubuntu host behavior, real-provider callbacks, physical devices, independent VAPT, external approval or production readiness |
+| Server-staging design | Dedicated project/resources and a discovery-first Steps A-G runbook exist at the candidate | Intended isolation contract and approval order | Target-host truth, collision freedom, prepared resources, deployment or live behavior |
 | Live proof | Not completed for this candidate | Nothing may be inferred | Required before any public launch |
 | Governance/external proof | Decisions and sign-offs remain pending | Nothing may be inferred | Cannot be replaced by code or a template |
 
@@ -31,32 +33,51 @@ provider changes, DNS/Cloudflare changes or store submission.
 
 | Gate | Current assessment | Required evidence |
 | --- | --- | --- |
-| Immutable candidate | Runtime SHA frozen; local and six push/PR workflows passed; review incomplete | `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`, final documentation-head verification, independent review and protected release record |
-| Backend regression | Pass for the unchanged backend source at the runtime candidate | 114/127 suites and 1,509/1,554 tests passed; 13 suites/45 integration tests were skipped in the default run and remain a current exact-SHA limitation |
+| Immutable candidate | Runtime SHA frozen; local overlay and three exact push gates passed; review incomplete | `1ecd0b379369258be466159364a8a48c79fb65aa`, final documentation-head verification, independent review and protected release record |
+| GitHub push gates | Exact candidate runs passed with no failed, skipped or cancelled jobs/steps | Readiness `30158172303`: 1/1 jobs, 11/11 steps; functional `30158172290`: 9/9 and 89/89; security `30158172293`: 15/15 and 104/104 |
+| Backend regression | Pass at the runtime candidate | Default backend run: 117 suites and 1,716 tests passed; the separate integration run: 13 suites and 45 tests passed |
 | Web/admin/counsellor/mobile | Pass for recorded repository automation; device proof open | Recorded lint/type/test checks passed with warnings documented; physical-device, accessibility, responsive and real-provider coverage remains open |
-| Release/recovery scripts | Pass for recorded repository automation and local recovery | Release workflow tests 133/133; signed backup and isolated restore passed; Linux-only paths still require Ubuntu staging |
-| Compose/Caddy/monitoring | Pass locally; protected-host proof open | Full profiles healthy with zero restarts; Caddy had one workload process and zero zombies, its access log was mode `0600` with UID/GID `473:473`, and Loki ingestion succeeded; API smoke 31/31, browser 7/7 and all 20 required alerts fired/resolved; approved Ubuntu staging and live proof remain open |
+| Release/recovery scripts | Pass for recorded repository automation and local recovery | Core release contracts passed 432/432 (81 workflow/release, 59 local-staging and 292 server-staging); signed backup and isolated restore passed; approved Ubuntu execution remains open |
+| Compose/Caddy/monitoring | Pass locally; protected-host proof open | Default runtime ended with 22 healthy services plus four successful one-shot services and zero bad services; API smoke 31/31, browser 9/9 and all 20 required alerts fired/resolved; approved Ubuntu staging and live proof remain open |
 | Migrations | Pass locally | All 11 applied and then all 11 skipped on the local replica-set rerun with ledger/index invariants; approved Ubuntu interruption/rollback/resume and host evidence remain open |
-| Dependency/security scans | Current tracked-tree secret scan passed | Trivy found zero tracked findings and the custom immutable-tree scan found zero non-fixture credential-bearing URI matches; full-history independent review and VAPT remain open |
+| Dependency/security scans | Exact security workflow passed; independent VAPT remains open | Full-history secret scan, OWASP SAST, all seven production audit-policy roots, four image high/critical scans and four CycloneDX SBOM jobs passed; `brace-expansion` 5.0.7 is patched to 5.0.8, while only the bounded moderate `uuid` exception `GHSA-w5hq-g745-h8pq` remains through 2026-10-31 |
 
 Repository-controlled P0 decision:
-**LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**.
+**SERVER STAGING DESIGN COMPLETE — DISCOVERY REQUIRED**.
 
 Public-production decision remains **NO-GO** because the external and
 operational evidence below is incomplete. Exact repository results are in
 [the immutable candidate record](./26-immutable-candidate-record.md) and
 [the local staging validation report](./28-local-staging-validation-report.md).
+The discovery and approval boundary is in
+[the server-staging design and discovery runbook](./29-server-staging-design-and-discovery-runbook.md).
 
 ## Live infrastructure blockers
 
-- `INFRASTRUCTURE ACTION`: validate the target host configuration by name and
-  constraint without exposing values.
+- `SERVER DISCOVERY — INFRASTRUCTURE ACTION`: authorize only the immutable raw
+  URL and temporary-file command for
+  `1ecd0b379369258be466159364a8a48c79fb65aa`; require SHA-256
+  `b7ba1341ad78aa5698020ec040404c8418365481da2d7b0e7c105fae0d788a17`
+  before executing the read-only script, then return its redacted output and
+  classify every collision.
+- `DRY RENDER — INFRASTRUCTURE ACTION`: after every collision class passes and
+  the first human approval is recorded, prepare only the approved staging
+  inputs and complete the no-start Compose/Caddy/isolation render.
+- `STAGING DEPLOYMENT — INFRASTRUCTURE ACTION`: obtain a separate second
+  approval before deploying the exact SHA; no deployment approval exists now.
+- `SECRETS — INFRASTRUCTURE ACTION`: validate the target-host configuration by
+  name and constraint without exposing values; prove custody, permissions,
+  rotation/revocation and recovery.
 - `INFRASTRUCTURE ACTION`: create and verify a current encrypted backup, off-host
   recovery copy and isolated database/media restore.
 - `INFRASTRUCTURE ACTION`: execute approved migrations through the guarded
   maintenance boundary and retain invariant evidence.
-- `INFRASTRUCTURE ACTION`: verify Cloudflare hostnames, tunnel, DNS, Caddy,
-  firewall, TLS and external probes.
+- `DNS/CLOUDFLARE — INFRASTRUCTURE ACTION`: verify hostnames, Tunnel, DNS,
+  Caddy, firewall, TLS and external probes without changing production routes
+  during discovery.
+- `NETWORK EGRESS — INFRASTRUCTURE ACTION`: prove reviewed LiveKit media
+  exposure and host firewall/proxy destination restrictions; the sixth,
+  NAT-capable `staging-egress` network is not an FQDN allowlist.
 - `INFRASTRUCTURE ACTION`: prove MongoDB/Redis roles and health, monitoring
   coverage, Alertmanager delivery, Uptime Kuma monitors and responder
   acknowledgement.
@@ -156,22 +177,41 @@ Store decision: **NO-GO**.
 
 Vendor decision: **NO-GO**.
 
+## ISO and management-system blockers
+
+- `OWNER ACTION`: define the ISMS/quality/continuity scope, context, interested
+  parties, risk method, objectives and accountable roles.
+- Operate the selected controls and retain evidence before claiming
+  effectiveness.
+- Complete internal audit, corrective actions and management review before
+  engaging qualified certification parties.
+- Repository mappings and technical controls are not ISO certification.
+
+ISO/management-system decision: **NO-GO**.
+
 ## Minimum sequence to reconsider the verdict
 
 1. Independently review the frozen immutable candidate and documentation-only boundary.
-2. Execute the isolated-staging package against that SHA.
-3. Resolve or explicitly document every result in
+2. Authorize and return the checksum-pinned temporary-download discovery
+   output; a download or SHA-256 failure must stop before script execution.
+3. Complete every collision class as PASS and obtain the first human approval.
+4. Prepare the dedicated staging roots and inputs, complete the no-start
+   render/validator set, and obtain the separate deployment approval.
+5. Deploy only the exact staging project/SHA and collect the approved Ubuntu
+   ownership, recovery, ingress, alert/human-delivery, systemd/timer,
+   contention and sandbox-callback evidence.
+6. Resolve or explicitly document every result in
    [known issues](./20-known-issues-and-technical-debt.md).
-4. Obtain owner, legal, privacy and clinical decisions.
-5. Complete vendor and mobile-store prerequisites.
-6. Complete independent VAPT and closure retest.
-7. Prove live configuration, backup/restore, migration, networking,
+7. Obtain owner, legal, privacy and clinical decisions.
+8. Complete vendor and mobile-store prerequisites.
+9. Complete independent VAPT and closure retest.
+10. Prove live configuration, backup/restore, migration, networking,
    observability, alert delivery, logging and recovery in the approved staging
    and host workflows.
-8. Run a limited, non-production operational rehearsal with named responders.
-9. Re-run the [handover checklist](./19-handover-checklist.md) and attach every
+11. Run a limited, non-production operational rehearsal with named responders.
+12. Re-run the [handover checklist](./19-handover-checklist.md) and attach every
    evidence reference.
-10. Convene a recorded cross-functional go/no-go review. A higher verdict
+13. Convene a recorded cross-functional go/no-go review. A higher verdict
     requires affirmative sign-off from every accountable role; silence is a
     no-go.
 
@@ -179,7 +219,7 @@ Vendor decision: **NO-GO**.
 
 | Role | Current decision | Reason |
 | --- | --- | --- |
-| Engineering | No-go for public launch; local staging passed and server staging is required | Approved Ubuntu staging, protected governance and external approvals incomplete |
+| Engineering | No-go for public launch; local staging passed and the server-staging design awaits discovery | No server discovery/collision approval, approved Ubuntu staging, protected governance or external approvals |
 | Infrastructure | No-go | Live recovery, network, monitoring and log evidence incomplete |
 | Owner/operations | No-go | Policies, roles and risk decisions incomplete |
 | Legal/privacy | No-go | Qualified approvals and operating evidence incomplete |
@@ -188,5 +228,5 @@ Vendor decision: **NO-GO**.
 | Apple/Google | No-go | Store and signed-build evidence incomplete |
 | Vendors | No-go | Provider evidence incomplete |
 
-The only evidence-supported public-production verdict on 2026-07-24 is
+The only evidence-supported public-production verdict on 2026-07-25 is
 **NOT READY**.

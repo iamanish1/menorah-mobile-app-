@@ -1,6 +1,6 @@
 # Current-state baseline
 
-Last reviewed: 2026-07-24.
+Last reviewed: 2026-07-25.
 
 ## Purpose and verdict
 
@@ -12,16 +12,20 @@ without treating source code as proof of live operation.
 The remediation workspace is on `release/final-production-readiness`. The
 recovery-safety starting point identified for this effort is commit
 `353b19aced537d7acee6310bc0d8acbcc512f739`. Later repository remediation is
-preserved as focused commits on the same release branch. The replacement
-runtime candidate is frozen at
-`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`. Its candidate-bound local
-validation and all six push/PR GitHub workflow executions passed. Exact-SHA
-release, functional and security aggregate results cited for
-`3fb99858c6766a341bb7b7dab2377195427f0ea1` are historical and
-**INVALIDATED** for this newer runtime and were not relabelled. All commits and
-local results remain engineering evidence, not an owner-approved production release.
-The final protected release record and repository-governance approval remain
-external actions. See
+preserved as focused commits on the same release branch. The successor runtime
+candidate is frozen at
+`1ecd0b379369258be466159364a8a48c79fb65aa`. Its candidate-bound local overlay
+validation passed. The exact push runs also passed: production release
+readiness `30158172303` (1/1 jobs, 11/11 steps), functional release
+`30158172290` (9/9 jobs, 89/89 steps), and security `30158172293` (15/15 jobs,
+104/104 steps), with zero failed, skipped or cancelled jobs/steps. Results for
+`a1bc1b6ec751926edc9981f57762277060acf9e4`,
+`0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`,
+`3fb99858c6766a341bb7b7dab2377195427f0ea1` and other earlier candidates are
+historical and superseded and were not relabelled. All commits and local
+results remain engineering evidence, not an owner-approved production release.
+The final documentation-head checks, protected release record and
+repository-governance approval remain external actions. See
 [the immutable candidate record](./26-immutable-candidate-record.md) and
 [the local staging validation report](./28-local-staging-validation-report.md).
 
@@ -80,6 +84,38 @@ The candidate definition includes:
 Presence in Compose does not show that a container exists, is healthy or has
 the approved live configuration.
 
+## Server-staging design baseline
+
+The candidate includes a dedicated, co-host-safe server-staging overlay whose
+default Compose project/resource prefix is `menorah-staging`; its separate
+local validation identity is `menorah-server-staging-validation`. The intended
+server layout uses only `/opt/menorah-staging` and its `data`, `backups`,
+`deploy-state`, `logs`, `env` and `app` roots. The all-profile render contains
+32 services, six staging-prefixed networks, 21 staging-prefixed volumes and
+117 published-port instances. The default service graph references 19 named
+volumes. After the candidate's required migration/seed lifecycle, the retained
+default runtime contained 26 containers on five networks and 20 volumes
+(including `staging-migration-temp`): 22 healthy long-running services and
+four exited-zero one-shots. The recovery/all-profile model adds
+`staging-restore-mongodb` as the 21st volume and the restore network as the
+sixth network. Aggregate default limits are 7,008 MiB memory, 1,984 MiB memory
+reservation, 6.30 CPU and 2,832 PIDs. MongoDB and Redis publish no host ports,
+and their identities and stores are separate from production.
+
+The six provisional network CIDRs are `10.252.240.0/24` through
+`10.252.245.0/24`. The sixth network, `staging-egress`, is an
+inter-container-communication-disabled NAT bridge available only to the
+reviewed Alertmanager, API and user-web services. It is not a destination or
+FQDN allowlist. Local validation bound all 117 published-port instances to
+loopback; a real server requires separately reviewed LiveKit media bind/node
+addresses and host firewall or proxy restrictions. Every CIDR, listener, root
+and host resource remains a proposal pending checksum-pinned read-only server
+discovery and a complete collision review. No server discovery has run, no
+server fact has been established, and no directory, secret, container,
+network, volume, DNS/Tunnel route or provider setting has been created or
+changed. The required Steps A-G and two human approval boundaries are in
+[the server-staging design and discovery runbook](./29-server-staging-design-and-discovery-runbook.md).
+
 ## Security and data-control baseline
 
 Repository evidence supports the following intended controls:
@@ -128,6 +164,16 @@ has no email, chat, paging or webhook integration. An approved destination and
 live end-to-end delivery/acknowledgement/resolution test remain an
 `INFRASTRUCTURE ACTION`. Live Uptime Kuma monitors are not evidenced.
 
+## Dependency baseline
+
+At the frozen runtime SHA, both mobile production lockfiles pin the affected
+Expo-path `brace-expansion` nodes at 5.0.8; the vulnerable 5.0.7 records were
+removed from six outer and five nested production paths. Clean installs,
+affected-tree inspection and the production audit policy passed. The remaining
+mobile exception is the reviewed moderate transitive `uuid` advisory
+`GHSA-w5hq-g745-h8pq`: 11 outer and 10 nested audit records, constrained to the
+approved package set and expiring 2026-10-31. It is not a blanket audit waiver.
+
 ## Recovery baseline
 
 The repository defines:
@@ -152,6 +198,8 @@ See [the backup and restore runbook](./10-backup-and-restore-runbook.md) and
 The following remain explicitly unproven:
 
 - owner-approved repository governance and protected release identity;
+- authorized server discovery, a collision-free staging render and both human
+  approvals required before preparation and deployment;
 - actual host configuration, ownership, mounts, time synchronization and
   least-privilege service identities;
 - production migration, backup, restore or rollback execution;

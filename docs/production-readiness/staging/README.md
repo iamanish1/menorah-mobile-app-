@@ -2,15 +2,47 @@
 
 Candidate branch: `release/final-production-readiness`
 
-Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
 Package status: **local synthetic validation passed; protected Ubuntu staging
 evidence not yet collected**
 
-Repository-remediation status:
+Runtime-candidate push gates are green: release readiness
+[30158172303](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172303)
+(1/1 jobs, 11/11 steps), functional
+[30158172290](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290)
+(9/9 jobs, 89/89 steps), and security
+[30158172293](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293)
+(15/15 jobs, 104/104 steps). All three have zero failed, skipped or canceled
+jobs/steps. The local server-staging overlay completed Phase 11 with 22/22
+gates passed, 0 failed and 0 blocked. These are repository/CI and local-Docker
+results only; no approved Ubuntu/server-staging execution has occurred.
+
+The all-profile static model contains 32 services, six staging networks and 21
+staging volumes, with 117 published port instances bound only to loopback. The
+default service graph references 19 volumes. After the required migration/seed
+lifecycle, the retained runtime used five networks and 20 volumes, including
+`staging-migration-temp`, and retained 26 containers: 22 healthy long-running
+services and four expected exited-zero one-shots, with zero restarts.
+Recovery/all-profile supplies the restore network and
+`staging-restore-mongodb` for six networks and 21 volumes. The exact local
+release-contract aggregate passed 432/432 assertions: 81 workflow, 59
+local-staging and 292 server-staging.
+
+Server-staging discovery, collision review and external evidence remain
+**NOT COLLECTED — DISCOVERY REQUIRED**. The authoritative co-host design and
+Step A–G approval sequence is the
+[server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md).
+Evidence for former runtime `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+is historical and superseded; it must never be relabelled as current.
+
+Superseded pre-overlay verdict:
 **LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**
+
+Current repository-remediation status:
+**SERVER STAGING DESIGN COMPLETE — DISCOVERY REQUIRED**
 
 Public-production verdict: **NOT READY**
 
@@ -27,11 +59,27 @@ receiver.
 The runtime SHA freezes the tested code, configuration and workflow content.
 The final docs/PR-head SHA is necessarily later because a Git commit cannot
 embed its own content-addressed SHA. Record that full SHA outside Git in the
-approved change record after this package is committed. Deployment may use
-that later head only after proving the runtime SHA is its ancestor and every
-intervening changed path is under `docs/**` or `menorah/docs/**`. The exact
-documentation HEAD is recorded in the draft PR because a commit cannot embed
-its own SHA.
+approved change record after this package is committed. Prove that the runtime
+SHA is its ancestor and every intervening changed path is under `docs/**` or
+`menorah/docs/**`, but deploy only the exact runtime SHA. The server-staging
+checkout, script-blob checks, images and release markers must never be
+relabelled to the later documentation head. The exact documentation HEAD is
+recorded in the draft PR because a commit cannot embed its own SHA.
+
+The sixth network is a staging-only egress bridge. It is ordinary NAT-capable
+egress, not a destination or FQDN allowlist; target-host firewall or proxy
+restriction remains required evidence. Only Alertmanager, the four APIs and
+the user web service join it; the worker, migration and seed services do not.
+Razorpay secrets are scoped only to `api-ios`, RazorpayX secrets only to
+`api-admin`, and the Resend webhook secret only to `api-web`. Worker, migration
+and seed receive no provider secret. The non-secret booking catalog is shared
+with the seven backend services that require it.
+
+The server-staging overlay does not contain the production Docker metrics
+gateway/exporter pair or Uptime Kuma. Its local monitoring result is 35/35
+healthy Prometheus targets, 69 rules and all 20 required P0 fixtures fired and
+resolved. Production Docker telemetry and Uptime Kuma remain separate
+infrastructure evidence; they are not implied by this local result.
 
 All synthetic accounts and every outbound email recipient must use the exact
 protected `MENORAH_STAGING_EMAIL_DOMAIN`; any other recipient must fail closed
@@ -53,6 +101,7 @@ The operating source of truth remains:
 - [environment-variable reference](../22-environment-variable-reference.md);
   and
 - [immutable candidate record](../26-immutable-candidate-record.md).
+- [server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md).
 
 This staging package links those controls and adds staging execution records;
 it does not restate or replace production procedures.
@@ -110,10 +159,14 @@ SHA-256 digest in [the evidence index](./13-evidence-index.md).
 
 Stop immediately if any of these occurs:
 
-- the branch differs from `release/final-production-readiness`, the remote tip
-  or checkout differs from the externally approved docs/PR-head SHA, the
-  frozen runtime SHA is not its ancestor, or an intervening change exists
-  outside `docs/**` or `menorah/docs/**`;
+- the reviewed documentation head is not on
+  `release/final-production-readiness`, is not the externally approved
+  docs/PR-head SHA, does not descend from the frozen runtime SHA, or has an
+  intervening change outside `docs/**` or `menorah/docs/**`;
+- the prepared server application checkout, script blob, image manifest or
+  release marker differs from exact runtime SHA
+  `1ecd0b379369258be466159364a8a48c79fb65aa`; never deploy the later
+  documentation head;
 - the worktree is unexplained or a tested artifact cannot be tied to the SHA;
 - a hostname, database, Redis endpoint, storage bucket, callback or credential
   may be production;

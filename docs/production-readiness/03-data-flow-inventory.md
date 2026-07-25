@@ -61,12 +61,13 @@ operating model.
 | DF-14 | Automated retention review | P, H, F, S, C depending on handler | Worker -> approved policy parser -> legal-hold check -> dry-run/execution -> audit; default production execution is off and most categories remain manual | Category-by-category `OWNER ACTION`, `LEGAL ACTION`, `PRIVACY ACTION`; tested handler and rollback/evidence before enabling |
 | DF-15 | Managed media upload, access and verification | P, H, S | Authorized API -> local upload path -> protected access -> media manifest -> backup/restore verifier; Cloudinary is rejected as current production backend | File-type/size/access E2E, malware/content handling decision, capacity, off-site recovery and deletion/hold behavior |
 | DF-16 | Security audit events | S plus bounded opaque references | Application security event -> bounded in-process queue -> transactional HMAC-linked MongoDB ledger -> metrics/alerts | Live completeness and time sync; queue-loss treatment; signing-key rollover; retention/hold/archive; protected off-host evidence |
-| DF-17 | Metrics, health probes and alerting | Aggregate S and service metadata | APIs/exporters/blackbox -> Prometheus -> 53 rules -> Alertmanager; 14 jobs and 26 coverage records are repository-validated | `INFRASTRUCTURE ACTION`: target/probe coverage, protected human destination, delivery/acknowledgement/resolution and Uptime Kuma proof |
+| DF-17 | Metrics, health probes and alerting | Aggregate S and service metadata | APIs/exporters/blackbox -> Prometheus -> 69 rules -> Alertmanager; 14 jobs and 26 coverage records are repository-validated | `INFRASTRUCTURE ACTION`: target/probe coverage, protected human destination, delivery/acknowledgement/resolution and Uptime Kuma proof |
 | DF-18 | Container state/resource telemetry | Bounded S | Docker socket -> trusted project-scoped gateway -> sanitized list/stats/state -> exporter -> Prometheus; raw and cross-project operations are denied by candidate tests | Live network membership, route-denial proof, image provenance, expected container coverage and high-trust gateway review |
 | DF-19 | Operational logs | S and possible P | Caddy access and Docker `json-file` logs -> Grafana Alloy -> local Loki -> Grafana; positions and rotation/retention are source-controlled | Source-by-source minimization, access, India location, 180-day coverage/retrieval, time sync and off-host incident evidence |
 | DF-20 | Backup, off-site copy and isolated restore | P, H, F, S, C encrypted | Host timer -> guarded backup helper -> encrypted/signed archive -> approved off-site location -> isolated restore target -> verification evidence | `INFRASTRUCTURE ACTION`: current backup/off-site retrieval/restore; `OWNER ACTION`: RPO/RTO/custody; latest restore-test evidence must be <=24 hours old |
 | DF-21 | Social Studio/content generation and publication | C; P/S if operators enter or attach it | Authorized admin -> optional OpenAI generation and/or Meta publication; feature flags and encrypted token handling exist | Keep disabled until owner/privacy/vendor approval, prompt/data prohibition, scopes, review, retention, deletion and incident evidence |
 | DF-22 | Public contact/enquiry | P and free text that may contain H | Public page -> server-side handling/database/email as implemented by the web service | Confirm exact fields/recipients/spam controls, prominent notice, retention, deletion and no collection of unnecessary health detail |
+| DF-23 | Server-staging provider and alert-delivery egress | P, F or S according to the enabled sandbox | Only the reviewed Alertmanager, four APIs and user-web attach to the dedicated `staging-egress` NAT bridge; the worker, migration and seed services do not receive provider egress | The bridge is not a destination/FQDN allowlist; `INFRASTRUCTURE ACTION` must prove target-host firewall/proxy restrictions, DNS behavior and only approved sandbox destinations before enablement |
 
 ## Trust-boundary rules
 
@@ -82,6 +83,8 @@ operating model.
   secret-bearing URLs must not enter ordinary logs or evidence tickets.
 - Optional provider variables do not authorize processing. Disabled is the
   default until the evidence pack is complete.
+- Membership of the staging NAT bridge is not provider authorization and does
+  not constrain destinations by hostname.
 - Restore tests use isolated networks and targets. Raw full-instance backup
   archives are not restored directly into production.
 

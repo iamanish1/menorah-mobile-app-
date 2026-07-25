@@ -1,8 +1,13 @@
 # Payment and provider sandbox matrix
 
-Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
+
+Real provider-sandbox accounts, callbacks and human dual-control evidence are
+**NOT COLLECTED**. Local disabled/stubbed-provider validation is not provider
+evidence. Server preparation remains gated by the
+[server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md).
 
 Initial state: **not run**
 
@@ -13,6 +18,20 @@ credentials, a real payment instrument, real beneficiary, production webhook,
 production redirect or live settlement. Confirm provider mode and callback
 domain independently before each group. Frontend redirects are never the
 source of truth.
+
+The rendered server-staging scope is exact: Razorpay secrets are supplied only
+to `staging-api-ios`; RazorpayX secrets only to `staging-api-admin`; and
+`RESEND_WEBHOOK_SECRET` only to `staging-api-web`. The public Razorpay test key
+is limited to the `staging-user-web` build/runtime. `staging-worker`,
+`staging-migrate` and `staging-seed` receive no provider secrets. The
+non-secret booking catalog is intentionally shared across the four APIs,
+worker, migration and seed (seven backend services).
+
+Provider-capable runtime services and Alertmanager use the ordinary
+NAT-capable `egress` bridge. It disables inter-container communication but is
+not a destination/FQDN allowlist. Target-host firewall/proxy policy, denied
+production/private-route tests and provider-side account evidence remain
+mandatory; a successful Compose render cannot satisfy them.
 
 Before checkout cases, prove `CHECKOUT_RETURN_URL` is exactly
 `https://${APP_DOMAIN}/checkout/return` and the mobile preview
@@ -81,7 +100,7 @@ commands are read-only before execution.
 
 ```bash
 # STAGING-ONLY; approved isolated staging host and synthetic data.
-cd /srv/menorah-staging/repository/menorah/backend
+cd /opt/menorah-staging/app/menorah/backend
 npm run report:payment-reconciliation
 npm run report:payout-reconciliation
 ```

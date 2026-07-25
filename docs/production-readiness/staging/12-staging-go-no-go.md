@@ -1,6 +1,6 @@
 # Staging go/no-go record
 
-Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -8,7 +8,27 @@ Approved Ubuntu/server staging decision: **NO-GO — server evidence not yet
 collected**. Local Docker validation passed with explicit gaps/blocks and does
 not change this server decision.
 
+Current runtime-candidate push gates are green:
+[release readiness](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172303)
+(1/1 jobs, 11/11 steps),
+[functional](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290)
+(9/9 jobs, 89/89 steps), and
+[security](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293)
+(15/15 jobs, 104/104 steps), with zero failed, skipped or cancelled
+jobs/steps. Local overlay Phase 11 passed 22/22, with 0 failed and 0 blocked.
+Release-contract validation passed 432/432 assertions: 81 workflow,
+59 local-staging and 292 server-staging. The
+[server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md)
+remains unexecuted with status
+**SERVER STAGING DESIGN COMPLETE — DISCOVERY REQUIRED**.
+
 Public-production verdict: **NOT READY**
+
+A later docs/PR head is review identity only and must be a docs-only descendant
+of the frozen runtime. The server checkout, script blob, images, image
+manifest, release/recovery markers and deployment arguments must all bind to
+exact runtime SHA `1ecd0b379369258be466159364a8a48c79fb65aa`; the docs head
+must never be substituted into either runtime-SHA environment key.
 
 A future staging pass means only that this immutable candidate completed the
 approved staging gates. It does not authorize production, a limited pilot,
@@ -17,6 +37,11 @@ store submission or public launch. Production remains governed by
 
 ## Confirmed current blockers
 
+- Read-only server discovery has not been returned; port, network/CIDR, volume,
+  filesystem, database/cache, ingress, process-authority and production
+  collision rows remain **NOT COLLECTED**.
+- DNS, TLS, Caddy, Cloudflare Tunnel, dedicated secrets and real
+  provider-sandbox accounts/callbacks remain **NOT COLLECTED**.
 - The required `staging-security` GitHub environment is absent, so
   authenticated DAST is blocked.
 - The required `android-release-signing` GitHub environment and protected
@@ -25,9 +50,10 @@ store submission or public launch. Production remains governed by
   blocked.
 - `main` and the release branch have no branch protection and the repository
   has no rulesets.
-- Approved Ubuntu staging, independent VAPT, device/store, live-host,
-  real-provider and governance evidence is not collected. The local Docker
-  evidence remains recorded separately in report 28.
+- Approved Ubuntu staging, independent VAPT, physical-device/store,
+  real-provider and governance evidence is not collected. Named ownership,
+  legal/privacy, clinical, Apple, Google and ISO/BCM actions remain open. The
+  local Docker evidence remains recorded separately in report 28.
 
 These findings require approved external owner/security actions. This package
 does not authorize creating environments, moving secrets, changing repository
@@ -39,7 +65,7 @@ Complete in the controlled decision record:
 
 | Field | Record |
 | --- | --- |
-| Runtime candidate branch/SHA | `release/final-production-readiness` / `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` |
+| Runtime candidate branch/SHA | `release/final-production-readiness` / `1ecd0b379369258be466159364a8a48c79fb65aa` |
 | Docs/PR-head revision | Record the final full `git rev-parse HEAD` externally after the package commit; it cannot be embedded in its own content-addressed commit |
 | Meeting UTC time | TBD |
 | Change/evidence-pack reference | TBD |
@@ -57,15 +83,15 @@ Silence, absence, a template, or a verbal assurance is not approval.
 | Gate | Minimum evidence | Accountable decision | Current status |
 | --- | --- | --- | --- |
 | Candidate freeze | Clean/synchronized exact SHA, reviewed commit scope, immutable artifact provenance | Engineering release owner | LOCAL PASS / INDEPENDENT REVIEW REQUIRED / NO-GO |
-| Repository checks | Backend/web/admin/counsellor/mobile lint, type, tests, builds, audits; production QA; Compose/Caddy/shell; scans | Engineering + QA + security | SIX PUSH/PR WORKFLOWS PASS; SERVER STAGING STILL NO-GO |
-| Staging isolation | Dedicated host/network/domains/Mongo/Redis/storage/providers/alerts; no production route/data/credential | `INFRASTRUCTURE ACTION`; QA data custodian | LOCAL DOCKER PASS; APPROVED UBUNTU HOST OPEN / NO-GO |
+| Repository checks | Backend/web/admin/counsellor/mobile lint, type, tests, builds, audits; production QA; Compose/Caddy/shell; scans | Engineering + QA + security | THREE EXACT PUSH WORKFLOWS PASS (25/25 JOBS, 204/204 STEPS, ZERO FAILED/SKIPPED/CANCELED); SERVER STAGING STILL NO-GO |
+| Staging isolation | Dedicated host/network/domains/Mongo/Redis/storage/providers/alerts; 268-key template and 291-key generated environment validate; six-network all-profile/default-five boundary; no production route/data/credential | `INFRASTRUCTURE ACTION`; QA data custodian | LOCAL PHASE 11: 22/22 PASS; STATIC 32 SERVICES / 6 NETWORKS / 21 VOLUMES / 117 LOOPBACK PORT INSTANCES; DEFAULT 26 CONTAINERS / 5 NETWORKS / 20 VOLUMES; SERVER DISCOVERY/COLLISION REVIEW NOT COLLECTED / NO-GO |
 | Guarded deployment | Exact-SHA release record, image manifest, health and marker consistency | Engineering + infrastructure | OPEN / NO-GO |
-| Functional QA | All P0 auth, booking, KYC, chat/call, privacy and role cases pass; P1 disposition recorded | QA/product owners | LOCAL MATRIX 81 STATIC PASS / 14 GAP / 12 BLOCKED; NO-GO |
-| Security QA | All P0 adversarial cases pass; outbound email is exact staging-domain-only; no secret/PII leakage; scan findings treated | Security owner | TRACKED-TREE SECRET SCAN PASS; FULL SERVER/INDEPENDENT COVERAGE OPEN / NO-GO |
+| Functional QA | All P0 auth, booking, KYC, chat/call, privacy and role cases pass; P1 disposition recorded | QA/product owners | CURRENT AUTOMATION: BACKEND 117 SUITES / 1,716 TESTS + INTEGRATION 13 / 45; API 31/31; PLAYWRIGHT 9/9. SUPERSEDED `0b9f6e4` MATRIX REMAINS HISTORICAL; CURRENT SERVER EXECUTION NOT COLLECTED / NO-GO |
+| Security QA | All P0 adversarial cases pass; outbound email is exact staging-domain-only; no secret/PII leakage; scan findings treated | Security owner | EXACT SECURITY PUSH RUN 15/15 JOBS / 104/104 STEPS; FULL SERVER/DAST/INDEPENDENT COVERAGE OPEN / NO-GO |
 | Payments/providers | Sandbox order/webhook/refund/payout/reconciliation passes; each enabled provider pack complete | Payment/finance + `VENDOR ACTION` | LOCAL STUBS ONLY; REAL SANDBOX/DUAL-CONTROL OPEN / NO-GO |
-| Recovery | Encrypted signed backup, isolated restore, migration, interruption, rollback/resume, media and RPO/RTO rehearsal | Database/recovery + infrastructure | LOCAL SIGNED BACKUP/ISOLATED RESTORE PASS; UBUNTU/OFF-SITE/INTERRUPTION CASES OPEN / NO-GO |
-| Monitoring | Targets/probes, implemented rules including all 20 required P0 mappings, controlled firing/delivery/ack/resolved, Uptime Kuma and logging | Infrastructure + on-call owner | LOCAL 20/20 FIRED AND RESOLVED; PROTECTED RECEIVER/UBUNTU STAGING OPEN / NO-GO |
-| Mobile/store preflight | Repository checks, signed candidate builds, physical devices, links, declarations and account ownership | `APPLE ACTION`; `GOOGLE ACTION` | OPEN / NO-GO |
+| Recovery | Encrypted signed backup, isolated restore, migration, interruption, rollback/resume, media and RPO/RTO rehearsal | Database/recovery + infrastructure | LOCAL BACKUP `20260725T125008Z`: 18 COLLECTIONS / 59 DOCUMENTS / 0 FAILURES; SIX WRITERS RESTARTED; UBUNTU/OFF-SITE/INTERRUPTION CASES OPEN / NO-GO |
+| Monitoring | Exactly 35 targets across 14 jobs, 69 loaded rules, 26 coverage records, all 20 required P0 fixtures, controlled delivery/ack/resolved and logging; production Docker telemetry/Kuma tracked separately | Infrastructure + on-call owner | LOCAL 35/35 TARGETS HEALTHY; 20/20 FIRED/RESOLVED; PRE/POST QUIET. PROTECTED RECEIVER/UBUNTU STAGING AND SEPARATE PRODUCTION DOCKER/KUMA EVIDENCE OPEN / NO-GO |
+| Mobile/store preflight | Repository checks, signed candidate builds, physical devices, links, declarations and account ownership | `APPLE ACTION`; `GOOGLE ACTION` | AUTOMATION: PAYMENT 7/7, RELEASE/CONFIG 21/21, DOCTOR 19/19; SIGNED BUILD/DEVICE/STORE EVIDENCE OPEN / NO-GO |
 | Independent VAPT | Immutable staging assessment and critical/high closure retest; residual treatments approved | `VAPT ACTION`; security owner | OPEN / NO-GO |
 | Owner/operations | Named primaries/alternates; product/finance/RPO/RTO/pilot/risk decisions | `OWNER ACTION` | OPEN / NO-GO |
 | Legal/privacy | Notices, purposes, consent/rights, retention/holds, minors, biometrics/health, vendor/transfer and incident obligations | `LEGAL ACTION`; `PRIVACY ACTION` | OPEN / NO-GO |
@@ -86,8 +112,8 @@ A link must be accessible to the approver and must support the claimed result.
 - Any production data/credential/endpoint or provider live mode in staging.
 - Any synthetic account or outbound email recipient outside the protected
   staging email domain, or any rejected recipient that reaches the provider.
-- Candidate seed/admin bootstrap harnesses remain unsafe; no separately
-  approved exact-target/domain-bound first-admin procedure or roster exists.
+- Dedicated exact-target/domain-bound server seed/admin execution evidence is
+  not collected; generic seed/admin harnesses remain prohibited.
 - Migration/restore uncertainty, unsafe marker state or unavailable recorded
   artifact.
 - Payment reconciliation mismatch or impossible booking/refund/payout state.

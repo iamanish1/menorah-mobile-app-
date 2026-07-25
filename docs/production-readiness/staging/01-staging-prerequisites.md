@@ -1,6 +1,6 @@
 # Staging prerequisites
 
-Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -8,12 +8,18 @@ Complete every P0 prerequisite before deployment. Record evidence IDs from
 [13-evidence-index.md](./13-evidence-index.md); a checked box without evidence
 is not a pass.
 
+Current push-gate evidence is recorded in
+[13-evidence-index.md](./13-evidence-index.md). Approved server discovery and
+execution are **NOT COLLECTED**. Follow the
+[server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md);
+former-candidate results are historical/superseded, not current evidence.
+
 ## Isolation declaration
 
 | Control | Required staging condition | Owner/action | Evidence |
 | --- | --- | --- | --- |
-| Host | Dedicated approved Linux host or VM, not a production node and not sharing its Docker daemon | `INFRASTRUCTURE ACTION` | Host inventory, FQDN, instance ID and signed approval |
-| Network | Separate network/security group; no route to production MongoDB, Redis, private services or storage | `INFRASTRUCTURE ACTION` | Diagram, route/firewall export and denied-connectivity test |
+| Host | Approved Ubuntu server; co-hosting is allowed only after read-only discovery, zero unexplained collision, dedicated project/resources, bounded capacity and exact production before/after invariants | `INFRASTRUCTURE ACTION` | Host inventory, FQDN/instance ID, capacity/contention baseline and signed collision approval |
+| Network | Six dedicated staging bridges in the all-profile model (`ingress`, `app`, `data`, `monitoring`, `restore`, `egress`); the default runtime uses five and the restore profile adds `restore`; no route to production MongoDB, Redis, private services or storage | `INFRASTRUCTURE ACTION` | Docker network inventory, diagram, route/firewall export and denied-connectivity test |
 | Domains | Staging-only application, API, call and callback hostnames; no production hostname resolves to the host | `INFRASTRUCTURE ACTION` | DNS/TLS inventory and external resolution |
 | Cloudflare | Dedicated staging tunnel/account scope or approved direct staging ingress; never a production tunnel token | `INFRASTRUCTURE ACTION`; `VENDOR ACTION` | Redacted route export and account owner |
 | MongoDB | Dedicated disposable staging replica set and separate app, backup, restore and monitor identities | `INFRASTRUCTURE ACTION` | Instance/replica identity and role proof |
@@ -54,35 +60,45 @@ to unblock a test.
 
 ## Host prerequisites
 
-- Supported Ubuntu host, synchronized UTC time and current security updates.
+- Supported Ubuntu host, synchronized UTC time and current security updates;
+  a co-host must preserve the existing production workload and Docker
+  inventory exactly.
 - Docker Engine with Compose v2, Git, Bash, OpenSSL, Node/npm and the native
   tools required by the candidate scripts.
-- Capacity for two MongoDB datasets, application images, staging uploads,
-  encrypted backups, recovery artifacts, monitoring and retained evidence.
+- Capacity for two staging MongoDB datasets, application images, staging
+  uploads, encrypted backups, recovery artifacts, monitoring and retained
+  evidence within the reviewed staging resource budget, plus production
+  headroom and bounded contention evidence.
 - Protected staging environment files outside Git, owned by the approved
   operator and unreadable by other users.
 - Dedicated staging data, backup, deploy-state and log roots; none may resolve
   beneath production paths or through symlinks.
 - Staging backup timers and Alertmanager destination installed through a
   reviewed staging change before the guarded release rehearsal.
-- Egress restricted to approved package registries and sandbox providers.
+- Target-host firewall/proxy policy restricts egress to approved package
+  registries and sandbox providers. The Compose `egress` bridge is an ordinary
+  NAT-capable Docker bridge, not an FQDN or destination allowlist; its presence
+  alone is not evidence of restriction.
 - Inbound exposure restricted to the approved staging domains and operator
   access. MongoDB, Redis, Prometheus, Grafana, Loki and exporters are not
   public.
 
-Use [the production update runbook](../../../menorah/docs/production-update-runbook.md)
-as the source for software and guarded-host requirements, substituting only
-approved staging-scoped paths and credentials.
+Use
+[the server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md)
+as the execution authority. Production runbooks are context only; never run a
+production updater/recovery helper with substituted staging paths.
 
 ## Candidate identity gate
 
-Run the following read-only commands on the desktop and again on the approved
-staging checkout. Save outputs with UTC time.
+Run the first block against the final documentation checkout. The second
+server-checkout block is permitted only after Step B collision approval and
+Step C preparation; it is not part of read-only discovery. Save outputs with
+UTC time.
 
 ```bash
 set -euo pipefail
 
-readonly RUNTIME_SHA='0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a'
+readonly RUNTIME_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
 readonly CANDIDATE_BRANCH='release/final-production-readiness'
 : "${APPROVED_PR_HEAD_SHA:?Set the externally recorded final docs/PR-head SHA}"
 readonly APPROVED_PR_HEAD_SHA
@@ -93,8 +109,6 @@ git branch --show-current
 git rev-parse HEAD
 git status --short --branch
 git remote -v
-git fetch --prune origin \
-  "+refs/heads/${CANDIDATE_BRANCH}:refs/remotes/origin/${CANDIDATE_BRANCH}"
 git rev-list --left-right --count \
   "HEAD...origin/${CANDIDATE_BRANCH}"
 git diff --check
@@ -104,6 +118,14 @@ git cat-file -t "${APPROVED_PR_HEAD_SHA}"
 git merge-base --is-ancestor "${RUNTIME_SHA}" "${APPROVED_PR_HEAD_SHA}"
 git diff --quiet "${RUNTIME_SHA}..${APPROVED_PR_HEAD_SHA}" -- \
   . ':(exclude)docs/**' ':(exclude)menorah/docs/**'
+
+# SERVER ONLY AFTER STEP B APPROVAL AND STEP C PREPARATION.
+test "$(git -C /opt/menorah-staging/app rev-parse HEAD)" = "${RUNTIME_SHA}"
+test -z "$(
+  git -C /opt/menorah-staging/app \
+    status --porcelain --untracked-files=all
+)"
+git -C /opt/menorah-staging/app cat-file -e "${RUNTIME_SHA}^{commit}"
 ```
 
 Pass only when:
@@ -111,10 +133,13 @@ Pass only when:
 - the branch is `release/final-production-readiness`;
 - `APPROVED_PR_HEAD_SHA` is the full SHA recorded in the approved external
   change record after the evidence-package commit;
-- `HEAD` and the remote branch tip are exactly `APPROVED_PR_HEAD_SHA`;
-- runtime SHA `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` is an ancestor of that
+- the documentation checkout `HEAD` and the already-fetched remote branch tip
+  are exactly `APPROVED_PR_HEAD_SHA`;
+- runtime SHA `1ecd0b379369258be466159364a8a48c79fb65aa` is an ancestor of that
   head and every intervening change is confined to `docs/**` or
   `menorah/docs/**`;
+- the prepared server application checkout is clean and exactly at the runtime
+  SHA, not the later documentation head;
 - left/right divergence is `0 0`;
 - the worktree is clean and both whitespace checks succeed; and
 - both SHAs resolve to Git commits.
@@ -138,6 +163,13 @@ Docker, native-validator or build step remains open.
 
 - Razorpay and RazorpayX accounts are in test mode, callback URLs are staging
   only, and no live key or bank destination is accessible.
+- Secret scope matches the executable manifests exactly: Razorpay secrets are
+  available only to `api-ios`; RazorpayX secrets only to `api-admin`; and the
+  Resend webhook secret only to `api-web`. `worker`, migration and seed
+  containers receive no provider secrets.
+- The non-secret booking-catalog variables are shared across the four APIs,
+  `worker`, migration and seed (seven backend services); this does not widen
+  provider-secret scope.
 - Resend uses the protected `MENORAH_STAGING_EMAIL_DOMAIN`; every synthetic
   account and outbound recipient uses that exact domain, and reserved
   off-domain negative cases prove provider dispatch is blocked.

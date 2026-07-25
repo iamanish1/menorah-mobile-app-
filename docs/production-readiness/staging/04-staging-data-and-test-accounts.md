@@ -1,8 +1,13 @@
 # Staging data and test accounts
 
-Runtime candidate SHA: `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
+Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
+
+Server seed/account execution is **NOT COLLECTED**. The local overlay evidence
+is candidate-bound but does not prove an approved Ubuntu/server environment;
+follow the
+[server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md).
 
 ## Data rule
 
@@ -72,16 +77,16 @@ reuse an administrator account between actors or share MFA material.
 ## Creation procedure
 
 1. Record a fixture-set version and candidate SHA.
-2. Do not run the candidate's `npm run seed:qa` harness. It contains hard-coded
-   off-domain identities/shared credentials, logs full addresses, and lacks
-   the required staging target and exact-domain guards.
+2. Use only the dedicated `staging-seed` service and
+   `backend/src/database/seed-server-staging.js`; never use generic
+   `npm run seed:qa`, counsellor seed or `create-admin.js` harnesses.
 3. Prove `MONGODB_URI`, Redis and media roots identify staging before seeding.
 4. Prove the protected staging email-domain value and verify every generated
    account address has that exact domain before any email-producing test.
-5. Create users through public workflows where the test is intended to cover
-   them. Staff workflows remain blocked until an independently approved full
-   admin exists; use direct factories only for unreachable fault states under
-   a reviewed procedure and mark that fact.
+5. Supply ten distinct strong command-scoped roster passwords, the exact
+   generated admin-grant map and the literal seed confirmation only for the
+   approved one-shot Compose operation. Never persist acknowledgements in the
+   environment file.
 6. Record synthetic aliases and object IDs in the protected test-management
    system. Do not put tokens, passwords, contact values or documents in Git.
 7. Take a logical baseline manifest of expected counts, states, indexes and
@@ -89,32 +94,23 @@ reuse an administrator account between actors or share MFA material.
 8. Reset between destructive groups by restoring a reviewed synthetic fixture
    backup to the isolated staging target, never by copying production data.
 
-## Blocked seed harness and approved creation boundary
+## Dedicated seed and admin-bootstrap boundary
 
-The candidate `seed:qa` harness is **BLOCKED** for staging and must not be
-enabled with `ALLOW_LOCAL_QA_SEED` or worked around. After the target guard in
-[03-staging-deployment-procedure.md](./03-staging-deployment-procedure.md)
-passes, create the bounded non-admin roster through public registration APIs
-or UI so the ordinary validation paths execute. Use QA-owned exact-domain
-addresses and separately provisioned protected credentials; retain only safe
-object identifiers in the controlled evidence store.
+The current candidate has a target-bound synthetic seed that requires exact
+project `menorah-staging`, environment ID, database, Mongo host/replica set,
+email domain, runtime SHA, grants and one-shot confirmation. It creates the
+bounded roster transactionally, refuses any existing roster identity before
+creating records, and does not upgrade/reactivate a generic existing user.
+Local validation created exactly 10 users, three counsellors and two
+counsellor applications (15 roster records total), then proved the second run
+refused the existing roster without creating records. That is local evidence
+only; the server row remains **NOT COLLECTED**.
 
-Automated fixture creation remains blocked until a separately reviewed
-generator fails closed on the approved staging host, database, cache, media
-roots and `MENORAH_STAGING_EMAIL_DOMAIN`; rejects every off-domain identity
-before writes or provider calls; accepts no shared default credential; and
-does not print addresses, credentials or tokens. Direct factories may then be
-used only for unreachable fault states under a bounded reviewed procedure.
-
-The candidate `backend/scripts/create-admin.js` harness is also **BLOCKED** for
-staging. It has a localhost database fallback, validates only generic email
-syntax, can reactivate/upgrade an existing account, and prints the full email.
-Do not invoke it or treat `ADMIN_BOOTSTRAP_CONFIRM=create-admin` as approval.
-The first full admin must be supplied by a separately authorized,
-independently reviewed bootstrap that is bound to the exact staging database
-and email domain, refuses existing-user activation/role mutation, emits
-value-free evidence and provisions two distinct approvers. Until then all
-staff/admin flows, including payout approval, remain `BLOCKED / NOT RUN`.
+After both deployment approvals, run the seed only as the exact
+`staging-seed` Compose service under profile `seed`, with credentials and
+confirmation supplied command-scoped through the approved launcher. Retain
+only alias/count/result evidence. Generic `seed:qa`, `seed-counsellors.js` and
+`create-admin.js` remain prohibited for server staging.
 
 ## Test-provider data
 
