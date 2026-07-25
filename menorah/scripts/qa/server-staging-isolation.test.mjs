@@ -25,6 +25,7 @@ import {
   IDENTITY_RECONCILIATION_MARKER_BASENAME,
 } from '../../deploy/server-staging/assert-context.mjs';
 import {
+  EXPECTED_HOSTS,
   EXPECTED_PORT_VARIABLES,
   REAL_PROJECT,
   parseEnvironmentSource,
@@ -762,6 +763,20 @@ const validCompose = (environment = validEnvironment()) => {
     'staging-app': {
       ipv4_address: environment.MENORAH_SERVER_STAGING_CADDY_APP_IP,
     },
+  };
+  services['staging-caddy'].extra_hosts = Object.fromEntries(
+    EXPECTED_HOSTS.map((hostname) => [hostname, '127.0.0.1']),
+  );
+  services['staging-caddy'].healthcheck = {
+    test: [
+      'CMD-SHELL',
+      EXPECTED_HOSTS.map(
+        (hostname) => (
+          `wget --no-check-certificate -qO- `
+          + `https://${hostname}/healthz | grep -qx ok`
+        ),
+      ).join(' && '),
+    ],
   };
   services['staging-blackbox-exporter'].extra_hosts =
     Object.fromEntries(Object.values({
@@ -1720,6 +1735,18 @@ const composeMutations = [
       'staging-app'
     ].ipv4_address = '10.252.241.11';
   }, /staging-caddy must use the exact reviewed static app address/],
+  ['wrong Caddy readiness address', (model) => {
+    model.services['staging-caddy'].extra_hosts[
+      'admin.staging.menorah.me'
+    ] = '10.252.241.10';
+  }, /staging-caddy TLS readiness hosts must resolve only to its own loopback/],
+  ['incomplete Caddy TLS readiness probe', (model) => {
+    model.services['staging-caddy'].healthcheck.test[1] =
+      model.services['staging-caddy'].healthcheck.test[1].replace(
+        'https://admin.staging.menorah.me/healthz',
+        'https://staging.menorah.me/healthz',
+      );
+  }, /staging-caddy healthcheck must prove every reviewed HTTPS certificate ready/],
   ['wrong API trusted proxy address', (model) => {
     model.services['staging-api-ios'].environment.TRUST_PROXY =
       '10.252.241.11';
@@ -2364,7 +2391,7 @@ test('Compose source initializes media ownership before every backend writer', (
   }
 });
 
-test('Compose source initializes Caddy state ownership before ingress', () => {
+test('Compose source initializes Caddy state and gates every TLS host', () => {
   const composeSource = readStaging('compose.yml');
   const logsInit = composeSource.match(
     /^  staging-logs-init:[\s\S]*?(?=^  staging-caddy:)/m,
@@ -2383,11 +2410,12 @@ test('Compose source initializes Caddy state ownership before ingress', () => {
     caddy,
     /staging-logs-init:\r?\n        condition: service_completed_successfully/,
   );
-  assert.match(
-    caddy,
-    /wget --header='Host: app\.staging\.menorah\.me'\r?\n\s+-qO- http:\/\/127\.0\.0\.1\/healthz/,
-  );
-  assert.doesNotMatch(caddy, /--no-check-certificate/);
+  for (const host of EXPECTED_HOSTS) {
+    assert.ok(caddy.includes(`${host}: "127.0.0.1"`));
+    assert.ok(caddy.includes(`https://${host}/healthz`));
+  }
+  assert.match(caddy, /wget --no-check-certificate -qO-/);
+  assert.doesNotMatch(caddy, /http:\/\/127\.0\.0\.1\/healthz/);
 });
 
 test('Compose source grants backup only staged-media read traversal', () => {

@@ -1145,6 +1145,17 @@ services:
     ports:
       - "127.0.0.1:${MENORAH_SERVER_STAGING_TUNNEL_ORIGIN_PORT:-38000}:80"
       - "127.0.0.1:${MENORAH_SERVER_STAGING_HTTPS_PORT:?Generated local HTTPS port required}:443"
+    extra_hosts:
+      staging.menorah.me: "127.0.0.1"
+      www.staging.menorah.me: "127.0.0.1"
+      app.staging.menorah.me: "127.0.0.1"
+      admin.staging.menorah.me: "127.0.0.1"
+      counsellor.staging.menorah.me: "127.0.0.1"
+      api-ios.staging.menorah.me: "127.0.0.1"
+      api-android.staging.menorah.me: "127.0.0.1"
+      api-web.staging.menorah.me: "127.0.0.1"
+      api-admin.staging.menorah.me: "127.0.0.1"
+      calls.staging.menorah.me: "127.0.0.1"
     networks:
       staging-ingress:
       staging-app:
@@ -1174,8 +1185,26 @@ services:
       test:
         - CMD-SHELL
         - >-
-          wget --header='Host: app.staging.menorah.me'
-          -qO- http://127.0.0.1/healthz | grep -qx ok
+          wget --no-check-certificate -qO-
+          https://staging.menorah.me/healthz | grep -qx ok &&
+          wget --no-check-certificate -qO-
+          https://www.staging.menorah.me/healthz | grep -qx ok &&
+          wget --no-check-certificate -qO-
+          https://app.staging.menorah.me/healthz | grep -qx ok &&
+          wget --no-check-certificate -qO-
+          https://admin.staging.menorah.me/healthz | grep -qx ok &&
+          wget --no-check-certificate -qO-
+          https://counsellor.staging.menorah.me/healthz | grep -qx ok &&
+          wget --no-check-certificate -qO-
+          https://api-ios.staging.menorah.me/healthz | grep -qx ok &&
+          wget --no-check-certificate -qO-
+          https://api-android.staging.menorah.me/healthz | grep -qx ok &&
+          wget --no-check-certificate -qO-
+          https://api-web.staging.menorah.me/healthz | grep -qx ok &&
+          wget --no-check-certificate -qO-
+          https://api-admin.staging.menorah.me/healthz | grep -qx ok &&
+          wget --no-check-certificate -qO-
+          https://calls.staging.menorah.me/healthz | grep -qx ok
       interval: 15s
       timeout: 5s
       retries: 10

@@ -1668,6 +1668,39 @@ const validateRenderedNetworkInputs = (
       'staging-caddy must use the exact reviewed static app address',
     );
   }
+  const caddyReadinessHosts = normalizeExtraHosts(
+    services['staging-caddy']?.extra_hosts,
+  );
+  if (
+    Object.keys(caddyReadinessHosts).length !== EXPECTED_HOSTS.length
+    || EXPECTED_HOSTS.some(
+      (host) => caddyReadinessHosts[host] !== '127.0.0.1',
+    )
+  ) {
+    errors.push(
+      'staging-caddy TLS readiness hosts must resolve only to its own loopback',
+    );
+  }
+  const caddyHealthTest =
+    services['staging-caddy']?.healthcheck?.test;
+  const caddyHealthCommand = Array.isArray(caddyHealthTest)
+    ? caddyHealthTest.slice(1).join(' ')
+    : '';
+  if (
+    caddyHealthTest?.[0] !== 'CMD-SHELL'
+    || !caddyHealthCommand.includes('--no-check-certificate')
+    || EXPECTED_HOSTS.some(
+      (host) => (
+        caddyHealthCommand.split(
+          `https://${host}/healthz`,
+        ).length !== 2
+      ),
+    )
+  ) {
+    errors.push(
+      'staging-caddy healthcheck must prove every reviewed HTTPS certificate ready',
+    );
+  }
   for (const serviceName of [
     'staging-api-ios',
     'staging-api-android',
