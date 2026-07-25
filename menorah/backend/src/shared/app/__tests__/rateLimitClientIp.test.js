@@ -1,6 +1,11 @@
 const express = require('express');
 const request = require('supertest');
-const { getRateLimitClientIp, mountRateLimiters } = require('../startService');
+const {
+  createRateLimitStores,
+  getRateLimitClientIp,
+  mountRateLimiters,
+  RATE_LIMIT_STORE_PREFIXES
+} = require('../startService');
 const { attachValidatedRequestProvenance } = require('../requestProvenance');
 
 describe('rate limit client IP handling', () => {
@@ -31,6 +36,18 @@ describe('rate limit client IP handling', () => {
     };
 
     expect(getRateLimitClientIp(req)).toBe('172.22.0.3');
+  });
+
+  test('keeps authentication and general API counters in distinct Redis namespaces', () => {
+    const stores = createRateLimitStores(true);
+
+    expect(RATE_LIMIT_STORE_PREFIXES).toEqual({
+      auth: 'rl:auth:',
+      api: 'rl:api:'
+    });
+    expect(stores.auth.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.auth);
+    expect(stores.api.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.api);
+    expect(stores.auth.store.prefix).not.toBe(stores.api.store.prefix);
   });
 
   test('direct spoofed headers cannot create separate login buckets', async () => {
