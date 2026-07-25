@@ -1332,6 +1332,22 @@ const validateBackendRuntimeContracts = (
   const permissionsInit = services['staging-media-permissions-init'];
   if (!storageInit) {
     errors.push('missing staging-storage-init');
+  } else {
+    const storageCapabilities = (storageInit.cap_add || [])
+      .map((capability) => String(capability).toUpperCase())
+      .sort();
+    if (
+      String(storageInit.user) !== '0:0'
+      || storageInit.read_only !== true
+      || storageInit.network_mode !== 'none'
+      || String(storageInit.restart ?? 'no') !== 'no'
+      || storageCapabilities.join(',')
+        !== ['DAC_OVERRIDE', 'FOWNER'].sort().join(',')
+    ) {
+      errors.push(
+        'staging-storage-init must have only repeat-safe root filesystem capabilities',
+      );
+    }
   }
   if (!permissionsInit) {
     errors.push('missing staging-media-permissions-init');

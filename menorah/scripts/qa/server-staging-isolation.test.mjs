@@ -342,6 +342,9 @@ const validCompose = (environment = validEnvironment()) => {
   });
   services['staging-storage-init'] = safeService(project, {
     restart: 'no',
+    user: '0:0',
+    read_only: true,
+    cap_add: ['DAC_OVERRIDE', 'FOWNER'],
     network_mode: 'none',
     networks: [],
     volumes: [{
@@ -1862,6 +1865,9 @@ const composeMutations = [
   ['expanded media-init capabilities', (model) => {
     model.services['staging-media-permissions-init'].cap_add.push('SYS_ADMIN');
   }, /only ownership capabilities/],
+  ['expanded storage-init capabilities', (model) => {
+    model.services['staging-storage-init'].cap_add.push('CHOWN');
+  }, /staging-storage-init must have only repeat-safe root filesystem capabilities/],
   ['expanded backup capabilities', (model) => {
     model.services['staging-backup-job'].cap_add.push('DAC_OVERRIDE');
   }, /only root DAC_READ_SEARCH access/],
@@ -2389,6 +2395,25 @@ test('Compose source initializes media ownership before every backend writer', (
       /staging-media-permissions-init:\r?\n        condition: service_completed_successfully/,
     );
   }
+});
+
+test('Compose source keeps storage initialization repeat-safe', () => {
+  const composeSource = readStaging('compose.yml');
+  const storageInit = composeSource.match(
+    /^  staging-storage-init:[\s\S]*?(?=^  staging-media-permissions-init:)/m,
+  )?.[0] || '';
+
+  assert.match(storageInit, /^    user: "0:0"$/m);
+  assert.match(storageInit, /^    read_only: true$/m);
+  assert.match(storageInit, /^    network_mode: none$/m);
+  assert.match(
+    storageInit,
+    /cap_add:\r?\n      - DAC_OVERRIDE\r?\n      - FOWNER/,
+  );
+  assert.doesNotMatch(
+    storageInit,
+    /^\s+- (?:CHOWN|DAC_READ_SEARCH|SYS_ADMIN)$/m,
+  );
 });
 
 test('Compose source initializes Caddy state and gates every TLS host', () => {
