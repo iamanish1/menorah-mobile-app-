@@ -1,6 +1,8 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { secureStorage } from './secureStorage';
 import { ENV } from './env';
+import { reportError, reportEvent } from './safeDiagnostics';
+import { invalidateLocalSession } from './authSession';
 import type { Article } from '@/types/article';
 
 // Types
@@ -19,6 +21,11 @@ export interface User {
     email?: boolean;
     sms?: boolean;
     push?: boolean;
+  };
+  reauthenticationMethods?: {
+    password: boolean;
+    apple: boolean;
+    google: boolean;
   };
   kyc?: {
     status: KycStatus;
@@ -81,11 +88,18 @@ export interface Booking {
   sessionType: 'video' | 'audio' | 'chat';
   sessionDuration: number;
   scheduledAt: string;
-  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
+  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show' | 'expired';
   amount: number;
   currency: string;
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
-  paymentMethod?: 'razorpay' | 'wallet' | 'subscription';
+  paymentMethod?: 'razorpay' | 'wallet' | 'subscription' | 'promo';
+  paymentReviewRequired?: boolean;
+  paymentAction?: 'resume_payment' | 'contact_support' | null;
+  holdExpiresAt?: string | null;
+  promo?: {
+    code?: string;
+    discountAmount?: number;
+  };
   isSubscriptionBooking?: boolean;
   canBeCancelled: boolean;
   canBeRescheduled: boolean;
@@ -93,17 +107,30 @@ export interface Booking {
 }
 
 export interface VideoRoomSession {
-  roomId: string;
-  livekitUrl: string;
-  livekitToken: string;
+  provider?: 'livekit' | 'vsee' | 'doxy' | 'zoom' | 'google_meet' | 'teams' | 'disabled';
+  joinMode?: 'in_app' | 'external_link' | 'disabled';
+  region?: 'IN' | 'AE' | 'UNKNOWN';
+  bookingId?: string;
+  roomName?: string;
+  roomId?: string;
+  livekitUrl?: string;
+  meetUrl?: string;
+  meetTicket?: string;
   roomUrl?: string;
   jitsiToken?: string;
+  joinUrl?: string;
+  externalJoinUrl?: string;
+  hostUrl?: string;
+  externalHostUrl?: string;
+  providerName?: string;
+  externalProviderName?: string;
   sessionType: string;
   counsellorName: string;
   userName: string;
   scheduledAt: string;
   duration: number;
   status?: string;
+  message?: string;
 }
 
 export interface ChatRoom {
@@ -137,22 +164,6 @@ export interface Message {
   type: 'text' | 'image' | 'file';
   status?: 'sent' | 'delivered' | 'read';
   roomId?: string;
-}
-
-export interface ReportUserPayload {
-  userId: string;
-  roomId?: string;
-  reason: string;
-  details?: string;
-}
-
-export interface ReportContentPayload {
-  contentType: 'message' | 'post' | 'chat';
-  contentId: string;
-  roomId?: string;
-  reportedUserId?: string;
-  reason: string;
-  details?: string;
 }
 
 export interface ApiValidationError {
@@ -194,9 +205,7 @@ class ApiClient {
   private token: string | null = null;
 
   constructor() {
-    if (__DEV__) {
-      console.log('Initializing API Client with baseURL:', ENV.API_BASE_URL);
-    }
+    reportEvent('api.client_initialized');
     
     this.client = axios.create({
       baseURL: ENV.API_BASE_URL,
@@ -214,16 +223,6 @@ class ApiClient {
         }
         if (this.token) {
           config.headers.Authorization = `Bearer ${this.token}`;
-          this.logDebug('[API] Request with token:', {
-            method: config.method,
-            url: config.url,
-            hasBearerToken: true,
-          });
-        } else {
-          this.logDebug('[API] Request without token:', {
-            method: config.method,
-            url: config.url,
-          });
         }
         return config;
       },
@@ -235,42 +234,27 @@ class ApiClient {
       (response) => response,
       async (error) => {
         if (error.response?.status === 401) {
-          await secureStorage.clearToken();
           this.token = null;
+          // Clear protected UI/cache state immediately; physical secure-store
+          // cleanup may complete asynchronously or remain tombstoned for retry.
+          invalidateLocalSession();
+          try {
+            await secureStorage.clearToken();
+          } catch (storageError) {
+            reportError('auth.token_cleanup_pending', storageError);
+          }
         }
         return Promise.reject(error);
       }
     );
   }
 
-  private stringifyForLog(value: unknown) {
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch {
-      return String(value);
-    }
-  }
-
-  private logDebug(label: string, value?: unknown) {
-    if (!__DEV__) return;
-
-    if (value === undefined) {
-      console.log(label);
-      return;
-    }
-
-    console.log(label, typeof value === 'string' ? value : this.stringifyForLog(value));
-  }
-
-  private buildUrl(path: string) {
-    const baseURL = this.client.defaults.baseURL?.replace(/\/+$/, '') || '';
-    return `${baseURL}${path.startsWith('/') ? path : `/${path}`}`;
-  }
-
-  // Set auth token — stored in device secure enclave (Keychain/Keystore)
+  // Set auth token in platform secure storage (iOS Keychain / Android Keystore).
   async setToken(token: string) {
-    this.token = token;
+    // Never activate a credential that was not durably persisted.
+    this.token = null;
     await secureStorage.setToken(token);
+    this.token = token;
   }
 
   // Clear auth token
@@ -317,29 +301,15 @@ class ApiClient {
       const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error');
       
       if (isNetworkError) {
-        // Log network errors as warnings since they're expected when server is unreachable
-        this.logDebug('API Network Error (server unreachable):', {
-          url: config.url,
-          method: config.method,
-        });
+        reportError('api.network_unavailable', error);
         return {
           success: false,
           message: 'Network error: Unable to connect to server. Please check your internet connection and try again.'
         };
       }
       
-      // Log actual errors (non-network errors). Stringify keeps nested validation errors visible.
       const responseData = error.response?.data;
-      if (__DEV__) {
-        console.error('API Request Error:', this.stringifyForLog({
-          url: config.url,
-          method: config.method,
-          error: error.message,
-          code: error.code,
-          status: error.response?.status,
-          response: responseData
-        }));
-      }
+      reportError('api.request_failed', error);
       
       if (responseData) {
         return responseData;
@@ -359,14 +329,6 @@ class ApiClient {
     dateOfBirth: string;
     gender: string;
   }): Promise<ApiResponse<{ user?: User; token?: string; email?: string }>> {
-    this.logDebug('[API] API BASE URL:', this.client.defaults.baseURL);
-    this.logDebug('[API] POST /auth/register endpoint URL:', this.buildUrl('/auth/register'));
-    this.logDebug('[API] REGISTER PAYLOAD KEYS:', Object.keys(userData));
-    this.logDebug('[API] POST /auth/register payload:', {
-      ...userData,
-      password: `[redacted; length=${userData.password.length}]`,
-    });
-
     return this.request({
       method: 'POST',
       url: '/auth/register',
@@ -387,18 +349,31 @@ class ApiClient {
       password: credentials.password,
     };
 
-    this.logDebug('[API] API BASE URL:', this.client.defaults.baseURL);
-    this.logDebug('[API] POST /auth/login endpoint URL:', this.buildUrl('/auth/login'));
-    this.logDebug('[API] LOGIN PAYLOAD KEYS:', Object.keys(payload));
-    this.logDebug('[API] POST /auth/login payload:', {
-      email: payload.email,
-      password: `[redacted; length=${payload.password.length}]`,
-    });
-
     return this.request({
       method: 'POST',
       url: '/auth/login',
       data: payload,
+    });
+  }
+
+  async loginWithGoogle(credential: string): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
+    return this.request({
+      method: 'POST',
+      url: '/auth/google',
+      data: { credential },
+    });
+  }
+
+  async loginWithApple(data: {
+    identityToken: string;
+    authorizationCode: string;
+    email?: string | null;
+    fullName?: string | null;
+  }): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
+    return this.request({
+      method: 'POST',
+      url: '/auth/apple',
+      data,
     });
   }
 
@@ -459,11 +434,6 @@ class ApiClient {
   }
 
   async getCurrentUser(): Promise<ApiResponse<{ user: User }>> {
-    this.logDebug('[API] getCurrentUser called:', {
-      baseURL: this.client.defaults.baseURL,
-      endpoint: this.buildUrl('/users/me'),
-    });
-
     return this.request({
       method: 'GET',
       url: '/users/me',
@@ -507,12 +477,13 @@ class ApiClient {
   async getCounsellorAvailability(
     id: string,
     startDate: string,
-    endDate: string
+    endDate: string,
+    duration?: number
   ): Promise<ApiResponse<{ availability: any[] }>> {
     return this.request({
       method: 'GET',
       url: `/counsellors/${id}/availability`,
-      params: { startDate, endDate },
+      params: { startDate, endDate, duration },
     });
   }
 
@@ -557,7 +528,7 @@ class ApiClient {
     sessionType: 'video' | 'audio' | 'chat';
     sessionDuration: number;
     scheduledAt: string;
-    amount?: number;
+    serviceCode?: string;
     preferences?: {
       gender?: string;
       sessionType?: string;
@@ -728,60 +699,6 @@ class ApiClient {
       url: `/chat/rooms/${roomId}/typing`,
       data: { isTyping },
     });
-  }
-
-  async reportUser(payload: ReportUserPayload): Promise<ApiResponse<void>> {
-    // TODO: Confirm the production moderation endpoint path with the backend team.
-    const response = await this.request<void>({
-      method: 'POST',
-      url: '/moderation/report-user',
-      data: payload,
-    });
-
-    return response.message
-      ? response
-      : {
-          ...response,
-          message: response.success
-            ? 'Report submitted.'
-            : 'Report user endpoint is not connected yet. Please contact support so the team can review this manually.',
-        };
-  }
-
-  async reportContent(payload: ReportContentPayload): Promise<ApiResponse<void>> {
-    // TODO: Confirm the production moderation endpoint path with the backend team.
-    const response = await this.request<void>({
-      method: 'POST',
-      url: '/moderation/report-content',
-      data: payload,
-    });
-
-    return response.message
-      ? response
-      : {
-          ...response,
-          message: response.success
-            ? 'Report submitted.'
-            : 'Report content endpoint is not connected yet. Please contact support so the team can review this manually.',
-        };
-  }
-
-  async blockUser(userId: string, roomId?: string): Promise<ApiResponse<void>> {
-    // TODO: Confirm the production blocking endpoint path with the backend team.
-    const response = await this.request<void>({
-      method: 'POST',
-      url: '/moderation/block-user',
-      data: { userId, roomId },
-    });
-
-    return response.message
-      ? response
-      : {
-          ...response,
-          message: response.success
-            ? 'User blocked.'
-            : 'Block user endpoint is not connected yet. Please contact support so the team can review this manually.',
-        };
   }
 
   // Get available counselors for chat
@@ -959,10 +876,12 @@ class ApiClient {
   async submitKycVerification(payload: {
     selfie: ProfileImageUpload;
     consentAccepted: boolean;
+    consentVersion: string;
   }): Promise<ApiResponse<{ status: KycStatus; verification: KycVerification; kyc: User['kyc'] }>> {
     try {
       const formData = new FormData();
       formData.append('consentAccepted', payload.consentAccepted ? 'true' : 'false');
+      formData.append('consentVersion', payload.consentVersion);
       formData.append('selfie', {
         uri: payload.selfie.uri,
         name: payload.selfie.name || `selfie-${Date.now()}.jpg`,
@@ -974,31 +893,20 @@ class ApiClient {
         timeout: 30000,
       });
 
-      this.logDebug('[API] eKYC submit response:', response.data);
       return response.data;
     } catch (error: any) {
       const errorResponse = error.response?.data;
       const status = error.response?.status;
       if (status === 413 || (typeof errorResponse === 'string' && errorResponse.includes('413 Request Entity Too Large'))) {
-        if (__DEV__) {
-          console.error('[API] eKYC submit upload limit error:', this.stringifyForLog({
-            status,
-            response: errorResponse,
-          }));
-        }
+        reportError('api.face_check_upload_limit', error);
         return {
           success: false,
-          message: 'The selfie upload is being blocked by the server upload limit. Please try again after the server is updated, or skip eKYC for now.',
+          message: 'The selfie upload is being blocked by the server upload limit. Please try again later or skip the optional face check.',
         };
       }
 
       if (errorResponse) {
-        if (__DEV__) {
-          console.error('[API] eKYC submit error:', this.stringifyForLog({
-            status,
-            response: errorResponse,
-          }));
-        }
+        reportError('api.face_check_submit_failed', error);
         return errorResponse;
       }
 
@@ -1006,8 +914,8 @@ class ApiClient {
       return {
         success: false,
         message: isNetworkError
-          ? 'Network error: Unable to submit identity verification. Please check your connection and try again.'
-          : error.message || 'Identity verification failed',
+          ? 'Network error: Unable to submit the optional face check. Please check your connection and try again.'
+          : error.message || 'The optional face check failed',
       };
     }
   }
@@ -1035,24 +943,35 @@ class ApiClient {
         };
   }
 
-  async requestAccountDeletion(reason?: string): Promise<ApiResponse<void>> {
-    // TODO: Confirm the production account-deletion endpoint path with the backend team.
-    const response = await this.request<void>({
+  async createAccountDeletionChallenge(): Promise<ApiResponse<{
+    challengeId: string;
+    nonce: string;
+    expiresAt: string;
+  }>> {
+    return this.request({
       method: 'POST',
-      url: '/users/account-deletion-request',
-      data: {
-        reason: reason || 'User requested account deletion from the mobile app.',
-      },
+      url: '/users/account/deletion-challenge',
+      data: { method: 'apple' },
     });
+  }
 
-    return response.message
-      ? response
-      : {
-          ...response,
-          message: response.success
-            ? 'Account deletion request submitted.'
-            : 'Account deletion endpoint is not connected yet. Please contact support so the team can process this manually.',
-        };
+  async requestAccountDeletion(payload:
+    | { method: 'password'; password: string }
+    | {
+        method: 'apple';
+        challengeId: string;
+        identityToken: string;
+        authorizationCode: string;
+      }
+  ): Promise<ApiResponse<void>> {
+    if (payload.method === 'password' && !payload.password.trim()) {
+      return { success: false, message: 'Enter your password to confirm account deletion.' };
+    }
+    return this.request<void>({
+      method: 'DELETE',
+      url: '/users/account',
+      data: payload,
+    });
   }
 
   // Health check
@@ -1073,7 +992,7 @@ export async function listCounsellors(): Promise<Counsellor[]> {
     const response = await api.getCounsellors();
     return response.data?.counsellors || [];
   } catch (error) {
-    console.error('Error fetching counsellors:', error);
+    reportError('api.counsellors_fetch_failed', error);
     return [];
   }
 }

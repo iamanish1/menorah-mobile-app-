@@ -1,4 +1,7 @@
 const mongoose = require('mongoose');
+const {
+  isDirectlyCancellableUnpaidHold,
+} = require('../utils/bookingAvailability');
 
 const bookingSchema = new mongoose.Schema({
   // Basic booking information
@@ -51,13 +54,13 @@ const bookingSchema = new mongoose.Schema({
   // Status tracking
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show'],
+    enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'expired'],
     default: 'pending'
   },
   statusHistory: [{
     status: {
       type: String,
-      enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show']
+      enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'expired']
     },
     timestamp: {
       type: Date,
@@ -76,9 +79,45 @@ const bookingSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  amountMinor: {
+    type: Number,
+    min: 0,
+    validate: {
+      validator: Number.isSafeInteger,
+      message: 'Amount in minor units must be a safe integer'
+    }
+  },
   currency: {
     type: String,
+    enum: ['INR'],
     default: 'INR'
+  },
+  pricing: {
+    source: {
+      type: String,
+      enum: ['counsellor_rate', 'service_catalog']
+    },
+    serviceCode: {
+      type: String,
+      default: null
+    },
+    listAmount: {
+      type: Number,
+      min: 0
+    },
+    listAmountMinor: {
+      type: Number,
+      min: 0,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: 'List amount in minor units must be a safe integer'
+      }
+    },
+    currency: {
+      type: String,
+      enum: ['INR']
+    },
+    resolvedAt: Date
   },
   paymentStatus: {
     type: String,
@@ -87,8 +126,22 @@ const bookingSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['razorpay', 'wallet', 'subscription'],
+    enum: ['razorpay', 'wallet', 'subscription', 'promo'],
     required: true
+  },
+  bookingAuthorization: {
+    kind: {
+      type: String,
+      enum: ['payment', 'subscription_entitlement']
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'authorized', 'revoked', 'needs_review'],
+      default: 'pending'
+    },
+    reference: String,
+    authorizedAt: Date,
+    validUntil: Date
   },
   paymentId: String,
   transactionId: String,
@@ -106,6 +159,15 @@ const bookingSchema = new mongoose.Schema({
   },
   orderCreatedAt: Date,
   paymentAttemptedAt: Date,
+  holdExpiresAt: Date,
+  promo: {
+    code: String,
+    appliedAt: Date,
+    discountAmount: {
+      type: Number,
+      default: 0
+    }
+  },
 
   // Session details
   sessionNotes: {
@@ -119,6 +181,35 @@ const bookingSchema = new mongoose.Schema({
 
   // Video call information
   videoCall: {
+    provider: {
+      type: String,
+      enum: ['livekit', 'vsee', 'doxy', 'zoom', 'google_meet', 'teams', 'disabled'],
+      default: 'livekit'
+    },
+    joinMode: {
+      type: String,
+      enum: ['in_app', 'external_link', 'disabled'],
+      default: 'in_app'
+    },
+    externalJoinUrl: String,
+    externalHostUrl: String,
+    externalProviderName: String,
+    region: {
+      type: String,
+      default: 'UNKNOWN'
+    },
+    status: {
+      type: String,
+      enum: ['not_configured', 'scheduled', 'ready', 'started', 'ended', 'cancelled', 'disabled'],
+      default: 'not_configured'
+    },
+    policyReason: String,
+    lastPolicyCheckAt: Date,
+    configuredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    configuredAt: Date,
     roomId: String,
     roomUrl: String,
     startTime: Date,
@@ -228,11 +319,10 @@ bookingSchema.virtual('isPast').get(function() {
 
 // Virtual for can be cancelled
 bookingSchema.virtual('canBeCancelled').get(function() {
-  const now = new Date();
-  const sessionTime = new Date(this.scheduledAt);
-  const hoursUntilSession = (sessionTime - now) / (1000 * 60 * 60);
-  
-  return this.status === 'confirmed' && hoursUntilSession > 24;
+  // Paid and entitled cancellations require manual review; this model does not
+  // decide cancellation or refund eligibility. Only a safe unpaid hold can be
+  // released directly.
+  return isDirectlyCancellableUnpaidHold(this);
 });
 
 // Virtual for can be rescheduled
@@ -253,6 +343,17 @@ bookingSchema.index({ status: 1, scheduledAt: 1 });
 bookingSchema.index({ paymentStatus: 1 });
 bookingSchema.index({ razorpayOrderId: 1 });                          // payment verification lookup
 bookingSchema.index({ 'videoCall.roomId': 1 });
+bookingSchema.index(
+  { counsellor: 1, scheduledAt: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      counsellor: { $exists: true, $type: 'objectId' },
+      status: { $in: ['pending', 'confirmed', 'in-progress'] },
+    },
+  }
+);
+bookingSchema.index({ status: 1, paymentStatus: 1, holdExpiresAt: 1 });
 
 // Pre-save middleware to update status history
 bookingSchema.pre('save', function(next) {
@@ -286,15 +387,6 @@ bookingSchema.statics.findPast = function(userId, limit = 10) {
   .populate({ path: 'counsellor', select: 'specialization rating', populate: { path: 'user', select: 'firstName lastName profileImage' } })
   .sort({ scheduledAt: -1 })
   .limit(limit);
-};
-
-// Method to cancel booking
-bookingSchema.methods.cancel = function(reason, cancelledBy) {
-  this.status = 'cancelled';
-  this.cancellationReason = reason;
-  this.cancelledBy = cancelledBy;
-  this.cancelledAt = new Date();
-  return this.save();
 };
 
 // Method to complete booking

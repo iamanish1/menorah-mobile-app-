@@ -6,8 +6,8 @@ import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { getSubscriptionPlan, type SubscriptionType } from './subscriptionPlans';
 import {
-  IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE,
-  shouldDisableIOSSubscriptionPurchase,
+  SUBSCRIPTIONS_UNAVAILABLE_MESSAGE,
+  shouldDisableSubscriptionPurchase,
 } from '@/lib/paymentPolicy';
 
 export default function SubscriptionDetails({ route, navigation }: any) {
@@ -34,7 +34,23 @@ export default function SubscriptionDetails({ route, navigation }: any) {
   }
 
   const IconComponent = plan.icon;
-  const isIOSSubscriptionDisabled = shouldDisableIOSSubscriptionPurchase();
+  const isSubscriptionPurchaseDisabled = shouldDisableSubscriptionPurchase();
+
+  if (isSubscriptionPurchaseDisabled) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 12, textAlign: 'center' }}>
+            New subscriptions unavailable
+          </Text>
+          <Text style={{ fontSize: 14, lineHeight: 21, color: colors.muted, textAlign: 'center', marginBottom: 24 }}>
+            {SUBSCRIPTIONS_UNAVAILABLE_MESSAGE}
+          </Text>
+          <Button title="Go Back" onPress={() => navigation.goBack()} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -141,7 +157,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
           ))}
         </View>
 
-        {isIOSSubscriptionDisabled ? (
+        {isSubscriptionPurchaseDisabled ? (
           <View
             style={{
               backgroundColor: isDark ? colors.surface : '#F8FAF8',
@@ -153,10 +169,10 @@ export default function SubscriptionDetails({ route, navigation }: any) {
             }}
           >
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-              Subscriptions unavailable on iOS
+              New subscriptions unavailable
             </Text>
             <Text style={{ fontSize: 14, lineHeight: 21, color: colors.muted }}>
-              {IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE}
+              {SUBSCRIPTIONS_UNAVAILABLE_MESSAGE}
             </Text>
           </View>
         ) : (
@@ -177,7 +193,7 @@ export default function SubscriptionDetails({ route, navigation }: any) {
           </View>
         )}
 
-        {!isIOSSubscriptionDisabled && (
+        {!isSubscriptionPurchaseDisabled && (
           <Button
             title={`Continue with ${plan.shortLabel} Plan`}
             onPress={() =>

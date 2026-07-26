@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+
+# The blackbox image already contains a statically linked BusyBox wget. Reuse
+# that exact pinned artifact so the otherwise-minimal exporter images can expose
+# real HTTP healthchecks without adding a package manager, shell, or CA bundle.
+FROM prom/blackbox-exporter:v0.28.0@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc AS health-probe
+
+FROM percona/mongodb_exporter:0.51.0@sha256:852b90b9f38ab489762b8a8b8c074ce852272c2495d725b922bdb5bc7d659e16 AS mongodb-exporter
+COPY --from=health-probe --chmod=0555 /bin/wget /usr/local/bin/wget
+
+FROM oliver006/redis_exporter:v1.84.0@sha256:7ef8e9c26638158fa4e7ad60df8c7e53d1919986753d6c1d2d1876b6ec38d87b AS redis-exporter
+COPY --from=health-probe --chmod=0555 /bin/wget /usr/local/bin/wget
+
+FROM grafana/loki:3.7.3@sha256:70b9f699fc9bb868b62f1cfd4f787dfa50242f1fd92e6089787d5d7daea75fe8 AS loki
+COPY --from=health-probe --chmod=0555 /bin/wget /usr/local/bin/wget
+
+FROM grafana/alloy:v1.18.0@sha256:491b0578c04983fd54fe99b587b6fab4404dc46d0dc16677bd6b00cc1140b308 AS alloy
+COPY --from=health-probe --chmod=0555 /bin/wget /usr/local/bin/wget

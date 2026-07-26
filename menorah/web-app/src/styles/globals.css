@@ -21,7 +21,9 @@ body {
   line-height: var(--line-height-normal);
   color: var(--color-text-base);
   background-color: var(--color-bg);
+  min-width: 320px;
   min-height: 100vh;
+  overflow-x: clip;
   transition: background-color var(--transition-base), color var(--transition-base);
 }
 
@@ -153,4 +155,3 @@ ul, ol {
 .text-muted {
   color: var(--color-text-muted);
 }
-

@@ -62,7 +62,7 @@ export default function FindCounsellorHero({ onPress }: Props) {
           Find Your{'\n'}Perfect Counsellor
         </Text>
         <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.82)', lineHeight: 19, marginBottom: 18 }}>
-          Browse licensed therapists filtered by specialization, language, and availability.
+          Browse counsellors by specialization, language, and availability.
         </Text>
 
         {/* CTA button */}

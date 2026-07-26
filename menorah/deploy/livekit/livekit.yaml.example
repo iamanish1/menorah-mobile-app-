@@ -1,0 +1,37 @@
+# Copy this file to deploy/livekit/livekit.yaml on the Hostinger VPS.
+# Never commit the real livekit.yaml because it contains API keys/secrets.
+#
+# Generate values:
+#   LIVEKIT_API_KEY:    openssl rand -hex 16
+#   LIVEKIT_API_SECRET: openssl rand -hex 32
+#
+# DNS:
+#   calls.menorah.me -> Hostinger VPS public IP
+#
+# Hostinger firewall must allow:
+#   443/tcp            Browser HTTPS/WSS through Caddy
+#   7881/tcp           LiveKit TCP fallback media
+#   50000-50100/udp    LiveKit UDP media
+#
+# If automatic external IP detection fails, set LIVEKIT_NODE_IP in
+# deploy/env/production.env. Compose passes it to LiveKit as NODE_IP.
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  use_external_ip: false
+  skip_external_ip_validation: true
+  # If automatic external IP detection is unreliable on Hostinger, set:
+  # LIVEKIT_NODE_IP=REPLACE_WITH_HOSTINGER_PUBLIC_IPV4 in production.env
+
+keys:
+  REPLACE_WITH_LIVEKIT_API_KEY: REPLACE_WITH_LIVEKIT_API_SECRET
+
+room:
+  auto_create: true
+
+logging:
+  level: info

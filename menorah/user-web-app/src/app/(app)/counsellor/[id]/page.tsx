@@ -1,9 +1,10 @@
 'use client';
 
+import { useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Star, Clock, Globe, Video, MessageCircle,
+  Star, Clock, Globe, Video, MessageCircle, Pause, Play,
   GraduationCap, Award, ArrowLeft, CalendarDays, CheckCircle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -20,6 +21,26 @@ export default function CounsellorProfilePage() {
   });
 
   const c = data?.data?.counsellor;
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlayingIntro, setIsPlayingIntro] = useState(false);
+  const hasVoiceIntro = Boolean(c?.voiceIntroUrl);
+
+  const toggleVoiceIntro = async () => {
+    if (!hasVoiceIntro || !audioRef.current) return;
+
+    try {
+      if (isPlayingIntro) {
+        audioRef.current.pause();
+        setIsPlayingIntro(false);
+        return;
+      }
+
+      await audioRef.current.play();
+      setIsPlayingIntro(true);
+    } catch {
+      setIsPlayingIntro(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -80,6 +101,30 @@ export default function CounsellorProfilePage() {
                     {c.specializations.map((s) => (
                       <Badge key={s} variant="primary" size="sm">{s}</Badge>
                     ))}
+                  </div>
+                )}
+
+                {hasVoiceIntro && (
+                  <div className="mt-4 flex items-center gap-3 rounded-2xl border border-primary-100 bg-primary-50/70 p-3">
+                    <button
+                      type="button"
+                      onClick={toggleVoiceIntro}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white transition hover:bg-primary-700"
+                      aria-label={`${isPlayingIntro ? 'Pause' : 'Play'} ${c.name} voice intro`}
+                    >
+                      {isPlayingIntro ? (
+                        <Pause className="h-5 w-5 fill-current" aria-hidden="true" />
+                      ) : (
+                        <Play className="h-5 w-5 fill-current" aria-hidden="true" />
+                      )}
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900">Voice introduction</p>
+                      <p className="text-xs text-gray-500">
+                        {c.voiceIntroDurationSeconds ? `${c.voiceIntroDurationSeconds}s intro` : 'Short counsellor intro'}
+                      </p>
+                    </div>
+                    <audio ref={audioRef} src={c.voiceIntroUrl} preload="none" onEnded={() => setIsPlayingIntro(false)} />
                   </div>
                 )}
               </div>

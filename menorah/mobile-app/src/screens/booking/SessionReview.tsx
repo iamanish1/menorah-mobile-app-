@@ -47,27 +47,10 @@ export default function SessionReview({ navigation, route }: any) {
   useEffect(() => {
     (async () => {
       try {
-        try {
-          const info = await subscriptionService.getSubscriptionInfo();
-          if (info.hasPremium) {
-            setHasActiveSub(true);
-            setSubType(info.subscriptionType);
-            return;
-          }
-        } catch (error) {
-          console.warn('[SessionReview] Failed to read cached subscription info:', error);
-        }
-        try {
-          const res = await api.getSubscriptionStatus();
-          if (res.success && res.data?.isActive) {
-            setHasActiveSub(true);
-            setSubType(res.data.subscriptionType);
-            if (res.data.subscriptionType) {
-              await subscriptionService.setPremiumSubscription(res.data.subscriptionType);
-            }
-          }
-        } catch (error) {
-          console.warn('[SessionReview] Failed to fetch subscription status:', error);
+        const info = await subscriptionService.getSubscriptionInfo();
+        if (info.hasPremium) {
+          setHasActiveSub(true);
+          setSubType(info.subscriptionType);
         }
       } finally {
         setCheckingSub(false);
@@ -86,15 +69,16 @@ export default function SessionReview({ navigation, route }: any) {
         sessionType: 'video',
         sessionDuration: duration,
         scheduledAt: tomorrow.toISOString(),
-        amount: price,
+        serviceCode: sessionType,
         preferences: { gender, sessionType, categoryId: sessionType },
       });
 
       if (bookingResponse.success && bookingResponse.data?.booking?.id) {
         const booking = bookingResponse.data.booking;
         const isSubBooking =
-          (booking.paymentStatus === 'paid' && booking.isSubscriptionBooking) ||
-          (hasActiveSubscription && booking.paymentMethod === 'subscription');
+          booking.isSubscriptionBooking === true &&
+          booking.paymentMethod === 'subscription' &&
+          booking.paymentStatus === 'paid';
 
         if (isSubBooking) {
           navigation.replace('BookingSuccess', { bookingId: booking.id, isSubscriptionBooking: true });
@@ -394,7 +378,7 @@ export default function SessionReview({ navigation, route }: any) {
         {/* Footer */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 8 }}>
           <ShieldCheck size={12} color={colors.muted} />
-          <Text style={{ fontSize: 11, color: colors.muted }}>100% Secure Payments</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Payment status is verified by the server and payment provider</Text>
         </View>
       </View>
 

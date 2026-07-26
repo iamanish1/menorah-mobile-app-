@@ -5,6 +5,16 @@ const ChatRoom = require('../models/ChatRoom');
 const Message = require('../models/Message');
 const Counsellor = require('../models/Counsellor');
 const { getRedisClient } = require('../config/redis');
+const {
+  buildProfessionallyApprovedCounsellorQuery,
+  isCounsellorProfessionallyApproved,
+} = require('../services/counsellorVerificationPolicy');
+const {
+  filterAuthorizedChatRooms,
+  loadChatRoomAuthorization,
+  populateChatRoomAuthorizationQuery,
+} = require('../services/chatRoomAuthorization');
+const { recordSecurityEvent } = require('../utils/securityAudit');
 
 // Socket.IO instance will be set from server.js to avoid circular dependency
 let socketIOInstance = null;
@@ -22,7 +32,7 @@ const setUserOnline = (userId, userName) => {
   try {
     const redis = getRedisClient();
     redis.setEx(`presence:${userId}`, PRESENCE_TTL, userName || '').catch((err) =>
-      console.error('Redis setUserOnline error:', err.message)
+      console.error('Redis setUserOnline error:', err?.code || 'PRESENCE_WRITE_FAILED')
     );
   } catch {
     // Redis not ready yet (e.g. first connection) — silently ignore
@@ -33,7 +43,7 @@ const setUserOffline = (userId) => {
   try {
     const redis = getRedisClient();
     redis.del(`presence:${userId}`).catch((err) =>
-      console.error('Redis setUserOffline error:', err.message)
+      console.error('Redis setUserOffline error:', err?.code || 'PRESENCE_DELETE_FAILED')
     );
   } catch {
     // Redis not ready yet — silently ignore
@@ -49,6 +59,82 @@ const isUserOnline = async (userId) => {
   }
 };
 
+const recordChatAuthorizationDenial = (req, reason, roomId) => {
+  try {
+    recordSecurityEvent('chat_authorization_denied', {
+      req,
+      user: req.user,
+      outcome: 'failure',
+      statusCode: 403,
+      details: {
+        reason,
+        resource: 'chat_room',
+        targetId: roomId,
+      },
+    });
+    if (req?.res?.locals) req.res.locals.securityAuthorizationLogged = true;
+  } catch {
+    // Authorization still fails closed if audit output is unavailable.
+  }
+};
+
+const loadAuthorizedRoomForRequest = async (req, res, roomId) => {
+  const { room, access } = await loadChatRoomAuthorization({
+    roomId,
+    requesterUserId: req.user._id,
+  });
+  if (!room) {
+    res.status(404).json({
+      success: false,
+      message: 'Chat room not found',
+    });
+    return null;
+  }
+  if (!access.allowed) {
+    recordChatAuthorizationDenial(req, access.reason, roomId);
+    res.status(403).json({
+      success: false,
+      code: access.reason,
+      message: 'Access denied',
+    });
+    return null;
+  }
+  return { room, access };
+};
+
+const getVisiblePresenceUserIds = async (requester) => {
+  const requesterId = requester._id.toString();
+
+  if (requester.role === 'user') {
+    const rooms = await populateChatRoomAuthorizationQuery(
+      ChatRoom.find({ user: requester._id, isActive: true })
+    ).lean();
+    return filterAuthorizedChatRooms({
+      rooms,
+      requesterUserId: requester._id,
+    })
+      .map((room) => room.counsellor?.user?._id?.toString?.())
+      .filter(Boolean);
+  }
+
+  if (requester.role === 'counsellor') {
+    const counsellor = await Counsellor.findOne({ user: requester._id }).select('_id').lean();
+    if (!counsellor) return [];
+
+    const rooms = await populateChatRoomAuthorizationQuery(
+      ChatRoom.find({ counsellor: counsellor._id, isActive: true })
+    ).lean();
+    return filterAuthorizedChatRooms({
+      rooms,
+      requesterUserId: requester._id,
+    })
+      .map((room) => room.user?._id?.toString?.())
+      .filter((userId) => userId && userId !== requesterId);
+  }
+
+  return [];
+};
+
 // @route   GET /api/chat/rooms
 // @desc    Get user's chat rooms
 // @access  Private
@@ -57,20 +143,22 @@ router.get('/rooms', auth, async (req, res) => {
     const userId = req.user._id;
 
     // Get user's chat rooms from database
-    const chatRooms = await ChatRoom.find({
-      user: userId,
-      isActive: true
-    })
-      .populate({
-        path: 'counsellor',
-        populate: { path: 'user', select: 'firstName lastName profileImage' }
+    const chatRooms = await populateChatRoomAuthorizationQuery(
+      ChatRoom.find({
+        user: userId,
+        isActive: true
       })
+    )
       .populate('lastMessage.senderId', 'firstName lastName')
       .sort({ updatedAt: -1 })
       .lean();
+    const authorizedChatRooms = filterAuthorizedChatRooms({
+      rooms: chatRooms,
+      requesterUserId: userId,
+    });
 
     // Format response to match frontend expectations
-    const formattedRooms = await Promise.all(chatRooms.map(async (room) => {
+    const formattedRooms = await Promise.all(authorizedChatRooms.map(async (room) => {
       const counsellorUser = room.counsellor && room.counsellor.user ? room.counsellor.user : null;
       const counsellorUserId = counsellorUser ? counsellorUser._id.toString() : null;
       const isOnline = counsellorUserId ? await isUserOnline(counsellorUserId) : false;
@@ -110,7 +198,7 @@ router.get('/rooms', auth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get chat rooms error:', error);
+    console.error('Get chat rooms error:', error?.code || 'CHAT_ROOM_LIST_FAILED');
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -140,39 +228,11 @@ router.get('/rooms/:roomId/messages', [
     const { page = 1, limit = 20 } = req.query;
     const userId = req.user._id;
 
-    // Verify user has access to this room
-    const room = await ChatRoom.findById(roomId)
-      .populate({ path: 'counsellor', populate: { path: 'user', select: 'firstName lastName profileImage' } })
-      .populate('user', 'firstName lastName profileImage');
-
-    if (!room) {
-      return res.status(404).json({
-        success: false,
-        message: 'Chat room not found'
-      });
-    }
-
-    // Check if user is part of this room
-    const isUser = room.user && room.user._id.toString() === userId.toString();
-    let isCounsellor = false;
-
-    if (room.counsellor && room.counsellor.user) {
-      const counsellorUserId = (room.counsellor.user._id || room.counsellor.user).toString();
-      isCounsellor = counsellorUserId === userId.toString();
-    }
-
-    if (!isUser && !isCounsellor) {
-      console.error('Access denied for get messages:', {
-        roomId,
-        userId: userId.toString(),
-        roomUserId: room.user ? room.user._id.toString() : 'null',
-        counsellorUserId: room.counsellor && room.counsellor.user ? room.counsellor.user._id.toString() : 'null'
-      });
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
+    const authorizedRoom = await loadAuthorizedRoomForRequest(req, res, roomId);
+    if (!authorizedRoom) return;
+    const { room, access } = authorizedRoom;
+    const isUser = access.participantRole === 'user';
+    const isCounsellor = access.participantRole === 'counsellor';
 
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -233,7 +293,7 @@ router.get('/rooms/:roomId/messages', [
     });
 
   } catch (error) {
-    console.error('Get messages error:', error);
+    console.error('Get messages error:', error?.code || 'CHAT_MESSAGE_LIST_FAILED');
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -246,7 +306,11 @@ router.get('/rooms/:roomId/messages', [
 // @access  Private
 router.post('/rooms/:roomId/messages', [
   param('roomId').isMongoId().withMessage('Invalid room ID'),
-  body('content').notEmpty().trim().withMessage('Message content is required'),
+  body('content')
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 5000 })
+    .withMessage('Message content must be between 1 and 5000 characters'),
   body('type').optional().isIn(['text', 'image', 'file']).withMessage('Invalid message type')
 ], auth, async (req, res) => {
   try {
@@ -263,42 +327,19 @@ router.post('/rooms/:roomId/messages', [
     const { content, type = 'text' } = req.body;
     const userId = req.user._id;
 
-    // Verify room exists and user has access
-    const room = await ChatRoom.findById(roomId)
-      .populate({ path: 'counsellor', populate: { path: 'user', select: 'firstName lastName profileImage' } })
-      .populate('user', 'firstName lastName profileImage');
-
-    if (!room) {
-      return res.status(404).json({
-        success: false,
-        message: 'Chat room not found'
-      });
-    }
-
-    // Check if user is part of this room
-    const isUser = room.user && room.user._id.toString() === userId.toString();
-    let isCounsellor = false;
-
-    if (room.counsellor && room.counsellor.user) {
-      const counsellorUserId = (room.counsellor.user._id || room.counsellor.user).toString();
-      isCounsellor = counsellorUserId === userId.toString();
-    }
-
-    if (!isUser && !isCounsellor) {
-      console.error('Access denied for message send:', {
-        roomId,
-        userId: userId.toString(),
-        roomUserId: room.user ? room.user._id.toString() : 'null',
-        counsellorUserId: room.counsellor && room.counsellor.user ? room.counsellor.user._id.toString() : 'null'
-      });
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
+    const authorizedRoom = await loadAuthorizedRoomForRequest(req, res, roomId);
+    if (!authorizedRoom) return;
+    const { room, access } = authorizedRoom;
+    const isUser = access.participantRole === 'user';
 
     // Strip HTML tags (defense-in-depth against stored XSS if content is ever rendered as HTML)
     const safeContent = content.trim().replace(/<[^>]*>/g, '');
+    if (!safeContent) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message content is required',
+      });
+    }
 
     // Create message
     const message = new Message({
@@ -349,7 +390,7 @@ router.post('/rooms/:roomId/messages', [
     });
 
   } catch (error) {
-    console.error('Send message error:', error);
+    console.error('Send message error:', error?.code || 'CHAT_MESSAGE_SEND_FAILED');
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -377,47 +418,14 @@ router.put('/rooms/:roomId/messages/:messageId/read', [
     const { roomId, messageId } = req.params;
     const userId = req.user._id;
 
-    // Verify room exists and user has access
-    const room = await ChatRoom.findById(roomId)
-      .populate({ path: 'counsellor', populate: { path: 'user', select: 'firstName lastName profileImage' } })
-      .populate('user', 'firstName lastName profileImage');
-
-    if (!room) {
-      return res.status(404).json({
-        success: false,
-        message: 'Chat room not found'
-      });
-    }
-
-    // Check if user is part of this room
-    const isUser = room.user && room.user._id.toString() === userId.toString();
-    let isCounsellor = false;
-
-    if (room.counsellor && room.counsellor.user) {
-      const counsellorUserId = (room.counsellor.user._id || room.counsellor.user).toString();
-      isCounsellor = counsellorUserId === userId.toString();
-    }
-
-    if (!isUser && !isCounsellor) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
+    if (!await loadAuthorizedRoomForRequest(req, res, roomId)) return;
 
     // Find and mark message as read
-    const message = await Message.findById(messageId);
+    const message = await Message.findOne({ _id: messageId, room: roomId });
     if (!message) {
       return res.status(404).json({
         success: false,
         message: 'Message not found'
-      });
-    }
-
-    if (message.room.toString() !== roomId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Message does not belong to this room'
       });
     }
 
@@ -438,7 +446,7 @@ router.put('/rooms/:roomId/messages/:messageId/read', [
     });
 
   } catch (error) {
-    console.error('Mark message as read error:', error);
+    console.error('Mark message as read error:', error?.code || 'CHAT_MESSAGE_READ_FAILED');
       res.status(500).json({
         success: false,
         message: 'Internal server error'
@@ -466,17 +474,9 @@ router.delete('/rooms/:roomId/messages/:messageId', [
     const { roomId, messageId } = req.params;
     const userId = req.user._id;
 
-    // Verify room exists and user has access
-    const room = await ChatRoom.findById(roomId);
-    if (!room) {
-      return res.status(404).json({
-        success: false,
-        message: 'Chat room not found'
-      });
-    }
+    if (!await loadAuthorizedRoomForRequest(req, res, roomId)) return;
 
-    // Find message
-    const message = await Message.findById(messageId);
+    const message = await Message.findOne({ _id: messageId, room: roomId });
     if (!message) {
       return res.status(404).json({
         success: false,
@@ -510,7 +510,7 @@ router.delete('/rooms/:roomId/messages/:messageId', [
     });
 
   } catch (error) {
-    console.error('Delete message error:', error);
+    console.error('Delete message error:', error?.code || 'CHAT_MESSAGE_DELETE_FAILED');
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -539,33 +539,7 @@ router.post('/rooms/:roomId/typing', [
     const { isTyping } = req.body;
     const userId = req.user._id;
 
-    // Verify room exists and user has access
-    const room = await ChatRoom.findById(roomId)
-      .populate('counsellor', 'user')
-      .populate('user');
-    
-    if (!room) {
-      return res.status(404).json({
-        success: false,
-        message: 'Chat room not found'
-      });
-    }
-
-    // Check if user is part of this room
-    const isUser = room.user && (typeof room.user === 'object' ? room.user._id.toString() : room.user.toString()) === userId.toString();
-    let isCounsellor = false;
-    
-    if (room.counsellor && room.counsellor.user) {
-      const counsellorUserId = typeof room.counsellor.user === 'object' ? room.counsellor.user._id.toString() : room.counsellor.user.toString();
-      isCounsellor = counsellorUserId === userId.toString();
-    }
-
-    if (!isUser && !isCounsellor) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
+    if (!await loadAuthorizedRoomForRequest(req, res, roomId)) return;
 
     // Emit typing indicator via Socket.IO
     if (socketIOInstance) {
@@ -583,7 +557,7 @@ router.post('/rooms/:roomId/typing', [
     });
 
   } catch (error) {
-    console.error('Send typing indicator error:', error);
+    console.error('Send typing indicator error:', error?.code || 'CHAT_TYPING_FAILED');
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -597,18 +571,17 @@ router.post('/rooms/:roomId/typing', [
 router.get('/online-status', auth, async (req, res) => {
   try {
     const redis = getRedisClient();
-    const keys = await redis.keys('presence:*');
-    const onlineStatus = await Promise.all(
-      keys.map(async (key) => {
-        const userId   = key.replace('presence:', '');
-        const userName = await redis.get(key);
-        return { userId, userName: userName || '', isOnline: true };
+    const visibleUserIds = await getVisiblePresenceUserIds(req.user);
+    const onlineStatus = (await Promise.all(
+      visibleUserIds.map(async (userId) => {
+        const userName = await redis.get(`presence:${userId}`);
+        return userName === null ? null : { userId, userName: userName || '', isOnline: true };
       })
-    );
+    )).filter(Boolean);
 
     res.json({ success: true, data: { onlineStatus } });
   } catch (error) {
-    console.error('Get online status error:', error);
+    console.error('Get online status error:', error?.code || 'CHAT_PRESENCE_LIST_FAILED');
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
@@ -626,23 +599,27 @@ router.get('/available-counsellors', auth, async (req, res) => {
       });
     }
 
-    // Get available counselors for chat
-    // For chat, we only require isActive and isAvailable (not isVerified)
-    // This allows users to chat with counselors even if they're not fully verified yet
-    const availableCounsellors = await Counsellor.find({
-      isActive: true,
-      isAvailable: true
-    })
-      .populate('user', 'firstName lastName profileImage')
+    const availableCounsellors = await Counsellor.find(
+      buildProfessionallyApprovedCounsellorQuery({ requireAvailability: true })
+    )
+      .populate({
+        path: 'user',
+        select: 'firstName lastName profileImage role isActive',
+        match: { role: 'counsellor', isActive: true },
+      })
       .sort({ rating: -1, reviewCount: -1 })
       .lean();
-
-    console.log(`Found ${availableCounsellors.length} available counselors for chat`);
 
     // Format response — skip counsellors whose user document was deleted
     const formattedCounsellors = await Promise.all(
       availableCounsellors
-        .filter(counsellor => counsellor.user != null)
+        .filter((counsellor) =>
+          counsellor.user != null
+          && isCounsellorProfessionallyApproved(counsellor, {
+            account: counsellor.user,
+            requireAvailability: true,
+          })
+        )
         .map(async (counsellor) => {
       const counsellorUser = counsellor.user;
       const counsellorUserId = counsellorUser._id.toString();
@@ -683,7 +660,10 @@ router.get('/available-counsellors', auth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get available counselors error:', error);
+    console.error(
+      'Get available counselors error:',
+      error?.code || 'CHAT_COUNSELLOR_LIST_FAILED'
+    );
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -720,7 +700,7 @@ router.post('/start', [
 
     // Verify counselor exists and is available
     const counsellor = await Counsellor.findById(counsellorId)
-      .populate('user', 'firstName lastName profileImage');
+      .populate('user', 'firstName lastName profileImage role isActive');
 
     if (!counsellor) {
       return res.status(404).json({
@@ -729,7 +709,7 @@ router.post('/start', [
       });
     }
 
-    if (!counsellor.isActive || !counsellor.isAvailable) {
+    if (!isCounsellorProfessionallyApproved(counsellor, { requireAvailability: true })) {
       return res.status(400).json({
         success: false,
         message: 'Counsellor is not available at the moment'
@@ -738,6 +718,12 @@ router.post('/start', [
 
     // Find or create chat room
     const room = await ChatRoom.findOrCreate(userId, counsellorId, null);
+    if (!room || room.isActive !== true) {
+      return res.status(403).json({
+        success: false,
+        message: 'Chat is not currently available',
+      });
+    }
 
     // Populate room data
     await room.populate({ path: 'counsellor', populate: { path: 'user', select: 'firstName lastName profileImage' } });
@@ -780,7 +766,7 @@ router.post('/start', [
     });
 
   } catch (error) {
-    console.error('Start chat error:', error);
+    console.error('Start chat error:', error?.code || 'CHAT_START_FAILED');
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -804,26 +790,42 @@ router.get('/counsellor/rooms', auth, async (req, res) => {
     const userId = req.user._id;
 
     // Find counselor by user ID
-    const counsellor = await Counsellor.findOne({ user: userId });
-    if (!counsellor) {
-      return res.status(404).json({
+    const counsellor = await Counsellor.findOne({
+      user: userId,
+      ...buildProfessionallyApprovedCounsellorQuery({
+        requireAvailability: false,
+      }),
+    });
+    if (
+      !counsellor
+      || !isCounsellorProfessionallyApproved(counsellor, {
+        account: req.user,
+        requireAvailability: false,
+      })
+    ) {
+      return res.status(403).json({
         success: false,
-        message: 'Counsellor profile not found'
+        message: 'Counsellor access is not currently available'
       });
     }
 
     // Get counselor's chat rooms
-    const chatRooms = await ChatRoom.find({
-      counsellor: counsellor._id,
-      isActive: true
-    })
-      .populate('user', 'firstName lastName profileImage')
+    const chatRooms = await populateChatRoomAuthorizationQuery(
+      ChatRoom.find({
+        counsellor: counsellor._id,
+        isActive: true
+      })
+    )
       .populate('lastMessage.senderId', 'firstName lastName')
       .sort({ updatedAt: -1 })
       .lean();
+    const authorizedChatRooms = filterAuthorizedChatRooms({
+      rooms: chatRooms,
+      requesterUserId: userId,
+    });
 
     // Format response
-    const formattedRooms = await Promise.all(chatRooms.map(async (room) => {
+    const formattedRooms = await Promise.all(authorizedChatRooms.map(async (room) => {
       const user = room.user;
       const userIdStr = user._id.toString();
       const isOnline = await isUserOnline(userIdStr);
@@ -850,18 +852,16 @@ router.get('/counsellor/rooms', auth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get counselor chat rooms error:', error);
+    console.error(
+      'Get counselor chat rooms error:',
+      error?.code || 'COUNSELLOR_CHAT_ROOM_LIST_FAILED'
+    );
     res.status(500).json({
       success: false,
       message: 'Internal server error'
     });
   }
 });
-
-// Helper function to get or create chat room for a booking
-const getOrCreateRoomForBooking = async (userId, counsellorId, bookingId) => {
-  return await ChatRoom.findOrCreate(userId, counsellorId, bookingId);
-};
 
 module.exports = router;
 module.exports.setSocketIO = setSocketIO;

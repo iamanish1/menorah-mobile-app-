@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,11 +20,25 @@ type FormValues = z.infer<typeof schema>;
 
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
-  const token        = searchParams.get('token') || '';
+  const [token, setToken] = useState('');
   const { resetPassword } = useAuth();
   const router = useRouter();
   const [showPwd, setShowPwd]     = useState(false);
   const [serverError, setServerError] = useState('');
+
+  useEffect(() => {
+    const queryToken = searchParams.get('token') || '';
+    const fragmentToken = typeof window === 'undefined'
+      ? ''
+      : new URLSearchParams(window.location.hash.replace(/^#/, '')).get('token') || '';
+    const resetToken = fragmentToken || queryToken;
+    setToken(resetToken);
+
+    // Do not leave a reset capability in history after the page has read it.
+    if (resetToken && typeof window !== 'undefined') {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, [searchParams]);
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),

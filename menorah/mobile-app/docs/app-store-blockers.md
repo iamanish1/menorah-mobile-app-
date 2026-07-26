@@ -20,12 +20,13 @@ This file tracks launch blockers and policy risks that must be resolved before i
 - [ ] Verify backend account deletion request endpoint.
 - [ ] Complete real iPhone QA through TestFlight.
 - [ ] Make the native config/prebuild decision carefully before changing native settings.
+- [ ] Complete all actions in `docs/mobile-store-external-actions.md`.
 
 ## Native Config Status
 - The repo currently contains `ios/` and `android/`, so Expo Doctor treats it as a native/prebuild project rather than pure CNG.
 - With native folders present, EAS Build will not automatically sync native config fields from `app.config.ts`.
-- Do not run `npx expo prebuild --clean` casually.
-- Before any prebuild, commit the current state, run the prebuild intentionally, and review native diffs.
+- Do not run `npx expo prebuild --clean`; preserve the tracked native projects.
+- Update native files in place, run CocoaPods on macOS after native-module changes, and review all diffs.
 
 ## Razorpay Usage Inventory
 
@@ -54,7 +55,7 @@ This file tracks launch blockers and policy risks that must be resolved before i
   - `api.verifySubscriptionPayment`
   - `api.getSubscriptionStatus`
 - Classification: digital subscription or premium app feature access.
-- Current iOS behavior: disabled for first submission with a user-facing unavailable message.
+- Current behavior: new subscription purchases are disabled on every platform; existing server entitlements remain visible.
 - App Store risk: high. Apple In-App Purchase is required before enabling this flow on iOS if it unlocks digital features, premium app access, or subscription content.
 - Guardrail: do not add a "pay on website", browser checkout, WebView checkout, or web auto-login workaround for iOS digital subscriptions.
 

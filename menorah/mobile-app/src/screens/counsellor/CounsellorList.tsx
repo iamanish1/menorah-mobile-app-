@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -67,11 +67,10 @@ export default function CounsellorList({ navigation, route }: any) {
   const { data, isLoading, isFetching, refetch } = useCounsellors(
     debouncedSearch ? { search: debouncedSearch } : undefined,
   );
-  const counsellors = data?.counsellors ?? [];
 
   // ── Client-side filter + sort (no extra API calls needed) ─────────────────
   const filtered = useMemo(() => {
-    let list = [...counsellors];
+    let list = [...(data?.counsellors ?? [])];
     if (activeCategory !== 'all') {
       list = list.filter((c) =>
         [c.specialization, ...(c.specializations || [])].join(' ').toLowerCase().includes(activeCategory),
@@ -89,7 +88,7 @@ export default function CounsellorList({ navigation, route }: any) {
         break;
     }
     return list;
-  }, [counsellors, activeCategory, sortIdx]);
+  }, [data?.counsellors, activeCategory, sortIdx]);
 
   const handleSearch = (text: string) => {
     setSearch(text);

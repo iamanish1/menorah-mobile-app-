@@ -1,5 +1,64 @@
 import axios, { AxiosInstance } from 'axios';
-import { Article, ArticlePagination, Booking, DashboardStats, TodaySchedule, ApiResponse, CounsellorStatus } from '@/types';
+import type {
+  Article,
+  ArticlePagination,
+  Booking,
+  CounsellorBooking,
+  DashboardBookingSummary,
+  DashboardStats,
+  TodaySchedule,
+  ApiResponse,
+  CounsellorStatus,
+  UnassignedBookingPreview,
+  VideoRoom,
+} from '@/types';
+
+export interface CounsellorVerificationRequirements {
+  consentVersion: string;
+  noticeUrl: string;
+}
+
+export interface CounsellorApplicationStatus {
+  status:
+    | 'draft'
+    | 'pending'
+    | 'submitted'
+    | 'under_review'
+    | 'approved'
+    | 'rejected'
+    | 'suspended'
+    | 'expired';
+  rejectionReason?: string | null;
+  isActive?: boolean;
+  requiresFreshApplication?: boolean;
+}
+
+export interface CounsellorRegistrationPayload {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  dateOfBirth: string;
+  gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+  licenseNumber: string;
+  specialization: string;
+  specializations?: string[];
+  experience: number;
+  bio: string;
+  languages: string[];
+  hourlyRate: number;
+  currency?: string;
+  education?: unknown[];
+  certifications?: unknown[];
+  availability: Record<string, {
+    start: string;
+    end: string;
+    isAvailable: boolean;
+  }>;
+  onboardingConsentAccepted: true;
+  onboardingConsentVersion: string;
+  reverificationToken?: string;
+}
 
 class ApiClient {
   private client: AxiosInstance;
@@ -12,21 +71,8 @@ class ApiClient {
       headers: {
         'Content-Type': 'application/json',
       },
+      withCredentials: true,
     });
-
-    // Add request interceptor to include auth token
-    this.client.interceptors.request.use(
-      (config) => {
-        const token = this.getToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => {
-        return Promise.reject(error);
-      }
-    );
 
     // Add response interceptor for error handling
     this.client.interceptors.response.use(
@@ -34,12 +80,19 @@ class ApiClient {
       (error) => {
         // Only redirect on 401, but don't log other errors here
         // Let individual methods handle their own errors
-        if (error.response?.status === 401) {
-          // Token expired or invalid
-          this.clearToken();
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login';
-          }
+        const requestUrl = typeof error.config?.url === 'string'
+          ? error.config.url
+          : '';
+        const isAuthenticationAttempt = requestUrl === '/auth/login';
+        const isSessionProbe = requestUrl === '/users/me';
+        if (
+          error.response?.status === 401
+          && !isAuthenticationAttempt
+          && !isSessionProbe
+          && typeof window !== 'undefined'
+          && window.location.pathname !== '/login'
+        ) {
+          window.location.replace('/login');
         }
         // Return the error so individual methods can handle it
         return Promise.reject(error);
@@ -47,43 +100,14 @@ class ApiClient {
     );
   }
 
-  private getToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    const sessionToken = sessionStorage.getItem('auth_token');
-    if (sessionToken) return sessionToken;
-    // Fall back to cookie so session survives new tabs / browser restarts
-    const match = document.cookie.match(/(?:^|;\s*)mn_counsellor_auth=([^;]+)/);
-    if (match) {
-      const token = decodeURIComponent(match[1]);
-      sessionStorage.setItem('auth_token', token);
-      return token;
-    }
-    return null;
-  }
-
-  private setToken(token: string): void {
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('auth_token', token);
-      // Mirror to cookie so Next.js middleware can verify server-side
-      const maxAge = 7 * 24 * 60 * 60;
-      document.cookie = `mn_counsellor_auth=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Strict; Secure`;
-    }
-  }
-
   public clearToken(): void {
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('auth_token');
-      document.cookie = 'mn_counsellor_auth=; path=/; max-age=0; SameSite=Strict; Secure';
-    }
+    // Browser sessions are server-issued HttpOnly cookies.
   }
 
   // Auth methods
-  async login(email: string, password: string): Promise<ApiResponse<{ user: any; token: string }>> {
+  async login(email: string, password: string): Promise<ApiResponse<{ user: any }>> {
     try {
-      const response = await this.client.post('/auth/login', { email, password });
-      if (response.data.success && response.data.data.token) {
-        this.setToken(response.data.data.token);
-      }
+      const response = await this.client.post('/auth/login', { email, password, transport: 'cookie' });
       return response.data;
     } catch (error: any) {
       const errorResponse = error.response?.data;
@@ -115,17 +139,98 @@ class ApiClient {
     }
   }
 
-  async registerCounsellor(data: any): Promise<ApiResponse<{ user: any; counsellor: any; token: string }>> {
+  async logout(): Promise<ApiResponse<void>> {
     try {
-      const response = await this.client.post('/counsellors/register', data);
-      if (response.data.success && response.data.data.token) {
-        this.setToken(response.data.data.token);
-      }
+      const response = await this.client.post('/auth/logout');
       return response.data;
     } catch (error: any) {
       const errorResponse = error.response?.data;
       return {
         success: false,
+        message: errorResponse?.message || error.message || 'Logout failed',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async logoutAll(): Promise<ApiResponse<void>> {
+    try {
+      const response = await this.client.post('/auth/logout-all');
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        message: errorResponse?.message || error.message || 'Failed to sign out all devices',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async getCounsellorVerificationRequirements(
+    signal?: AbortSignal
+  ): Promise<ApiResponse<CounsellorVerificationRequirements>> {
+    try {
+      const response = await this.client.get('/counsellors/verification-requirements', {
+        signal,
+      });
+      return response.data;
+    } catch (error: unknown) {
+      if (axios.isCancel(error)) throw error;
+      const axiosError = axios.isAxiosError(error) ? error : null;
+      const errorResponse = axiosError?.response?.data;
+      return {
+        success: false,
+        code: errorResponse?.code,
+        status: axiosError?.response?.status,
+        message: errorResponse?.message || axiosError?.message || 'Verification requirements are unavailable',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async getCounsellorApplicationStatus(
+    statusTicket: string,
+    signal?: AbortSignal
+  ): Promise<ApiResponse<CounsellorApplicationStatus>> {
+    try {
+      const response = await this.client.get('/counsellors/application-status', {
+        params: { ticket: statusTicket },
+        signal,
+      });
+      return response.data;
+    } catch (error: unknown) {
+      if (axios.isCancel(error)) throw error;
+      const axiosError = axios.isAxiosError(error) ? error : null;
+      const errorResponse = axiosError?.response?.data;
+      return {
+        success: false,
+        code: errorResponse?.code,
+        status: axiosError?.response?.status,
+        message: errorResponse?.message || axiosError?.message || 'Application status is unavailable',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async registerCounsellor(
+    data: CounsellorRegistrationPayload
+  ): Promise<ApiResponse<{
+    applicationId: string;
+    email: string;
+    statusTicket: string;
+    status?: 'submitted' | 'under_review';
+  }>> {
+    try {
+      const response = await this.client.post('/counsellors/register', data);
+      return response.data;
+    } catch (error: unknown) {
+      const axiosError = axios.isAxiosError(error) ? error : null;
+      const errorResponse = axiosError?.response?.data;
+      return {
+        success: false,
+        code: errorResponse?.code,
+        status: axiosError?.response?.status,
         message: errorResponse?.message || 'Registration failed',
         errors: errorResponse?.errors || [],
       };
@@ -170,7 +275,7 @@ class ApiClient {
   async getPendingBookings(params?: {
     page?: number;
     limit?: number;
-  }): Promise<ApiResponse<{ bookings: Booking[]; pagination: any }>> {
+  }): Promise<ApiResponse<{ bookings: UnassignedBookingPreview[]; pagination: any }>> {
     try {
       // Build query params - only include if they have valid values
       const queryParams: Record<string, string> = {};
@@ -235,7 +340,7 @@ class ApiClient {
     }
   }
 
-  async getBookingById(bookingId: string): Promise<ApiResponse<{ booking: Booking }>> {
+  async getBookingById(bookingId: string): Promise<ApiResponse<{ booking: CounsellorBooking }>> {
     try {
       const response = await this.client.get(`/counsellors/me/bookings/${bookingId}`);
       return response.data;
@@ -323,7 +428,7 @@ class ApiClient {
     counsellorStatus: CounsellorStatus;
     stats: DashboardStats;
     todaySchedule: TodaySchedule[];
-    recentBookings: Booking[];
+    recentBookings: DashboardBookingSummary[];
   }>> {
     try {
       const response = await this.client.get('/counsellors/me/dashboard');
@@ -423,17 +528,26 @@ class ApiClient {
     }
   }
 
-  async joinVideoRoom(bookingId: string): Promise<ApiResponse<{
-    roomId:         string;
-    livekitUrl:     string;   // wss://livekit.menorahhealth.app
-    livekitToken:   string;   // LiveKit participant JWT
-    sessionType:    string;
-    counsellorName: string;
-    userName:       string;
-    scheduledAt:    string;
-    duration:       number;
-    status:         string;
-  }>> {
+  async updateCallLink(bookingId: string, payload: {
+    provider: string;
+    externalJoinUrl: string;
+    externalHostUrl?: string;
+    externalProviderName?: string;
+  }): Promise<ApiResponse<{ videoCall: Booking['videoCall'] }>> {
+    try {
+      const response = await this.client.patch(`/bookings/${bookingId}/call-link`, payload);
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        message: errorResponse?.message || error.message || 'Failed to save external session link',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async joinVideoRoom(bookingId: string): Promise<ApiResponse<VideoRoom>> {
     try {
       const response = await this.client.post(`/video/room/${bookingId}/join`);
       return response.data;
@@ -537,6 +651,73 @@ class ApiClient {
     }
   }
 
+  async getSpecializations(): Promise<ApiResponse<{ specializations: string[] }>> {
+    try {
+      const response = await this.client.get('/counsellors/specializations');
+      return response.data;
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to load specializations',
+        errors: error.response?.data?.errors || [],
+      };
+    }
+  }
+
+  async getLanguages(): Promise<ApiResponse<{ languages: string[] }>> {
+    try {
+      const response = await this.client.get('/counsellors/languages');
+      return response.data;
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to load languages',
+        errors: error.response?.data?.errors || [],
+      };
+    }
+  }
+
+  async updateCounsellorProfileMedia(formData: FormData): Promise<ApiResponse<{
+    counsellorProfile: {
+      profileImage?: string | null;
+      voiceIntroUrl?: string | null;
+      voiceIntroDurationSeconds?: number | null;
+      profileMediaCompletedAt?: string | null;
+      profileMediaComplete: boolean;
+    };
+  }>> {
+    try {
+      const response = await fetch(`${this.baseURL.replace(/\/$/, '')}/counsellors/me/profile-media`, {
+        method: 'PUT',
+        credentials: 'include',
+        body: formData,
+      });
+      const data = await response.json().catch(() => null);
+
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
+      }
+
+      if (!response.ok) {
+        return {
+          success: false,
+          message: data?.message || 'Failed to update profile media',
+          errors: data?.errors || [],
+        };
+      }
+
+      return data;
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error.message || 'Failed to update profile media',
+        errors: [],
+      };
+    }
+  }
+
   async updateCounsellorProfile(data: {
     specialization?: string;
     specializations?: string[];
@@ -564,6 +745,7 @@ class ApiClient {
     ifscCode: string;
     accountHolderName: string;
     bankName: string;
+    currentPassword: string;
   }): Promise<ApiResponse<{ bankDetails: { accountHolderName: string; bankName: string; ifscCode: string; accountNumberMasked: string } }>> {
     try {
       const response = await this.client.put('/counsellors/me/bank-details', data);
@@ -595,4 +777,3 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
-

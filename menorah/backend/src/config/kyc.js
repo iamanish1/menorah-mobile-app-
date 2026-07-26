@@ -1,0 +1,7 @@
+const FACE_CHECK_CONSENT_VERSION = 'ordinary-face-check-v1-2026-07-22';
+const FACE_CHECK_RETENTION_DAYS = 365;
+
+module.exports = {
+  FACE_CHECK_CONSENT_VERSION,
+  FACE_CHECK_RETENTION_DAYS,
+};

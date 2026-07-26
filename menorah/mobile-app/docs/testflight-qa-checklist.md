@@ -1,6 +1,8 @@
 # TestFlight QA Checklist
 
-Use this checklist on a real iPhone after installing a development build or TestFlight build. Test against the live API unless a staging API is explicitly configured.
+Use this checklist on a real iPhone after installing a development build or TestFlight build.
+Use the explicitly approved review environment; do not point a desktop-generated build at live
+production merely for convenience.
 
 ## Build Setup
 - [ ] Start from a fresh install.
@@ -8,6 +10,8 @@ Use this checklist on a real iPhone after installing a development build or Test
 - [ ] Confirm the app uses the intended API base URL.
 - [ ] Confirm no debug-only payment fallback is visible in the dev build.
 - [ ] Confirm the app does not crash after being backgrounded and reopened.
+- [ ] Confirm authenticated content is obscured in the app switcher.
+- [ ] Confirm screenshots and screen recordings are blocked on authenticated and password-reset screens.
 
 ## Auth
 - [ ] Log in with the reviewer/demo account.
@@ -30,6 +34,7 @@ Use this checklist on a real iPhone after installing a development build or Test
 - [ ] Reopen the app and confirm the session is still active.
 - [ ] Restart the phone or simulator and confirm the session still loads.
 - [ ] Log out and confirm the session is cleared after app restart.
+- [ ] Confirm a session token is usable only while the device is unlocked and is not restored onto another device.
 
 ## Profile And Settings
 - [ ] Open profile home.
@@ -79,10 +84,10 @@ Use this checklist on a real iPhone after installing a development build or Test
 - [ ] Confirm booked sessions appear in bookings list.
 
 ## Payments
-- [ ] Confirm the iOS payment strategy before testing paid flows.
-- [ ] On iOS, confirm subscription purchase cards/buttons do not open Razorpay checkout.
-- [ ] On iOS, confirm subscription screens show: "Subscriptions are currently unavailable on iOS. You can continue using the free features."
-- [ ] On iOS, confirm there is no "pay on website", "subscribe on web", "continue in browser", WebView checkout, or auto-login payment workaround for digital subscriptions.
+- [ ] Confirm the payment strategy before testing paid flows.
+- [ ] On every platform, confirm subscription purchase cards/buttons do not open Razorpay checkout.
+- [ ] Confirm subscription screens show: "New subscription purchases are temporarily unavailable. Existing entitlements remain visible."
+- [ ] Confirm there is no "pay on website", "subscribe on web", "continue in browser", WebView checkout, or auto-login payment workaround for digital subscriptions.
 - [ ] If Razorpay remains enabled for booking, test only allowed real-world one-to-one service booking payments.
 - [ ] Test booking payment behavior separately from subscription behavior.
 - [ ] Confirm booking payment does not unlock digital subscriptions, premium content, or app-only features.
@@ -103,25 +108,39 @@ Use this checklist on a real iPhone after installing a development build or Test
 - [ ] Reinstall from TestFlight.
 - [ ] Confirm onboarding/auth loads cleanly.
 - [ ] Confirm no old tokens or stale local subscription data remain.
+- [ ] Confirm reinstall behavior against a physical iPhone: iOS Keychain entries can survive uninstall,
+  so the server must revalidate any recovered token and logout must remove it.
+
+## Universal Links
+- [ ] Confirm both association endpoints return HTTP 200 JSON without redirects.
+- [ ] Open a valid reset link from Mail or Notes and confirm the app opens the reset screen.
+- [ ] Confirm a missing, duplicate, non-hex, or non-64-character token cannot submit a reset.
+- [ ] Confirm protected deep links opened while signed out do not render protected screens.
 
 ## Commands
+Only use the platform-specific EAS profiles. The generic base profiles are not release
+profiles. Every binary and OTA environment must supply both platform API URLs so a single
+channel update cannot route one platform to the other platform's API surface.
+
 Start Metro for an installed dev client:
 
 ```bash
 cd ~/menorah/menorah-mobile-app-/menorah/mobile-app
-EXPO_PUBLIC_API_BASE_URL=https://api.menorah.me/api npx expo start -c --dev-client
+EXPO_PUBLIC_IOS_API_BASE_URL=https://api-ios.menorah.me/api \
+EXPO_PUBLIC_ANDROID_API_BASE_URL=https://api-android.menorah.me/api \
+npx expo start -c --dev-client
 ```
 
 Create an iOS TestFlight/preview build:
 
 ```bash
 cd ~/menorah/menorah-mobile-app-/menorah/mobile-app
-eas build --platform ios --profile preview
+eas build --platform ios --profile preview-ios
 ```
 
 Use production profile only after preview QA passes:
 
 ```bash
 cd ~/menorah/menorah-mobile-app-/menorah/mobile-app
-eas build --platform ios --profile production
+eas build --platform ios --profile production-ios
 ```

@@ -16,21 +16,43 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Invalid request' }, { status: 400 });
     }
     const db = await getLandingDatabase();
+    const collection = db.collection('faq_questions');
+    const result = await collection.insertOne({
+      ...parsed.data,
+      source: 'faq-page',
+      createdAt: new Date(),
+    });
+
     const emailDelivery = await sendSubmissionEmail({
       subject: 'New Menorah FAQ question',
       source: 'FAQ page question form',
       name: parsed.data.name,
       email: parsed.data.email,
       message: parsed.data.message,
+      idempotencyKey: `landing-faq-question-${result.insertedId.toString()}`,
     });
-    const result = await db.collection('faq_questions').insertOne({
-      ...parsed.data,
-      source: 'faq-page',
+
+    try {
+      await collection.updateOne(
+        { _id: result.insertedId },
+        {
+          $set: {
+            emailDelivery,
+            emailDeliveryUpdatedAt: new Date(),
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Unable to update FAQ question email delivery status', error);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      id: result.insertedId.toString(),
       emailDelivery,
-      createdAt: new Date(),
-    });
-    return NextResponse.json({ ok: true, id: result.insertedId.toString(), emailDelivery }, { status: 201 });
-  } catch {
+    }, { status: 201 });
+  } catch (error) {
+    console.error('Unable to save FAQ question', error);
     return NextResponse.json({ ok: false, error: 'Unable to save question' }, { status: 500 });
   }
 }

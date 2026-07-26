@@ -4,6 +4,8 @@ module.exports = {
     'ios/',
     'android/',
     'node_modules/',
+    'node_modules.root-owned-*/',
+    'node_modules.root-owned-*/**',
     'dist/',
     'build/',
     '.expo/',

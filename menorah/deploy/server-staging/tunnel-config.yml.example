@@ -1,0 +1,29 @@
+# Host-managed Cloudflare Tunnel template only. It does not imply that DNS,
+# Tunnel ingress, or credentials exist. Keep the real UUID/credential file
+# outside Git under /opt/menorah-staging/env and run cloudflared with
+# --no-autoupdate only after infrastructure approval.
+tunnel: <STAGING_TUNNEL_UUID>
+credentials-file: /opt/menorah-staging/env/cloudflared-staging-credentials.json
+
+ingress:
+  - hostname: staging.menorah.me
+    service: http://127.0.0.1:38000
+  - hostname: www.staging.menorah.me
+    service: http://127.0.0.1:38000
+  - hostname: app.staging.menorah.me
+    service: http://127.0.0.1:38000
+  - hostname: admin.staging.menorah.me
+    service: http://127.0.0.1:38000
+  - hostname: counsellor.staging.menorah.me
+    service: http://127.0.0.1:38000
+  - hostname: api-ios.staging.menorah.me
+    service: http://127.0.0.1:38000
+  - hostname: api-android.staging.menorah.me
+    service: http://127.0.0.1:38000
+  - hostname: api-web.staging.menorah.me
+    service: http://127.0.0.1:38000
+  - hostname: api-admin.staging.menorah.me
+    service: http://127.0.0.1:38000
+  - hostname: calls.staging.menorah.me
+    service: http://127.0.0.1:38000
+  - service: http_status:404

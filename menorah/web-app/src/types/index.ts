@@ -9,6 +9,7 @@ export interface User {
 }
 
 export interface Booking {
+  accessScope: 'assigned';
   id: string;
   userName: string;
   userEmail: string;
@@ -18,7 +19,7 @@ export interface Booking {
   sessionType: 'video' | 'audio' | 'chat';
   sessionDuration: number;
   scheduledAt: string;
-  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
+  status: BookingStatus;
   amount: number;
   currency: string;
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
@@ -32,18 +33,93 @@ export interface Booking {
     phone: string;
     relationship: string;
   };
-  preferences?: {
-    gender?: string;
-    sessionType?: string;
-    categoryId?: string;
-  };
+  preferences?: BookingPreferences;
   assignedAt?: string;
+  videoCall?: {
+    provider?: CallProvider;
+    joinMode?: CallJoinMode;
+    externalProviderName?: string;
+    externalJoinUrl?: string;
+    externalHostUrl?: string;
+    region?: 'IN' | 'AE' | 'UNKNOWN';
+    status?: CallStatus;
+    policyReason?: string;
+    roomId?: string;
+    roomUrl?: string;
+  };
   createdAt?: string;
+}
+
+export type BookingStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'in-progress'
+  | 'completed'
+  | 'cancelled'
+  | 'no-show'
+  | 'expired';
+
+export interface BookingPreferences {
+  gender?: 'male' | 'female' | 'any';
+  sessionType?: string;
+  categoryId?: string;
+}
+
+/**
+ * The only booking shape a counsellor may receive before assignment.
+ * Identity, contact, clinical, emergency-contact, payment, and call data are
+ * intentionally absent so preview consumers cannot depend on those fields.
+ */
+export interface UnassignedBookingPreview {
+  accessScope: 'preview';
+  id: string;
+  sessionType: 'video' | 'audio' | 'chat';
+  sessionDuration: number;
+  scheduledAt: string;
+  status: Extract<BookingStatus, 'pending' | 'confirmed'>;
+  canAccept: boolean;
+  createdAt: string;
+}
+
+export type CounsellorBooking = Booking | UnassignedBookingPreview;
+
+export type CallProvider = 'livekit' | 'vsee' | 'doxy' | 'zoom' | 'google_meet' | 'teams' | 'disabled';
+export type CallJoinMode = 'in_app' | 'external_link' | 'disabled';
+export type CallStatus = 'not_configured' | 'scheduled' | 'ready' | 'started' | 'ended' | 'cancelled' | 'disabled';
+
+export interface VideoRoom {
+  provider?: CallProvider;
+  joinMode?: CallJoinMode;
+  region?: 'IN' | 'AE' | 'UNKNOWN';
+  bookingId?: string;
+  roomName?: string;
+  roomId?: string;
+  livekitUrl?: string;
+  token?: string;
+  livekitToken?: string;
+  joinUrl?: string;
+  externalJoinUrl?: string;
+  hostUrl?: string;
+  externalHostUrl?: string;
+  providerName?: string;
+  externalProviderName?: string;
+  sessionType: 'video' | 'audio' | 'chat';
+  counsellorName: string;
+  userName: string;
+  scheduledAt: string;
+  duration: number;
+  status: string;
+  message?: string;
 }
 
 export interface CounsellorStatus {
   isActive: boolean;
   isAvailable: boolean;
+  isVerified: boolean;
+  marketplaceEligible: boolean;
+  profileMediaComplete?: boolean;
+  profileImage?: string | null;
+  voiceIntroUrl?: string | null;
   message: string;
 }
 
@@ -58,6 +134,7 @@ export interface DashboardStats {
 }
 
 export interface TodaySchedule {
+  accessScope: 'assigned';
   id: string;
   userName: string;
   userImage?: string;
@@ -67,8 +144,21 @@ export interface TodaySchedule {
   status: string;
 }
 
+export interface DashboardBookingSummary {
+  accessScope: 'assigned';
+  id: string;
+  userName: string;
+  userImage?: string;
+  sessionType: 'video' | 'audio' | 'chat';
+  scheduledAt: string;
+  status: BookingStatus;
+  isSubscriptionBooking?: boolean;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
+  code?: string;
+  status?: number;
   message?: string;
   data?: T;
   errors?: any[];
@@ -121,4 +211,3 @@ export interface ArticlePagination {
   total: number;
   pages: number;
 }
-

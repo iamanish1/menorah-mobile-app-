@@ -2,12 +2,12 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ArrowLeft, Camera } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Avatar, Button, Input, Select } from '@/components/ui';
+import { Avatar, Button, CountryPhoneInput, Input, Select } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
 const schema = z.object({
@@ -25,7 +25,9 @@ const schema = z.object({
   // Emergency
   emergencyName:         z.string().optional(),
   emergencyRelationship: z.string().optional(),
-  emergencyPhone:        z.string().optional(),
+  emergencyPhone:        z.string().optional().refine((value) => !value || /^\+[1-9]\d{1,14}$/.test(value), {
+    message: 'Choose a country code and enter a valid phone number',
+  }),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -37,7 +39,7 @@ export default function EditProfilePage() {
   const [success, setSuccess] = useState(false);
   const [error, setError]   = useState('');
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+  const { control, register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
   });
 
@@ -167,7 +169,19 @@ export default function EditProfilePage() {
           <h2 className="font-semibold text-gray-900">Emergency Contact</h2>
           <Input label="Name"         placeholder="Contact name" {...register('emergencyName')} />
           <Input label="Relationship" placeholder="e.g. Parent, Sibling" {...register('emergencyRelationship')} />
-          <Input label="Phone"        type="tel" placeholder="+971 50 000 0000" {...register('emergencyPhone')} />
+          <Controller
+            name="emergencyPhone"
+            control={control}
+            render={({ field }) => (
+              <CountryPhoneInput
+                label="Phone"
+                value={field.value}
+                onChange={field.onChange}
+                error={errors.emergencyPhone?.message}
+                hint="Choose a country code, then enter the local number."
+              />
+            )}
+          />
         </div>
 
         <Button type="submit" fullWidth size="lg" loading={saving}>Save Changes</Button>

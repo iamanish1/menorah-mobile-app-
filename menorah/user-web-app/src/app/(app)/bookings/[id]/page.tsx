@@ -153,7 +153,11 @@ export default function BookingDetailPage() {
       {/* Cancel modal */}
       <Modal open={cancelOpen} onClose={() => setCancelOpen(false)} title="Cancel Booking">
         <div className="space-y-4">
-          <p className="text-gray-600 text-sm">Are you sure you want to cancel this session? Cancellations within 24 hours may not be refunded.</p>
+          <p className="text-gray-600 text-sm">
+            Only an eligible unpaid payment hold can be cancelled here. Paid or
+            entitled bookings require manual review; cancellation and refund
+            eligibility are not determined by this request.
+          </p>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}

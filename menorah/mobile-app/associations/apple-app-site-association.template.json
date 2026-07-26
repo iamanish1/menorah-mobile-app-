@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "__APPLE_TEAM_ID__.__IOS_BUNDLE_ID__"
+        ],
+        "components": [
+          {
+            "/": "/reset-password",
+            "comment": "Password reset links only. The single-use token remains in the URL fragment."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "service": "http://reverse-proxy:80",
+  "terminalService": "http_status:404",
+  "routes": [
+    {
+      "hostname": "menorah.me",
+      "caddySite": "{$ROOT_DOMAIN}"
+    },
+    {
+      "hostname": "www.menorah.me",
+      "caddySite": "{$WWW_DOMAIN}"
+    },
+    {
+      "hostname": "app.menorah.me",
+      "caddySite": "{$APP_DOMAIN}"
+    },
+    {
+      "hostname": "admin.menorah.me",
+      "caddySite": "{$ADMIN_DOMAIN}"
+    },
+    {
+      "hostname": "counsellor.menorah.me",
+      "caddySite": "{$COUNSELLOR_DOMAIN}"
+    },
+    {
+      "hostname": "api-ios.menorah.me",
+      "caddySite": "{$API_IOS_DOMAIN}"
+    },
+    {
+      "hostname": "api-android.menorah.me",
+      "caddySite": "{$API_ANDROID_DOMAIN}"
+    },
+    {
+      "hostname": "api-web.menorah.me",
+      "caddySite": "{$API_WEB_DOMAIN}"
+    },
+    {
+      "hostname": "api-admin.menorah.me",
+      "caddySite": "{$API_ADMIN_DOMAIN}"
+    },
+    {
+      "hostname": "calls.menorah.me",
+      "caddySite": "{$CALLS_DOMAIN}"
+    },
+    {
+      "hostname": "mentle.org",
+      "caddySite": "mentle.org"
+    },
+    {
+      "hostname": "www.mentle.org",
+      "caddySite": "www.mentle.org"
+    },
+    {
+      "hostname": "mentle.mentle.org",
+      "caddySite": "mentle.mentle.org"
+    },
+    {
+      "hostname": "app.mentle.org",
+      "caddySite": "app.mentle.org"
+    },
+    {
+      "hostname": "business.mentle.org",
+      "caddySite": "business.mentle.org"
+    },
+    {
+      "hostname": "admin.mentle.org",
+      "caddySite": "admin.mentle.org"
+    },
+    {
+      "hostname": "counsellor.mentle.org",
+      "caddySite": "counsellor.mentle.org"
+    },
+    {
+      "hostname": "api.mentle.org",
+      "caddySite": "api.mentle.org"
+    },
+    {
+      "hostname": "api-business.mentle.org",
+      "caddySite": "api-business.mentle.org"
+    },
+    {
+      "hostname": "api-admin.mentle.org",
+      "caddySite": "api-admin.mentle.org"
+    },
+    {
+      "hostname": "api-counsellor.mentle.org",
+      "caddySite": "api-counsellor.mentle.org"
+    },
+    {
+      "hostname": "calls.mentle.org",
+      "caddySite": "calls.mentle.org"
+    }
+  ]
+}

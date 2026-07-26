@@ -1,4 +1,4 @@
-const FALLBACK_PUBLIC_WEB_BASE_URL = "https://menorahhealth.app";
+const FALLBACK_PUBLIC_WEB_BASE_URL = "https://app.menorah.me";
 
 export const SITE_NAME = "Menorah Health";
 export const EDITORIAL_REVIEWER_NAME = "Menorah Editorial Team";

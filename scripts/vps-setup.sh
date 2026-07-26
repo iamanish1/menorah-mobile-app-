@@ -187,14 +187,14 @@ PORT=3000
 API_BASE_URL=https://api.menorahhealth.app
 
 # ── Database ───────────────────────────────────────────────
-MONGODB_URI=mongodb+srv://USER:PASS@cluster.mongodb.net/?appName=Cluster0
+MONGODB_URI=REPLACE_WITH_MONGODB_CONNECTION_URI
 
 # ── Redis (running on host, accessible via host network) ───
 REDIS_URL=redis://127.0.0.1:6379
 
 # ── JWT ────────────────────────────────────────────────────
 # Generate: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-JWT_SECRET=REPLACE_WITH_64_CHAR_SECRET
+JWT_SECRET=REPLACE
 JWT_EXPIRES_IN=7d
 JWT_REFRESH_SECRET=REPLACE_WITH_64_CHAR_REFRESH_SECRET
 JWT_REFRESH_EXPIRES_IN=30d
@@ -203,19 +203,26 @@ JWT_REFRESH_EXPIRES_IN=30d
 ALLOWED_ORIGINS=https://menorahhealth.app,https://counsellor.menorahhealth.app,https://www.menorahhealth.app
 
 # ── MSG91 ──────────────────────────────────────────────────
+RESEND_API_KEY=REPLACE_WITH_RESEND_API_KEY
+EMAIL_FROM="Menorah Health <noreply@menorah.me>"
+CONTACT_TO_EMAIL=menorahenquiries@gmail.com
+
+# MSG91 SMS only
 MSG91_AUTH_KEY=REPLACE
 MSG91_OTP_TEMPLATE_ID=REPLACE
 MSG91_SMS_TEMPLATE_ID=REPLACE
-MSG91_EMAIL_DOMAIN=menorah.me
-EMAIL_FROM=noreply@menorah.me
-MSG91_EMAIL_TEMPLATE_ID=menorah_generic
 MOBILE_APP_SCHEME=menorah-health://reset-password
 
 # ── Razorpay ───────────────────────────────────────────────
 RAZORPAY_KEY_ID=REPLACE
 RAZORPAY_KEY_SECRET=REPLACE
 RAZORPAY_WEBHOOK_SECRET=REPLACE
-CHECKOUT_RETURN_URL=https://menorahhealth.app/checkout/return
+# Optional planned-rotation grace only; keep empty normally and remove on schedule.
+RAZORPAY_WEBHOOK_SECRET_PREVIOUS=
+BOOKING_PAYMENTS_ENABLED=false
+PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS=
+SUBSCRIPTION_PAYMENTS_ENABLED=false
+CHECKOUT_RETURN_URL=https://app.menorah.me/checkout/return
 
 # ── Cloudinary ─────────────────────────────────────────────
 CLOUDINARY_CLOUD_NAME=REPLACE
@@ -238,7 +245,7 @@ AI_TEXT_MODEL=gpt-4o-mini
 META_APP_ID=REPLACE
 META_APP_SECRET=REPLACE
 META_GRAPH_API_VERSION=v23.0
-SOCIAL_TOKEN_ENCRYPTION_KEY=REPLACE_WITH_32_BYTE_HEX
+SOCIAL_TOKEN_ENCRYPTION_KEY=REPLACE
 PUBLIC_WEB_BASE_URL=https://api.menorah.me
 
 # ── Jitsi ──────────────────────────────────────────────────

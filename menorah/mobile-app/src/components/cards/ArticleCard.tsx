@@ -78,16 +78,6 @@ export default function ArticleCard({ item, onPress }: ArticleCardProps) {
           }} numberOfLines={2}>
             {item.title}
           </Text>
-          {item.excerpt ? (
-            <Text style={{
-              color: 'rgba(255,255,255,0.88)',
-              fontSize: 13,
-              lineHeight: 19,
-              marginBottom: 12,
-            }} numberOfLines={2}>
-              {item.excerpt}
-            </Text>
-          ) : null}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <Text style={{
               color: 'rgba(255,255,255,0.78)',

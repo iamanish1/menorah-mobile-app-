@@ -1,8 +1,11 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ApiValidationError, api, User } from '@/lib/api';
 import { secureStorage } from '@/lib/secureStorage';
 import { socketService } from '@/lib/socket';
 import { ENV } from '@/lib/env';
+import { reportError } from '@/lib/safeDiagnostics';
+import { onSessionInvalidated } from '@/lib/authSession';
 
 interface AuthResult {
   success: boolean;
@@ -16,6 +19,13 @@ interface AuthContextType {
   isAuthed: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<AuthResult>;
+  loginWithGoogle: (credential: string) => Promise<AuthResult>;
+  loginWithApple: (data: {
+    identityToken: string;
+    authorizationCode: string;
+    email?: string | null;
+    fullName?: string | null;
+  }) => Promise<AuthResult>;
   register: (userData: {
     firstName: string;
     lastName: string;
@@ -26,6 +36,7 @@ interface AuthContextType {
     gender: string;
   }) => Promise<AuthResult>;
   logout: () => Promise<void>;
+  invalidateSession: () => Promise<void>;
   verifyEmail: (code: string) => Promise<{ success: boolean; message?: string }>;
   verifyEmailOtp: (email: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   resendEmailVerification: (email: string) => Promise<{ success: boolean; message?: string }>;
@@ -50,44 +61,72 @@ const validationErrorsToMessage = (errors?: ApiValidationError[]) => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const activeUserId = useRef<string | null>(null);
+
+  const setSessionUser = useCallback((nextUser: User | null) => {
+    const nextUserId = nextUser?.id ?? null;
+    if (activeUserId.current !== nextUserId) {
+      // Protected React Query data must disappear before another identity is
+      // exposed to the component tree.
+      queryClient.clear();
+      activeUserId.current = nextUserId;
+    }
+    setUser(nextUser);
+  }, [queryClient]);
 
   const isAuthed = !!user;
 
-  // Check for existing token on app start
-  useEffect(() => {
-    checkAuthStatus();
+  const clearInvalidCredential = useCallback(async () => {
+    try {
+      await api.clearToken();
+    } catch (error) {
+      // api.clearToken clears the in-memory bearer first; secureStorage leaves a
+      // durable tombstone when physical Keychain/Keystore cleanup must retry.
+      reportError('auth.invalid_credential_cleanup_pending', error);
+    }
   }, []);
 
-  const checkAuthStatus = async () => {
+  useEffect(() => onSessionInvalidated(() => {
+    socketService.disconnect();
+    setSessionUser(null);
+  }), [setSessionUser]);
+
+  const checkAuthStatus = useCallback(async () => {
     try {
       const token = await secureStorage.getToken();
 
       if (token) {
         const response = await api.getCurrentUser();
         if (response.success && response.data?.user) {
-          setUser(response.data.user);
+          setSessionUser(response.data.user);
         } else {
           const isNetworkError = response.message?.includes('Network error') ||
                                  response.message?.includes('Unable to connect to server');
           if (!isNetworkError) {
-            await api.clearToken();
+            await clearInvalidCredential();
           }
-          setUser(null);
+          setSessionUser(null);
         }
       } else {
-        setUser(null);
+        setSessionUser(null);
       }
     } catch (error: any) {
       const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' ||
                              error.message?.includes('Network Error');
       if (!isNetworkError) {
-        await api.clearToken();
+        await clearInvalidCredential();
       }
-      setUser(null);
+      setSessionUser(null);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [clearInvalidCredential, setSessionUser]);
+
+  // Check for an existing credential exactly once for this provider instance.
+  useEffect(() => {
+    checkAuthStatus();
+  }, [checkAuthStatus]);
 
   const login = async (email: string, password: string) => {
     try {
@@ -95,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (response.success && response.data?.user && response.data?.token) {
         await api.setToken(response.data.token);
-        setUser(response.data.user);
+        setSessionUser(response.data.user);
 
         if (!response.data.user.isEmailVerified) {
           return {
@@ -125,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     } catch (error: any) {
-      console.error('[Auth] Login error:', error);
+      reportError('auth.login_failed', error);
       
       // Handle network errors specifically
       // Axios uses 'ERR_NETWORK' for network errors
@@ -143,6 +182,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     }
   };
+
+  const completeSocialLogin = async (
+    request: Promise<{ success: boolean; message?: string; data?: { user: User; token: string }; errors?: ApiValidationError[] }>
+  ): Promise<AuthResult> => {
+    try {
+      const response = await request;
+
+      if (response.success && response.data?.user && response.data?.token) {
+        await api.setToken(response.data.token);
+        setSessionUser(response.data.user);
+        return { success: true };
+      }
+
+      return {
+        success: false,
+        message: validationErrorsToMessage(response.errors) || response.message || 'Social sign-in failed',
+        errors: response.errors,
+      };
+    } catch (error: any) {
+      reportError('auth.social_login_failed', error);
+      return {
+        success: false,
+        message: validationErrorsToMessage(error.response?.data?.errors) || error.response?.data?.message || error.message || 'Social sign-in failed',
+        errors: error.response?.data?.errors,
+      };
+    }
+  };
+
+  const loginWithGoogle = async (credential: string) =>
+    completeSocialLogin(api.loginWithGoogle(credential));
+
+  const loginWithApple = async (data: {
+    identityToken: string;
+    authorizationCode: string;
+    email?: string | null;
+    fullName?: string | null;
+  }) => completeSocialLogin(api.loginWithApple(data));
 
   const register = async (userData: {
     firstName: string;
@@ -168,7 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     } catch (error: any) {
-      console.error('Registration error:', error);
+      reportError('auth.registration_failed', error);
       return {
         success: false,
         message: validationErrorsToMessage(error.response?.data?.errors) || error.response?.data?.message || 'Registration failed',
@@ -177,6 +253,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const invalidateSession = useCallback(async () => {
+    let credentialCleanupError: unknown;
+    socketService.disconnect();
+
+    try {
+      await api.clearToken();
+    } catch (error) {
+      credentialCleanupError = error;
+      reportError('auth.credential_cleanup_pending', error);
+    }
+
+    // Clearing the identity synchronously purges protected query data and the
+    // layout effects in account-scoped providers clear clinical UI state.
+    setSessionUser(null);
+
+    if (credentialCleanupError) {
+      throw new Error('Secure credential cleanup is pending.');
+    }
+  }, [setSessionUser]);
+
   const logout = async () => {
     try {
       // Disconnect socket first
@@ -184,12 +280,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Call API logout
       await api.logout();
     } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      // Always clear token and user state, even if API call fails
-      await api.clearToken();
-      setUser(null);
+      reportError('auth.logout_failed', error);
     }
+    // Local sign-out remains authoritative when the network logout fails.
+    await invalidateSession();
   };
 
   const verifyEmail = async (code: string) => {
@@ -209,7 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     } catch (error: any) {
-      console.error('Email verification error:', error);
+      reportError('auth.email_verification_failed', error);
       return { 
         success: false, 
         message: error.response?.data?.message || 'Email verification failed' 
@@ -223,7 +317,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (response.success && response.data) {
         await api.setToken(response.data.token);
-        setUser(response.data.user);
+        setSessionUser(response.data.user);
         return { success: true };
       } else {
         return {
@@ -232,7 +326,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     } catch (error: any) {
-      console.error('Email OTP verification error:', error);
+      reportError('auth.email_otp_verification_failed', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Email verification failed'
@@ -253,7 +347,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     } catch (error: any) {
-      console.error('Resend email OTP error:', error);
+      reportError('auth.email_otp_resend_failed', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Failed to resend code'
@@ -274,7 +368,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     } catch (error: any) {
-      console.error('Resend email verification error:', error);
+      reportError('auth.email_verification_resend_failed', error);
       return { 
         success: false, 
         message: error.response?.data?.message || 'Failed to resend verification code' 
@@ -299,7 +393,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     } catch (error: any) {
-      console.error('Phone verification error:', error);
+      reportError('auth.phone_verification_failed', error);
       return { 
         success: false, 
         message: error.response?.data?.message || 'Phone verification failed' 
@@ -320,7 +414,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     } catch (error: any) {
-      console.error('Forgot password error:', error);
+      reportError('auth.password_reset_request_failed', error);
       return { 
         success: false, 
         message: error.response?.data?.message || 'Failed to send reset email' 
@@ -333,7 +427,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await api.resetPassword(token, password);
       
       if (response.success) {
-        return { success: true };
+        try {
+          await invalidateSession();
+          return { success: true };
+        } catch (error) {
+          // The server already reset the password and revoked every session.
+          // Local state is cleared and a tombstone blocks any residual bearer.
+          reportError('auth.password_reset_cleanup_pending', error);
+          return {
+            success: true,
+            message: 'Password updated. Local credential cleanup will finish before sign-in.',
+          };
+        }
       } else {
         return { 
           success: false, 
@@ -341,7 +446,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     } catch (error: any) {
-      console.error('Reset password error:', error);
+      reportError('auth.password_reset_failed', error);
       return { 
         success: false, 
         message: error.response?.data?.message || 'Password reset failed' 
@@ -358,8 +463,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthed,
     isLoading,
     login,
+    loginWithGoogle,
+    loginWithApple,
     register,
     logout,
+    invalidateSession,
     verifyEmail,
     verifyEmailOtp,
     verifyPhone,

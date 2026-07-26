@@ -1,0 +1,4 @@
+zone_ids = {
+  "menorah.me" = "REPLACE_WITH_MENORAH_ZONE_ID"
+  "mentle.org" = "REPLACE_WITH_MENTLE_ZONE_ID"
+}

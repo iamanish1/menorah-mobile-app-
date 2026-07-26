@@ -1,4 +1,4 @@
-import { Alert, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, Text, TouchableOpacity, View } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,7 +20,15 @@ import {
   useIOSTheme,
 } from '@/components/ios';
 import { api, type KycStatus, type ProfileImageUpload } from '@/lib/api';
+import {
+  FACE_CHECK_CONSENT_TEXT,
+  FACE_CHECK_CONSENT_VERSION,
+  FACE_CHECK_NOTICE_SECTIONS,
+  LUXAND_PRIVACY_POLICY_URL,
+  MENORAH_PRIVACY_POLICY_URL,
+} from '@/lib/faceCheckNotice';
 import { useAuth } from '@/state/useAuth';
+import { reportError } from '@/lib/safeDiagnostics';
 
 type ImageSlotProps = {
   title: string;
@@ -32,28 +40,28 @@ type ImageSlotProps = {
 
 const statusCopy: Record<KycStatus, { title: string; body: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
   not_started: {
-    title: 'Identity not verified',
-    body: 'Face ID is used for eKYC verification and account safety.',
+    title: 'Face check not completed',
+    body: 'This optional check supports account trust and safety.',
     tone: 'neutral',
   },
   pending: {
-    title: 'Verification submitted',
-    body: 'Your identity check is being processed.',
+    title: 'Face check submitted',
+    body: 'Your optional face check is being processed.',
     tone: 'warning',
   },
   verified: {
-    title: 'Verified',
-    body: 'Your identity verification is complete.',
+    title: 'Face check completed',
+    body: 'The automated face check completed successfully.',
     tone: 'success',
   },
   manual_review: {
     title: 'Admin review needed',
-    body: 'Your images were submitted and an admin will review the result.',
+    body: 'An authorized Menorah staff member will review the check result.',
     tone: 'warning',
   },
   rejected: {
-    title: 'Verification not approved',
-    body: 'Please submit clear images and try again.',
+    title: 'Face check not approved',
+    body: 'Please submit a clear selfie and try again.',
     tone: 'danger',
   },
 };
@@ -163,7 +171,7 @@ export default function IdentityVerification({ navigation, route }: any) {
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Camera Permission Required', 'Please allow camera access to continue identity verification.');
+        Alert.alert('Camera Permission Required', 'Please allow camera access to continue the optional face check.');
         return;
       }
 
@@ -187,20 +195,9 @@ export default function IdentityVerification({ navigation, route }: any) {
         type: imageType,
       };
 
-      if (__DEV__) {
-        console.log('[IdentityVerification] Captured selfie:', {
-          width: asset.width,
-          height: asset.height,
-          fileSize: asset.fileSize,
-          mimeType: asset.mimeType,
-          uploadType: image.type,
-          uploadName: image.name,
-        });
-      }
-
       setSelfie(image);
     } catch (error) {
-      console.error('[IdentityVerification] Camera error:', error);
+      reportError('identity.camera_failed', error);
       Alert.alert('Camera Error', 'Unable to open the camera. Please try again.');
     }
   };
@@ -212,7 +209,7 @@ export default function IdentityVerification({ navigation, route }: any) {
     }
 
     if (!consentAccepted) {
-      Alert.alert('Consent Required', 'Please confirm consent before submitting identity verification.');
+      Alert.alert('Consent Required', 'Please explicitly accept the face-check notice before submitting.');
       return;
     }
 
@@ -220,15 +217,14 @@ export default function IdentityVerification({ navigation, route }: any) {
     const response = await api.submitKycVerification({
       selfie,
       consentAccepted,
+      consentVersion: FACE_CHECK_CONSENT_VERSION,
     });
     setLoading(false);
 
     if (!response.success || !response.data) {
-      const message = response.message || 'Identity verification could not be completed right now. Please try again later or skip for now.';
-      if (__DEV__) {
-        console.error('[IdentityVerification] Submit failed:', response);
-      }
-      Alert.alert('Verification Failed', message);
+      const message = response.message || 'The optional face check could not be completed right now. Please try again later or skip for now.';
+      reportError('identity.face_check_rejected');
+      Alert.alert('Face Check Failed', message);
       return;
     }
 
@@ -238,8 +234,8 @@ export default function IdentityVerification({ navigation, route }: any) {
     }
 
     Alert.alert(
-      response.data.status === 'verified' ? 'Verified' : 'Submitted for Review',
-      response.message || 'Identity verification submitted.',
+      response.data.status === 'verified' ? 'Face Check Complete' : 'Submitted for Review',
+      response.message || 'Optional face check submitted.',
       fromSignup
         ? [{ text: 'Continue', onPress: continueToApp }]
         : undefined
@@ -251,8 +247,8 @@ export default function IdentityVerification({ navigation, route }: any) {
   return (
     <View style={{ flex: 1, backgroundColor: iosTheme.colors.background }}>
       <IOSHeader
-        title={fromSignup ? 'Verify identity' : 'Identity'}
-        subtitle={fromSignup ? 'Optional account trust step' : 'eKYC verification'}
+        title="Optional face check"
+        subtitle="Account trust and safety"
         showWordmark={false}
         onMenuPress={fromSignup ? continueToApp : () => navigation.goBack()}
         onRightPress={fromSignup ? continueToApp : () => navigation.goBack()}
@@ -264,7 +260,7 @@ export default function IdentityVerification({ navigation, route }: any) {
           <IOSCard>
             <Text style={iosTheme.typography.cardTitle}>Optional verification</Text>
             <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
-              Verify now to build account trust, or skip and do it later from Profile.
+              Complete the face check now, or skip it and continue to the app.
             </Text>
             <IOSButton
               title="Skip for now"
@@ -278,7 +274,7 @@ export default function IdentityVerification({ navigation, route }: any) {
         {fromSignup ? (
           <IOSCard contentStyle={{ flexDirection: 'row', alignItems: 'center', gap: iosTheme.spacing.md }}>
             <Text style={[iosTheme.typography.body, { flex: 1 }]}>
-              You can continue without eKYC. Some trust features may ask you to complete it later.
+              This is not government-ID verification. You can continue without completing it.
             </Text>
           </IOSCard>
         ) : null}
@@ -309,6 +305,44 @@ export default function IdentityVerification({ navigation, route }: any) {
           </View>
         </IOSCard>
 
+        <IOSSectionHeader title="Optional Face Check Notice" />
+        <IOSCard>
+          {FACE_CHECK_NOTICE_SECTIONS.map((section, index) => (
+            <View
+              key={section.title}
+              style={{
+                borderTopWidth: index === 0 ? 0 : 1,
+                borderTopColor: iosTheme.colors.border,
+                paddingTop: index === 0 ? 0 : iosTheme.spacing.md,
+                marginTop: index === 0 ? 0 : iosTheme.spacing.md,
+              }}
+            >
+              <Text style={iosTheme.typography.cardTitle}>{section.title}</Text>
+              <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
+                {section.body}
+              </Text>
+            </View>
+          ))}
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: iosTheme.spacing.lg, marginTop: iosTheme.spacing.lg }}>
+            <TouchableOpacity
+              accessibilityRole="link"
+              onPress={() => Linking.openURL(MENORAH_PRIVACY_POLICY_URL)}
+            >
+              <Text style={{ color: iosTheme.colors.primary, fontWeight: '800' }}>Menorah Privacy Policy</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="link"
+              onPress={() => Linking.openURL(LUXAND_PRIVACY_POLICY_URL)}
+            >
+              <Text style={{ color: iosTheme.colors.primary, fontWeight: '800' }}>Luxand Privacy Policy</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[iosTheme.typography.caption, { marginTop: iosTheme.spacing.md }]}>
+            Notice version: {FACE_CHECK_CONSENT_VERSION}
+          </Text>
+        </IOSCard>
+
         <IOSSectionHeader title="Capture" />
         <View style={{ gap: iosTheme.spacing.md }}>
           <ImageSlot
@@ -334,13 +368,13 @@ export default function IdentityVerification({ navigation, route }: any) {
               <Square size={23} color={iosTheme.colors.textMuted} strokeWidth={2.4} />
             )}
             <Text style={[iosTheme.typography.body, { flex: 1 }]}>
-              Face ID is used for eKYC verification and account safety. This helps us verify your identity and improve community trust. The photo is processed for this check and is not stored by Menorah.
+              {FACE_CHECK_CONSENT_TEXT}
             </Text>
           </IOSCard>
         </TouchableOpacity>
 
         <IOSButton
-          title={canContinueFromSignup ? 'Continue' : 'Submit Verification'}
+          title={canContinueFromSignup ? 'Continue' : 'Submit Face Check'}
           onPress={canContinueFromSignup ? continueToApp : submit}
           loading={loading}
           disabled={!canContinueFromSignup && (!selfie || !consentAccepted)}

@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import { Button, Input } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
+import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 
 const schema = z.object({
   email:    z.string().email('Enter a valid email'),
@@ -55,6 +56,14 @@ export default function LoginPage() {
           {serverError}
         </div>
       )}
+
+      <GoogleAuthButton mode="signin" onError={setServerError} />
+
+      <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-primary-100/45">
+        <span className="h-px flex-1 bg-gray-200 dark:bg-primary-800" />
+        <span>or use email</span>
+        <span className="h-px flex-1 bg-gray-200 dark:bg-primary-800" />
+      </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <Input

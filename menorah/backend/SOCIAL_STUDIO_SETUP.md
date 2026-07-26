@@ -59,24 +59,39 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 Set `AI_MOCK_MODE=true` in local development to generate realistic drafts without spending API credits. In production, generation requires `SOCIAL_STUDIO_OPENAI_API_KEY` or `OPENAI_API_KEY`.
 
-With `SOCIAL_STUDIO_STORAGE=local`, rendered images and Social Studio brand assets are saved under:
+Production uses the shared immutable media contract:
+
+```env
+MEDIA_STORAGE_BACKEND=local
+MEDIA_PUBLIC_BASE_URL=https://api-web.menorah.me
+UPLOAD_PATH=/app/uploads
+```
+
+Rendered images and Social Studio brand assets are saved under service-scoped,
+never-reused object keys below:
 
 ```text
-uploads/social-studio
-uploads/social-studio-assets
+uploads/social-studio/rendered-posts
+uploads/social-studio/thumbnails
+uploads/social-studio/generated-sources
+uploads/social-studio/brand-assets
 ```
 
 The backend serves them from `/uploads`.
 
-This uses the same image model family as article cover images, but Social Studio media can stay on the backend machine with `SOCIAL_STUDIO_STORAGE=local`.
+Do not set the retired `SOCIAL_STUDIO_STORAGE` selector. Production startup
+requires local managed media so the signed database-and-uploads restore test
+can prove every managed object. Cloudinary remains a non-production migration
+path and uses non-overwriting unique IDs.
 
 For production Docker deploys, mount a persistent host folder:
 
 ```bash
--v /opt/menorah/uploads:/app/uploads
+-v /opt/menorah/data/uploads:/app/uploads
 ```
 
-The public API domain must proxy `/uploads/` to the backend so admin previews and Meta's image fetch can reach the rendered post image. For production, set `PUBLIC_WEB_BASE_URL` to the API origin used by the admin panel, for example `https://api.menorah.me`.
+Every API and worker must mount that same host directory. The API web origin
+serves `/uploads/`; never persist a worker-local or loopback URL.
 
 ## Brand Setup
 
@@ -123,8 +138,9 @@ Only posts with `approved` or `scheduled` status can be published. Drafts, rejec
 - Set `SOCIAL_STUDIO_OPENAI_API_KEY`, or allow Social Studio to fall back to `OPENAI_API_KEY`.
 - Set `SOCIAL_STUDIO_AI_IMAGE_MODEL=gpt-image-2` to match article cover generation unless article covers are moved to a different `OPENAI_IMAGE_MODEL`.
 - Set `SOCIAL_TOKEN_ENCRYPTION_KEY`.
-- Configure Cloudinary.
-- Ensure `PUBLIC_WEB_BASE_URL` points to a public HTTPS backend URL.
+- Confirm `MEDIA_STORAGE_BACKEND=local` and
+  `MEDIA_PUBLIC_BASE_URL=https://api-web.menorah.me`.
+- Run the signed database/media reference verifier and a full restore test.
 - Connect and verify the Instagram account.
 - Confirm Meta app permissions and app review are complete if required.
 - Generate one test draft, approve it, and publish a controlled test post.

@@ -7,6 +7,9 @@ import { api } from '@/lib/api';
 import { Button, Badge, SegmentedControl } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency } from '@/lib/utils';
+import { getCspNonce } from '@/lib/cspNonce';
+
+const SUBSCRIPTION_PURCHASES_AVAILABLE = false;
 
 interface Plan {
   id: string;
@@ -51,7 +54,6 @@ const plans: Plan[] = [
       '4 sessions per month',
       'Video, audio & chat',
       'Priority counsellor matching',
-      'Session recordings',
       'Cancel anytime',
     ],
   },
@@ -69,7 +71,6 @@ const plans: Plan[] = [
       'Video, audio & chat',
       'Dedicated counsellor',
       'Priority support',
-      'Session recordings',
       'Progress reports',
     ],
   },
@@ -85,6 +86,7 @@ function loadRazorpay(): Promise<boolean> {
   return new Promise((resolve) => {
     if (typeof window !== 'undefined' && window.Razorpay) { resolve(true); return; }
     const s = document.createElement('script');
+    s.nonce = getCspNonce() || '';
     s.src = 'https://checkout.razorpay.com/v1/checkout.js';
     s.onload  = () => resolve(true);
     s.onerror = () => resolve(false);
@@ -107,6 +109,36 @@ export default function SubscriptionPage() {
   const subscription = statusData?.data?.subscription ?? user?.subscription;
   const isActive     = subscription?.isActive && subscription?.plan !== 'free';
   const selectedPlan = plans.find((p) => p.type === selected)!;
+
+  if (!SUBSCRIPTION_PURCHASES_AVAILABLE) {
+    return (
+      <div className="page-container max-w-2xl">
+        <div className="text-center mb-8 rounded-[1.75rem] border border-primary-100 bg-primary-50 px-5 py-6 dark:border-primary-800 dark:bg-primary-900/70">
+          <h1 className="app-page-heading">Subscriptions</h1>
+          <p className="app-page-subtitle mt-2">
+            New subscription purchases are temporarily unavailable while payment reconciliation is completed.
+          </p>
+        </div>
+
+        {isActive && subscription && (
+          <div className="card p-4 bg-primary-50 border-primary-200 flex items-center gap-3 dark:bg-primary-900 dark:border-primary-700">
+            <Crown className="w-5 h-5 text-primary-600 shrink-0" />
+            <div className="flex-1">
+              <p className="font-bold text-primary-800 dark:text-primary-100 text-sm">
+                Your existing {subscription.plan} entitlement remains active
+                {subscription.endDate && ` until ${new Date(subscription.endDate).toLocaleDateString()}`}
+              </p>
+            </div>
+            <Badge variant="primary">Active</Badge>
+          </div>
+        )}
+
+        <div className="mt-6 rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm text-gray-600 dark:border-primary-800 dark:bg-primary-950 dark:text-primary-100/75">
+          No payment can be started from this page. Existing subscription status remains available in your account.
+        </div>
+      </div>
+    );
+  }
 
   const handleRazorpay = async () => {
     setPaying(true);

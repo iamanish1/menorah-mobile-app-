@@ -46,9 +46,8 @@ MONGODB_URI       = mongodb+srv://...   (Atlas connection string)
 JWT_SECRET        = <64+ char random>   (node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")
 JWT_REFRESH_SECRET = <64+ char random>
 ALLOWED_ORIGINS   = https://menorahhealth.app,https://counsellor.menorahhealth.app
-MSG91_AUTH_KEY    = <from msg91.com>
-MSG91_OTP_TEMPLATE_ID
-MSG91_SMS_TEMPLATE_ID
+RESEND_API_KEY    = <from resend.com>
+EMAIL_FROM        = "Menorah Health <noreply@menorah.me>"
 RAZORPAY_KEY_ID   = rzp_live_...
 RAZORPAY_KEY_SECRET
 RAZORPAY_WEBHOOK_SECRET
@@ -63,6 +62,8 @@ LIVEKIT_API_KEY   = <generate below>
 LIVEKIT_API_SECRET = <generate below>
 REDIS_URL         = redis://127.0.0.1:6379
 ```
+
+Optional SMS-only MSG91 fields: `MSG91_AUTH_KEY`, `MSG91_OTP_TEMPLATE_ID`, `MSG91_SMS_TEMPLATE_ID`.
 
 Generate LiveKit credentials:
 ```bash

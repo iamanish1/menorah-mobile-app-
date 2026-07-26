@@ -34,7 +34,7 @@ export default function Verify({ navigation, route }: any) {
     try {
       const result = await verifyEmailOtp(email, code);
       if (result.success) {
-        Alert.alert('Success', shouldOfferIdentityVerification ? 'Email verified. You can verify your identity now or skip for later.' : 'Email verified successfully!', [
+        Alert.alert('Success', shouldOfferIdentityVerification ? 'Email verified. You can complete the optional face check now or skip it.' : 'Email verified successfully!', [
           {
             text: 'OK',
             onPress: () => {

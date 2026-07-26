@@ -1,5 +1,14 @@
 import os from 'os';
 import { ExpoConfig, ConfigContext } from 'expo/config';
+const { readReleaseEnvironment } = require('./scripts/release-environment.cjs') as {
+  readReleaseEnvironment: (env: Record<string, string | undefined>) => {
+    iosApiBaseUrl?: string;
+    androidApiBaseUrl?: string;
+    webBaseUrl?: string;
+    checkoutReturnUrl?: string;
+    jitsiBaseUrl?: string;
+  };
+};
 
 const detectLocalIp = () => {
   const interfaces = os.networkInterfaces();
@@ -28,12 +37,30 @@ const detectLocalIp = () => {
   return undefined;
 };
 
+const googleIosUrlSchemeFromClientId = (clientId?: string) => {
+  const normalized = clientId?.trim();
+  const suffix = '.apps.googleusercontent.com';
+  if (!normalized) return undefined;
+  if (normalized.startsWith('com.googleusercontent.apps.')) return normalized;
+  if (!normalized.endsWith(suffix)) return undefined;
+  return `com.googleusercontent.apps.${normalized.slice(0, -suffix.length)}`;
+};
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const isDev = process.env.NODE_ENV !== 'production';
+  const releaseEnvironment = readReleaseEnvironment(process.env);
   const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  const configuredIosApiBaseUrl = releaseEnvironment.iosApiBaseUrl;
+  const configuredAndroidApiBaseUrl = releaseEnvironment.androidApiBaseUrl;
   const configuredWebBaseUrl =
-    process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim() ||
+    releaseEnvironment.webBaseUrl ||
     process.env.PUBLIC_WEB_BASE_URL?.trim();
+  const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
+  const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
+  const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim();
+  const googleIosUrlScheme =
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME?.trim() ||
+    googleIosUrlSchemeFromClientId(googleIosClientId);
   const configuredLocalIp = process.env.EXPO_PUBLIC_LOCAL_IP?.trim();
   const detectedLocalIp = detectLocalIp();
 
@@ -51,6 +78,33 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const devApiProtocol = devApiUrl.protocol;
   
   const EAS_PROJECT_ID = 'd7fb6e65-3440-4a79-b4b2-6746d2582fa7';
+  const plugins: NonNullable<ExpoConfig['plugins']> = [
+    [
+      'expo-image-picker',
+      {
+        cameraPermission: 'Menorah Health uses the camera for optional face verification and video support sessions.',
+        photosPermission: 'Allow Menorah Health to access your photos so you can update your profile picture.',
+      }
+    ],
+    [
+      'expo-updates',
+      {
+        username: 'menorahsoftware'
+      }
+    ],
+    'expo-image',
+    'expo-localization',
+    'expo-secure-store',
+    'expo-status-bar',
+    'expo-apple-authentication'
+  ];
+
+  if (googleIosUrlScheme) {
+    plugins.splice(2, 0, [
+      '@react-native-google-signin/google-signin',
+      { iosUrlScheme: googleIosUrlScheme }
+    ]);
+  }
 
   return {
     ...config,
@@ -65,75 +119,83 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       checkAutomatically: 'ON_LOAD',
       fallbackToCacheTimeout: 0,
     },
-    runtimeVersion: '1.0.0',
+    runtimeVersion: '2.6.0',
     // ─────────────────────────────────────────────────────────────────────────
     icon: './assets/brand/menorah_logo.png',
-    userInterfaceStyle: 'light',
-    splash: {
-      image: './assets/splash.png',
-      resizeMode: 'contain',
-      backgroundColor: '#f0f9f4'
-    },
+    userInterfaceStyle: 'automatic',
     assetBundlePatterns: [
       '**/*'
     ],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.menorah.health.app'
+      bundleIdentifier: 'com.menorah.health.app',
+      buildNumber: '14',
+      associatedDomains: ['applinks:app.menorah.me'],
+      usesAppleSignIn: true,
+      infoPlist: {
+        CFBundleAllowMixedLocalizations: true,
+        LSMinimumSystemVersion: '16.4',
+        NSCameraUsageDescription: 'Menorah Health uses the camera for optional face verification and video support sessions.'
+      }
     },
     android: ({
+      blockedPermissions: [
+        'android.permission.READ_EXTERNAL_STORAGE',
+        'android.permission.READ_MEDIA_IMAGES',
+        'android.permission.READ_PHONE_STATE',
+        'android.permission.WRITE_EXTERNAL_STORAGE'
+      ],
       adaptiveIcon: {
         foregroundImage: './assets/brand/menorah-logo-no-bg.png',
         backgroundColor: '#f0f9f4'
       },
       package: 'com.menorah.healthmobile',
       versionCode: 14,
+      intentFilters: [
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          data: [
+            { scheme: 'http', host: 'app.menorah.me', path: '/reset-password' },
+            { scheme: 'https', host: 'app.menorah.me', path: '/reset-password' }
+          ],
+          category: ['BROWSABLE', 'DEFAULT']
+        }
+      ],
       permissions: [
         'android.permission.CAMERA',
         'android.permission.RECORD_AUDIO',
         'android.permission.MODIFY_AUDIO_SETTINGS',
         'android.permission.INTERNET',
         'android.permission.ACCESS_NETWORK_STATE',
-        'android.permission.READ_EXTERNAL_STORAGE',
-        'android.permission.WRITE_EXTERNAL_STORAGE'
-      ],
-      statusBar: {
-        barStyle: 'light-content',
-        backgroundColor: '#2d7a5c',
-        translucent: false
-      },
-      navigationBar: {
-        visible: 'leanback',
-        backgroundColor: '#ffffff',
-        barStyle: 'dark-content'
-      }
-    } as any),
+        'android.permission.VIBRATE'
+      ]
+    }),
+    androidStatusBar: {
+      barStyle: 'light-content',
+      backgroundColor: '#2d7a5c',
+      translucent: false
+    },
     web: {
       favicon: './assets/favicon.png',
-      bundler: 'metro'
+      bundler: 'metro',
+      splash: {
+        image: './assets/splash.png',
+        resizeMode: 'contain',
+        backgroundColor: '#f0f9f4'
+      }
     },
-    plugins: [
-      [
-        'expo-image-picker',
-        {
-          photosPermission: 'Allow Menorah Health to access your photos so you can update your profile picture.',
-        }
-      ],
-      [
-        'expo-updates',
-        {
-          username: 'menorahsoftware'
-        }
-      ]
-    ],
+    plugins,
     scheme: 'menorah-health',
     extra: {
       // In Expo Go on a phone, localhost points to the phone itself.
-      // Set EXPO_PUBLIC_API_BASE_URL or EXPO_PUBLIC_LOCAL_IP before starting Expo.
+      // Set EXPO_PUBLIC_API_BASE_URL or EXPO_PUBLIC_LOCAL_IP for local development.
       // All URLs are driven by env vars — no domain is hardcoded in source.
-      // In production, set EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_WEB_BASE_URL,
+      // In production, set both platform API variables and EXPO_PUBLIC_WEB_BASE_URL,
       // EXPO_PUBLIC_CHECKOUT_RETURN_URL, and EXPO_PUBLIC_JITSI_BASE_URL before building. Leaving them unset in
       // production will surface the misconfiguration immediately at startup.
+      IOS_API_BASE_URL: configuredIosApiBaseUrl?.replace(/\/+$/, ''),
+      ANDROID_API_BASE_URL: configuredAndroidApiBaseUrl?.replace(/\/+$/, ''),
       API_BASE_URL: configuredApiBaseUrl
         ? configuredApiBaseUrl.replace(/\/+$/, '')
         : (isDev ? devApiBaseUrl : undefined),
@@ -141,15 +203,20 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Public web URL used as the canonical article fallback in native clients.
       WEB_BASE_URL: configuredWebBaseUrl
         ? configuredWebBaseUrl.replace(/\/+$/, '')
-        : 'https://menorahhealth.app',
+        : (isDev ? 'https://app.menorah.me' : undefined),
 
       // Checkout Return URL
-      CHECKOUT_RETURN_URL: process.env.EXPO_PUBLIC_CHECKOUT_RETURN_URL?.trim()
+      CHECKOUT_RETURN_URL: releaseEnvironment.checkoutReturnUrl
         || (isDev ? `${devApiProtocol}//${devApiHost}:8081/checkout/return` : undefined),
 
       // Jitsi Base URL
-      JITSI_BASE_URL: process.env.EXPO_PUBLIC_JITSI_BASE_URL?.trim()
+      JITSI_BASE_URL: releaseEnvironment.jitsiBaseUrl
         || (isDev ? `${devApiProtocol}//${devApiHost}:8080` : undefined),
+
+      GOOGLE_WEB_CLIENT_ID: googleWebClientId,
+      GOOGLE_IOS_CLIENT_ID: googleIosClientId,
+      GOOGLE_ANDROID_CLIENT_ID: googleAndroidClientId,
+      GOOGLE_IOS_URL_SCHEME: googleIosUrlScheme,
       
       // EAS project configuration
       eas: {

@@ -4,7 +4,7 @@
 
 ### Mobile App Configuration
 - **API Base URL**: `http://192.168.1.3:3000/api`
-- **Location**: `Menorah/mobile-app/app.config.ts` (line 39)
+- **Location**: `menorah/mobile-app/app.config.ts` (line 39)
 
 ### Backend Server Configuration
 - **Default Port**: `3000` (or from `.env` file)
@@ -26,7 +26,7 @@ netstat -ano | findstr :3000
 
 **Option B: Start the backend server**
 ```bash
-cd Menorah/backend
+cd menorah/backend
 npm run dev
 ```
 
@@ -43,7 +43,7 @@ You should see:
 
 **Check if `.env` file exists:**
 ```bash
-cd Menorah/backend
+cd menorah/backend
 if (Test-Path .env) { Write-Host "✅ .env file exists" } else { Write-Host "❌ .env file missing - create it!" }
 ```
 
@@ -112,7 +112,7 @@ Make sure your computer's IP address matches `192.168.1.3`:
 ipconfig | findstr IPv4
 ```
 
-If your IP is different, update `Menorah/mobile-app/app.config.ts`:
+If your IP is different, update `menorah/mobile-app/app.config.ts`:
 ```typescript
 API_BASE_URL: 'http://YOUR_ACTUAL_IP:3000/api'
 ```
@@ -128,14 +128,14 @@ The backend CORS is configured to allow:
 - `http://127.0.0.1:8081`
 - `http://127.0.0.1:3000`
 
-If your IP is different, add it to `Menorah/backend/src/server.js` (line 46-54) or set `CORS_ORIGIN` in `.env`.
+If your IP is different, add it to `menorah/backend/src/server.js` (line 46-54) or set `CORS_ORIGIN` in `.env`.
 
 ## Common Issues and Solutions
 
 ### Issue 1: ERR_NETWORK Error
 **Cause**: Backend server is not running or not reachable
 **Solution**: 
-1. Start the backend server: `cd Menorah/backend && npm run dev`
+1. Start the backend server: `cd menorah/backend && npm run dev`
 2. Verify the server is running on the correct port
 3. Check firewall settings
 
@@ -160,7 +160,7 @@ If your IP is different, add it to `Menorah/backend/src/server.js` (line 46-54) 
 
 ## Quick Test Script
 
-I've created a test script at `Menorah/mobile-app/src/lib/testAPI.ts` that you can use to test the API connection from the mobile app.
+I've created a test script at `menorah/mobile-app/src/lib/testAPI.ts` that you can use to test the API connection from the mobile app.
 
 To use it, import and call it:
 ```typescript

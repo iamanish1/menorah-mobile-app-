@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const { recordRoleChange } = require('../utils/securityAudit');
 
 const userSchema = new mongoose.Schema({
   // Authentication fields
@@ -9,7 +10,7 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+    match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please enter a valid email']
   },
   phone: {
     type: String,
@@ -20,7 +21,13 @@ const userSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Password is required'],
-    minlength: [8, 'Password must be at least 8 characters long']
+    minlength: [8, 'Password must be at least 8 characters long'],
+    select: false
+  },
+  passwordAuthEnabled: {
+    type: Boolean,
+    default: true,
+    select: false,
   },
   isEmailVerified: {
     type: Boolean,
@@ -30,9 +37,9 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  emailVerificationToken: String,
-  passwordResetToken: String,
-  passwordResetExpires: Date,
+  emailVerificationToken: { type: String, select: false },
+  passwordResetToken: { type: String, select: false },
+  passwordResetExpires: { type: Date, select: false },
 
   // Profile information
   firstName: {
@@ -58,6 +65,10 @@ const userSchema = new mongoose.Schema({
   },
   profileImage: {
     type: String,
+    default: null
+  },
+  profileImageStorage: {
+    type: mongoose.Schema.Types.Mixed,
     default: null
   },
   address: {
@@ -103,7 +114,31 @@ const userSchema = new mongoose.Schema({
   },
   lockUntil: {
     type: Date,
-    default: null
+    default: null,
+    select: false
+  },
+  sessionVersion: {
+    type: Number,
+    default: 0
+  },
+  marketplaceAssignmentFence: {
+    type: Number,
+    default: 0,
+    min: 0,
+    validate: {
+      validator: Number.isSafeInteger,
+      message: 'Marketplace assignment fence must be a safe integer'
+    }
+  },
+  lastSessionRevokedAt: {
+    type: Date,
+    default: null,
+    select: false
+  },
+  lastPasswordChangeAt: {
+    type: Date,
+    default: null,
+    select: false
   },
 
   // Subscription and billing
@@ -126,7 +161,7 @@ const userSchema = new mongoose.Schema({
     }
   },
 
-  // Identity verification status. Biometric/document images are not stored here.
+  // Optional face-check status. Biometric images are not stored here.
   kyc: {
     status: {
       type: String,
@@ -146,6 +181,31 @@ const userSchema = new mongoose.Schema({
     },
     reviewReason: String,
     faceCheckConfidence: Number
+  },
+
+  socialAuth: {
+    googleSub: {
+      type: String,
+      default: undefined
+    },
+    appleSub: {
+      type: String,
+      default: undefined
+    },
+    appleEmailPrivateRelay: {
+      type: Boolean,
+      default: false
+    },
+    appleRefreshTokenEncrypted: {
+      type: String,
+      default: undefined,
+      select: false,
+    },
+    appleClientId: {
+      type: String,
+      default: undefined,
+      select: false,
+    }
   },
 
   // Role
@@ -184,9 +244,60 @@ userSchema.index({ firstName: 1, lastName: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ 'kyc.status': 1 });
 
+const uniqueStringIndex = (field) => ({
+  unique: true,
+  partialFilterExpression: { [field]: { $type: 'string' } },
+});
+
 // Sparse indexes on token fields — speeds up password-reset and email-verify lookups
 userSchema.index({ passwordResetToken:     1 }, { sparse: true });
 userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
+userSchema.index({ 'socialAuth.googleSub': 1 }, uniqueStringIndex('socialAuth.googleSub'));
+userSchema.index({ 'socialAuth.appleSub': 1 }, uniqueStringIndex('socialAuth.appleSub'));
+
+userSchema.pre('save', async function capturePrivilegedRoleChange() {
+  if (!this.isModified('role')) return;
+
+  let previousRole = 'none';
+  if (!this.isNew) {
+    const query = this.constructor.findById(this._id).select('role').lean();
+    const session = this.$session();
+    if (session) query.session(session);
+    const previous = await query;
+    previousRole = previous?.role || 'none';
+  }
+  this.$locals.privilegedRoleChange = {
+    previousRole,
+    nextRole: this.role || 'none',
+  };
+});
+
+userSchema.post('save', function auditPrivilegedRoleChange(document) {
+  const change = this.$locals.privilegedRoleChange;
+  delete this.$locals.privilegedRoleChange;
+  if (!change) return;
+  recordRoleChange({
+    target: document._id,
+    previousRole: change.previousRole,
+    nextRole: change.nextRole,
+  });
+});
+
+userSchema.pre(
+  ['updateOne', 'updateMany', 'findOneAndUpdate', 'replaceOne'],
+  function rejectUnauditedRoleMutation(next) {
+    const update = this.getUpdate() || {};
+    const mutatesRole = Object.prototype.hasOwnProperty.call(update, 'role')
+      || Object.prototype.hasOwnProperty.call(update.$set || {}, 'role')
+      || Object.prototype.hasOwnProperty.call(update.$unset || {}, 'role');
+    if (mutatesRole) {
+      return next(new Error(
+        'Role changes must use a loaded User document and save() so signed audit instrumentation cannot be bypassed.'
+      ));
+    }
+    return next();
+  }
+);
 
 // Pre-save middleware to hash password
 userSchema.pre('save', async function(next) {

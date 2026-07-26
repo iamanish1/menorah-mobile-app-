@@ -258,6 +258,23 @@
   justify-content: space-between;
 }
 
+.dateInput {
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-base);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  padding: 0 var(--spacing-md);
+}
+
+.dateInput:focus {
+  outline: 2px solid rgba(61, 148, 112, 0.2);
+  border-color: var(--color-primary);
+}
+
 .errorLeft {
   display: flex;
   align-items: center;
@@ -499,4 +516,3 @@
 .actionButton {
   width: 100%;
 }
-

@@ -10,7 +10,12 @@ import { Spinner, Button } from '@/components/ui';
 import type { Counsellor, CounsellorFilters } from '@/types';
 
 export default function DiscoverPage() {
-  const [filters, setFilters] = useState<CounsellorFilters>({ page: 1, limit: 9 });
+  const [filters, setFilters] = useState<CounsellorFilters>({
+    page: 1,
+    limit: 9,
+    sortBy: 'rating',
+    sortOrder: 'desc',
+  });
   const [searchInput, setSearchInput] = useState('');
   const [visibleCounsellors, setVisibleCounsellors] = useState<Counsellor[]>([]);
 
@@ -19,13 +24,13 @@ export default function DiscoverPage() {
     queryFn: () => api.getCounsellors(filters),
   });
 
-  const { data: specsData } = useQuery({
+  const { data: specsData, isLoading: isSpecializationsLoading } = useQuery({
     queryKey: ['specializations'],
     queryFn: () => api.getSpecializations(),
     staleTime: Infinity,
   });
 
-  const { data: langsData } = useQuery({
+  const { data: langsData, isLoading: isLanguagesLoading } = useQuery({
     queryKey: ['languages'],
     queryFn: () => api.getLanguages(),
     staleTime: Infinity,
@@ -113,6 +118,8 @@ export default function DiscoverPage() {
               filters={filters}
               specializations={specializations}
               languages={languages}
+              specializationsLoading={isSpecializationsLoading}
+              languagesLoading={isLanguagesLoading}
               onChange={(f) => setFilters((prev) => ({ ...prev, ...f }))}
             />
           </div>
@@ -124,6 +131,8 @@ export default function DiscoverPage() {
               filters={filters}
               specializations={specializations}
               languages={languages}
+              specializationsLoading={isSpecializationsLoading}
+              languagesLoading={isLanguagesLoading}
               onChange={(f) => setFilters((prev) => ({ ...prev, ...f }))}
             />
           </div>
@@ -137,7 +146,11 @@ export default function DiscoverPage() {
               <Search className="mx-auto mb-3 h-12 w-12 text-gray-300" />
               <p className="font-medium">No counsellors found</p>
               <p className="mt-1 text-sm">Try adjusting your filters or search terms</p>
-              <Button variant="secondary" className="mt-4" onClick={() => setFilters({ page: 1, limit: 9 })}>
+              <Button
+                variant="secondary"
+                className="mt-4"
+                onClick={() => setFilters({ page: 1, limit: 9, sortBy: 'rating', sortOrder: 'desc' })}
+              >
                 Clear filters
               </Button>
             </div>

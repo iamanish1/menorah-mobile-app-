@@ -1,11 +1,11 @@
 import axios, { AxiosInstance } from 'axios';
-import { getToken, clearToken } from './auth';
 import type {
-  ApiResponse, PlatformStats, Counsellor, CounsellorRevenue,
+  ApiResponse, PlatformStats, Counsellor, CounsellorApprovalPayload, CounsellorRevenue,
   RevenueData, User, Pagination, PayoutRecord, PayoutSummary, PayoutStatus,
+  AdminBooking,
   Article, ArticleGenerationRun, ArticleStatus, BrandAsset, BrandGuideline,
   InstagramAccount, KycReview, KycStatus, SocialAspectRatio, SocialGenerationJob, SocialPost,
-  SocialCampaignBrief, SocialGenerationRun, SocialPostStatus, SocialPostType,
+  ServerUsage, SocialCampaignBrief, SocialGenerationRun, SocialPostStatus, SocialPostType,
   SocialPromptSettings, SocialStudioStats, SocialWorkflow
 } from '@/types';
 
@@ -15,21 +15,25 @@ class AdminApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    this.client.interceptors.request.use((config) => {
-      const token = getToken();
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-      return config;
+      headers: { 'Content-Type': 'application/json' },
+      withCredentials: true
     });
 
     this.client.interceptors.response.use(
       (res) => res,
       (err) => {
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          clearToken();
-          if (typeof window !== 'undefined') window.location.href = '/login';
+        const requestUrl = typeof err.config?.url === 'string' ? err.config.url : '';
+        const isAuthenticationAttempt = requestUrl === '/auth/admin/login'
+          || requestUrl === '/auth/admin/login/mfa';
+        const isSessionProbe = requestUrl === '/auth/me';
+        if (
+          err.response?.status === 401
+          && !isAuthenticationAttempt
+          && !isSessionProbe
+          && typeof window !== 'undefined'
+          && window.location.pathname !== '/login'
+        ) {
+          window.location.replace('/login');
         }
         return Promise.reject(err);
       }
@@ -42,15 +46,36 @@ class AdminApiClient {
       return res.data;
     } catch (err: unknown) {
       const e = err as { response?: { data?: ApiResponse<T> }; message?: string };
-      return { success: false, message: e.response?.data?.message || e.message || 'Request failed' };
+      return e.response?.data || {
+        success: false,
+        message: e.message || 'Request failed',
+      };
     }
   }
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   login(email: string, password: string) {
-    return this.request<{ user: User; token: string }>(() =>
-      this.client.post('/auth/login', { email, password })
+    return this.request<{ user?: User; mfaRequired?: boolean; challengeId?: string }>(() =>
+      this.client.post('/auth/admin/login', { email, password, transport: 'cookie' })
     );
+  }
+
+  verifyMfa(challengeId: string, otp: string) {
+    return this.request<{ user: User; mfaRequired?: boolean }>(() =>
+      this.client.post('/auth/admin/login/mfa', { challengeId, otp, transport: 'cookie' })
+    );
+  }
+
+  me() {
+    return this.request<{ user: User }>(() => this.client.get('/auth/me'));
+  }
+
+  logout() {
+    return this.request<void>(() => this.client.post('/auth/admin/logout'));
+  }
+
+  logoutAll() {
+    return this.request<void>(() => this.client.post('/auth/admin/logout-all'));
   }
 
   // ── Stats ───────────────────────────────────────────────────────────────────
@@ -64,10 +89,35 @@ class AdminApiClient {
     );
   }
 
+  getServerUsage() {
+    return this.request<ServerUsage>(() => this.client.get('/admin/server-usage'));
+  }
+
+  // -- Sessions ----------------------------------------------------------------
+  getBookings(params?: { status?: string; page?: number; limit?: number }) {
+    return this.request<{ bookings: AdminBooking[]; pagination: Pagination }>(
+      () => this.client.get('/admin/bookings', { params })
+    );
+  }
+
+  updateBookingCallLink(id: string, payload: {
+    provider: string;
+    externalJoinUrl: string;
+    externalHostUrl?: string;
+    externalProviderName?: string;
+  }) {
+    return this.request<{ bookingId: string; videoCall: AdminBooking['videoCall'] }>(
+      () => this.client.patch(`/admin/bookings/${id}/call-link`, payload)
+    );
+  }
+
   // ── Counsellors ─────────────────────────────────────────────────────────────
-  getCounsellors(params?: { status?: string; page?: number; limit?: number; search?: string }) {
+  getCounsellors(
+    params?: { status?: string; page?: number; limit?: number; search?: string },
+    signal?: AbortSignal
+  ) {
     return this.request<{ counsellors: Counsellor[]; pagination: Pagination }>(
-      () => this.client.get('/admin/counsellors', { params })
+      () => this.client.get('/admin/counsellors', { params, signal })
     );
   }
 
@@ -77,34 +127,68 @@ class AdminApiClient {
     );
   }
 
-  approveCounsellor(id: string) {
-    return this.request<{ counsellorId: string; status: string; username: string; password: string }>(
-      () => this.client.put(`/admin/counsellors/${id}/approve`)
+  startCounsellorReview(id: string) {
+    return this.request<{
+      applicationId: string;
+      counsellorId: string;
+      status: string;
+      accountCreated: boolean;
+    }>(
+      () => this.client.put(`/admin/counsellors/${id}/start-review`)
+    );
+  }
+
+  approveCounsellor(id: string, payload: CounsellorApprovalPayload) {
+    return this.request<{
+      applicationId: string;
+      counsellorId: string;
+      status: string;
+      username: string;
+      verificationExpiresAt: string;
+      credentialEmailSent?: boolean;
+      credentialEmailRecipient?: string;
+    }>(
+      () => this.client.put(`/admin/counsellors/${id}/approve`, payload)
     );
   }
 
   rejectCounsellor(id: string, reason: string) {
-    return this.request<{ counsellorId: string; status: string }>(
+    return this.request<{ applicationId: string; status: string }>(
       () => this.client.put(`/admin/counsellors/${id}/reject`, { reason })
     );
   }
 
-  generatePassword(id: string) {
-    return this.request<{ username: string; password: string; counsellorId: string; userId: string }>(
+  sendCounsellorActivationLink(id: string) {
+    return this.request<{
+      username: string;
+      counsellorId: string;
+      userId: string;
+      activationEmailSent: boolean;
+      activationEmailRecipient?: string;
+    }>(
       () => this.client.post(`/admin/counsellors/${id}/generate-password`)
     );
   }
 
-  blockCounsellor(id: string, reason: string) {
-    return this.request<{ counsellorId: string }>(
+  suspendCounsellor(id: string, reason: string) {
+    return this.request<{ counsellorId: string; status: string }>(
       () => this.client.put(`/admin/counsellors/${id}/block`, { reason })
     );
   }
 
-  unblockCounsellor(id: string) {
-    return this.request<{ counsellorId: string }>(
-      () => this.client.put(`/admin/counsellors/${id}/unblock`)
+  expireCounsellor(id: string) {
+    return this.request<{ counsellorId: string; status: 'expired' }>(
+      () => this.client.put(`/admin/counsellors/${id}/expire`)
     );
+  }
+
+  sendCounsellorReverificationInvite(id: string) {
+    return this.request<{
+      counsellorId: string;
+      invitationEmailSent: boolean;
+      invitationEmailRecipient?: string;
+      expiresAt: string;
+    }>(() => this.client.post(`/admin/counsellors/${id}/reverification-invite`));
   }
 
   getCounsellorBookingStats(id: string, days = 30) {
@@ -155,8 +239,17 @@ class AdminApiClient {
 
   // ── Payouts ─────────────────────────────────────────────────────────────────
   initiatePayout(counsellorId: string, amount: number, notes?: string) {
-    return this.request<{ payoutId: string; payoutRecordId: string; status: string; amount: number }>(
-      () => this.client.post(`/admin/payouts/${counsellorId}`, { amount, notes })
+    const idempotencyKey = crypto.randomUUID();
+    return this.request<{ payoutRecordId: string; status: PayoutStatus; amount: number; approvalExpiresAt: string }>(
+      () => this.client.post(`/admin/payouts/${counsellorId}`, { amount, notes, idempotencyKey }, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+      })
+    );
+  }
+
+  approvePayout(payoutId: string) {
+    return this.request<{ payoutRecordId: string; status: PayoutStatus; amount: number }>(
+      () => this.client.post(`/admin/payouts/${payoutId}/approve`)
     );
   }
 

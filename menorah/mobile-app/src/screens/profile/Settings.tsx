@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { reportError } from '@/lib/safeDiagnostics';
+import { View, Text, ScrollView, TouchableOpacity, Switch, Alert, Modal, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   AlertTriangle,
@@ -55,10 +57,11 @@ const SettingItem = ({ title, subtitle, icon: Icon, onPress, disabled, colors, d
 );
 
 export default function Settings({ navigation }: any) {
-  const [notifications, setNotifications] = useState(true);
   const [emailUpdates, setEmailUpdates] = useState(true);
   const [loading, setLoading] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deletionPassword, setDeletionPassword] = useState('');
+  const [showDeletionConfirmation, setShowDeletionConfirmation] = useState(false);
 
   const { scheme, toggle } = useThemeMode();
   const colors = palettes[scheme];
@@ -66,33 +69,18 @@ export default function Settings({ navigation }: any) {
   const headerBg = isDark ? colors.primaryDark : colors.primary;
   const dangerBg = colors.error + (isDark ? '18' : '0A');
   const dangerBorder = colors.error + (isDark ? '35' : '20');
-  const { logout, user } = useAuth();
+  const { forgotPassword, invalidateSession, logout, user } = useAuth();
+  const deletionMethod = Platform.OS === 'ios' && user?.reauthenticationMethods?.apple
+    ? 'apple'
+    : user?.reauthenticationMethods?.password
+      ? 'password'
+      : 'password-setup';
 
   useEffect(() => {
     if (user?.notificationPreferences) {
-      setNotifications(user.notificationPreferences.push || true);
-      setEmailUpdates(user.notificationPreferences.email || true);
+      setEmailUpdates(user.notificationPreferences.email ?? true);
     }
   }, [user]);
-
-  const handleNotificationToggle = async (value: boolean) => {
-    setNotifications(value);
-    setLoading(true);
-    try {
-      const response = await api.updateNotificationPreferences({ push: value });
-      if (!response.success) {
-        // Revert on error
-        setNotifications(!value);
-        Alert.alert('Error', 'Failed to update notification preferences.');
-      }
-    } catch (error) {
-      console.error('Error updating notifications:', error);
-      setNotifications(!value);
-      Alert.alert('Error', 'Failed to update notification preferences.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleEmailToggle = async (value: boolean) => {
     setEmailUpdates(value);
@@ -105,7 +93,7 @@ export default function Settings({ navigation }: any) {
         Alert.alert('Error', 'Failed to update email preferences.');
       }
     } catch (error) {
-      console.error('Error updating email preferences:', error);
+      reportError('settings.email_preference_update_failed', error);
       setEmailUpdates(!value);
       Alert.alert('Error', 'Failed to update email preferences.');
     } finally {
@@ -134,30 +122,16 @@ export default function Settings({ navigation }: any) {
                 routes: [{ name: 'Login' }],
               });
             } catch (error) {
-              console.error('Logout error:', error);
-              // Even if logout fails, still navigate to login
-              const rootNavigation = navigation.getParent() || navigation;
-              rootNavigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }],
-              });
+              reportError('settings.logout_failed', error);
+              Alert.alert(
+                'Signed Out Securely',
+                'Credential cleanup is still pending and will be retried before another sign-in.',
+              );
             }
           }
         }
       ]
     );
-  };
-
-  const resetToLogin = async () => {
-    try {
-      await logout();
-    } finally {
-      const rootNavigation = navigation.getParent() || navigation;
-      rootNavigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' }],
-      });
-    }
   };
 
   const handleDeleteAccount = () => {
@@ -169,40 +143,183 @@ export default function Settings({ navigation }: any) {
         {
           text: 'Request Deletion',
           style: 'destructive',
-          onPress: async () => {
-            setDeletingAccount(true);
-            try {
-              const response = await api.requestAccountDeletion();
-              if (response.success) {
-                Alert.alert(
-                  'Request Submitted',
-                  'Your account deletion request has been submitted. You will be signed out now.',
-                  [{ text: 'OK', onPress: resetToLogin }]
-                );
-              } else {
-                Alert.alert(
-                  'Request Not Submitted',
-                  response.message ||
-                    'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
-                );
-              }
-            } catch (error) {
-              console.error('Account deletion request error:', error);
-              Alert.alert(
-                'Request Not Submitted',
-                'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
-              );
-            } finally {
-              setDeletingAccount(false);
-            }
-          },
+          onPress: () => setShowDeletionConfirmation(true),
         },
       ]
     );
   };
 
+  const completeAcceptedDeletion = async (response: { success: boolean; message?: string }) => {
+    if (response.success) {
+        let cleanupPending = false;
+        try {
+          await invalidateSession();
+        } catch (error) {
+          cleanupPending = true;
+          reportError('settings.disabled_account_cleanup_pending', error);
+        }
+        setShowDeletionConfirmation(false);
+        setDeletionPassword('');
+        Alert.alert(
+          'Request Submitted',
+          cleanupPending
+            ? 'Your account is disabled and the request is queued. Local credential cleanup will finish before another sign-in.'
+            : 'Your account is disabled and the deletion request is queued for retention review.',
+        );
+        return true;
+    }
+    Alert.alert('Request Not Submitted', response.message || 'We could not submit your deletion request.');
+    return false;
+  };
+
+  const submitAccountDeletion = async () => {
+    setDeletingAccount(true);
+    try {
+      const response = await api.requestAccountDeletion({
+        method: 'password',
+        password: deletionPassword,
+      });
+      await completeAcceptedDeletion(response);
+    } catch {
+      reportError('settings.account_deletion_request_failed');
+      Alert.alert('Request Not Submitted', 'We could not submit your deletion request.');
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const submitAppleAccountDeletion = async () => {
+    if (Platform.OS !== 'ios') {
+      Alert.alert('Apple verification unavailable', 'Use an iOS device linked to this Apple account.');
+      return;
+    }
+
+    setDeletingAccount(true);
+    try {
+      const challenge = await api.createAccountDeletionChallenge();
+      if (!challenge.success || !challenge.data) {
+        Alert.alert('Verification Not Started', challenge.message || 'Please try again.');
+        return;
+      }
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [],
+        nonce: challenge.data.nonce,
+        state: challenge.data.challengeId,
+      });
+      if (
+        !credential.identityToken
+        || !credential.authorizationCode
+        || credential.state !== challenge.data.challengeId
+      ) {
+        Alert.alert('Verification Failed', 'Apple did not return the required deletion authorization.');
+        return;
+      }
+      const response = await api.requestAccountDeletion({
+        method: 'apple',
+        challengeId: challenge.data.challengeId,
+        identityToken: credential.identityToken,
+        authorizationCode: credential.authorizationCode,
+      });
+      await completeAcceptedDeletion(response);
+    } catch (error: any) {
+      if (error?.code !== 'ERR_REQUEST_CANCELED') {
+        reportError('settings.apple_account_deletion_failed', error);
+        Alert.alert('Request Not Submitted', 'Apple verification or the deletion request failed. Please try again.');
+      }
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const sendDeletionPasswordSetup = async () => {
+    if (!user?.email) return;
+    setDeletingAccount(true);
+    try {
+      const response = await forgotPassword(user.email);
+      if (response.success) {
+        setShowDeletionConfirmation(false);
+        Alert.alert(
+          'Check Your Email',
+          'Use the secure password-reset link to set a deletion password. After resetting, sign in again and return here to delete your account.',
+        );
+      } else {
+        Alert.alert('Link Not Sent', response.message || 'Please try again.');
+      }
+    } catch (error) {
+      reportError('settings.deletion_password_setup_failed', error);
+      Alert.alert('Link Not Sent', 'Please try again.');
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <Modal
+        visible={showDeletionConfirmation}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !deletingAccount && setShowDeletionConfirmation(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+          <View style={{ backgroundColor: colors.card, borderRadius: 12, padding: 20 }}>
+            <Text style={{ color: colors.cardText, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Confirm deletion request</Text>
+            <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginBottom: 16 }}>
+              {deletionMethod === 'apple'
+                ? 'Continue with the linked Apple account. Menorah will disable account access and durably queue Apple authorization revocation.'
+                : deletionMethod === 'password'
+                  ? 'Enter your password to disable account access and submit the deletion request for review.'
+                  : 'This social account has no deletion password. Send a secure setup link to your verified email, then sign in again to finish deletion.'}
+            </Text>
+            {deletionMethod === 'password' ? (
+              <TextInput
+                value={deletionPassword}
+                onChangeText={setDeletionPassword}
+                placeholder="Current password"
+                placeholderTextColor={colors.muted}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!deletingAccount}
+                style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, color: colors.text, paddingHorizontal: 12, paddingVertical: 12 }}
+              />
+            ) : null}
+            {deletionMethod === 'apple' ? (
+              deletingAccount ? (
+                <ActivityIndicator color={colors.primary} size="small" />
+              ) : (
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={8}
+                  style={{ width: '100%', height: 46 }}
+                  onPress={submitAppleAccountDeletion}
+                />
+              )
+            ) : null}
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 20 }}>
+              <TouchableOpacity
+                disabled={deletingAccount}
+                onPress={() => { setDeletionPassword(''); setShowDeletionConfirmation(false); }}
+                style={{ paddingHorizontal: 12, paddingVertical: 10 }}
+              >
+                <Text style={{ color: colors.muted, fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              {deletionMethod !== 'apple' ? (
+                <TouchableOpacity
+                  disabled={deletingAccount || (deletionMethod === 'password' && !deletionPassword)}
+                  onPress={deletionMethod === 'password' ? submitAccountDeletion : sendDeletionPasswordSetup}
+                  style={{ backgroundColor: colors.error, borderRadius: 8, minWidth: 98, paddingHorizontal: 14, paddingVertical: 10, alignItems: 'center', opacity: deletingAccount || (deletionMethod === 'password' && !deletionPassword) ? 0.6 : 1 }}
+                >
+                  {deletingAccount
+                    ? <ActivityIndicator color="white" size="small" />
+                    : <Text style={{ color: 'white', fontWeight: '700' }}>{deletionMethod === 'password' ? 'Confirm' : 'Send Setup Link'}</Text>}
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      </Modal>
       {/* Header */}
       <View style={{
         backgroundColor: headerBg,
@@ -253,14 +370,9 @@ export default function Settings({ navigation }: any) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 16, color: colors.cardText }}>Push Notifications</Text>
-                <Text style={{ fontSize: 14, color: colors.muted }}>Receive session reminders</Text>
+                <Text style={{ fontSize: 14, color: colors.muted }}>Not available in this release</Text>
               </View>
-              <Switch
-                value={notifications}
-                onValueChange={handleNotificationToggle}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                disabled={loading}
-              />
+              <Text style={{ fontSize: 13, color: colors.muted }}>Unavailable</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16 }}>
               <View style={{

@@ -8,12 +8,12 @@ import { palettes } from '@/theme/colors';
 import { ENV } from '@/lib/env';
 import { api } from '@/lib/api';
 import { useAuth } from '@/state/useAuth';
-import subscriptionService from '@/services/subscriptionService';
 import type { SubscriptionType } from './subscriptionPlans';
 import {
-  IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE,
-  shouldDisableIOSSubscriptionPurchase,
+  SUBSCRIPTIONS_UNAVAILABLE_MESSAGE,
+  shouldDisableSubscriptionPurchase,
 } from '@/lib/paymentPolicy';
+import { reportError } from '@/lib/safeDiagnostics';
 
 const RAZORPAY_UNAVAILABLE_MESSAGE =
   'Payments require a development build. Expo Go preview does not support native Razorpay.';
@@ -63,7 +63,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
   const returnUrl = ENV.CHECKOUT_RETURN_URL || 'menorah://payments/subscription/return';
   const USE_RAZORPAY_SDK = ENV.USE_RAZORPAY_SDK ?? true;
   const canUseRazorpaySdk = USE_RAZORPAY_SDK && hasNativeRazorpay();
-  const isIOSSubscriptionDisabled = shouldDisableIOSSubscriptionPurchase();
+  const isSubscriptionPurchaseDisabled = shouldDisableSubscriptionPurchase();
 
   const verifyAndActivateSubscription = useCallback(async () => {
     try {
@@ -75,16 +75,13 @@ export default function SubscriptionPayment({ route, navigation }: any) {
       });
 
       if (verifyResponse.success) {
-        // Sync subscription with local storage
-        await subscriptionService.setPremiumSubscription(subscriptionType as SubscriptionType);
-
         // Navigate to success screen
         navigation.replace('SubscriptionSuccess', { subscriptionType });
       } else {
         setError(verifyResponse.message || 'Failed to activate subscription');
       }
     } catch (err: any) {
-      console.error('Error verifying subscription payment:', err);
+      reportError('subscription.payment_verification_failed', err);
       setError('Failed to activate subscription. Please contact support.');
     }
   }, [subscriptionType, orderId, navigation]);
@@ -116,7 +113,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
           setError('Payment verification timeout. Please check your subscription status.');
         }
       } catch (err: any) {
-        console.error('Error polling order status:', err);
+        reportError('subscription.payment_status_poll_failed', err);
         if (attempts < maxAttempts) {
           setTimeout(poll, 2000);
         } else {
@@ -133,18 +130,14 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     setLoading(true);
     setError(null);
 
-    if (isIOSSubscriptionDisabled) {
-      setError(IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
+    if (isSubscriptionPurchaseDisabled) {
+      setError(SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
       setLoading(false);
       return;
     }
     
     try {
-      console.log('Creating subscription checkout session with:', { subscriptionType, paymentMethod });
-      
       const response = await api.createSubscriptionCheckout(subscriptionType as SubscriptionType);
-      
-      console.log('Subscription checkout session response:', response);
       
       if (response.success && response.data) {
         const url = response.data.checkoutUrl || response.data.url || response.data.sessionUrl;
@@ -166,10 +159,9 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         }
         
         if (url) {
-          console.log('Checkout URL received:', url);
           setCheckoutUrl(url);
         } else if (!canUseRazorpaySdk || paymentMethod !== 'razorpay') {
-          console.error('No checkout URL in response:', response);
+          reportError('subscription.checkout_url_missing');
           setError(
             paymentMethod === 'razorpay' && !canUseRazorpaySdk
               ? RAZORPAY_UNAVAILABLE_MESSAGE
@@ -177,21 +169,21 @@ export default function SubscriptionPayment({ route, navigation }: any) {
           );
         }
       } else {
-        console.error('Subscription checkout session failed:', response);
+        reportError('subscription.checkout_creation_rejected');
         setError(response.message || 'Failed to create checkout session');
       }
     } catch (err: any) {
-      console.error('Error creating subscription checkout session:', err);
+      reportError('subscription.checkout_creation_failed', err);
       setError(`Failed to create checkout session: ${err.message || 'Network error. Please check your connection.'}`);
     } finally {
       setLoading(false);
     }
-  }, [subscriptionType, paymentMethod, canUseRazorpaySdk, isIOSSubscriptionDisabled]);
+  }, [subscriptionType, paymentMethod, canUseRazorpaySdk, isSubscriptionPurchaseDisabled]);
 
   const initiateSDKPayment = useCallback(async () => {
-    if (isIOSSubscriptionDisabled) {
-      Alert.alert('Subscriptions unavailable on iOS', IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
-      setError(IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
+    if (isSubscriptionPurchaseDisabled) {
+      Alert.alert('New subscriptions unavailable', SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
+      setError(SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
       return;
     }
 
@@ -210,14 +202,12 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     }
 
     if (!keyId || !orderId || !amount) {
-      console.error('Missing required payment data:', { keyId, orderId, amount });
+      reportError('subscription.payment_data_incomplete');
       setError('Payment data incomplete. Please try again.');
       return;
     }
 
     try {
-      console.log('Initiating Razorpay SDK payment for subscription');
-      
       const userEmail = user?.email || '';
       const userPhone = user?.phone || '';
       const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
@@ -241,8 +231,6 @@ export default function SubscriptionPayment({ route, navigation }: any) {
 
       const paymentData = await RazorpayCheckout.open(options);
       
-      console.log('Payment success data:', paymentData);
-      
       if (paymentData.razorpay_payment_id && paymentData.razorpay_signature) {
         setIsPolling(true);
         
@@ -256,14 +244,13 @@ export default function SubscriptionPayment({ route, navigation }: any) {
 
           if (verifyResponse.success) {
             setIsPolling(false);
-            await subscriptionService.setPremiumSubscription(subscriptionType as SubscriptionType);
             navigation.replace('SubscriptionSuccess', { subscriptionType });
           } else {
             setIsPolling(false);
             await pollOrderStatus();
           }
         } catch (verifyError: any) {
-          console.error('Payment verification error:', verifyError);
+          reportError('subscription.sdk_payment_verification_failed', verifyError);
           setIsPolling(false);
           await pollOrderStatus();
         }
@@ -271,10 +258,9 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         await pollOrderStatus();
       }
     } catch (err: any) {
-      console.error('Razorpay SDK error:', err);
+      reportError('subscription.razorpay_failed', err);
       
       if (err.code === 'PayerCancelled' || err.code === 'NativePaymentCancelled') {
-        console.log('User cancelled payment');
         navigation.goBack();
         return;
       }
@@ -288,7 +274,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         [{ text: 'OK' }]
       );
     }
-  }, [isIOSSubscriptionDisabled, canUseRazorpaySdk, keyId, orderId, amount, currency, user, subscriptionType, navigation, pollOrderStatus, colors.primary]);
+  }, [isSubscriptionPurchaseDisabled, canUseRazorpaySdk, keyId, orderId, amount, currency, user, subscriptionType, navigation, pollOrderStatus, colors.primary]);
 
   useEffect(() => {
     if (subscriptionType) {
@@ -342,15 +328,15 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     );
   };
 
-  if (isIOSSubscriptionDisabled) {
+  if (isSubscriptionPurchaseDisabled) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 12, textAlign: 'center' }}>
-            Subscriptions unavailable on iOS
+            New subscriptions unavailable
           </Text>
           <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
-            {IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE}
+            {SUBSCRIPTIONS_UNAVAILABLE_MESSAGE}
           </Text>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
@@ -482,7 +468,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
           onLoadEnd={() => setWebViewLoading(false)}
           onError={(syntheticEvent) => {
             const { nativeEvent } = syntheticEvent;
-            console.error('WebView error:', nativeEvent);
+            reportError('subscription.payment_webview_failed');
             setError(`Failed to load payment page: ${nativeEvent.description || 'Unknown error'}`);
             setWebViewLoading(false);
           }}

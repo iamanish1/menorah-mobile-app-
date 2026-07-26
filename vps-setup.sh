@@ -22,7 +22,7 @@ PUBLIC_DOMAIN="api.menorah.me"
 DIRECT_DOMAIN="vps.menorah.me"     # Cloudflare proxy OFF — used by Worker
 EMAIL="devops@menorah.me"          # Let's Encrypt renewal notifications
 REPO_URL="https://github.com/YOUR_ORG/YOUR_REPO.git"
-BACKEND_SUBDIR="menorah-mobile-app-/Menorah/backend"
+BACKEND_SUBDIR="menorah-mobile-app-/menorah/backend"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 log()  { echo -e "\n\033[1;32m▶ $*\033[0m"; }

@@ -42,7 +42,7 @@ export function FaqQuestionForm() {
 
       form.reset();
       setState("success");
-      setMessage(result.emailDelivery?.sent ? "Your question has been sent." : "Your question has been saved. Email delivery needs SMTP setup.");
+      setMessage(result.emailDelivery?.sent ? "Your question has been sent." : "Your question has been saved. Email delivery is not configured yet.");
     } catch {
       setState("error");
       setMessage("Something went wrong. Please try again.");

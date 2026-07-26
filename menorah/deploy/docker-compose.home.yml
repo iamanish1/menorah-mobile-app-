@@ -1,0 +1,432 @@
+# NON-AUTHORITATIVE / NON-PRODUCTION.
+# The guarded release uses docker-compose.production.yml (plus the approved
+# tunnel overlay). This local/home compatibility stack and its legacy
+# monitoring services are not release-gated and are not production evidence.
+# MENORAH_HOME_SERVICE_ENV_FILE exists only so read-only validation can select
+# a tracked synthetic fixture. The runtime default remains the ignored,
+# operator-created home.env file.
+services:
+  reverse-proxy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    env_file:
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
+    environment:
+      PUBLIC_EMAIL: ${PUBLIC_EMAIL}
+      LIVEKIT_UPSTREAM: ${LIVEKIT_UPSTREAM}
+      WWW_DOMAIN: ${WWW_DOMAIN}
+      APP_DOMAIN: ${APP_DOMAIN}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN}
+      API_IOS_DOMAIN: ${API_IOS_DOMAIN}
+      API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN}
+      API_WEB_DOMAIN: ${API_WEB_DOMAIN}
+      API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN}
+      CALLS_DOMAIN: ${CALLS_DOMAIN}
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${MENORAH_DATA_ROOT}/caddy/data:/data
+      - ${MENORAH_DATA_ROOT}/caddy/config:/config
+      - ${MENORAH_DATA_ROOT}/logs/caddy:/var/log/caddy
+    networks:
+      - public_net
+      - app_net
+      - monitoring_net
+    depends_on:
+      - landing-page
+      - user-web-app
+      - admin-panel
+      - api-ios
+      - api-android
+      - api-web
+      - api-admin
+
+  landing-page:
+    build:
+      context: ../user-web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+        NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL}"
+        NEXT_PUBLIC_WEB_BASE_URL: "${FRONTEND_WWW_URL:-https://${WWW_DOMAIN}}"
+        NEXT_PUBLIC_SITE_URL: "${FRONTEND_WWW_URL:-https://${WWW_DOMAIN}}"
+        PUBLIC_WEB_BASE_URL: "${FRONTEND_WWW_URL:-https://${WWW_DOMAIN}}"
+        MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+    restart: unless-stopped
+    environment:
+      PORT: 3002
+      NODE_ENV: production
+      MONGODB_URI: ${MONGODB_URI:-}
+      MONGO_DATABASE: ${MONGO_DATABASE:-menorah}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: "${EMAIL_FROM:-noreply@localhost}"
+      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:-}
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
+      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+      NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL}"
+    ports:
+      - "${LANDING_LOCAL_PORT:-127.0.0.1:18085}:3002"
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+
+  web-app:
+    build:
+      context: ../web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+        NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL}"
+    restart: unless-stopped
+    environment:
+        PORT: 3001
+        NODE_ENV: production
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+        NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL}"
+    ports:
+      - "${WEB_APP_LOCAL_PORT:-127.0.0.1:18086}:3001"
+    networks:
+      - local_probe_net
+      - app_net
+
+  user-web-app:
+    build:
+      context: ../user-web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+        NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL}"
+        NEXT_PUBLIC_WEB_BASE_URL: "${FRONTEND_APP_URL:-https://${APP_DOMAIN}}"
+        NEXT_PUBLIC_SITE_URL: "${FRONTEND_APP_URL:-https://${APP_DOMAIN}}"
+        PUBLIC_WEB_BASE_URL: "${FRONTEND_APP_URL:-https://${APP_DOMAIN}}"
+        MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+    restart: unless-stopped
+    environment:
+      PORT: 3002
+      NODE_ENV: production
+      MONGODB_URI: ${MONGODB_URI:-}
+      MONGO_DATABASE: ${MONGO_DATABASE:-menorah}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: "${EMAIL_FROM:-noreply@localhost}"
+      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:-}
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN}/api}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN}}"
+      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN}
+      NEXT_PUBLIC_CALLS_URL: "${LIVEKIT_URL}"
+    ports:
+      - "${USER_WEB_APP_LOCAL_PORT:-127.0.0.1:18087}:3002"
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+
+  admin-panel:
+    build:
+      context: ../admin-panel
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:-https://${API_ADMIN_DOMAIN}/api}"
+    restart: unless-stopped
+    environment:
+      PORT: 3003
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:-https://${API_ADMIN_DOMAIN}/api}"
+    ports:
+      - "${ADMIN_PANEL_LOCAL_PORT:-127.0.0.1:18088}:3003"
+    networks:
+      - local_probe_net
+      - app_net
+
+  api-ios:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start:api-ios"]
+    env_file:
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
+    environment:
+      PORT: 8080
+    ports:
+      - "${API_IOS_LOCAL_PORT:-127.0.0.1:8080}:8080"
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uploads:/app/uploads
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  api-android:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start:api-android"]
+    env_file:
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
+    environment:
+      PORT: 8080
+    ports:
+      - "${API_ANDROID_LOCAL_PORT:-127.0.0.1:8081}:8080"
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uploads:/app/uploads
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  api-web:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start:api-web"]
+    env_file:
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
+    environment:
+      PORT: 8080
+    ports:
+      - "${API_WEB_LOCAL_PORT:-127.0.0.1:8082}:8080"
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uploads:/app/uploads
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  api-admin:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start:api-admin"]
+    env_file:
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
+    environment:
+      PORT: 8080
+      ENABLE_SOCKET_IO: "false"
+      ENABLE_SOCKET_ADAPTER: "false"
+    ports:
+      - "${API_ADMIN_LOCAL_PORT:-127.0.0.1:8083}:8080"
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uploads:/app/uploads
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start:worker"]
+    env_file:
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
+    environment:
+      PORT: 8080
+      WORKER_MODE: active
+    ports:
+      - "${WORKER_LOCAL_PORT:-127.0.0.1:8090}:8080"
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uploads:/app/uploads
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  mongo-primary:
+    image: mongo:7
+    restart: unless-stopped
+    entrypoint:
+      - bash
+      - -lc
+      - |
+        install -m 400 /mongo-keyfile-source/mongo-keyfile /data/db/mongo-keyfile
+        exec docker-entrypoint.sh mongod --config /etc/mongod.conf --keyFile /data/db/mongo-keyfile
+    env_file:
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_ROOT_USER: ${MONGO_ROOT_USER}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_APP_USER: ${MONGO_APP_USER}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
+      MONGO_BACKUP_USER: ${MONGO_BACKUP_USER}
+      MONGO_BACKUP_PASSWORD: ${MONGO_BACKUP_PASSWORD}
+      MONGO_RESTORE_USER: ${MONGO_RESTORE_USER}
+      MONGO_RESTORE_PASSWORD: ${MONGO_RESTORE_PASSWORD}
+      MONGO_MONITOR_USER: ${MONGO_MONITOR_USER}
+      MONGO_MONITOR_PASSWORD: ${MONGO_MONITOR_PASSWORD}
+    volumes:
+      - ./mongo/mongod-primary.conf:/etc/mongod.conf:ro
+      - ${MENORAH_DATA_ROOT}/mongo/primary:/data/db
+      - ${MENORAH_DATA_ROOT}/mongo/keyfile/mongo-keyfile:/mongo-keyfile-source/mongo-keyfile:ro
+      - ./mongo/create-users.js:/docker-entrypoint-initdb.d/20-create-users.js:ro
+    networks:
+      - db_net
+
+  mongo-replica-init:
+    image: mongo:7
+    restart: "no"
+    env_file:
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
+    environment:
+      MONGO_ROOT_USER: ${MONGO_ROOT_USER}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    command:
+      - bash
+      - -lc
+      - |
+        until mongosh --nodb --quiet --eval '
+          db = connect("mongodb://mongo-primary:27017/admin?authSource=admin", process.env.MONGO_ROOT_USER, process.env.MONGO_ROOT_PASSWORD);
+          quit(db.adminCommand({ ping: 1 }).ok === 1 ? 0 : 1);
+        ' >/dev/null; do
+          echo "Waiting for mongo-primary auth..."
+          sleep 2
+        done
+
+        mongosh --nodb --quiet --eval '
+          db = connect("mongodb://mongo-primary:27017/admin?authSource=admin", process.env.MONGO_ROOT_USER, process.env.MONGO_ROOT_PASSWORD);
+          try {
+            printjson(rs.status());
+          } catch (error) {
+            printjson(rs.initiate({
+              _id: process.env.MONGODB_REPLICA_SET_NAME || "menorah-rs",
+              members: [{ _id: 0, host: process.env.MONGO_PRIMARY_HOST || "mongo-primary:27017" }],
+            }));
+          }
+        '
+    networks:
+      - db_net
+    depends_on:
+      - mongo-primary
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ${MENORAH_DATA_ROOT}/redis:/data
+    networks:
+      - db_net
+
+  backup-runner:
+    image: mongo:7
+    profiles: ["ops"]
+    env_file:
+      - ${MENORAH_HOME_SERVICE_ENV_FILE:-./env/home.env}
+    volumes:
+      - ./backup:/scripts:ro
+      - ${MENORAH_BACKUP_ROOT}:/backups
+    command: ["bash", "-lc", "while true; do /scripts/backup-mongo.sh; sleep 21600; done"]
+    networks:
+      - db_net
+    depends_on:
+      - mongo-primary
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - ${MENORAH_DATA_ROOT}/prometheus:/prometheus
+    networks:
+      - monitoring_net
+      - app_net
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    restart: unless-stopped
+    volumes:
+      - ${MENORAH_DATA_ROOT}/grafana:/var/lib/grafana
+    networks:
+      - monitoring_net
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    restart: unless-stopped
+    volumes:
+      - ${MENORAH_DATA_ROOT}/uptime-kuma:/app/data
+    networks:
+      - monitoring_net
+      - app_net
+
+  log-collector:
+    image: grafana/promtail:3.2.1
+    restart: unless-stopped
+    volumes:
+      - ./logging/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ${MENORAH_DATA_ROOT}/logs:/var/log/menorah:ro
+    command: ["-config.file=/etc/promtail/config.yml"]
+    networks:
+      - monitoring_net
+    depends_on:
+      - loki
+
+  loki:
+    image: grafana/loki:3.2.1
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/config.yml"]
+    volumes:
+      - ./logging/loki-config.yml:/etc/loki/config.yml:ro
+      - ${MENORAH_DATA_ROOT}/loki:/loki
+    networks:
+      - monitoring_net
+
+networks:
+  public_net:
+  local_probe_net:
+  app_net:
+    internal: true
+  db_net:
+    internal: true
+  monitoring_net:
+    internal: true

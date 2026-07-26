@@ -8,6 +8,8 @@
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
     <string>Menorah Health</string>
+    <key>CFBundleAllowMixedLocalizations</key>
+    <true/>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -19,7 +21,7 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.1.0</string>
+    <string>2.6.0</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleURLTypes</key>
@@ -39,9 +41,9 @@
       </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>14</string>
     <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
+    <string>16.4</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>NSAppTransportSecurity</key>
@@ -52,7 +54,7 @@
       <true/>
     </dict>
     <key>NSCameraUsageDescription</key>
-    <string>Menorah Health uses camera access when you join video support sessions.</string>
+    <string>Menorah Health uses the camera for optional face verification and video support sessions.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Menorah Health uses microphone access when you join audio or video support sessions.</string>
     <key>NSPhotoLibraryUsageDescription</key>
@@ -78,8 +80,6 @@
     <array>
       <string>UIInterfaceOrientationPortrait</string>
       <string>UIInterfaceOrientationPortraitUpsideDown</string>
-      <string>UIInterfaceOrientationLandscapeLeft</string>
-      <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>

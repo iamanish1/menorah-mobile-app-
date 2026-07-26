@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { authStore, auth, AuthContextType } from '@/lib/auth';
-import { User } from '@/types';
 
 export function useAuth(): AuthContextType {
   const [state, setState] = useState(authStore.getState());
@@ -26,6 +25,7 @@ export function useAuth(): AuthContextType {
     isAuthenticated: !!state.user && state.user.role === 'counsellor',
     login: auth.login,
     logout: auth.logout,
+    logoutAll: auth.logoutAll,
     checkAuth: auth.checkAuth,
   };
 }

@@ -5,6 +5,7 @@ import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { useChat } from '@/state/useChat';
 import { socketService } from '@/lib/socket';
+import { reportError, reportEvent } from '@/lib/safeDiagnostics';
 
 interface ConnectionStatusProps {
   showDebug?: boolean;
@@ -17,11 +18,11 @@ export default function ConnectionStatus({ showDebug = false }: ConnectionStatus
 
   const handleReconnect = async () => {
     try {
-      console.log('Manual reconnection attempt...');
+      reportEvent('chat.manual_reconnect');
       socketService.disconnect();
       await socketService.connect();
     } catch (error) {
-      console.error('Manual reconnection failed:', error);
+      reportError('chat.manual_reconnect_failed', error);
     }
   };
 

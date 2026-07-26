@@ -9,9 +9,10 @@ import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from "@/state/useAuth";
 import { api } from "@/lib/api";
+import { reportError } from "@/lib/safeDiagnostics";
 
 export default function EditProfile({ navigation }: any) {
-  const { user, updateUser, logout } = useAuth();
+  const { user, updateUser } = useAuth();
   const [selectedImage, setSelectedImage] = useState<{
     uri: string;
     name?: string;
@@ -81,7 +82,7 @@ export default function EditProfile({ navigation }: any) {
         Alert.alert('Error', finalResponse.message || 'Failed to update profile. Please try again.');
       }
     } catch (error: any) {
-      console.error('Error updating profile:', error);
+      reportError('profile.update_failed', error);
       Alert.alert('Error', 'Failed to update profile. Please try again.');
     } finally {
       setLoading(false);
@@ -89,66 +90,13 @@ export default function EditProfile({ navigation }: any) {
   };
 
   const handleDeleteAccount = () => {
-    Alert.alert(
-      'Delete Account',
-      'This will request deletion of your account and personal data. Some records may be retained if required for legal, safety, payment, or dispute obligations.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Request Deletion',
-          style: 'destructive',
-          onPress: async () => {
-            setLoading(true);
-            try {
-              const response = await api.requestAccountDeletion();
-              if (response.success) {
-                Alert.alert(
-                  'Request Submitted',
-                  'Your account deletion request has been submitted. You will be signed out now.',
-                  [
-                    {
-                      text: 'OK',
-                      onPress: async () => {
-                        await logout();
-                        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
-                      },
-                    },
-                  ]
-                );
-              } else {
-                Alert.alert(
-                  'Request Not Submitted',
-                  response.message ||
-                    'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
-                );
-              }
-            } catch (error) {
-              console.error('Account deletion request error:', error);
-              Alert.alert(
-                'Request Not Submitted',
-                'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
-              );
-            } finally {
-              setLoading(false);
-            }
-          },
-        }
-      ]
-    );
+    navigation.navigate('Settings');
   };
 
   const handlePickImage = async () => {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permission.granted) {
-        Alert.alert(
-          'Permission Required',
-          'Please allow photo library access to upload a profile picture.'
-        );
-        return;
-      }
-
+      // launchImageLibraryAsync uses the Android system photo picker without
+      // legacy broad-storage permission and requests scoped iOS access itself.
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -175,7 +123,7 @@ export default function EditProfile({ navigation }: any) {
         profileImage: asset.uri,
       }));
     } catch (error) {
-      console.error('Image picker error:', error);
+      reportError('profile.image_picker_failed', error);
       Alert.alert('Upload Failed', 'Unable to select image. Please try again.');
     }
   };

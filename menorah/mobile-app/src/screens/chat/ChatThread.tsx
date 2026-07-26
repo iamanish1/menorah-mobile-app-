@@ -11,14 +11,14 @@ import { api } from "@/lib/api";
 import ChatBubble from "@/components/chat/ChatBubble";
 import TypingIndicator from "@/components/chat/TypingIndicator";
 import { ChatMessage } from '@/lib/socket';
+import { reportError } from '@/lib/safeDiagnostics';
 
 export default function ChatThread({ navigation, route }: any) {
-  const { roomId, counsellorId } = route.params || {};
+  const { roomId } = route.params || {};
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
-  const [safetyActionLoading, setSafetyActionLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
@@ -44,7 +44,6 @@ export default function ChatThread({ navigation, route }: any) {
   const typingInRoom = typingUsers[roomId] || [];
   const counsellorName = route.params?.counsellorName || 'Counsellor';
   const counsellorImage = route.params?.counsellorImage;
-  const otherUserId = route.params?.counsellorUserId || counsellorId;
   
 
   const loadMessages = useCallback(async () => {
@@ -54,7 +53,7 @@ export default function ChatThread({ navigation, route }: any) {
     try {
       await fetchMessages(roomId);
     } catch (error: any) {
-      console.error('Error loading messages:', error);
+      reportError('chat.thread_load_failed', error);
       Alert.alert('Error', 'Failed to load messages. Please try again.');
     } finally {
       setLoading(false);
@@ -101,7 +100,7 @@ export default function ChatThread({ navigation, route }: any) {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     } catch (error: any) {
-      console.error('Error sending message:', error);
+      reportError('chat.thread_send_failed', error);
       Alert.alert('Error', 'Failed to send message. Please try again.');
       setMessage(messageText); // Restore message on error
     } finally {
@@ -117,10 +116,14 @@ export default function ChatThread({ navigation, route }: any) {
     if (text.length > 0 && !typing) {
       setTyping(true);
       // Send typing indicator via API
-      api.sendTypingIndicator(roomId, true).catch(console.error);
+      api.sendTypingIndicator(roomId, true).catch((error) => {
+        reportError('chat.typing_start_failed', error);
+      });
     } else if (text.length === 0 && typing) {
       setTyping(false);
-      api.sendTypingIndicator(roomId, false).catch(console.error);
+      api.sendTypingIndicator(roomId, false).catch((error) => {
+        reportError('chat.typing_stop_failed', error);
+      });
     }
     
     // Clear existing timeout
@@ -132,85 +135,18 @@ export default function ChatThread({ navigation, route }: any) {
     typingTimeoutRef.current = setTimeout(() => {
       if (typing) {
         setTyping(false);
-        api.sendTypingIndicator(roomId, false).catch(console.error);
+        api.sendTypingIndicator(roomId, false).catch((error) => {
+          reportError('chat.typing_cleanup_failed', error);
+        });
       }
     }, 3000);
-  };
-
-  const showSafetyResult = (title: string, response: { success: boolean; message?: string }) => {
-    if (response.success) {
-      Alert.alert(title, response.message || 'Thank you. The Menorah support team will review this.');
-      return;
-    }
-
-    Alert.alert(
-      `${title} Not Submitted`,
-      response.message ||
-        'This safety action is not fully connected yet. Please contact support from Settings so the team can review this manually.'
-    );
-  };
-
-  const submitSafetyAction = async (action: () => Promise<{ success: boolean; message?: string }>, title: string) => {
-    if (safetyActionLoading) return;
-
-    setSafetyActionLoading(true);
-    try {
-      const response = await action();
-      showSafetyResult(title, response);
-    } catch (error) {
-      console.error('Safety action error:', error);
-      Alert.alert(
-        `${title} Not Submitted`,
-        'This safety action is not fully connected yet. Please contact support from Settings so the team can review this manually.'
-      );
-    } finally {
-      setSafetyActionLoading(false);
-    }
-  };
-
-  const handleReportUser = (userId?: string, reason = 'Unsafe or abusive behavior reported from chat') => {
-    if (!userId) {
-      Alert.alert('Report User', 'User information is missing for this chat.');
-      return;
-    }
-
-    submitSafetyAction(
-      () => api.reportUser({ userId, roomId, reason }),
-      'Report Submitted'
-    );
-  };
-
-  const handleBlockUser = (userId?: string) => {
-    if (!userId) {
-      Alert.alert('Block User', 'User information is missing for this chat.');
-      return;
-    }
-
-    Alert.alert(
-      'Block User',
-      'Blocking helps limit unwanted contact where supported by the service. You can still contact support if there is an immediate safety concern.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Block',
-          style: 'destructive',
-          onPress: () =>
-            submitSafetyAction(
-              () => api.blockUser(userId, roomId),
-              'Block Request Submitted'
-            ),
-        },
-      ]
-    );
   };
 
   const handleSafetyMenu = () => {
     Alert.alert(
       'Chat Safety',
-      'Report unsafe behavior, block unwanted contact, or review the community guidelines.',
+      'In-app reporting and blocking are not currently available. Contact support if you need help with this conversation.',
       [
-        { text: 'Report User', onPress: () => handleReportUser(otherUserId) },
-        { text: 'Block User', style: 'destructive', onPress: () => handleBlockUser(otherUserId) },
         { text: 'Community Guidelines', onPress: () => navigation.navigate('Legal', { type: 'community' }) },
         { text: 'Contact Support', onPress: () => navigation.navigate('Legal', { type: 'support' }) },
         { text: 'Cancel', style: 'cancel' },
@@ -218,41 +154,13 @@ export default function ChatThread({ navigation, route }: any) {
     );
   };
 
-  const handleMessageLongPress = (chatMessage: ChatMessage, isUser: boolean) => {
-    if (isUser) {
-      Alert.alert(
-        'Message Options',
-        'You can review the community guidelines or contact support if you need help with this conversation.',
-        [
-          { text: 'Community Guidelines', onPress: () => navigation.navigate('Legal', { type: 'community' }) },
-          { text: 'Contact Support', onPress: () => navigation.navigate('Legal', { type: 'support' }) },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-      return;
-    }
-
+  const handleMessageLongPress = () => {
     Alert.alert(
-      'Message Safety',
-      'Report this message or take action on this user.',
+      'Message Options',
+      'In-app reporting and blocking are not currently available. You can review the community guidelines or contact support.',
       [
-        {
-          text: 'Report Message',
-          onPress: () =>
-            submitSafetyAction(
-              () =>
-                api.reportContent({
-                  contentType: 'message',
-                  contentId: chatMessage.id,
-                  roomId,
-                  reportedUserId: chatMessage.senderId,
-                  reason: 'Unsafe or inappropriate message reported from chat',
-                }),
-              'Message Report Submitted'
-            ),
-        },
-        { text: 'Report User', onPress: () => handleReportUser(chatMessage.senderId) },
-        { text: 'Block User', style: 'destructive', onPress: () => handleBlockUser(chatMessage.senderId) },
+        { text: 'Community Guidelines', onPress: () => navigation.navigate('Legal', { type: 'community' }) },
+        { text: 'Contact Support', onPress: () => navigation.navigate('Legal', { type: 'support' }) },
         { text: 'Cancel', style: 'cancel' },
       ]
     );
@@ -276,7 +184,7 @@ export default function ChatThread({ navigation, route }: any) {
         message={chatMessage}
         isUser={isUser}
         showAvatar={!isUser}
-        onLongPress={() => handleMessageLongPress(chatMessage, isUser)}
+        onLongPress={handleMessageLongPress}
       />
     );
   };
@@ -357,12 +265,10 @@ export default function ChatThread({ navigation, route }: any) {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleSafetyMenu}
-              disabled={safetyActionLoading}
               style={{
                 width: 38, height: 38, borderRadius: 19,
                 backgroundColor: colors.primary + '14',
                 alignItems: 'center', justifyContent: 'center',
-                opacity: safetyActionLoading ? 0.6 : 1,
               }}
             >
               <MoreVertical size={18} color={colors.primary} />

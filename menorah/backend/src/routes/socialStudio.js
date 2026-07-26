@@ -1,5 +1,4 @@
 const express = require('express');
-const fs = require('fs/promises');
 const path = require('path');
 const multer = require('multer');
 const sharp = require('sharp');
@@ -14,7 +13,10 @@ const SocialPromptSettings = require('../models/SocialPromptSettings');
 const SocialWorkflow = require('../models/SocialWorkflow');
 const SocialGenerationRun = require('../models/SocialGenerationRun');
 const { adminAuth } = require('../middleware/auth');
-const { uploadBuffer } = require('../utils/cloudinary');
+const {
+  requireAdminPermission,
+} = require('../middleware/adminAuthorization');
+const { storeMediaBuffer } = require('../services/mediaStorage');
 const { createSocialPostDraft } = require('../services/socialStudio/socialStudio.service');
 const {
   defaultGuidelinePayload,
@@ -57,6 +59,9 @@ const generationLimiter = rateLimit({
 });
 
 router.use(adminAuth);
+// Social Studio includes content search, publishing credentials, and file
+// uploads. It is a content function, not a general support/admin surface.
+router.use(requireAdminPermission('content_manage'));
 
 const validationErrorResponse = (res, errors) => res.status(400).json({
   success: false,
@@ -115,44 +120,39 @@ const normalizeWorkflowPayload = (payload = {}, userId = null, { partial = false
   return next;
 };
 
-const getPublicBaseUrl = () => {
-  const base =
-    process.env.PUBLIC_WEB_BASE_URL ||
-    process.env.API_BASE_URL ||
-    `http://localhost:${process.env.PORT || 3000}`;
-  return String(base).replace(/\/+$/, '');
-};
-
-const shouldUseCloudinaryForSocialStudio = () =>
-  process.env.SOCIAL_STUDIO_STORAGE === 'cloudinary' &&
-  Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
-
-const saveLocalAsset = async (file, filename) => {
-  const uploadDir = path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads', 'social-studio-assets');
-  await fs.mkdir(uploadDir, { recursive: true });
-  await fs.writeFile(path.join(uploadDir, filename), file.buffer);
-  return `${getPublicBaseUrl()}/uploads/social-studio-assets/${filename}`;
-};
+const EXTENSION_BY_MIME = new Map([
+  ['image/jpeg', '.jpg'],
+  ['image/png', '.png'],
+  ['image/webp', '.webp'],
+  ['image/gif', '.gif'],
+  ['image/svg+xml', '.svg'],
+  ['application/pdf', '.pdf'],
+  ['font/ttf', '.ttf'],
+  ['font/otf', '.otf'],
+  ['font/woff', '.woff'],
+  ['font/woff2', '.woff2'],
+]);
 
 const saveUploadedAsset = async (file) => {
-  const safeName = `${Date.now()}-${file.originalname}`.replace(/[^A-Za-z0-9_.-]/g, '-');
-  if (shouldUseCloudinaryForSocialStudio()) {
-    const result = await uploadBuffer(file.buffer, {
-      folder: process.env.CLOUDINARY_SOCIAL_STUDIO_ASSET_FOLDER || 'menorah/social-studio-assets',
-      resource_type: 'auto',
-      public_id: safeName.replace(/\.[^.]+$/, '')
-    });
-    return {
-      url: result.secure_url,
-      publicId: result.public_id,
-      filename: safeName
-    };
-  }
+  const originalExtension = path.extname(file.originalname || '').toLowerCase();
+  const extension = EXTENSION_BY_MIME.get(file.mimetype)
+    || (/^\.[a-z0-9]{1,10}$/.test(originalExtension) ? originalExtension : '.bin');
+  const stored = await storeMediaBuffer(file.buffer, {
+    service: 'social-studio',
+    category: 'brand-assets',
+    extension,
+    contentType: file.mimetype || 'application/octet-stream',
+    cloudinaryFolder:
+      process.env.CLOUDINARY_SOCIAL_STUDIO_ASSET_FOLDER
+      || 'menorah/social-studio-assets',
+    cloudinaryResourceType: 'auto',
+  });
 
   return {
-    url: await saveLocalAsset(file, safeName),
-    publicId: '',
-    filename: safeName
+    url: stored.url,
+    publicId: stored.metadata.publicId || '',
+    filename: path.basename(stored.metadata.objectKey),
+    metadata: stored.metadata,
   };
 };
 
@@ -455,7 +455,12 @@ router.post('/brand-assets', upload.single('file'), [
 
     const saved = req.file
       ? await saveUploadedAsset(req.file)
-      : { url: req.body.url, publicId: req.body.publicId || '', filename: req.body.filename || '' };
+      : {
+        url: req.body.url,
+        publicId: req.body.publicId || '',
+        filename: req.body.filename || '',
+        metadata: null,
+      };
     const dimensions = req.file ? await getImageDimensions(req.file) : {
       width: Number(req.body.width) || null,
       height: Number(req.body.height) || null
@@ -467,6 +472,7 @@ router.post('/brand-assets', upload.single('file'), [
       filename: saved.filename,
       url: saved.url,
       publicId: saved.publicId,
+      storage: saved.metadata,
       mimeType: req.file?.mimetype || req.body.mimeType || '',
       sizeBytes: req.file?.size || Number(req.body.sizeBytes) || 0,
       tags: parseList(req.body.tags).map((tag) => tag.toLowerCase()),
@@ -496,6 +502,12 @@ router.patch('/brand-assets/:id', [
     ['name', 'url', 'publicId', 'filename', 'mimeType', 'status'].forEach((field) => {
       if (Object.prototype.hasOwnProperty.call(req.body, field)) updates[field] = req.body[field];
     });
+    if (Object.prototype.hasOwnProperty.call(req.body, 'url')) {
+      updates.storage = null;
+      if (!Object.prototype.hasOwnProperty.call(req.body, 'publicId')) {
+        updates.publicId = '';
+      }
+    }
     if (Object.prototype.hasOwnProperty.call(req.body, 'tags')) updates.tags = parseList(req.body.tags).map((tag) => tag.toLowerCase());
     if (Object.prototype.hasOwnProperty.call(req.body, 'colors')) updates.colors = parseList(req.body.colors);
     if (Object.prototype.hasOwnProperty.call(req.body, 'metadata')) updates.metadata = req.body.metadata;

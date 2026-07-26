@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
-import { Booking } from '@/types';
+import type { CounsellorBooking } from '@/types';
 import { format } from 'date-fns';
 import Link from 'next/link';
 import ScheduleModal from '@/components/Calendar/ScheduleModal';
@@ -17,14 +17,20 @@ import styles from './page.module.css';
 export default function BookingDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const { user, isAuthenticated, isLoading } = useAuth();
-  const [booking, setBooking] = useState<Booking | null>(null);
+  const { isAuthenticated, isLoading } = useAuth();
+  const [booking, setBooking] = useState<CounsellorBooking | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [callLinkForm, setCallLinkForm] = useState({
+    provider: 'vsee',
+    externalJoinUrl: '',
+    externalHostUrl: '',
+    externalProviderName: 'VSee',
+  });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -44,7 +50,16 @@ export default function BookingDetailPage() {
       setError(null);
       const response = await api.getBookingById(params.id as string);
       if (response.success && response.data) {
-        setBooking(response.data.booking);
+        const nextBooking = response.data.booking;
+        setBooking(nextBooking);
+        if (nextBooking.accessScope === 'assigned' && nextBooking.videoCall) {
+          setCallLinkForm({
+            provider: nextBooking.videoCall.provider && nextBooking.videoCall.provider !== 'livekit' ? nextBooking.videoCall.provider : 'vsee',
+            externalJoinUrl: nextBooking.videoCall.externalJoinUrl || '',
+            externalHostUrl: nextBooking.videoCall.externalHostUrl || '',
+            externalProviderName: nextBooking.videoCall.externalProviderName || 'VSee',
+          });
+        }
       } else {
         setError(response.message || 'Failed to load booking');
       }
@@ -56,16 +71,15 @@ export default function BookingDetailPage() {
   };
 
   const handleAccept = async () => {
-    if (!booking) return;
+    if (!booking || booking.accessScope === 'assigned') return;
     try {
       setActionLoading('accept');
       setError(null);
       const response = await api.acceptBooking(booking.id);
       if (response.success) {
         await fetchBooking();
-        setTimeout(() => {
-          router.push('/bookings');
-        }, 1500);
+        setSuccessMsg('Booking accepted successfully. Assigned client details are now available.');
+        setTimeout(() => setSuccessMsg(null), 4000);
       } else {
         setError(response.message || 'Failed to accept booking');
       }
@@ -78,7 +92,7 @@ export default function BookingDetailPage() {
   };
 
   const handleSchedule = async (scheduledAt: string) => {
-    if (!booking) return;
+    if (!booking || booking.accessScope !== 'assigned') return;
     try {
       setActionLoading('schedule');
       setScheduleError(null);
@@ -104,7 +118,7 @@ export default function BookingDetailPage() {
   };
 
   const handleStartSession = async () => {
-    if (!booking) return;
+    if (!booking || booking.accessScope !== 'assigned') return;
     try {
       setActionLoading('start');
       setError(null);
@@ -132,7 +146,7 @@ export default function BookingDetailPage() {
   };
 
   const handleCompleteSession = async () => {
-    if (!booking) return;
+    if (!booking || booking.accessScope !== 'assigned') return;
     try {
       setActionLoading('complete');
       setError(null);
@@ -145,6 +159,26 @@ export default function BookingDetailPage() {
     } catch (error: any) {
       console.error('Failed to complete session:', error);
       setError(error.message || 'Failed to complete session');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleSaveCallLink = async () => {
+    if (!booking || booking.accessScope !== 'assigned') return;
+    try {
+      setActionLoading('call-link');
+      setError(null);
+      const response = await api.updateCallLink(booking.id, callLinkForm);
+      if (response.success) {
+        setSuccessMsg('External session link saved');
+        await fetchBooking();
+        setTimeout(() => setSuccessMsg(null), 3000);
+      } else {
+        setError(response.message || 'Failed to save external session link');
+      }
+    } catch (error: any) {
+      setError(error.message || 'Failed to save external session link');
     } finally {
       setActionLoading(null);
     }
@@ -193,12 +227,111 @@ export default function BookingDetailPage() {
     );
   }
 
-  const isPending = !booking.assignedAt;
+  if (booking.accessScope !== 'assigned') {
+    return (
+      <AppLayout>
+        <div>
+          {error && (
+            <Card padding="md" className={styles.errorCard}>
+              <div className={styles.errorContent}>
+                <div className={styles.errorLeft}>
+                  <svg className={styles.errorIcon} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 00-1.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  <p className={styles.errorText}>{error}</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => { setError(null); fetchBooking(); }}>
+                  Retry
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          <div className={styles.content}>
+            <Card padding="lg" className={styles.headerCard}>
+              <div className={styles.headerContent}>
+                <div className={styles.headerLeft}>
+                  <div className={styles.headerAvatar} aria-hidden="true">
+                    <span className={styles.headerAvatarText}>B</span>
+                  </div>
+                  <div className={styles.headerInfo}>
+                    <h2 className={styles.headerName}>New booking request</h2>
+                    <p className={styles.headerEmail}>Client details are private until assignment</p>
+                  </div>
+                </div>
+                <div className={styles.headerRight}>
+                  {getStatusBadge(booking.status)}
+                </div>
+              </div>
+            </Card>
+
+            <div className={styles.detailsGrid}>
+              <div className={styles.mainContent}>
+                <Card padding="lg" className={styles.infoCard}>
+                  <h3 className={styles.cardHeader}>
+                    <svg className={styles.cardIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Session preview
+                  </h3>
+                  <div className={styles.infoGrid}>
+                    <div className={styles.infoItem}>
+                      <p className={styles.infoLabel}>Service</p>
+                      <p className={styles.infoValue} style={{ textTransform: 'capitalize' }}>{booking.sessionType}</p>
+                    </div>
+                    <div className={styles.infoItem}>
+                      <p className={styles.infoLabel}>Duration</p>
+                      <p className={styles.infoValue}>{booking.sessionDuration} minutes</p>
+                    </div>
+                    <div className={styles.infoItem}>
+                      <p className={styles.infoLabel}>Scheduled At</p>
+                      <p className={styles.infoValue}>
+                        {format(new Date(booking.scheduledAt), 'MMM d, yyyy h:mm a')}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card padding="lg" className={styles.infoCard}>
+                  <h3 className={styles.cardHeader}>Privacy-protected preview</h3>
+                  <p className={styles.concernsText}>
+                    Identity, contact, clinical, emergency-contact, and call details are available only after successful assignment.
+                  </p>
+                </Card>
+              </div>
+
+              <div className={styles.sidebar}>
+                <Card padding="lg" className={styles.actionsCard}>
+                  <h3 className={styles.actionsTitle}>Actions</h3>
+                  <div className={styles.actionsList}>
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      className={styles.actionButton}
+                      onClick={handleAccept}
+                      isLoading={actionLoading === 'accept'}
+                      disabled={booking.canAccept === false}
+                    >
+                      {booking.canAccept === false ? 'Not available' : 'Accept Booking'}
+                    </Button>
+                  </div>
+                </Card>
+              </div>
+            </div>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
   // Allow starting session if booking is confirmed and assigned
   // For instant sessions, counselors can start immediately after acceptance
   // For scheduled sessions, the backend will validate the scheduled time
   const canStart = booking.status === 'confirmed' && booking.assignedAt;
   const canComplete = booking.status === 'in-progress';
+  const isExternalCall = booking.videoCall?.joinMode === 'external_link' || (
+    booking.videoCall?.provider && booking.videoCall.provider !== 'livekit' && booking.videoCall.provider !== 'disabled'
+  );
 
   return (
     <AppLayout>
@@ -320,6 +453,64 @@ export default function BookingDetailPage() {
                   </Card>
                 )}
 
+                {booking.sessionType === 'video' && (
+                  <Card padding="lg" className={styles.infoCard}>
+                    <h3 className={styles.cardHeader}>Call Setup</h3>
+                    <div className={styles.infoGrid}>
+                      <div className={styles.infoItem}>
+                        <p className={styles.infoLabel}>Provider</p>
+                        <p className={styles.infoValue}>{booking.videoCall?.externalProviderName || booking.videoCall?.provider || 'Not checked'}</p>
+                      </div>
+                      <div className={styles.infoItem}>
+                        <p className={styles.infoLabel}>Region</p>
+                        <p className={styles.infoValue}>{booking.videoCall?.region || 'Unknown'}</p>
+                      </div>
+                      <div className={styles.infoItem}>
+                        <p className={styles.infoLabel}>Call Status</p>
+                        <p className={styles.infoValue}>{booking.videoCall?.status || 'not_configured'}</p>
+                      </div>
+                    </div>
+
+                    {isExternalCall && (
+                      <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
+                        <p style={{ color: '#92400e', fontSize: 13, fontWeight: 600 }}>
+                          LiveKit is disabled for UAE sessions. Add an approved external provider link.
+                        </p>
+                        <select
+                          value={callLinkForm.provider}
+                          onChange={(event) => setCallLinkForm((current) => ({ ...current, provider: event.target.value }))}
+                          className={styles.dateInput}
+                        >
+                          <option value="vsee">VSee</option>
+                          <option value="doxy">DOXY</option>
+                          <option value="zoom">Zoom</option>
+                          <option value="google_meet">Google Meet</option>
+                          <option value="teams">Microsoft Teams</option>
+                        </select>
+                        <input
+                          className={styles.dateInput}
+                          placeholder="Participant HTTPS join link"
+                          value={callLinkForm.externalJoinUrl}
+                          onChange={(event) => setCallLinkForm((current) => ({ ...current, externalJoinUrl: event.target.value }))}
+                        />
+                        <input
+                          className={styles.dateInput}
+                          placeholder="Host HTTPS link (optional)"
+                          value={callLinkForm.externalHostUrl}
+                          onChange={(event) => setCallLinkForm((current) => ({ ...current, externalHostUrl: event.target.value }))}
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={handleSaveCallLink}
+                          isLoading={actionLoading === 'call-link'}
+                        >
+                          Save External Link
+                        </Button>
+                      </div>
+                    )}
+                  </Card>
+                )}
+
                 {booking.symptoms && booking.symptoms.length > 0 && (
                   <Card padding="lg" className={styles.infoCard}>
                     <h3 className={styles.cardHeader}>Symptoms</h3>
@@ -377,51 +568,36 @@ export default function BookingDetailPage() {
                 <Card padding="lg" className={styles.actionsCard}>
                   <h3 className={styles.actionsTitle}>Actions</h3>
                   <div className={styles.actionsList}>
-                    {isPending && (
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className={styles.actionButton}
+                      onClick={() => setShowScheduleModal(true)}
+                      disabled={actionLoading !== null}
+                    >
+                      Schedule/Reschedule
+                    </Button>
+                    {canStart && (
                       <Button
                         variant="primary"
                         size="lg"
                         className={styles.actionButton}
-                        onClick={handleAccept}
-                        isLoading={actionLoading === 'accept'}
+                        onClick={handleStartSession}
+                        isLoading={actionLoading === 'start'}
                       >
-                        Accept Booking
+                        Start Session
                       </Button>
                     )}
-                    {!isPending && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="lg"
-                          className={styles.actionButton}
-                          onClick={() => setShowScheduleModal(true)}
-                          disabled={actionLoading !== null}
-                        >
-                          Schedule/Reschedule
-                        </Button>
-                        {canStart && (
-                          <Button
-                            variant="primary"
-                            size="lg"
-                            className={styles.actionButton}
-                            onClick={handleStartSession}
-                            isLoading={actionLoading === 'start'}
-                          >
-                            Start Session
-                          </Button>
-                        )}
-                        {canComplete && (
-                          <Button
-                            variant="secondary"
-                            size="lg"
-                            className={styles.actionButton}
-                            onClick={handleCompleteSession}
-                            isLoading={actionLoading === 'complete'}
-                          >
-                            Complete Session
-                          </Button>
-                        )}
-                      </>
+                    {canComplete && (
+                      <Button
+                        variant="secondary"
+                        size="lg"
+                        className={styles.actionButton}
+                        onClick={handleCompleteSession}
+                        isLoading={actionLoading === 'complete'}
+                      >
+                        Complete Session
+                      </Button>
                     )}
                   </div>
                 </Card>

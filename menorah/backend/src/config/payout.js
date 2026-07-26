@@ -1,0 +1,5 @@
+const MAX_SINGLE_PAYOUT_PAISE = 5_000_000;
+
+module.exports = {
+  MAX_SINGLE_PAYOUT_PAISE,
+};

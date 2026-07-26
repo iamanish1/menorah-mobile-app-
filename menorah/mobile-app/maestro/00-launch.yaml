@@ -1,0 +1,5 @@
+appId: com.menorah.healthmobile
+---
+- launchApp
+- assertVisible:
+    text: ".*(Menorah|mental|wellness|Sign in|Login|Get Started).*"

@@ -19,6 +19,8 @@ const PERIOD_OPTIONS = [
   { key: 'allTime', label: 'All Time' }
 ];
 
+const MAX_PAYOUT_AMOUNT_RUPEES = 50_000;
+
 export default function RevenuePage() {
   const [revenue, setRevenue] = useState<RevenueData | null>(null);
   const [counsellors, setCounsellors] = useState<CounsellorRevenue[]>([]);
@@ -34,7 +36,7 @@ export default function RevenuePage() {
   const [payoutAmount, setPayoutAmount] = useState('');
   const [payoutNotes, setPayoutNotes] = useState('');
   const [payoutLoading, setPayoutLoading] = useState(false);
-  const [payoutResult, setPayoutResult] = useState<{ payoutId: string; status: string; amount: number } | null>(null);
+  const [payoutResult, setPayoutResult] = useState<{ payoutRecordId: string; status: string; amount: number } | null>(null);
 
   // Revenue detail drawer
   const [selectedCounsellor, setSelectedCounsellor] = useState<string | null>(null);
@@ -63,7 +65,7 @@ export default function RevenuePage() {
 
   const openPayoutModal = (c: CounsellorRevenue) => {
     setPayoutModal({ open: true, counsellor: c });
-    setPayoutAmount(String(Math.floor(c.counsellorEarnings)));
+    setPayoutAmount(String(Math.min(Math.floor(c.counsellorEarnings), MAX_PAYOUT_AMOUNT_RUPEES)));
     setPayoutNotes('');
     setPayoutResult(null);
   };
@@ -73,8 +75,12 @@ export default function RevenuePage() {
     if (!counsellor) return;
     const amountRupees = parseFloat(payoutAmount);
     if (isNaN(amountRupees) || amountRupees < 1) { toast.error('Enter a valid amount (min ₹1)'); return; }
+    if (amountRupees > MAX_PAYOUT_AMOUNT_RUPEES) {
+      toast.error('The maximum is ₹50,000 per transaction. Split the total into sequential payments of ₹50,000 or less.');
+      return;
+    }
     if (amountRupees > counsellor.counsellorEarnings) { toast.error('Amount exceeds counsellor earnings'); return; }
-    if (!counsellor.bankDetails?.accountNumber) { toast.error('Counsellor has no bank details on file'); return; }
+    if (!counsellor.bankDetails?.configured) { toast.error('Counsellor has no bank details on file'); return; }
 
     setPayoutLoading(true);
     const res = await api.initiatePayout(counsellor.counsellorId, Math.round(amountRupees * 100), payoutNotes);
@@ -82,7 +88,7 @@ export default function RevenuePage() {
 
     if (res.success && res.data) {
       setPayoutResult(res.data);
-      toast.success(`Payout of ${formatCurrency(amountRupees)} initiated!`);
+      toast.success(`Payout request for ${formatCurrency(amountRupees)} created.`);
       loadCounsellors();
     } else {
       toast.error(res.message || 'Payout failed');
@@ -99,6 +105,9 @@ export default function RevenuePage() {
   };
 
   const revenueChartData = revenue?.dailyTrend?.slice(-30) || [];
+  const enteredPayoutAmount = Number(payoutAmount);
+  const payoutExceedsTransactionLimit = Number.isFinite(enteredPayoutAmount)
+    && enteredPayoutAmount > MAX_PAYOUT_AMOUNT_RUPEES;
 
   return (
     <div className="space-y-6">
@@ -227,9 +236,9 @@ export default function RevenuePage() {
                           </div>
                         ))}
                         {/* Bank details */}
-                        {c.bankDetails?.accountNumber && (
+                        {c.bankDetails?.configured && (
                           <div className="pt-2 border-t border-gray-200 text-xs text-gray-500">
-                            Bank: {c.bankDetails.bankName} · A/C: ···{c.bankDetails.accountNumber.slice(-4)} · IFSC: {c.bankDetails.ifscCode}
+                            Bank: {c.bankDetails.bankName} · A/C: {c.bankDetails.accountNumberMasked} · IFSC: {c.bankDetails.ifscCode}
                           </div>
                         )}
                         {c.lastPayoutAt && (
@@ -258,7 +267,7 @@ export default function RevenuePage() {
       </div>
 
       {/* Payout Modal */}
-      <Modal open={payoutModal.open} onClose={() => { setPayoutModal({ open: false, counsellor: null }); setPayoutResult(null); }} title="Initiate Payout" size="md">
+      <Modal open={payoutModal.open} onClose={() => { setPayoutModal({ open: false, counsellor: null }); setPayoutResult(null); }} title="Request Payout" size="md">
         {payoutModal.counsellor && !payoutResult && (
           <div className="flex flex-col gap-4">
 
@@ -295,7 +304,7 @@ export default function RevenuePage() {
             </div>
 
             {/* Bank destination */}
-            {payoutModal.counsellor.bankDetails?.accountNumber ? (
+            {payoutModal.counsellor.bankDetails?.configured ? (
               <div className="rounded-xl bg-gradient-to-r from-slate-800 to-slate-700 p-4 text-white">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -312,7 +321,7 @@ export default function RevenuePage() {
                   <div>
                     <p className="text-xs text-slate-400">{payoutModal.counsellor.bankDetails.bankName}</p>
                     <p className="text-sm font-mono font-semibold text-slate-200 tracking-widest mt-0.5">
-                      •••• •••• {payoutModal.counsellor.bankDetails.accountNumber.slice(-4)}
+                      {payoutModal.counsellor.bankDetails.accountNumberMasked}
                     </p>
                   </div>
                   <div className="text-right">
@@ -331,7 +340,7 @@ export default function RevenuePage() {
               </div>
             )}
 
-            {payoutModal.counsellor.bankDetails?.accountNumber && (
+            {payoutModal.counsellor.bankDetails?.configured && (
               <>
                 {/* Amount + Notes */}
                 <div className="grid grid-cols-2 gap-3">
@@ -344,12 +353,12 @@ export default function RevenuePage() {
                         value={payoutAmount}
                         onChange={(e) => setPayoutAmount(e.target.value)}
                         min="1"
-                        max={payoutModal.counsellor.counsellorEarnings}
+                        max={Math.min(payoutModal.counsellor.counsellorEarnings, MAX_PAYOUT_AMOUNT_RUPEES)}
                         className="w-full pl-7 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                         placeholder="0"
                       />
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1">Max {formatCurrency(payoutModal.counsellor.counsellorEarnings)}</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Max {formatCurrency(MAX_PAYOUT_AMOUNT_RUPEES)} per transaction</p>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5">Reference Note</label>
@@ -364,11 +373,20 @@ export default function RevenuePage() {
                   </div>
                 </div>
 
+                {(payoutModal.counsellor.counsellorEarnings > MAX_PAYOUT_AMOUNT_RUPEES || payoutExceedsTransactionLimit) && (
+                  <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-3">
+                    <AlertCircle size={15} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-blue-800 leading-relaxed">
+                      Payouts are limited to ₹50,000 per transaction. To pay more, split the total into two or more payments of ₹50,000 or less, completing each payout before creating the next.
+                    </p>
+                  </div>
+                )}
+
                 {/* Warning */}
                 <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3">
                   <AlertCircle size={15} className="text-amber-500 flex-shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-700 leading-relaxed">
-                    This initiates a <strong>real bank transfer</strong> via Razorpay X. Ensure Razorpay X (Payout API) is activated before proceeding.
+                    This creates a payout request. A different administrator must approve it with a fresh MFA session before Razorpay X can transfer funds.
                   </p>
                 </div>
 
@@ -383,12 +401,12 @@ export default function RevenuePage() {
                     </button>
                     <button
                       onClick={handlePayout}
-                      disabled={payoutLoading}
+                      disabled={payoutLoading || payoutExceedsTransactionLimit}
                       className="flex-[2] px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-sm font-bold disabled:opacity-60 transition-all shadow-md flex items-center justify-center gap-2"
                     >
                       {payoutLoading
                         ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing…</>
-                        : <><Send size={14} /> Send {payoutAmount ? formatCurrency(parseFloat(payoutAmount) || 0) : 'Payout'}</>
+                        : <><Send size={14} /> Request {payoutAmount ? formatCurrency(parseFloat(payoutAmount) || 0) : 'Payout'}</>
                       }
                     </button>
                   </div>
@@ -405,9 +423,9 @@ export default function RevenuePage() {
               <CheckCircle2 size={30} className="text-white" />
             </div>
             <div>
-              <p className="text-xl font-black text-gray-900">Payout Initiated!</p>
+              <p className="text-xl font-black text-gray-900">Payout Request Created</p>
               <p className="text-2xl font-black text-green-600 mt-1">{formatCurrency(payoutResult.amount / 100)}</p>
-              <p className="text-xs text-gray-400 mt-2">Payout ID: <span className="font-mono font-semibold text-gray-600">{payoutResult.payoutId}</span></p>
+              <p className="text-xs text-gray-400 mt-2">Request ID: <span className="font-mono font-semibold text-gray-600">{payoutResult.payoutRecordId}</span></p>
               <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-bold capitalize ${payoutResult.status === 'processed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
                 {payoutResult.status}
               </span>

@@ -86,26 +86,26 @@ export function WhatWeDoSection() {
   return (
     <section
       id="about"
-      className="relative overflow-hidden bg-background px-6 pb-16 pt-28 font-body text-foreground md:px-10 md:pt-32 lg:pt-36"
+      className="relative overflow-hidden bg-background px-[var(--landing-page-x)] pb-[var(--landing-section-y-tight)] pt-[var(--landing-section-y)] font-body text-foreground"
     >
       <div className="what-we-do-backdrop" aria-hidden="true" />
 
-      <div className="relative z-10 mx-auto max-w-[1080px]">
+      <div className="relative z-10 mx-auto w-[min(var(--landing-container),74rem)]">
         <div
           ref={headerRef}
-          className={cn("what-section-header flex items-center justify-center gap-6 md:gap-8", headerVisible && "is-visible")}
+          className={cn("what-section-header flex items-center justify-center gap-[clamp(1rem,2.2vw,2rem)]", headerVisible && "is-visible")}
         >
           <div className="what-heading-line h-px flex-1 bg-primary" />
           <div className="relative shrink-0">
             <span className="what-heading-glint" aria-hidden="true" />
-            <h2 className="text-center font-display text-4xl leading-none tracking-[0.08em] md:text-[2.8rem]">
+            <h2 className="text-center font-display text-[length:var(--landing-h2)] leading-none tracking-[0.08em]">
               WHAT WE DO
             </h2>
           </div>
           <div className="what-heading-line h-px flex-1 bg-primary" />
         </div>
 
-        <div className="mt-12 space-y-16 md:mt-16 md:space-y-20">
+        <div className="mt-[var(--landing-stack-gap)] space-y-[clamp(3.25rem,6vw,6rem)]">
           {sections.map((section, index) => (
             <ContentRow key={section.id} section={section} index={index} reducedMotion={reducedMotion} />
           ))}
@@ -116,7 +116,7 @@ export function WhatWeDoSection() {
       <button
         type="button"
         aria-label="Open chat"
-        className="fixed bottom-5 right-5 z-40 hidden h-14 w-14 items-center justify-center rounded-full border border-menorah-cream bg-menorah-cream/80 text-foreground shadow-dashboard backdrop-blur-sm transition hover:bg-menorah-cream focus:outline-none focus:ring-4 focus:ring-menorah-green/15 sm:flex"
+        className="fixed bottom-[clamp(1rem,1.4vw,1.5rem)] right-[clamp(1rem,1.4vw,1.5rem)] z-40 hidden h-[var(--landing-icon-md)] w-[var(--landing-icon-md)] items-center justify-center rounded-full border border-menorah-cream bg-menorah-cream/80 text-foreground shadow-dashboard backdrop-blur-sm transition hover:bg-menorah-cream focus:outline-none focus:ring-4 focus:ring-menorah-green/15 sm:flex"
       >
         <MessageSquare className="h-7 w-7" aria-hidden="true" />
       </button>
@@ -150,7 +150,7 @@ function ContentRow({
   return (
     <article
       ref={rowRef}
-      className="what-content-row grid items-center gap-10 md:grid-cols-2 md:gap-14"
+      className="what-content-row grid items-center gap-[var(--landing-content-gap)] md:grid-cols-2"
       data-visible={isVisible || reducedMotion ? "true" : "false"}
     >
       <div className={cn("flex justify-center", imageOrder)}>
@@ -165,16 +165,16 @@ function ContentRow({
       </div>
 
       <div
-        className={cn("mx-auto max-w-[500px] text-center transition duration-700 ease-out", copyOrder)}
+        className={cn("mx-auto max-w-[min(32rem,92vw)] text-center transition duration-700 ease-out", copyOrder)}
         style={copyStyle}
       >
         <div className="mb-5 flex justify-center">
-          <div className={cn("flex h-12 w-12 items-center justify-center rounded-lg shadow-sm", section.accent)}>
+          <div className={cn("flex h-[var(--landing-icon-md)] w-[var(--landing-icon-md)] items-center justify-center rounded-[var(--landing-radius-sm)] shadow-sm", section.accent)}>
             <Icon className="h-5 w-5" aria-hidden="true" />
           </div>
         </div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-menorah-olive">{section.eyebrow}</p>
-        <h3 className="mt-3 whitespace-pre-line font-body text-3xl font-medium uppercase leading-[1.18] tracking-[0.2em] text-foreground">
+        <p className="text-[length:var(--landing-kicker)] font-semibold uppercase tracking-[0.18em] text-menorah-olive">{section.eyebrow}</p>
+        <h3 className="mt-[clamp(0.75rem,1.1vw,1rem)] whitespace-pre-line font-body text-[length:var(--landing-h3)] font-medium uppercase leading-[1.18] tracking-[0.2em] text-foreground">
           {section.title.split("\n").map((line, lineIndex) => (
             <span
               key={line}
@@ -186,7 +186,7 @@ function ContentRow({
           ))}
         </h3>
         <div
-          className="what-body-copy mt-7 text-[16px] leading-[1.58] text-foreground/80"
+          className="what-body-copy mt-[clamp(1.25rem,2vw,1.9rem)] text-[length:var(--landing-body)] leading-[1.65] text-foreground/80"
           style={{ transitionDelay: `${index * 90 + 290}ms` }}
         >
           {section.body}
@@ -228,22 +228,22 @@ function IllustrationFrame({
   };
 
   return (
-    <div className="what-illustration-shell relative w-full max-w-[430px]" style={frameStyle}>
+    <div className="what-illustration-shell relative w-full max-w-[clamp(18rem,31vw,30rem)]" style={frameStyle}>
       <span className="what-image-ring what-image-ring-one" aria-hidden="true" />
       <span className="what-image-ring what-image-ring-two" aria-hidden="true" />
-      <div className="what-image-frame relative flex aspect-square items-center justify-center overflow-hidden rounded-full border-[7px] border-menorah-cream bg-background">
+      <div className="what-image-frame relative flex aspect-square items-center justify-center overflow-hidden rounded-full border-[clamp(0.32rem,0.5vw,0.55rem)] border-menorah-cream bg-background">
         <span className="what-image-sheen" aria-hidden="true" />
         <Image
           src={image.src}
           alt={image.alt}
           width={600}
           height={600}
-          sizes="(min-width: 768px) 430px, 86vw"
+          sizes="(min-width: 1280px) 480px, (min-width: 768px) 38vw, 86vw"
           className="h-full w-full object-cover"
           style={imageStyle}
         />
       </div>
-      <div className="what-image-spark absolute right-8 top-8 flex h-10 w-10 items-center justify-center rounded-full bg-white text-menorah-green shadow-[0_12px_30px_rgba(35,45,36,0.12)]">
+      <div className="what-image-spark absolute right-[8%] top-[8%] flex h-[clamp(2.35rem,2.4vw,3rem)] w-[clamp(2.35rem,2.4vw,3rem)] items-center justify-center rounded-full bg-white text-menorah-green shadow-[0_12px_30px_rgba(35,45,36,0.12)]">
         <Sparkles className="h-4 w-4" aria-hidden="true" />
       </div>
     </div>

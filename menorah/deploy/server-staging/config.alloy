@@ -1,0 +1,47 @@
+logging {
+  level  = "info"
+  format = "json"
+}
+
+local.file_match "staging_caddy" {
+  path_targets = [
+    {
+      "__path__"         = "/var/log/menorah/*.log",
+      "environment"      = "staging",
+      "stack"            = "menorah-staging",
+      "monitoring_scope" = "server-staging",
+      "job"              = "caddy",
+    },
+  ]
+  sync_period = "5s"
+}
+
+loki.source.file "staging_caddy" {
+  targets    = local.file_match.staging_caddy.targets
+  forward_to = [loki.process.staging_caddy.receiver]
+}
+
+loki.process "staging_caddy" {
+  stage.json {
+    expressions = {
+      "host"   = "request.host",
+      "method" = "request.method",
+      "status" = "status",
+    }
+  }
+
+  stage.labels {
+    values = {
+      "method" = "",
+      "status" = "",
+    }
+  }
+
+  forward_to = [loki.write.staging.receiver]
+}
+
+loki.write "staging" {
+  endpoint {
+    url = "http://staging-private-loki:3100/loki/api/v1/push"
+  }
+}

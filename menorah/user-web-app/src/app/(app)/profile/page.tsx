@@ -33,7 +33,7 @@ const sections = [
 ];
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { user, logout, logoutAll } = useAuth();
   if (!user) return null;
 
   const plan = user.subscription?.plan ?? 'free';
@@ -83,6 +83,20 @@ export default function ProfilePage() {
             </div>
           </div>
         ))}
+
+        <button
+          onClick={() => {
+            if (window.confirm('Sign out every browser and device connected to this account?')) {
+              void logoutAll();
+            }
+          }}
+          className="w-full card flex items-center gap-3 px-4 py-3.5 text-amber-700 hover:bg-amber-50 transition-colors dark:text-amber-200 dark:hover:bg-amber-950"
+        >
+          <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
+            <Shield className="w-4 h-4 text-amber-600" />
+          </div>
+          <span className="flex-1 text-sm font-medium text-left">Sign Out All Devices</span>
+        </button>
 
         <button
           onClick={logout}

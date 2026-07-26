@@ -16,21 +16,43 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Invalid request' }, { status: 400 });
     }
     const db = await getLandingDatabase();
+    const collection = db.collection('contact_messages');
+    const result = await collection.insertOne({
+      ...parsed.data,
+      source: 'contact-us-page',
+      createdAt: new Date(),
+    });
+
     const emailDelivery = await sendSubmissionEmail({
       subject: 'New Menorah contact message',
       source: 'Contact Us form',
       name: parsed.data.name,
       email: parsed.data.email,
       message: parsed.data.message,
+      idempotencyKey: `landing-contact-message-${result.insertedId.toString()}`,
     });
-    const result = await db.collection('contact_messages').insertOne({
-      ...parsed.data,
-      source: 'contact-us-page',
+
+    try {
+      await collection.updateOne(
+        { _id: result.insertedId },
+        {
+          $set: {
+            emailDelivery,
+            emailDeliveryUpdatedAt: new Date(),
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Unable to update contact message email delivery status', error);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      id: result.insertedId.toString(),
       emailDelivery,
-      createdAt: new Date(),
-    });
-    return NextResponse.json({ ok: true, id: result.insertedId.toString(), emailDelivery }, { status: 201 });
-  } catch {
+    }, { status: 201 });
+  } catch (error) {
+    console.error('Unable to save contact message', error);
     return NextResponse.json({ ok: false, error: 'Unable to send message' }, { status: 500 });
   }
 }

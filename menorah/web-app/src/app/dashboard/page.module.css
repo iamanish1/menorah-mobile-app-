@@ -129,6 +129,40 @@
   box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.2);
 }
 
+.profileMediaBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+  padding: var(--spacing-lg);
+  border: 1px solid rgba(61, 148, 112, 0.22);
+  border-radius: var(--radius-2xl);
+  background: linear-gradient(135deg, var(--color-primary-light), var(--color-bg-base));
+  box-shadow: var(--shadow-sm);
+}
+
+.profileMediaTitle {
+  margin: 0 0 4px;
+  color: var(--color-text-base);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.profileMediaText {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
+@media (max-width: 640px) {
+  .profileMediaBanner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 /* Page Header */
 .pageHeader {
   display: flex;

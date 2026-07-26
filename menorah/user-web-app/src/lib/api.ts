@@ -1,10 +1,11 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import { authStorage } from './auth';
 import type {
   ApiResponse, User, Counsellor, CounsellorFilters,
   Booking, ChatRoom, ChatMessage, VideoRoom,
   Article, ArticleFilters, ArticlePagination,
 } from '@/types';
+
+export const UNAUTHORIZED_EVENT = 'menorah:unauthorized';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -13,20 +14,14 @@ class ApiClient {
     this.client = axios.create({
       baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
       headers: { 'Content-Type': 'application/json' },
-    });
-
-    this.client.interceptors.request.use((config) => {
-      const token = authStorage.getToken();
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-      return config;
+      withCredentials: true,
     });
 
     this.client.interceptors.response.use(
       (res) => res,
       (error) => {
-        if (error.response?.status === 401) {
-          authStorage.clearToken();
-          if (typeof window !== 'undefined') window.location.href = '/login';
+        if (error.response?.status === 401 && typeof window !== 'undefined') {
+          window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
         }
         return Promise.reject(error);
       }
@@ -97,14 +92,16 @@ class ApiClient {
     return this.post<{ email: string }>('/auth/register', data);
   }
 
-  async login(email: string, password: string): Promise<ApiResponse<{ user: User; token: string }>> {
-    const res = await this.post<{ user: User; token: string }>('/auth/login', { email, password });
-    if (res.success && res.data?.token) authStorage.setToken(res.data.token);
-    return res;
+  async login(email: string, password: string): Promise<ApiResponse<{ user: User }>> {
+    return this.post<{ user: User }>('/auth/login', { email, password, transport: 'cookie' });
   }
 
-  async verifyEmail(code: string): Promise<ApiResponse<{ user: User }>> {
-    return this.post<{ user: User }>('/auth/verify-email', { code });
+  async loginWithGoogle(credential: string): Promise<ApiResponse<{ user: User; isNewUser?: boolean }>> {
+    return this.post<{ user: User; isNewUser?: boolean }>('/auth/google', { credential, transport: 'cookie' });
+  }
+
+  async verifyEmail(email: string, code: string): Promise<ApiResponse<void>> {
+    return this.post<void>('/auth/verify-email', { email, code, transport: 'cookie' });
   }
 
   async resendOTP(phone: string): Promise<ApiResponse<void>> {
@@ -115,14 +112,16 @@ class ApiClient {
     return this.post<{ user: User }>('/auth/verify-phone', { phone, otp });
   }
 
-  async verifyEmailOTP(email: string, otp: string): Promise<ApiResponse<{ user: User; token: string }>> {
-    const res = await this.post<{ user: User; token: string }>('/auth/verify-email-otp', { email, otp });
-    if (res.success && res.data?.token) authStorage.setToken(res.data.token);
-    return res;
+  async verifyEmailOTP(email: string, otp: string): Promise<ApiResponse<{ user: User }>> {
+    return this.post<{ user: User }>('/auth/verify-email-otp', { email, otp, transport: 'cookie' });
   }
 
   async resendEmailOTP(email: string): Promise<ApiResponse<void>> {
     return this.post<void>('/auth/resend-email-otp', { email });
+  }
+
+  async resendEmailVerification(email: string): Promise<ApiResponse<void>> {
+    return this.post<void>('/auth/resend-email-verification', { email });
   }
 
   async forgotPassword(email: string): Promise<ApiResponse<void>> {
@@ -139,7 +138,10 @@ class ApiClient {
 
   async logout(): Promise<void> {
     try { await this.client.post('/auth/logout'); } catch { /* ignore */ }
-    authStorage.clearToken();
+  }
+
+  async logoutAll(): Promise<void> {
+    await this.client.post('/auth/logout-all');
   }
 
   // ─── Users ─────────────────────────────────────────────────────────────────
@@ -189,8 +191,45 @@ class ApiClient {
     return this.get<{ counsellor: Counsellor }>(`/counsellors/${id}`);
   }
 
-  async getCounsellorAvailability(id: string, startDate: string, endDate: string): Promise<ApiResponse<{ availability: Record<string, string[]> }>> {
-    return this.get<{ availability: Record<string, string[]> }>(`/counsellors/${id}/availability`, { startDate, endDate });
+  async getCounsellorAvailability(
+    id: string,
+    startDate: string,
+    endDate: string,
+    duration?: number,
+  ): Promise<ApiResponse<{ availability: Array<{
+    date: string;
+    dayOfWeek: string;
+    timezone: string;
+    sessionDuration: number;
+    isAvailable: boolean;
+    slots: Array<{
+      startTime: string;
+      endTime: string;
+      startsAt: string;
+      endsAt: string;
+      status: 'available' | 'booked' | 'pending' | 'unavailable' | 'past';
+      isSelectable: boolean;
+      label: string;
+      statusLabel: string;
+    }>;
+  }>; date?: string; timezone?: string; holdMinutes?: number }>> {
+    return this.get<{ availability: Array<{
+      date: string;
+      dayOfWeek: string;
+      timezone: string;
+      sessionDuration: number;
+      isAvailable: boolean;
+      slots: Array<{
+        startTime: string;
+        endTime: string;
+        startsAt: string;
+        endsAt: string;
+        status: 'available' | 'booked' | 'pending' | 'unavailable' | 'past';
+        isSelectable: boolean;
+        label: string;
+        statusLabel: string;
+      }>;
+    }>; date?: string; timezone?: string; holdMinutes?: number }>(`/counsellors/${id}/availability`, { startDate, endDate, duration });
   }
 
   async getSpecializations(): Promise<ApiResponse<{ specializations: string[] }>> {
@@ -207,7 +246,7 @@ class ApiClient {
     sessionType: string;
     sessionDuration: number;
     scheduledAt?: string;
-    amount?: number;
+    serviceCode?: string;
     preferences?: { gender?: string; sessionType?: string };
     symptoms?: string[];
     concerns?: string;
@@ -240,8 +279,8 @@ class ApiClient {
   // ─── Payments ──────────────────────────────────────────────────────────────
   async createCheckoutSession(
     bookingId: string,
-  ): Promise<ApiResponse<{ sessionId?: string; sessionUrl?: string; orderId?: string; amount?: number; currency?: string; paymentMethod: string }>> {
-    return this.post<{ sessionId?: string; sessionUrl?: string; orderId?: string; amount?: number; currency?: string; paymentMethod: string }>(
+  ): Promise<ApiResponse<{ sessionId?: string; sessionUrl?: string; orderId?: string; amount?: number; currency?: string; paymentMethod: string; alreadyPaid?: boolean }>> {
+    return this.post<{ sessionId?: string; sessionUrl?: string; orderId?: string; amount?: number; currency?: string; paymentMethod: string; alreadyPaid?: boolean }>(
       '/payments/create-checkout-session',
       { bookingId },
     );
@@ -330,6 +369,16 @@ class ApiClient {
 
   async joinVideoRoom(bookingId: string): Promise<ApiResponse<VideoRoom>> {
     return this.post<VideoRoom>(`/video/room/${bookingId}/join`);
+  }
+
+  async redeemVideoMeetTicket(ticket: string): Promise<ApiResponse<{
+    livekitUrl: string;
+    livekitToken: string;
+    token: string;
+    name: string;
+    type: 'video' | 'audio';
+  }>> {
+    return this.post('/video/meet/redeem', { ticket });
   }
 
   async leaveVideoRoom(bookingId: string): Promise<ApiResponse<void>> {

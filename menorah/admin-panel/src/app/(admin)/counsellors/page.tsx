@@ -1,65 +1,125 @@
 'use client';
 
-import { useEffect, useState, useCallback, Suspense } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, ChevronRight, RefreshCw, Copy, CheckCheck } from 'lucide-react';
+import { CheckCheck, ChevronRight, Copy, Search } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
+import FreshAdminMfaModal from '@/components/auth/FreshAdminMfaModal';
 import { api } from '@/lib/api';
 import { formatDate, formatCurrency, getInitials } from '@/lib/utils';
 import type { Counsellor } from '@/types';
 import toast from 'react-hot-toast';
 
 const STATUS_TABS = [
-  { key: 'pending', label: 'Pending Review' },
+  { key: 'draft', label: 'Legacy Drafts' },
+  { key: 'submitted', label: 'Submitted' },
+  { key: 'under_review', label: 'Under Review' },
   { key: 'approved', label: 'Approved' },
+  { key: 'suspended', label: 'Suspended' },
+  { key: 'expired', label: 'Expired' },
   { key: 'rejected', label: 'Rejected' },
-  { key: 'blocked', label: 'Blocked' },
   { key: 'all', label: 'All' }
-];
+] as const;
+
+const EMPTY_TARGET = { open: false, id: '', name: '' };
+
+type BadgeVariant = 'pending' | 'approved' | 'rejected' | 'blocked' | 'default';
+
+const statusLabel = (status: Counsellor['status']) => (
+  status === 'pending' ? 'submitted' : status.replaceAll('_', ' ')
+);
+
+const statusVariant = (status: Counsellor['status']): BadgeVariant => {
+  if (status === 'approved') return 'approved';
+  if (status === 'rejected') return 'rejected';
+  if (status === 'draft' || status === 'submitted' || status === 'under_review' || status === 'pending') return 'pending';
+  if (status === 'suspended' || status === 'expired') return 'blocked';
+  return 'default';
+};
 
 function CounsellorsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const requestedStatus = searchParams.get('status');
+  const initialStatus = requestedStatus === 'pending'
+    ? 'submitted'
+    : STATUS_TABS.some((tab) => tab.key === requestedStatus)
+      ? requestedStatus!
+      : 'submitted';
   const [counsellors, setCounsellors] = useState<Counsellor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState(searchParams.get('status') || 'pending');
+  const [activeTab, setActiveTab] = useState(initialStatus);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
 
   // Modals
-  const [rejectModal, setRejectModal] = useState<{ open: boolean; id: string; name: string }>({ open: false, id: '', name: '' });
-  const [blockModal, setBlockModal] = useState<{ open: boolean; id: string; name: string; isBlocked: boolean }>({ open: false, id: '', name: '', isBlocked: false });
-  const [credModal, setCredModal] = useState<{ open: boolean; username: string; password: string }>({ open: false, username: '', password: '' });
+  const [startReviewModal, setStartReviewModal] = useState(EMPTY_TARGET);
+  const [rejectModal, setRejectModal] = useState(EMPTY_TARGET);
+  const [suspendModal, setSuspendModal] = useState(EMPTY_TARGET);
+  const [reverifyModal, setReverifyModal] = useState(EMPTY_TARGET);
+  const [freshMfaModal, setFreshMfaModal] = useState(false);
+  const [credModal, setCredModal] = useState<{
+    open: boolean;
+    username: string;
+    emailSent?: boolean;
+    emailRecipient?: string;
+  }>({ open: false, username: '' });
   const [reason, setReason] = useState('');
   const [actionLoading, setActionLoading] = useState('');
   const [copied, setCopied] = useState('');
+  const requestSequence = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const requestId = ++requestSequence.current;
     setLoading(true);
-    const res = await api.getCounsellors({ status: activeTab, page, limit: 15, search: search || undefined });
+    setLoadError('');
+    setCounsellors([]);
+    setTotal(0);
+    setPages(1);
+    const res = await api.getCounsellors(
+      { status: activeTab, page, limit: 15, search: search || undefined },
+      signal
+    );
+    if (signal?.aborted || requestId !== requestSequence.current) return;
     if (res.success && res.data) {
       setCounsellors(res.data.counsellors);
       setTotal(res.data.pagination.total);
       setPages(res.data.pagination.pages);
+    } else {
+      setLoadError(res.message || 'Unable to load counsellors.');
     }
     setLoading(false);
   }, [activeTab, page, search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
 
-  const handleApprove = async (id: string, name: string) => {
-    setActionLoading(id + '-approve');
-    const res = await api.approveCounsellor(id);
+  const handleMfaRequired = (response: { code?: string }) => {
+    if (response.code !== 'ADMIN_MFA_FRESHNESS_REQUIRED') return false;
+    setFreshMfaModal(true);
+    toast.error('Refresh administrator MFA, then retry this action.');
+    return true;
+  };
+
+  const handleStartReview = async () => {
+    const { id, name } = startReviewModal;
+    setActionLoading(id + '-start-review');
+    const res = await api.startCounsellorReview(id);
     setActionLoading('');
-    if (res.success && res.data) {
-      toast.success(`${name} approved`);
-      setCredModal({ open: true, username: res.data.username, password: res.data.password });
-      load();
+    if (res.success) {
+      toast.success(`${name} moved to credential review`);
+      setStartReviewModal(EMPTY_TARGET);
+      await load();
     } else {
-      toast.error(res.message || 'Failed to approve');
+      if (handleMfaRequired(res)) return;
+      toast.error(res.message || 'Failed to start review');
     }
   };
 
@@ -70,40 +130,60 @@ function CounsellorsContent() {
     setActionLoading('');
     if (res.success) {
       toast.success('Application rejected');
-      setRejectModal({ open: false, id: '', name: '' });
+      setRejectModal(EMPTY_TARGET);
       setReason('');
-      load();
+      await load();
     } else {
+      if (handleMfaRequired(res)) return;
       toast.error(res.message || 'Failed to reject');
     }
   };
 
-  const handleGeneratePassword = async (id: string, name: string) => {
+  const handleSendActivationLink = async (id: string) => {
     setActionLoading(id + '-creds');
-    const res = await api.generatePassword(id);
+    const res = await api.sendCounsellorActivationLink(id);
     setActionLoading('');
     if (res.success && res.data) {
-      setCredModal({ open: true, username: res.data.username, password: res.data.password });
-      load();
+      setCredModal({
+        open: true,
+        username: res.data.username,
+        emailSent: res.data.activationEmailSent,
+        emailRecipient: res.data.activationEmailRecipient
+      });
     } else {
-      toast.error(res.message || 'Failed to generate credentials');
+      if (handleMfaRequired(res)) return;
+      toast.error(res.message || 'Failed to send setup link');
     }
   };
 
-  const handleBlock = async () => {
-    if (!reason.trim()) { toast.error('Please enter a reason'); return; }
-    setActionLoading(blockModal.id + '-block');
-    const res = blockModal.isBlocked
-      ? await api.unblockCounsellor(blockModal.id)
-      : await api.blockCounsellor(blockModal.id, reason);
+  const handleSuspend = async () => {
+    if (!reason.trim()) { toast.error('Please enter a suspension reason'); return; }
+    setActionLoading(suspendModal.id + '-suspend');
+    const res = await api.suspendCounsellor(suspendModal.id, reason.trim());
     setActionLoading('');
     if (res.success) {
-      toast.success(blockModal.isBlocked ? 'Counsellor unblocked' : 'Counsellor blocked');
-      setBlockModal({ open: false, id: '', name: '', isBlocked: false });
+      toast.success('Counsellor suspended');
+      setSuspendModal(EMPTY_TARGET);
       setReason('');
-      load();
+      await load();
     } else {
-      toast.error(res.message || 'Action failed');
+      if (handleMfaRequired(res)) return;
+      toast.error(res.message || 'Failed to suspend counsellor');
+    }
+  };
+
+  const handleSendReverificationInvite = async () => {
+    setActionLoading(reverifyModal.id + '-reverify-invite');
+    const res = await api.sendCounsellorReverificationInvite(reverifyModal.id);
+    setActionLoading('');
+    if (res.success && res.data) {
+      toast.success(res.data.invitationEmailSent
+        ? 'Secure re-verification invitation sent'
+        : 'Invitation created, but email delivery failed');
+      setReverifyModal(EMPTY_TARGET);
+    } else {
+      if (handleMfaRequired(res)) return;
+      toast.error(res.message || 'Failed to create re-verification invitation');
     }
   };
 
@@ -111,16 +191,6 @@ function CounsellorsContent() {
     navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(''), 2000);
-  };
-
-  const getBadgeVariant = (c: Counsellor) => {
-    if (!c.isActive && c.status === 'approved') return 'blocked';
-    return c.status as 'pending' | 'approved' | 'rejected';
-  };
-
-  const getBadgeLabel = (c: Counsellor) => {
-    if (!c.isActive && c.status === 'approved') return 'blocked';
-    return c.status;
   };
 
   return (
@@ -172,6 +242,16 @@ function CounsellorsContent() {
               </div>
             ))}
           </div>
+        ) : loadError ? (
+          <div className="space-y-3 py-12 text-center">
+            <p className="text-sm font-medium text-red-700">{loadError}</p>
+            <button
+              onClick={() => void load()}
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+            >
+              Retry
+            </button>
+          </div>
         ) : counsellors.length === 0 ? (
           <div className="py-16 text-center text-gray-400">
             <p className="text-sm">No counsellors found in this category.</p>
@@ -194,19 +274,41 @@ function CounsellorsContent() {
 
                 {/* Meta */}
                 <div className="flex items-center gap-3 flex-wrap">
-                  <Badge variant={getBadgeVariant(c)}>{getBadgeLabel(c)}</Badge>
+                  <Badge variant={statusVariant(c.status)}>{statusLabel(c.status)}</Badge>
                   <span className="text-xs text-gray-400">{formatDate(c.createdAt)}</span>
 
                   {/* Actions */}
                   <div className="flex items-center gap-1.5">
-                    {c.status === 'pending' && (
+                    {(
+                      (c.status === 'submitted' || c.status === 'pending')
+                      && c.isPendingApplication
+                      && c.legacyReviewRequired !== true
+                      && c.canStartReview !== false
+                    ) ? (
+                      <button
+                        onClick={() => {
+                          setStartReviewModal({
+                            open: true,
+                            id: c.id,
+                            name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`.trim()
+                          });
+                        }}
+                        className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
+                      >
+                        Start review
+                      </button>
+                    ) : null}
+                    {(
+                      c.status === 'under_review'
+                      && c.isPendingApplication
+                      && c.legacyReviewRequired !== true
+                    ) ? (
                       <>
                         <button
-                          onClick={() => handleApprove(c.id, `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`)}
-                          disabled={actionLoading === c.id + '-approve'}
-                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-60"
+                          onClick={() => router.push(`/counsellors/${c.id}`)}
+                          className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
                         >
-                          {actionLoading === c.id + '-approve' ? '...' : 'Approve'}
+                          Review evidence
                         </button>
                         <button
                           onClick={() => { setRejectModal({ open: true, id: c.id, name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}` }); setReason(''); }}
@@ -215,34 +317,73 @@ function CounsellorsContent() {
                           Reject
                         </button>
                       </>
-                    )}
-                    {c.status === 'approved' && c.isActive && (
+                    ) : null}
+                    {c.status === 'approved' ? (
                       <>
+                        {(() => {
+                          const expiryTime = c.professionalVerification?.expiresAt
+                            ? new Date(c.professionalVerification.expiresAt).getTime()
+                            : Number.NaN;
+                          return Number.isFinite(expiryTime) && expiryTime > Date.now() ? (
+                            <button
+                              onClick={() => handleSendActivationLink(c.id)}
+                              disabled={actionLoading === c.id + '-creds'}
+                              className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg transition-colors disabled:opacity-60"
+                            >
+                              {actionLoading === c.id + '-creds' ? '...' : 'Send setup link'}
+                            </button>
+                          ) : (
+                            <span className="rounded-lg bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
+                              Expiry reconciliation required
+                            </span>
+                          );
+                        })()}
                         <button
-                          onClick={() => handleGeneratePassword(c.id, `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`)}
-                          disabled={actionLoading === c.id + '-creds'}
-                          className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg transition-colors disabled:opacity-60"
-                        >
-                          {actionLoading === c.id + '-creds' ? '...' : 'Reset Password'}
-                        </button>
-                        <button
-                          onClick={() => { setBlockModal({ open: true, id: c.id, name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`, isBlocked: false }); setReason(''); }}
+                          onClick={() => {
+                            setSuspendModal({
+                              open: true,
+                              id: c.id,
+                              name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`.trim()
+                            });
+                            setReason('');
+                          }}
                           className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-colors"
                         >
-                          Block
+                          Suspend
                         </button>
                       </>
-                    )}
-                    {c.status === 'approved' && !c.isActive && (
+                    ) : null}
+                    {(
+                      c.status === 'suspended'
+                      || c.status === 'expired'
+                      || (
+                        c.status === 'draft'
+                        && c.professionalVerification?.legacyReviewRequired === true
+                      )
+                      || (
+                        c.isPendingApplication
+                        && c.legacyReviewRequired === true
+                        && Boolean(c.linkedCounsellor)
+                      )
+                    ) ? (
                       <button
-                        onClick={() => { setBlockModal({ open: true, id: c.id, name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`, isBlocked: true }); setReason(''); }}
+                        onClick={() => {
+                          setReverifyModal({
+                            open: true,
+                            id: c.linkedCounsellor || c.id,
+                            name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`.trim()
+                          });
+                          setReason('');
+                        }}
                         className="px-3 py-1 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-semibold rounded-lg transition-colors"
                       >
-                        Unblock
+                        Re-verification instructions
                       </button>
-                    )}
+                    ) : null}
                     <button
                       onClick={() => router.push(`/counsellors/${c.id}`)}
+                      aria-label={`View ${c.user?.firstName ?? 'counsellor'} ${c.user?.lastName ?? ''} details`}
+                      title="View details"
                       className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                       <ChevronRight size={16} />
@@ -268,9 +409,39 @@ function CounsellorsContent() {
         )}
       </div>
 
-      {/* Reject Modal */}
-      <Modal open={rejectModal.open} onClose={() => setRejectModal({ open: false, id: '', name: '' })} title={`Reject: ${rejectModal.name}`} size="sm">
+      <Modal
+        open={startReviewModal.open}
+        onClose={() => setStartReviewModal(EMPTY_TARGET)}
+        title={`Start review: ${startReviewModal.name}`}
+        size="sm"
+      >
         <div className="space-y-4">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
+            This creates a dormant account and professional profile, then moves the submitted
+            application into credential review. It does not approve the counsellor or enable access.
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setStartReviewModal(EMPTY_TARGET)} className="flex-1 rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              onClick={handleStartReview}
+              disabled={actionLoading === startReviewModal.id + '-start-review'}
+              className="flex-1 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+            >
+              {actionLoading === startReviewModal.id + '-start-review' ? 'Starting...' : 'Start review'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Reject Modal */}
+      <Modal open={rejectModal.open} onClose={() => setRejectModal(EMPTY_TARGET)} title={`Reject: ${rejectModal.name}`} size="sm">
+        <div className="space-y-4">
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+            Rejection is available only after credential review has started. The applicant can see
+            this reason, so do not include internal notes or sensitive reviewer commentary.
+          </p>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Rejection Reason</label>
             <textarea
@@ -282,47 +453,76 @@ function CounsellorsContent() {
             />
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setRejectModal({ open: false, id: '', name: '' })} className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
-            <button onClick={handleReject} disabled={!!actionLoading} className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-60 transition-colors">
-              {actionLoading ? 'Rejecting...' : 'Confirm Reject'}
+            <button onClick={() => setRejectModal(EMPTY_TARGET)} className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
+            <button onClick={handleReject} disabled={actionLoading === rejectModal.id + '-reject'} className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-60 transition-colors">
+              {actionLoading === rejectModal.id + '-reject' ? 'Rejecting...' : 'Confirm Reject'}
             </button>
           </div>
         </div>
       </Modal>
 
-      {/* Block/Unblock Modal */}
-      <Modal open={blockModal.open} onClose={() => setBlockModal({ open: false, id: '', name: '', isBlocked: false })} title={blockModal.isBlocked ? `Unblock: ${blockModal.name}` : `Block: ${blockModal.name}`} size="sm">
+      <Modal open={suspendModal.open} onClose={() => setSuspendModal(EMPTY_TARGET)} title={`Suspend: ${suspendModal.name}`} size="sm">
         <div className="space-y-4">
-          {blockModal.isBlocked ? (
-            <p className="text-sm text-gray-600">Are you sure you want to unblock this counsellor? They will be able to receive bookings and log in again.</p>
-          ) : (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Block Reason</label>
-              <textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={3}
-                placeholder="Reason for blocking..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none"
-              />
-            </div>
-          )}
+          <p className="text-sm leading-6 text-gray-600">
+            Suspension disables the account and removes professional eligibility. Re-verification is
+            required before the counsellor can be approved again.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Suspension reason</label>
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              rows={3}
+              placeholder="Record the reason for suspension..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none"
+            />
+          </div>
           <div className="flex gap-2">
-            <button onClick={() => setBlockModal({ open: false, id: '', name: '', isBlocked: false })} className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
-            <button onClick={handleBlock} disabled={!!actionLoading} className={`flex-1 px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-60 transition-colors text-white ${blockModal.isBlocked ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-800'}`}>
-              {actionLoading ? '...' : blockModal.isBlocked ? 'Unblock' : 'Block Counsellor'}
+            <button onClick={() => setSuspendModal(EMPTY_TARGET)} className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
+            <button
+              onClick={handleSuspend}
+              disabled={actionLoading === suspendModal.id + '-suspend'}
+              className="flex-1 rounded-xl bg-gray-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-900 disabled:opacity-60"
+            >
+              {actionLoading === suspendModal.id + '-suspend' ? 'Suspending...' : 'Suspend counsellor'}
             </button>
           </div>
         </div>
       </Modal>
 
-      {/* Credentials Modal */}
-      <Modal open={credModal.open} onClose={() => setCredModal({ open: false, username: '', password: '' })} title="Counsellor Login Credentials" size="sm">
+      <Modal open={reverifyModal.open} onClose={() => setReverifyModal(EMPTY_TARGET)} title={`Fresh consent required: ${reverifyModal.name}`} size="sm">
         <div className="space-y-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
-            Share these credentials with the counsellor. The password will not be shown again.
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+            The counsellor must submit a new retained application through the counsellor registration
+            portal and accept the current onboarding notice. An administrator cannot record that
+            consent on the counsellor&apos;s behalf. The profile remains inactive meanwhile.
           </div>
-          {[{ label: 'Username (Email)', value: credModal.username, key: 'user' }, { label: 'Password', value: credModal.password, key: 'pass' }].map(({ label, value, key }) => (
+          <div className="flex gap-2">
+            <button onClick={() => setReverifyModal(EMPTY_TARGET)} className="flex-1 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+            <button
+              onClick={handleSendReverificationInvite}
+              disabled={actionLoading === reverifyModal.id + '-reverify-invite'}
+              className="flex-1 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+            >
+              {actionLoading === reverifyModal.id + '-reverify-invite' ? 'Sending...' : 'Send secure link'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Activation link result */}
+      <Modal open={credModal.open} onClose={() => setCredModal({ open: false, username: '' })} title="Password setup link" size="sm">
+        <div className="space-y-4">
+          <div className={`border rounded-xl px-4 py-3 text-sm ${credModal.emailSent === true ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+            {credModal.emailSent === true
+              ? `A one-time password setup link was emailed to ${credModal.emailRecipient || credModal.username}.`
+              : credModal.emailSent === false
+                ? 'The setup link could not be emailed. Retry after email delivery is restored.'
+                : 'Setup-link delivery status was not returned.'}
+          </div>
+          {[
+            { label: 'Username (Email)', value: credModal.username, key: 'user' }
+          ].map(({ label, value, key }) => (
             <div key={key}>
               <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
               <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
@@ -333,11 +533,20 @@ function CounsellorsContent() {
               </div>
             </div>
           ))}
-          <button onClick={() => setCredModal({ open: false, username: '', password: '' })} className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors mt-1">
+          <button onClick={() => setCredModal({ open: false, username: '' })} className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors mt-1">
             Done
           </button>
         </div>
       </Modal>
+
+      <FreshAdminMfaModal
+        open={freshMfaModal}
+        onClose={() => setFreshMfaModal(false)}
+        onRefreshed={() => {
+          setFreshMfaModal(false);
+          toast.success('Administrator MFA refreshed. Retry the action.');
+        }}
+      />
     </div>
   );
 }

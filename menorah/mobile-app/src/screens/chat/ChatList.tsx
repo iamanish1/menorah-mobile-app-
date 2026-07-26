@@ -15,6 +15,7 @@ import { palettes } from "@/theme/colors";
 import { useChat } from "@/state/useChat";
 import { useAuth } from "@/state/useAuth";
 import { api, ChatRoom } from "@/lib/api";
+import { reportError } from "@/lib/safeDiagnostics";
 
 type FilterTab = 'all' | 'unread' | 'counsellors' | 'archived';
 
@@ -44,7 +45,7 @@ export default function ChatList({ navigation }: any) {
     try {
       await fetchChatRooms();
     } catch (error) {
-      console.warn('[ChatList] Failed to load chat rooms:', error);
+      reportError('chat.list_fetch_failed', error);
     } finally {
       setLoading(false);
     }
@@ -255,10 +256,10 @@ export default function ChatList({ navigation }: any) {
                 </View>
               </View>
               <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: 4 }}>
-                Safe. Private. Personal.
+                Care conversations
               </Text>
               <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 18 }}>
-                Your conversations are end-to-end encrypted and always confidential.
+                Messages use secure connections and are stored to support your care conversation.
               </Text>
             </View>
 
@@ -446,10 +447,10 @@ export default function ChatList({ navigation }: any) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
-                  Turn on notifications
+                  View app notifications
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.muted }}>
-                  Never miss a reply from your counsellor.
+                  Review recent updates from this app.
                 </Text>
               </View>
               <ChevronRight size={16} color={colors.muted} strokeWidth={2.5} />
@@ -521,10 +522,10 @@ export default function ChatList({ navigation }: any) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
-                  Turn on notifications
+                  View app notifications
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.muted }}>
-                  Never miss a reply from your counsellor.
+                  Review recent updates from this app.
                 </Text>
               </View>
               <ChevronRight size={16} color={colors.muted} strokeWidth={2.5} />

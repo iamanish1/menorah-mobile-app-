@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build",
+    "build": "node scripts/validate-public-runtime.cjs && next build",
     "start": "next start -p 3001",
     "lint": "eslint"
   },
@@ -17,7 +17,7 @@
     "date-fns": "^4.1.0",
     "livekit-client": "^2.19.1",
     "lucide-react": "^1.16.0",
-    "next": "^16.2.6",
+    "next": "16.2.11",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-hook-form": "^7.66.1",
@@ -31,5 +31,11 @@
     "eslint": "^9",
     "eslint-config-next": "^15.3.2",
     "typescript": "^5"
+  },
+  "overrides": {
+    "sharp": "0.35.3",
+    "next": {
+      "postcss": "8.5.18"
+    }
   }
 }

@@ -34,13 +34,19 @@ eas login
 
 ### Step 3: Configure Build Settings
 
-Your `eas.json` is already configured for production builds with AAB format:
+Your `eas.json` is already configured for Android production builds with AAB format.
+Use only the platform-specific build profiles. The generic `development`, `preview`, and
+`production` profiles are base templates and must not be used directly because they do
+not pin the split API URL for iOS vs Android.
 
 ```json
 {
   "build": {
-    "production": {
+    "production-android": {
       "distribution": "store",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api"
+      },
       "android": {
         "buildType": "app-bundle"
       }
@@ -54,8 +60,8 @@ Your `eas.json` is already configured for production builds with AAB format:
 Navigate to the mobile-app directory and run:
 
 ```bash
-cd Menorah/mobile-app
-eas build --platform android --profile production
+cd menorah/mobile-app
+eas build --platform android --profile production-android
 ```
 
 This will:
@@ -83,7 +89,7 @@ If you prefer to build locally, you can use Gradle directly.
 ### Step 1: Navigate to Android Directory
 
 ```bash
-cd Menorah/mobile-app/android
+cd menorah/mobile-app/android
 ```
 
 ### Step 2: Generate a Release Keystore (if you don't have one)
@@ -143,13 +149,13 @@ MYAPP_RELEASE_KEY_PASSWORD=your-key-password
 ### Step 5: Build the AAB
 
 ```bash
-cd Menorah/mobile-app/android
+cd menorah/mobile-app/android
 ./gradlew bundleRelease
 ```
 
 On Windows:
 ```bash
-cd Menorah\mobile-app\android
+cd menorah\mobile-app\android
 gradlew.bat bundleRelease
 ```
 
@@ -165,7 +171,7 @@ If you need more control over the native build:
 ### Step 1: Prebuild Native Code
 
 ```bash
-cd Menorah/mobile-app
+cd menorah/mobile-app
 npx expo prebuild --platform android
 ```
 
@@ -261,7 +267,7 @@ Before uploading to Play Store, test your AAB:
 
 ```bash
 # EAS Build (Recommended)
-eas build --platform android --profile production
+eas build --platform android --profile production-android
 
 # Local Build
 cd android && ./gradlew bundleRelease

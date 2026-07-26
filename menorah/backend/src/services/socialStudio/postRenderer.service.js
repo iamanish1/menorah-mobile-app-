@@ -1,9 +1,7 @@
-const fs = require('fs/promises');
-const path = require('path');
-const axios = require('axios');
 const sharp = require('sharp');
-const { uploadBuffer } = require('../../utils/cloudinary');
+const { storeMediaBuffer } = require('../mediaStorage');
 const { toPlainText } = require('./textUtils');
+const { fetchRemoteImageBuffer } = require('./safeRemoteImageFetch.service');
 
 const SIZE_BY_RATIO = {
   '1:1': { width: 1080, height: 1080 },
@@ -23,20 +21,6 @@ const escapeXml = (value) => String(value || '')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;');
-
-const shouldUseCloudinaryForSocialStudio = () =>
-  process.env.SOCIAL_STUDIO_STORAGE === 'cloudinary' &&
-  Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
-
-const getPublicBaseUrl = () => {
-  const base =
-    process.env.PUBLIC_WEB_BASE_URL ||
-    process.env.API_BASE_URL ||
-    `http://localhost:${process.env.PORT || 3000}`;
-  return String(base).replace(/\/+$/, '');
-};
-
-const getUploadDir = () => path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads', 'social-studio');
 
 const wrapText = (text, maxChars, maxLines = 5) => {
   const words = toPlainText(text).split(/\s+/).filter(Boolean);
@@ -286,15 +270,6 @@ const bufferToJpegDataUri = async ({ buffer, width, heroHeight }) => {
   return `data:image/jpeg;base64,${normalized.toString('base64')}`;
 };
 
-const loadRemoteImageBuffer = async (imageUrl) => {
-  if (!imageUrl) return null;
-  const response = await axios.get(imageUrl, {
-    responseType: 'arraybuffer',
-    timeout: 45000
-  });
-  return Buffer.from(response.data);
-};
-
 const renderHeadline = ({ lines, x, y, fontSize, lineHeight, palette }) => lines
   .map((line, index) => {
     const fill = index === lines.length - 1 && lines.length > 1 ? palette.olive : palette.primary;
@@ -380,40 +355,30 @@ const buildSvg = ({ socialPost, brandGuideline, assets, heroImageDataUri }) => {
   return shared.join('');
 };
 
-const saveLocalImage = async (buffer, filename) => {
-  const uploadDir = getUploadDir();
-  await fs.mkdir(uploadDir, { recursive: true });
-  const fullPath = path.join(uploadDir, filename);
-  await fs.writeFile(fullPath, buffer);
-  return `${getPublicBaseUrl()}/uploads/social-studio/${filename}`;
-};
-
-const saveImage = async (buffer, filename, folder) => {
-  if (shouldUseCloudinaryForSocialStudio()) {
-    const result = await uploadBuffer(buffer, {
-      folder,
-      resource_type: 'image',
-      format: 'jpg',
-      public_id: filename.replace(/\.jpe?g$/i, ''),
-      overwrite: true
-    });
-    return {
-      url: result.secure_url,
-      publicId: result.public_id
-    };
-  }
-
+const saveImage = async (buffer, category, folder) => {
+  const stored = await storeMediaBuffer(buffer, {
+    service: 'social-studio',
+    category,
+    extension: '.jpg',
+    contentType: 'image/jpeg',
+    cloudinaryFolder: folder,
+    cloudinaryResourceType: 'image',
+  });
   return {
-    url: await saveLocalImage(buffer, filename),
-    publicId: ''
+    url: stored.url,
+    publicId: stored.metadata.publicId || '',
+    metadata: stored.metadata,
   };
 };
 
-const renderStaticPost = async ({ socialPost, brandGuideline, assets = [], backgroundImageBuffer = null }) => {
+const renderStaticPost = async (
+  { socialPost, brandGuideline, assets = [], backgroundImageBuffer = null },
+  { remoteImageFetcher = fetchRemoteImageBuffer } = {}
+) => {
   const size = SIZE_BY_RATIO[socialPost.aspectRatio] || SIZE_BY_RATIO['4:5'];
-  const id = socialPost._id?.toString() || `social-${Date.now()}`;
   const folder = process.env.CLOUDINARY_SOCIAL_STUDIO_FOLDER || 'menorah/social-studio';
-  const sourceBuffer = backgroundImageBuffer || await loadRemoteImageBuffer(socialPost.imageUrl).catch(() => null);
+  const sourceBuffer = backgroundImageBuffer ||
+    (socialPost.imageUrl ? await remoteImageFetcher(socialPost.imageUrl).catch(() => null) : null);
   const heroImageDataUri = await bufferToJpegDataUri({
     buffer: sourceBuffer,
     width: size.width,
@@ -429,15 +394,15 @@ const renderStaticPost = async ({ socialPost, brandGuideline, assets = [], backg
     .toBuffer();
 
   const saveTasks = [
-    saveImage(imageBuffer, `${id}-final.jpg`, folder),
-    saveImage(thumbBuffer, `${id}-thumb.jpg`, `${folder}/thumbs`)
+    saveImage(imageBuffer, 'rendered-posts', folder),
+    saveImage(thumbBuffer, 'thumbnails', `${folder}/thumbs`)
   ];
 
   if (backgroundImageBuffer) {
     const sourceJpeg = await sharp(backgroundImageBuffer)
       .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
-    saveTasks.push(saveImage(sourceJpeg, `${id}-source.jpg`, `${folder}/sources`));
+    saveTasks.push(saveImage(sourceJpeg, 'generated-sources', `${folder}/sources`));
   }
 
   const [image, thumbnail, source] = await Promise.all(saveTasks);
@@ -445,8 +410,11 @@ const renderStaticPost = async ({ socialPost, brandGuideline, assets = [], backg
   return {
     finalImageUrl: image.url,
     finalImagePublicId: image.publicId,
+    finalImageStorage: image.metadata,
     imageUrl: source?.url || socialPost.imageUrl || '',
     thumbnailUrl: thumbnail.url,
+    thumbnailStorage: thumbnail.metadata,
+    sourceImageStorage: source?.metadata || null,
     width: size.width,
     height: size.height
   };

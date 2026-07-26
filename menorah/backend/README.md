@@ -24,8 +24,7 @@ A comprehensive Node.js/Express.js backend API for the Menorah Health mobile app
 - **Stripe** & **Razorpay** for payments
 - **Jitsi** for video calls
 - **Cloudinary** for file storage
-- **Nodemailer** for emails
-- **Twilio** for SMS
+- **Resend** for transactional emails
 - **Express Validator** for input validation
 - **Helmet** for security headers
 - **Rate Limiting** for API protection
@@ -40,7 +39,7 @@ A comprehensive Node.js/Express.js backend API for the Menorah Health mobile app
 
 1. **Clone the repository and navigate to backend directory:**
 ```bash
-cd Menorah/backend
+cd menorah/backend
 ```
 
 2. **Install dependencies:**
@@ -78,17 +77,9 @@ JWT_EXPIRES_IN=7d
 JWT_REFRESH_SECRET=your-refresh-secret-key
 JWT_REFRESH_EXPIRES_IN=30d
 
-# Email Configuration (Nodemailer)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-EMAIL_FROM=noreply@menorahhealth.com
-
-# SMS Configuration (Twilio)
-TWILIO_ACCOUNT_SID=your-twilio-account-sid
-TWILIO_AUTH_TOKEN=your-twilio-auth-token
-TWILIO_PHONE_NUMBER=+1234567890
+# Email Configuration (Resend)
+RESEND_API_KEY=REPLACE_WITH_RESEND_API_KEY
+EMAIL_FROM="Menorah Health <noreply@menorah.me>"
 
 # Payment Gateway Configuration
 STRIPE_SECRET_KEY=sk_test_your-stripe-secret-key
@@ -209,7 +200,7 @@ CORS_ORIGIN=http://localhost:3000,https://menorahhealth.com
 - `GET /api/video/room/:bookingId` - Get video room details
 - `POST /api/video/room/:bookingId/join` - Join video room
 - `POST /api/video/room/:bookingId/leave` - Leave video room
-- `POST /api/video/room/:bookingId/recording` - Toggle recording
+- `POST /api/video/room/:bookingId/recording` - Returns the explicit recording-disabled status
 
 ## Database Models
 
@@ -284,7 +275,7 @@ docker run -p 3000:3000 --env-file .env menorah-backend
 npm install -g pm2
 
 # Start application
-pm2 start src/server.js --name "menorah-backend"
+pm2 start src/services/api-web/server.js --name "menorah-backend"
 
 # Monitor application
 pm2 monit
@@ -305,14 +296,13 @@ pm2 monit
 - Webhook handling for payment status updates
 
 ### Communication
-- **Nodemailer**: Email notifications
-- **Twilio**: SMS notifications
+- **Resend**: Transactional email notifications
 - **Socket.io**: Real-time chat
 
 ### Video Calls
-- **Jitsi**: Secure video conferencing
-- JWT token generation for authentication
-- Room management and recording
+- **LiveKit**: In-app calls where the jurisdiction policy permits it
+- Approved external-provider links for blocked calling regions
+- Booking-bound, short-lived access tokens; session recording is disabled
 
 ### File Storage
 - **Cloudinary**: Image and file upload

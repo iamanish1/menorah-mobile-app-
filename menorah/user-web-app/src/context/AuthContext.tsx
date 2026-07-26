@@ -1,8 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { api } from '@/lib/api';
-import { authStorage } from '@/lib/auth';
+import { api, UNAUTHORIZED_EVENT } from '@/lib/api';
 import type { User } from '@/types';
 
 interface AuthContextValue {
@@ -10,9 +9,11 @@ interface AuthContextValue {
   isAuthed: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string; needsVerification?: boolean }>;
+  loginWithGoogle: (credential: string) => Promise<{ success: boolean; message?: string; isNewUser?: boolean }>;
   register: (data: RegisterData) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
-  verifyEmail: (code: string) => Promise<{ success: boolean; message?: string }>;
+  logoutAll: () => Promise<void>;
+  verifyEmail: (email: string, code: string) => Promise<{ success: boolean; message?: string }>;
   verifyPhone: (phone: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   verifyEmailOTP: (email: string, otp: string) => Promise<{ success: boolean; message?: string }>;
   forgotPassword: (email: string) => Promise<{ success: boolean; message?: string }>;
@@ -38,22 +39,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshUser = useCallback(async () => {
-    if (!authStorage.getToken()) {
-      setIsLoading(false);
-      return;
-    }
     const res = await api.getCurrentUser();
     if (res.success && res.data?.user) {
       setUser(res.data.user);
     } else {
-      authStorage.clearToken();
       setUser(null);
     }
     setIsLoading(false);
   }, []);
 
   useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+      setIsLoading(false);
+    };
+
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
     refreshUser();
+
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
   }, [refreshUser]);
 
   const login = async (email: string, password: string) => {
@@ -62,9 +66,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(res.data.user);
       const u = res.data.user;
       if (!u.isEmailVerified) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pending_verify_email', email);
+          sessionStorage.setItem('pending_verification_mode', 'account');
+        }
         return { success: true, needsVerification: true, message: 'Please verify your email address.' };
       }
       return { success: true };
+    }
+    return { success: false, message: res.message };
+  };
+
+  const loginWithGoogle = async (credential: string) => {
+    const res = await api.loginWithGoogle(credential);
+    if (res.success && res.data?.user) {
+      setUser(res.data.user);
+      return { success: true, isNewUser: res.data.isNewUser };
     }
     return { success: false, message: res.message };
   };
@@ -78,7 +95,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { success: true };
     }
-    return { success: false, message: res.message };
+    const firstValidationMessage = res.errors?.map((error) => error.message || error.msg).find(Boolean);
+    return { success: false, message: firstValidationMessage || res.message };
   };
 
   const logout = async () => {
@@ -87,8 +105,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.replace('/');
   };
 
-  const verifyEmail = async (code: string) => {
-    const res = await api.verifyEmail(code);
+  const logoutAll = async () => {
+    await api.logoutAll();
+    setUser(null);
+    window.location.replace('/login');
+  };
+
+  const verifyEmail = async (email: string, code: string) => {
+    const res = await api.verifyEmail(email, code);
     if (res.success) {
       await refreshUser();
       return { success: true };
@@ -109,7 +133,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await api.verifyEmailOTP(email, otp);
     if (res.success && res.data?.user) {
       setUser(res.data.user);
-      if (typeof window !== 'undefined') sessionStorage.removeItem('pendingEmail');
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pendingEmail');
+        sessionStorage.removeItem('pending_verify_email');
+        sessionStorage.removeItem('pending_verification_mode');
+      }
       return { success: true };
     }
     return { success: false, message: res.message };
@@ -130,7 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, isAuthed: !!user, isLoading,
-      login, register, logout,
+      login, loginWithGoogle, register, logout, logoutAll,
       verifyEmail, verifyPhone, verifyEmailOTP,
       forgotPassword, resetPassword,
       updateUser, refreshUser,

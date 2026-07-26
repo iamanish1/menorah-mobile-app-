@@ -6,6 +6,8 @@ import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { api } from "@/lib/api";
 import Input from "@/components/ui/Input";
+import { reportError } from "@/lib/safeDiagnostics";
+import { useAuth } from '@/state/useAuth';
 
 export default function ChangePassword({ navigation }: any) {
   const [currentPassword, setCurrentPassword] = useState('');
@@ -22,6 +24,7 @@ export default function ChangePassword({ navigation }: any) {
   const isDark = scheme === 'dark';
   const headerBg = isDark ? colors.primaryDark : colors.primary;
   const primaryActionText = isDark ? colors.primaryDark : 'white';
+  const { invalidateSession } = useAuth();
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -60,13 +63,22 @@ export default function ChangePassword({ navigation }: any) {
       const response = await api.changePassword(currentPassword, newPassword);
 
       if (response.success) {
+        let cleanupPending = false;
+        try {
+          await invalidateSession();
+        } catch (error) {
+          cleanupPending = true;
+          reportError('profile.password_change_cleanup_pending', error);
+        }
         Alert.alert(
-          'Success',
-          'Your password has been changed successfully.',
+          'Password Updated',
+          cleanupPending
+            ? 'Your sessions were revoked. Local credential cleanup will finish before sign-in.'
+            : 'Your sessions were revoked. Sign in again with your new password.',
           [
             {
-              text: 'OK',
-              onPress: () => navigation.goBack()
+              text: 'Sign In',
+              onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Login' }] }),
             }
           ]
         );
@@ -74,7 +86,7 @@ export default function ChangePassword({ navigation }: any) {
         Alert.alert('Error', response.message || 'Failed to change password. Please try again.');
       }
     } catch (error: any) {
-      console.error('Change password error:', error);
+      reportError('profile.password_change_failed', error);
       Alert.alert('Error', 'Failed to change password. Please check your current password and try again.');
     } finally {
       setLoading(false);
