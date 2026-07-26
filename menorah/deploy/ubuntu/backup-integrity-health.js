@@ -195,12 +195,16 @@ function validateSource(evidence, cadence, maximumAgeMs) {
   return { evidence, metadata, archive, setDir };
 }
 
-function validateRestore(source) {
+function validateRestore(sources) {
   if (!requireRestore) return null;
   const evidence = evidenceFromPointer('restore');
   const testedAt = isoEpoch(evidence.timestamp, 'restore-test evidence');
   requireFresh(testedAt, restoreMaxMs, 'restore-test evidence');
-  invariant(evidence.mode === 'restore-test' && evidence.sanitizedNamespace === 'menorah.*' && evidence.mediaReferencesVerified === true && evidence.sourceArchive === source.archive && evidence.sourceArchiveSha256 === source.evidence.mongoArchiveSha256 && evidence.uploadsArchive === source.evidence.uploadsArchive && evidence.uploadsArchiveSha256 === source.evidence.uploadsArchiveSha256 && evidence.mediaManifest === source.evidence.uploadsManifest && evidence.mediaManifestSha256 === source.evidence.uploadsManifestSha256, 'restore-test evidence is not linked to the active daily backup');
+  const source = sources.find((candidate) => (
+    evidence.sourceArchive === candidate.archive
+    && evidence.sourceArchiveSha256 === candidate.evidence.mongoArchiveSha256
+  ));
+  invariant(source && evidence.mode === 'restore-test' && evidence.sanitizedNamespace === 'menorah.*' && evidence.mediaReferencesVerified === true && evidence.uploadsArchive === source.evidence.uploadsArchive && evidence.uploadsArchiveSha256 === source.evidence.uploadsArchiveSha256 && evidence.mediaManifest === source.evidence.uploadsManifest && evidence.mediaManifestSha256 === source.evidence.uploadsManifestSha256, 'restore-test evidence is not linked to an active daily or weekly backup');
   const sanitized = verifyArtifact(evidence.sanitizedArchive, evidence.sanitizedArchiveSha256, 'sanitized restore archive');
   const metadataFile = checkedPath(evidence.sanitizedMetadataFile, root, 'file', 'sanitized restore metadata');
   invariant(sha256(metadataFile) === evidence.sanitizedMetadataSha256, 'sanitized restore metadata digest verification failed');
@@ -220,8 +224,8 @@ try {
   invariant(Number.isFinite(dailyMaxMs) && dailyMaxMs > 0 && Number.isFinite(weeklyMaxMs) && weeklyMaxMs > 0 && Number.isFinite(restoreMaxMs) && restoreMaxMs > 0, 'backup freshness configuration is invalid');
   validateEpochAuthority();
   const daily = validateSource(evidenceFromPointer('backup', 'daily'), 'daily', dailyMaxMs);
-  validateSource(evidenceFromPointer('backup', 'weekly'), 'weekly', weeklyMaxMs);
-  const sanitized = validateRestore(daily);
+  const weekly = validateSource(evidenceFromPointer('backup', 'weekly'), 'weekly', weeklyMaxMs);
+  const sanitized = validateRestore([daily, weekly]);
   process.stdout.write(`signed epoch ${epochId} backup chain OK: ${daily.archive}${sanitized ? `; sanitized restore artifact ${sanitized}` : ''}`);
 } catch (error) {
   process.stderr.write(`signed epoch backup chain validation failed: ${error.message}\n`);

@@ -244,6 +244,39 @@ test_atomic_pointer_publication() {
   grep -F 'Backup health OK: signed epoch' <<< "${output}" >/dev/null || fail "atomic pointer health result missing"
 }
 
+test_restore_linked_to_weekly_is_accepted() {
+  local root="${TMP_ROOT}/weekly-restore" evidence output
+  make_fixture "${root}"
+  node - "${root}" <<'NODE'
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const root = process.argv[2];
+const weekly = JSON.parse(fs.readFileSync(path.join(root, 'weekly-evidence.json'), 'utf8'));
+const restorePath = path.join(root, 'restore-evidence.json');
+const restore = JSON.parse(fs.readFileSync(restorePath, 'utf8'));
+const metadata = JSON.parse(fs.readFileSync(restore.sanitizedMetadataFile, 'utf8'));
+metadata.sourceArchive = weekly.mongoArchive;
+metadata.sourceArchiveSha256 = weekly.mongoArchiveSha256;
+fs.writeFileSync(restore.sanitizedMetadataFile, `${JSON.stringify(metadata, null, 2)}\n`);
+restore.timestamp = new Date(Date.parse(restore.timestamp) + 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+restore.sourceArchive = weekly.mongoArchive;
+restore.sourceArchiveSha256 = weekly.mongoArchiveSha256;
+restore.uploadsArchive = weekly.uploadsArchive;
+restore.uploadsArchiveSha256 = weekly.uploadsArchiveSha256;
+restore.mediaManifest = weekly.uploadsManifest;
+restore.mediaManifestSha256 = weekly.uploadsManifestSha256;
+restore.sanitizedMetadataSha256 = crypto.createHash('sha256').update(fs.readFileSync(restore.sanitizedMetadataFile)).digest('hex');
+fs.writeFileSync(restorePath, `${JSON.stringify(restore, null, 2)}\n`);
+NODE
+  export MENORAH_BACKUP_ROOT="${root}" BACKUP_INTEGRITY_HMAC_KEY="${TEST_HMAC_KEY}" BACKUP_INTEGRITY_EPOCH_ID="${TEST_EPOCH_ID}"
+  evidence="$(node "${EPOCH_TOOL}" write-restore-evidence < "${root}/restore-evidence.json")"
+  node "${EPOCH_TOOL}" publish-restore-pointer "${evidence}"
+  unset MENORAH_BACKUP_ROOT BACKUP_INTEGRITY_HMAC_KEY BACKUP_INTEGRITY_EPOCH_ID
+  if ! output="$(run_health "${root}")"; then fail "health rejected restore evidence linked to the current weekly backup"; fi
+  grep -F 'Backup health OK: signed epoch' <<< "${output}" >/dev/null || fail "weekly restore health result missing"
+}
+
 test_atomic_pointer_rotation_and_prune_preservation() {
   local root="${TMP_ROOT}/rotation" old_epoch_sha output evidence
   make_fixture "${root}"
@@ -291,5 +324,6 @@ test_interrupted_initializer_retry_and_symlink_rejection
 test_tamper_stale_and_legacy_fallback_rejected
 test_unsigned_pointer_and_manifest_tampering_rejected
 test_atomic_pointer_publication
+test_restore_linked_to_weekly_is_accepted
 test_atomic_pointer_rotation_and_prune_preservation
 echo "Backup lifecycle integrity tests passed."
