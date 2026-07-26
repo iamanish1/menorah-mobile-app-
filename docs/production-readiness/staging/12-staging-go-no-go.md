@@ -1,6 +1,6 @@
 # Staging go/no-go record
 
-Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
+Runtime candidate SHA: `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -9,25 +9,25 @@ collected**. Local Docker validation passed with explicit gaps/blocks and does
 not change this server decision.
 
 Current runtime-candidate push gates are green:
-[release readiness](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920365)
+[release readiness](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940956)
 (1/1 jobs, 11/11 steps),
-[functional](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383)
+[functional](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940958)
 (9/9 jobs, 89/89 steps), and
-[security](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920358)
+[security](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940952)
 (15/15 jobs, 104/104 steps), with zero failed, skipped or cancelled
 jobs/steps. Local overlay Phase 11 passed 22/22, with 0 failed and 0 blocked.
 Release-contract validation passed 432/432 assertions: 81 workflow,
 59 local-staging and 292 server-staging. The
 [server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md)
 remains unexecuted with status
-**SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**.
+**DISCOVERY OUTPUT COLLECTED — COLLISION REVIEW REQUIRED**.
 
 Public-production verdict: **NOT READY**
 
 A later docs/PR head is review identity only and must be a docs-only descendant
 of the frozen runtime. The server checkout, script blob, images, image
 manifest, release/recovery markers and deployment arguments must all bind to
-exact runtime SHA `25cd808602020988a09ee9e58cc9d4738cc068c9`; the docs head
+exact runtime SHA `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`; the docs head
 must never be substituted into either runtime-SHA environment key.
 
 A future staging pass means only that this immutable candidate completed the
@@ -65,7 +65,7 @@ Complete in the controlled decision record:
 
 | Field | Record |
 | --- | --- |
-| Runtime candidate branch/SHA | `release/final-production-readiness` / `25cd808602020988a09ee9e58cc9d4738cc068c9` |
+| Runtime candidate branch/SHA | `release/final-production-readiness` / `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2` |
 | Docs/PR-head revision | Record the final full `git rev-parse HEAD` externally after the package commit; it cannot be embedded in its own content-addressed commit |
 | Meeting UTC time | TBD |
 | Change/evidence-pack reference | TBD |
@@ -84,7 +84,7 @@ Silence, absence, a template, or a verbal assurance is not approval.
 | --- | --- | --- | --- |
 | Candidate freeze | Clean/synchronized exact SHA, reviewed commit scope, immutable artifact provenance | Engineering release owner | LOCAL PASS / INDEPENDENT REVIEW REQUIRED / NO-GO |
 | Repository checks | Backend/web/admin/counsellor/mobile lint, type, tests, builds, audits; production QA; Compose/Caddy/shell; scans | Engineering + QA + security | THREE EXACT PUSH WORKFLOWS PASS (25/25 JOBS, 204/204 STEPS, ZERO FAILED/SKIPPED/CANCELED); SERVER STAGING STILL NO-GO |
-| Staging isolation | Dedicated host/network/domains/Mongo/Redis/storage/providers/alerts; 268-key template and 291-key generated environment validate; six-network all-profile/default-five boundary; no production route/data/credential | `INFRASTRUCTURE ACTION`; QA data custodian | LOCAL PHASE 11: 22/22 PASS; STATIC 32 SERVICES / 6 NETWORKS / 21 VOLUMES / 117 LOOPBACK PORT INSTANCES; DEFAULT 26 CONTAINERS / 5 NETWORKS / 20 VOLUMES; SERVER DISCOVERY/COLLISION REVIEW NOT COLLECTED / NO-GO |
+| Staging isolation | Dedicated host/network/domains/Mongo/Redis/storage/providers/alerts; 268-key template and 291-key generated environment validate; six-network all-profile/default-five boundary; no production route/data/credential | `INFRASTRUCTURE ACTION`; QA data custodian | LOCAL PHASE 11: 22/22 PASS; STATIC 32 SERVICES / 6 NETWORKS / 21 VOLUMES / 117 LOOPBACK PORT INSTANCES; REDACTED SERVER DISCOVERY OUTPUT COLLECTED, COLLISION REVIEW NOT COLLECTED / NO-GO |
 | Guarded deployment | Exact-SHA release record, image manifest, health and marker consistency | Engineering + infrastructure | OPEN / NO-GO |
 | Functional QA | All P0 auth, booking, KYC, chat/call, privacy and role cases pass; P1 disposition recorded | QA/product owners | CURRENT AUTOMATION: BACKEND 117 SUITES / 1,716 TESTS + INTEGRATION 13 / 45; API 31/31; PLAYWRIGHT 9/9. SUPERSEDED `0b9f6e4` MATRIX REMAINS HISTORICAL; CURRENT SERVER EXECUTION NOT COLLECTED / NO-GO |
 | Security QA | All P0 adversarial cases pass; outbound email is exact staging-domain-only; no secret/PII leakage; scan findings treated | Security owner | EXACT SECURITY PUSH RUN 15/15 JOBS / 104/104 STEPS; FULL SERVER/DAST/INDEPENDENT COVERAGE OPEN / NO-GO |

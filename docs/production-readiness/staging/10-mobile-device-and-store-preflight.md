@@ -1,6 +1,6 @@
 # Mobile device and store preflight
 
-Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
+Runtime candidate SHA: `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -13,7 +13,7 @@ has completed.
 For the frozen runtime, candidate-bound automation passed the mobile payment
 policy suite 7/7, release/configuration assertions 21/21 and Expo Doctor 19/19
 as part of the
-[exact functional push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383)
+[exact functional push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940958)
 (9/9 jobs, 89/89 steps). These results cover repository configuration only and
 do not satisfy any device, signing, store or account row below.
 
@@ -62,7 +62,7 @@ values locally without printing them:
 set -euo pipefail
 umask 077
 
-readonly RUNTIME_SHA='25cd808602020988a09ee9e58cc9d4738cc068c9'
+readonly RUNTIME_SHA='142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2'
 readonly REPO='/opt/menorah-staging/app'
 readonly STAGING_ENV='/opt/menorah-staging/env/server-staging.env'
 readonly MOBILE_ENV='/opt/menorah-staging/env/mobile-preview.env'

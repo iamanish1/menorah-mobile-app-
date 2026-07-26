@@ -9,9 +9,9 @@ Decision date: 2026-07-25.
 This verdict applies to public production launch. Repository remediation has
 materially improved control design. The inherited local-overlay baseline is
 historical; the candidate-specific discovery regression and 293-test contract
-passed at `25cd808602020988a09ee9e58cc9d4738cc068c9`, and its three exact push gate runs
-passed. A prior read-only discovery attempt was incomplete, so no
-server-staging or production fact may be inferred. Protected repository governance, approved
+passed at `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`, and its three exact push gate runs
+passed. Replacement read-only discovery output is collected, but no
+collision-approved server-staging or production fact may be inferred. Protected repository governance, approved
 Ubuntu staging, live infrastructure proof, approved operating policies,
 independent VAPT, store validation and vendor evidence are not complete.
 
@@ -34,8 +34,8 @@ provider changes, DNS/Cloudflare changes or store submission.
 
 | Gate | Current assessment | Required evidence |
 | --- | --- | --- |
-| Immutable candidate | Runtime SHA frozen; local overlay and three exact push gates passed; review incomplete | `25cd808602020988a09ee9e58cc9d4738cc068c9`, final documentation-head verification, independent review and protected release record |
-| GitHub push gates | Exact candidate runs passed with no failed, skipped or cancelled jobs/steps | Readiness `30209920365`: 1/1 jobs, 11/11 steps; functional `30209920383`: 9/9 and 89/89; security `30209920358`: 15/15 and 104/104 |
+| Immutable candidate | Runtime SHA frozen; local overlay and three exact push gates passed; review incomplete | `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`, final documentation-head verification, independent review and protected release record |
+| GitHub push gates | Exact candidate runs passed with no failed, skipped or cancelled jobs/steps | Readiness `30212940956`: 1/1 jobs, 11/11 steps; functional `30212940958`: 9/9 and 89/89; security `30212940952`: 15/15 and 104/104 |
 | Backend regression | Pass at the runtime candidate | Default backend run: 117 suites and 1,716 tests passed; the separate integration run: 13 suites and 45 tests passed |
 | Web/admin/counsellor/mobile | Pass for recorded repository automation; device proof open | Recorded lint/type/test checks passed with warnings documented; physical-device, accessibility, responsive and real-provider coverage remains open |
 | Release/recovery scripts | Pass for recorded repository automation and local recovery | Core release contracts passed 432/432 (81 workflow/release, 59 local-staging and 292 server-staging); signed backup and isolated restore passed; approved Ubuntu execution remains open |
@@ -44,7 +44,7 @@ provider changes, DNS/Cloudflare changes or store submission.
 | Dependency/security scans | Exact security workflow passed; independent VAPT remains open | Full-history secret scan, OWASP SAST, all seven production audit-policy roots, four image high/critical scans and four CycloneDX SBOM jobs passed; `brace-expansion` 5.0.7 is patched to 5.0.8, while only the bounded moderate `uuid` exception `GHSA-w5hq-g745-h8pq` remains through 2026-10-31 |
 
 Repository-controlled P0 decision:
-**SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**.
+**DISCOVERY OUTPUT COLLECTED — COLLISION REVIEW REQUIRED**.
 
 Public-production decision remains **NO-GO** because the external and
 operational evidence below is incomplete. Exact repository results are in
@@ -55,12 +55,12 @@ The discovery and approval boundary is in
 
 ## Live infrastructure blockers
 
-- `SERVER DISCOVERY — INFRASTRUCTURE ACTION`: authorize only the immutable raw
-  URL and temporary-file command for
-  `25cd808602020988a09ee9e58cc9d4738cc068c9`; require SHA-256
-  `f12794aa04a82cc2437244565b41b14d765479b80b578c80be7bfdc902e065ef`
-  before executing the read-only script, then return its redacted output and
-  classify every collision.
+- `SERVER DISCOVERY REVIEW — INFRASTRUCTURE ACTION`: independently review the
+  collected redacted output from immutable runtime
+  `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2` (script SHA-256
+  `8e23ecfb2d1a42f429e66ea618b15b09360f568010e5859666ec4063175e8f45`) and
+  classify every collision. Re-running discovery is not authorized absent a
+  review instruction.
 - `DRY RENDER — INFRASTRUCTURE ACTION`: after every collision class passes and
   the first human approval is recorded, prepare only the approved staging
   inputs and complete the no-start Compose/Caddy/isolation render.
@@ -220,7 +220,7 @@ ISO/management-system decision: **NO-GO**.
 
 | Role | Current decision | Reason |
 | --- | --- | --- |
-| Engineering | No-go for public launch; local staging passed and the server-staging design awaits discovery | No server discovery/collision approval, approved Ubuntu staging, protected governance or external approvals |
+| Engineering | No-go for public launch; local staging passed and discovery output awaits collision review | No collision approval, approved Ubuntu staging, protected governance or external approvals |
 | Infrastructure | No-go | Live recovery, network, monitoring and log evidence incomplete |
 | Owner/operations | No-go | Policies, roles and risk decisions incomplete |
 | Legal/privacy | No-go | Qualified approvals and operating evidence incomplete |

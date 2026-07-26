@@ -8,7 +8,7 @@ Historical local-staging runtime for sections 1–10:
 Historical full-local server-staging-overlay runtime:
 `1ecd0b379369258be466159364a8a48c79fb65aa`
 
-Current correction runtime: `25cd808602020988a09ee9e58cc9d4738cc068c9`.
+Current correction runtime: `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`.
 Its focused discovery regressions, 293-test server-staging contract, Bash
 syntax, pinned ShellCheck and exact-SHA push gates are recorded in the
 [immutable candidate record](./26-immutable-candidate-record.md).
@@ -464,7 +464,7 @@ successful checks.
 ## 11. Successor Phase 11 validation, SHA history, workflows, and PR #2
 
 The frozen successor runtime is
-`25cd808602020988a09ee9e58cc9d4738cc068c9`. Its server-staging overlay was
+`142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`. Its server-staging overlay was
 validated locally under exact project
 `menorah-server-staging-validation`; it was never run on the shared server.
 
@@ -521,15 +521,15 @@ All three exact-SHA push runs passed, totalling 25/25 jobs and 204/204 steps,
 with zero failed, skipped or cancelled jobs/steps:
 
 - Readiness:
-  [30209920365](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920365)
+  [30212940956](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940956)
   attempt 1,
   1/1 jobs and 11/11 steps.
 - Functional:
-  [30209920383](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383)
+  [30212940958](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940958)
   attempt 1,
   9/9 jobs and 89/89 steps.
 - Security:
-  [30209920358](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920358),
+  [30212940952](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940952),
   15/15 jobs and 104/104 steps.
 
 All three current-candidate runs passed on attempt 1. The earlier candidate's
@@ -555,7 +555,7 @@ also pass its triggered workflows. PR #2 remains draft and unmerged.
 | Superseded server-staging candidate | `a1bc1b6ec751926edc9981f57762277060acf9e4`; invalidated by 21 later runtime/config/test/lockfile commits |
 | Intermediate defect-evidence SHA | `299fbf5060392a1ed934bf8448be16057f4194a0`; failed the Linux recovery and brace-advisory gates |
 | Focused Linux-test fix | `fbf2611fe537728f590285fbf83aef04a03e60df`; one recovery-test file |
-| Current frozen runtime candidate | `25cd808602020988a09ee9e58cc9d4738cc068c9` |
+| Current frozen runtime candidate | `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2` |
 | Runtime-to-documentation rule | The successor may change only `docs/**` and `menorah/docs/**`; executable/runtime drift requires a new runtime candidate and complete invalidation |
 | PR | [#2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/pull/2) |
 | PR state at runtime freeze | `OPEN`, `DRAFT`, `MERGEABLE`, `CLEAN`, not merged |
@@ -632,19 +632,20 @@ behavior.
 
 ## 14. Server-staging design and discovery gate
 
-Status: **SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**.
+Status: **DISCOVERY OUTPUT COLLECTED — COLLISION REVIEW REQUIRED**.
 
 The authoritative design and exact inspection-only command are in
 [29-server-staging-design-and-discovery-runbook.md](./29-server-staging-design-and-discovery-runbook.md).
 The prior shared-server read-only discovery output was incomplete and is not a
-server pass. No server directory, environment, secret, network, volume,
-container, listener, database, cache, DNS record, Cloudflare route, provider
-account or production resource was changed. Accepted server evidence is
-**NOT COLLECTED**.
+server pass. Its replacement output is collected but has not passed collision
+review. No server directory, environment, secret, network, volume, container,
+listener, database, cache, DNS record, Cloudflare route, provider account or
+production resource was changed. Collision-review evidence is **NOT
+COLLECTED**.
 
 | Boundary | Frozen repository design |
 | --- | --- |
-| Runtime | `25cd808602020988a09ee9e58cc9d4738cc068c9` |
+| Runtime | `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2` |
 | Compose project | `menorah-staging` |
 | Root | `/opt/menorah-staging` |
 | Checkout/environment | `/opt/menorah-staging/app`; `/opt/menorah-staging/env/server-staging.env` |
@@ -710,10 +711,11 @@ runbook 29.
 
 No server step beyond inspection-only Step A is currently eligible.
 
-The overlay now exists and passed local validation, but actual server
-collision review remains **BLOCKED PENDING STEP A OUTPUT**. Use only the exact
-inspection-only command in runbook 29. Do not reconstruct the removed
-pre-overlay command.
+The overlay now exists and passed local validation. The exact read-only Step A
+output has been collected, but actual server collision review remains
+**BLOCKED PENDING INDEPENDENT REVIEW OF THAT OUTPUT**. Do not repeat the
+inspection-only command or reconstruct the removed pre-overlay command unless
+that review requires it.
 
 Any production/staging name, path, port, network, volume, database, Redis,
 credential, provider, domain, capacity or egress collision stops the handoff.

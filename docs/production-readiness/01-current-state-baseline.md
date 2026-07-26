@@ -14,12 +14,12 @@ recovery-safety starting point identified for this effort is commit
 `353b19aced537d7acee6310bc0d8acbcc512f739`. Later repository remediation is
 preserved as focused commits on the same release branch. The successor runtime
 candidate is frozen at
-`25cd808602020988a09ee9e58cc9d4738cc068c9`. The superseded candidate's local
+`142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`. The superseded candidate's local
 overlay baseline remains historical; the discovery correction passed focused
 regressions, the 293-test server-staging contract, Bash syntax and pinned
 ShellCheck. The exact push runs also passed: production release
-readiness `30209920365` (1/1 jobs, 11/11 steps), functional release
-`30209920383` (9/9 jobs, 89/89 steps), and security `30209920358` (15/15 jobs,
+readiness `30212940956` (1/1 jobs, 11/11 steps), functional release
+`30212940958` (9/9 jobs, 89/89 steps), and security `30212940952` (15/15 jobs,
 104/104 steps), with zero failed, skipped or cancelled jobs/steps. Results for
 `a1bc1b6ec751926edc9981f57762277060acf9e4`,
 `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`,
@@ -112,7 +112,8 @@ FQDN allowlist. Local validation bound all 117 published-port instances to
 loopback; a real server requires separately reviewed LiveKit media bind/node
 addresses and host firewall or proxy restrictions. Every CIDR, listener, root
 and host resource remains a proposal pending checksum-pinned read-only server
-discovery and a complete collision review. No server discovery has run, no
+discovery and a complete collision review. Redacted discovery output is
+collected, but no collision review has run, no
 server fact has been established, and no directory, secret, container,
 network, volume, DNS/Tunnel route or provider setting has been created or
 changed. The required Steps A-G and two human approval boundaries are in

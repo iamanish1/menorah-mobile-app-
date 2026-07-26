@@ -10,10 +10,10 @@ execution. The current verdict is **NOT READY**.
 The only permissible next technical stage is the inspection-first
 server-staging process in
 [29-server-staging-design-and-discovery-runbook.md](./29-server-staging-design-and-discovery-runbook.md).
-A prior read-only discovery attempt ended `discovery=incomplete` and is not a
-server-staging pass. The server-staging design is repository-controlled, but it
-is not approved for the shared Ubuntu host until replacement host metadata is
-returned and its collision review explicitly passes.
+The prior read-only discovery attempt ended `discovery=incomplete` and is not a
+server-staging pass. Its replacement completed redacted collection, but the
+server-staging design is not approved for the shared Ubuntu host until collision
+review explicitly passes.
 
 Server staging must use only:
 
@@ -58,16 +58,17 @@ Rollback and recovery are in
 ## Current reviewed candidate input
 
 The repository-controlled replacement runtime candidate is
-`25cd808602020988a09ee9e58cc9d4738cc068c9` on
+`142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2` on
 `release/final-production-readiness`. It supersedes
-`1ecd0b379369258be466159364a8a48c79fb65aa` and its intermediate correction
-`92c841ac40e75681019689ca59fd1989e6db6f21`: the former misparsed systemd
-output and omitted the actual production Caddy bind-mount source, while the
-latter still emitted an unnecessary secondary unavailable summary. The final
-correction passed the 293-test server-staging contract,
+`1ecd0b379369258be466159364a8a48c79fb65aa` and its intermediate corrections
+`92c841ac40e75681019689ca59fd1989e6db6f21` and
+`25cd808602020988a09ee9e58cc9d4738cc068c9`: the original misparsed systemd
+output and omitted the actual production Caddy bind-mount source; the final
+correction also recognizes valid escaped and template systemd unit files. It
+passed the 293-test server-staging contract,
 Bash syntax and pinned ShellCheck locally; its exact-SHA push workflows passed:
-readiness run `30209920365` (1/1 jobs, 11/11 steps), functional run
-`30209920383` (9/9 jobs, 89/89 steps), and security run `30209920358` (15/15
+readiness run `30212940956` (1/1 jobs, 11/11 steps), functional run
+`30212940958` (9/9 jobs, 89/89 steps), and security run `30212940952` (15/15
 jobs, 104/104 steps), with zero failed, skipped or cancelled jobs/steps. The
 earlier candidate evidence is historical and must not be relabelled as current
 evidence. This identity does not authorize execution.
@@ -119,8 +120,8 @@ repository already exists on the server:
 ```bash
 (
   set -euo pipefail
-  readonly DISCOVERY_SHA='25cd808602020988a09ee9e58cc9d4738cc068c9'
-  readonly DISCOVERY_SHA256='f12794aa04a82cc2437244565b41b14d765479b80b578c80be7bfdc902e065ef'
+  readonly DISCOVERY_SHA='142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2'
+  readonly DISCOVERY_SHA256='8e23ecfb2d1a42f429e66ea618b15b09360f568010e5859666ec4063175e8f45'
   readonly DISCOVERY_URL="https://raw.githubusercontent.com/menorahsoftware-cmyk/menorah-mobile-app-/${DISCOVERY_SHA}/menorah/deploy/server-staging/discover-server-readonly.sh"
   discovery_file="$(mktemp)"
   readonly discovery_file
@@ -151,7 +152,7 @@ entry point is:
 
 ```bash
 cd /opt/menorah-staging/app
-readonly SERVER_STAGING_SHA='25cd808602020988a09ee9e58cc9d4738cc068c9'
+readonly SERVER_STAGING_SHA='142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2'
 COMPOSE_PROJECT_NAME=menorah-staging \
   MENORAH_STAGING_DEPLOY_ACK=DEPLOY_EXACT_MENORAH_STAGING_SHA \
   bash menorah/deploy/server-staging/deploy-exact-sha.sh \
@@ -170,7 +171,7 @@ resume is:
 
 ```bash
 cd /opt/menorah-staging/app
-readonly SERVER_STAGING_SHA='25cd808602020988a09ee9e58cc9d4738cc068c9'
+readonly SERVER_STAGING_SHA='142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2'
 COMPOSE_PROJECT_NAME=menorah-staging \
   MENORAH_STAGING_RECOVERY_ACK=RESUME_EXACT_MENORAH_STAGING_SHA_AFTER_MIGRATION \
   bash menorah/deploy/server-staging/resume-post-migration.sh \

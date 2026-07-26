@@ -5,7 +5,7 @@ Updated for the current runtime candidate: 2026-07-26.
 Prior repository-remediation verdict (superseded by runtime `1ecd0b379369258be466159364a8a48c79fb65aa`):
 **LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**
 
-Repository-remediation status: **SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**
+Repository-remediation status: **DISCOVERY OUTPUT COLLECTED — COLLISION REVIEW REQUIRED**
 
 Public-production verdict: **NOT READY**
 
@@ -18,13 +18,14 @@ enable providers, submit to a store, or use production data.
 | Field | Value |
 | --- | --- |
 | Branch | `release/final-production-readiness` |
-| Previous runtime candidate | `92c841ac40e75681019689ca59fd1989e6db6f21` — superseded to ensure a genuine systemd/D-Bus outage emits only one explicit unavailable result |
-| Earlier superseded runtime | `1ecd0b379369258be466159364a8a48c79fb65aa` — its systemd parser and ingress metadata discovery required correction |
-| Starting documentation HEAD for this phase | `fb56deeeef8ba59942df943adc21e214dabb5ed5` |
-| Runtime candidate SHA | `25cd808602020988a09ee9e58cc9d4738cc068c9` |
-| Runtime parent SHA | `92c841ac40e75681019689ca59fd1989e6db6f21` |
-| Runtime commit time | 2026-07-26 16:13:05 UTC |
-| Commits ahead of `origin/main` at freeze | 186 |
+| Previous runtime candidate | `25cd808602020988a09ee9e58cc9d4738cc068c9` — superseded because valid escaped and template systemd unit-file names were still reported as unavailable |
+| Earlier superseded runtime (1) | `92c841ac40e75681019689ca59fd1989e6db6f21` — corrected systemd field parsing and ingress mount discovery |
+| Earlier superseded runtime (2) | `1ecd0b379369258be466159364a8a48c79fb65aa` — its systemd parser and ingress metadata discovery required correction |
+| Starting documentation HEAD for this phase | `eafd8c83167a14c4a979af6014cde8079d25b53c` |
+| Runtime candidate SHA | `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2` |
+| Runtime parent SHA | `eafd8c83167a14c4a979af6014cde8079d25b53c` |
+| Runtime commit time | 2026-07-26 17:36:28 UTC |
+| Commits ahead of `origin/main` at freeze | 188 |
 | Documentation HEAD | The documentation-only successor commit containing this record; resolve externally with `git rev-parse HEAD` |
 | Runtime-to-docs relationship | Runtime SHA must be an ancestor; every intervening path must satisfy the documentation-only allowlist below |
 
@@ -50,7 +51,7 @@ candidate and requires a new SHA plus complete downstream validation.
 Review the boundary with:
 
 ```bash
-readonly RUNTIME_SHA='25cd808602020988a09ee9e58cc9d4738cc068c9'
+readonly RUNTIME_SHA='142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2'
 git diff --name-only \
   "${RUNTIME_SHA}..HEAD"
 ```
@@ -60,19 +61,21 @@ If any returned path is outside the two allowlisted documentation trees, stop.
 ## Current candidate-bound GitHub evidence
 
 All three exact-SHA push workflow families for
-`25cd808602020988a09ee9e58cc9d4738cc068c9` completed successfully. The total
+`142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2` completed successfully. The total
 is 25/25 jobs and 204/204 steps, with zero failed, skipped or cancelled
 jobs/steps. This is repository automation evidence only; it is not approval to
 merge or deploy.
 
 | Event | Workflow | Run | Result |
 | --- | --- | --- | --- |
-| Push | Production Release Readiness | [30209920365](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920365), attempt 1 | PASS, 1/1 jobs and 11/11 steps |
-| Push | Exact-SHA functional release validation | [30209920383](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383), attempt 1 | PASS, 9/9 jobs and 89/89 steps |
-| Push | Security gates | [30209920358](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920358), attempt 1 | PASS, 15/15 jobs and 104/104 steps |
+| Push | Production Release Readiness | [30212940956](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940956), attempt 1 | PASS, 1/1 jobs and 11/11 steps |
+| Push | Exact-SHA functional release validation | [30212940958](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940958), attempt 1 | PASS, 9/9 jobs and 89/89 steps |
+| Push | Security gates | [30212940952](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940952), attempt 1 | PASS, 15/15 jobs and 104/104 steps |
 
-The successful push evidence for the superseded runtime
-`1ecd0b379369258be466159364a8a48c79fb65aa` is historical only. It cannot be
+The successful push evidence for superseded runtimes
+`1ecd0b379369258be466159364a8a48c79fb65aa`,
+`92c841ac40e75681019689ca59fd1989e6db6f21` and
+`25cd808602020988a09ee9e58cc9d4738cc068c9` is historical only. It cannot be
 relabelled as evidence for this runtime because the discovery executable and
 its regression tests changed.
 
@@ -86,7 +89,7 @@ exists. PR #2 remains draft and unmerged.
 
 ## Runtime commit ledger
 
-The 54 runtime/configuration commits from the previous candidate to the frozen
+The 55 runtime/configuration commits from the previous candidate to the frozen
 successor are listed in order. Each commit invalidated the earlier runtime
 candidate for its affected scope; no intermediate SHA is a release candidate.
 The evidence column names the proportionate regression or cumulative gate used
@@ -147,7 +150,8 @@ before progressing. The final cumulative evidence is recorded after the table.
 | 51 | `fbf2611fe537728f590285fbf83aef04a03e60df` | Run staging recovery checks with Bash | One recovery-test file; pinned Linux recovery reproduction 34/34 |
 | 52 | `1ecd0b379369258be466159364a8a48c79fb65aa` | Patch the mobile brace-expansion advisory | Exactly two mobile lockfiles; clean installs, dependency/audit policy, lint/typecheck, payment 7/7, release 21/21 and Doctor 19/19 |
 | 53 | `92c841ac40e75681019689ca59fd1989e6db6f21` | Correct read-only systemd parsing and production ingress metadata discovery | Discovery regressions, full 293-test server-staging contract, Bash syntax, pinned ShellCheck, and all three exact-SHA push gates (25/25 jobs; 204/204 steps) |
-| 54 | `25cd808602020988a09ee9e58cc9d4738cc068c9` | Emit a single explicit result for genuine systemd/D-Bus unavailability | Discovery regressions, full 293-test server-staging contract, Bash syntax, pinned ShellCheck, and current exact-SHA push gates |
+| 54 | `25cd808602020988a09ee9e58cc9d4738cc068c9` | Emit a single explicit result for genuine systemd/D-Bus unavailability | Discovery regressions, full 293-test server-staging contract, Bash syntax, pinned ShellCheck, and all three exact-SHA push gates (25/25 jobs; 204/204 steps) |
+| 55 | `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2` | Recognize valid systemd escaped and template units without loosening command safety | Escaped/template discovery regressions, exact-host read-only result, full 293-test server-staging contract, Bash syntax, pinned ShellCheck and all three exact-SHA push gates (25/25 jobs; 204/204 steps) |
 
 The PostCSS pins address the high-severity advisory
 `GHSA-r28c-9q8g-f849` by requiring patched `8.5.18` in all affected web
@@ -182,8 +186,13 @@ The candidate-specific correction passed focused discovery regressions, the
 complete 293-test server-staging contract in an isolated temporary worktree,
 Bash syntax for every release shell script, and the repository's pinned
 ShellCheck image. The exact-SHA push evidence above completed all three
-workflow families. These repository checks do not turn the incomplete Ubuntu
-discovery into a server PASS.
+workflow families. The exact immutable blob was then run read-only on the
+Ubuntu host at `2026-07-26T17:38:28Z`: its script checksum was
+`8e23ecfb2d1a42f429e66ea618b15b09360f568010e5859666ec4063175e8f45`, its
+redacted output digest was
+`07f8e8a7ce914d028672ccd83aa0e14332d4373c361e31ab20ad11a77d6e5258`, and it
+ended `discovery=complete`. This is collected discovery output, not a
+collision-review PASS or approval to prepare, dry-render or deploy staging.
 
 ### Historical `1ecd0b379369258be466159364a8a48c79fb65aa` local baseline
 
@@ -286,11 +295,13 @@ suppressed, downgraded or converted into a pass.
 
 The prior read-only Ubuntu discovery attempt ended with
 `discovery=incomplete`: it misparsed systemd unit rows and omitted the active
-production Caddy mount source. It is not server evidence and did not authorize
-any action. No container, migration, backup, restore, DNS/Tunnel change or
-deployment was performed. Server-staging evidence remains **NOT COLLECTED**
-until the replacement Step A command completes and its redacted output is
-reviewed under [runbook 29](./29-server-staging-design-and-discovery-runbook.md).
+production Caddy mount source. It is historical only. The replacement exact
+blob completed with the redacted digest recorded above, after safely reporting
+the host's escaped cryptsetup unit and template unit. No container, migration,
+backup, restore, DNS/Tunnel change or deployment was performed. Discovery
+output is collected, but collision review, either human approval and the
+no-start dry render remain **NOT COLLECTED** under
+[runbook 29](./29-server-staging-design-and-discovery-runbook.md).
 
 ## Earlier superseded runtime and documentation evidence
 
@@ -416,9 +427,10 @@ occurred. Required external evidence remains open for:
 - provider/vendor assurance and exit evidence; and
 - operational ISO/ISMS/BCM evidence.
 
-The next permissible technical stage is Step A only: run the inspection-only
-server discovery command in
-[runbook 29](./29-server-staging-design-and-discovery-runbook.md), return its
-redacted output, and make no server change. Collision review and explicit
-human approval must precede preparation; a second approval must precede any
-server-staging deployment. Public production remains **NOT READY**.
+The next permissible technical stage is independent collision review of the
+collected redacted output under
+[runbook 29](./29-server-staging-design-and-discovery-runbook.md). Do not
+repeat discovery unless that review requires it, and make no server change.
+Collision review and explicit human approval must precede preparation; a
+second approval must precede any server-staging deployment. Public production
+remains **NOT READY**.

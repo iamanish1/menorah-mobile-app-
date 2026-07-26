@@ -4,11 +4,11 @@ Last reviewed: 2026-07-26.
 
 ## Status, authority and evidence boundary
 
-**SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**
+**DISCOVERY OUTPUT COLLECTED — COLLISION REVIEW REQUIRED**
 
 This runbook describes the isolated Ubuntu server-staging overlay frozen at
 runtime candidate
-`25cd808602020988a09ee9e58cc9d4738cc068c9`. It does not establish any fact
+`142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`. It does not establish any fact
 about the target server and does not authorize a server login, discovery run,
 directory creation, secret change, DNS/Cloudflare change, container start,
 migration, restore, provider action or production deployment.
@@ -17,9 +17,9 @@ The exact candidate-bound push gates are terminal successes:
 
 | Workflow gate | Run | Jobs | Steps | Result |
 | --- | ---: | ---: | ---: | --- |
-| Production release readiness | `30209920365`, attempt 1 | 1/1 | 11/11 | success |
-| Functional release | `30209920383`, attempt 1 | 9/9 | 89/89 | success |
-| Security | `30209920358`, attempt 1 | 15/15 | 104/104 | success |
+| Production release readiness | `30212940956`, attempt 1 | 1/1 | 11/11 | success |
+| Functional release | `30212940958`, attempt 1 | 9/9 | 89/89 | success |
+| Security | `30212940952`, attempt 1 | 15/15 | 104/104 | success |
 
 There were zero failed, skipped or cancelled jobs/steps in those three exact
 push runs. This is repository evidence, not server-staging or production
@@ -219,21 +219,22 @@ state. Validation output must be redacted and tied to the exact candidate SHA.
 
 ## Step A — read-only discovery
 
-**Do not run this command now.** It is the future inspection-only command for
-an authorized operator on the target Ubuntu host:
+**Do not repeat this command without a review instruction.** It is the exact
+inspection-only command for an authorized operator on the target Ubuntu host:
 
-The previous discovery output is invalid and remains a stop condition: its
+The previous discovery output is invalid and remains historical only: its
 systemd parser treated the state column as part of each unit name and its
 ingress metadata list missed the active Caddy bind-mount source
-`/opt/menorah/menorah/deploy/caddy/Caddyfile.production`. It must not be
-treated as a discovery PASS.
+`/opt/menorah/menorah/deploy/caddy/Caddyfile.production`. The replacement
+blob completed redacted discovery collection; this remains neither a
+collision-review PASS nor permission for Step C, dry render or deployment.
 
 ```bash
 (
   set -euo pipefail
-  readonly DISCOVERY_SHA='25cd808602020988a09ee9e58cc9d4738cc068c9'
+  readonly DISCOVERY_SHA='142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2'
   readonly DISCOVERY_URL="https://raw.githubusercontent.com/menorahsoftware-cmyk/menorah-mobile-app-/${DISCOVERY_SHA}/menorah/deploy/server-staging/discover-server-readonly.sh"
-  readonly DISCOVERY_SHA256='f12794aa04a82cc2437244565b41b14d765479b80b578c80be7bfdc902e065ef'
+  readonly DISCOVERY_SHA256='8e23ecfb2d1a42f429e66ea618b15b09360f568010e5859666ec4063175e8f45'
   discovery_tmp="$(mktemp)"
   trap 'rm -f -- "${discovery_tmp}"' EXIT
   curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
@@ -391,9 +392,10 @@ by Compose teardown.
 ## Current conclusion
 
 The isolated design and repository validators are available and the exact
-runtime candidate's three push gates are green. A prior discovery attempt was
-incomplete and is invalid as server truth; no collision review has passed,
-neither approval has been granted, and no server resource, DNS/Tunnel record,
-secret, provider, container or production system has been changed.
+runtime candidate's three push gates are green. The replacement discovery
+output is collected, while the earlier incomplete output remains invalid as
+server truth. No collision review has passed, neither approval has been
+granted, and no server resource, DNS/Tunnel record, secret, provider,
+container or production system has been changed.
 
-**SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**
+**DISCOVERY OUTPUT COLLECTED — COLLISION REVIEW REQUIRED**

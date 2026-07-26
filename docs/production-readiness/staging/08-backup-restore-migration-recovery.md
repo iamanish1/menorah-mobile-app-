@@ -1,10 +1,10 @@
 # Server-staging backup, restore, migration and recovery
 
-Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
+Runtime candidate SHA: `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
-Approved Ubuntu/server-staging state: **NOT COLLECTED — REPLACEMENT DISCOVERY REQUIRED**
+Approved Ubuntu/server-staging state: **DISCOVERY OUTPUT COLLECTED — COLLISION REVIEW REQUIRED**
 
 The candidate completed a local-Docker backup/restore rehearsal: backup
 timestamp `20260725T125008Z`, all six application writers stopped and then
@@ -215,7 +215,7 @@ After recorded approval:
 COMPOSE_PROJECT_NAME=menorah-staging \
 MENORAH_STAGING_RECOVERY_ACK=RESUME_EXACT_MENORAH_STAGING_SHA_AFTER_MIGRATION \
   /opt/menorah-staging/app/menorah/deploy/server-staging/resume-post-migration.sh \
-  '25cd808602020988a09ee9e58cc9d4738cc068c9'
+  '142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2'
 ```
 
 This is not a generic bypass. If any strict precondition fails, writers remain

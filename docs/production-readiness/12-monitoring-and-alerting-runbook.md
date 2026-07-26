@@ -17,7 +17,7 @@ paging or webhook destination. Uptime Kuma monitors are not evidenced. Live
 targets, notification delivery, acknowledgement and production alert behavior
 were not tested while preparing this document.
 
-Runtime candidate `25cd808602020988a09ee9e58cc9d4738cc068c9`
+Runtime candidate `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`
 candidate-bound local server-staging validation passed 35/35 targets and drove
 all 20 required P0 alerts through firing and resolution in Prometheus and the
 isolated Alertmanager sink, returning both systems to zero active alerts.

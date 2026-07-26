@@ -27,11 +27,11 @@ Priority meanings:
   law, safety or store requirements.
 
 The successor runtime candidate is frozen at
-`25cd808602020988a09ee9e58cc9d4738cc068c9`. The prior complete isolated local
+`142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`. The prior complete isolated local
 overlay exercise is historical; this correction passed focused regressions, the
 293-test server-staging contract, Bash syntax and pinned ShellCheck. Its exact production release readiness
-(`30209920365`), functional release (`30209920383`) and security
-(`30209920358`) push runs passed with 25/25 jobs and 204/204 steps and zero
+(`30212940956`), functional release (`30212940958`) and security
+(`30212940952`) push runs passed with 25/25 jobs and 204/204 steps and zero
 failed, skipped or cancelled jobs/steps. Earlier completion statements and
 results attached to `a1bc1b6ec751926edc9981f57762277060acf9e4`,
 `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`,
@@ -50,7 +50,7 @@ the next authorized infrastructure sequence is in
 
 | ID | Pri. | Current repository evidence | Missing closure evidence | Owner/action |
 | --- | --- | --- | --- | --- |
-| GAP-REL-001 | P0 | Runtime SHA `25cd808602020988a09ee9e58cc9d4738cc068c9` is frozen; current local overlay and three exact push gate results exist; old exact-SHA runs are retained only as superseded history | Independent review, final documentation-head verification, approved branch/ruleset governance and protected production release identity | Engineering; `OWNER ACTION` for repository governance |
+| GAP-REL-001 | P0 | Runtime SHA `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2` is frozen; current local overlay and three exact push gate results exist; old exact-SHA runs are retained only as superseded history | Independent review, final documentation-head verification, approved branch/ruleset governance and protected production release identity | Engineering; `OWNER ACTION` for repository governance |
 | GAP-QA-001 | P0 | Candidate-bound local server-staging validation passed, including API smoke 31/31 and Playwright 9/9 | Approved Ubuntu staging web/mobile/API E2E, physical-device/provider behavior, accessibility/responsive/load coverage, independent VAPT and reviewer acceptance | Engineering and QA |
 | GAP-DEP-001 | P1 | All seven exact-candidate production audit-policy roots passed; affected mobile `brace-expansion` production nodes are patched from 5.0.7 to 5.0.8; only the bounded moderate `uuid` advisory `GHSA-w5hq-g745-h8pq` remains under the exception expiring 2026-10-31 | Adopt an Expo-supported `uuid` fix before expiry, rerun clean installs/audits/tests for any dependency change, and fail closed on any advisory, severity, package-set or expiry drift | Engineering; security reviewer |
 | GAP-ARC-001 | P1 | The all-profile server-staging render has 32 services, six isolated networks and 21 volumes; provider-capable services use a dedicated NAT egress bridge | Independent architecture/least-privilege review of the final rendered model; prove host firewall/proxy destination restrictions because the NAT bridge is not an FQDN allowlist; review web-service DB/email access and high-trust components | Engineering; security; `INFRASTRUCTURE ACTION` |
@@ -60,7 +60,7 @@ the next authorized infrastructure sequence is in
 
 | ID | Pri. | Current repository evidence | Missing closure evidence | Owner/action |
 | --- | --- | --- | --- | --- |
-| GAP-STG-DISC-001 | P0 | An isolated `menorah-staging` design, inspection-only discovery script, exhaustive collision register and two approval boundaries are source-controlled | Authorize the immutable-URL, temporary-download discovery command; require SHA-256 `f12794aa04a82cc2437244565b41b14d765479b80b578c80be7bfdc902e065ef` before execution; return output, record every collision class PASS, obtain preparation approval, complete no-start render and obtain separate deployment approval | `INFRASTRUCTURE ACTION`; release and infrastructure approvers |
+| GAP-STG-DISC-001 | P0 | An isolated `menorah-staging` design, inspection-only discovery script, exhaustive collision register and two approval boundaries are source-controlled; redacted output from immutable runtime `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2` was collected and completed | Independently review the redacted output against every collision class, record each result, obtain preparation approval, complete no-start render and obtain separate deployment approval; output collection alone authorizes none of those steps | `INFRASTRUCTURE ACTION`; release and infrastructure approvers |
 | GAP-CFG-001 | P0 | Production startup and Compose validators fail closed on missing, malformed, insecure or placeholder configuration | Validate the fully rendered target-host configuration by name/constraint, mounts, permissions and service identity without disclosing values; prove custody and recovery | `INFRASTRUCTURE ACTION`; `OWNER ACTION` |
 | GAP-DB-001 | P0 | Local replica-set execution applied 11 migrations, skipped the same 11 on rerun, and preserved ledger/index/main-database invariants | Approved Ubuntu execution plus interruption, rollback/resume and protected-host invariant evidence; any production maintenance remains separately authorized | `INFRASTRUCTURE ACTION`; DBA/release approvers |
 | GAP-BKP-001 | P0 | A candidate-bound signed/encrypted local backup and isolated restore passed; 59 documents restored with zero failed records | Approved Ubuntu backup/restore, protected off-site custody/retrieval, independent key recovery, host-loss rehearsal and owner-approved RPO/RTO; newest server restore evidence must meet the approved age | `INFRASTRUCTURE ACTION`; `OWNER ACTION` for RPO/RTO and custody |

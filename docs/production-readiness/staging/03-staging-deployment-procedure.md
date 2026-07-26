@@ -1,10 +1,10 @@
 # Server-staging deployment procedure
 
-Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
+Runtime candidate SHA: `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
-Approved Ubuntu/server-staging state: **NOT COLLECTED — REPLACEMENT DISCOVERY REQUIRED**
+Approved Ubuntu/server-staging state: **DISCOVERY OUTPUT COLLECTED — COLLISION REVIEW REQUIRED**
 
 The local server-staging overlay completed Phase 11 with 22/22 gates passed,
 0 failed and 0 blocked. The three exact runtime-candidate push workflows are
@@ -27,7 +27,7 @@ The only approved model for this work is the dedicated overlay under
 `menorah/deploy/ubuntu/*` production deployment/recovery script for staging.
 Earlier `/srv/menorah-staging`, `/etc/menorah-staging` and production-script
 instructions were superseded by runtime candidate
-`25cd808602020988a09ee9e58cc9d4738cc068c9`.
+`142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`.
 
 The reviewed server-staging identity is:
 
@@ -145,7 +145,7 @@ human approval after all dry-render and collision checks pass.
 
 Only after the second approval, invoke the candidate's dedicated
 `menorah/deploy/server-staging/deploy-exact-sha.sh` for exact runtime SHA
-`25cd808602020988a09ee9e58cc9d4738cc068c9` with project
+`142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2` with project
 `menorah-staging` and its required one-shot acknowledgement. The script,
 checkout and target commit must be byte/commit bound exactly as its guards
 require.
@@ -229,5 +229,5 @@ recovery helper.
 
 ## Current decision
 
-No Step A server discovery has been returned and no server mutation has been
+Step A discovery output has been returned, but no collision approval or server mutation has been
 authorized or performed. Current decision: **STAGING NO-GO**.

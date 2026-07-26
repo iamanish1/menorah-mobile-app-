@@ -12,7 +12,7 @@ while preparing this handover.
 
 No backup or restore has been run on the shared Ubuntu server. The frozen
 server-staging runtime candidate is
-`25cd808602020988a09ee9e58cc9d4738cc068c9`; prior local evidence for
+`142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`; prior local evidence for
 `a1bc1b6ec751926edc9981f57762277060acf9e4` and
 `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` is retained only as superseded
 history. At the frozen candidate, the local signed/encrypted backup
@@ -46,7 +46,7 @@ Backup and restore evidence belongs to Step F of the ordered Step A–G model in
 
 1. Step A downloads the exact discovery blob to a temporary file, verifies
    SHA-256
-   `f12794aa04a82cc2437244565b41b14d765479b80b578c80be7bfdc902e065ef`,
+   `8e23ecfb2d1a42f429e66ea618b15b09360f568010e5859666ec4063175e8f45`,
    executes only the verified read-only script and removes the file on exit.
 2. Step B requires an explicit collision `PASS` and human approval.
 3. Step C prepares only reviewed `/opt/menorah-staging` roots, environment,

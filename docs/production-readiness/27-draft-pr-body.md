@@ -1,24 +1,24 @@
 ## Summary
 
 This draft adds a source-controlled, co-host-safe server-staging overlay and
-records its complete local validation. It does **not** claim that the shared
-Ubuntu server has been inspected, that server staging has been approved or
-deployed, or that production is ready.
+records its complete local validation. Redacted host discovery output is
+collected, but it does **not** claim collision approval, server-staging
+approval or deployment, or production readiness.
 
 - Branch: `release/final-production-readiness`
 - Previous runtime candidate:
-  `92c841ac40e75681019689ca59fd1989e6db6f21` — superseded to emit only one
-  explicit result for a genuine systemd/D-Bus outage
+  `25cd808602020988a09ee9e58cc9d4738cc068c9` — superseded to recognize valid
+  systemd escaped and template unit-file names
 - Frozen runtime candidate:
-  `25cd808602020988a09ee9e58cc9d4738cc068c9`
+  `142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`
 - Documentation HEAD: the documentation-only successor commit containing
   this PR-body source; resolve externally from PR #2 with `git rev-parse HEAD`
 - Base: `main`
 - PR: [#2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/pull/2)
   is open, draft, unmerged and currently mergeable; auto-merge is disabled
 - Candidate-specific discovery regression and server-staging contract: **PASS**
-- Server discovery/evidence: **REPLACEMENT REQUIRED** — the prior output was
-  incomplete and is not a pass
+- Server discovery/evidence: **OUTPUT COLLECTED; COLLISION REVIEW REQUIRED** —
+  the prior incomplete output remains invalid and the replacement is not a pass
 - Production verdict: **NOT READY**
 
 PR #2 remains open, draft and unmerged. This PR body grants no authority to
@@ -29,7 +29,7 @@ merge, deploy, migrate, restore, alter production or change DNS/Cloudflare.
 ## Runtime freeze
 
 The runtime candidate is frozen at
-`25cd808602020988a09ee9e58cc9d4738cc068c9`. Any later source, workflow,
+`142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2`. Any later source, workflow,
 test, lockfile, package manifest, migration, deployment script, Compose,
 Caddy, monitoring, environment-template or provider-behavior change
 invalidates it and requires a new runtime SHA plus complete downstream
@@ -40,20 +40,20 @@ After the freeze, only narrative changes under `docs/**` and
 externally and verify:
 
 ```bash
-readonly RUNTIME_SHA='25cd808602020988a09ee9e58cc9d4738cc068c9'
+readonly RUNTIME_SHA='142b18a6e82843ad02c46e8cd61d9db3f1bfb3a2'
 git merge-base --is-ancestor "${RUNTIME_SHA}" HEAD
 git diff --name-only "${RUNTIME_SHA}..HEAD"
 ```
 
 Every returned path must be in one of the two documentation trees.
 
-The complete ordered 54-commit runtime ledger, purposes and focused/cumulative
+The complete ordered 55-commit runtime ledger, purposes and focused/cumulative
 evidence is in
 [the immutable candidate record](./26-immutable-candidate-record.md).
 
 ## Server-staging design
 
-**SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**
+**DISCOVERY OUTPUT COLLECTED — COLLISION REVIEW REQUIRED**
 
 The new overlay is independent of both production and the pre-existing
 `menorah-local-staging` Docker Desktop project.
@@ -204,11 +204,11 @@ their counts were not rewritten or attributed to this candidate.
 All three current-runtime push workflows are terminal success, with **25/25
 jobs and 204/204 steps** and zero failed, skipped or cancelled jobs/steps:
 
-- [Production Release Readiness — run 30209920365, attempt 1](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920365):
+- [Production Release Readiness — run 30212940956, attempt 1](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940956):
   1/1 jobs, 11/11 steps.
-- [Exact-SHA functional release validation — run 30209920383, attempt 1](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383):
+- [Exact-SHA functional release validation — run 30212940958, attempt 1](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940958):
   9/9 jobs, 89/89 steps.
-- [Security gates — run 30209920358, attempt 1](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920358):
+- [Security gates — run 30212940952, attempt 1](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30212940952):
   15/15 jobs, 104/104 steps.
 
 The successful exact-SHA evidence for the superseded runtime is historical
@@ -316,6 +316,6 @@ The following remain unproved and are not converted to passes:
 
 **THIS DRAFT PR IS NOT AUTHORIZATION TO MERGE OR DEPLOY.**
 
-PR #2 must remain draft and unmerged. No server discovery, deployment,
-migration, backup, restore, DNS/Cloudflare change, production access or
-production-data use is claimed.
+PR #2 must remain draft and unmerged. No server action beyond redacted
+read-only discovery, deployment, migration, backup, restore, DNS/Cloudflare
+change, production-data access or production-data use is claimed.
