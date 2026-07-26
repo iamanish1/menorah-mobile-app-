@@ -196,11 +196,7 @@ const sha256 = (value) => (
   createHash('sha256').update(value).digest('hex')
 );
 
-const slashPath = (value) => (
-  /^[A-Za-z]:[\\/]/.test(value)
-    ? value.replaceAll('\\', '/')
-    : path.resolve(value).replaceAll('\\', '/')
-);
+const slashPath = (value) => path.resolve(value).replaceAll('\\', '/');
 
 const randomToken = (length, randomBytesFunction) => (
   randomBytesFunction(length).toString('hex')

@@ -65,7 +65,6 @@ const contractSource = readFileSync(
   'utf8',
 );
 const fixtureSha = 'a'.repeat(40);
-const fixtureGeneratedDirectory = 'C:/server-staging/generated';
 const externalAlertmanagerSource = `global:
   resolve_timeout: 1m
 
@@ -110,7 +109,6 @@ const validEnvironment = () => ({
   ...buildValidationEnvironment({
     candidateSha: fixtureSha,
     contractKeys: parseContractKeys(contractSource),
-    generatedDirectory: fixtureGeneratedDirectory,
   }).values,
 });
 
