@@ -175,7 +175,7 @@ test('discovery covers collision metadata with allow-listed inspection', () => {
   assert.match(source, /resource_kind=\{\{index \.Labels/);
 });
 
-test('systemd discovery splits unit-file fields and reports one real outage clearly', () => {
+test('systemd discovery accepts safe systemd escapes and reports one real outage clearly', () => {
   assert.match(
     source,
     /while IFS=\$' \\t' read -r unit_name unit_state _; do/,
@@ -188,6 +188,9 @@ test('systemd discovery splits unit-file fields and reports one real outage clea
     source,
     /producer=systemd-unit-list\|status=unavailable\|reason=systemd-or-dbus-unavailable\|exit=/,
   );
+  assert.match(source, /unit_name:0:2/);
+  assert.match(source, /\[\[:xdigit:\]\]\{2\}/);
+  assert.match(source, /template-unit-not-instantiated/);
   assert.match(source, /-- "\$\{unit_name\}"/);
 });
 
@@ -494,7 +497,9 @@ case "\${1-}" in
   list-unit-files)
     printf '%s\n' \
       'caddy.service enabled enabled' \
-      'docker.service enabled enabled'
+      'docker.service enabled enabled' \
+      'systemd-cryptsetup@menorah\x2dbackups\x2dcrypt.service generated generated' \
+      'menorah-backup@.service static -'
     ;;
   show)
     unit_name="\${!#}"
@@ -615,6 +620,18 @@ esac
       assert.match(result.stdout, /apparmor=true/);
       assert.match(result.stdout, /unit=caddy\.service\|state=enabled/);
       assert.match(result.stdout, /Id=caddy\.service/);
+      assert.match(
+        result.stdout,
+        /unit=systemd-cryptsetup@menorah\\x2dbackups\\x2dcrypt\.service\|state=generated/,
+      );
+      assert.match(
+        result.stdout,
+        /Id=systemd-cryptsetup@menorah\\x2dbackups\\x2dcrypt\.service/,
+      );
+      assert.match(
+        result.stdout,
+        /unit=menorah-backup@\.service\|metadata=template-unit-not-instantiated/,
+      );
       assert.doesNotMatch(
         result.stdout,
         /producer=systemd-unit-name-validation\|status=unavailable\|exit=65/,

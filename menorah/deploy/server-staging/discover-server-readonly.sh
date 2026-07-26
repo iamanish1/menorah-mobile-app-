@@ -128,6 +128,37 @@ capture_systemd_unit_list() {
   return 0
 }
 
+# `systemctl list-unit-files` uses systemd's \xHH escaping for characters
+# that cannot appear literally in an identifier. Accept only that escape form
+# in addition to the plain safe character set; command arguments remain
+# quoted and are still passed after `--`.
+is_valid_systemd_unit_name() {
+  local unit_name=$1
+
+  [[ -n "${unit_name}" ]] || return 1
+  while [[ -n "${unit_name}" ]]; do
+    if [[ "${unit_name:0:2}" == '\x' && "${unit_name:2:2}" =~ ^[[:xdigit:]]{2}$ ]]; then
+      unit_name=${unit_name:4}
+      continue
+    fi
+    if [[ "${unit_name:0:1}" =~ ^[[:alnum:]@_.:-]$ ]]; then
+      unit_name=${unit_name:1}
+      continue
+    fi
+    return 1
+  done
+  return 0
+}
+
+is_systemd_template_unit() {
+  local unit_name=$1
+
+  case "${unit_name}" in
+    *@.service|*@.timer) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Caller-controlled Docker and Compose variables must not select a remote
 # daemon, context, TLS endpoint, config directory, or alternate Compose model.
 CALLER_AUTHORITY_NAMES=()
@@ -572,12 +603,21 @@ while IFS=$' \t' read -r unit_name unit_state _; do
   esac
   case "${unit_name,,}" in
     *menorah*|*docker*|*containerd*|*caddy*|*cloudflared*|*mongo*|*redis*)
-      if [[ ! "${unit_name}" =~ ^[a-zA-Z0-9@_.:-]+$ ]]; then
+      if ! is_valid_systemd_unit_name "${unit_name}"; then
         mark_incomplete 'systemd-unit-name-validation' 65
         continue
       fi
       matching_systemd_units=$((matching_systemd_units + 1))
       emit_sanitized "unit=${unit_name}|state=${unit_state:-unknown}"
+
+      # A template's unit file is real, but it has no instance for
+      # `systemctl show` to inspect. The list-unit-files state above is the
+      # available metadata; do not turn this expected condition into a
+      # producer failure.
+      if is_systemd_template_unit "${unit_name}"; then
+        emit_sanitized "unit=${unit_name}|metadata=template-unit-not-instantiated"
+        continue
+      fi
 
       systemd_show_output=''
       capture_command systemd_show_output 'systemd-unit-show' \
