@@ -100,6 +100,32 @@ capture_command() {
   return 0
 }
 
+# systemctl communicates with PID 1 over D-Bus. Keep a genuine systemd/D-Bus
+# outage nonfatal to the remaining inspection, but fail the overall discovery
+# closed once with a reason instead of treating every unavailable unit as an
+# invalid name.
+capture_systemd_unit_list() {
+  local destination=$1
+  local captured_output
+  local producer_status
+
+  captured_output="$(
+    systemctl list-unit-files \
+      --type=service \
+      --type=timer \
+      --no-legend \
+      --no-pager
+  )"
+  producer_status=$?
+  printf -v "${destination}" '%s' "${captured_output}"
+  if (( producer_status != 0 )); then
+    DISCOVERY_INCOMPLETE=1
+    printf '%s\n' \
+      "producer=systemd-unit-list|status=unavailable|reason=systemd-or-dbus-unavailable|exit=${producer_status}"
+  fi
+  return 0
+}
+
 # Caller-controlled Docker and Compose variables must not select a remote
 # daemon, context, TLS endpoint, config directory, or alternate Compose model.
 CALLER_AUTHORITY_NAMES=()
@@ -115,6 +141,87 @@ unset CALLER_AUTHORITY_NAMES caller_authority_name
 readonly LOCAL_DOCKER_HOST='unix:///var/run/docker.sock'
 export DOCKER_HOST="${LOCAL_DOCKER_HOST}"
 unset DOCKER_CONTEXT
+
+readonly PRODUCTION_REPOSITORY_ROOT='/opt/menorah/menorah'
+
+declare -A DISCOVERED_INGRESS_FILES=()
+declare -a DISCOVERED_INGRESS_FILE_ORDER=()
+
+record_ingress_file() {
+  local ingress_path=$1
+
+  if [[ -z "${DISCOVERED_INGRESS_FILES[${ingress_path}]+x}" ]]; then
+    DISCOVERED_INGRESS_FILES["${ingress_path}"]=1
+    DISCOVERED_INGRESS_FILE_ORDER+=("${ingress_path}")
+  fi
+}
+
+# Only add bind mounts that are known ingress configuration locations in the
+# reviewed production repository. This permits Caddy's active host source to
+# be inspected by metadata while avoiding arbitrary bind mounts and secrets.
+record_ingress_mount_sources() {
+  local mount_lines=$1
+  local mount_line
+  local mount_container
+  local mount_type
+  local mount_name
+  local mount_source
+  local mount_destination
+  local mount_rw
+  local mount_extra
+
+  while IFS= read -r mount_line; do
+    [[ -n "${mount_line}" ]] || continue
+    IFS='|' read -r \
+      mount_container \
+      mount_type \
+      mount_name \
+      mount_source \
+      mount_destination \
+      mount_rw \
+      mount_extra <<< "${mount_line}"
+    [[ -z "${mount_extra}" ]] || continue
+    [[ "${mount_container}" == container=* ]] || continue
+    [[ "${mount_type}" == 'mount_type=bind' ]] || continue
+    [[ "${mount_name}" == mount_name=* ]] || continue
+    [[ "${mount_source}" == source=/* ]] || continue
+    [[ "${mount_destination}" == destination=* ]] || continue
+    [[ "${mount_rw}" == 'rw=true' || "${mount_rw}" == 'rw=false' ]] || continue
+
+    mount_source=${mount_source#source=}
+    mount_destination=${mount_destination#destination=}
+    case "${mount_destination}" in
+      /etc/caddy/Caddyfile)
+        case "${mount_source}" in
+          "${PRODUCTION_REPOSITORY_ROOT}"/deploy/caddy/Caddyfile|\
+          "${PRODUCTION_REPOSITORY_ROOT}"/deploy/caddy/Caddyfile.production)
+            record_ingress_file "${mount_source}"
+            ;;
+        esac
+        ;;
+      /etc/cloudflared/config.yml|/etc/cloudflared/config.yaml)
+        case "${mount_source}" in
+          "${PRODUCTION_REPOSITORY_ROOT}"/deploy/cloudflare/tunnel-config.yml)
+            record_ingress_file "${mount_source}"
+            ;;
+        esac
+        ;;
+    esac
+  done <<< "${mount_lines}"
+}
+
+for reviewed_ingress_file in \
+  /etc/caddy/Caddyfile \
+  /etc/cloudflared/config.yml \
+  /etc/cloudflared/config.yaml \
+  "${PRODUCTION_REPOSITORY_ROOT}"/deploy/caddy/Caddyfile \
+  "${PRODUCTION_REPOSITORY_ROOT}"/deploy/caddy/Caddyfile.production \
+  "${PRODUCTION_REPOSITORY_ROOT}"/deploy/cloudflare/ingress-manifest.json \
+  "${PRODUCTION_REPOSITORY_ROOT}"/deploy/cloudflare/tunnel-config.yml
+do
+  record_ingress_file "${reviewed_ingress_file}"
+done
+unset reviewed_ingress_file
 
 local_docker() {
   command docker --host "${LOCAL_DOCKER_HOST}" "$@"
@@ -193,10 +300,10 @@ for reviewed_root in \
   /opt/menorah/data \
   /opt/menorah/backups \
   /opt/menorah/deploy-state \
-  /opt/menorah/menorah-mobile-app- \
-  /opt/menorah/menorah-mobile-app-/menorah \
-  /opt/menorah/menorah \
-  /opt/menorah/menorah/menorah \
+  "${PRODUCTION_REPOSITORY_ROOT}" \
+  "${PRODUCTION_REPOSITORY_ROOT}"/deploy \
+  "${PRODUCTION_REPOSITORY_ROOT}"/deploy/caddy \
+  "${PRODUCTION_REPOSITORY_ROOT}"/deploy/cloudflare \
   /opt/menorah-staging \
   /opt/menorah-staging/data \
   /opt/menorah-staging/backups \
@@ -383,6 +490,7 @@ while IFS= read -r container_id; do
     --format '{{range .Mounts}}container={{$.Name}}|mount_type={{.Type}}|mount_name={{.Name}}|source={{.Source}}|destination={{.Destination}}|rw={{.RW}}{{println}}{{end}}' \
     "${container_id}"
   emit_or_none "${container_mount_output}" 'container-mounts=none-or-unavailable'
+  record_ingress_mount_sources "${container_mount_output}"
 done <<< "${container_id_output}"
 
 section 'docker-networks'
@@ -451,16 +559,15 @@ emit_or_none "${socket_output}" 'listening-sockets=unavailable'
 
 section 'systemd-unit-names'
 systemd_unit_output=''
-capture_command systemd_unit_output 'systemd-unit-list' \
-  systemctl list-unit-files \
-  --type=service \
-  --type=timer \
-  --no-legend \
-  --no-pager
+capture_systemd_unit_list systemd_unit_output
 
 matching_systemd_units=0
-while IFS= read -r unit_name unit_state _; do
+while IFS=$' \t' read -r unit_name unit_state _; do
   [[ -n "${unit_name}" ]] || continue
+  case "${unit_name}" in
+    *.service|*.timer) ;;
+    *) continue ;;
+  esac
   case "${unit_name,,}" in
     *menorah*|*docker*|*containerd*|*caddy*|*cloudflared*|*mongo*|*redis*)
       if [[ ! "${unit_name}" =~ ^[a-zA-Z0-9@_.:-]+$ ]]; then
@@ -472,13 +579,14 @@ while IFS= read -r unit_name unit_state _; do
 
       systemd_show_output=''
       capture_command systemd_show_output 'systemd-unit-show' \
-        systemctl show "${unit_name}" \
+        systemctl show \
         --no-pager \
         --property=Id \
         --property=FragmentPath \
         --property=ActiveState \
         --property=SubState \
-        --property=UnitFileState
+        --property=UnitFileState \
+        -- "${unit_name}"
       emit_or_none "${systemd_show_output}" \
         "unit=${unit_name}|metadata=unavailable"
       ;;
@@ -489,19 +597,7 @@ if (( matching_systemd_units == 0 )); then
 fi
 
 section 'ingress-config-file-metadata'
-for ingress_file in \
-  /etc/caddy/Caddyfile \
-  /etc/cloudflared/config.yml \
-  /etc/cloudflared/config.yaml \
-  /opt/menorah/menorah-mobile-app-/menorah/deploy/caddy/Caddyfile \
-  /opt/menorah/menorah-mobile-app-/menorah/deploy/caddy/Caddyfile.production \
-  /opt/menorah/menorah-mobile-app-/menorah/deploy/cloudflare/ingress-manifest.json \
-  /opt/menorah/menorah-mobile-app-/menorah/deploy/cloudflare/tunnel-config.yml \
-  /opt/menorah/menorah/menorah/deploy/caddy/Caddyfile \
-  /opt/menorah/menorah/menorah/deploy/caddy/Caddyfile.production \
-  /opt/menorah/menorah/menorah/deploy/cloudflare/ingress-manifest.json \
-  /opt/menorah/menorah/menorah/deploy/cloudflare/tunnel-config.yml
-do
+for ingress_file in "${DISCOVERED_INGRESS_FILE_ORDER[@]}"; do
   if [[ -e "${ingress_file}" || -L "${ingress_file}" ]]; then
     ingress_stat_output=''
     capture_command ingress_stat_output 'ingress-file-stat' \
@@ -513,6 +609,10 @@ do
     printf 'path=%s|state=absent\n' "${ingress_file}"
   fi
 done
+unset \
+  DISCOVERED_INGRESS_FILES \
+  DISCOVERED_INGRESS_FILE_ORDER \
+  ingress_file
 
 section 'completion'
 COMPLETION_EMITTED=1

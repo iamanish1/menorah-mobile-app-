@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
@@ -152,6 +153,7 @@ test('discovery covers collision metadata with allow-listed inspection', () => {
     'ss -H -lntu',
     'systemctl list-unit-files',
     'systemctl show',
+    'capture_systemd_unit_list',
     '--property=FragmentPath',
     '--property=ActiveState',
     '--property=SubState',
@@ -171,6 +173,22 @@ test('discovery covers collision metadata with allow-listed inspection', () => {
   assert.match(source, /mountpoint=\{\{\.Mountpoint\}\}/);
   assert.match(source, /project=\{\{index \.Labels/);
   assert.match(source, /resource_kind=\{\{index \.Labels/);
+});
+
+test('systemd discovery splits unit-file fields and reports one real outage clearly', () => {
+  assert.match(
+    source,
+    /while IFS=\$' \\t' read -r unit_name unit_state _; do/,
+  );
+  assert.doesNotMatch(
+    source,
+    /while IFS= read -r unit_name unit_state _; do/,
+  );
+  assert.match(
+    source,
+    /producer=systemd-unit-list\|status=unavailable\|reason=systemd-or-dbus-unavailable\|exit=/,
+  );
+  assert.match(source, /-- "\$\{unit_name\}"/);
 });
 
 test('Docker output excludes arbitrary labels, ConfigFiles, and environments', () => {
@@ -274,15 +292,11 @@ test('discovery cannot access databases, providers, DNS, logs, or raw secret val
   assert.doesNotMatch(executableSource, /\bsystemctl\s+cat\b/);
 });
 
-test('current and historical production layouts are inspected by metadata only', () => {
+test('the production layout and ingress bind-mount sources are metadata-only', () => {
   for (const root of [
     '/opt/menorah/data',
     '/opt/menorah/backups',
     '/opt/menorah/deploy-state',
-    '/opt/menorah/menorah-mobile-app-',
-    '/opt/menorah/menorah-mobile-app-/menorah',
-    '/opt/menorah/menorah',
-    '/opt/menorah/menorah/menorah',
     '/opt/menorah-staging/data',
     '/opt/menorah-staging/backups',
     '/opt/menorah-staging/deploy-state',
@@ -292,11 +306,28 @@ test('current and historical production layouts are inspected by metadata only',
   ]) {
     assert.ok(source.includes(root), `root metadata is missing ${root}`);
   }
+  for (const repositoryPath of [
+    "readonly PRODUCTION_REPOSITORY_ROOT='/opt/menorah/menorah'",
+    '"${PRODUCTION_REPOSITORY_ROOT}"/deploy',
+    '"${PRODUCTION_REPOSITORY_ROOT}"/deploy/caddy',
+    '"${PRODUCTION_REPOSITORY_ROOT}"/deploy/cloudflare',
+  ]) {
+    assert.ok(
+      source.includes(repositoryPath),
+      `production repository metadata is missing ${repositoryPath}`,
+    );
+  }
   assert.match(
     source,
     /stat -c 'path=%n\|type=%F\|mode=%a\|owner=%u:%g'/,
   );
   assert.match(source, /readlink -f -- "\$\{reviewed_root\}"/);
+  assert.match(source, /record_ingress_mount_sources/);
+  assert.match(source, /mount_type=bind/);
+  assert.match(source, /\/etc\/caddy\/Caddyfile/);
+  assert.match(source, /Caddyfile\.production/);
+  assert.doesNotMatch(source, /\/opt\/menorah\/menorah-mobile-app-/);
+  assert.doesNotMatch(source, /\/opt\/menorah\/menorah\/menorah/);
   assert.doesNotMatch(executableSource, /\bfind\s+\/opt\/menorah/);
   assert.doesNotMatch(executableSource, /\bls\s+.*\/opt\/menorah/);
 });
@@ -315,6 +346,13 @@ test(
       join(tmpdir(), 'menorah-discovery-shim-'),
     );
     const shimDirectory = join(fixtureRoot, 'bin');
+    const repositoryRoot = join(fixtureRoot, 'repository');
+    const mountedCaddyfile = join(
+      repositoryRoot,
+      'deploy',
+      'caddy',
+      'Caddyfile.production',
+    );
     const canary = 'MENORAH_DISCOVERY_TEST_CANARY_7f9d3a';
 
     try {
@@ -327,6 +365,17 @@ test(
         },
       );
       assert.equal(mkdirResult.status, 0, mkdirResult.stderr);
+      mkdirSync(dirname(mountedCaddyfile), { recursive: true });
+      writeFileSync(mountedCaddyfile, `secret_value=${canary}\n`, 'utf8');
+
+      const caddyMountLine = [
+        'container=/caddy',
+        'mount_type=bind',
+        'mount_name=',
+        `source=${toBashPath(mountedCaddyfile)}`,
+        'destination=/etc/caddy/Caddyfile',
+        'rw=false',
+      ].join('|');
 
       const shims = {
         docker: String.raw`#!/usr/bin/env bash
@@ -364,6 +413,7 @@ case "\${1-}:\${2-}" in
     exit 84
     ;;
   ps:-aq)
+    printf '%s\n' '0123456789ab'
     ;;
   ps:-a)
     if [[ "$*" == *'ConfigFiles'* || "$*" == *'json .Labels'* ]]; then
@@ -394,6 +444,13 @@ case "\${1-}:\${2-}" in
       printf '%s\n' 'shim-project'
     else
       printf '%s\n' 'name=shim-volume|driver=local'
+    fi
+    ;;
+  inspect:--format)
+    if [[ "$*" == *'destination={{.Destination}}'* ]]; then
+      printf '%s\n' '__CADDY_MOUNT_LINE__'
+    else
+      printf '%s\n' 'name=/caddy|project=shim-project|service=caddy|restart=unless-stopped|memory_bytes=0|nano_cpus=0|pids_limit=0|read_only=true|privileged=false|network_mode=shim|pid_mode=|ipc_mode='
     fi
     ;;
   stats:--no-stream)
@@ -435,7 +492,18 @@ printf '%s\n' 'tcp LISTEN 0 128 127.0.0.1:32123 0.0.0.0:*'
         systemctl: String.raw`#!/usr/bin/env bash
 case "\${1-}" in
   list-unit-files)
-    exit 0
+    printf '%s\n' \
+      'caddy.service enabled enabled' \
+      'docker.service enabled enabled'
+    ;;
+  show)
+    unit_name="\${!#}"
+    printf '%s\n' \
+      "Id=\${unit_name}" \
+      "FragmentPath=/etc/systemd/system/\${unit_name}" \
+      'ActiveState=active' \
+      'SubState=running' \
+      'UnitFileState=enabled'
     ;;
   *)
     exit 3
@@ -446,7 +514,13 @@ esac
 
       for (const [name, body] of Object.entries(shims)) {
         const shimPath = join(shimDirectory, name);
-        writeFileSync(shimPath, body.replaceAll('\\${', '${'), 'utf8');
+        writeFileSync(
+          shimPath,
+          body
+            .replaceAll('__CADDY_MOUNT_LINE__', caddyMountLine)
+            .replaceAll('\\${', '${'),
+          'utf8',
+        );
         chmodSync(shimPath, 0o755);
       }
 
@@ -459,13 +533,20 @@ esac
       const instrumentedPathDeclaration =
         `readonly DISCOVERY_EXECUTABLE_PATH='${toBashPath(shimDirectory)}`
         + ":/usr/sbin:/usr/bin:/sbin:/bin'";
+      const productionRepositoryRootDeclaration =
+        "readonly PRODUCTION_REPOSITORY_ROOT='/opt/menorah/menorah'";
+      const instrumentedRepositoryRootDeclaration =
+        `readonly PRODUCTION_REPOSITORY_ROOT='${toBashPath(repositoryRoot)}'`;
       assert.ok(source.includes(productionPathDeclaration));
+      assert.ok(source.includes(productionRepositoryRootDeclaration));
       writeFileSync(
         instrumentedScriptPath,
-        source.replace(
-          productionPathDeclaration,
-          instrumentedPathDeclaration,
-        ),
+        source
+          .replace(productionPathDeclaration, instrumentedPathDeclaration)
+          .replace(
+            productionRepositoryRootDeclaration,
+            instrumentedRepositoryRootDeclaration,
+          ),
         'utf8',
       );
       chmodSync(instrumentedScriptPath, 0o755);
@@ -532,11 +613,55 @@ esac
       assert.match(result.stdout, /userns_remap=false/);
       assert.match(result.stdout, /seccomp=true/);
       assert.match(result.stdout, /apparmor=true/);
+      assert.match(result.stdout, /unit=caddy\.service\|state=enabled/);
+      assert.match(result.stdout, /Id=caddy\.service/);
+      assert.doesNotMatch(
+        result.stdout,
+        /producer=systemd-unit-name-validation\|status=unavailable\|exit=65/,
+      );
+      assert.match(
+        result.stdout,
+        /path=.*\/deploy\/caddy\/Caddyfile\.production\|type=regular file/,
+      );
       assert.match(result.stdout, /producer=docker-stats\|status=unavailable\|exit=23/);
       assert.match(result.stdout, /\[REDACTED\]/);
       assert.match(result.stdout, /\[listening-sockets\]/);
       assert.match(result.stdout, /127\.0\.0\.1:32123/);
       assert.match(result.stdout, /\[completion\]\ndiscovery=incomplete\s*$/);
+
+      const systemctlShimPath = join(shimDirectory, 'systemctl');
+      writeFileSync(systemctlShimPath, '#!/usr/bin/env bash\nexit 42\n', 'utf8');
+      chmodSync(systemctlShimPath, 0o755);
+      const unavailableSystemdResult = spawnSync(
+        bash,
+        [
+          '-c',
+          'export PATH="$1:$PATH"; exec "$BASH" "$2"',
+          'discovery-test',
+          toBashPath(shimDirectory),
+          toBashPath(instrumentedScriptPath),
+        ],
+        {
+          encoding: 'utf8',
+          env: cleanEnvironment,
+          timeout: 30_000,
+          maxBuffer: 4 * 1024 * 1024,
+        },
+      );
+
+      assert.equal(unavailableSystemdResult.error, undefined);
+      assert.notEqual(unavailableSystemdResult.status, 0);
+      assert.equal(unavailableSystemdResult.stderr, '');
+      assert.deepEqual(
+        unavailableSystemdResult.stdout.match(
+          /producer=systemd-unit-list\|status=unavailable\|reason=systemd-or-dbus-unavailable\|exit=42/g,
+        ),
+        ['producer=systemd-unit-list|status=unavailable|reason=systemd-or-dbus-unavailable|exit=42'],
+      );
+      assert.doesNotMatch(
+        unavailableSystemdResult.stdout,
+        /systemd-unit-name-validation/,
+      );
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
