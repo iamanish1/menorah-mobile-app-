@@ -3,6 +3,7 @@ set -eu
 
 BACKUP_ROOT="${BACKUP_ROOT:-/backups}"
 BACKUP_ATTEMPT_ROOT="${BACKUP_ATTEMPT_ROOT:-/backup-attempts}"
+BACKUP_INTEGRITY_EPOCH_ID="${BACKUP_INTEGRITY_EPOCH_ID:-}"
 TEXTFILE_DIR="${TEXTFILE_DIR:-/textfile}"
 OUTPUT_FILE="${TEXTFILE_DIR}/menorah-backup.prom"
 TEMP_FILE="${OUTPUT_FILE}.tmp.$$"
@@ -12,10 +13,9 @@ trap 'rm -f "${TEMP_FILE}"' EXIT HUP INT TERM
 
 marker_metric() {
   backup_type="$1"
-  marker="${BACKUP_ROOT}/metadata/latest-success-${backup_type}.json"
-  signature="${marker}.hmac-sha256"
+  marker="${BACKUP_ROOT}/metadata/integrity-epochs/${BACKUP_INTEGRITY_EPOCH_ID}/pointers/latest-success-${backup_type}.json"
 
-  if [ -s "${marker}" ] && [ -s "${signature}" ]; then
+  if [ -n "${BACKUP_INTEGRITY_EPOCH_ID}" ] && [ -s "${marker}" ]; then
     modified_epoch="$(stat -c %Y "${marker}")"
     printf 'menorah_backup_metadata_present{backup_type="%s"} 1\n' "${backup_type}"
     printf 'menorah_backup_last_success_timestamp_seconds{backup_type="%s"} %s\n' \
@@ -76,12 +76,12 @@ attempt_metric() {
     attempt_metric "${backup_type}"
   done
 
-  restore_marker="${BACKUP_ROOT}/restore-tests/latest-success.json"
+  restore_marker="${BACKUP_ROOT}/metadata/integrity-epochs/${BACKUP_INTEGRITY_EPOCH_ID}/pointers/latest-restore-test.json"
   echo '# HELP menorah_restore_test_metadata_present Whether the isolated restore-test success marker exists.'
   echo '# TYPE menorah_restore_test_metadata_present gauge'
   echo '# HELP menorah_restore_test_last_success_timestamp_seconds Filesystem timestamp of the latest restore-test success marker.'
   echo '# TYPE menorah_restore_test_last_success_timestamp_seconds gauge'
-  if [ -s "${restore_marker}" ] && [ -s "${restore_marker}.hmac-sha256" ]; then
+  if [ -n "${BACKUP_INTEGRITY_EPOCH_ID}" ] && [ -s "${restore_marker}" ]; then
     printf 'menorah_restore_test_metadata_present 1\n'
     printf 'menorah_restore_test_last_success_timestamp_seconds %s\n' "$(stat -c %Y "${restore_marker}")"
   else

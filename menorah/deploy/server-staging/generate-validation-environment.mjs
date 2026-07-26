@@ -196,7 +196,11 @@ const sha256 = (value) => (
   createHash('sha256').update(value).digest('hex')
 );
 
-const slashPath = (value) => path.resolve(value).replaceAll('\\', '/');
+const slashPath = (value) => (
+  /^[A-Za-z]:[\\/]/.test(value)
+    ? value.replaceAll('\\', '/')
+    : path.resolve(value).replaceAll('\\', '/')
+);
 
 const randomToken = (length, randomBytesFunction) => (
   randomBytesFunction(length).toString('hex')
@@ -666,6 +670,8 @@ export const buildValidationEnvironment = ({
     BACKUP_MAX_AGE_HOURS: '24',
     BACKUP_MIN_SIZE_BYTES: '1024',
     BACKUP_DISK_USAGE_MAX_PERCENT: '80',
+    BACKUP_INTEGRITY_EPOCH_ID: 'server-staging-initial-epoch',
+    BACKUP_WEEKLY_MAX_AGE_HOURS: '192',
     BACKUP_RESTORE_TEST_MAX_AGE_HOURS: '24',
     BACKUP_COLD_STORAGE_LABEL:
       'Synthetic isolated server staging retrieval',

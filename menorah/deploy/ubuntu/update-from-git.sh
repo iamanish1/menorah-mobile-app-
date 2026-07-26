@@ -1441,6 +1441,10 @@ require_min_length DATA_ENCRYPTION_KEY 32
 require_min_length AUDIT_LOG_SIGNING_KEY 32
 require_min_length BACKUP_ENCRYPTION_PASSWORD 32
 require_min_length BACKUP_INTEGRITY_HMAC_KEY 32
+if [[ ! "${BACKUP_INTEGRITY_EPOCH_ID:-}" =~ ^[a-z0-9][a-z0-9-]{2,63}$ ]]; then
+  echo "BACKUP_INTEGRITY_EPOCH_ID must be a 3-64 character lowercase integrity epoch ID." >&2
+  exit 1
+fi
 validate_release_environment
 if [[ "${MEDIA_STORAGE_BACKEND:-}" != "local" \
   || "${MEDIA_PUBLIC_BASE_URL:-}" != "https://${API_WEB_DOMAIN:-api-web.menorah.me}" \
@@ -1649,13 +1653,12 @@ echo "Resolving the digest-pinned backup job image..."
 compose_cmd pull --policy always backup-runner
 echo "Creating a fresh pre-migration backup..."
 BACKUP_DEPLOYED_RELEASE_SHA="${PREVIOUS_SHA}" "${SCRIPT_DIR}/backup-now.sh" manual
-FRESH_BACKUP_METADATA="${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}/metadata/latest-success-manual.json"
-FRESH_ARCHIVE="$(node -e '
-  const fs = require("fs");
-  const metadata = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  if (!metadata.mongoArchive || typeof metadata.mongoArchive !== "string") process.exit(1);
-  process.stdout.write(metadata.mongoArchive);
-' "${FRESH_BACKUP_METADATA}")"
+FRESH_BACKUP_EVIDENCE="$(node "${SCRIPT_DIR}/backup-integrity-epoch.js" get-backup-evidence manual)"
+FRESH_ARCHIVE="$(BACKUP_EPOCH_EVIDENCE="${FRESH_BACKUP_EVIDENCE}" node -e '
+  const evidence = JSON.parse(process.env.BACKUP_EPOCH_EVIDENCE).evidence;
+  if (!evidence || typeof evidence.mongoArchive !== "string") process.exit(1);
+  process.stdout.write(evidence.mongoArchive);
+')"
 if [[ -z "${FRESH_ARCHIVE}" || ! -f "${FRESH_ARCHIVE}" ]]; then
   echo "Fresh backup metadata does not identify a readable MongoDB archive." >&2
   exit 1
@@ -1663,13 +1666,12 @@ fi
 
 echo "Restoring the fresh backup into the isolated restore-test database..."
 RESTORE_ARCHIVE="${FRESH_ARCHIVE}" "${SCRIPT_DIR}/restore-latest-backup.sh" restore-test
-node -e '
-  const fs = require("fs");
-  const marker = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  if (marker.archive !== process.argv[2]) process.exit(1);
-' "${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}/restore-tests/latest-success.json" "${FRESH_ARCHIVE}"
-BACKUP_TYPE=manual BACKUP_MAX_AGE_HOURS=1 CHECK_RESTORE_TEST=true \
-  "${SCRIPT_DIR}/check-backup-health.sh"
+FRESH_RESTORE_EVIDENCE="$(node "${SCRIPT_DIR}/backup-integrity-epoch.js" get-restore-evidence)"
+BACKUP_EPOCH_EVIDENCE="${FRESH_RESTORE_EVIDENCE}" \
+FRESH_ARCHIVE="${FRESH_ARCHIVE}" node -e '
+  const evidence = JSON.parse(process.env.BACKUP_EPOCH_EVIDENCE).evidence;
+  if (!evidence || evidence.sourceArchive !== process.env.FRESH_ARCHIVE) process.exit(1);
+'
 if [[ ! -r "${FRESH_ARCHIVE}.sha256" ]]; then
   echo "Fresh backup checksum is missing: ${FRESH_ARCHIVE}.sha256" >&2
   exit 1

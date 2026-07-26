@@ -29,6 +29,7 @@ DEPLOY_STATE_ROOT="${MENORAH_DEPLOY_STATE_ROOT:-/opt/menorah/deploy-state}"
 BACKUP_REQUIRE_MOUNT="${BACKUP_REQUIRE_MOUNT:-}"
 BACKUP_REQUIRE_ENCRYPTION="${BACKUP_REQUIRE_ENCRYPTION:-}"
 BACKUP_RUN_AS="${BACKUP_RUN_AS:-$(id -u):$(id -g)}"
+INTEGRITY_EPOCH_TOOL="${SCRIPT_DIR}/backup-integrity-epoch.js"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT_DIR="${MENORAH_BACKUP_ROOT}/${BACKUP_TYPE}/${STAMP}"
 MONGO_ARCHIVE="${OUT_DIR}/mongo/menorah-mongo-${STAMP}.archive.gz"
@@ -85,6 +86,14 @@ if is_true "${BACKUP_REQUIRE_MOUNT}"; then
   fi
 else
   mkdir -p "${MENORAH_BACKUP_ROOT}"
+fi
+
+# The configured epoch is the sole authority for new signed evidence.  This
+# happens before any backup artifact path is created and never reads or
+# replaces legacy root-level latest-success pointers.
+if ! node "${INTEGRITY_EPOCH_TOOL}" validate; then
+  echo "A complete, configured backup-integrity epoch is required before writing backup evidence." >&2
+  exit 1
 fi
 
 if [[ "${NODE_ENV:-}" == "production" ]] || is_true "${BACKUP_REQUIRE_ENCRYPTION}"; then
@@ -316,24 +325,6 @@ if [[ "${NODE_ENV:-}" == "production" ]]; then
   fi
 fi
 
-sign_file() {
-  local input_file="$1"
-  local temporary
-  [[ -n "${BACKUP_INTEGRITY_HMAC_KEY:-}" ]] || return 0
-  temporary="$(mktemp "$(dirname "${input_file}")/.hmac.XXXXXX")"
-  # The JavaScript program deliberately reads its values from process.env.
-  # shellcheck disable=SC2016
-  HMAC_INPUT_FILE="${input_file}" node -e '
-    const crypto = require("crypto");
-    const fs = require("fs");
-    const key = process.env.BACKUP_INTEGRITY_HMAC_KEY || "";
-    if (Buffer.byteLength(key, "utf8") < 32) process.exit(1);
-    process.stdout.write(`${crypto.createHmac("sha256", key).update(fs.readFileSync(process.env.HMAC_INPUT_FILE)).digest("hex")}\n`);
-  ' > "${temporary}"
-  chmod 0600 "${temporary}"
-  mv -f -- "${temporary}" "${input_file}.hmac-sha256"
-}
-
 sha256sum "${FINAL_MONGO}" > "${FINAL_MONGO}.sha256"
 sha256sum "${FINAL_UPLOADS}" > "${FINAL_UPLOADS}.sha256"
 sha256sum "${UPLOADS_MANIFEST}" > "${UPLOADS_MANIFEST}.sha256"
@@ -425,9 +416,6 @@ const metadata = {
 process.stdout.write(`${JSON.stringify(metadata, null, 2)}\n`);
 NODE
 chmod 0600 "${BACKUP_METADATA_FILE}"
-sign_file "${UPLOADS_MANIFEST}"
-sign_file "${MEDIA_REFERENCE_REPORT}"
-sign_file "${BACKUP_METADATA_FILE}"
 
 if [[ -z "${BACKUP_ENCRYPTION_PASSWORD:-}" ]]; then
   cat > "${OUT_DIR}/ENCRYPTION-BLOCKER.txt" <<'EOF'
@@ -436,42 +424,53 @@ Do not upload it off-host until BACKUP_ENCRYPTION_PASSWORD, age, gpg, or another
 EOF
 fi
 
-LATEST_DIR="${MENORAH_BACKUP_ROOT}/metadata"
-mkdir -p "${LATEST_DIR}"
-LATEST_MARKER="${LATEST_DIR}/latest-success-${BACKUP_TYPE}.json"
-LATEST_MARKER_TMP="$(mktemp "${LATEST_DIR}/.latest-success-${BACKUP_TYPE}.XXXXXX")"
+EPOCH_EVIDENCE_TMP="$(mktemp "${OUT_DIR}/metadata/.epoch-evidence.XXXXXXXX")"
+BACKUP_EPOCH_ID="${BACKUP_INTEGRITY_EPOCH_ID}" \
 BACKUP_METADATA_TIMESTAMP="${STAMP}" \
 BACKUP_METADATA_TYPE="${BACKUP_TYPE}" \
 BACKUP_METADATA_PATH="${OUT_DIR}" \
+BACKUP_METADATA_FILE="${BACKUP_METADATA_FILE}" \
+BACKUP_METADATA_SHA="$(sha256sum "${BACKUP_METADATA_FILE}" | awk '{print $1}')" \
 BACKUP_METADATA_MONGO_ARCHIVE="${FINAL_MONGO}" \
 BACKUP_METADATA_MONGO_SHA="${MONGO_ARCHIVE_SHA256}" \
+BACKUP_METADATA_MONGO_SIZE="$(stat -c '%s' "${FINAL_MONGO}")" \
 BACKUP_METADATA_UPLOADS_ARCHIVE="${FINAL_UPLOADS}" \
+BACKUP_METADATA_UPLOADS_SHA="${UPLOAD_ARCHIVE_SHA256}" \
+BACKUP_METADATA_UPLOADS_SIZE="$(stat -c '%s' "${FINAL_UPLOADS}")" \
 BACKUP_METADATA_UPLOADS_MANIFEST="${UPLOADS_MANIFEST}" \
+BACKUP_METADATA_UPLOADS_MANIFEST_SHA="${UPLOADS_MANIFEST_SHA256}" \
 BACKUP_METADATA_MEDIA_REFERENCE_REPORT="${MEDIA_REFERENCE_REPORT}" \
-BACKUP_METADATA_FILE="${BACKUP_METADATA_FILE}" \
+BACKUP_METADATA_MEDIA_REFERENCE_REPORT_SHA="${MEDIA_REFERENCE_REPORT_SHA256}" \
 BACKUP_METADATA_ENCRYPTED="$(if [[ -n "${BACKUP_ENCRYPTION_PASSWORD:-}" ]]; then echo true; else echo false; fi)" \
-  node - <<'NODE' > "${LATEST_MARKER_TMP}"
-const marker = {
-  schemaVersion: 3,
-  artifactType: 'mongodb-full-instance-oplog',
+  node - <<'NODE' > "${EPOCH_EVIDENCE_TMP}"
+const evidence = {
+  schemaVersion: 1,
+  recordType: 'menorah-backup-evidence',
+  epochId: process.env.BACKUP_EPOCH_ID,
   timestamp: process.env.BACKUP_METADATA_TIMESTAMP,
+  createdAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
   backupType: process.env.BACKUP_METADATA_TYPE,
-  path: process.env.BACKUP_METADATA_PATH,
+  backupSet: process.env.BACKUP_METADATA_PATH,
+  metadataFile: process.env.BACKUP_METADATA_FILE,
+  metadataSha256: process.env.BACKUP_METADATA_SHA,
   mongoArchive: process.env.BACKUP_METADATA_MONGO_ARCHIVE,
   mongoArchiveSha256: process.env.BACKUP_METADATA_MONGO_SHA,
+  mongoArchiveSize: Number(process.env.BACKUP_METADATA_MONGO_SIZE),
   uploadsArchive: process.env.BACKUP_METADATA_UPLOADS_ARCHIVE,
+  uploadsArchiveSha256: process.env.BACKUP_METADATA_UPLOADS_SHA,
+  uploadsArchiveSize: Number(process.env.BACKUP_METADATA_UPLOADS_SIZE),
   uploadsManifest: process.env.BACKUP_METADATA_UPLOADS_MANIFEST,
+  uploadsManifestSha256: process.env.BACKUP_METADATA_UPLOADS_MANIFEST_SHA,
   mediaReferenceVerification: process.env.BACKUP_METADATA_MEDIA_REFERENCE_REPORT,
-  metadataFile: process.env.BACKUP_METADATA_FILE,
+  mediaReferenceVerificationSha256: process.env.BACKUP_METADATA_MEDIA_REFERENCE_REPORT_SHA,
   encrypted: process.env.BACKUP_METADATA_ENCRYPTED === 'true',
-  oplog: true,
-  directProductionRestoreAllowed: false,
+  evidenceFormatVersion: 1,
 };
-process.stdout.write(`${JSON.stringify(marker, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
 NODE
-chmod 0600 "${LATEST_MARKER_TMP}"
-mv -f -- "${LATEST_MARKER_TMP}" "${LATEST_MARKER}"
-sign_file "${LATEST_MARKER}"
+EPOCH_EVIDENCE_PATH="$(node "${INTEGRITY_EPOCH_TOOL}" write-backup-evidence < "${EPOCH_EVIDENCE_TMP}")"
+rm -f -- "${EPOCH_EVIDENCE_TMP}"
+node "${INTEGRITY_EPOCH_TOOL}" publish-backup-pointer "${BACKUP_TYPE}" "${EPOCH_EVIDENCE_PATH}"
 
 if [[ "${BACKUP_PRUNE_AFTER_SUCCESS:-true}" == "true" && -x "${SCRIPT_DIR}/prune-backups.sh" ]]; then
   "${SCRIPT_DIR}/prune-backups.sh"

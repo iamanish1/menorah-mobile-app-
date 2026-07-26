@@ -52,11 +52,9 @@ test_backup_metrics_runtime() {
   trap cleanup_backup_metrics_contract EXIT
 
   docker run --rm --network none -v "${fixture_volume}:/fixture" "${BUSYBOX_IMAGE}" sh -eu -c '
-    mkdir -p /fixture/backups/metadata /fixture/attempts /fixture/textfile
+    mkdir -p /fixture/backups/metadata/integrity-epochs/native-test-epoch/pointers /fixture/attempts /fixture/textfile
     printf "{\"timestamp\":\"20260723T120000Z\"}\n" \
-      > /fixture/backups/metadata/latest-success-daily.json
-    printf "test-signature\n" \
-      > /fixture/backups/metadata/latest-success-daily.json.hmac-sha256
+      > /fixture/backups/metadata/integrity-epochs/native-test-epoch/pointers/latest-success-daily.json
     {
       printf "schema_version=1\n"
       printf "backup_type=daily\n"
@@ -73,6 +71,7 @@ test_backup_metrics_runtime() {
     -v "${fixture_volume}:/fixture" \
     -e BACKUP_ROOT=/fixture/backups \
     -e BACKUP_ATTEMPT_ROOT=/fixture/attempts \
+    -e BACKUP_INTEGRITY_EPOCH_ID=native-test-epoch \
     -e TEXTFILE_DIR=/fixture/textfile \
     "${BUSYBOX_IMAGE}" \
     /bin/sh /scripts/export-backup-metrics.sh

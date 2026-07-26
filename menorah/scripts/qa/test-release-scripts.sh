@@ -30,10 +30,21 @@ MENORAH_DATA_ROOT=${data_root}
 BACKUP_REQUIRE_MOUNT=false
 BACKUP_REQUIRE_ENCRYPTION=false
 BACKUP_PRUNE_AFTER_SUCCESS=false
+BACKUP_INTEGRITY_HMAC_KEY=release-script-test-hmac-key-000000000000000001
+BACKUP_INTEGRITY_EPOCH_ID=release-script-test-epoch
 MENORAH_DEPLOY_STATE_ROOT=${TMP_ROOT}/backup-deploy-state
 MONGODB_BACKUP_URI='mongodb://backup.invalid/?replicaSet=menorah-rs&authSource=admin'
 MONGODB_REPLICA_SET_NAME=menorah-rs
 EOF
+
+  MENORAH_BACKUP_ROOT="${backup_root}" \
+  BACKUP_INTEGRITY_HMAC_KEY='release-script-test-hmac-key-000000000000000001' \
+  BACKUP_INTEGRITY_EPOCH_ID='release-script-test-epoch' \
+    node "${REPO_ROOT}/deploy/ubuntu/backup-integrity-epoch.js" initialize initial-establishment
+  MENORAH_BACKUP_ROOT="${backup_root}" \
+  BACKUP_INTEGRITY_HMAC_KEY='release-script-test-hmac-key-000000000000000001' \
+  BACKUP_INTEGRITY_EPOCH_ID='release-script-test-epoch' \
+    node "${REPO_ROOT}/deploy/ubuntu/backup-integrity-epoch.js" activate
 
   cat > "${mock_bin}/docker" <<'EOF'
 #!/usr/bin/env bash
@@ -163,9 +174,20 @@ MENORAH_DATA_ROOT=${data_root}
 MENORAH_DEPLOY_STATE_ROOT=${TMP_ROOT}/scoped-uri-deploy-state
 BACKUP_REQUIRE_MOUNT=false
 BACKUP_REQUIRE_ENCRYPTION=false
+BACKUP_INTEGRITY_HMAC_KEY=release-script-test-hmac-key-000000000000000001
+BACKUP_INTEGRITY_EPOCH_ID=release-script-test-epoch
 MONGODB_BACKUP_URI='mongodb://backup.invalid/menorah?replicaSet=menorah-rs&authSource=admin'
 MONGODB_REPLICA_SET_NAME=menorah-rs
 EOF
+
+  MENORAH_BACKUP_ROOT="${backup_root}" \
+  BACKUP_INTEGRITY_HMAC_KEY='release-script-test-hmac-key-000000000000000001' \
+  BACKUP_INTEGRITY_EPOCH_ID='release-script-test-epoch' \
+    node "${REPO_ROOT}/deploy/ubuntu/backup-integrity-epoch.js" initialize initial-establishment
+  MENORAH_BACKUP_ROOT="${backup_root}" \
+  BACKUP_INTEGRITY_HMAC_KEY='release-script-test-hmac-key-000000000000000001' \
+  BACKUP_INTEGRITY_EPOCH_ID='release-script-test-epoch' \
+    node "${REPO_ROOT}/deploy/ubuntu/backup-integrity-epoch.js" activate
 
   if output="$(PRODUCTION_ENV="${env_file}" \
     "${REPO_ROOT}/deploy/ubuntu/backup-now.sh" manual 2>&1)"; then

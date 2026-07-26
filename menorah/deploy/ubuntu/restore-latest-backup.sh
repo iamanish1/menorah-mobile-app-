@@ -86,11 +86,17 @@ set +a
 
 MENORAH_BACKUP_ROOT="${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}"
 MENORAH_DATA_ROOT="${MENORAH_DATA_ROOT:-/opt/menorah/data}"
+INTEGRITY_EPOCH_TOOL="${SCRIPT_DIR}/backup-integrity-epoch.js"
 MEDIA_STAGING_PARENT="${MENORAH_DATA_ROOT}/media-restore-staging"
 RESTORE_TEST_COMPOSE_PROJECT=""
 RESTORE_TEST_VOLUME_NAME=""
 mkdir -p "${STATE_DIR}" "${MENORAH_BACKUP_ROOT}/metadata"
 BACKUP_LOCK_FILE="${MENORAH_BACKUP_ROOT}/metadata/.backup.lock"
+
+if ! node "${INTEGRITY_EPOCH_TOOL}" validate; then
+  echo "A complete, configured backup-integrity epoch is required before restore processing." >&2
+  exit 1
+fi
 
 acquire_or_confirm_lock() {
   local fd="$1"
@@ -209,7 +215,7 @@ resolve_restore_compose_identity
 
 resolve_archive() {
   local requested="${RESTORE_ARCHIVE:-}"
-  local backup_root_real archive marker
+  local backup_root_real archive epoch_evidence
   backup_root_real="$(realpath -e -- "${MENORAH_BACKUP_ROOT}")"
 
   if [[ -z "${requested}" ]]; then
@@ -217,22 +223,15 @@ resolve_archive() {
       echo "Production restore requires an explicit RESTORE_ARCHIVE; latest-by-time selection is forbidden." >&2
       exit 1
     fi
-    marker="$(find "${MENORAH_BACKUP_ROOT}/metadata" -maxdepth 1 -type f \
-      -name 'latest-success-*.json' -printf '%T@ %p\n' 2>/dev/null \
-      | sort -nr | head -n 1 | cut -d' ' -f2- || true)"
-    if [[ -z "${marker}" ]]; then
-      echo "No completed backup success marker exists under ${MENORAH_BACKUP_ROOT}/metadata." >&2
-      exit 1
-    fi
-    requested="$(node -e '
-      const fs = require("fs");
-      const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-      if (typeof data.mongoArchive !== "string" || !data.mongoArchive) process.exit(1);
-      process.stdout.write(data.mongoArchive);
-    ' "${marker}")" || {
-      echo "Latest completed backup marker is malformed." >&2
+    epoch_evidence="$(node "${INTEGRITY_EPOCH_TOOL}" get-latest-backup-evidence)" || {
+      echo "No valid signed backup pointer exists in the configured integrity epoch." >&2
       exit 1
     }
+    requested="$(EPOCH_EVIDENCE_JSON="${epoch_evidence}" node -e '
+      const value = JSON.parse(process.env.EPOCH_EVIDENCE_JSON);
+      if (!value.evidence || typeof value.evidence.mongoArchive !== "string") process.exit(1);
+      process.stdout.write(value.evidence.mongoArchive);
+    ')" || { echo "The active epoch backup evidence is malformed." >&2; exit 1; }
   fi
 
   archive="$(realpath -e -- "${requested}" 2>/dev/null || true)"
@@ -277,24 +276,31 @@ if (( ${#BACKUP_INTEGRITY_HMAC_KEY} < 32 )); then
   echo "BACKUP_INTEGRITY_HMAC_KEY must contain at least 32 characters." >&2
   exit 1
 fi
+EPOCH_SOURCE_EVIDENCE="$(node "${INTEGRITY_EPOCH_TOOL}" find-backup-evidence "${LATEST_ARCHIVE}")" || {
+  echo "The requested archive has no signed evidence in the configured active epoch." >&2
+  exit 1
+}
 SOURCE_BACKUP_SET_DIR="$(dirname "$(dirname "${LATEST_ARCHIVE}")")"
 SOURCE_METADATA_FILE="${SOURCE_BACKUP_SET_DIR}/metadata/metadata.json"
-if [[ ! -r "${SOURCE_METADATA_FILE}" || ! -r "${SOURCE_METADATA_FILE}.hmac-sha256" ]]; then
-  echo "The source backup has no signed provenance metadata." >&2
+if [[ ! -r "${SOURCE_METADATA_FILE}" ]]; then
+  echo "The source backup metadata is missing." >&2
   exit 1
 fi
-HMAC_INPUT_FILE="${SOURCE_METADATA_FILE}" \
-HMAC_EXPECTED_FILE="${SOURCE_METADATA_FILE}.hmac-sha256" \
+EPOCH_EVIDENCE_JSON="${EPOCH_SOURCE_EVIDENCE}" \
+SOURCE_ARCHIVE_PATH="${LATEST_ARCHIVE}" \
+SOURCE_ARCHIVE_SHA256="${ACTUAL_ARCHIVE_SHA256}" \
+SOURCE_METADATA_PATH="${SOURCE_METADATA_FILE}" \
   node -e '
     const crypto = require("crypto");
     const fs = require("fs");
-    const key = process.env.BACKUP_INTEGRITY_HMAC_KEY || "";
-    const expected = fs.readFileSync(process.env.HMAC_EXPECTED_FILE, "utf8").trim();
-    if (Buffer.byteLength(key, "utf8") < 32 || !/^[0-9a-f]{64}$/.test(expected)) process.exit(1);
-    const actual = crypto.createHmac("sha256", key).update(fs.readFileSync(process.env.HMAC_INPUT_FILE)).digest("hex");
-    if (!crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"))) process.exit(1);
+    const record = JSON.parse(process.env.EPOCH_EVIDENCE_JSON);
+    const evidence = record.evidence;
+    if (!evidence || evidence.mongoArchive !== process.env.SOURCE_ARCHIVE_PATH
+      || evidence.mongoArchiveSha256 !== process.env.SOURCE_ARCHIVE_SHA256
+      || evidence.metadataFile !== process.env.SOURCE_METADATA_PATH
+      || evidence.metadataSha256 !== crypto.createHash("sha256").update(fs.readFileSync(process.env.SOURCE_METADATA_PATH)).digest("hex")) process.exit(1);
   ' || {
-    echo "Source backup provenance signature verification failed." >&2
+    echo "Signed epoch evidence does not match the selected source backup." >&2
     exit 1
   }
 if ! mapfile -t source_versions < <(
@@ -386,29 +392,6 @@ verify_linked_media_artifact() {
   fi
 }
 
-verify_linked_media_signature() {
-  local artifact="$1"
-  local label="$2"
-  if [[ ! -r "${artifact}.hmac-sha256" ]]; then
-    echo "${label} provenance signature is missing." >&2
-    exit 1
-  fi
-  HMAC_INPUT_FILE="${artifact}" \
-  HMAC_EXPECTED_FILE="${artifact}.hmac-sha256" \
-    node -e '
-      const crypto = require("crypto");
-      const fs = require("fs");
-      const key = process.env.BACKUP_INTEGRITY_HMAC_KEY || "";
-      const expected = fs.readFileSync(process.env.HMAC_EXPECTED_FILE, "utf8").trim();
-      if (Buffer.byteLength(key, "utf8") < 32 || !/^[0-9a-f]{64}$/.test(expected)) process.exit(1);
-      const actual = crypto.createHmac("sha256", key).update(fs.readFileSync(process.env.HMAC_INPUT_FILE)).digest("hex");
-      if (!crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"))) process.exit(1);
-    ' || {
-      echo "${label} provenance signature verification failed." >&2
-      exit 1
-    }
-}
-
 verify_linked_media_artifact \
   "${SOURCE_UPLOADS_ARCHIVE}" \
   "${SOURCE_UPLOADS_ARCHIVE_SHA256}" \
@@ -424,11 +407,6 @@ verify_linked_media_artifact \
   "${SOURCE_MEDIA_REFERENCE_REPORT_SHA256}" \
   "${SOURCE_BACKUP_SET_DIR}/metadata/media-reference-verification.json" \
   "Media reference verification"
-verify_linked_media_signature "${SOURCE_UPLOADS_MANIFEST}" "Uploads manifest"
-verify_linked_media_signature \
-  "${SOURCE_MEDIA_REFERENCE_REPORT}" \
-  "Media reference verification"
-
 SOURCE_MEDIA_MANIFEST="${SOURCE_UPLOADS_MANIFEST}" \
 SOURCE_MEDIA_REFERENCE_REPORT="${SOURCE_MEDIA_REFERENCE_REPORT}" \
   node - <<'NODE'
@@ -455,29 +433,32 @@ NODE
 write_restore_test_marker() {
   local sanitized_archive="$1"
   local sanitized_sha256="$2"
-  local marker_dir="${MENORAH_BACKUP_ROOT}/restore-tests"
-  local temporary temporary_hmac
-  : "${BACKUP_INTEGRITY_HMAC_KEY:?BACKUP_INTEGRITY_HMAC_KEY is required to sign restore evidence}"
-  mkdir -p "${marker_dir}"
-  temporary="$(mktemp "${marker_dir}/.latest-success.XXXXXX")"
-  temporary_hmac="${temporary}.hmac-sha256"
+  local evidence_tmp evidence_path
+  evidence_tmp="$(mktemp "${MENORAH_BACKUP_ROOT}/restore-tests/.epoch-evidence.XXXXXXXX")"
+  BACKUP_EPOCH_ID="${BACKUP_INTEGRITY_EPOCH_ID}" \
   RESTORE_MARKER_ARCHIVE="${LATEST_ARCHIVE}" \
   RESTORE_MARKER_SHA256="${ACTUAL_ARCHIVE_SHA256}" \
   RESTORE_MARKER_SANITIZED_ARCHIVE="${sanitized_archive}" \
   RESTORE_MARKER_SANITIZED_SHA256="${sanitized_sha256}" \
+  RESTORE_MARKER_SANITIZED_METADATA="${sanitized_archive}.metadata.json" \
+  RESTORE_MARKER_SANITIZED_METADATA_SHA="$(sha256sum "${sanitized_archive}.metadata.json" | awk '{print $1}')" \
   RESTORE_MARKER_UPLOADS_ARCHIVE="${SOURCE_UPLOADS_ARCHIVE}" \
   RESTORE_MARKER_UPLOADS_SHA256="${SOURCE_UPLOADS_ARCHIVE_SHA256}" \
   RESTORE_MARKER_MEDIA_MANIFEST="${SOURCE_UPLOADS_MANIFEST}" \
   RESTORE_MARKER_MEDIA_MANIFEST_SHA256="${SOURCE_UPLOADS_MANIFEST_SHA256}" \
   RESTORE_MARKER_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    node - <<'NODE' > "${temporary}"
-const marker = {
-  schemaVersion: 2,
+    node - <<'NODE' > "${evidence_tmp}"
+const evidence = {
+  schemaVersion: 1,
+  recordType: 'menorah-backup-restore-evidence',
+  epochId: process.env.BACKUP_EPOCH_ID,
   timestamp: process.env.RESTORE_MARKER_TIME,
-  archive: process.env.RESTORE_MARKER_ARCHIVE,
-  archiveSha256: process.env.RESTORE_MARKER_SHA256,
+  sourceArchive: process.env.RESTORE_MARKER_ARCHIVE,
+  sourceArchiveSha256: process.env.RESTORE_MARKER_SHA256,
   sanitizedArchive: process.env.RESTORE_MARKER_SANITIZED_ARCHIVE,
   sanitizedArchiveSha256: process.env.RESTORE_MARKER_SANITIZED_SHA256,
+  sanitizedMetadataFile: process.env.RESTORE_MARKER_SANITIZED_METADATA,
+  sanitizedMetadataSha256: process.env.RESTORE_MARKER_SANITIZED_METADATA_SHA,
   sanitizedNamespace: 'menorah.*',
   uploadsArchive: process.env.RESTORE_MARKER_UPLOADS_ARCHIVE,
   uploadsArchiveSha256: process.env.RESTORE_MARKER_UPLOADS_SHA256,
@@ -486,19 +467,11 @@ const marker = {
   mediaReferencesVerified: true,
   mode: 'restore-test',
 };
-process.stdout.write(`${JSON.stringify(marker, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
 NODE
-  HMAC_INPUT_FILE="${temporary}" node -e '
-    const crypto = require("crypto");
-    const fs = require("fs");
-    const key = process.env.BACKUP_INTEGRITY_HMAC_KEY || "";
-    if (Buffer.byteLength(key, "utf8") < 32) process.exit(1);
-    process.stdout.write(`${crypto.createHmac("sha256", key).update(fs.readFileSync(process.env.HMAC_INPUT_FILE)).digest("hex")}\n`);
-  ' > "${temporary_hmac}"
-  chmod 0600 "${temporary}"
-  chmod 0600 "${temporary_hmac}"
-  mv -f -- "${temporary}" "${marker_dir}/latest-success.json"
-  mv -f -- "${temporary_hmac}" "${marker_dir}/latest-success.json.hmac-sha256"
+  evidence_path="$(node "${INTEGRITY_EPOCH_TOOL}" write-restore-evidence < "${evidence_tmp}")"
+  rm -f -- "${evidence_tmp}"
+  node "${INTEGRITY_EPOCH_TOOL}" publish-restore-pointer "${evidence_path}"
 }
 
 validate_production_restore_preconditions() {
@@ -536,26 +509,12 @@ validate_production_restore_preconditions() {
     echo "RESTORE_EXPECTED_BACKUP_GIT_SHA must match the selected backup metadata." >&2
     exit 1
   fi
-  restore_test_marker="${MENORAH_BACKUP_ROOT}/restore-tests/latest-success.json"
-  if [[ ! -r "${restore_test_marker}" || ! -r "${restore_test_marker}.hmac-sha256" ]]; then
-    echo "The exact archive and digest must pass restore-test before production recovery." >&2
+  restore_test_marker="$(node "${INTEGRITY_EPOCH_TOOL}" get-restore-evidence)" || {
+    echo "The exact archive and digest must have signed restore-test evidence in the active epoch." >&2
     exit 1
-  fi
-  HMAC_INPUT_FILE="${restore_test_marker}" \
-  HMAC_EXPECTED_FILE="${restore_test_marker}.hmac-sha256" \
-    node -e '
-      const crypto = require("crypto");
-      const fs = require("fs");
-      const key = process.env.BACKUP_INTEGRITY_HMAC_KEY || "";
-      const expected = fs.readFileSync(process.env.HMAC_EXPECTED_FILE, "utf8").trim();
-      if (Buffer.byteLength(key, "utf8") < 32 || !/^[0-9a-f]{64}$/.test(expected)) process.exit(1);
-      const actual = crypto.createHmac("sha256", key).update(fs.readFileSync(process.env.HMAC_INPUT_FILE)).digest("hex");
-      if (!crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"))) process.exit(1);
-    ' || {
-      echo "Restore-test evidence signature verification failed." >&2
-      exit 1
-    }
+  }
   if ! mapfile -t restore_marker_values < <(
+    RESTORE_EPOCH_EVIDENCE="${restore_test_marker}" \
     RESTORE_TEST_ARCHIVE="${LATEST_ARCHIVE}" \
     RESTORE_TEST_SHA256="${ACTUAL_ARCHIVE_SHA256}" \
     RESTORE_TEST_UPLOADS_ARCHIVE="${SOURCE_UPLOADS_ARCHIVE}" \
@@ -563,13 +522,12 @@ validate_production_restore_preconditions() {
     RESTORE_TEST_MEDIA_MANIFEST="${SOURCE_UPLOADS_MANIFEST}" \
     RESTORE_TEST_MEDIA_MANIFEST_SHA256="${SOURCE_UPLOADS_MANIFEST_SHA256}" \
       node -e '
-        const fs = require("fs");
-        const marker = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        const marker = JSON.parse(process.env.RESTORE_EPOCH_EVIDENCE).evidence;
         const testedAt = Date.parse(marker.timestamp);
         const ageMs = Date.now() - testedAt;
-        const valid = marker.schemaVersion === 2
-          && marker.archive === process.env.RESTORE_TEST_ARCHIVE
-          && marker.archiveSha256 === process.env.RESTORE_TEST_SHA256
+        const valid = marker.schemaVersion === 1
+          && marker.sourceArchive === process.env.RESTORE_TEST_ARCHIVE
+          && marker.sourceArchiveSha256 === process.env.RESTORE_TEST_SHA256
           && marker.mode === "restore-test"
           && marker.sanitizedNamespace === "menorah.*"
           && marker.uploadsArchive === process.env.RESTORE_TEST_UPLOADS_ARCHIVE
@@ -584,10 +542,11 @@ validate_production_restore_preconditions() {
           && ageMs >= 0
           && ageMs <= 24 * 60 * 60 * 1000;
         if (!valid) process.exit(1);
-        process.stdout.write(`${marker.sanitizedArchive}\n${marker.sanitizedArchiveSha256}\n`);
-      ' "${restore_test_marker}"
-  ) || (( ${#restore_marker_values[@]} != 2 )); then
-    echo "The exact source archive needs a successful restore-test and sanitized Menorah artifact from the last 24 hours." >&2
+        if (typeof marker.sanitizedMetadataFile !== "string" || !/^[0-9a-f]{64}$/.test(marker.sanitizedMetadataSha256 || "")) process.exit(1);
+        process.stdout.write(`${marker.sanitizedArchive}\n${marker.sanitizedArchiveSha256}\n${marker.sanitizedMetadataFile}\n${marker.sanitizedMetadataSha256}\n`);
+      '
+  ) || (( ${#restore_marker_values[@]} != 4 )); then
+    echo "The exact source archive requires restore-test before production recovery and a sanitized Menorah artifact from the last 24 hours." >&2
     exit 1
   fi
   sanitized_real="$(realpath -e -- "${restore_marker_values[0]}" 2>/dev/null || true)"
@@ -610,25 +569,15 @@ validate_production_restore_preconditions() {
     echo "RESTORE_EXPECTED_SANITIZED_SHA256 must match the checksum-verified restore-test artifact." >&2
     exit 1
   fi
-  artifact_metadata="${sanitized_real}.metadata.json"
-  if [[ ! -r "${artifact_metadata}" || ! -r "${artifact_metadata}.hmac-sha256" ]]; then
-    echo "The signed sanitized artifact metadata is missing." >&2
+  artifact_metadata="${restore_marker_values[2]}"
+  if [[ "${artifact_metadata}" != "${sanitized_real}.metadata.json" || ! -r "${artifact_metadata}" ]]; then
+    echo "The signed epoch evidence does not identify a safe sanitized metadata file." >&2
     exit 1
   fi
-  HMAC_INPUT_FILE="${artifact_metadata}" \
-  HMAC_EXPECTED_FILE="${artifact_metadata}.hmac-sha256" \
-    node -e '
-      const crypto = require("crypto");
-      const fs = require("fs");
-      const key = process.env.BACKUP_INTEGRITY_HMAC_KEY || "";
-      const expected = fs.readFileSync(process.env.HMAC_EXPECTED_FILE, "utf8").trim();
-      if (Buffer.byteLength(key, "utf8") < 32 || !/^[0-9a-f]{64}$/.test(expected)) process.exit(1);
-      const actual = crypto.createHmac("sha256", key).update(fs.readFileSync(process.env.HMAC_INPUT_FILE)).digest("hex");
-      if (!crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"))) process.exit(1);
-    ' || {
-      echo "Sanitized artifact metadata signature verification failed." >&2
-      exit 1
-    }
+  if [[ "$(sha256sum "${artifact_metadata}" | awk '{print $1}')" != "${restore_marker_values[3]}" ]]; then
+    echo "Sanitized artifact metadata does not match signed epoch evidence." >&2
+    exit 1
+  fi
   ARTIFACT_SOURCE_ARCHIVE="${LATEST_ARCHIVE}" \
   ARTIFACT_SOURCE_SHA256="${ACTUAL_ARCHIVE_SHA256}" \
   ARTIFACT_DERIVED_ARCHIVE="${sanitized_real}" \
@@ -1036,7 +985,7 @@ restore_full_source_into_isolated_target() {
 
 derive_and_verify_sanitized_artifact() {
   local sanitized_dir sanitized_dir_real encrypted_tmp final_archive
-  local metadata_tmp metadata_hmac_tmp final_metadata source_git_sha derived_sha
+  local metadata_tmp final_metadata source_git_sha derived_sha
   local checksum_tmp
   : "${BACKUP_ENCRYPTION_PASSWORD:?BACKUP_ENCRYPTION_PASSWORD is required for sanitized restore artifacts}"
   : "${BACKUP_INTEGRITY_HMAC_KEY:?BACKUP_INTEGRITY_HMAC_KEY is required for sanitized restore artifacts}"
@@ -1107,8 +1056,11 @@ derive_and_verify_sanitized_artifact() {
   derived_sha="$(sha256sum "${encrypted_tmp}" | awk '{print $1}')"
   final_archive="${sanitized_dir}/${ACTUAL_ARCHIVE_SHA256}.menorah.archive.gz.enc"
   final_metadata="${final_archive}.metadata.json"
+  if [[ -e "${final_archive}" || -e "${final_metadata}" ]]; then
+    echo "Refusing to overwrite an existing sanitized restore artifact." >&2
+    exit 1
+  fi
   metadata_tmp="${encrypted_tmp}.metadata.json"
-  metadata_hmac_tmp="${metadata_tmp}.hmac-sha256"
   source_git_sha="${SOURCE_DEPLOYED_RELEASE_SHA}"
   if [[ ! "${source_git_sha}" =~ ^[0-9a-fA-F]{40}$ ]]; then
     echo "The source backup is missing a valid release commit SHA." >&2
@@ -1145,19 +1097,13 @@ const metadata = {
 };
 process.stdout.write(`${JSON.stringify(metadata, null, 2)}\n`);
 NODE
-  HMAC_INPUT_FILE="${metadata_tmp}" node -e '
-    const crypto = require("crypto");
-    const fs = require("fs");
-    process.stdout.write(`${crypto.createHmac("sha256", process.env.BACKUP_INTEGRITY_HMAC_KEY).update(fs.readFileSync(process.env.HMAC_INPUT_FILE)).digest("hex")}\n`);
-  ' > "${metadata_hmac_tmp}"
-  chmod 0600 "${encrypted_tmp}" "${metadata_tmp}" "${metadata_hmac_tmp}"
+  chmod 0600 "${encrypted_tmp}" "${metadata_tmp}"
 
   # Publishing is forbidden until the no-auth database and its volume are
   # proven absent. This prevents a success marker from outliving cleanup.
   destroy_restore_test_target
   mv -f -- "${encrypted_tmp}" "${final_archive}"
   mv -f -- "${metadata_tmp}" "${final_metadata}"
-  mv -f -- "${metadata_hmac_tmp}" "${final_metadata}.hmac-sha256"
   checksum_tmp="$(mktemp "${sanitized_dir}/.checksum.XXXXXX")"
   printf '%s  %s\n' "${derived_sha}" "$(basename "${final_archive}")" > "${checksum_tmp}"
   chmod 0600 "${checksum_tmp}"
