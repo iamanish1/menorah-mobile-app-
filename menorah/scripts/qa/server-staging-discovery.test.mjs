@@ -662,6 +662,10 @@ esac
         unavailableSystemdResult.stdout,
         /systemd-unit-name-validation/,
       );
+      assert.doesNotMatch(
+        unavailableSystemdResult.stdout,
+        /matching-units=none-or-unavailable/,
+      );
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }

@@ -25,6 +25,7 @@ unset BASH_ENV ENV CDPATH GLOBIGNORE
 
 DISCOVERY_INCOMPLETE=0
 COMPLETION_EMITTED=0
+SYSTEMD_UNIT_LIST_AVAILABLE=1
 
 section() {
   printf '\n[%s]\n' "$1"
@@ -120,6 +121,7 @@ capture_systemd_unit_list() {
   printf -v "${destination}" '%s' "${captured_output}"
   if (( producer_status != 0 )); then
     DISCOVERY_INCOMPLETE=1
+    SYSTEMD_UNIT_LIST_AVAILABLE=0
     printf '%s\n' \
       "producer=systemd-unit-list|status=unavailable|reason=systemd-or-dbus-unavailable|exit=${producer_status}"
   fi
@@ -592,7 +594,7 @@ while IFS=$' \t' read -r unit_name unit_state _; do
       ;;
   esac
 done <<< "${systemd_unit_output}"
-if (( matching_systemd_units == 0 )); then
+if (( SYSTEMD_UNIT_LIST_AVAILABLE != 0 && matching_systemd_units == 0 )); then
   printf '%s\n' 'matching-units=none-or-unavailable'
 fi
 
