@@ -18,14 +18,16 @@ access.
 
 ## Repository-remediation status
 
-**SERVER STAGING DESIGN COMPLETE — DISCOVERY REQUIRED**
+**SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**
 
 The repository-controlled runtime is frozen at
-`1ecd0b379369258be466159364a8a48c79fb65aa` on
-`release/final-production-readiness`. Candidate-bound local overlay validation
-passed. Its exact push runs also passed: production release readiness
-`30158172303` (1/1 jobs, 11/11 steps), functional release `30158172290`
-(9/9 jobs, 89/89 steps), and security `30158172293` (15/15 jobs, 104/104
+`25cd808602020988a09ee9e58cc9d4738cc068c9` on
+`release/final-production-readiness`. The superseded candidate's local overlay
+baseline is retained as history; the discovery correction passed focused
+regressions, the 293-test server-staging contract, Bash syntax and pinned
+ShellCheck. Its exact push runs also passed: production release readiness
+`30209920365` (1/1 jobs, 11/11 steps), functional release `30209920383`
+(9/9 jobs, 89/89 steps), and security `30209920358` (15/15 jobs, 104/104
 steps), with zero failed, skipped or cancelled jobs/steps. Evidence for
 `a1bc1b6ec751926edc9981f57762277060acf9e4`,
 `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` and earlier candidates remains
@@ -43,7 +45,8 @@ external proof. The completed local exercise is recorded in
 [the local staging validation report](./28-local-staging-validation-report.md).
 The isolated Ubuntu overlay and its discovery-first approval sequence are in
 [the server-staging design and discovery runbook](./29-server-staging-design-and-discovery-runbook.md).
-No server discovery, collision approval or deployment has occurred.
+A prior read-only discovery attempt was incomplete and is invalid as server
+evidence; no collision approval or deployment has occurred.
 Its all-profile design has 32 services, six networks and 21 volumes. The
 dedicated `staging-egress` bridge is NAT-capable for explicitly scoped
 services, but it is not a destination or FQDN allowlist; target-host
@@ -123,7 +126,7 @@ for the exact evidence required.
 
 | Blocking area | Repository position | Evidence or decision still required |
 | --- | --- | --- |
-| Immutable release | Runtime SHA `1ecd0b379369258be466159364a8a48c79fb65aa` is frozen; candidate-bound local validation and three exact push gate families passed | Review the local report, record the final documentation HEAD and its current GitHub results, then obtain repository governance and an owner-approved protected release record |
+| Immutable release | Runtime SHA `25cd808602020988a09ee9e58cc9d4738cc068c9` is frozen; candidate-bound local validation and three exact push gate families passed | Review the local report, record the final documentation HEAD and its current GitHub results, then obtain repository governance and an owner-approved protected release record |
 | Server staging | A dedicated project, roots, networks, volumes, listeners, data identities, monitoring stores and discovery-first runbook exist | `INFRASTRUCTURE ACTION`: run authorized read-only discovery, return its output, complete every collision check and obtain the two recorded human approvals before preparation and deployment |
 | Configuration | Fail-closed validators and a redacted variable reference exist | `INFRASTRUCTURE ACTION`: validate the actual host configuration without disclosing values |
 | Data and migrations | Ordered migration and preflight controls exist | `INFRASTRUCTURE ACTION`: disposable staging execution, approved maintenance boundary and invariant evidence |

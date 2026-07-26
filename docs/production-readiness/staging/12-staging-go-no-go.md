@@ -1,6 +1,6 @@
 # Staging go/no-go record
 
-Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
+Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -9,25 +9,25 @@ collected**. Local Docker validation passed with explicit gaps/blocks and does
 not change this server decision.
 
 Current runtime-candidate push gates are green:
-[release readiness](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172303)
+[release readiness](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920365)
 (1/1 jobs, 11/11 steps),
-[functional](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290)
+[functional](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383)
 (9/9 jobs, 89/89 steps), and
-[security](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293)
+[security](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920358)
 (15/15 jobs, 104/104 steps), with zero failed, skipped or cancelled
 jobs/steps. Local overlay Phase 11 passed 22/22, with 0 failed and 0 blocked.
 Release-contract validation passed 432/432 assertions: 81 workflow,
 59 local-staging and 292 server-staging. The
 [server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md)
 remains unexecuted with status
-**SERVER STAGING DESIGN COMPLETE — DISCOVERY REQUIRED**.
+**SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**.
 
 Public-production verdict: **NOT READY**
 
 A later docs/PR head is review identity only and must be a docs-only descendant
 of the frozen runtime. The server checkout, script blob, images, image
 manifest, release/recovery markers and deployment arguments must all bind to
-exact runtime SHA `1ecd0b379369258be466159364a8a48c79fb65aa`; the docs head
+exact runtime SHA `25cd808602020988a09ee9e58cc9d4738cc068c9`; the docs head
 must never be substituted into either runtime-SHA environment key.
 
 A future staging pass means only that this immutable candidate completed the
@@ -37,7 +37,7 @@ store submission or public launch. Production remains governed by
 
 ## Confirmed current blockers
 
-- Read-only server discovery has not been returned; port, network/CIDR, volume,
+- The prior read-only discovery result was incomplete and is invalid; port, network/CIDR, volume,
   filesystem, database/cache, ingress, process-authority and production
   collision rows remain **NOT COLLECTED**.
 - DNS, TLS, Caddy, Cloudflare Tunnel, dedicated secrets and real
@@ -65,7 +65,7 @@ Complete in the controlled decision record:
 
 | Field | Record |
 | --- | --- |
-| Runtime candidate branch/SHA | `release/final-production-readiness` / `1ecd0b379369258be466159364a8a48c79fb65aa` |
+| Runtime candidate branch/SHA | `release/final-production-readiness` / `25cd808602020988a09ee9e58cc9d4738cc068c9` |
 | Docs/PR-head revision | Record the final full `git rev-parse HEAD` externally after the package commit; it cannot be embedded in its own content-addressed commit |
 | Meeting UTC time | TBD |
 | Change/evidence-pack reference | TBD |

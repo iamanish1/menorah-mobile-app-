@@ -1,10 +1,10 @@
 # Server-staging deployment procedure
 
-Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
+Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
-Approved Ubuntu/server-staging state: **NOT COLLECTED — DISCOVERY REQUIRED**
+Approved Ubuntu/server-staging state: **NOT COLLECTED — REPLACEMENT DISCOVERY REQUIRED**
 
 The local server-staging overlay completed Phase 11 with 22/22 gates passed,
 0 failed and 0 blocked. The three exact runtime-candidate push workflows are
@@ -27,7 +27,7 @@ The only approved model for this work is the dedicated overlay under
 `menorah/deploy/ubuntu/*` production deployment/recovery script for staging.
 Earlier `/srv/menorah-staging`, `/etc/menorah-staging` and production-script
 instructions were superseded by runtime candidate
-`1ecd0b379369258be466159364a8a48c79fb65aa`.
+`25cd808602020988a09ee9e58cc9d4738cc068c9`.
 
 The reviewed server-staging identity is:
 
@@ -145,7 +145,7 @@ human approval after all dry-render and collision checks pass.
 
 Only after the second approval, invoke the candidate's dedicated
 `menorah/deploy/server-staging/deploy-exact-sha.sh` for exact runtime SHA
-`1ecd0b379369258be466159364a8a48c79fb65aa` with project
+`25cd808602020988a09ee9e58cc9d4738cc068c9` with project
 `menorah-staging` and its required one-shot acknowledgement. The script,
 checkout and target commit must be byte/commit bound exactly as its guards
 require.

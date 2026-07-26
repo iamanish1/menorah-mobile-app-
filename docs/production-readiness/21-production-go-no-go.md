@@ -7,10 +7,11 @@ Decision date: 2026-07-25.
 # NOT READY
 
 This verdict applies to public production launch. Repository remediation has
-materially improved control design. Candidate-bound local validation passed at
-`1ecd0b379369258be466159364a8a48c79fb65aa`, and its three exact push gate runs
-passed. Server discovery has not been performed and no server-staging or
-production fact may be inferred. Protected repository governance, approved
+materially improved control design. The inherited local-overlay baseline is
+historical; the candidate-specific discovery regression and 293-test contract
+passed at `25cd808602020988a09ee9e58cc9d4738cc068c9`, and its three exact push gate runs
+passed. A prior read-only discovery attempt was incomplete, so no
+server-staging or production fact may be inferred. Protected repository governance, approved
 Ubuntu staging, live infrastructure proof, approved operating policies,
 independent VAPT, store validation and vendor evidence are not complete.
 
@@ -24,7 +25,7 @@ provider changes, DNS/Cloudflare changes or store submission.
 | Repository implementation | Candidate code, tests, configuration and runbooks | Intended behavior under covered test conditions | Live configuration, production data safety, operator execution or policy approval |
 | Desktop validation | Unit/lint/config checks run without production access | Local regression status | Linux host behavior, vendor callbacks, DNS, alert delivery, backups or stores |
 | Historical candidate evidence | Evidence for `a1bc1b6ec751926edc9981f57762277060acf9e4`, `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`, `3fb99858c6766a341bb7b7dab2377195427f0ea1` and earlier candidates remains recorded as history | Only behavior of the cited older SHA under its stated fixture | Current runtime behavior, production data, host behavior or staging completeness; it is superseded for the current candidate |
-| Current local synthetic staging | Complete at `1ecd0b379369258be466159364a8a48c79fb65aa`; report 28 is authoritative | Docker Desktop isolation, migrations/seed, API/browser checks, local stubs, monitoring, backup/restore and explicit evidence boundaries | Ubuntu host behavior, real-provider callbacks, physical devices, independent VAPT, external approval or production readiness |
+| Historical local synthetic staging | Complete at superseded runtime `1ecd0b379369258be466159364a8a48c79fb65aa`; report 28 remains the authoritative historical record | Docker Desktop isolation, migrations/seed, API/browser checks, local stubs, monitoring, backup/restore and explicit evidence boundaries | Current runtime behavior, Ubuntu host behavior, real-provider callbacks, physical devices, independent VAPT, external approval or production readiness |
 | Server-staging design | Dedicated project/resources and a discovery-first Steps A-G runbook exist at the candidate | Intended isolation contract and approval order | Target-host truth, collision freedom, prepared resources, deployment or live behavior |
 | Live proof | Not completed for this candidate | Nothing may be inferred | Required before any public launch |
 | Governance/external proof | Decisions and sign-offs remain pending | Nothing may be inferred | Cannot be replaced by code or a template |
@@ -33,8 +34,8 @@ provider changes, DNS/Cloudflare changes or store submission.
 
 | Gate | Current assessment | Required evidence |
 | --- | --- | --- |
-| Immutable candidate | Runtime SHA frozen; local overlay and three exact push gates passed; review incomplete | `1ecd0b379369258be466159364a8a48c79fb65aa`, final documentation-head verification, independent review and protected release record |
-| GitHub push gates | Exact candidate runs passed with no failed, skipped or cancelled jobs/steps | Readiness `30158172303`: 1/1 jobs, 11/11 steps; functional `30158172290`: 9/9 and 89/89; security `30158172293`: 15/15 and 104/104 |
+| Immutable candidate | Runtime SHA frozen; local overlay and three exact push gates passed; review incomplete | `25cd808602020988a09ee9e58cc9d4738cc068c9`, final documentation-head verification, independent review and protected release record |
+| GitHub push gates | Exact candidate runs passed with no failed, skipped or cancelled jobs/steps | Readiness `30209920365`: 1/1 jobs, 11/11 steps; functional `30209920383`: 9/9 and 89/89; security `30209920358`: 15/15 and 104/104 |
 | Backend regression | Pass at the runtime candidate | Default backend run: 117 suites and 1,716 tests passed; the separate integration run: 13 suites and 45 tests passed |
 | Web/admin/counsellor/mobile | Pass for recorded repository automation; device proof open | Recorded lint/type/test checks passed with warnings documented; physical-device, accessibility, responsive and real-provider coverage remains open |
 | Release/recovery scripts | Pass for recorded repository automation and local recovery | Core release contracts passed 432/432 (81 workflow/release, 59 local-staging and 292 server-staging); signed backup and isolated restore passed; approved Ubuntu execution remains open |
@@ -43,7 +44,7 @@ provider changes, DNS/Cloudflare changes or store submission.
 | Dependency/security scans | Exact security workflow passed; independent VAPT remains open | Full-history secret scan, OWASP SAST, all seven production audit-policy roots, four image high/critical scans and four CycloneDX SBOM jobs passed; `brace-expansion` 5.0.7 is patched to 5.0.8, while only the bounded moderate `uuid` exception `GHSA-w5hq-g745-h8pq` remains through 2026-10-31 |
 
 Repository-controlled P0 decision:
-**SERVER STAGING DESIGN COMPLETE — DISCOVERY REQUIRED**.
+**SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**.
 
 Public-production decision remains **NO-GO** because the external and
 operational evidence below is incomplete. Exact repository results are in
@@ -56,8 +57,8 @@ The discovery and approval boundary is in
 
 - `SERVER DISCOVERY — INFRASTRUCTURE ACTION`: authorize only the immutable raw
   URL and temporary-file command for
-  `1ecd0b379369258be466159364a8a48c79fb65aa`; require SHA-256
-  `b7ba1341ad78aa5698020ec040404c8418365481da2d7b0e7c105fae0d788a17`
+  `25cd808602020988a09ee9e58cc9d4738cc068c9`; require SHA-256
+  `f12794aa04a82cc2437244565b41b14d765479b80b578c80be7bfdc902e065ef`
   before executing the read-only script, then return its redacted output and
   classify every collision.
 - `DRY RENDER — INFRASTRUCTURE ACTION`: after every collision class passes and

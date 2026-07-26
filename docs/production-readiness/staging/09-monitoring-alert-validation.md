@@ -1,6 +1,6 @@
 # Staging monitoring and alert validation
 
-Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
+Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -43,9 +43,9 @@ validated 14 scrape jobs, 69 rules, 26 coverage records, all 20 required P0
 mappings, configuration mutation tests, Prometheus rule fixtures and the
 pinned native monitoring suite at historical SHA
 `3fb99858c6766a341bb7b7dab2377195427f0ea1`. That result is
-**INVALIDATED** for `1ecd0b379369258be466159364a8a48c79fb65aa` and cannot be
+**INVALIDATED** for `25cd808602020988a09ee9e58cc9d4738cc068c9` and cannot be
 relabelled. At the current candidate, the
-[exact functional push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290)
+[exact functional push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383)
 passed 9/9 jobs and 89/89 steps, and the local runtime ended with 35/35
 targets healthy, the 20 required alert fixtures resolved and zero active
 alerts. This does not prove protected server receiver delivery,

@@ -2,7 +2,7 @@
 
 Candidate branch: `release/final-production-readiness`
 
-Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
+Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -10,11 +10,11 @@ Package status: **local synthetic validation passed; protected Ubuntu staging
 evidence not yet collected**
 
 Runtime-candidate push gates are green: release readiness
-[30158172303](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172303)
+[30209920365](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920365)
 (1/1 jobs, 11/11 steps), functional
-[30158172290](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290)
+[30209920383](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383)
 (9/9 jobs, 89/89 steps), and security
-[30158172293](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293)
+[30209920358](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920358)
 (15/15 jobs, 104/104 steps). All three have zero failed, skipped or canceled
 jobs/steps. The local server-staging overlay completed Phase 11 with 22/22
 gates passed, 0 failed and 0 blocked. These are repository/CI and local-Docker
@@ -32,7 +32,7 @@ release-contract aggregate passed 432/432 assertions: 81 workflow, 59
 local-staging and 292 server-staging.
 
 Server-staging discovery, collision review and external evidence remain
-**NOT COLLECTED — DISCOVERY REQUIRED**. The authoritative co-host design and
+**NOT COLLECTED — REPLACEMENT DISCOVERY REQUIRED**. The authoritative co-host design and
 Step A–G approval sequence is the
 [server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md).
 Evidence for former runtime `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`
@@ -42,7 +42,7 @@ Superseded pre-overlay verdict:
 **LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**
 
 Current repository-remediation status:
-**SERVER STAGING DESIGN COMPLETE — DISCOVERY REQUIRED**
+**SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**
 
 Public-production verdict: **NOT READY**
 
@@ -165,7 +165,7 @@ Stop immediately if any of these occurs:
   intervening change outside `docs/**` or `menorah/docs/**`;
 - the prepared server application checkout, script blob, image manifest or
   release marker differs from exact runtime SHA
-  `1ecd0b379369258be466159364a8a48c79fb65aa`; never deploy the later
+  `25cd808602020988a09ee9e58cc9d4738cc068c9`; never deploy the later
   documentation head;
 - the worktree is unexplained or a tested artifact cannot be tied to the SHA;
 - a hostname, database, Redis endpoint, storage bucket, callback or credential

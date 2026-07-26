@@ -39,8 +39,8 @@ account, notification path, backup or store release has been verified.
 ## Current frozen boundary
 
 The repository-controlled runtime is frozen at
-`1ecd0b379369258be466159364a8a48c79fb65aa`. Exact push runs
-`30158172303`, `30158172290` and `30158172293` passed 25/25 jobs and
+`25cd808602020988a09ee9e58cc9d4738cc068c9`. Exact push runs
+`30209920365`, `30209920383` and `30209920358` passed 25/25 jobs and
 204/204 steps. The functional run recorded 117/117 default backend suites with
 1,716/1,716 tests, 13/13 disposable integration suites with 45/45 tests and
 432/432 core release-contract tests. This completes the current

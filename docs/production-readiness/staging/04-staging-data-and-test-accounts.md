@@ -1,6 +1,6 @@
 # Staging data and test accounts
 
-Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
+Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 

@@ -7,16 +7,18 @@ deployed, or that production is ready.
 
 - Branch: `release/final-production-readiness`
 - Previous runtime candidate:
-  `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` — superseded
+  `92c841ac40e75681019689ca59fd1989e6db6f21` — superseded to emit only one
+  explicit result for a genuine systemd/D-Bus outage
 - Frozen runtime candidate:
-  `1ecd0b379369258be466159364a8a48c79fb65aa`
+  `25cd808602020988a09ee9e58cc9d4738cc068c9`
 - Documentation HEAD: the documentation-only successor commit containing
   this PR-body source; resolve externally from PR #2 with `git rev-parse HEAD`
 - Base: `main`
 - PR: [#2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/pull/2)
   is open, draft, unmerged and currently mergeable; auto-merge is disabled
-- Complete current-candidate local matrix: **PASS**
-- Server discovery/evidence: **NOT COLLECTED**
+- Candidate-specific discovery regression and server-staging contract: **PASS**
+- Server discovery/evidence: **REPLACEMENT REQUIRED** — the prior output was
+  incomplete and is not a pass
 - Production verdict: **NOT READY**
 
 PR #2 remains open, draft and unmerged. This PR body grants no authority to
@@ -27,7 +29,7 @@ merge, deploy, migrate, restore, alter production or change DNS/Cloudflare.
 ## Runtime freeze
 
 The runtime candidate is frozen at
-`1ecd0b379369258be466159364a8a48c79fb65aa`. Any later source, workflow,
+`25cd808602020988a09ee9e58cc9d4738cc068c9`. Any later source, workflow,
 test, lockfile, package manifest, migration, deployment script, Compose,
 Caddy, monitoring, environment-template or provider-behavior change
 invalidates it and requires a new runtime SHA plus complete downstream
@@ -38,20 +40,20 @@ After the freeze, only narrative changes under `docs/**` and
 externally and verify:
 
 ```bash
-readonly RUNTIME_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
+readonly RUNTIME_SHA='25cd808602020988a09ee9e58cc9d4738cc068c9'
 git merge-base --is-ancestor "${RUNTIME_SHA}" HEAD
 git diff --name-only "${RUNTIME_SHA}..HEAD"
 ```
 
 Every returned path must be in one of the two documentation trees.
 
-The complete ordered 52-commit runtime ledger, purposes and focused/cumulative
+The complete ordered 54-commit runtime ledger, purposes and focused/cumulative
 evidence is in
 [the immutable candidate record](./26-immutable-candidate-record.md).
 
 ## Server-staging design
 
-**SERVER STAGING DESIGN COMPLETE — DISCOVERY REQUIRED**
+**SERVER STAGING DESIGN COMPLETE — REPLACEMENT DISCOVERY REQUIRED**
 
 The new overlay is independent of both production and the pre-existing
 `menorah-local-staging` Docker Desktop project.
@@ -121,8 +123,13 @@ mandatory.
 
 ## Current-candidate local evidence
 
-The complete local matrix passed for the frozen candidate. Its 22 primary
-runtime assertions were:
+The complete local matrix passed for the superseded runtime candidate. The
+current candidate corrects only its read-only discovery implementation and
+tests, then passed focused discovery regressions, the isolated 293-test
+server-staging contract, Bash syntax, pinned ShellCheck and all three exact-SHA
+push gate families. It does not turn the incomplete Ubuntu discovery attempt
+into a server pass. The superseded candidate's 22 primary runtime assertions
+were:
 
 1. clean exact-SHA checkout;
 2. overlay render;
@@ -194,21 +201,19 @@ their counts were not rewritten or attributed to this candidate.
 
 ## Exact-SHA GitHub gates
 
-All three frozen-runtime push workflows are terminal success, with **25/25
+All three current-runtime push workflows are terminal success, with **25/25
 jobs and 204/204 steps** and zero failed, skipped or cancelled jobs/steps:
 
-- [Production Release Readiness — run 30158172303, attempt 2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172303):
+- [Production Release Readiness — run 30209920365, attempt 1](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920365):
   1/1 jobs, 11/11 steps.
-- [Exact-SHA functional release validation — run 30158172290, attempt 2](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290):
+- [Exact-SHA functional release validation — run 30209920383, attempt 1](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383):
   9/9 jobs, 89/89 steps.
-- [Security gates — run 30158172293](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293):
+- [Security gates — run 30209920358, attempt 1](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920358):
   15/15 jobs, 104/104 steps.
 
-Readiness and functional attempt 1 each failed with zero materialized jobs and
-a GitHub internal-server-error annotation. Their workflow blobs were
-unchanged, local actionlint passed, and unchanged exact-SHA attempt 2 passed
-every job/step. No repository fix or waiver was used. The exact runtime
-deployment query returned `[]`.
+The successful exact-SHA evidence for the superseded runtime is historical
+only. No repository fix or waiver was used for this candidate's push gates.
+The exact runtime deployment query returned `[]`.
 
 The documentation-only successor must also have green triggered workflows at
 its externally resolved PR head. Passing checks are engineering evidence, not
@@ -226,7 +231,7 @@ and exact release-gate contexts.
 The user, admin and counsellor workspaces now require patched PostCSS
 `8.5.18`, closing `GHSA-r28c-9q8g-f849` in the affected lockfiles.
 
-Final commit `1ecd0b379369258be466159364a8a48c79fb65aa` closes
+Superseded commit `1ecd0b379369258be466159364a8a48c79fb65aa` closes
 `GHSA-mh99-v99m-4gvg` with a lockfile-only
 `brace-expansion@5.0.7` → `5.0.8` update in exactly
 `menorah/mobile-app/package-lock.json` and

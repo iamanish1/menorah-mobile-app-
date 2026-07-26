@@ -1,6 +1,6 @@
 # Unified production-readiness evidence index
 
-Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
+Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -51,16 +51,16 @@ affected rows `INVALIDATED` and rerun them for the new SHA.
 
 ## Current candidate-bound repository observation log
 
-Runtime SHA `1ecd0b379369258be466159364a8a48c79fb65aa` has these exact
+Runtime SHA `25cd808602020988a09ee9e58cc9d4738cc068c9` has these exact
 successful push executions:
 
 | Workflow | Exact run | Jobs | Steps | Failed / skipped / cancelled |
 | --- | --- | --- | --- | --- |
-| Production release readiness | [30158172303](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172303) | 1/1 | 11/11 | 0 / 0 / 0 |
-| Functional release validation | [30158172290](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290) | 9/9 | 89/89 | 0 / 0 / 0 |
-| Security gates | [30158172293](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293) | 15/15 | 104/104 | 0 / 0 / 0 |
+| Production release readiness | [30209920365](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920365) | 1/1 | 11/11 | 0 / 0 / 0 |
+| Functional release validation | [30209920383](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383) | 9/9 | 89/89 | 0 / 0 / 0 |
+| Security gates | [30209920358](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920358) | 15/15 | 104/104 | 0 / 0 / 0 |
 
-The local server-staging overlay completed Phase 11 with 22/22 gates passed,
+The superseded runtime's local server-staging overlay completed Phase 11 with 22/22 gates passed,
 0 failed and 0 blocked. Its all-profile static model has 32 services, six
 networks, 21 volumes and 117 published-port instances, all loopback-bound,
 with 10 exact ingress hosts, 20 P0 alert mappings and zero static collisions.
@@ -72,7 +72,7 @@ restore network and `staging-restore-mongodb` for six networks and 21 volumes.
 
 The authoritative environment artifacts are the 268-assignment-key tracked
 template and its 291-key generated validation environment. Both runtime-SHA
-keys resolved to `1ecd0b379369258be466159364a8a48c79fb65aa`. Release contracts
+keys resolved to `25cd808602020988a09ee9e58cc9d4738cc068c9`. Release contracts
 passed 432/432 (81 workflow, 59 local-staging and 292 server-staging);
 pinned recovery passed 34/34, Bash syntax 48/48, actionlint 6/6 and ShellCheck
 23/23. Backend evidence passed 117 suites / 1,716 tests plus 13 disposable
@@ -86,8 +86,10 @@ Monitoring ended with 35/35 targets healthy across 14 jobs, 69 loaded rules,
 quiet. The server overlay has no production Docker metrics gateway/exporter
 pair and no Uptime Kuma; those remain separate production evidence gaps.
 
-Exact local synthetic evidence belongs in
-[report 28](../28-local-staging-validation-report.md). These workflow and
+That local exercise is historical; the current correction's focused discovery
+regressions, 293-test contract, Bash syntax and pinned ShellCheck are recorded
+in [the immutable candidate record](../26-immutable-candidate-record.md).
+Exact local synthetic evidence belongs in [report 28](../28-local-staging-validation-report.md). These workflow and
 local-Docker results do not convert approved Ubuntu/server staging, live,
 provider, physical-device, VAPT, governance or external-review rows to `PASS`.
 
@@ -111,7 +113,7 @@ and proxy-log readability superseded `fbf2de8`.
 The following durable GitHub runs checked out historical runtime SHA
 `3fb99858c6766a341bb7b7dab2377195427f0ea1` exactly. They are retained for
 traceability and are **INVALIDATED** for
-`1ecd0b379369258be466159364a8a48c79fb65aa`. Repository
+`25cd808602020988a09ee9e58cc9d4738cc068c9`. Repository
 evidence does not convert any staging, live or governance row to `PASS`.
 
 | Evidence | Exact result | Current tracker treatment |
@@ -164,14 +166,14 @@ authorizations to mutate GitHub configuration.
 
 | ID | Requirement | Responsible party | Evidence | Location | Status | Severity | Renewal / expiry | Candidate SHA |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `REP-001` | Exact runtime branch/SHA, docs revision, clean worktree and remote synchronization | Engineering release owner | Git identity, commit inventory and UTC reviewer record | Runtime identity is frozen; final docs HEAD is recorded externally in draft PR #2 | PARTIAL | P0 | Each candidate | `1ecd0b379369258be466159364a8a48c79fb65aa` |
-| `REP-002` | Backend lint, unit/integration/migration tests and production dependency audit | Backend/QA | Commands, versions, counts, isolated DB identity and full logs | [Exact functional push run 30158172290](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290): 117 suites / 1,716 tests plus 13 / 45 disposable integration; local limitations in report 28 | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-003` | User, admin and counsellor web lint/type/build/audit | Web/QA | Per-workspace logs and artifact checksums | Exact functional push run 30158172290 | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-004` | Mobile lint/type/contract/config/Doctor/audit | Mobile/QA | Exact-SHA logs, counts and exception register | [Exact functional push run 30158172290](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290): payment 7/7, release/config 21/21, Doctor 19/19; physical-device evidence remains open | PASS | P0 | Each candidate | Runtime SHA above |
-| `REP-005` | Release/recovery, Mongo identity, tunnel, media, backup, smoke and monitoring tests | Platform/QA | Exact-SHA QA results including expected counts | [Exact functional push run 30158172290](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290) plus candidate-bound local report 28; exact local counts are recorded above | PASS LOCALLY | P0 | Each candidate | Runtime SHA above |
-| `REP-006` | Repository Compose/Caddy/clean-checkout/shell validation | Platform/infrastructure | Exact-SHA tracked-fixture render, Caddy and shell logs | [Exact release-readiness run 30158172303](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172303), [functional run 30158172290](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290) and local report 28 | PASS LOCALLY | P0 | Each candidate | Runtime SHA above; server discovery/render remain `STG-002`/`STG-003` |
-| `REP-007` | Secret history, pinned Gitleaks, SAST, dependency, SBOM, image, container and config scans | Security | Clean exact-SHA reports, finding treatment and expiry | [Exact security push run 30158172293](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293); tracked-tree local evidence in report 28 | PASS FOR AUTOMATED/TRACKED SCOPE | P0 | Each candidate/tool update | Runtime SHA above; independent full-history review and VAPT remain open |
-| `REP-008` | Read-only deployment workflow and fail-closed legacy-path governance | Release/security | Workflow validation, tombstone tests and immutable candidate record | Exact release-readiness run 30158172303, functional run 30158172290 and immutable candidate record | PASS FOR REPOSITORY SCOPE | P0 | Each candidate | Runtime SHA above |
+| `REP-001` | Exact runtime branch/SHA, docs revision, clean worktree and remote synchronization | Engineering release owner | Git identity, commit inventory and UTC reviewer record | Runtime identity is frozen; final docs HEAD is recorded externally in draft PR #2 | PARTIAL | P0 | Each candidate | `25cd808602020988a09ee9e58cc9d4738cc068c9` |
+| `REP-002` | Backend lint, unit/integration/migration tests and production dependency audit | Backend/QA | Commands, versions, counts, isolated DB identity and full logs | [Exact functional push run 30209920383](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383): 117 suites / 1,716 tests plus 13 / 45 disposable integration; local limitations in report 28 | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-003` | User, admin and counsellor web lint/type/build/audit | Web/QA | Per-workspace logs and artifact checksums | Exact functional push run 30209920383 | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-004` | Mobile lint/type/contract/config/Doctor/audit | Mobile/QA | Exact-SHA logs, counts and exception register | [Exact functional push run 30209920383](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383): payment 7/7, release/config 21/21, Doctor 19/19; physical-device evidence remains open | PASS | P0 | Each candidate | Runtime SHA above |
+| `REP-005` | Release/recovery, Mongo identity, tunnel, media, backup, smoke and monitoring tests | Platform/QA | Exact-SHA QA results including expected counts | [Exact functional push run 30209920383](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383) plus candidate-bound local report 28; exact local counts are recorded above | PASS LOCALLY | P0 | Each candidate | Runtime SHA above |
+| `REP-006` | Repository Compose/Caddy/clean-checkout/shell validation | Platform/infrastructure | Exact-SHA tracked-fixture render, Caddy and shell logs | [Exact release-readiness run 30209920365](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920365), [functional run 30209920383](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383) and local report 28 | PASS LOCALLY | P0 | Each candidate | Runtime SHA above; server discovery/render remain `STG-002`/`STG-003` |
+| `REP-007` | Secret history, pinned Gitleaks, SAST, dependency, SBOM, image, container and config scans | Security | Clean exact-SHA reports, finding treatment and expiry | [Exact security push run 30209920358](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920358); tracked-tree local evidence in report 28 | PASS FOR AUTOMATED/TRACKED SCOPE | P0 | Each candidate/tool update | Runtime SHA above; independent full-history review and VAPT remain open |
+| `REP-008` | Read-only deployment workflow and fail-closed legacy-path governance | Release/security | Workflow validation, tombstone tests and immutable candidate record | Exact release-readiness run 30209920365, functional run 30209920383 and immutable candidate record | PASS FOR REPOSITORY SCOPE | P0 | Each candidate | Runtime SHA above |
 | `REP-009` | Adversarial workflow regression suite passes after security fixes | Security/release | Pinned workflow-test log | Candidate-bound local suite and exact release/functional push runs pass; see report 28 for counts | PASS | P0 | Each workflow change | Runtime SHA above |
 | `REP-010` | Protected `staging-security` environment supports authenticated DAST | `OWNER ACTION`; security | Environment policy, variables/secrets presence and successful run ID | TBD — restricted GitHub evidence | BLOCKED | P0 | Each environment/change | Runtime SHA above |
 | `REP-011` | Android signing is protected-environment, main-HEAD-only and marker-gated | `OWNER ACTION`; `GOOGLE ACTION`; security | Environment protection, secret-scope removal and successful guarded run | TBD — restricted GitHub evidence | BLOCKED | P0 | Each signing/environment change | Runtime SHA above |

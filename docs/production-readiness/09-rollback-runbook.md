@@ -11,7 +11,7 @@ traffic change or live health test was performed while preparing it.
 
 No shared-Ubuntu-host discovery, server-staging rollback, migration recovery,
 or safe-removal exercise has occurred. The current frozen runtime candidate is
-`1ecd0b379369258be466159364a8a48c79fb65aa`; evidence for the previous
+`25cd808602020988a09ee9e58cc9d4738cc068c9`; evidence for the previous
 `a1bc1b6ec751926edc9981f57762277060acf9e4` and
 `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a` candidates is superseded.
 
@@ -99,7 +99,7 @@ recorded candidate:
 
 ```bash
 cd /opt/menorah-staging/app
-readonly SERVER_STAGING_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
+readonly SERVER_STAGING_SHA='25cd808602020988a09ee9e58cc9d4738cc068c9'
 COMPOSE_PROJECT_NAME=menorah-staging \
   MENORAH_STAGING_RECOVERY_ACK=RESUME_EXACT_MENORAH_STAGING_SHA_AFTER_MIGRATION \
   bash menorah/deploy/server-staging/resume-post-migration.sh \

@@ -1,6 +1,6 @@
 # Staging security QA
 
-Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
+Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -8,7 +8,7 @@ Approved Ubuntu/server and independent assessment state:
 **NOT COLLECTED / NOT RUN**
 
 The exact current
-[security push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172293)
+[security push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920358)
 passed 15/15 jobs and 104/104 steps with zero failed, skipped or cancelled
 jobs/steps, but that repository result does not supply DAST, VAPT or server
 evidence. See
@@ -95,7 +95,7 @@ set -euo pipefail
 
 readonly GH_REPOSITORY='menorahsoftware-cmyk/menorah-mobile-app-'
 readonly APPROVED_BRANCH='<protected-branch-allowed-by-staging-security>'
-readonly RUNTIME_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
+readonly RUNTIME_SHA='25cd808602020988a09ee9e58cc9d4738cc068c9'
 : "${APPROVED_WORKFLOW_HEAD_SHA:?Set the externally recorded protected workflow-head SHA}"
 readonly APPROVED_WORKFLOW_HEAD_SHA
 

@@ -1,6 +1,6 @@
 # Selected redacted staging environment mappings and provenance
 
-Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
+Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
@@ -20,7 +20,7 @@ and its validators are authoritative. Any older production-model source tag
 below is contract provenance only, not an instruction to run a production
 Compose file or production script. Server values, secrets, provider accounts,
 DNS/TLS/Tunnel configuration and provisional network ranges remain
-**NOT COLLECTED — DISCOVERY REQUIRED**; use the
+**NOT COLLECTED — REPLACEMENT DISCOVERY REQUIRED**; use the
 [server-staging design and discovery runbook](../29-server-staging-design-and-discovery-runbook.md).
 
 The larger table below is a selected comparison/provenance view and must not
@@ -100,8 +100,8 @@ approval and the protected 291-key generated environment remain required.
 | `MENORAH_SERVER_STAGING_PROJECT_NAME` | `menorah-staging` | Fixed project boundary |
 | `MENORAH_SERVER_STAGING_RESOURCE_PREFIX` | `menorah-staging` | Fixed resource boundary |
 | `MENORAH_SERVER_STAGING_ENVIRONMENT_ID` | `menorah-server-staging-v1` | Fixed environment attestation |
-| `MENORAH_RUNTIME_CANDIDATE_SHA` | `1ecd0b379369258be466159364a8a48c79fb65aa` | Must equal the executable checkout, scripts, images, manifests and release markers |
-| `MENORAH_SERVER_STAGING_RUNTIME_SHA` | `1ecd0b379369258be466159364a8a48c79fb65aa` | Must equal `MENORAH_RUNTIME_CANDIDATE_SHA`; a later docs head is invalid here |
+| `MENORAH_RUNTIME_CANDIDATE_SHA` | `25cd808602020988a09ee9e58cc9d4738cc068c9` | Must equal the executable checkout, scripts, images, manifests and release markers |
+| `MENORAH_SERVER_STAGING_RUNTIME_SHA` | `25cd808602020988a09ee9e58cc9d4738cc068c9` | Must equal `MENORAH_RUNTIME_CANDIDATE_SHA`; a later docs head is invalid here |
 | `MENORAH_SERVER_STAGING_ROOT` | `/opt/menorah-staging` | Canonical server-staging root |
 | `MENORAH_SERVER_STAGING_INGRESS_SUBNET` / `MENORAH_SERVER_STAGING_INGRESS_IP_RANGE` | `10.252.240.0/24` / `10.252.240.128/25` | Provisional until collision approval |
 | `MENORAH_SERVER_STAGING_APP_SUBNET` / `MENORAH_SERVER_STAGING_APP_IP_RANGE` | `10.252.241.0/24` / `10.252.241.128/25` | Provisional until collision approval |

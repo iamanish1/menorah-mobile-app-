@@ -1,11 +1,11 @@
 # Staging functional QA
 
-Runtime candidate SHA: `1ecd0b379369258be466159364a8a48c79fb65aa`
+Runtime candidate SHA: `25cd808602020988a09ee9e58cc9d4738cc068c9`
 
 Docs/PR-head revision: resolve with `git rev-parse HEAD` at execution.
 
 The exact candidate-bound
-[functional push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30158172290)
+[functional push run](https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/actions/runs/30209920383)
 passed 9/9 jobs and 89/89 steps. Candidate-bound repository/local evidence
 also passed 117 backend suites with 1,716 tests, 13 disposable-integration
 suites with 45 tests, 31/31 API-smoke assertions and 9/9 Playwright cases.
@@ -136,7 +136,7 @@ printed or committed.
 set -euo pipefail
 umask 077
 
-readonly RUNTIME_SHA='1ecd0b379369258be466159364a8a48c79fb65aa'
+readonly RUNTIME_SHA='25cd808602020988a09ee9e58cc9d4738cc068c9'
 readonly REPO='/opt/menorah-staging/app'
 readonly STAGING_ENV='/opt/menorah-staging/env/server-staging.env'
 readonly QA_ENV='/opt/menorah-staging/env/qa.env'

@@ -14,10 +14,12 @@ recovery-safety starting point identified for this effort is commit
 `353b19aced537d7acee6310bc0d8acbcc512f739`. Later repository remediation is
 preserved as focused commits on the same release branch. The successor runtime
 candidate is frozen at
-`1ecd0b379369258be466159364a8a48c79fb65aa`. Its candidate-bound local overlay
-validation passed. The exact push runs also passed: production release
-readiness `30158172303` (1/1 jobs, 11/11 steps), functional release
-`30158172290` (9/9 jobs, 89/89 steps), and security `30158172293` (15/15 jobs,
+`25cd808602020988a09ee9e58cc9d4738cc068c9`. The superseded candidate's local
+overlay baseline remains historical; the discovery correction passed focused
+regressions, the 293-test server-staging contract, Bash syntax and pinned
+ShellCheck. The exact push runs also passed: production release
+readiness `30209920365` (1/1 jobs, 11/11 steps), functional release
+`30209920383` (9/9 jobs, 89/89 steps), and security `30209920358` (15/15 jobs,
 104/104 steps), with zero failed, skipped or cancelled jobs/steps. Results for
 `a1bc1b6ec751926edc9981f57762277060acf9e4`,
 `0b9f6e484c8e7383f5a9d5fc5c94f37ae7c9cf1a`,
