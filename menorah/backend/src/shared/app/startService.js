@@ -21,6 +21,21 @@ const { registerGracefulShutdown } = require('./gracefulShutdown');
 
 const isLocalhost = () => false;
 
+const RATE_LIMIT_STORE_PREFIXES = Object.freeze({
+  auth: 'rl:auth:',
+  api: 'rl:api:'
+});
+
+const authRateLimitResponse = Object.freeze({
+  success: false,
+  message: 'Too many authentication attempts. Please try again later.'
+});
+
+const apiRateLimitResponse = Object.freeze({
+  success: false,
+  message: 'Too many requests. Please try again later.'
+});
+
 const createServiceState = ({ serviceName, routeProfile }) => ({
   serviceName,
   routeProfile,
@@ -33,10 +48,20 @@ const createServiceState = ({ serviceName, routeProfile }) => ({
   socketAdapterEnabled: false
 });
 
-const makeRateLimitStore = (redisReady) =>
+const makeRateLimitStore = (redisReady, prefix) =>
   redisReady
-    ? { store: new RedisStore({ sendCommand: (...args) => getRedisClient().sendCommand(args) }) }
+    ? {
+        store: new RedisStore({
+          prefix,
+          sendCommand: (...args) => getRedisClient().sendCommand(args)
+        })
+      }
     : {};
+
+const createRateLimitStores = (redisReady) => ({
+  auth: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.auth),
+  api: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.api)
+});
 
 const firstHeaderValue = (value) => {
   const rawValue = Array.isArray(value) ? value[0] : value;
@@ -58,23 +83,26 @@ const getRateLimitClientIp = (req) => (
 const rateLimitKeyGenerator = (req) => rateLimit.ipKeyGenerator(getRateLimitClientIp(req));
 
 const mountRateLimiters = (app, { redisReady }) => {
+  const stores = createRateLimitStores(redisReady);
   const authLimiter = rateLimit({
-    ...makeRateLimitStore(redisReady),
+    ...stores.auth,
     windowMs: 15 * 60 * 1000,
     max: parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10) || 30,
     keyGenerator: rateLimitKeyGenerator,
-    message: 'Too many requests, please try again later.',
+    // An object makes express-rate-limit send JSON, so clients can show the
+    // throttle reason instead of treating the response as a generic failure.
+    message: authRateLimitResponse,
     standardHeaders: true,
     legacyHeaders: false,
     skip: isLocalhost
   });
 
   const apiLimiter = rateLimit({
-    ...makeRateLimitStore(redisReady),
+    ...stores.api,
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
     max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 1000,
     keyGenerator: rateLimitKeyGenerator,
-    message: 'Too many requests from this IP, please try again later.',
+    message: apiRateLimitResponse,
     standardHeaders: true,
     legacyHeaders: false,
     skip: isLocalhost
@@ -192,6 +220,8 @@ const startService = async ({
 module.exports = {
   startService,
   createServiceState,
+  createRateLimitStores,
   getRateLimitClientIp,
-  mountRateLimiters
+  mountRateLimiters,
+  RATE_LIMIT_STORE_PREFIXES
 };
