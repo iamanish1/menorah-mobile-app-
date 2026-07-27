@@ -33,6 +33,16 @@ const assertAuthCsp = (response, url) => {
 const gotoAuthPage = async (page, url) => {
   const response = await page.goto(url, { waitUntil: 'domcontentloaded' });
   assertAuthCsp(response, url);
+
+  // A browser test can type into server-rendered controls before React has
+  // hydrated the form. The Google button's busy state changes only after its
+  // client effect runs, so use it as an interactive-ready marker before the
+  // submit assertions exercise the application handler.
+  const parsedUrl = new URL(url);
+  if (parsedUrl.origin === urls.app && parsedUrl.pathname === '/login') {
+    await expect(page.locator('[id^="google-auth-"]')).toHaveAttribute('aria-busy', 'false');
+  }
+
   return response;
 };
 
@@ -126,7 +136,8 @@ test.describe('authentication regressions', () => {
     await page.getByRole('button', { name: /^sign in$/i }).click();
 
     await expect(page.getByRole('alert').filter({ hasText: 'Invalid email or password' })).toContainText('Invalid email or password');
-    await expect(page).toHaveURL(/\/login(\?|$)/);
+    expect(new URL(page.url()).pathname).toBe('/login');
+    expect(new URL(page.url()).search).toBe('');
     await page.waitForTimeout(750);
     expect(sessionProbes, 'login must make exactly one session probe').toBe(1);
   });
