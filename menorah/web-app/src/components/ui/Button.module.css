@@ -95,6 +95,12 @@
   pointer-events: none;
 }
 
+.loadingContent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .spinner {
   display: inline-block;
   width: clamp(13px, 0.85em, 16px);

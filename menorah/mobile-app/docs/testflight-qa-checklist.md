@@ -14,6 +14,9 @@ Use this checklist on a real iPhone after installing a development build or Test
 - [ ] Try an incorrect password and confirm the error is friendly.
 - [ ] Try an empty email and password and confirm validation appears.
 - [ ] Try an invalid email format and confirm validation appears.
+- [ ] Try an unverified password account: confirm it receives no usable session, lands on email verification, and can request a new code.
+- [ ] Try a counsellor and an admin account: confirm the patient app rejects both and does not retain either token.
+- [ ] Open a protected deep link (booking, chat, profile, or article detail) while signed out: confirm it opens the sign-in flow rather than the protected screen.
 - [ ] Log out.
 - [ ] Log back in after logout.
 
@@ -30,6 +33,9 @@ Use this checklist on a real iPhone after installing a development build or Test
 - [ ] Reopen the app and confirm the session is still active.
 - [ ] Restart the phone or simulator and confirm the session still loads.
 - [ ] Log out and confirm the session is cleared after app restart.
+- [ ] While signed in, put the app offline or force a 5xx during startup: confirm it keeps the stored session and retries validation after connectivity returns or the app foregrounds.
+- [ ] Make one authenticated call return 401: confirm the app clears its token, socket connection, chat state, and query cache, then returns to sign-in.
+- [ ] Sign in as account A, open chat/bookings, log out, then sign in as account B: confirm no messages, bookings, or loading state from A appear.
 
 ## Profile And Settings
 - [ ] Open profile home.
@@ -39,6 +45,13 @@ Use this checklist on a real iPhone after installing a development build or Test
 - [ ] Open Settings.
 - [ ] Open notification/privacy settings.
 - [ ] Open two-factor or security screens if present.
+- [ ] Open Linked accounts, link Google/Apple with the current password, and verify the provider state updates without exposing provider subjects.
+- [ ] Change the password and confirm the app signs out rather than leaving a revoked session in the UI.
+
+## HTTPS Reset And Native Links
+- [ ] Open a reset link at `https://app.menorah.me/reset-password?token=<test-token>` with the app installed: confirm it enters the reset screen and the token is not left in visible navigation/history.
+- [ ] Open the same link without the app installed: confirm it falls back to the browser reset page.
+- [ ] Before a native rollout, set real `APPLE_APP_LINK_TEAM_ID`, `APPLE_APP_LINK_BUNDLE_ID`, `ANDROID_APP_LINK_PACKAGE_NAME`, and `ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS` on the edge host; run `CHECK_PUBLIC=true CHECK_NATIVE_APP_LINKS=true deploy/ubuntu/health-check.sh` and require both association files to return valid JSON.
 
 ## Legal Pages
 - [ ] Open Privacy Policy.

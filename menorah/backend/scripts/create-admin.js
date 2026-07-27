@@ -12,6 +12,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const User = require('../src/models/User');
+const { normalizeEmail } = require('../src/utils/emailNormalization');
 
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/menorah';
 
@@ -24,7 +25,7 @@ const isStrongPassword = (password) =>
   /[^A-Za-z0-9]/.test(password);
 
 const validateEnvironment = () => {
-  const email = String(process.env.ADMIN_BOOTSTRAP_EMAIL || '').toLowerCase().trim();
+  const email = normalizeEmail(process.env.ADMIN_BOOTSTRAP_EMAIL);
   const password = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '');
   const phone = String(process.env.ADMIN_BOOTSTRAP_PHONE || '+910000000000').trim();
 

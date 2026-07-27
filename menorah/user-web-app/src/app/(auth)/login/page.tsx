@@ -13,7 +13,10 @@ import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 
 const schema = z.object({
   email:    z.string().email('Enter a valid email'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  // Login must not impose a different password policy than the server. This
+  // also allows accounts created before the strengthened policy to sign in
+  // and change their credentials safely.
+  password: z.string().min(1, 'Enter your password'),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -31,14 +34,10 @@ export default function LoginPage() {
   const onSubmit = async (data: FormValues) => {
     setServerError('');
     const res = await login(data.email, data.password);
-    if (res.success) {
-      if (res.needsVerification) {
-        // Store email in sessionStorage — not in URL (avoids browser history / server log exposure)
-        sessionStorage.setItem('pending_verify_email', data.email);
-        router.push('/verify-otp');
-      } else {
-        router.push('/discover');
-      }
+    if (res.needsVerification) {
+      router.push('/verify-otp');
+    } else if (res.success) {
+      router.push('/discover');
     } else {
       setServerError(res.message || 'Login failed. Please try again.');
     }
@@ -52,7 +51,7 @@ export default function LoginPage() {
       </div>
 
       {serverError && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">
+        <div role="alert" className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-200">
           {serverError}
         </div>
       )}

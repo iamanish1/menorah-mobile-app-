@@ -45,6 +45,7 @@ x-backend-env: &backend-env
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
   JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
   ADMIN_JWT_EXPIRES_IN: ${ADMIN_JWT_EXPIRES_IN:-8h}
+  PASSWORD_RESET_URL_TEMPLATE: ${PASSWORD_RESET_URL_TEMPLATE:-https://${APP_DOMAIN:-app.menorah.me}/reset-password?token={token}}
   GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:-${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}}
   GOOGLE_IOS_CLIENT_ID: ${GOOGLE_IOS_CLIENT_ID:-${EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID:-}}
   GOOGLE_ANDROID_CLIENT_ID: ${GOOGLE_ANDROID_CLIENT_ID:-${EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:-}}
@@ -85,6 +86,22 @@ x-backend-env: &backend-env
   BACKUP_ENCRYPTION_PASSWORD: ${BACKUP_ENCRYPTION_PASSWORD:-}
 
 services:
+  app-link-associations:
+    build:
+      context: ./app-links
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      # Keep these blank until the real signing identifiers are available. The
+      # service then responds 404 instead of publishing placeholder metadata.
+      APPLE_APP_LINK_TEAM_ID: ${APPLE_APP_LINK_TEAM_ID:-}
+      APPLE_APP_LINK_BUNDLE_ID: ${APPLE_APP_LINK_BUNDLE_ID:-}
+      ANDROID_APP_LINK_PACKAGE_NAME: ${ANDROID_APP_LINK_PACKAGE_NAME:-}
+      ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS: ${ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS:-}
+    networks:
+      - app_net
+
   reverse-proxy:
     image: caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
     restart: unless-stopped
@@ -114,6 +131,7 @@ services:
       - monitoring_net
       - mentle_internal
     depends_on:
+      - app-link-associations
       - landing-page
       - user-web-app
       - web-app

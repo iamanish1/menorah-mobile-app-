@@ -1,6 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
 import { Article, ArticlePagination, Booking, DashboardStats, TodaySchedule, ApiResponse, CounsellorStatus, VideoRoom } from '@/types';
 
+export const COUNSELLOR_UNAUTHORIZED_EVENT = 'menorah:counsellor-unauthorized';
+
 class ApiClient {
   private client: AxiosInstance;
   private baseURL: string;
@@ -19,12 +21,14 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
-        // Only redirect on 401, but don't log other errors here
-        // Let individual methods handle their own errors
-        if (error.response?.status === 401) {
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login';
-          }
+        const requestUrl = typeof error.config?.url === 'string' ? error.config.url : '';
+        const isExpectedAuthFailure = requestUrl.startsWith('/auth/') || requestUrl === '/users/me';
+        if (
+          error.response?.status === 401
+          && !isExpectedAuthFailure
+          && typeof window !== 'undefined'
+        ) {
+          window.dispatchEvent(new Event(COUNSELLOR_UNAUTHORIZED_EVENT));
         }
         // Return the error so individual methods can handle it
         return Promise.reject(error);
@@ -37,7 +41,7 @@ class ApiClient {
   }
 
   // Auth methods
-  async login(email: string, password: string): Promise<ApiResponse<{ user: any }>> {
+  async login(email: string, password: string): Promise<ApiResponse<{ user?: any; email?: string }>> {
     try {
       const response = await this.client.post('/auth/login', { email, password, transport: 'cookie' });
       return response.data;
@@ -48,7 +52,38 @@ class ApiClient {
       }
       return {
         success: false,
+        code: errorResponse?.code,
         message: errorResponse?.message || error.message || 'Login failed',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async verifyEmail(email: string, code: string): Promise<ApiResponse<void>> {
+    try {
+      const response = await this.client.post('/auth/verify-email', { email, code, transport: 'cookie' });
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        code: errorResponse?.code,
+        message: errorResponse?.message || error.message || 'Email verification failed',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async resendEmailVerification(email: string): Promise<ApiResponse<void>> {
+    try {
+      const response = await this.client.post('/auth/resend-email-verification', { email });
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        code: errorResponse?.code,
+        message: errorResponse?.message || error.message || 'Could not send a verification code',
         errors: errorResponse?.errors || [],
       };
     }
@@ -572,7 +607,7 @@ class ApiClient {
 
       if (response.status === 401) {
         if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+          window.dispatchEvent(new Event(COUNSELLOR_UNAUTHORIZED_EVENT));
         }
       }
 

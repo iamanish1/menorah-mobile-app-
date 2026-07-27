@@ -8,6 +8,7 @@ import { palettes } from '@/theme/colors';
 import { ENV } from '@/lib/env';
 import { api } from '@/lib/api';
 import { useAuth } from '@/state/useAuth';
+import { displayPhone } from '@/lib/authPolicy';
 import subscriptionService from '@/services/subscriptionService';
 import type { SubscriptionType } from './subscriptionPlans';
 import {
@@ -219,7 +220,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
       console.log('Initiating Razorpay SDK payment for subscription');
       
       const userEmail = user?.email || '';
-      const userPhone = user?.phone || '';
+      const userPhone = displayPhone(user?.phone);
       const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
 
       const options = {

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,7 +10,11 @@ import { Button, Input, Spinner } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
 const schema = z.object({
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .refine((value) => /[a-z]/.test(value), 'Password must include a lowercase letter')
+    .refine((value) => /[A-Z]/.test(value), 'Password must include an uppercase letter')
+    .refine((value) => /\d/.test(value), 'Password must include a number'),
   confirmPassword: z.string(),
 }).refine((d) => d.password === d.confirmPassword, {
   message: 'Passwords do not match',
@@ -20,11 +24,22 @@ type FormValues = z.infer<typeof schema>;
 
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
-  const token        = searchParams.get('token') || '';
+  const [token, setToken] = useState('');
   const { resetPassword } = useAuth();
   const router = useRouter();
   const [showPwd, setShowPwd]     = useState(false);
   const [serverError, setServerError] = useState('');
+
+  useEffect(() => {
+    const queryToken = searchParams.get('token') || '';
+    const fragmentToken = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('token') || '';
+    const resetToken = fragmentToken || queryToken;
+    setToken(resetToken);
+
+    if (resetToken) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, [searchParams]);
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -58,7 +73,7 @@ function ResetPasswordForm() {
         <Input
           label="New password"
           type={showPwd ? 'text' : 'password'}
-          placeholder="Min 8 characters"
+          placeholder="8+ chars with uppercase, lowercase, and a number"
           leftIcon={<Lock className="w-4 h-4" />}
           rightIcon={
             <button type="button" onClick={() => setShowPwd((p) => !p)} className="hover:text-gray-600 dark:hover:text-primary-50">

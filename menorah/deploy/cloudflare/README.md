@@ -37,6 +37,20 @@ calls.mentle.org
 LIVEKIT_UPSTREAM=http://livekit:7880
 ```
 
+## Native reset-link association files
+
+The mobile apps verify HTTPS ownership through `/.well-known/apple-app-site-association`
+and `/.well-known/assetlinks.json`. Keep the `menorah.me`, `app.menorah.me`,
+`api-ios.menorah.me`, and `api-android.menorah.me` public hostnames pointed at
+`http://reverse-proxy:80`; do not add a redirect, access policy, HTML rewrite,
+or cache rule that intercepts either `/.well-known/` path.
+
+Set the real Apple Team ID and Android signing SHA-256 fingerprint values in
+the host-only `production.env` before enabling native reset links. Until then,
+the edge intentionally returns `404` for these files. See
+[`../app-links/README.md`](../app-links/README.md) for the exact variables and
+post-deploy verification commands.
+
 Cloudflare HTTP proxying is only for HTTPS/WSS signaling. LiveKit media still needs Hostinger firewall/NAT access to the configured RTC ports, normally `7881/tcp` and `50000-50100/udp`, or clients must rely on LiveKit TCP fallback.
 
 ## Dashboard-Managed Tunnel Token
@@ -133,6 +147,10 @@ docker compose \
 docker compose -f docker-compose.production.yml -f docker-compose.tunnel.yml ps cloudflared
 docker compose -f docker-compose.production.yml -f docker-compose.tunnel.yml logs cloudflared --tail=100
 CHECK_PUBLIC=true bash ubuntu/health-check.sh
+
+# Before an internal/native mobile rollout, require the signed association
+# files as well (they intentionally return 404 until identifiers are set).
+CHECK_PUBLIC=true CHECK_NATIVE_APP_LINKS=true bash ubuntu/health-check.sh
 ```
 
 ## Second Connector Later

@@ -30,6 +30,14 @@
         <data android:scheme="menorah-health"/>
         <data android:scheme="exp+menorah-health-app"/>
       </intent-filter>
+      <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="https" android:host="app.menorah.me" android:pathPrefix="/reset-password"/>
+        <data android:scheme="https" android:host="menorah.me" android:pathPrefix="/reset-password"/>
+        <data android:scheme="https" android:host="api-android.menorah.me" android:pathPrefix="/api/auth/reset-password"/>
+      </intent-filter>
     </activity>
   </application>
 </manifest>

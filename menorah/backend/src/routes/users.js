@@ -3,10 +3,12 @@ const { body, param, validationResult } = require('express-validator');
 const multer = require('multer');
 const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
-const { auth } = require('../middleware/auth');
+const { auth, patientAuth, sharedParticipantAuth } = require('../middleware/auth');
 const { uploadBuffer } = require('../utils/cloudinary');
 const { clearMappedSessionCookie } = require('../config/webSessions');
 const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const { disconnectUserSockets } = require('../utils/sessionLifecycle');
+const { passwordValidator } = require('../utils/passwordPolicy');
 const {
   serializePublicUser,
   serializeUserProfile,
@@ -120,7 +122,7 @@ router.get('/profile', auth, async (req, res) => {
 // @route   PUT /api/users/profile
 // @desc    Update current user's profile
 // @access  Private
-router.put('/profile', auth, upload.single('profileImage'), [
+router.put('/profile', sharedParticipantAuth, upload.single('profileImage'), [
   body('firstName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
   body('dateOfBirth').optional().isISO8601().withMessage('Please provide a valid date of birth'),
@@ -198,6 +200,37 @@ router.put('/profile', auth, upload.single('profileImage'), [
   }
 });
 
+// @route   PUT /api/users/profile/complete
+// @desc    Complete the required contact data for a social-signup account
+// @access  Verified patient account (profile completion itself is allowed)
+router.put('/profile/complete', [
+  body('phone').matches(/^\+[1-9]\d{1,14}$/).withMessage('Please provide a valid phone number with country code'),
+], patientAuth, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    user.phone = req.body.phone;
+    user.profileCompleted = true;
+    await user.save();
+    return res.json({
+      success: true,
+      message: 'Profile completed successfully',
+      data: { user: serializeUserProfile(user) },
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ success: false, message: 'That phone number is already in use.' });
+    }
+    console.error('Complete profile error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // @route   PUT /api/users/address
 // @desc    Update user's address
 // @access  Private
@@ -207,7 +240,7 @@ router.put('/address', [
   body('state').optional().isString(),
   body('country').optional().isString(),
   body('zipCode').optional().isString()
-], auth, async (req, res) => {
+], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -259,7 +292,7 @@ router.put('/emergency-contact', [
   body('name').notEmpty().withMessage('Emergency contact name is required'),
   body('relationship').notEmpty().withMessage('Relationship is required'),
   body('phone').isMobilePhone().withMessage('Please provide a valid phone number')
-], auth, async (req, res) => {
+], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -311,7 +344,7 @@ router.put('/notification-preferences', [
   body('email').optional().isBoolean().withMessage('Email preference must be a boolean'),
   body('sms').optional().isBoolean().withMessage('SMS preference must be a boolean'),
   body('push').optional().isBoolean().withMessage('Push preference must be a boolean')
-], auth, async (req, res) => {
+], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -359,8 +392,8 @@ router.put('/notification-preferences', [
 // @access  Private
 router.put('/change-password', [
   body('currentPassword').notEmpty().withMessage('Current password is required'),
-  body('newPassword').isLength({ min: 8 }).withMessage('New password must be at least 8 characters long')
-], auth, async (req, res) => {
+  body('newPassword').custom(passwordValidator)
+], sharedParticipantAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -395,6 +428,7 @@ router.put('/change-password', [
     revokeAllSessions(user, { passwordChanged: true });
     await user.save();
     clearMappedSessionCookie(req, res);
+    disconnectUserSockets(req.app.get('io'), user, 'password_changed');
 
     res.json({
       success: true,
@@ -415,7 +449,7 @@ router.put('/change-password', [
 // @access  Private
 router.delete('/account', [
   body('password').notEmpty().withMessage('Password is required for account deletion')
-], auth, async (req, res) => {
+], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -450,6 +484,7 @@ router.delete('/account', [
     revokeAllSessions(user);
     await user.save();
     clearMappedSessionCookie(req, res);
+    disconnectUserSockets(req.app.get('io'), user, 'account_disabled');
 
     res.json({
       success: true,

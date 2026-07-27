@@ -3,7 +3,7 @@ const multer = require('multer');
 const sharp = require('sharp');
 const User = require('../models/User');
 const KycVerification = require('../models/KycVerification');
-const { auth } = require('../middleware/auth');
+const { verifiedPatientAuth } = require('../middleware/auth');
 
 const router = express.Router();
 const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/heic', 'image/heif']);
@@ -230,7 +230,7 @@ const getFailureReason = ({ faceCount, confidence, threshold }) => {
   return undefined;
 };
 
-router.get('/status', auth, async (req, res) => {
+router.get('/status', verifiedPatientAuth, async (req, res) => {
   try {
     const verification = await KycVerification.findOne({ user: req.user._id })
       .sort({ createdAt: -1 })
@@ -249,7 +249,7 @@ router.get('/status', auth, async (req, res) => {
   }
 });
 
-router.post('/submit', auth, uploadSelfie, async (req, res) => {
+router.post('/submit', verifiedPatientAuth, uploadSelfie, async (req, res) => {
   try {
     const consentAccepted = req.body.consentAccepted === 'true' || req.body.consentAccepted === true;
     if (!consentAccepted) {

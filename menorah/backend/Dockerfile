@@ -28,6 +28,9 @@ COPY --from=deps /app/node_modules ./node_modules
 
 # Copy source
 COPY src/ ./src/
+# Operational security scripts are invoked from the production image during
+# guarded releases (for example, the historic counsellor-approval audit).
+COPY scripts/ ./scripts/
 
 # PM2 is not used inside Docker — Cloud Run / docker-compose scale via replicas.
 # Each container runs a single Node process; the orchestrator handles clustering.

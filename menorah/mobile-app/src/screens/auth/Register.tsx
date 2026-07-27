@@ -224,7 +224,7 @@ export default function Register({ navigation }: any) {
 
         navigation.reset({
           index: 0,
-          routes: [{ name: 'Verify', params: { email: payload.email, fromSignup: true } }],
+          routes: [{ name: 'Verify', params: { email: payload.email, flow: 'signup' } }],
         });
       } else {
         const backendFieldErrors = validationErrorsToFieldMap(result.errors);
@@ -285,7 +285,22 @@ export default function Register({ navigation }: any) {
 
         <SocialAuthButtons
           mode="signup"
-          onSuccess={() => navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] })}
+          onSuccess={(result) => {
+            if (result.needsVerification) {
+              navigation.navigate('Verify', {
+                email: result.email,
+                flow: result.verificationFlow || 'account',
+                requestCode: true,
+              });
+              return;
+            }
+            navigation.reset({
+              index: 0,
+              routes: [result.needsProfileCompletion
+                ? { name: 'EditProfile', params: { fromSocialAuth: true } }
+                : { name: 'Tabs' }],
+            });
+          }}
         />
 
         {/* Form */}

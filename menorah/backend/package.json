@@ -15,7 +15,8 @@
     "lint": "eslint src/",
     "migrate": "node src/database/migrate.js",
     "seed": "node src/database/seed.js",
-    "seed:qa": "node src/database/seed-qa.js"
+    "seed:qa": "node src/database/seed-qa.js",
+    "audit:unsafe-counsellor-approvals": "node scripts/audit-unsafe-counsellor-approvals.js"
   },
   "keywords": [
     "menorah",

@@ -38,15 +38,9 @@ const CACHE_TTL = {
 const crypto = require('crypto');
 const { sendVerificationEmail } = require('../utils/email');
 const { sendSMS } = require('../utils/sms');
+const { emailNormalizationOptions, normalizeEmail } = require('../utils/emailNormalization');
 
 const router = express.Router();
-const emailNormalizationOptions = {
-  gmail_remove_dots: false,
-  gmail_remove_subaddress: false,
-  outlookdotcom_remove_subaddress: false,
-  yahoo_remove_subaddress: false,
-  icloud_remove_subaddress: false,
-};
 const publicReadyCounsellorQuery = {
   isActive: true,
   status: 'approved',
@@ -622,17 +616,17 @@ router.post('/register', [
       availability
     } = req.body;
 
-    // Block if already an active/approved counsellor with this email
-    const existingUser = await User.findOne({ email, role: 'counsellor' });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'A counsellor account with this email already exists'
-      });
-    }
+    const normalizedEmail = normalizeEmail(email);
+    const [existingByEmail, existingByPhone, existingCounsellor, activeApplication] = await Promise.all([
+      User.findOne({ email: normalizedEmail }),
+      User.findOne({ phone }),
+      Counsellor.findOne({ licenseNumber }),
+      PendingApplication.findOne({
+        $or: [{ email: normalizedEmail }, { phone }],
+        status: { $in: ['pending', 'manual_review'] },
+      }).select('_id status'),
+    ]);
 
-    // Block duplicate license numbers already in the approved counsellors
-    const existingCounsellor = await Counsellor.findOne({ licenseNumber });
     if (existingCounsellor) {
       return res.status(400).json({
         success: false,
@@ -640,8 +634,22 @@ router.post('/register', [
       });
     }
 
-    // If a previous application exists for this email, replace it (re-apply after rejection)
-    await PendingApplication.deleteOne({ email });
+    // Do not delete an in-flight/manual-review record; it may be evidence of
+    // an identity conflict that an administrator must resolve.
+    if (activeApplication) {
+      return res.status(202).json({
+        success: true,
+        message: 'Your application is already under review. We will contact you after review is complete.',
+        data: { applicationId: activeApplication._id, status: activeApplication.status },
+      });
+    }
+
+    // Re-application after a decision is allowed, but only old completed
+    // application records are replaced.
+    await PendingApplication.deleteMany({
+      $or: [{ email: normalizedEmail }, { phone }],
+      status: 'rejected',
+    });
 
     const defaultAvailability = availability || {
       monday:    { start: '09:00', end: '17:00', isAvailable: true },
@@ -655,7 +663,7 @@ router.post('/register', [
 
     const statusTicket = crypto.randomBytes(32).toString('hex');
     const application = new PendingApplication({
-      firstName, lastName, email, phone, dateOfBirth, gender,
+      firstName, lastName, email: normalizedEmail, phone, dateOfBirth, gender,
       licenseNumber, specialization,
       specializations: specializations || [specialization],
       experience, bio, languages, hourlyRate,
@@ -664,7 +672,13 @@ router.post('/register', [
       certifications: certifications || [],
       availability: defaultAvailability,
       statusLookupTokenHash: crypto.createHash('sha256').update(statusTicket).digest('hex'),
-      status: 'pending'
+      status: existingByEmail || existingByPhone ? 'manual_review' : 'pending',
+      identityConflict: {
+        hasConflict: Boolean(existingByEmail || existingByPhone),
+        email: Boolean(existingByEmail),
+        phone: Boolean(existingByPhone),
+        detectedAt: existingByEmail || existingByPhone ? new Date() : null,
+      },
     });
 
     await application.save();

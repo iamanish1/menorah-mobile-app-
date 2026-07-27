@@ -40,6 +40,16 @@
 	}
 }
 
+# The upstream returns a strict 404 until the corresponding platform signing
+# identifiers are configured. Keeping this route at the edge prevents the web
+# app from accidentally serving a fallback HTML page for association requests.
+(app_link_associations) {
+	@app_link_association path /.well-known/apple-app-site-association /.well-known/assetlinks.json
+	handle @app_link_association {
+		reverse_proxy app-link-associations:8080
+	}
+}
+
 (payment_disabled) {
 	header Cache-Control "no-store, no-cache, max-age=0, must-revalidate"
 	header Pragma "no-cache"
@@ -49,6 +59,7 @@
 
 http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN} {
 	import security_headers
+	import app_link_associations
 	encode gzip zstd
 	reverse_proxy landing-page:3002
 	log {
@@ -59,6 +70,7 @@ http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN} {
 
 http://{$APP_DOMAIN} {
 	import browser_call_security_headers
+	import app_link_associations
 	encode gzip zstd
 	reverse_proxy user-web-app:3002
 	log {
@@ -89,6 +101,7 @@ http://{$COUNSELLOR_DOMAIN} {
 
 http://{$API_IOS_DOMAIN} {
 	import api_proxy
+	import app_link_associations
 	@payment path /api/payments* /api/payouts/webhook*
 	handle @payment {
 		import payment_disabled
@@ -104,6 +117,7 @@ http://{$API_IOS_DOMAIN} {
 
 http://{$API_ANDROID_DOMAIN} {
 	import api_proxy
+	import app_link_associations
 	@payment path /api/payments* /api/payouts/webhook*
 	handle @payment {
 		import payment_disabled

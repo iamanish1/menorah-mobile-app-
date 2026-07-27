@@ -69,11 +69,29 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const typingTimeouts = React.useRef<{ [roomId: string]: ReturnType<typeof setTimeout> }>({});
   // Ref so connection callbacks always see the latest currentRoom without re-registering
   const currentRoomRef = React.useRef<string | null>(null);
+  const activeUserIdRef = React.useRef<string | null>(user?.id || null);
 
   // Keep currentRoomRef in sync with currentRoom state
   useEffect(() => {
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
+
+  // Private chat state must never survive a logout or account switch.
+  useEffect(() => {
+    activeUserIdRef.current = user?.id || null;
+    Object.values(typingTimeouts.current).forEach(clearTimeout);
+    typingTimeouts.current = {};
+    currentRoomRef.current = null;
+    setChatRooms([]);
+    setMessages({});
+    setTypingUsers({});
+    setOnlineUsers({});
+    setRoomPresence({});
+    setCurrentRoom(null);
+    setIsConnected(false);
+    setLoadingRooms(false);
+    setLoadingMessages(false);
+  }, [user?.id]);
 
   // Event handlers
   const handleNewMessage = useCallback((message: ChatMessage) => {
@@ -275,11 +293,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // Chat room management
   const fetchChatRooms = useCallback(async () => {
     if (!user) return;
+    const requestUserId = user.id;
     
     setLoadingRooms(true);
     try {
       const response = await api.getChatRooms();
-      if (response.success && response.data) {
+      if (
+        response.success
+        && response.data
+        && activeUserIdRef.current === requestUserId
+      ) {
         // Ensure all chat rooms have proper counsellorName
         const rooms = (response.data.chatRooms || []).map((room: ChatRoom) => {
           // Check if counsellorName is undefined, null, or the string "undefined undefined"
@@ -298,18 +321,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     } catch (error) {
       console.error('Failed to fetch chat rooms:', error);
     } finally {
-      setLoadingRooms(false);
+      if (activeUserIdRef.current === requestUserId) setLoadingRooms(false);
     }
   }, [user]);
 
   // Message management
   const fetchMessages = useCallback(async (roomId: string) => {
     if (!user) return;
+    const requestUserId = user.id;
     
     setLoadingMessages(true);
     try {
       const response = await api.getMessages(roomId);
-      if (response.success && response.data) {
+      if (
+        response.success
+        && response.data
+        && activeUserIdRef.current === requestUserId
+      ) {
         const msgs = response.data.messages || [];
         // Map API messages to ChatMessage format
         const mappedMessages: ChatMessage[] = msgs.map((msg: any) => ({
@@ -342,18 +370,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     } catch (error) {
       console.error('Failed to fetch messages:', error);
     } finally {
-      setLoadingMessages(false);
+      if (activeUserIdRef.current === requestUserId) setLoadingMessages(false);
     }
   }, [user]);
 
   const sendMessage = useCallback(async (roomId: string, content: string) => {
     if (!user || !content.trim()) return;
+    const requestUserId = user.id;
     
     try {
       // Send via REST API for persistence (works even without Socket.IO)
       const response = await api.sendMessage(roomId, content);
       
-      if (response.success && response.data) {
+      if (
+        response.success
+        && response.data
+        && activeUserIdRef.current === requestUserId
+      ) {
         const msg = response.data.message;
         const sender = typeof msg.sender === 'object' && msg.sender !== null ? msg.sender : undefined;
         const senderId = msg.senderId || sender?._id || (typeof msg.sender === 'string' ? msg.sender : undefined) || user.id;
@@ -394,11 +427,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   const deleteMessage = useCallback(async (roomId: string, messageId: string) => {
     if (!user) return;
+    const requestUserId = user.id;
     
     try {
       await api.deleteMessage(roomId, messageId);
       
       // Remove from local state
+      if (activeUserIdRef.current !== requestUserId) return;
       setMessages(prev => {
         const roomMessages = prev[roomId] || [];
         return {

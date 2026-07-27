@@ -6,5 +6,11 @@
     <array>
       <string>Default</string>
     </array>
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+      <string>applinks:app.menorah.me</string>
+      <string>applinks:menorah.me</string>
+      <string>applinks:api-ios.menorah.me</string>
+    </array>
   </dict>
 </plist>

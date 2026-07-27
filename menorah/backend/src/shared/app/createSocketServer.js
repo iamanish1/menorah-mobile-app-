@@ -59,6 +59,28 @@ const loadAuthorizedRoom = async (roomId, userId) => {
   return room;
 };
 
+const revalidateSocketSession = async (socket) => {
+  try {
+    const user = await User.findById(socket.userId)
+      .select('isActive isEmailVerified sessionVersion role')
+      .lean();
+    const valid = Boolean(
+      user
+      && user.isActive
+      && user.isEmailVerified
+      && user.role === socket.userRole
+      && (user.sessionVersion || 0) === (socket.sessionVersion || 0)
+    );
+    if (valid) return true;
+  } catch (error) {
+    console.error('Socket session revalidation error:', error.message);
+  }
+
+  socket.emit('session_revoked', { reason: 'session_invalid' });
+  socket.disconnect(true);
+  return false;
+};
+
 const emitPresenceToJoinedChatRooms = (socket, event) => {
   for (const room of socket.rooms) {
     if (typeof room === 'string' && room.startsWith('chat_')) {
@@ -92,8 +114,8 @@ const attachSocketHandlers = (io) => {
         return next(new Error('Authentication error: Token revoked'));
       }
 
-      const user = await User.findById(decoded.userId).select('firstName lastName role isActive sessionVersion').lean();
-      if (!user || !user.isActive || (decoded.sessionVersion || 0) !== (user.sessionVersion || 0)) {
+      const user = await User.findById(decoded.userId).select('firstName lastName role isActive isEmailVerified sessionVersion').lean();
+      if (!user || !user.isActive || !user.isEmailVerified || (decoded.sessionVersion || 0) !== (user.sessionVersion || 0)) {
         return next(new Error('Authentication error: Invalid token'));
       }
       if (webSession && user.role !== webSession.role) {
@@ -102,6 +124,7 @@ const attachSocketHandlers = (io) => {
 
       socket.userId = decoded.userId;
       socket.userRole = user.role || 'user';
+      socket.sessionVersion = decoded.sessionVersion || 0;
       socket.userName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
       socket.authTransport = webSession ? 'cookie' : 'bearer';
       return next();
@@ -111,6 +134,14 @@ const attachSocketHandlers = (io) => {
   });
 
   io.on('connection', async (socket) => {
+    // Tokens are checked again before every client-originated event. This
+    // closes the gap between a password/session revocation and an otherwise
+    // long-lived Socket.IO connection.
+    socket.use(async (_packet, next) => {
+      if (await revalidateSocketSession(socket)) return next();
+      return next(new Error('Authentication error: Session revoked'));
+    });
+
     socket.join(`user_${socket.userId}`);
     chatRoutes.setUserOnline(socket.userId, socket.userName);
 
@@ -145,8 +176,10 @@ const attachSocketHandlers = (io) => {
       }
     });
 
-    socket.on('leave_room', (roomId) => {
-      if (!roomId) return;
+    socket.on('leave_room', async (roomId) => {
+      if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
+      if (!await loadAuthorizedRoom(roomId, socket.userId)) return;
+
       socket.leave(`chat_${roomId}`);
       socket.to(`chat_${roomId}`).emit('user_left', {
         userId: socket.userId,
@@ -283,5 +316,6 @@ module.exports = {
   createSocketServer,
   attachSocketAdapter,
   resolveSocketRuntime,
-  parseBooleanEnv
+  parseBooleanEnv,
+  revalidateSocketSession,
 };

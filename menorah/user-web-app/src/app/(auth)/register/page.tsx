@@ -132,6 +132,15 @@ const genderLabels: Record<FormValues['gender'], string> = {
   'prefer-not-to-say': 'Prefer not to say',
 };
 
+const progressWidthClasses: Record<number, string> = {
+  20: 'w-1/5',
+  40: 'w-2/5',
+  60: 'w-3/5',
+  80: 'w-4/5',
+  90: 'w-[90%]',
+  100: 'w-full',
+};
+
 const getFirstFormError = (errors: FieldErrors<FormValues>) => {
   const fieldOrder: Array<keyof FormValues> = [
     'firstName',
@@ -297,8 +306,10 @@ export default function RegisterPage() {
             aria-label="Create account progress"
           >
             <div
-              className="h-full rounded-full bg-gradient-to-r from-primary-700 via-primary-500 to-primary-300 transition-all duration-500 ease-out"
-              style={{ width: `${currentStep.progress}%` }}
+              className={cn(
+                'h-full rounded-full bg-gradient-to-r from-primary-700 via-primary-500 to-primary-300 transition-all duration-500 ease-out',
+                progressWidthClasses[currentStep.progress]
+              )}
             />
           </div>
         </div>

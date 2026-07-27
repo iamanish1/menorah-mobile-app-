@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { buildPasswordResetUrl } = require('./passwordResetUrl');
 
 const RESEND_EMAIL_URL = 'https://api.resend.com/emails';
 const FROM_NAME = 'Menorah Health';
@@ -73,32 +74,6 @@ const sendEmail = async (to, subject, html) => {
     console.error('\u274C Resend email error:', safeErrorResponse(error));
     return false;
   }
-};
-
-const buildPasswordResetUrl = (token) => {
-  const template = process.env.PASSWORD_RESET_URL_TEMPLATE?.trim();
-  const base = process.env.PASSWORD_RESET_BASE_URL?.trim();
-  const apiBase = process.env.API_BASE_URL?.trim();
-  const scheme = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
-
-  if (template) {
-    return template.includes('{token}')
-      ? template.replace('{token}', encodeURIComponent(token))
-      : `${template.replace(/\/+$/, '')}?token=${encodeURIComponent(token)}`;
-  }
-
-  if (base) {
-    const sep = base.includes('?') ? '&' : '?';
-    return `${base}${sep}token=${encodeURIComponent(token)}`;
-  }
-
-  if (apiBase && !/localhost|127\.0\.0\.1/i.test(apiBase)) {
-    const cleanBase = apiBase.replace(/\/+$/, '').replace(/\/api$/i, '');
-    return `${cleanBase}/api/auth/reset-password?token=${encodeURIComponent(token)}`;
-  }
-
-  const sep = scheme.includes('?') ? '&' : '?';
-  return `${scheme}${sep}token=${encodeURIComponent(token)}`;
 };
 
 const normalizeBaseUrl = (value) => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { authStore, auth, AuthContextType } from '@/lib/auth';
+import { COUNSELLOR_UNAUTHORIZED_EVENT } from '@/lib/api';
 
 export function useAuth(): AuthContextType {
   const [state, setState] = useState(authStore.getState());
@@ -10,13 +11,20 @@ export function useAuth(): AuthContextType {
     const unsubscribe = authStore.subscribe(() => {
       setState(authStore.getState());
     });
+    const handleUnauthorized = () => {
+      authStore.setState({ user: null, isLoading: false });
+    };
+    window.addEventListener(COUNSELLOR_UNAUTHORIZED_EVENT, handleUnauthorized);
 
     // Check auth on mount
     if (state.isLoading) {
       auth.checkAuth();
     }
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      window.removeEventListener(COUNSELLOR_UNAUTHORIZED_EVENT, handleUnauthorized);
+    };
   }, []);
 
   return {
@@ -29,4 +37,3 @@ export function useAuth(): AuthContextType {
     checkAuth: auth.checkAuth,
   };
 }
-

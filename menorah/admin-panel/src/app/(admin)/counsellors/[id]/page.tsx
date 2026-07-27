@@ -335,7 +335,7 @@ export default function CounsellorDetailPage() {
   const isBlocked = counsellor.status === 'approved' && !counsellor.isActive;
   const todayStats = (allStats?.today as { total: number; completed: number; cancelled: number }) || EMPTY_BOOKING_TOTALS.today;
   const monthStats = (allStats?.thisMonth as { total: number; revenue: number }) || EMPTY_BOOKING_TOTALS.thisMonth;
-  const badgeVariant = isBlocked ? 'blocked' : counsellor.status as 'pending' | 'approved' | 'rejected';
+  const badgeVariant = isBlocked ? 'blocked' : counsellor.status as 'pending' | 'manual_review' | 'approved' | 'rejected';
 
   return (
     <div className="max-w-6xl space-y-6">
@@ -353,6 +353,11 @@ export default function CounsellorDetailPage() {
                 <span className="flex items-center gap-1.5"><XCircle size={15} /> Reject</span>
               </button>
             </>
+          )}
+          {counsellor.status === 'manual_review' && (
+            <button onClick={() => { setRejectModal(true); setReason(''); }} className="rounded-xl bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100">
+              <span className="flex items-center gap-1.5"><XCircle size={15} /> Reject</span>
+            </button>
           )}
           {counsellor.status === 'approved' && !isBlocked && (
             <>
@@ -380,7 +385,7 @@ export default function CounsellorDetailPage() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-xl font-bold text-gray-900">{displayName || 'Unnamed applicant'}</h2>
-              <Badge variant={badgeVariant}>{isBlocked ? 'blocked' : counsellor.status}</Badge>
+              <Badge variant={badgeVariant}>{isBlocked ? 'blocked' : counsellor.status === 'manual_review' ? 'Manual review' : counsellor.status}</Badge>
               {isApplication && <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Application profile</span>}
             </div>
             <div className="mt-3 grid gap-3 text-sm text-gray-600 sm:grid-cols-2 lg:grid-cols-4">
@@ -396,6 +401,17 @@ export default function CounsellorDetailPage() {
         {counsellor.rejectionReason && (
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
             <strong>Rejection reason:</strong> {counsellor.rejectionReason}
+          </div>
+        )}
+        {counsellor.status === 'manual_review' && counsellor.identityConflict?.hasConflict && (
+          <div className="mt-5 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+            <strong>Identity conflict:</strong>{' '}
+            {counsellor.identityConflict.email && counsellor.identityConflict.phone
+              ? 'both the supplied email and phone number belong to an existing account.'
+              : counsellor.identityConflict.email
+                ? 'the supplied email belongs to an existing account.'
+                : 'the supplied phone number belongs to an existing account.'}{' '}
+            Do not approve this application. Verify identity outside the platform and ask the applicant to submit a new application with unused identifiers if appropriate.
           </div>
         )}
         {counsellor.approvedAt && (

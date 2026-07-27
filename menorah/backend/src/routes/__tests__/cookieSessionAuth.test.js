@@ -11,7 +11,7 @@ jest.mock('../../models/User', () => ({
 }));
 
 const authRouter = require('../auth');
-const { auth } = require('../../middleware/auth');
+const { auth, authAny, sharedParticipantAuth } = require('../../middleware/auth');
 const { csrfProtection } = require('../../config/webSessions');
 const { signUserToken } = require('../../utils/authTokens');
 
@@ -39,6 +39,12 @@ const buildAuthApp = () => {
   app.use('/api/auth', authRouter);
   app.get('/api/private', auth, (req, res) => {
     res.json({ success: true, data: { userId: req.user._id.toString() } });
+  });
+  app.get('/api/private-any', authAny, (req, res) => {
+    res.json({ success: true, data: { userId: req.user._id.toString(), role: req.user.role } });
+  });
+  app.get('/api/private-participant', sharedParticipantAuth, (req, res) => {
+    res.json({ success: true, data: { userId: req.user._id.toString(), role: req.user.role } });
   });
   return app;
 };
@@ -91,6 +97,30 @@ describe('browser cookie session authentication', () => {
     expect(cookie).not.toContain('Domain=');
   });
 
+  test('an unverified password account receives no session', async () => {
+    const user = makeUser({ isEmailVerified: false });
+    mockFindOne.mockReturnValue({ select: jest.fn().mockResolvedValue(user) });
+
+    const res = await request(buildAuthApp())
+      .post('/api/auth/login')
+      .set('Origin', 'https://app.example.com')
+      .send({ email: 'asha@example.com', password: 'correct-password', transport: 'cookie' })
+      .expect(403);
+
+    expect(res.body).toMatchObject({
+      success: false,
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      data: { email: 'asha@example.com' },
+    });
+    expect(res.body.data.token).toBeUndefined();
+    const cookies = res.headers['set-cookie'] || [];
+    // A stale mapped cookie may be explicitly cleared, but the failed login
+    // must never issue a usable authenticated session.
+    expect(cookies.every((cookie) => (
+      !cookie.includes('__Host-menorah-user=') || /(?:Max-Age=0|Expires=Thu, 01 Jan 1970)/.test(cookie)
+    ))).toBe(true);
+  });
+
   test('bearer auth remains valid for non-browser clients', async () => {
     const user = makeUser();
     const token = signUserToken(user);
@@ -102,6 +132,40 @@ describe('browser cookie session authentication', () => {
       .expect(200);
 
     expect(res.body.data.userId).toBe(mockUserId);
+  });
+
+  test('authAny accepts a valid admin token after the user verifier rejects it', async () => {
+    const admin = makeUser({ role: 'admin' });
+    const { signAdminToken } = require('../../utils/authTokens');
+    const token = signAdminToken(admin);
+    mockFindById.mockResolvedValue(admin);
+
+    const res = await request(buildAuthApp())
+      .get('/api/private-any')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data).toEqual({ userId: mockUserId, role: 'admin' });
+  });
+
+  test('shared participant access admits counsellors but excludes admins', async () => {
+    const counsellor = makeUser({ role: 'counsellor' });
+    mockFindById.mockResolvedValue(counsellor);
+
+    const counsellorResult = await request(buildAuthApp())
+      .get('/api/private-participant')
+      .set('Authorization', `Bearer ${signUserToken(counsellor)}`)
+      .expect(200);
+
+    expect(counsellorResult.body.data.role).toBe('counsellor');
+
+    const adminAsUserAudience = makeUser({ role: 'admin' });
+    mockFindById.mockResolvedValue(adminAsUserAudience);
+    await request(buildAuthApp())
+      .get('/api/private-participant')
+      .set('Authorization', `Bearer ${signUserToken(adminAsUserAudience)}`)
+      .expect(403)
+      .expect((res) => expect(res.body.code).toBe('PARTICIPANT_ROLE_REQUIRED'));
   });
 
   test('trusted browser origins cannot use bearer tokens instead of mapped cookies', async () => {

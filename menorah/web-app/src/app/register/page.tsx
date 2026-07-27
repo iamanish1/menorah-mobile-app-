@@ -192,9 +192,9 @@ export default function RegisterPage() {
             <div className={styles.logoContainer}><span className={styles.logoText}>M</span></div>
           </div>
           <Card padding="lg">
-            <div style={{ textAlign: 'center', padding: '32px 0', color: '#6b7280' }}>
-              <div style={{ width: 40, height: 40, border: '3px solid #e5e7eb', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
-              <p style={{ fontSize: '0.95rem' }}>Checking your application status…</p>
+            <div className={styles.statusChecking}>
+              <div className={styles.statusSpinner} />
+              <p className={styles.statusCheckingText}>Checking your application status…</p>
             </div>
           </Card>
         </div>
@@ -212,21 +212,21 @@ export default function RegisterPage() {
             <h2 className={styles.title}>Application Approved!</h2>
           </div>
           <Card padding="lg">
-            <div style={{ textAlign: 'center', padding: '24px 0' }}>
-              <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+            <div className={styles.statusPanel}>
+              <div className={`${styles.statusIcon} ${styles.statusIconApproved}`}>
                 <svg width="32" height="32" fill="none" stroke="#16a34a" strokeWidth="2.5" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 12, color: '#15803d' }}>Your Application Was Approved</h3>
-              <p style={{ color: '#6b7280', lineHeight: 1.6, maxWidth: 380, margin: '0 auto 24px' }}>
+              <h3 className={`${styles.statusTitle} ${styles.statusTitleApproved}`}>Your Application Was Approved</h3>
+              <p className={`${styles.statusDescription} ${styles.statusDescriptionWithAction}`}>
                 Congratulations! Your profile has been approved by our admin team. Please use the login credentials that were shared with you to sign in.
               </p>
               <Button
                 variant="primary"
                 size="lg"
                 onClick={() => { sessionStorage.removeItem(STORAGE_KEY); router.push('/login'); }}
-                style={{ width: '100%', maxWidth: 320 }}
+                className={styles.statusAction}
               >
                 Go to Login →
               </Button>
@@ -254,35 +254,35 @@ export default function RegisterPage() {
             <h2 className={styles.title}>Application Status</h2>
           </div>
           <Card padding="lg">
-            <div style={{ textAlign: 'center', padding: '24px 0' }}>
-              <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+            <div className={styles.statusPanel}>
+              <div className={`${styles.statusIcon} ${styles.statusIconRejected}`}>
                 <svg width="32" height="32" fill="none" stroke="#dc2626" strokeWidth="2.5" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 12, color: '#dc2626' }}>Application Not Approved</h3>
-              <p style={{ color: '#6b7280', lineHeight: 1.6, maxWidth: 380, margin: '0 auto' }}>
+              <h3 className={`${styles.statusTitle} ${styles.statusTitleRejected}`}>Application Not Approved</h3>
+              <p className={styles.statusDescription}>
                 Unfortunately, your application was not approved by our admin team.
               </p>
               {rejectionReason && (
-                <div style={{ margin: '16px auto 0', maxWidth: 380, background: 'var(--color-danger-light)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 14, padding: '12px 16px', textAlign: 'left' }}>
-                  <p style={{ margin: 0, fontSize: '0.875rem', color: '#991b1b' }}>
+                <div className={styles.rejectionReason}>
+                  <p className={styles.rejectionReasonText}>
                     <strong>Reason:</strong> {rejectionReason}
                   </p>
                 </div>
               )}
-              <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+              <div className={styles.statusActions}>
                 <Button
                   variant="primary"
                   size="lg"
                   onClick={handleReapply}
-                  style={{ width: '100%', maxWidth: 320 }}
+                  className={styles.statusAction}
                 >
                   Apply Again →
                 </Button>
-                <p style={{ color: '#9ca3af', fontSize: '0.8rem', margin: 0 }}>
+                <p className={styles.statusHelp}>
                   Questions? Contact{' '}
-                  <a href="mailto:support@menorah.me" style={{ color: '#2563eb' }}>support@menorah.me</a>
+                  <a href="mailto:support@menorah.me" className={styles.supportLink}>support@menorah.me</a>
                 </p>
               </div>
             </div>
@@ -302,17 +302,17 @@ export default function RegisterPage() {
             <h2 className={styles.title}>Application Submitted</h2>
           </div>
           <Card padding="lg">
-            <div style={{ textAlign: 'center', padding: '24px 0' }}>
-              <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+            <div className={styles.statusPanel}>
+              <div className={`${styles.statusIcon} ${styles.statusIconPending}`}>
                 <svg width="32" height="32" fill="none" stroke="#2563eb" strokeWidth="2.5" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 12 }}>Registration Under Review</h3>
-              <p style={{ color: '#6b7280', lineHeight: 1.6, maxWidth: 380, margin: '0 auto' }}>
+              <h3 className={styles.statusTitle}>Registration Under Review</h3>
+              <p className={styles.statusDescription}>
                 Your application has been submitted successfully. Our admin team will review your profile and credentials. Once approved, you will receive your login credentials.
               </p>
-              <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: 16 }}>
+              <p className={styles.statusHint}>
                 This page will automatically show your approval or rejection status when you return.
               </p>
             </div>
@@ -324,7 +324,7 @@ export default function RegisterPage() {
 
   return (
     <div className={styles.container}>
-      <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 20 }}>
+      <div className={styles.themeToggle}>
         <ThemeToggle />
       </div>
       <div className={styles.content}>
@@ -359,7 +359,7 @@ export default function RegisterPage() {
         </div>
 
         <Card padding="lg">
-          <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <form onSubmit={handleSubmit(onSubmit)} className={styles.registrationForm}>
             {error && (
               <div className={styles.errorAlert}>
                 <div className={styles.errorContent}>
@@ -372,7 +372,7 @@ export default function RegisterPage() {
             )}
 
             {currentStep === 1 && (
-              <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+              <div className={styles.stepPanel}>
                 <div className={styles.formGroup}>
                   <h3 className={styles.sectionTitle}>Personal Information</h3>
                   <p className={styles.sectionSubtitle}>Tell us about yourself</p>
@@ -479,8 +479,8 @@ export default function RegisterPage() {
                   </div>
                 </div>
 
-                <div className={styles.formGroup} style={{ background: 'var(--color-info-light)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: 14, padding: '12px 16px' }}>
-                  <p style={{ margin: 0, fontSize: '0.875rem', color: '#1d4ed8', lineHeight: 1.5 }}>
+                <div className={`${styles.formGroup} ${styles.infoNotice}`}>
+                  <p className={styles.infoNoticeText}>
                     <strong>Note:</strong> You do not need to set a password. Once your profile is approved by our admin team, your login credentials will be provided to you.
                   </p>
                 </div>
@@ -490,7 +490,7 @@ export default function RegisterPage() {
                   variant="primary"
                   size="lg"
                   onClick={() => setCurrentStep(2)}
-                  style={{ width: '100%' }}
+                  className={styles.fullWidthButton}
                 >
                   Next: Professional Information →
                 </Button>
@@ -498,7 +498,7 @@ export default function RegisterPage() {
             )}
 
             {currentStep === 2 && (
-              <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+              <div className={styles.stepPanel}>
                 <div className={styles.formGroup}>
                   <h3 className={styles.sectionTitle}>Professional Information</h3>
                   <p className={styles.sectionSubtitle}>Tell us about your professional background</p>
@@ -595,7 +595,7 @@ export default function RegisterPage() {
                     <p className={styles.errorMessage}>{fieldErrors.bio}</p>
                   )}
                   {bioLength > 0 && bioLength < 50 && (
-                    <p className={styles.errorMessage} style={{ color: 'var(--color-warning)' }}>
+                    <p className={`${styles.errorMessage} ${styles.warningMessage}`}>
                       Bio must be at least 50 characters ({50 - bioLength} more needed)
                     </p>
                   )}
@@ -629,7 +629,7 @@ export default function RegisterPage() {
                     variant="ghost"
                     size="sm"
                     onClick={addLanguage}
-                    style={{ marginTop: '8px' }}
+                    className={styles.addLanguageButton}
                   >
                     + Add Language
                   </Button>
@@ -638,42 +638,40 @@ export default function RegisterPage() {
                 <div className={styles.formGroup}>
                   <label className={styles.label}>Weekly Availability</label>
                   <p className={styles.helpText}>Set which days and hours you are available for sessions</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+                  <div className={styles.availabilityList}>
                     {(Object.keys(availability) as DayKey[]).map((day) => (
-                      <div key={day} style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '110px', cursor: 'pointer' }}>
+                      <div key={day} className={styles.availabilityDay}>
+                        <label className={styles.availabilityLabel}>
                           <input
                             type="checkbox"
                             checked={availability[day].isAvailable}
                             onChange={() => toggleDay(day)}
-                            style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary, #16a34a)', cursor: 'pointer' }}
+                            className={styles.availabilityCheckbox}
                           />
-                          <span style={{ textTransform: 'capitalize', fontWeight: availability[day].isAvailable ? 600 : 400, color: availability[day].isAvailable ? 'inherit' : '#9ca3af' }}>
+                          <span className={`${styles.availabilityDayName} ${availability[day].isAvailable ? styles.availabilityDayAvailable : styles.availabilityDayUnavailable}`}>
                             {day}
                           </span>
                         </label>
                         {availability[day].isAvailable && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div className={styles.timeFields}>
                             <input
                               type="time"
                               value={availability[day].start}
                               onChange={(e) => setDayTime(day, 'start', e.target.value)}
-                              className={styles.input}
-                              style={{ width: '130px', padding: '6px 10px' }}
+                              className={`${styles.input} ${styles.timeInput}`}
                             />
-                            <span style={{ color: '#6b7280', fontSize: '14px' }}>to</span>
+                            <span className={styles.timeSeparator}>to</span>
                             <input
                               type="time"
                               value={availability[day].end}
                               min={availability[day].start}
                               onChange={(e) => setDayTime(day, 'end', e.target.value)}
-                              className={styles.input}
-                              style={{ width: '130px', padding: '6px 10px' }}
+                              className={`${styles.input} ${styles.timeInput}`}
                             />
                           </div>
                         )}
                         {!availability[day].isAvailable && (
-                          <span style={{ fontSize: '13px', color: '#9ca3af' }}>Not available</span>
+                          <span className={styles.unavailableText}>Not available</span>
                         )}
                       </div>
                     ))}
@@ -686,7 +684,7 @@ export default function RegisterPage() {
                     variant="outline"
                     size="lg"
                     onClick={() => setCurrentStep(1)}
-                    style={{ flex: 1 }}
+                    className={styles.actionButton}
                   >
                     ← Back
                   </Button>
@@ -695,7 +693,7 @@ export default function RegisterPage() {
                     variant="primary"
                     size="lg"
                     isLoading={isSubmitting}
-                    style={{ flex: 1 }}
+                    className={styles.actionButton}
                   >
                     Register
                   </Button>

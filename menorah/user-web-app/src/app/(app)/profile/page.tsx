@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import {
   User, MapPin, Phone, Shield, Bell, Lock,
-  CreditCard, HeartPulse, ChevronRight, LogOut
+  CreditCard, HeartPulse, ChevronRight, LogOut, ShieldCheck
 } from 'lucide-react';
 import { Avatar, Badge } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
@@ -14,6 +14,7 @@ const sections = [
     title: 'Account',
     items: [
       { href: '/profile/edit',            icon: User,      label: 'Edit Profile' },
+      { href: '/profile/security',        icon: ShieldCheck,label: 'Security & Sign-in' },
       { href: '/profile/change-password', icon: Lock,      label: 'Change Password' },
     ],
   },

@@ -1,6 +1,14 @@
 const { routeDefinitions } = require('../routeProfiles');
 
-const AUTH_MIDDLEWARE = new Set(['auth', 'authAny', 'adminAuth', 'counsellorAuth']);
+const AUTH_MIDDLEWARE = new Set([
+  'auth',
+  'authAny',
+  'adminAuth',
+  'counsellorAuth',
+  'patientAuth',
+  'sharedParticipantAuth',
+  'verifiedPatientAuth',
+]);
 const INHERITED_ADMIN_ROUTERS = new Set(['admin', 'admin-social-studio']);
 const DELEGATED_AUTH_ROUTERS = new Set(['payments-ios-booking-only']);
 
@@ -21,6 +29,8 @@ const PUBLIC_ROUTES = new Set([
   'auth-admin:POST:/admin/login',
   'auth-admin:POST:/login/mfa',
   'auth-admin:POST:/admin/login/mfa',
+  'auth-admin:POST:/verify-email',
+  'auth-admin:POST:/resend-email-verification',
   'users:GET:/:id',
   'counsellors:GET:/' ,
   'counsellors:GET:/specializations',

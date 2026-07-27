@@ -4,7 +4,7 @@ const moment = require('moment');
 const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
-const { auth, authAny } = require('../middleware/auth');
+const { auth, authAny, verifiedPatientAuth } = require('../middleware/auth');
 const { sendBookingConfirmationEmail, sendSessionReminderEmail } = require('../utils/email');
 const { sendBookingConfirmationSMS, sendSessionReminderSMS, sendCancellationSMS } = require('../utils/sms');
 const {
@@ -79,7 +79,7 @@ router.post('/', [
   body('concerns').optional({ nullable: true }).isString(),
   body('goals').optional({ nullable: true }).isArray(),
   body('emergencyContact').optional({ nullable: true }).isObject()
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -394,7 +394,7 @@ router.get('/', [
   query('status').optional(),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 50 })
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -662,7 +662,7 @@ router.patch('/:id/call-link', [
 router.put('/:id/cancel', [
   param('id').isMongoId().withMessage('Invalid booking ID'),
   body('reason').optional().isString()
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

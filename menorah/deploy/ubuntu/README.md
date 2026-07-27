@@ -91,6 +91,11 @@ After Cloudflare public hostnames are mapped and live:
 
 ```bash
 CHECK_PUBLIC=true bash menorah/deploy/ubuntu/health-check.sh
+
+# Required before an internal/native mobile rollout. This also verifies that
+# the public App/Universal Link association files are live and contain the
+# configured signing metadata.
+CHECK_PUBLIC=true CHECK_NATIVE_APP_LINKS=true bash menorah/deploy/ubuntu/health-check.sh
 ```
 
 The script checks API health, deep health secret leakage, iOS Razorpay subscription blocking, admin auth protection, and admin route isolation.
@@ -109,10 +114,11 @@ See [Cloudflare README](../cloudflare/README.md).
 ## 6. Update Later From Git
 
 ```bash
-bash menorah/deploy/ubuntu/update-from-git.sh
+DEPLOY_BRANCH=release/auth-rate-limit-fix-20260727 \
+  bash menorah/deploy/ubuntu/update-from-git.sh
 ```
 
-The script requires a clean tracked working tree, records the previous commit SHA, pulls the configured branch, rebuilds, restarts, runs health checks, and rolls back automatically if checks fail.
+The script requires a clean tracked working tree, records the previous commit SHA, builds and validates the reverse-proxy configuration, quiesces account writers, creates a verified encrypted backup, runs migrations, then restarts and health-checks the release. It does not automatically roll back after migrations, because a partially applied schema change may be incompatible with the old image; a failed migration or post-migration health check requires forward recovery from the verified checkpoint.
 
 ## 7. Roll Back
 

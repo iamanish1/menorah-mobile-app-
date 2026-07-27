@@ -294,6 +294,32 @@ const ensureLivekitRoom = async (booking, roomName) => {
 
 const getCallPolicy = (req, booking) => resolveCallPolicy(buildGuardInput(req, booking));
 
+const isCallBookingActive = (booking) => ['confirmed', 'in-progress'].includes(booking?.status);
+
+const isWithinCallJoinWindow = (booking) => {
+  if (booking.status === 'in-progress') return true;
+  const now = new Date();
+  const sessionTime = new Date(booking.scheduledAt);
+  const assignedTime = booking.assignedAt ? new Date(booking.assignedAt) : null;
+  const isRecentInstant = assignedTime
+    && now >= assignedTime
+    && (now - assignedTime) < 24 * 60 * 60 * 1000
+    && sessionTime > now;
+  return isRecentInstant || Math.abs(now - sessionTime) / (1000 * 60) <= 15;
+};
+
+const requireActiveCallBooking = (res, booking) => {
+  if (!isCallBookingActive(booking)) {
+    res.status(400).json({ success: false, message: 'Session is not active' });
+    return false;
+  }
+  if (!isWithinCallJoinWindow(booking)) {
+    res.status(400).json({ success: false, message: 'Session is not available at this time' });
+    return false;
+  }
+  return true;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/video/create-room
 // @desc    Create a LiveKit room for a booking and return a participant token
@@ -314,22 +340,7 @@ router.post('/create-room', [
     if (error) return res.status(error === 'Booking not found' ? 404 : 400).json({ success: false, message: error });
     if (!isUser && !isCounsellor) return res.status(403).json({ success: false, message: 'Access denied' });
 
-    if (booking.status !== 'confirmed' && booking.status !== 'in-progress') {
-      return res.status(400).json({ success: false, message: 'Session is not active' });
-    }
-
-    // Scheduled session — only allow joining within 15 min of scheduled time
-    if (booking.status === 'confirmed') {
-      const now          = new Date();
-      const sessionTime  = new Date(booking.scheduledAt);
-      const timeDiff     = Math.abs(now - sessionTime) / (1000 * 60);
-      const assignedTime = booking.assignedAt ? new Date(booking.assignedAt) : null;
-      const isInstant    = assignedTime && (now - assignedTime) < 24 * 60 * 60 * 1000 && sessionTime > now;
-
-      if (!isInstant && timeDiff > 15) {
-        return res.status(400).json({ success: false, message: 'Session is not available at this time' });
-      }
-    }
+    if (!requireActiveCallBooking(res, booking)) return;
 
     const policy = getCallPolicy(req, booking);
     await updateBookingPolicy(booking, policy);
@@ -406,6 +417,7 @@ router.get('/room/:bookingId', [
 
     if (error) return res.status(error === 'Booking not found' ? 404 : 400).json({ success: false, message: error });
     if (!isUser && !isCounsellor) return res.status(403).json({ success: false, message: 'Access denied' });
+    if (!requireActiveCallBooking(res, booking)) return;
     const policy = getCallPolicy(req, booking);
     await updateBookingPolicy(booking, policy);
     if (policy.joinMode === 'external_link') {
@@ -472,9 +484,7 @@ router.post('/room/:bookingId/join', [
     if (error) return res.status(error === 'Booking not found' ? 404 : 400).json({ success: false, message: error });
     if (!isUser && !isCounsellor) return res.status(403).json({ success: false, message: 'Access denied' });
 
-    if (booking.status !== 'confirmed' && booking.status !== 'in-progress') {
-      return res.status(400).json({ success: false, message: 'Session is not active' });
-    }
+    if (!requireActiveCallBooking(res, booking)) return;
 
     const policy = getCallPolicy(req, booking);
     await updateBookingPolicy(booking, policy);

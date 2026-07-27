@@ -74,7 +74,13 @@ export interface Counsellor {
   education?: CounsellorEducation[];
   certifications?: CounsellorCertification[];
   availability?: CounsellorAvailability;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'manual_review' | 'approved' | 'rejected';
+  identityConflict?: {
+    hasConflict: boolean;
+    email?: boolean;
+    phone?: boolean;
+    detectedAt?: string | null;
+  };
   isActive: boolean;
   isVerified: boolean;
   approvedBy?: { firstName: string; lastName: string; email: string };
@@ -659,6 +665,7 @@ export interface Pagination {
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
+  code?: string;
   message?: string;
   data?: T;
   errors?: { field?: string; message?: string }[];

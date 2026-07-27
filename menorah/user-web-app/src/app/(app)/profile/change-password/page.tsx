@@ -11,7 +11,11 @@ import { Button, Input } from '@/components/ui';
 
 const schema = z.object({
   currentPassword: z.string().min(1, 'Enter your current password'),
-  newPassword:     z.string().min(8, 'New password must be at least 8 characters'),
+  newPassword: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .refine((value) => /[a-z]/.test(value), 'Password must include a lowercase letter')
+    .refine((value) => /[A-Z]/.test(value), 'Password must include an uppercase letter')
+    .refine((value) => /\d/.test(value), 'Password must include a number'),
   confirm:         z.string(),
 }).refine((d) => d.newPassword === d.confirm, { message: 'Passwords do not match', path: ['confirm'] });
 

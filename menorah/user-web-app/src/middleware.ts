@@ -14,7 +14,7 @@ function originFromUrl(value?: string) {
   }
 }
 
-function buildCsp(nonce: string) {
+function buildCsp(nonce: string, strictAuthStyles: boolean) {
   const apiOrigin = originFromUrl(process.env.NEXT_PUBLIC_API_URL);
   const socketOrigin = originFromUrl(process.env.NEXT_PUBLIC_SOCKET_URL);
   const isProd = process.env.NODE_ENV === 'production';
@@ -41,7 +41,10 @@ function buildCsp(nonce: string) {
   return [
     "default-src 'self'",
     `script-src ${Array.from(new Set(scriptSrc)).join(' ')}`,
-    `style-src-elem 'self' 'nonce-${nonce}'`,
+    strictAuthStyles ? "style-src-elem 'self'" : "style-src-elem 'self' 'unsafe-inline'",
+    // Auth pages use classes only; keep their CSP strict while legacy
+    // animated product pages are incrementally migrated off style attributes.
+    strictAuthStyles ? "style-src-attr 'none'" : "style-src-attr 'unsafe-inline'",
     "font-src 'self' data:",
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https://d8j0ntlcm91z4.cloudfront.net https://res.cloudinary.com",
@@ -84,9 +87,8 @@ function noStore(response: NextResponse) {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const nonce = createNonce();
-  const csp = buildCsp(nonce);
-
   const isAuthRoute = AUTH_ROUTES.some((p) => pathname.startsWith(p));
+  const csp = buildCsp(nonce, isAuthRoute);
 
   const response = nextWithSecurityHeaders(request, nonce, csp);
 

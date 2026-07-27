@@ -5,7 +5,12 @@ export interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{
+    success: boolean;
+    needsVerification?: boolean;
+    email?: string;
+    message?: string;
+  }>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
   checkAuth: () => Promise<void>;
@@ -38,21 +43,35 @@ export const authStore = {
 };
 
 export const auth = {
-  async login(email: string, password: string): Promise<boolean> {
+  async login(email: string, password: string): Promise<{
+    success: boolean;
+    needsVerification?: boolean;
+    email?: string;
+    message?: string;
+  }> {
     try {
       const response = await api.login(email, password);
+      if (response.code === 'EMAIL_VERIFICATION_REQUIRED') {
+        authStore.setState({ user: null, isLoading: false });
+        return {
+          success: false,
+          needsVerification: true,
+          email: response.data?.email || email,
+          message: response.message || 'Please verify your email address before signing in.',
+        };
+      }
       if (response.success && response.data?.user?.role === 'counsellor') {
         authStore.setState({
           user: response.data.user,
           isLoading: false,
         });
-        return true;
+        return { success: true };
       }
       authStore.setState({ user: null, isLoading: false });
-      return false;
+      return { success: false, message: response.message };
     } catch {
       authStore.setState({ user: null, isLoading: false });
-      return false;
+      return { success: false, message: 'Login failed' };
     }
   },
 

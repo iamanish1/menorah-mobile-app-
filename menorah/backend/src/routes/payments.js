@@ -5,7 +5,7 @@ const Razorpay = require('razorpay');
 const Booking = require('../models/Booking');
 const PaymentReceipt = require('../models/PaymentReceipt');
 const User = require('../models/User');
-const { auth } = require('../middleware/auth');
+const { verifiedPatientAuth } = require('../middleware/auth');
 const {
   expireStalePendingBookings,
   isBlockingBooking,
@@ -64,7 +64,7 @@ const createPaymentReceipt = async ({ paymentId, orderId, purpose, user, booking
 // @access  Private
 router.post('/create-checkout-session', [
   body('bookingId').isMongoId().withMessage('Invalid booking ID'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -249,7 +249,7 @@ router.post('/verify-razorpay', [
   body('razorpay_payment_id').notEmpty().withMessage('Payment ID is required'),
   body('razorpay_signature').notEmpty().withMessage('Signature is required'),
   body('bookingId').isMongoId().withMessage('Invalid booking ID'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -398,7 +398,7 @@ router.post('/verify-razorpay', [
 // @access  Private
 router.get('/order/:orderId/status', [
   param('orderId').notEmpty().withMessage('Order ID is required'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -457,7 +457,7 @@ router.get('/order/:orderId/status', [
 // @access  Private
 router.get('/booking/:bookingId', [
   param('bookingId').isMongoId().withMessage('Invalid booking ID'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -498,7 +498,7 @@ const SUBSCRIPTION_PRICES = { weekly: 500, monthly: 1500, yearly: 12000 };
 // @access  Private
 router.post('/create-subscription-checkout', [
   body('subscriptionType').isIn(['weekly', 'monthly', 'yearly']).withMessage('Invalid subscription type'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -567,7 +567,7 @@ router.post('/verify-subscription-payment', [
   body('razorpay_payment_id').notEmpty().withMessage('Payment ID is required'),
   body('razorpay_signature').notEmpty().withMessage('Signature is required'),
   body('subscriptionType').isIn(['weekly', 'monthly', 'yearly']).withMessage('Invalid subscription type'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -688,7 +688,7 @@ router.post('/verify-subscription-payment', [
 // @route   GET /api/payments/subscription/status
 // @desc    Get subscription status for current user
 // @access  Private
-router.get('/subscription/status', auth, async (req, res) => {
+router.get('/subscription/status', verifiedPatientAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) {

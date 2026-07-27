@@ -11,7 +11,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (isLoading) return;
-    if (!isAuthed) {
+    if (user && user.role !== 'user') {
+      const portal = user.role === 'admin'
+        ? 'https://admin.menorah.me/login'
+        : 'https://counsellor.menorah.me/login';
+      window.location.replace(portal);
+    } else if (!isAuthed) {
       router.replace('/login');
     } else if (user && !user.isEmailVerified) {
       router.replace('/verify-otp');
@@ -29,6 +34,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthed || (user && !user.isEmailVerified)) return null;
+  if (!isAuthed || (user && (user.role !== 'user' || !user.isEmailVerified))) return null;
   return <>{children}</>;
 }

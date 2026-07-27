@@ -13,8 +13,12 @@ const userSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: [true, 'Phone number is required'],
-    unique: true,
+    required: function phoneRequired() {
+      // Social identities are created without inventing a pseudo phone number.
+      // They must complete the profile before patient-only features are usable.
+      return !(this.socialAuth?.googleSub || this.socialAuth?.appleSub);
+    },
+    default: null,
     trim: true
   },
   password: {
@@ -179,6 +183,11 @@ const userSchema = new mongoose.Schema({
     }
   },
 
+  profileCompleted: {
+    type: Boolean,
+    default: true,
+  },
+
   // Role
   role: {
     type: String,
@@ -223,6 +232,10 @@ const uniqueStringIndex = (field) => ({
 // Sparse indexes on token fields — speeds up password-reset and email-verify lookups
 userSchema.index({ passwordResetToken:     1 }, { sparse: true });
 userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
+userSchema.index(
+  { phone: 1 },
+  { unique: true, partialFilterExpression: { phone: { $type: 'string' } } }
+);
 userSchema.index({ 'socialAuth.googleSub': 1 }, uniqueStringIndex('socialAuth.googleSub'));
 userSchema.index({ 'socialAuth.appleSub': 1 }, uniqueStringIndex('socialAuth.appleSub'));
 

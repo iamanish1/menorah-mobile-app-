@@ -788,8 +788,13 @@ export default function ProfilePage() {
       setError('New passwords do not match');
       return;
     }
-    if (passwordForm.newPassword.length < 8) {
-      setError('New password must be at least 8 characters');
+    if (
+      passwordForm.newPassword.length < 8
+      || !/[a-z]/.test(passwordForm.newPassword)
+      || !/[A-Z]/.test(passwordForm.newPassword)
+      || !/\d/.test(passwordForm.newPassword)
+    ) {
+      setError('Password must be at least 8 characters and include uppercase, lowercase, and a number');
       return;
     }
     setSavingPassword(true);

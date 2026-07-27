@@ -14,6 +14,8 @@ describe('startup validation', () => {
       REDIS_URL: 'redis://redis:6379',
       RESEND_API_KEY: 'resend-key',
       EMAIL_FROM: 'Menorah <noreply@example.com>',
+      APP_DOMAIN: 'app.example.com',
+      PASSWORD_RESET_URL_TEMPLATE: 'https://app.example.com/reset-password?token={token}',
       RAZORPAY_KEY_ID: 'razorpay-key',
       RAZORPAY_KEY_SECRET: 'razorpay-secret',
       RAZORPAY_WEBHOOK_SECRET: 'razorpay-webhook',
@@ -47,6 +49,20 @@ describe('startup validation', () => {
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' }))
       .toThrow(/SESSION_COOKIE_DOMAIN must be unset/);
+  });
+
+  test('requires a HTTPS password reset template with a token placeholder in production', () => {
+    process.env.PASSWORD_RESET_URL_TEMPLATE = 'menorah-health://reset-password';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/PASSWORD_RESET_URL_TEMPLATE/);
+  });
+
+  test('pins reset links to the canonical app domain and path in production', () => {
+    process.env.PASSWORD_RESET_URL_TEMPLATE = 'https://other.example.com/reset-password?token={token}';
+
+    expect(() => validateStartupEnv({ serviceName: 'api-web' }))
+      .toThrow(/canonical APP_DOMAIN/);
   });
 
   test('passes with redacted provider configuration present', () => {

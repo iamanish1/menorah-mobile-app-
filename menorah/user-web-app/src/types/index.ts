@@ -37,6 +37,10 @@ export interface User {
     isActive?: boolean;
   };
   role: 'user' | 'counsellor' | 'admin';
+  linkedProviders?: {
+    google: boolean;
+    apple: boolean;
+  };
 }
 
 // ─── Counsellor ───────────────────────────────────────────────────────────────
@@ -290,6 +294,7 @@ export interface AppNotification {
 // ─── API Response ─────────────────────────────────────────────────────────────
 export interface ApiResponse<T = unknown> {
   success: boolean;
+  code?: string;
   message?: string;
   data?: T;
   errors?: Array<{ field?: string; path?: string; param?: string; message?: string; msg?: string }>;

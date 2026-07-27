@@ -12,7 +12,7 @@ function originFromUrl(value?: string) {
   }
 }
 
-function buildCsp(nonce: string) {
+function buildCsp(nonce: string, strictAuthStyles: boolean) {
   const apiOrigin = originFromUrl(process.env.NEXT_PUBLIC_API_URL);
   const isProd = process.env.NODE_ENV === 'production';
   const scriptSrc = [
@@ -31,12 +31,14 @@ function buildCsp(nonce: string) {
   return [
     "default-src 'self'",
     `script-src ${Array.from(new Set(scriptSrc)).join(' ')}`,
-    // Next.js and the UI libraries inject client-side style elements without a
-    // nonce. Keep script execution nonce-bound, while permitting only inline
-    // CSS required by the rendered application and the approved Inter source.
-    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "style-src-attr 'unsafe-inline'",
-    "font-src 'self' data: https://fonts.gstatic.com",
+    // react-hot-toast and a few admin widgets still create stylesheet nodes
+    // after sign-in. Public auth pages have no such dependency.
+    strictAuthStyles ? "style-src-elem 'self'" : "style-src-elem 'self' 'unsafe-inline'",
+    // The application shell still has a few dynamic data visualizations that
+    // require React style attributes. Public auth pages deliberately do not:
+    // their local styles are classes and the toaster is not mounted there.
+    strictAuthStyles ? "style-src-attr 'none'" : "style-src-attr 'unsafe-inline'",
+    "font-src 'self' data:",
     "img-src 'self' data: blob: https://res.cloudinary.com",
     "media-src 'self' blob: https://res.cloudinary.com",
     `connect-src ${Array.from(new Set(connectSrc)).join(' ')}`,
@@ -70,7 +72,8 @@ function nextWithSecurityHeaders(request: NextRequest, nonce: string, csp: strin
 
 export function middleware(request: NextRequest) {
   const nonce = createNonce();
-  const csp = buildCsp(nonce);
+  const isAuthRoute = request.nextUrl.pathname === '/login' || request.nextUrl.pathname.startsWith('/verify-email');
+  const csp = buildCsp(nonce, isAuthRoute);
 
   return nextWithSecurityHeaders(request, nonce, csp);
 }

@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 
 const STATUS_TABS = [
   { key: 'pending', label: 'Pending Review' },
+  { key: 'manual_review', label: 'Identity Conflicts' },
   { key: 'approved', label: 'Approved' },
   { key: 'rejected', label: 'Rejected' },
   { key: 'blocked', label: 'Blocked' },
@@ -127,12 +128,12 @@ function CounsellorsContent() {
 
   const getBadgeVariant = (c: Counsellor) => {
     if (!c.isActive && c.status === 'approved') return 'blocked';
-    return c.status as 'pending' | 'approved' | 'rejected';
+    return c.status as 'pending' | 'manual_review' | 'approved' | 'rejected';
   };
 
   const getBadgeLabel = (c: Counsellor) => {
     if (!c.isActive && c.status === 'approved') return 'blocked';
-    return c.status;
+    return c.status === 'manual_review' ? 'Manual review' : c.status;
   };
 
   return (
@@ -207,6 +208,15 @@ function CounsellorsContent() {
                 {/* Meta */}
                 <div className="flex items-center gap-3 flex-wrap">
                   <Badge variant={getBadgeVariant(c)}>{getBadgeLabel(c)}</Badge>
+                  {c.identityConflict?.hasConflict && (
+                    <span className="text-xs font-medium text-orange-700">
+                      {c.identityConflict.email && c.identityConflict.phone
+                        ? 'Email + phone conflict'
+                        : c.identityConflict.email
+                          ? 'Email conflict'
+                          : 'Phone conflict'}
+                    </span>
+                  )}
                   <span className="text-xs text-gray-400">{formatDate(c.createdAt)}</span>
 
                   {/* Actions */}
@@ -227,6 +237,14 @@ function CounsellorsContent() {
                           Reject
                         </button>
                       </>
+                    )}
+                    {c.status === 'manual_review' && (
+                      <button
+                        onClick={() => { setRejectModal({ open: true, id: c.id, name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}` }); setReason(''); }}
+                        className="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold rounded-lg transition-colors"
+                      >
+                        Reject
+                      </button>
                     )}
                     {c.status === 'approved' && c.isActive && (
                       <>

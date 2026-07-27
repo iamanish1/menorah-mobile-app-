@@ -40,11 +40,43 @@ const loadActiveUserForToken = async (decoded) => {
   return user;
 };
 
-const authFailure = (res, { status = 401, message = 'Invalid token.', session } = {}) => {
+const authFailure = (res, {
+  status = 401,
+  message = 'Invalid token.',
+  session,
+  code,
+  data,
+} = {}) => {
   if (session) clearSessionCookie(res, session.role);
-  res.status(status).json({ success: false, message });
+  res.status(status).json({
+    success: false,
+    message,
+    ...(code ? { code } : {}),
+    ...(data ? { data } : {}),
+  });
   return false;
 };
+
+const attachAuthenticatedUser = (req, user, token, decoded, session = null) => {
+  req.user = user;
+  req.auth = {
+    token,
+    decoded,
+    transport: session ? 'cookie' : 'bearer',
+    cookieName: session?.cookieName,
+    origin: session?.origin,
+    role: session?.role,
+  };
+  return user;
+};
+
+const rejectUnverifiedUser = (res, user, session) => authFailure(res, {
+  status: 403,
+  message: 'Email verification is required before this account can be used.',
+  code: 'EMAIL_VERIFICATION_REQUIRED',
+  data: { email: user.email },
+  session,
+});
 
 const authenticateToken = async (req, res, token, verifyToken, { optional = false, session = null } = {}) => {
   let decoded;
@@ -69,6 +101,11 @@ const authenticateToken = async (req, res, token, verifyToken, { optional = fals
     return authFailure(res, { session });
   }
 
+  if (!user.isEmailVerified) {
+    if (optional) return null;
+    return rejectUnverifiedUser(res, user, session);
+  }
+
   if (session && user.role !== session.role) {
     if (optional) return null;
     return authFailure(res, {
@@ -78,16 +115,7 @@ const authenticateToken = async (req, res, token, verifyToken, { optional = fals
     });
   }
 
-  req.user = user;
-  req.auth = {
-    token,
-    decoded,
-    transport: session ? 'cookie' : 'bearer',
-    cookieName: session?.cookieName,
-    origin: session?.origin,
-    role: session?.role,
-  };
-  return user;
+  return attachAuthenticatedUser(req, user, token, decoded, session);
 };
 
 const authenticateWithVerifier = async (req, res, verifyToken, { optional = false } = {}) => {
@@ -147,9 +175,13 @@ const authenticateAny = async (req, res, { optional = false } = {}) => {
     return false;
   }
 
+  // Do not let the first verifier write a 401 response. A valid admin token
+  // naturally fails the user audience check, and vice versa.
+  let decoded = null;
   for (const verifyToken of [verifyUserToken, verifyAdminToken]) {
     try {
-      return await authenticateToken(req, res, token, verifyToken, { optional });
+      decoded = verifyToken(token);
+      break;
     } catch (error) {
       if (error.name !== 'JsonWebTokenError' && error.name !== 'TokenExpiredError') {
         throw error;
@@ -157,9 +189,29 @@ const authenticateAny = async (req, res, { optional = false } = {}) => {
     }
   }
 
-  if (optional) return null;
-  res.status(401).json({ success: false, message: 'Invalid token.' });
-  return false;
+  if (!decoded) {
+    if (optional) return null;
+    return authFailure(res);
+  }
+
+  if (await isTokenBlocked(token)) {
+    if (optional) return null;
+    return authFailure(res);
+  }
+
+  const user = await loadActiveUserForToken(decoded);
+  if (!user) {
+    if (optional) return null;
+    return authFailure(res);
+  }
+
+  if (!user.isEmailVerified) {
+    if (optional) return null;
+    return rejectUnverifiedUser(res, user);
+  }
+
+  return attachAuthenticatedUser(req, user, token, decoded);
+
 };
 
 const auth = async (req, res, next) => {
@@ -233,11 +285,59 @@ const counsellorAuth = async (req, res, next) => {
   });
 };
 
+const patientAuth = async (req, res, next) => {
+  await auth(req, res, () => {
+    if (req.user?.role !== 'user') {
+      return res.status(403).json({
+        success: false,
+        code: 'PATIENT_ROLE_REQUIRED',
+        message: 'Access denied. Patient account required.',
+      });
+    }
+
+    next();
+  });
+};
+
+// Common account-management actions are available to verified patients and
+// counsellors. Admin accounts use their dedicated admin surface and must not
+// inherit end-user profile or credential mutation endpoints.
+const sharedParticipantAuth = async (req, res, next) => {
+  await auth(req, res, () => {
+    if (!['user', 'counsellor'].includes(req.user?.role)) {
+      return res.status(403).json({
+        success: false,
+        code: 'PARTICIPANT_ROLE_REQUIRED',
+        message: 'Access denied. A patient or counsellor account is required.',
+      });
+    }
+
+    next();
+  });
+};
+
+const verifiedPatientAuth = async (req, res, next) => {
+  await patientAuth(req, res, () => {
+    if (req.user.profileCompleted === false) {
+      return res.status(403).json({
+        success: false,
+        code: 'PROFILE_COMPLETION_REQUIRED',
+        message: 'Complete your profile before using this feature.',
+      });
+    }
+
+    next();
+  });
+};
+
 module.exports = {
   auth,
   optionalAuth,
   adminAuth,
   counsellorAuth,
+  patientAuth,
+  sharedParticipantAuth,
+  verifiedPatientAuth,
   authAny,
   isTokenBlocked,
   extractBearerToken,

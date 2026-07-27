@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const { body, query, param, validationResult } = require('express-validator');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -19,7 +20,8 @@ const {
   resolveCallPolicy
 } = require('../services/callPolicyService');
 const { sendCounsellorApprovalEmail } = require('../utils/email');
-const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const { revokeAllSessions, disconnectUserSockets } = require('../utils/sessionLifecycle');
+const { normalizeEmail } = require('../utils/emailNormalization');
 
 const router = express.Router();
 
@@ -477,7 +479,7 @@ router.get('/stats', async (req, res) => {
     ] = await Promise.all([
       User.countDocuments({ role: 'user' }),
       Counsellor.countDocuments(),
-      PendingApplication.countDocuments({ status: 'pending' }),
+      PendingApplication.countDocuments({ status: { $in: ['pending', 'manual_review'] } }),
       Counsellor.countDocuments({ status: 'approved' }),
       Counsellor.countDocuments({ isActive: false, status: 'approved' }),
       Booking.countDocuments(),
@@ -619,7 +621,7 @@ router.get('/server-usage', async (_req, res) => {
 
 // GET /api/admin/counsellors
 router.get('/counsellors', [
-  query('status').optional().isIn(['pending', 'approved', 'rejected', 'blocked', 'all']),
+  query('status').optional().isIn(['pending', 'manual_review', 'approved', 'rejected', 'blocked', 'all']),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 100 }),
   query('search').optional().isString().trim()
@@ -628,8 +630,9 @@ router.get('/counsellors', [
     const { status = 'all', page = 1, limit = 20, search } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Pending tab — served from PendingApplication collection
-    if (status === 'pending') {
+    // Pending tab includes identity conflicts so they cannot disappear from the
+    // admin queue. A dedicated manual_review filter is also available.
+    if (status === 'pending' || status === 'manual_review') {
       const searchQuery = search
         ? { $or: [
             { firstName: { $regex: escapeRegex(search), $options: 'i' } },
@@ -637,7 +640,7 @@ router.get('/counsellors', [
             { email: { $regex: escapeRegex(search), $options: 'i' } }
           ]}
         : {};
-      searchQuery.status = 'pending';
+      searchQuery.status = status === 'manual_review' ? 'manual_review' : { $in: ['pending', 'manual_review'] };
 
       const [apps, total] = await Promise.all([
         PendingApplication.find(searchQuery).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
@@ -653,7 +656,8 @@ router.get('/counsellors', [
         experience: a.experience,
         hourlyRate: a.hourlyRate,
         currency: a.currency,
-        status: 'pending',
+        status: a.status,
+        identityConflict: a.identityConflict || { hasConflict: false, email: false, phone: false },
         isActive: false,
         isVerified: false,
         createdAt: a.createdAt,
@@ -829,6 +833,7 @@ router.get('/counsellors/:id', [
         reviewCount: 0,
         commissionRate: 0,
         rejectionReason: application.rejectionReason,
+        identityConflict: application.identityConflict || { hasConflict: false, email: false, phone: false },
         reviewedBy: application.reviewedBy || null,
         reviewedAt: application.reviewedAt || null,
         createdAt: application.createdAt,
@@ -889,99 +894,114 @@ router.get('/counsellors/:id', [
 });
 
 // PUT /api/admin/counsellors/:id/approve
-// Creates User + Counsellor from PendingApplication, generates credentials, deletes pending record.
+// Creates a new User + Counsellor only when both supplied identities are unused.
+// Existing accounts are never converted or overwritten by an application.
 router.put('/counsellors/:id/approve', [
   param('id').isMongoId().withMessage('Invalid ID')
 ], async (req, res) => {
+  let session;
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid ID' });
+    let result = null;
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const application = await PendingApplication.findOne({
+        _id: req.params.id,
+        status: 'pending',
+      }).select('+statusLookupTokenHash').session(session);
 
-    const application = await PendingApplication.findById(req.params.id).select('+statusLookupTokenHash');
-    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
-    if (application.status !== 'pending') return res.status(400).json({ success: false, message: 'Application is not pending' });
-
-    const [existingByEmail, existingByPhone, existingLicense] = await Promise.all([
-      User.findOne({ email: application.email }),
-      User.findOne({ phone: application.phone }),
-      Counsellor.findOne({ licenseNumber: application.licenseNumber })
-    ]);
-
-    if (existingByEmail && existingByPhone && existingByEmail._id.toString() !== existingByPhone._id.toString()) {
-      return res.status(400).json({
-        success: false,
-        message: 'This application email and phone belong to different existing users. Use a unique test phone/email or review manually.'
-      });
-    }
-
-    if (existingLicense) {
-      return res.status(400).json({
-        success: false,
-        message: 'A counsellor with this license number already exists.'
-      });
-    }
-
-    const existingUser = existingByEmail || existingByPhone;
-    if (existingUser && existingUser.role !== 'user') {
-      return res.status(400).json({
-        success: false,
-        message: 'Existing privileged accounts cannot be converted through counsellor application approval.'
-      });
-    }
-
-    if (existingUser) {
-      const existingCounsellor = await Counsellor.findOne({ user: existingUser._id });
-      if (existingCounsellor) {
-        return res.status(400).json({
-          success: false,
-          message: 'This user already has a counsellor profile.'
-        });
+      if (!application) {
+        result = { kind: 'not_pending' };
+        return;
       }
+
+      const [existingByEmail, existingByPhone, existingLicense] = await Promise.all([
+        User.findOne({ email: normalizeEmail(application.email) }).session(session),
+        User.findOne({ phone: application.phone }).session(session),
+        Counsellor.findOne({ licenseNumber: application.licenseNumber }).session(session),
+      ]);
+
+      if (existingByEmail || existingByPhone) {
+        application.status = 'manual_review';
+        application.identityConflict = {
+          hasConflict: true,
+          email: Boolean(existingByEmail),
+          phone: Boolean(existingByPhone),
+          detectedAt: new Date(),
+        };
+        await application.save({ session });
+        result = { kind: 'identity_conflict', application };
+        return;
+      }
+
+      if (existingLicense) {
+        result = { kind: 'license_conflict' };
+        return;
+      }
+
+      const plainPassword = generateSecurePassword();
+      const user = new User({
+        firstName: application.firstName,
+        lastName: application.lastName,
+        email: normalizeEmail(application.email),
+        phone: application.phone,
+        password: plainPassword,
+        dateOfBirth: application.dateOfBirth,
+        gender: application.gender || 'prefer-not-to-say',
+        role: 'counsellor',
+        isActive: true,
+        isEmailVerified: true,
+        isPhoneVerified: true,
+        profileCompleted: true,
+      });
+      await user.save({ session });
+
+      const counsellor = new Counsellor({
+        user: user._id,
+        licenseNumber: application.licenseNumber,
+        specialization: application.specialization,
+        specializations: application.specializations?.length ? application.specializations : [application.specialization],
+        experience: application.experience,
+        bio: application.bio,
+        languages: application.languages,
+        hourlyRate: application.hourlyRate,
+        currency: application.currency || 'INR',
+        education: application.education || [],
+        certifications: application.certifications || [],
+        availability: application.availability,
+        status: 'approved',
+        isVerified: true,
+        isActive: true,
+        isAvailable: true,
+        approvedBy: req.user._id,
+        approvedAt: new Date(),
+        applicationStatusTokenHash: application.statusLookupTokenHash,
+      });
+      await counsellor.save({ session });
+      await PendingApplication.deleteOne({ _id: application._id }, { session });
+      result = { kind: 'approved', application, user, counsellor, plainPassword };
+    });
+
+    if (result?.kind === 'not_pending') {
+      return res.status(400).json({ success: false, message: 'Application is not pending' });
+    }
+    if (result?.kind === 'identity_conflict') {
+      return res.status(409).json({
+        success: false,
+        code: 'APPLICATION_IDENTITY_CONFLICT',
+        message: 'This application has been moved to manual review because its email or phone belongs to an existing account.',
+        data: { applicationId: result.application._id, status: 'manual_review' },
+      });
+    }
+    if (result?.kind === 'license_conflict') {
+      return res.status(409).json({ success: false, message: 'A counsellor with this license number already exists.' });
+    }
+    if (!result || result.kind !== 'approved') {
+      return res.status(404).json({ success: false, message: 'Application not found' });
     }
 
-    const plainPassword = generateSecurePassword();
-
-    const user = existingUser || new User();
-    user.firstName = application.firstName || user.firstName;
-    user.lastName = application.lastName || user.lastName;
-    user.email = application.email || user.email;
-    user.phone = application.phone || user.phone;
-    user.password = plainPassword;
-    user.dateOfBirth = application.dateOfBirth || user.dateOfBirth;
-    user.gender = application.gender || user.gender || 'male';
-    user.role = 'counsellor';
-    user.isActive = true;
-    user.isEmailVerified = true;
-    user.isPhoneVerified = true;
-    revokeAllSessions(user, { passwordChanged: true });
-    await user.save();
-    res.locals.securitySessionRevoked = user;
-    res.locals.securitySessionRevocationAction = 'counsellor_approved';
-
-    const counsellor = new Counsellor({
-      user: user._id,
-      licenseNumber: application.licenseNumber,
-      specialization: application.specialization,
-      specializations: application.specializations?.length ? application.specializations : [application.specialization],
-      experience: application.experience,
-      bio: application.bio,
-      languages: application.languages,
-      hourlyRate: application.hourlyRate,
-      currency: application.currency || 'INR',
-      education: application.education || [],
-      certifications: application.certifications || [],
-      availability: application.availability,
-      status: 'approved',
-      isVerified: true,
-      isActive: true,
-      isAvailable: true,
-      approvedBy: req.user._id,
-      approvedAt: new Date(),
-      applicationStatusTokenHash: application.statusLookupTokenHash,
-    });
-    await counsellor.save();
-
-    await PendingApplication.findByIdAndDelete(application._id);
+    const { user, counsellor, plainPassword } = result;
 
     const credentialEmailSent = await sendCounsellorApprovalEmail({
       email: user.email,
@@ -1006,8 +1026,27 @@ router.put('/counsellors/:id/approve', [
       }
     });
   } catch (error) {
+    if (error?.code === 11000) {
+      await PendingApplication.findOneAndUpdate(
+        { _id: req.params.id, status: 'pending' },
+        {
+          $set: {
+            status: 'manual_review',
+            'identityConflict.hasConflict': true,
+            'identityConflict.detectedAt': new Date(),
+          },
+        }
+      ).catch(() => {});
+      return res.status(409).json({
+        success: false,
+        code: 'APPLICATION_IDENTITY_CONFLICT',
+        message: 'The application identity changed while it was being approved and now requires manual review.',
+      });
+    }
     console.error('Admin approve counsellor error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
+  } finally {
+    if (session) await session.endSession();
   }
 });
 
@@ -1063,6 +1102,7 @@ router.post('/counsellors/:id/generate-password', [
     counsellor.isAvailable = true;
 
     await Promise.all([user.save(), counsellor.save()]);
+    disconnectUserSockets(req.app.get('io'), user, 'password_generated');
     res.locals.securitySessionRevoked = user;
     res.locals.securitySessionRevocationAction = 'password_generated';
 
@@ -1105,6 +1145,7 @@ router.put('/counsellors/:id/block', [
     revokeAllSessions(user);
 
     await Promise.all([counsellor.save(), user.save()]);
+    disconnectUserSockets(req.app.get('io'), user, 'account_blocked');
     res.locals.securitySessionRevoked = user;
     res.locals.securitySessionRevocationAction = 'account_blocked';
 
@@ -1134,6 +1175,7 @@ router.put('/counsellors/:id/unblock', [
     revokeAllSessions(user);
 
     await Promise.all([counsellor.save(), user.save()]);
+    disconnectUserSockets(req.app.get('io'), user, 'account_unblocked');
     res.locals.securitySessionRevoked = user;
     res.locals.securitySessionRevocationAction = 'account_unblocked';
 

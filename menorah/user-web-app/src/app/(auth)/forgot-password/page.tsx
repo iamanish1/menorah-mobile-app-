@@ -15,14 +15,20 @@ type FormValues = z.infer<typeof schema>;
 export default function ForgotPasswordPage() {
   const { forgotPassword } = useAuth();
   const [sent, setSent] = useState(false);
+  const [serverError, setServerError] = useState('');
 
   const { register, handleSubmit, getValues, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
   });
 
   const onSubmit = async (data: FormValues) => {
-    await forgotPassword(data.email);
-    setSent(true);
+    setServerError('');
+    const result = await forgotPassword(data.email);
+    if (result.success) {
+      setSent(true);
+      return;
+    }
+    setServerError(result.message || 'We could not send reset instructions right now. Please try again.');
   };
 
   if (sent) {
@@ -55,6 +61,12 @@ export default function ForgotPasswordPage() {
         <h1 className="text-2xl font-black text-gray-950 dark:text-primary-50">Forgot password?</h1>
         <p className="text-gray-500 dark:text-primary-100/70 mt-1">Enter your email and we&apos;ll send reset instructions.</p>
       </div>
+
+      {serverError && (
+        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+          {serverError}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <Input

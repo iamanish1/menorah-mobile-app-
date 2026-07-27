@@ -5,9 +5,11 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { adminAuth } = require('../middleware/auth');
 const { getRedisClient } = require('../config/redis');
-const { sendOTPEmail } = require('../utils/email');
+const { sendOTPEmail, sendVerificationEmail } = require('../utils/email');
 const { signAdminToken } = require('../utils/authTokens');
-const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const { revokeAllSessions, disconnectUserSockets } = require('../utils/sessionLifecycle');
+const { normalizeEmail, emailNormalizationOptions } = require('../utils/emailNormalization');
+const { hashOtp, consumeOtp } = require('../utils/redisOtp');
 const {
   clearMappedSessionCookie,
   isCookieTransportRequested,
@@ -19,16 +21,13 @@ const router = express.Router();
 const ADMIN_MFA_TTL_SECONDS = 10 * 60;
 const MAX_ADMIN_MFA_ATTEMPTS = 5;
 const adminMfaKey = (challengeId) => `pending:admin-mfa:${challengeId}`;
-
-const hashOtp = (otp) => crypto.createHash('sha256').update(otp).digest('hex');
-
-const checkOtp = (storedHash, otp) => {
-  try {
-    return crypto.timingSafeEqual(Buffer.from(storedHash, 'hex'), Buffer.from(hashOtp(otp), 'hex'));
-  } catch {
-    return false;
-  }
-};
+const ADMIN_EMAIL_VERIFICATION_TTL_SECONDS = 10 * 60;
+const ADMIN_EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = 60;
+const MAX_ADMIN_EMAIL_VERIFICATION_ATTEMPTS = 5;
+// Keep this challenge namespace separate from the patient API. The admin API
+// must never consume or overwrite an OTP issued for a non-admin account.
+const adminEmailVerificationKey = (email) => `pending:admin-email-verification:${email}`;
+const adminEmailVerificationResendKey = (email) => `pending:admin-email-verification:resend:${email}`;
 
 const isAdminMfaRequired = () =>
   process.env.ADMIN_MFA_REQUIRED === 'true' ||
@@ -55,24 +54,6 @@ const createAdminMfaChallenge = async (user) => {
   }
 
   return challengeId;
-};
-
-const readAdminMfaChallenge = async (challengeId) => {
-  try {
-    const raw = await getRedisClient().get(adminMfaKey(challengeId));
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-};
-
-const updateAdminMfaChallenge = async (challengeId, updates) => {
-  try {
-    const current = await readAdminMfaChallenge(challengeId);
-    if (!current) return;
-    const ttl = await getRedisClient().ttl(adminMfaKey(challengeId));
-    await getRedisClient().setEx(adminMfaKey(challengeId), Math.max(ttl, 1), JSON.stringify({ ...current, ...updates }));
-  } catch {}
 };
 
 const blockToken = async (token) => {
@@ -127,8 +108,113 @@ const serializeAdmin = (user) => ({
   profileImage: user.profileImage || null,
 });
 
+const findUnverifiedActiveAdmin = (email) => User.findOne({
+  email: normalizeEmail(email),
+  role: 'admin',
+  isActive: true,
+  isEmailVerified: false,
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/auth/verify-email
+// @desc    Verify an admin email address without issuing a session
+// @access  Public (admin accounts only)
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/verify-email', [
+  body('email').isEmail().normalizeEmail(emailNormalizationOptions),
+  body('code').matches(/^\d{6}$/),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const email = normalizeEmail(req.body.email);
+    // Check the role before consuming the OTP so a request to the admin host
+    // can never invalidate a patient or counsellor verification challenge.
+    const user = await findUnverifiedActiveAdmin(email);
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
+    }
+
+    const otpResult = await consumeOtp(
+      getRedisClient(),
+      adminEmailVerificationKey(email),
+      req.body.code,
+      MAX_ADMIN_EMAIL_VERIFICATION_ATTEMPTS,
+    );
+    if (otpResult.status !== 1) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
+    }
+
+    // Verification changes only account state. Admins must begin a new login
+    // (and complete MFA when enabled) before any session is issued.
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    await user.save();
+
+    return res.json({ success: true, message: 'Email verified successfully. Please sign in.' });
+  } catch (error) {
+    console.error('Admin email verification error:', error.message);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/auth/resend-email-verification
+// @desc    Send an admin email-verification code without account enumeration
+// @access  Public (admin accounts only)
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/resend-email-verification', [
+  body('email').isEmail().normalizeEmail(emailNormalizationOptions),
+], async (req, res) => {
+  const genericResponse = {
+    success: true,
+    message: 'If an unverified admin account exists for that email, a new code has been sent.',
+  };
+
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.json(genericResponse);
+
+    const email = normalizeEmail(req.body.email);
+    const user = await findUnverifiedActiveAdmin(email);
+    if (!user) return res.json(genericResponse);
+
+    const redis = getRedisClient();
+    const resendKey = adminEmailVerificationResendKey(email);
+    const acquired = await redis.set(resendKey, '1', {
+      EX: ADMIN_EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
+      NX: true,
+    });
+    if (acquired !== 'OK') return res.json(genericResponse);
+
+    const code = crypto.randomInt(100000, 999999).toString();
+    await redis.setEx(
+      adminEmailVerificationKey(email),
+      ADMIN_EMAIL_VERIFICATION_TTL_SECONDS,
+      JSON.stringify({ otp: hashOtp(code), attempts: 0 }),
+    );
+
+    const sent = await sendVerificationEmail(email, code);
+    if (!sent) {
+      await Promise.all([
+        redis.del(adminEmailVerificationKey(email)),
+        redis.del(resendKey),
+      ]);
+    }
+  } catch (error) {
+    // Preserve the non-enumerating contract while retaining a server-side log
+    // that operators can use to investigate email delivery failures.
+    console.error('Admin resend email verification error:', error.message);
+  }
+
+  return res.json(genericResponse);
+});
+
 router.post(['/login', '/admin/login'], [
-  body('email').isEmail().normalizeEmail(),
+  body('email').isEmail().normalizeEmail(emailNormalizationOptions),
   body('password').notEmpty(),
 ], async (req, res) => {
   try {
@@ -138,7 +224,7 @@ router.post(['/login', '/admin/login'], [
     }
 
     const { email, password } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password +lockUntil');
+    const user = await User.findOne({ email: normalizeEmail(email) }).select('+password +lockUntil');
 
     if (!user || !user.isActive) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -159,6 +245,17 @@ router.post(['/login', '/admin/login'], [
 
     if (user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Access denied. Admin accounts only.' });
+    }
+
+    if (!user.isEmailVerified) {
+      await user.resetLoginAttempts();
+      clearMappedSessionCookie(req, res);
+      return res.status(403).json({
+        success: false,
+        code: 'EMAIL_VERIFICATION_REQUIRED',
+        message: 'Email verification is required before you can sign in.',
+        data: { email: user.email },
+      });
     }
 
     if (isAdminMfaRequired()) {
@@ -198,25 +295,29 @@ router.post(['/login/mfa', '/admin/login/mfa'], [
     }
 
     const { challengeId, otp } = req.body;
-    const challenge = await readAdminMfaChallenge(challengeId);
-    if (!challenge) {
+    const otpResult = await consumeOtp(getRedisClient(), adminMfaKey(challengeId), otp, MAX_ADMIN_MFA_ATTEMPTS);
+    if (otpResult.status !== 1 || !otpResult.value) {
       return res.status(401).json({ success: false, message: 'Invalid or expired MFA challenge' });
     }
-
-    if (challenge.attempts >= MAX_ADMIN_MFA_ATTEMPTS) {
-      await getRedisClient().del(adminMfaKey(challengeId));
-      return res.status(401).json({ success: false, message: 'Invalid or expired MFA challenge' });
-    }
-
-    if (!checkOtp(challenge.otp, otp)) {
-      await updateAdminMfaChallenge(challengeId, { attempts: challenge.attempts + 1 });
-      return res.status(401).json({ success: false, message: 'Invalid or expired MFA challenge' });
-    }
+    const challenge = otpResult.value;
 
     const user = await User.findById(challenge.userId).select('+lockUntil');
     if (!user || !user.isActive || user.role !== 'admin') {
       await getRedisClient().del(adminMfaKey(challengeId));
       return res.status(401).json({ success: false, message: 'Invalid or expired MFA challenge' });
+    }
+
+    // A correct MFA code proves possession of the challenge, not that the
+    // account has crossed the email-verification authorization boundary.
+    // Consume the one-time challenge but never issue a session here.
+    if (!user.isEmailVerified) {
+      clearMappedSessionCookie(req, res);
+      return res.status(403).json({
+        success: false,
+        code: 'EMAIL_VERIFICATION_REQUIRED',
+        message: 'Email verification is required before you can sign in.',
+        data: { email: user.email },
+      });
     }
 
     await Promise.all([
@@ -258,6 +359,7 @@ router.post(['/logout', '/admin/logout'], adminAuth, async (req, res) => {
     const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
     if (token) await blockToken(token);
     clearMappedSessionCookie(req, res);
+    disconnectUserSockets(req.app.get('io'), req.user, 'admin_logout');
     return res.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
     console.error('Admin logout error:', error.message);
@@ -273,6 +375,7 @@ router.post(['/logout-all', '/admin/logout-all'], adminAuth, async (req, res) =>
     const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
     if (token) await blockToken(token);
     clearMappedSessionCookie(req, res);
+    disconnectUserSockets(req.app.get('io'), req.user, 'admin_logout_all');
     return res.json({ success: true, message: 'All sessions have been logged out successfully' });
   } catch (error) {
     console.error('Admin logout all error:', error.message);

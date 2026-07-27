@@ -113,6 +113,18 @@ require_code_or_redirect() {
   printf '%s' "${body_file}"
 }
 
+require_json_marker() {
+  local body_file="$1"
+  local marker="$2"
+  local label="$3"
+  if grep -Fq "${marker}" "${body_file}"; then
+    echo "PASS ${label} contains ${marker}" >&2
+    return
+  fi
+  echo "FAIL ${label} is not the expected association JSON" >&2
+  failures=$((failures + 1))
+}
+
 require_container_probe() {
   local container="$1"
   local inspect
@@ -158,6 +170,7 @@ for container in \
   deploy-api-web-1 \
   deploy-api-admin-1 \
   deploy-worker-1 \
+  deploy-app-link-associations-1 \
   deploy-livekit-1 \
   deploy-mongo-primary-1 \
   deploy-redis-1 \
@@ -193,6 +206,11 @@ require_code GET "${API_IOS_BASE}/api/admin/stats" 404 >/dev/null
 require_code GET "${API_ANDROID_BASE}/api/admin/stats" 404 >/dev/null
 require_code GET "${API_WEB_BASE}/api/admin/stats" 404 >/dev/null
 
+if [[ "${CHECK_NATIVE_APP_LINKS:-false}" == "true" && "${CHECK_PUBLIC:-false}" != "true" ]]; then
+  echo "CHECK_NATIVE_APP_LINKS=true requires CHECK_PUBLIC=true." >&2
+  exit 2
+fi
+
 if [[ "${CHECK_PUBLIC:-false}" == "true" ]]; then
   require_code GET "https://${API_IOS_DOMAIN:-api-ios.menorah.me}/health/ready" 200 >/dev/null
   require_code GET "https://${API_ANDROID_DOMAIN:-api-android.menorah.me}/health/ready" 200 >/dev/null
@@ -203,6 +221,17 @@ if [[ "${CHECK_PUBLIC:-false}" == "true" ]]; then
   require_code GET "https://${APP_DOMAIN:-app.menorah.me}" 200 >/dev/null
   require_code_or_redirect GET "https://${ADMIN_DOMAIN:-admin.menorah.me}" "^https://${ADMIN_DOMAIN:-admin.menorah.me}/(dashboard|login)|^/(dashboard|login)" 200 >/dev/null
   require_code_or_redirect GET "https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}" "^https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}/(dashboard|login)|^/(dashboard|login)" 200 >/dev/null
+
+  # Release 1 deliberately leaves these files fail-closed (404) until real
+  # signing identifiers are configured. Native/internal mobile rollout must
+  # opt into this additional public gate and receive valid association JSON.
+  if [[ "${CHECK_NATIVE_APP_LINKS:-false}" == "true" ]]; then
+    app_link_base="https://${APP_DOMAIN:-app.menorah.me}"
+    apple_association_body="$(require_code GET "${app_link_base}/.well-known/apple-app-site-association" 200)"
+    require_json_marker "${apple_association_body}" '"applinks"' 'apple app-link association'
+    android_association_body="$(require_code GET "${app_link_base}/.well-known/assetlinks.json" 200)"
+    require_json_marker "${android_association_body}" '"delegate_permission/common.handle_all_urls"' 'android app-link association'
+  fi
 else
   echo "Skipping public HTTPS checks. Re-run with CHECK_PUBLIC=true after Cloudflare hostnames are live."
 fi

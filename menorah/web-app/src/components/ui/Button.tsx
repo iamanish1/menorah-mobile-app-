@@ -49,7 +49,7 @@ export default function Button({
       {...props}
     >
       {isLoading ? (
-        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span className={styles.loadingContent}>
           <span className={styles.spinner}></span>
           Loading...
         </span>

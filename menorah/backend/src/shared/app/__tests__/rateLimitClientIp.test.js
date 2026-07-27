@@ -9,6 +9,8 @@ const {
 
 describe('rate limit client IP handling', () => {
   const originalAuthLimit = process.env.AUTH_RATE_LIMIT_MAX;
+  const originalCredentialLimit = process.env.CREDENTIAL_RATE_LIMIT_MAX;
+  const originalOtpLimit = process.env.OTP_MFA_RATE_LIMIT_MAX;
   const originalApiLimit = process.env.RATE_LIMIT_MAX_REQUESTS;
 
   afterEach(() => {
@@ -23,6 +25,10 @@ describe('rate limit client IP handling', () => {
     } else {
       process.env.RATE_LIMIT_MAX_REQUESTS = originalApiLimit;
     }
+    if (originalCredentialLimit === undefined) delete process.env.CREDENTIAL_RATE_LIMIT_MAX;
+    else process.env.CREDENTIAL_RATE_LIMIT_MAX = originalCredentialLimit;
+    if (originalOtpLimit === undefined) delete process.env.OTP_MFA_RATE_LIMIT_MAX;
+    else process.env.OTP_MFA_RATE_LIMIT_MAX = originalOtpLimit;
   });
 
   test('prefers Cloudflare client IP before proxy IP', () => {
@@ -41,12 +47,16 @@ describe('rate limit client IP handling', () => {
     const stores = createRateLimitStores(true);
 
     expect(RATE_LIMIT_STORE_PREFIXES).toEqual({
-      auth: 'rl:auth:',
+      credential: 'rl:auth:credential:',
+      otp: 'rl:auth:otp:',
+      email: 'rl:auth:email:',
       api: 'rl:api:'
     });
-    expect(stores.auth.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.auth);
+    expect(stores.credential.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.credential);
+    expect(stores.otp.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.otp);
+    expect(stores.email.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.email);
     expect(stores.api.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.api);
-    expect(stores.auth.store.prefix).not.toBe(stores.api.store.prefix);
+    expect(stores.credential.store.prefix).not.toBe(stores.otp.store.prefix);
   });
 
   test('returns a JSON message when an authentication request is rate limited', async () => {
@@ -102,5 +112,65 @@ describe('rate limit client IP handling', () => {
       .set('CF-Connecting-IP', '203.0.113.11')
       .send({})
       .expect(200);
+  });
+
+  test('does not apply the credential limiter to the MFA endpoint', async () => {
+    process.env.AUTH_RATE_LIMIT_MAX = '1';
+    process.env.OTP_MFA_RATE_LIMIT_MAX = '1';
+    process.env.RATE_LIMIT_MAX_REQUESTS = '100';
+    const app = express();
+    app.set('trust proxy', 1);
+    app.use(express.json());
+    mountRateLimiters(app, { redisReady: false });
+    app.post('/api/auth/login', (_req, res) => res.json({ success: true }));
+    app.post('/api/auth/login/mfa', (_req, res) => res.json({ success: true }));
+
+    await request(app).post('/api/auth/login').send({ email: 'a@example.com' }).expect(200);
+    await request(app)
+      .post('/api/auth/login/mfa')
+      .send({ challengeId: 'challenge-one' })
+      .expect(200);
+    await request(app)
+      .post('/api/auth/login/mfa')
+      .send({ challengeId: 'challenge-one' })
+      .expect(429)
+      .expect({ success: false, message: 'Too many verification attempts. Please try again later.' });
+  });
+
+  test('does not consume the generic API bucket for exact auth paths, including trailing slashes', async () => {
+    process.env.CREDENTIAL_RATE_LIMIT_MAX = '10';
+    process.env.RATE_LIMIT_MAX_REQUESTS = '1';
+    const app = express();
+    app.set('trust proxy', 1);
+    app.use(express.json());
+    mountRateLimiters(app, { redisReady: false });
+    app.post('/api/auth/login', (_req, res) => res.json({ success: true }));
+    app.post('/api/health-check', (_req, res) => res.json({ success: true }));
+
+    await request(app).post('/api/auth/login/').send({ email: 'a@example.com' }).expect(200);
+    await request(app).post('/api/auth/login').send({ email: 'a@example.com' }).expect(200);
+    await request(app).post('/api/health-check').expect(200);
+    await request(app).post('/api/health-check').expect(429);
+  });
+
+  test('social linking is rate limited by session rather than a caller-controlled provider email', async () => {
+    process.env.CREDENTIAL_RATE_LIMIT_MAX = '1';
+    process.env.RATE_LIMIT_MAX_REQUESTS = '100';
+    const app = express();
+    app.set('trust proxy', 1);
+    app.use(express.json());
+    mountRateLimiters(app, { redisReady: false });
+    app.post('/api/auth/social/link', (_req, res) => res.json({ success: true }));
+
+    await request(app)
+      .post('/api/auth/social/link')
+      .set('Authorization', 'Bearer session-token-for-rate-test')
+      .send({ email: 'first-provider@example.com' })
+      .expect(200);
+    await request(app)
+      .post('/api/auth/social/link')
+      .set('Authorization', 'Bearer session-token-for-rate-test')
+      .send({ email: 'different-provider@example.com' })
+      .expect(429);
   });
 });

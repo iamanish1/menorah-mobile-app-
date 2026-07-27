@@ -1,5 +1,6 @@
 const MIN_JWT_SECRET_LENGTH = 64;
 const { getTrustedWebSessionOrigins } = require('../../config/webSessions');
+const { validatePasswordResetUrlTemplate } = require('../../utils/passwordResetUrl');
 
 const requireEnv = (key, errors) => {
   if (!process.env[key]) {
@@ -22,6 +23,9 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
     );
 
     requireEnv('WEB_SESSION_ORIGINS', errors);
+
+    const resetUrlValidation = validatePasswordResetUrlTemplate();
+    if (!resetUrlValidation.ok) errors.push(resetUrlValidation.reason);
 
     if (process.env.SESSION_COOKIE_DOMAIN) {
       errors.push('SESSION_COOKIE_DOMAIN must be unset for host-only __Host- session cookies');

@@ -28,7 +28,6 @@ const setDocumentTheme = (theme: ThemeMode) => {
   const root = document.documentElement;
   root.classList.toggle('dark', theme === 'dark');
   root.dataset.theme = theme;
-  root.style.colorScheme = theme;
 };
 
 const applyTheme = (theme: ThemeMode, persist = true) => {

@@ -9,8 +9,12 @@ const { auth } = require('../middleware/auth');
 const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
 const { getRedisClient } = require('../config/redis');
 const { signUserToken } = require('../utils/authTokens');
-const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const { revokeAllSessions, disconnectUserSockets } = require('../utils/sessionLifecycle');
 const { serializeAuthUser, serializeUserProfile } = require('../serializers/userSerializer');
+const { emailNormalizationOptions, normalizeEmail } = require('../utils/emailNormalization');
+const { passwordValidator } = require('../utils/passwordPolicy');
+const { consumeOtp, replaceOtp } = require('../utils/redisOtp');
+const { buildPasswordResetUrl } = require('../utils/passwordResetUrl');
 const {
   clearMappedSessionCookie,
   isCookieTransportRequested,
@@ -18,14 +22,6 @@ const {
 } = require('../config/webSessions');
 
 const router = express.Router();
-const emailNormalizationOptions = {
-  gmail_remove_dots: false,
-  gmail_remove_subaddress: false,
-  outlookdotcom_remove_subaddress: false,
-  yahoo_remove_subaddress: false,
-  icloud_remove_subaddress: false,
-};
-
 // ── Pending registration helpers (Redis-backed) ────────────────────────────
 // Registration data is stored in Redis instead of process memory so the
 // flow works correctly across multiple PM2 workers and Cloud Run instances.
@@ -59,16 +55,6 @@ const getPendingReg = async (email) => {
   } catch { return null; }
 };
 
-const updatePendingReg = async (email, updates) => {
-  try {
-    const redis   = getRedisClient();
-    const pending = await getPendingReg(email);
-    if (!pending) return;
-    const ttl = await redis.ttl(pendingRegistrationKey(email));
-    await redis.setEx(pendingRegistrationKey(email), Math.max(ttl, 1), JSON.stringify({ ...pending, ...updates }));
-  } catch {}
-};
-
 const deletePendingReg = async (email) => {
   try {
     const redis = getRedisClient();
@@ -92,24 +78,6 @@ const storeEmailVerificationCode = async (email, otp) => {
   const redis = getRedisClient();
   const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
   await redis.setEx(emailVerificationKey(email), PENDING_TTL, JSON.stringify({ otp: otpHash, attempts: 0 }));
-};
-
-const getEmailVerificationCode = async (email) => {
-  try {
-    const raw = await getRedisClient().get(emailVerificationKey(email));
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-};
-
-const updateEmailVerificationCode = async (email, updates) => {
-  try {
-    const current = await getEmailVerificationCode(email);
-    if (!current) return;
-    const ttl = await getRedisClient().ttl(emailVerificationKey(email));
-    await getRedisClient().setEx(emailVerificationKey(email), Math.max(ttl, 1), JSON.stringify({ ...current, ...updates }));
-  } catch {}
 };
 
 const deleteEmailVerificationCode = async (email) => {
@@ -241,9 +209,10 @@ const findOrCreateSocialUser = async ({
   firstName,
   lastName,
   profileImage = null,
-  privateRelay = false
+  privateRelay = false,
+  intent = 'signin',
 }) => {
-  const normalizedEmail = String(email || '').toLowerCase().trim();
+  const normalizedEmail = normalizeEmail(email);
   const socialPath = provider === 'apple' ? 'socialAuth.appleSub' : 'socialAuth.googleSub';
 
   let user = await User.findOne({ [socialPath]: subject });
@@ -261,7 +230,26 @@ const findOrCreateSocialUser = async ({
       throw error;
     }
 
+    if (!user.isEmailVerified) {
+      const error = new Error('Email verification is required for this social account');
+      error.statusCode = 403;
+      error.code = 'EMAIL_VERIFICATION_REQUIRED';
+      error.publicMessage = 'Email verification is required before you can sign in.';
+      // This comes from the linked account in Mongo, never from the provider
+      // token/body, so clients can safely start the existing OTP flow.
+      error.data = { email: user.email };
+      throw error;
+    }
+
     return { user, existingUser: true };
+  }
+
+  if (intent !== 'signup') {
+    const error = new Error('Social sign-in account was not found');
+    error.statusCode = 404;
+    error.code = 'ACCOUNT_NOT_FOUND';
+    error.publicMessage = 'No Menorah account is linked to this social identity. Choose sign up to create one.';
+    throw error;
   }
 
   if (!normalizedEmail) {
@@ -275,15 +263,15 @@ const findOrCreateSocialUser = async ({
   if (existingEmailUser) {
     const error = new Error('Social auth requires explicit account linking');
     error.statusCode = 409;
+    error.code = 'SOCIAL_ACCOUNT_LINK_REQUIRED';
     error.publicMessage = 'An account already exists with this email. Sign in with email and password first, then link social sign-in from settings.';
     throw error;
   }
 
   try {
-    const fallbackPhone = `${provider}:${subject}`;
     user = await User.create({
       email: normalizedEmail,
-      phone: fallbackPhone,
+      phone: null,
       password: crypto.randomBytes(32).toString('hex'),
       firstName: firstName || 'Menorah',
       lastName: lastName || 'User',
@@ -294,6 +282,7 @@ const findOrCreateSocialUser = async ({
       isActive: true,
       isEmailVerified: Boolean(normalizedEmail),
       isPhoneVerified: false,
+      profileCompleted: false,
       socialAuth: {
         googleSub: provider === 'google' ? subject : undefined,
         appleSub: provider === 'apple' ? subject : undefined,
@@ -311,14 +300,6 @@ const findOrCreateSocialUser = async ({
   }
 
   return { user, existingUser: false };
-};
-
-// Timing-safe OTP check — SHA-256(input) vs stored hash
-const checkOTP = (storedHash, inputOtp) => {
-  const inputHash = crypto.createHash('sha256').update(inputOtp).digest('hex');
-  try {
-    return crypto.timingSafeEqual(Buffer.from(storedHash, 'hex'), Buffer.from(inputHash, 'hex'));
-  } catch { return false; }
 };
 
 // ── Logout blocklist helper ────────────────────────────────────────────────
@@ -367,8 +348,7 @@ router.post('/register', [
   body('lastName').trim().isLength({ min: 2, max: 50 }),
   body('email').isEmail().normalizeEmail(emailNormalizationOptions),
   body('phone').matches(/^\+[1-9]\d{1,14}$/),
-  body('password').isStrongPassword({ minLength: 8, minLowercase: 1, minUppercase: 1, minNumbers: 1, minSymbols: 0 })
-    .withMessage('Password must be at least 8 characters and include uppercase, lowercase, and a number'),
+  body('password').custom(passwordValidator),
   body('dateOfBirth').isISO8601(),
   body('gender').isIn(['male', 'female', 'other', 'prefer-not-to-say']),
 ], async (req, res) => {
@@ -430,26 +410,23 @@ router.post('/verify-email-otp', [
     }
 
     const { email, otp } = req.body;
-    const pending = await getPendingReg(email);
+    const otpResult = await consumeOtp(getRedisClient(), pendingRegistrationKey(email), otp, MAX_OTP_TRIES);
 
-    if (!pending) {
+    if (otpResult.status === 0) {
       return res.status(400).json({ success: false, message: 'Registration session expired. Please register again.' });
     }
-
-    // OTP attempt limiting — max 5 failed tries
-    if (pending.attempts >= MAX_OTP_TRIES) {
-      await deletePendingReg(email);
+    if (otpResult.status === 2 || otpResult.status === 3) {
       return res.status(400).json({ success: false, message: 'Too many failed attempts. Please register again.' });
     }
-
-    if (!checkOTP(pending.otp, otp)) {
-      await updatePendingReg(email, { attempts: pending.attempts + 1 });
-      const remaining = MAX_OTP_TRIES - pending.attempts - 1;
+    if (otpResult.status !== 1 || !otpResult.value) {
+      const remaining = otpResult.remaining;
       return res.status(400).json({
         success: false,
         message: remaining > 0 ? `Invalid OTP. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.` : 'Invalid OTP.',
       });
     }
+
+    const pending = otpResult.value;
 
     // Create user — password is already bcrypt-hashed in Redis
     const user = new User({
@@ -462,7 +439,14 @@ router.post('/verify-email-otp', [
       gender:    pending.gender,
       isEmailVerified: true,
     });
-    await user.save();
+    try {
+      await user.save();
+    } catch (error) {
+      if (error?.code === 11000) {
+        return res.status(409).json({ success: false, message: 'An account with this email or phone number already exists.' });
+      }
+      throw error;
+    }
     await deletePendingReg(email);
 
     const token = signUserToken(user);
@@ -508,9 +492,11 @@ router.post('/resend-email-otp', [
       });
     }
 
-    const newOtp    = crypto.randomInt(100000, 999999).toString();
-    const newOtpHash = crypto.createHash('sha256').update(newOtp).digest('hex');
-    await updatePendingReg(email, { otp: newOtpHash, attempts: 0 });
+    const newOtp = crypto.randomInt(100000, 999999).toString();
+    if (!await replaceOtp(getRedisClient(), pendingRegistrationKey(email), newOtp)) {
+      await releaseOtpResendCooldown(resendKey);
+      return res.status(400).json({ success: false, message: 'Registration session expired. Please register again.' });
+    }
 
     const emailSent = await sendOTPEmail(email, newOtp);
     if (!emailSent) {
@@ -540,7 +526,7 @@ router.post('/login', [
     }
 
     const { email, password } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password +lockUntil');
+    const user = await User.findOne({ email: normalizeEmail(email) }).select('+password +lockUntil');
 
     // Use same generic message for missing user AND inactive account —
     // different messages allow attackers to enumerate valid email addresses.
@@ -562,6 +548,17 @@ router.post('/login', [
 
     if (user.role === 'admin') {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    if (!user.isEmailVerified) {
+      await user.resetLoginAttempts();
+      clearMappedSessionCookie(req, res);
+      return res.status(403).json({
+        success: false,
+        code: 'EMAIL_VERIFICATION_REQUIRED',
+        message: 'Email verification is required before you can sign in.',
+        data: { email: user.email },
+      });
     }
 
     await user.resetLoginAttempts();
@@ -587,7 +584,8 @@ router.post('/login', [
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/google', [
-  body('credential').isString().trim().isLength({ min: 20 })
+  body('credential').isString().trim().isLength({ min: 20 }),
+  body('intent').optional().isIn(['signin', 'signup']),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -603,7 +601,8 @@ router.post('/google', [
       email: googleUser.email,
       firstName,
       lastName,
-      profileImage: googleUser.picture || null
+      profileImage: googleUser.picture || null,
+      intent: req.body.intent || 'signin',
     });
 
     const token = signUserToken(user);
@@ -622,6 +621,8 @@ router.post('/google', [
     console.error('Google auth error:', error.message);
     return res.status(error.statusCode || 401).json({
       success: false,
+      ...(error.code ? { code: error.code } : {}),
+      ...(error.data ? { data: error.data } : {}),
       message: error.publicMessage || 'Google sign-in failed. Please try again.'
     });
   }
@@ -634,8 +635,12 @@ router.post('/google', [
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/apple', [
   body('identityToken').isString().trim().isLength({ min: 20 }),
-  body('email').optional().isEmail().normalizeEmail(emailNormalizationOptions),
-  body('fullName').optional().isString().trim().isLength({ max: 120 })
+  // Apple only provides the user's email/name on the first authorization.
+  // Native clients may serialize the absent values as null on repeat sign-in,
+  // which is equivalent to omitting them for an already-linked subject.
+  body('email').optional({ values: 'null' }).isEmail().normalizeEmail(emailNormalizationOptions),
+  body('fullName').optional({ values: 'null' }).isString().trim().isLength({ max: 120 }),
+  body('intent').optional().isIn(['signin', 'signup']),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -644,7 +649,12 @@ router.post('/apple', [
     }
 
     const appleUser = await verifyAppleIdentityToken(req.body.identityToken);
-    const tokenEmail = String(appleUser.email || '').toLowerCase().trim();
+    // Only a signed Apple email claim can create an account. A client-supplied
+    // email is intentionally ignored here: accepting it for an unknown Apple
+    // subject would let an attacker pre-empt another person's email account.
+    // Apple may omit the claim on subsequent authorizations; those still work
+    // when the subject is already linked because that lookup happens first.
+    const tokenEmail = normalizeEmail(appleUser.email);
     const { firstName, lastName } = splitDisplayName(req.body.fullName, 'Menorah', 'User');
     const { user, existingUser } = await findOrCreateSocialUser({
       provider: 'apple',
@@ -652,7 +662,8 @@ router.post('/apple', [
       email: tokenEmail,
       firstName,
       lastName,
-      privateRelay: /privaterelay\.appleid\.com$/i.test(tokenEmail)
+      privateRelay: /privaterelay\.appleid\.com$/i.test(tokenEmail),
+      intent: req.body.intent || 'signin',
     });
 
     const token = signUserToken(user);
@@ -669,7 +680,112 @@ router.post('/apple', [
     console.error('Apple auth error:', error.message);
     return res.status(error.statusCode || 401).json({
       success: false,
+      ...(error.code ? { code: error.code } : {}),
+      ...(error.data ? { data: error.data } : {}),
       message: error.publicMessage || 'Apple sign-in failed. Please try again.'
+    });
+  }
+});
+
+const verifySocialLinkCredential = async ({ provider, providerToken, email, fullName }) => {
+  if (provider === 'google') {
+    const googleUser = await verifyGoogleCredential(providerToken);
+    const { firstName, lastName } = splitGoogleName(googleUser);
+    return {
+      subject: googleUser.sub,
+      email: normalizeEmail(googleUser.email),
+      firstName,
+      lastName,
+      profileImage: googleUser.picture || null,
+      privateRelay: false,
+    };
+  }
+
+  const appleUser = await verifyAppleIdentityToken(providerToken);
+  const tokenEmail = normalizeEmail(appleUser.email || email);
+  const { firstName, lastName } = splitDisplayName(fullName, 'Menorah', 'User');
+  return {
+    subject: appleUser.sub,
+    email: tokenEmail,
+    firstName,
+    lastName,
+    privateRelay: /privaterelay\.appleid\.com$/i.test(tokenEmail),
+  };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/auth/social/link
+// @desc    Link a verified OAuth subject after password re-authentication
+// @access  Verified patient account
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/social/link', [
+  body('provider').isIn(['google', 'apple']),
+  body('providerToken').isString().trim().isLength({ min: 20 }),
+  body('currentPassword').isString().isLength({ min: 1 }),
+  body('email').optional({ values: 'null' }).isEmail().normalizeEmail(emailNormalizationOptions),
+  body('fullName').optional({ values: 'null' }).isString().trim().isLength({ max: 120 }),
+], auth, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    if (req.user.role !== 'user') {
+      return res.status(403).json({ success: false, message: 'Only patient accounts can link social sign-in.' });
+    }
+
+    const { provider, providerToken, currentPassword, email, fullName } = req.body;
+    const identity = await verifySocialLinkCredential({ provider, providerToken, email, fullName });
+    const socialPath = provider === 'apple' ? 'socialAuth.appleSub' : 'socialAuth.googleSub';
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user || !user.isActive) {
+      return res.status(401).json({ success: false, message: 'Account is no longer active.' });
+    }
+    if (!await user.comparePassword(currentPassword)) {
+      return res.status(400).json({
+        success: false,
+        code: 'CURRENT_PASSWORD_INCORRECT',
+        message: 'Current password is incorrect.',
+      });
+    }
+
+    const owner = await User.findOne({ [socialPath]: identity.subject }).select('_id');
+    if (owner && owner._id.toString() !== user._id.toString()) {
+      return res.status(409).json({
+        success: false,
+        code: 'SOCIAL_IDENTITY_ALREADY_LINKED',
+        message: 'This social account is already linked to another Menorah account.',
+      });
+    }
+    if (user.get(socialPath) && user.get(socialPath) !== identity.subject) {
+      return res.status(409).json({
+        success: false,
+        code: 'SOCIAL_PROVIDER_ALREADY_LINKED',
+        message: 'A different account for this provider is already linked. Contact support to change it.',
+      });
+    }
+
+    user.set(socialPath, identity.subject);
+    if (provider === 'apple') user.socialAuth.appleEmailPrivateRelay = identity.privateRelay;
+    await user.save();
+    return res.json({
+      success: true,
+      message: `${provider === 'google' ? 'Google' : 'Apple'} sign-in linked successfully.`,
+      data: { user: serializeUserProfile(user) },
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        code: 'SOCIAL_IDENTITY_ALREADY_LINKED',
+        message: 'This social account is already linked to another Menorah account.',
+      });
+    }
+    console.error('Social account link error:', error.message);
+    return res.status(error.statusCode || 401).json({
+      success: false,
+      message: error.publicMessage || 'Could not link this social account. Please try again.',
     });
   }
 });
@@ -690,35 +806,29 @@ router.post('/verify-email', [
     }
 
     const { email, code } = req.body;
-    const verification = await getEmailVerificationCode(email);
-    if (!verification) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
-    }
-
-    if (verification.attempts >= MAX_OTP_TRIES) {
-      await deleteEmailVerificationCode(email);
-      return res.status(400).json({ success: false, message: 'Too many failed attempts. Please request a new code.' });
-    }
-
-    if (!checkOTP(verification.otp, code)) {
-      await updateEmailVerificationCode(email, { attempts: verification.attempts + 1 });
-      return res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
-    }
-
-    const user = await User.findOne({ email, isEmailVerified: false });
+    // Admin verification is deliberately owned by the api-admin profile and
+    // its separate OTP namespace. A public/user API host must never verify an
+    // admin account or create an admin-adjacent session path.
+    const user = await User.findOne({
+      email,
+      isEmailVerified: false,
+      role: { $ne: 'admin' },
+    });
     if (!user || !user.isActive) {
-      await deleteEmailVerificationCode(email);
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
+    }
+
+    const otpResult = await consumeOtp(getRedisClient(), emailVerificationKey(email), code, MAX_OTP_TRIES);
+    if (otpResult.status === 0 || otpResult.status === 2 || otpResult.status === 3) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
+    }
+    if (otpResult.status !== 1) {
       return res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
     }
 
     user.isEmailVerified = true;
     user.emailVerificationToken = undefined;
     await user.save();
-    await deleteEmailVerificationCode(email);
-
-    if (user.role === 'admin') {
-      return res.json({ success: true, message: 'Email verified successfully' });
-    }
 
     const token = signUserToken(user);
     return sendAuthSessionResponse(req, res, {
@@ -766,7 +876,13 @@ router.post('/resend-email-verification', [
   // Always return 200 — prevents email-existence enumeration
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email, isEmailVerified: false });
+    // Keep admin verification entirely on api-admin. This prevents a code
+    // issued by the user-facing API from being usable for an admin account.
+    const user = await User.findOne({
+      email,
+      isEmailVerified: false,
+      role: { $ne: 'admin' },
+    });
     if (user) {
       const resendKey = emailVerificationResendKey(email);
       if (!await acquireOtpResendCooldown(resendKey)) {
@@ -823,65 +939,13 @@ router.post('/forgot-password', [
 // @desc    Redirect password reset links to mobile app or web app
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
-// Allowed redirect destination hostnames — prevents open redirect if env var is misconfigured
-const ALLOWED_REDIRECT_HOSTS = new Set(['menorah.me', 'www.menorah.me', 'app.menorah.me', 'localhost:3002']);
-
-const safeWebAppUrl = () => {
-  const raw = (process.env.WEB_APP_URL || 'https://menorah.me').trim();
-  try {
-    const { hostname, port } = new URL(raw);
-    const host = port ? `${hostname}:${port}` : hostname;
-    if (!ALLOWED_REDIRECT_HOSTS.has(host)) {
-      return 'https://menorah.me';
-    }
-    return raw.replace(/\/$/, '');
-  } catch {
-    return 'https://menorah.me';
-  }
-};
-
 router.get('/reset-password', (req, res) => {
-  const token      = req.query.token;
-  const webAppUrl  = safeWebAppUrl();
-
-  if (!token) {
-    return res.redirect(`${webAppUrl}/reset-password?error=missing-token`);
-  }
-
-  const userAgent = req.headers['user-agent'] || '';
-  const isMobile  = /Android|iPhone|iPad|iPod|Expo|React Native/i.test(userAgent);
-
-  if (isMobile) {
-    const appScheme  = (process.env.MOBILE_APP_SCHEME || 'menorah-health://reset-password').trim();
-    const sep        = appScheme.includes('?') ? '&' : '?';
-    // Use JSON.stringify to safely embed URL values into JavaScript string literals
-    // This prevents XSS if the token value ever contains JS metacharacters.
-    const appUrl     = `${appScheme}${sep}token=${encodeURIComponent(token)}`;
-    const webFallback = `${webAppUrl}/reset-password?token=${encodeURIComponent(token)}`;
-
-    return res.status(200).send(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Reset your password</title>
-  <script>
-    window.location.href = ${JSON.stringify(appUrl)};
-    setTimeout(function(){window.location.href=${JSON.stringify(webFallback)};},2000);
-  </script>
-</head>
-<body style="font-family:Arial,sans-serif;background:#f5f3eb;padding:32px;color:#1f2937">
-  <div style="max-width:420px;margin:0 auto;background:white;border-radius:18px;padding:28px">
-    <h1 style="margin-top:0">Open Menorah Health</h1>
-    <p>Opening the app to reset your password...</p>
-    <a href=${JSON.stringify(appUrl)} style="background:#314830;color:white;padding:14px 20px;border-radius:12px;text-decoration:none;font-weight:600;display:inline-block;margin-top:8px">Open the app</a>
-    <p style="margin-top:18px;color:#6b7280;font-size:14px">App not opening? <a href=${JSON.stringify(webFallback)} style="color:#314830">Reset via browser</a></p>
-  </div>
-</body>
-</html>`);
-  }
-
-  return res.redirect(`${webAppUrl}/reset-password?token=${encodeURIComponent(token)}`);
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  if (!token) return res.status(400).json({ success: false, message: 'Missing reset token' });
+  // The configured URL is HTTPS and points at the verified app domain. It can
+  // be handled by a browser, Android App Link, or iOS Universal Link without
+  // the API serving inline script/style that conflicts with the API CSP.
+  return res.redirect(302, buildPasswordResetUrl(token));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -890,8 +954,7 @@ router.get('/reset-password', (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/reset-password', [
   body('token').notEmpty(),
-  body('password').isStrongPassword({ minLength: 8, minLowercase: 1, minUppercase: 1, minNumbers: 1, minSymbols: 0 })
-    .withMessage('Password must be at least 8 characters and include uppercase, lowercase, and a number'),
+  body('password').custom(passwordValidator),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -902,21 +965,34 @@ router.post('/reset-password', [
     const { token, password } = req.body;
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
-    const user = await User.findOne({
-      passwordResetToken:   hashedToken,
-      passwordResetExpires: { $gt: Date.now() },
-    }).select('+passwordResetToken +passwordResetExpires');
+    const passwordHash = await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS, 10) || 12);
+    // Establish the expiry boundary immediately before the atomic claim. A
+    // slow bcrypt operation must not allow a token that expired meanwhile.
+    const revokedAt = new Date();
+    // Claim and consume the reset token in the same update that changes the
+    // password. Parallel requests cannot both redeem the same token.
+    const user = await User.findOneAndUpdate({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: revokedAt },
+    }, {
+      $set: {
+        password: passwordHash,
+        lastSessionRevokedAt: revokedAt,
+        lastPasswordChangeAt: revokedAt,
+      },
+      $unset: {
+        passwordResetToken: '',
+        passwordResetExpires: '',
+      },
+      $inc: { sessionVersion: 1 },
+    }, { new: true });
 
     if (!user) {
       return res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
     }
 
-    user.password             = password;
-    user.passwordResetToken   = undefined;
-    user.passwordResetExpires = undefined;
-    revokeAllSessions(user, { passwordChanged: true });
-    await user.save();
     clearMappedSessionCookie(req, res);
+    disconnectUserSockets(req.app.get('io'), user, 'password_reset');
 
     res.json({ success: true, message: 'Password reset successfully' });
   } catch (error) {
@@ -955,6 +1031,7 @@ router.post('/logout', auth, async (req, res) => {
     const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
     if (token) await blockToken(token);
     clearMappedSessionCookie(req, res);
+    disconnectUserSockets(req.app.get('io'), req.user, 'logout');
     res.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error.message);
@@ -970,6 +1047,7 @@ router.post('/logout-all', auth, async (req, res) => {
     const token = req.auth?.token || req.header('Authorization')?.replace('Bearer ', '');
     if (token) await blockToken(token);
     clearMappedSessionCookie(req, res);
+    disconnectUserSockets(req.app.get('io'), req.user, 'logout_all');
 
     res.json({ success: true, message: 'All sessions have been logged out successfully' });
   } catch (error) {

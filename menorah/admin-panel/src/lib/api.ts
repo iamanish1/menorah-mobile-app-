@@ -9,6 +9,8 @@ import type {
   SocialPromptSettings, SocialStudioStats, SocialWorkflow
 } from '@/types';
 
+export const ADMIN_UNAUTHORIZED_EVENT = 'menorah:admin-unauthorized';
+
 class AdminApiClient {
   private client: AxiosInstance;
 
@@ -22,8 +24,14 @@ class AdminApiClient {
     this.client.interceptors.response.use(
       (res) => res,
       (err) => {
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          if (typeof window !== 'undefined') window.location.href = '/login';
+        const requestUrl = typeof err.config?.url === 'string' ? err.config.url : '';
+        const isExpectedAuthFailure = requestUrl.startsWith('/auth/');
+        if (
+          err.response?.status === 401
+          && !isExpectedAuthFailure
+          && typeof window !== 'undefined'
+        ) {
+          window.dispatchEvent(new Event(ADMIN_UNAUTHORIZED_EVENT));
         }
         return Promise.reject(err);
       }
@@ -36,20 +44,32 @@ class AdminApiClient {
       return res.data;
     } catch (err: unknown) {
       const e = err as { response?: { data?: ApiResponse<T> }; message?: string };
-      return { success: false, message: e.response?.data?.message || e.message || 'Request failed' };
+      return e.response?.data || { success: false, message: e.message || 'Request failed' };
     }
   }
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   login(email: string, password: string) {
-    return this.request<{ user?: User; mfaRequired?: boolean; challengeId?: string }>(() =>
+    return this.request<{ user?: User; email?: string; mfaRequired?: boolean; challengeId?: string }>(() =>
       this.client.post('/auth/admin/login', { email, password, transport: 'cookie' })
     );
   }
 
   verifyMfa(challengeId: string, otp: string) {
-    return this.request<{ user: User; mfaRequired?: boolean }>(() =>
+    return this.request<{ user?: User; email?: string; mfaRequired?: boolean }>(() =>
       this.client.post('/auth/admin/login/mfa', { challengeId, otp, transport: 'cookie' })
+    );
+  }
+
+  verifyEmail(email: string, code: string) {
+    return this.request<void>(() =>
+      this.client.post('/auth/verify-email', { email, code, transport: 'cookie' })
+    );
+  }
+
+  resendEmailVerification(email: string) {
+    return this.request<void>(() =>
+      this.client.post('/auth/resend-email-verification', { email })
     );
   }
 

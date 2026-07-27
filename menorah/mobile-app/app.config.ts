@@ -117,6 +117,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       supportsTablet: true,
       bundleIdentifier: 'com.menorah.health.app',
       usesAppleSignIn: true,
+      associatedDomains: [
+        'applinks:app.menorah.me',
+        'applinks:menorah.me',
+        'applinks:api-ios.menorah.me',
+      ],
       infoPlist: {
         CFBundleAllowMixedLocalizations: true
       }
@@ -128,6 +133,30 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
       package: 'com.menorah.healthmobile',
       versionCode: 14,
+      intentFilters: [
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          category: ['BROWSABLE', 'DEFAULT'],
+          data: [
+            {
+              scheme: 'https',
+              host: 'app.menorah.me',
+              pathPrefix: '/reset-password',
+            },
+            {
+              scheme: 'https',
+              host: 'menorah.me',
+              pathPrefix: '/reset-password',
+            },
+            {
+              scheme: 'https',
+              host: 'api-android.menorah.me',
+              pathPrefix: '/api/auth/reset-password',
+            },
+          ],
+        },
+      ],
       permissions: [
         'android.permission.CAMERA',
         'android.permission.RECORD_AUDIO',

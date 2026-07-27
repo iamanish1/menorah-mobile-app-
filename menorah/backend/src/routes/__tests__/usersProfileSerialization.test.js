@@ -9,6 +9,22 @@ jest.mock('../../middleware/auth', () => ({
     req.user = { _id: { toString: () => mockUserId } };
     next();
   },
+  sharedParticipantAuth: (req, _res, next) => {
+    req.user = {
+      _id: { toString: () => mockUserId },
+      role: 'user',
+      isEmailVerified: true,
+    };
+    next();
+  },
+  patientAuth: (req, _res, next) => {
+    req.user = {
+      _id: { toString: () => mockUserId },
+      role: 'user',
+      isEmailVerified: true,
+    };
+    next();
+  },
 }));
 
 jest.mock('../../models/User', () => ({

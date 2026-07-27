@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Adamina&family=Fjalla+One&family=Poppins:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -51,9 +49,9 @@
   --social-x: 0 0% 7%;
   --social-youtube: 0 84% 50%;
   /* Fonts */
-  --font-display: 'Adamina', serif;
-  --font-body: 'Poppins', sans-serif;
-  --font-brand: 'Fjalla One', sans-serif;
+  --font-display: var(--font-adamina), serif;
+  --font-body: var(--font-poppins), sans-serif;
+  --font-brand: var(--font-fjalla-one), sans-serif;
   /* Shadows */
   --shadow-dashboard: 0 25px 80px -12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
@@ -78,7 +76,7 @@ html.dark {
     font-size: var(--app-root-font-size);
   }
   body {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: var(--font-inter), system-ui, sans-serif;
     background: var(--app-bg);
     color: var(--app-text);
     min-width: 320px;

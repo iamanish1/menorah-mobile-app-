@@ -5,6 +5,22 @@ import type {
   Article, ArticleFilters, ArticlePagination,
 } from '@/types';
 
+export const UNAUTHORIZED_EVENT = 'menorah:unauthorized';
+
+const isPublicAuthFailure = (requestUrl: string) => new Set([
+  '/auth/login',
+  '/auth/google',
+  '/auth/apple',
+  '/auth/register',
+  '/auth/verify-email',
+  '/auth/verify-email-otp',
+  '/auth/verify-phone',
+  '/auth/resend-email-otp',
+  '/auth/resend-email-verification',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+]).has(requestUrl);
+
 class ApiClient {
   private client: AxiosInstance;
 
@@ -18,8 +34,17 @@ class ApiClient {
     this.client.interceptors.response.use(
       (res) => res,
       (error) => {
-        if (error.response?.status === 401) {
-          if (typeof window !== 'undefined') window.location.href = '/login';
+        const requestUrl = typeof error.config?.url === 'string' ? error.config.url : '';
+        // A failed credential, OAuth, OTP, or anonymous session probe is an
+        // expected page-level error. Authenticated endpoints such as social
+        // linking still terminate a definitively invalid session on 401.
+        const isExpectedAuthFailure = isPublicAuthFailure(requestUrl) || requestUrl === '/users/me';
+        if (
+          error.response?.status === 401
+          && !isExpectedAuthFailure
+          && typeof window !== 'undefined'
+        ) {
+          window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
         }
         return Promise.reject(error);
       }
@@ -75,10 +100,11 @@ class ApiClient {
 
   private handleError<T>(err: unknown, fallback: string): ApiResponse<T> {
     const e = err as { response?: { data?: ApiResponse<T>; status?: number } };
+    if (e.response?.data) return e.response.data;
     return {
       success: false,
-      message: e.response?.data?.message || fallback,
-      errors:  e.response?.data?.errors  || [],
+      message: fallback,
+      errors: [],
     };
   }
 
@@ -90,12 +116,31 @@ class ApiClient {
     return this.post<{ email: string }>('/auth/register', data);
   }
 
-  async login(email: string, password: string): Promise<ApiResponse<{ user: User }>> {
-    return this.post<{ user: User }>('/auth/login', { email, password, transport: 'cookie' });
+  async login(email: string, password: string): Promise<ApiResponse<{ user?: User; email?: string }>> {
+    return this.post<{ user?: User; email?: string }>('/auth/login', { email, password, transport: 'cookie' });
   }
 
-  async loginWithGoogle(credential: string): Promise<ApiResponse<{ user: User; isNewUser?: boolean }>> {
-    return this.post<{ user: User; isNewUser?: boolean }>('/auth/google', { credential, transport: 'cookie' });
+  async loginWithGoogle(
+    credential: string,
+    intent: 'signin' | 'signup'
+  ): Promise<ApiResponse<{ user?: User; isNewUser?: boolean; email?: string }>> {
+    return this.post<{ user?: User; isNewUser?: boolean; email?: string }>('/auth/google', {
+      credential,
+      intent,
+      transport: 'cookie',
+    });
+  }
+
+  async linkSocialProvider(
+    provider: 'google' | 'apple',
+    providerToken: string,
+    currentPassword: string
+  ): Promise<ApiResponse<{ user: User }>> {
+    return this.post<{ user: User }>('/auth/social/link', {
+      provider,
+      providerToken,
+      currentPassword,
+    });
   }
 
   async verifyEmail(email: string, code: string): Promise<ApiResponse<void>> {

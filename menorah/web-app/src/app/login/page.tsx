@@ -13,7 +13,7 @@ import styles from './page.module.css';
 
 const loginSchema = z.object({
   email:    z.string().email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: z.string().min(1, 'Enter your password'),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
@@ -38,11 +38,13 @@ export default function LoginPage() {
     try {
       setIsSubmitting(true);
       setError(null);
-      const success = await login(data.email, data.password);
-      if (success) {
+      const result = await login(data.email, data.password);
+      if (result.needsVerification) {
+        router.push(`/verify-email?email=${encodeURIComponent(result.email || data.email)}`);
+      } else if (result.success) {
         router.push('/dashboard');
       } else {
-        setError('Invalid email or password');
+        setError(result.message || 'Invalid email or password');
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -53,14 +55,8 @@ export default function LoginPage() {
 
   if (isLoading) {
     return (
-      <div className={styles.page} style={{ alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{
-          width: 40, height: 40,
-          border: '3px solid var(--color-primary)',
-          borderTopColor: 'transparent',
-          borderRadius: '50%',
-          animation: 'spin 0.7s linear infinite',
-        }} />
+      <div className={`${styles.page} ${styles.loadingPage}`}>
+        <div className={styles.loadingSpinner} />
       </div>
     );
   }
@@ -101,7 +97,7 @@ export default function LoginPage() {
 
       {/* Right form panel */}
       <div className={styles.formPanel}>
-        <div style={{ position: 'absolute', top: 20, right: 20, zIndex: 2 }}>
+        <div className={styles.themeToggle}>
           <ThemeToggle />
         </div>
         <Link href="/" className={styles.mobileLogo}>
