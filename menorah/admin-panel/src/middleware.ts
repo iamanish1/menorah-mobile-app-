@@ -31,8 +31,12 @@ function buildCsp(nonce: string) {
   return [
     "default-src 'self'",
     `script-src ${Array.from(new Set(scriptSrc)).join(' ')}`,
-    `style-src-elem 'self' 'nonce-${nonce}'`,
-    "font-src 'self' data:",
+    // Next.js and the UI libraries inject client-side style elements without a
+    // nonce. Keep script execution nonce-bound, while permitting only inline
+    // CSS required by the rendered application and the approved Inter source.
+    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src-attr 'unsafe-inline'",
+    "font-src 'self' data: https://fonts.gstatic.com",
     "img-src 'self' data: blob: https://res.cloudinary.com",
     "media-src 'self' blob: https://res.cloudinary.com",
     `connect-src ${Array.from(new Set(connectSrc)).join(' ')}`,
