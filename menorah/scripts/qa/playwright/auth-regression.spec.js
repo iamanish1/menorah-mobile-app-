@@ -8,21 +8,31 @@ const urls = {
 
 const cspViolationsByPage = new WeakMap();
 
-const assertStrictAuthCsp = (response, url) => {
+const assertAuthCsp = (response, url) => {
   expect(response, `expected an HTML response for ${url}`).not.toBeNull();
   const csp = response.headers()['content-security-policy'] || '';
+  const parsedUrl = new URL(url);
+  const isPatientPortal = parsedUrl.origin === urls.app;
+  const isGoogleAuthRoute = isPatientPortal && ['/login', '/register'].includes(parsedUrl.pathname);
 
-  // Auth pages are deliberately class-only. This makes a later broad CSP
-  // relaxation observable even when it would otherwise suppress a console
-  // violation.
+  if (isGoogleAuthRoute) {
+    // Google Identity Services injects its own stylesheet and writes iframe
+    // dimensions through style attributes. This is deliberately limited to
+    // the two routes that render the Google button.
+    expect(csp, `${url} must allow the GIS stylesheet`).toMatch(/style-src-elem(?=[^;]*'self')(?=[^;]*https:\/\/accounts\.google\.com\/gsi\/style)(?=[^;]*'unsafe-inline')[^;]+/);
+    expect(csp, `${url} must allow GIS iframe style attributes`).toMatch(/(?:^|;\s*)style-src-attr 'unsafe-inline'(?:;|$)/);
+    expect(csp, `${url} must allow GIS iframe and status endpoints`).toMatch(/(?:frame-src|connect-src)[^;]*https:\/\/accounts\.google\.com\/gsi\//);
+    return;
+  }
+
   expect(csp, `${url} must restrict stylesheet elements to self`).toMatch(/(?:^|;\s*)style-src-elem 'self'(?:;|$)/);
   expect(csp, `${url} must reject inline style attributes`).toMatch(/(?:^|;\s*)style-src-attr 'none'(?:;|$)/);
-  expect(csp, `${url} must not allow unsafe inline styles`).not.toMatch(/style-src(?:-elem|-attr)?[^;]*'unsafe-inline'/);
+  expect(csp, `${url} must not allow inline style elements`).not.toMatch(/style-src-elem[^;]*'unsafe-inline'/);
 };
 
 const gotoAuthPage = async (page, url) => {
   const response = await page.goto(url, { waitUntil: 'domcontentloaded' });
-  assertStrictAuthCsp(response, url);
+  assertAuthCsp(response, url);
   return response;
 };
 
@@ -54,9 +64,15 @@ const installGoogleStub = async (page) => {
             window.__qaGoogleCallback = options.callback;
           },
           renderButton(parent) {
+            const style = document.createElement('style');
+            style.id = 'googleidentityservice_button_styles';
+            style.textContent = '.qa-google-button { min-height: 40px; }';
+            document.head.appendChild(style);
+            parent.style.minHeight = '40px';
             const button = document.createElement('button');
             button.type = 'button';
             button.textContent = 'Continue with Google';
+            button.className = 'qa-google-button';
             button.setAttribute('aria-label', 'Continue with Google');
             button.addEventListener('click', () => {
               window.__qaGoogleCallback?.({ credential: 'QA_GOOGLE_CREDENTIAL' });
@@ -109,7 +125,7 @@ test.describe('authentication regressions', () => {
     await page.getByLabel(/^password$/i).fill('WrongPass1');
     await page.getByRole('button', { name: /^sign in$/i }).click();
 
-    await expect(page.getByRole('alert')).toContainText('Invalid email or password');
+    await expect(page.getByRole('alert').filter({ hasText: 'Invalid email or password' })).toContainText('Invalid email or password');
     await expect(page).toHaveURL(/\/login(\?|$)/);
     await page.waitForTimeout(750);
     expect(sessionProbes, 'login must make exactly one session probe').toBe(1);
@@ -141,7 +157,7 @@ test.describe('authentication regressions', () => {
     await gotoAuthPage(page, `${urls.app}/login`);
     await page.getByRole('button', { name: /continue with google/i }).click();
 
-    await expect(page.getByRole('alert')).toContainText('No account is linked to this Google sign-in.');
+    await expect(page.getByRole('alert').filter({ hasText: 'No account is linked to this Google sign-in.' })).toContainText('No account is linked to this Google sign-in.');
     await expect(page).toHaveURL(/\/login(\?|$)/);
     expect(socialIntent).toBe('signin');
     expect(sessionProbes, 'failed Google sign-in must not reload or probe again').toBe(1);

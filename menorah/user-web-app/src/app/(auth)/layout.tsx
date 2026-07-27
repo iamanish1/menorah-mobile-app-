@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import Image from 'next/image';
 import Link from 'next/link';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
@@ -32,7 +31,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="relative z-10 flex min-h-screen w-full flex-col justify-between p-12 xl:p-14">
           <Link href="/" className="flex w-fit items-center gap-3 rounded-2xl px-1 py-1 transition hover:bg-white/5">
             <span className="relative h-10 w-10 overflow-hidden rounded-2xl bg-white shadow-[0_12px_32px_-20px_rgba(255,255,255,0.7)]">
-              <Image src="/logo.png" alt="Menorah" fill sizes="40px" className="object-cover" priority />
+              <img src="/logo.png" alt="Menorah" width={40} height={40} className="h-full w-full object-cover" />
             </span>
             <span>
               <span className="block text-sm font-black leading-tight tracking-tight">Menorah Health</span>
@@ -67,7 +66,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
                   First-time users see friendly bubbles explaining Discover, Chat, Bookings, Articles, and Profile.
                 </p>
               </div>
-              <Image
+              <img
                 src="/menorah-product-phone.png"
                 alt="Menorah mobile app preview"
                 width={210}
@@ -92,7 +91,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="px-8 pt-7 lg:hidden">
           <Link href="/" className="inline-flex items-center gap-2">
             <span className="relative h-8 w-8 overflow-hidden rounded-2xl">
-              <Image src="/logo.png" alt="Menorah" fill sizes="32px" className="object-cover" priority />
+              <img src="/logo.png" alt="Menorah" width={32} height={32} className="h-full w-full object-cover" />
             </span>
             <span className="text-gray-950 dark:text-primary-50 font-bold text-sm">Menorah Health</span>
           </Link>

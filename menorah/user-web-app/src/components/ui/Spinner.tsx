@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 interface SpinnerProps { size?: 'sm' | 'md' | 'lg'; className?: string; }
@@ -34,12 +33,11 @@ export function Spinner({ size = 'md', className }: SpinnerProps) {
         className
       )}
     >
-      <Image
+      <img
         src="/menorah-loader-logo.png"
         alt=""
         width={900}
         height={835}
-        priority={size === 'lg'}
         className={cn('site-loader-logo h-auto object-contain', loaderSize.logo)}
         aria-hidden="true"
       />

@@ -113,7 +113,7 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-5">
+            <div role="alert" className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-5">
               {error}
             </div>
           )}
@@ -125,8 +125,9 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
+              <label htmlFor="admin-email" className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
               <input
+                id="admin-email"
                 type="email"
                 autoComplete="email"
                 value={email}
@@ -138,9 +139,10 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+              <label htmlFor="admin-password" className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
               <div className="relative">
                 <input
+                  id="admin-password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   value={password}
@@ -152,6 +154,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -161,8 +164,9 @@ export default function LoginPage() {
 
             {challengeId && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Verification code</label>
+                <label htmlFor="admin-verification-code" className="block text-sm font-medium text-gray-700 mb-1.5">Verification code</label>
                 <input
+                  id="admin-verification-code"
                   type="text"
                   inputMode="numeric"
                   autoComplete="one-time-code"
