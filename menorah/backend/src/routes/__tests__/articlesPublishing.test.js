@@ -82,7 +82,7 @@ jest.mock('../../services/articleGenerationService', () => ({
 }));
 
 jest.mock('../../services/articleCanonicalUrl', () => ({
-  buildArticleCanonicalUrl: (slug) => `https://www.menorah.me/articles/${slug}`
+  buildArticleCanonicalUrl: (slug) => `https://menorah.me/articles/${slug}`
 }));
 
 const Article = require('../../models/Article');
@@ -143,7 +143,7 @@ describe('article publish pipeline', () => {
 
     expect(published.body.data.article.status).toBe('published');
     expect(published.body.data.article.canonicalUrl).toBe(
-      'https://www.menorah.me/articles/editor-approved-article'
+      'https://menorah.me/articles/editor-approved-article'
     );
     expect(mockArticleState.reviewedByHuman).toBe(true);
 
@@ -154,7 +154,7 @@ describe('article publish pipeline', () => {
     expect(publicRead.headers['cache-control']).toContain('no-store');
     expect(publicRead.body.data.article.status).toBe('published');
     expect(publicRead.body.data.article.canonicalUrl).toBe(
-      'https://www.menorah.me/articles/editor-approved-article'
+      'https://menorah.me/articles/editor-approved-article'
     );
   });
 

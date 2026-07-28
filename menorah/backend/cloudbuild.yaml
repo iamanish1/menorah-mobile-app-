@@ -40,7 +40,7 @@ substitutions:
   _NEXT_PUBLIC_JITSI_DOMAIN: meet.jit.si
   _NEXT_PUBLIC_WEB_BASE_URL: https://www.menorah.me
   _PUBLIC_WEB_BASE_URL: https://www.menorah.me
-  _ARTICLE_CANONICAL_BASE_URL: https://www.menorah.me
+  _ARTICLE_CANONICAL_BASE_URL: https://menorah.me
   _CONTACT_TO_EMAIL: menorahenquiries@gmail.com
   _MONGO_DATABASE: menorah
 

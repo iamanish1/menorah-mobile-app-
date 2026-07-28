@@ -156,6 +156,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
             {
               scheme: 'https',
               host: 'menorah.me',
+              pathPrefix: '/articles',
+            },
+            {
+              scheme: 'https',
+              host: 'menorah.me',
               pathPrefix: '/reset-password',
             },
             {
@@ -212,7 +217,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // is canonical on the public landing site.
       ARTICLE_CANONICAL_BASE_URL: configuredArticleCanonicalBaseUrl
         ? configuredArticleCanonicalBaseUrl.replace(/\/+$/, '')
-        : 'https://www.menorah.me',
+        : 'https://menorah.me',
 
       // Checkout Return URL
       CHECKOUT_RETURN_URL: process.env.EXPO_PUBLIC_CHECKOUT_RETURN_URL?.trim()

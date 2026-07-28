@@ -1,6 +1,6 @@
 import type { Article } from '@/types';
 
-const FALLBACK_ARTICLE_CANONICAL_BASE_URL = 'https://www.menorah.me';
+const FALLBACK_ARTICLE_CANONICAL_BASE_URL = 'https://menorah.me';
 
 /**
  * Every reader surface consumes the public articles endpoint. Retain a small

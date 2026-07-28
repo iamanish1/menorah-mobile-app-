@@ -32,7 +32,7 @@ jest.mock('../../services/articleGenerationService', () => ({
 }));
 
 jest.mock('../../services/articleCanonicalUrl', () => ({
-  buildArticleCanonicalUrl: (slug) => `https://www.menorah.me/articles/${slug}`
+  buildArticleCanonicalUrl: (slug) => `https://menorah.me/articles/${slug}`
 }));
 
 const articlesRouter = require('../articles');
@@ -80,7 +80,7 @@ describe('manual article creation', () => {
       status: 'draft',
       generatedByAi: false,
       reviewedByHuman: false,
-      canonicalUrl: 'https://www.menorah.me/articles/restored-article',
+      canonicalUrl: 'https://menorah.me/articles/restored-article',
       wordCount: 42,
       contentBlocks: [{
         type: 'paragraph',
@@ -93,7 +93,7 @@ describe('manual article creation', () => {
       }]
     }));
     expect(response.body.data.article.status).toBe('draft');
-    expect(response.body.data.article.canonicalUrl).toBe('https://www.menorah.me/articles/restored-article');
+    expect(response.body.data.article.canonicalUrl).toBe('https://menorah.me/articles/restored-article');
   });
 
   test('rejects an empty structured body before writing an article', async () => {

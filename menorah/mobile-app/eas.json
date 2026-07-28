@@ -13,7 +13,7 @@
       },
       "env": {
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
-        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
@@ -23,7 +23,7 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
-        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
@@ -36,7 +36,7 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
-        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "873291355021-soma7nima003rvq9usj8fqj0t9kbjm6a.apps.googleusercontent.com",
@@ -51,7 +51,7 @@
       },
       "env": {
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
-        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
@@ -61,7 +61,7 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
-        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
@@ -74,7 +74,7 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
-        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "873291355021-soma7nima003rvq9usj8fqj0t9kbjm6a.apps.googleusercontent.com",
@@ -89,7 +89,7 @@
       },
       "env": {
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
-        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
@@ -99,7 +99,7 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
-        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
@@ -112,7 +112,7 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
-        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "873291355021-soma7nima003rvq9usj8fqj0t9kbjm6a.apps.googleusercontent.com",

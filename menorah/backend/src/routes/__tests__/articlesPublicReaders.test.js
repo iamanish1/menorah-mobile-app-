@@ -11,7 +11,7 @@ jest.mock('../../models/Article', () => ({
 }));
 
 jest.mock('../../services/articleCanonicalUrl', () => ({
-  buildArticleCanonicalUrl: (slug) => `https://www.menorah.me/articles/${slug}`
+  buildArticleCanonicalUrl: (slug) => `https://menorah.me/articles/${slug}`
 }));
 
 const publicArticlesRouter = require('../articles-public');
@@ -48,6 +48,6 @@ describe('public article reader contract', () => {
       slug: 'restored-article',
       status: 'published'
     });
-    expect(response.body.data.article.canonicalUrl).toBe('https://www.menorah.me/articles/restored-article');
+    expect(response.body.data.article.canonicalUrl).toBe('https://menorah.me/articles/restored-article');
   });
 });

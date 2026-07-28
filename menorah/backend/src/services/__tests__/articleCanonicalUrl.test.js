@@ -36,7 +36,7 @@ describe('article canonical URL contract', () => {
     process.env.PUBLIC_WEB_BASE_URL = 'https://api.example.com';
 
     expect(buildArticleCanonicalUrl('stress / support')).toBe(
-      'https://www.menorah.me/articles/stress%20%2F%20support'
+      'https://menorah.me/articles/stress%20%2F%20support'
     );
   });
 

@@ -1,4 +1,4 @@
-const DEFAULT_ARTICLE_CANONICAL_BASE_URL = 'https://www.menorah.me';
+const DEFAULT_ARTICLE_CANONICAL_BASE_URL = 'https://menorah.me';
 
 const normalizeBaseUrl = (value) => {
   const rawValue = String(value || '').trim();

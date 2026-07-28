@@ -18,7 +18,7 @@ x-backend-env: &backend-env
   CALLS_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
   # The public landing page owns canonical article HTML. Do not use the API
   # media origin (PUBLIC_WEB_BASE_URL) for this value.
-  ARTICLE_CANONICAL_BASE_URL: ${ARTICLE_CANONICAL_BASE_URL:-https://${WWW_DOMAIN:-www.menorah.me}}
+  ARTICLE_CANONICAL_BASE_URL: ${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}
   LIVEKIT_UPSTREAM: ${LIVEKIT_UPSTREAM:-}
   LIVEKIT_URL: ${LIVEKIT_URL:-wss://calls.menorah.me}
   LIVEKIT_API_URL: ${LIVEKIT_API_URL:-https://calls.menorah.me}
@@ -207,7 +207,7 @@ services:
         NEXT_PUBLIC_WEB_BASE_URL: "https://${WWW_DOMAIN:-www.menorah.me}"
         NEXT_PUBLIC_SITE_URL: "https://${WWW_DOMAIN:-www.menorah.me}"
         PUBLIC_WEB_BASE_URL: "https://${WWW_DOMAIN:-www.menorah.me}"
-        ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${WWW_DOMAIN:-www.menorah.me}}"
+        ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
         MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
     restart: unless-stopped
     environment:
@@ -222,7 +222,7 @@ services:
       NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
       NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
-      ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${WWW_DOMAIN:-www.menorah.me}}"
+      ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
     ports:
       - "${LANDING_LOCAL_PORT:-127.0.0.1:18085}:3002"
     networks:
@@ -246,7 +246,7 @@ services:
         NEXT_PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:-app.menorah.me}"
         NEXT_PUBLIC_SITE_URL: "https://${APP_DOMAIN:-app.menorah.me}"
         PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:-app.menorah.me}"
-        ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${WWW_DOMAIN:-www.menorah.me}}"
+        ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
         MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
     restart: unless-stopped
     environment:
@@ -261,7 +261,7 @@ services:
       NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
       NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
-      ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${WWW_DOMAIN:-www.menorah.me}}"
+      ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
       # Independent HMAC secret for the HttpOnly Razorpay callback relay. This
       # must not reuse the backend JWT or Razorpay signing secrets.
       CHECKOUT_CALLBACK_SECRET: ${CHECKOUT_CALLBACK_SECRET:?CHECKOUT_CALLBACK_SECRET is required}
@@ -283,7 +283,7 @@ services:
         NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
         NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
         NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
-        NEXT_PUBLIC_ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${WWW_DOMAIN:-www.menorah.me}}"
+        NEXT_PUBLIC_ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
     restart: unless-stopped
     environment:
       PORT: "3001"
@@ -291,7 +291,7 @@ services:
       NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
       NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
       NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
-      NEXT_PUBLIC_ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${WWW_DOMAIN:-www.menorah.me}}"
+      NEXT_PUBLIC_ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
     ports:
       - "${WEB_APP_LOCAL_PORT:-127.0.0.1:18086}:3001"
     networks:

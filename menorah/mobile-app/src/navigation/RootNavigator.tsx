@@ -66,8 +66,10 @@ export default function RootNavigator() {
       `${ARTICLE_CANONICAL_BASE_URL}/`,
       ENV.API_ORIGIN,
       `${ENV.API_ORIGIN}/`,
-      'https://menorah.me',
-      'https://menorah.me/',
+      // Legacy article links use the former public hostname. Keep them
+      // routable in native clients while new links use the apex canonical URL.
+      'https://www.menorah.me',
+      'https://www.menorah.me/',
     ],
     config: {
       screens: {

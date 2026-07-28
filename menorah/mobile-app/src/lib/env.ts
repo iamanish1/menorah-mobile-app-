@@ -51,7 +51,7 @@ const normalizeBaseURL = (url?: string) => {
 
 const buildAPIBaseURL = () => normalizeBaseURL(configBaseURL);
 const buildWebBaseURL = () => (configWebBaseURL ?? 'https://app.menorah.me').trim().replace(/\/+$/, '');
-const buildArticleCanonicalBaseURL = () => (configArticleCanonicalBaseURL ?? 'https://www.menorah.me').trim().replace(/\/+$/, '');
+const buildArticleCanonicalBaseURL = () => (configArticleCanonicalBaseURL ?? 'https://menorah.me').trim().replace(/\/+$/, '');
 
 const deriveAPIOrigin = (baseUrl: string) => {
   try {

@@ -1,5 +1,5 @@
 const FALLBACK_PUBLIC_WEB_BASE_URL = "https://app.menorah.me";
-const FALLBACK_ARTICLE_CANONICAL_BASE_URL = "https://www.menorah.me";
+const FALLBACK_ARTICLE_CANONICAL_BASE_URL = "https://menorah.me";
 
 export const SITE_NAME = "Menorah Health";
 export const EDITORIAL_REVIEWER_NAME = "Menorah Editorial Team";
