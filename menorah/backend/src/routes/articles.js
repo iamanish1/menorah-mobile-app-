@@ -12,6 +12,7 @@ const {
   normalizeTags,
   startGenerationRun
 } = require('../services/articleGenerationService');
+const { buildArticleCanonicalUrl } = require('../services/articleCanonicalUrl');
 
 const router = express.Router();
 
@@ -24,12 +25,9 @@ const EDITABLE_FIELDS = [
   'contentBlocks',
   'seoTitle',
   'seoDescription',
-  'canonicalUrl',
   'coverImageUrl',
   'coverImagePublicId',
-  'imagePrompt',
-  'status',
-  'rejectionReason'
+  'imagePrompt'
 ];
 
 const formatArticle = (article) => {
@@ -42,7 +40,11 @@ const formatArticle = (article) => {
   return {
     ...plain,
     id: plain._id?.toString(),
-    _id: plain._id?.toString()
+    _id: plain._id?.toString(),
+    // Canonicals are derived from the stable slug and the landing origin, not
+    // from an editable database value. This also repairs older records whose
+    // stored URL used an API origin.
+    canonicalUrl: buildArticleCanonicalUrl(plain.slug)
   };
 };
 
@@ -68,25 +70,6 @@ const buildArticleFilter = ({ status, q, runId }) => {
   }
 
   return filter;
-};
-
-const updateReviewMetadata = (updates, userId) => {
-  if (updates.status === 'published') {
-    updates.reviewedByHuman = true;
-    updates.reviewedBy = userId;
-    updates.reviewedAt = new Date();
-    updates.publishedAt = new Date();
-    updates.rejectionReason = '';
-    updates.rejectedAt = null;
-  }
-
-  if (updates.status === 'rejected') {
-    updates.reviewedByHuman = true;
-    updates.reviewedBy = userId;
-    updates.reviewedAt = new Date();
-    updates.rejectedAt = new Date();
-    updates.publishedAt = null;
-  }
 };
 
 const articleInputValidators = [
@@ -374,8 +357,10 @@ router.patch('/admin/:id', adminAuth, [
   body('tags').optional().isArray(),
   body('contentBlocks').optional().isArray(),
   body('coverImageUrl').optional().isString().trim().isLength({ max: 1000 }),
-  body('status').optional().isIn(['draft', 'review', 'published', 'archived', 'rejected']),
-  body('rejectionReason').optional().isString().trim().isLength({ max: 500 })
+  body('coverImagePublicId').optional().isString().trim().isLength({ max: 250 }),
+  body('imagePrompt').optional().isString().trim().isLength({ max: 1000 }),
+  body('seoTitle').optional().isString().trim().isLength({ max: 200 }),
+  body('seoDescription').optional().isString().trim().isLength({ max: 500 })
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -397,8 +382,6 @@ router.patch('/admin/:id', adminAuth, [
     if (updates.contentBlocks) {
       updates.wordCount = countArticleWords({ contentBlocks: updates.contentBlocks });
     }
-
-    updateReviewMetadata(updates, req.user._id);
 
     const article = await Article.findByIdAndUpdate(req.params.id, updates, {
       new: true,
@@ -429,6 +412,12 @@ router.post('/admin/:id/publish', adminAuth, [
       return validationErrorResponse(res, errors.array());
     }
 
+    const existingArticle = await Article.findById(req.params.id).select('slug').lean();
+
+    if (!existingArticle) {
+      return res.status(404).json({ success: false, message: 'Article not found' });
+    }
+
     const article = await Article.findByIdAndUpdate(req.params.id, {
       status: 'published',
       reviewedByHuman: true,
@@ -436,7 +425,8 @@ router.post('/admin/:id/publish', adminAuth, [
       reviewedAt: new Date(),
       publishedAt: new Date(),
       rejectionReason: '',
-      rejectedAt: null
+      rejectedAt: null,
+      canonicalUrl: buildArticleCanonicalUrl(existingArticle.slug)
     }, {
       new: true,
       runValidators: true

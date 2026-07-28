@@ -138,7 +138,11 @@ describe('social authentication contracts', () => {
       .send({ credential: 'g'.repeat(32), intent: 'signin' })
       .expect(404);
 
-    expect(res.body).toMatchObject({ success: false, code: 'ACCOUNT_NOT_FOUND' });
+    expect(res.body).toMatchObject({
+      success: false,
+      code: 'ACCOUNT_NOT_FOUND',
+      data: { nextIntent: 'signup' },
+    });
     expect(mockCreate).not.toHaveBeenCalled();
   });
 

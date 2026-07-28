@@ -14,7 +14,7 @@ const { serializeAuthUser, serializeUserProfile } = require('../serializers/user
 const { emailNormalizationOptions, normalizeEmail } = require('../utils/emailNormalization');
 const { passwordValidator } = require('../utils/passwordPolicy');
 const { consumeOtp, replaceOtp } = require('../utils/redisOtp');
-const { buildPasswordResetUrl } = require('../utils/passwordResetUrl');
+const { buildPasswordResetUrl, issuePasswordResetToken } = require('../utils/passwordResetUrl');
 const {
   clearMappedSessionCookie,
   isCookieTransportRequested,
@@ -248,6 +248,7 @@ const findOrCreateSocialUser = async ({
     const error = new Error('Social sign-in account was not found');
     error.statusCode = 404;
     error.code = 'ACCOUNT_NOT_FOUND';
+    error.data = { nextIntent: 'signup' };
     error.publicMessage = 'No Menorah account is linked to this social identity. Choose sign up to create one.';
     throw error;
   }
@@ -919,10 +920,7 @@ router.post('/forgot-password', [
     const { email } = req.body;
     const user = await User.findOne({ email });
     if (user) {
-      const resetToken  = crypto.randomBytes(32).toString('hex');
-      const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-      user.passwordResetToken   = hashedToken;
-      user.passwordResetExpires = Date.now() + 10 * 60 * 1000;
+      const resetToken = issuePasswordResetToken(user);
       await user.save();
       await sendPasswordResetEmail(user.email, resetToken).catch(() => {});
     }

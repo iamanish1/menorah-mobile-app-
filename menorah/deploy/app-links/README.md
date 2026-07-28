@@ -6,8 +6,9 @@ The production reverse proxy exposes the two platform association files from the
 - `/.well-known/apple-app-site-association` for iOS Universal Links.
 - `/.well-known/assetlinks.json` for Android App Links.
 
-They are served on `app.menorah.me`, `menorah.me`, `api-ios.menorah.me`, and
-`api-android.menorah.me`, matching the domains declared by the mobile app.
+They are served on `www.menorah.me`, `app.menorah.me`, `menorah.me`,
+`api-ios.menorah.me`, and `api-android.menorah.me`, matching the domains
+declared by the mobile app.
 The service returns `404` (rather than placeholder or malformed JSON) until
 the signing identifiers below are supplied in the host-only production env
 file:
@@ -25,15 +26,22 @@ Multiple Android certificates (for example upload and Play signing) are
 comma-separated. These identifiers are public verification metadata, but they
 must be accurate; do not substitute placeholders in the live env file.
 
-After deployment, verify the public HTTPS responses before shipping a mobile
+The four values above are a mobile-release prerequisite, not optional metadata.
+After deployment, run this from the repository root before shipping a mobile
 binary:
 
 ```bash
-curl --fail --show-error https://app.menorah.me/.well-known/apple-app-site-association
-curl --fail --show-error https://app.menorah.me/.well-known/assetlinks.json
+CHECK_PUBLIC=true CHECK_NATIVE_APP_LINKS=true bash deploy/ubuntu/health-check.sh
 ```
 
-The reset-link paths allowed by the AASA document are `/reset-password` and
-the legacy `/api/auth/reset-password` path. Android verifies the package and
-certificate only; its intent-filter path restrictions remain in the app
-manifest.
+The check requires the configured Apple/Android signing identifiers and tests
+each host declared by the native builds. It intentionally does not follow
+redirects, so `www.menorah.me` must return both files directly with `200`
+`application/json`; a `www`-to-apex redirect breaks Apple and Android
+verification. Configure the required Cloudflare redirect exception in
+[`../cloudflare/README.md`](../cloudflare/README.md) before running it.
+
+The AASA document allows `/articles` and `/articles/*` from the canonical
+landing page, in addition to `/reset-password` and the legacy
+`/api/auth/reset-password` path. Android verifies the package and certificate
+only; its intent-filter path restrictions remain in the app manifest.

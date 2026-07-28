@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getArticles, type Article } from "@/lib/articles";
-import { getPublicWebUrl } from "@/lib/site";
+import { getArticleCanonicalUrl, getPublicWebUrl } from "@/lib/site";
 
 export const revalidate = 3600;
 
@@ -21,13 +21,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     ...STATIC_ROUTES.map((route) => ({
-      url: getPublicWebUrl(route.path),
+      url: route.path === "/articles" ? getArticleCanonicalUrl("") : getPublicWebUrl(route.path),
       lastModified: now,
       changeFrequency: route.changeFrequency,
       priority: route.priority
     })),
     ...articles.map((article) => ({
-      url: getPublicWebUrl(`/articles/${article.slug}`),
+      url: getArticleCanonicalUrl(article.slug),
       lastModified: getArticleLastModified(article),
       changeFrequency: "monthly" as const,
       priority: 0.8

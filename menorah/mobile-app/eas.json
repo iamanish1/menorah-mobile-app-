@@ -13,8 +13,9 @@
       },
       "env": {
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
     },
     "development-ios": {
@@ -22,8 +23,9 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
     },
     "development-android": {
@@ -34,8 +36,9 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return",
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "873291355021-soma7nima003rvq9usj8fqj0t9kbjm6a.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "873291355021-bi43pprpqlks9hvpjdto7kt0ekcbefr8.apps.googleusercontent.com"
       }
@@ -48,8 +51,9 @@
       },
       "env": {
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
     },
     "preview-ios": {
@@ -57,8 +61,9 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
     },
     "preview-android": {
@@ -69,8 +74,9 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return",
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "873291355021-soma7nima003rvq9usj8fqj0t9kbjm6a.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "873291355021-bi43pprpqlks9hvpjdto7kt0ekcbefr8.apps.googleusercontent.com"
       }
@@ -83,8 +89,9 @@
       },
       "env": {
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
     },
     "production-ios": {
@@ -92,8 +99,9 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-ios.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback"
       }
     },
     "production-android": {
@@ -104,8 +112,9 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-android.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
+        "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://www.menorah.me",
         "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
-        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return",
+        "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/callback",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "873291355021-soma7nima003rvq9usj8fqj0t9kbjm6a.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "873291355021-bi43pprpqlks9hvpjdto7kt0ekcbefr8.apps.googleusercontent.com"
       }

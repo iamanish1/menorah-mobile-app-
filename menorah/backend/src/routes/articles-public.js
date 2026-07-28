@@ -1,6 +1,7 @@
 const express = require('express');
 const { param, query, validationResult } = require('express-validator');
 const Article = require('../models/Article');
+const { buildArticleCanonicalUrl } = require('../services/articleCanonicalUrl');
 
 const router = express.Router();
 
@@ -16,7 +17,10 @@ const formatArticle = (article) => {
   return {
     ...plain,
     id: plain._id?.toString(),
-    _id: plain._id?.toString()
+    _id: plain._id?.toString(),
+    // Do not expose a stale API-origin URL saved by an earlier version of the
+    // pipeline. The landing origin plus immutable slug is the canonical URL.
+    canonicalUrl: buildArticleCanonicalUrl(plain.slug)
   };
 };
 

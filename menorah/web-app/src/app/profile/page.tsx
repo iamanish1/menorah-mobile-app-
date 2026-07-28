@@ -286,7 +286,7 @@ function OptionTagPicker({
 function RateEditor({ currentRate, currency, onSave }: {
   currentRate: number;
   currency: string;
-  onSave: (rate: number) => Promise<void>;
+  onSave: (rate: number) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
   const [rate, setRate] = useState(currentRate);
@@ -300,9 +300,12 @@ function RateEditor({ currentRate, currency, onSave }: {
   const handleSave = async () => {
     if (rate <= 0) return;
     setSaving(true);
-    await onSave(rate);
-    setSaving(false);
-    setEditing(false);
+    try {
+      const saved = await onSave(rate);
+      if (saved) setEditing(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -382,9 +385,7 @@ export default function ProfilePage() {
     specialization: '',
     specializations: [] as string[],
     experience: 0,
-    hourlyRate: 0,
     bio: '',
-    licenseNumber: '',
     languages: [] as string[],
     availability: {} as Record<Day, AvailabilityDay>,
   });
@@ -696,9 +697,7 @@ export default function ProfilePage() {
       specialization: specializations[0] ?? cp?.specialization ?? '',
       specializations,
       experience: cp?.yearsOfExperience ?? 0,
-      hourlyRate: cp?.hourlyRate ?? 0,
       bio: cp?.bio ?? '',
-      licenseNumber: cp?.licenseNumber ?? '',
       languages: cp?.languages ? [...cp.languages] : [],
       availability: avail,
     });
@@ -725,9 +724,7 @@ export default function ProfilePage() {
       specialization: specializations[0],
       specializations,
       experience: profForm.experience,
-      hourlyRate: profForm.hourlyRate,
       bio: profForm.bio,
-      licenseNumber: profForm.licenseNumber,
       languages,
       availability: profForm.availability,
     });
@@ -1171,24 +1168,6 @@ export default function ProfilePage() {
                       onChange={(e) => setProfForm((p) => ({ ...p, experience: Number(e.target.value) }))}
                     />
                   </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>Hourly Rate (INR)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      className={styles.formInput}
-                      value={profForm.hourlyRate}
-                      onChange={(e) => setProfForm((p) => ({ ...p, hourlyRate: Number(e.target.value) }))}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>License Number</label>
-                    <input
-                      className={styles.formInput}
-                      value={profForm.licenseNumber}
-                      onChange={(e) => setProfForm((p) => ({ ...p, licenseNumber: e.target.value }))}
-                    />
-                  </div>
                 </div>
 
                 <div className={styles.formGroup} style={{ marginTop: 'var(--spacing-lg)' }}>
@@ -1283,12 +1262,6 @@ export default function ProfilePage() {
                       <p className={styles.infoValue}>{cp.yearsOfExperience} years</p>
                     </div>
                   )}
-                  {cp?.hourlyRate !== undefined && (
-                    <div className={styles.infoItem}>
-                      <p className={styles.infoLabel}>Hourly Rate</p>
-                      <p className={styles.infoValue}>{cp.currency || 'INR'} {cp.hourlyRate}</p>
-                    </div>
-                  )}
                   {cp?.licenseNumber && (
                     <div className={styles.infoItem}>
                       <p className={styles.infoLabel}>License Number</p>
@@ -1352,8 +1325,10 @@ export default function ProfilePage() {
                 if (res.success) {
                   await fetchProfile();
                   showSuccess('Hourly rate updated.');
+                  return true;
                 } else {
                   setError(res.message || 'Failed to update rate');
+                  return false;
                 }
               }}
             />

@@ -105,6 +105,7 @@ export default function Login({ navigation }: any) {
 
         <SocialAuthButtons
           mode="signin"
+          onSignUpRequired={() => navigation.replace('Register', { socialAccountNotFound: true })}
           onSuccess={(result) => {
             if (result.needsVerification) {
               navigation.navigate('Verify', {

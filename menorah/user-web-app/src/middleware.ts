@@ -120,6 +120,13 @@ export function middleware(request: NextRequest) {
     return noStore(response);
   }
 
+  if (pathname === '/checkout/callback' || pathname.startsWith('/checkout/return')) {
+    // Payment proof is held in a short-lived HttpOnly cookie while this flow
+    // runs. Do not retain a referring URL or cache either relay endpoint.
+    response.headers.set('Referrer-Policy', 'no-referrer');
+    return noStore(response);
+  }
+
   return response;
 }
 

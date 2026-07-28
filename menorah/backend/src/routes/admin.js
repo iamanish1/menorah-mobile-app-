@@ -19,9 +19,10 @@ const {
   providerDisplayName,
   resolveCallPolicy
 } = require('../services/callPolicyService');
-const { sendCounsellorApprovalEmail } = require('../utils/email');
+const { sendCounsellorCredentialsEmail } = require('../utils/email');
 const { revokeAllSessions, disconnectUserSockets } = require('../utils/sessionLifecycle');
 const { normalizeEmail } = require('../utils/emailNormalization');
+const { issuePasswordResetToken } = require('../utils/passwordResetUrl');
 
 const router = express.Router();
 
@@ -80,7 +81,12 @@ const generateSecurePassword = () => {
   for (let i = 4; i < 12; i++) {
     password += all[crypto.randomInt(all.length)];
   }
-  return password.split('').sort(() => Math.random() - 0.5).join('');
+  const characters = password.split('');
+  for (let index = characters.length - 1; index > 0; index--) {
+    const swapIndex = crypto.randomInt(index + 1);
+    [characters[index], characters[swapIndex]] = [characters[swapIndex], characters[index]];
+  }
+  return characters.join('');
 };
 
 const dateRanges = () => {
@@ -955,6 +961,10 @@ router.put('/counsellors/:id/approve', [
         isPhoneVerified: true,
         profileCompleted: true,
       });
+      // A new counsellor receives a temporary password plus a separately
+      // revocable, short-lived reset link. Store only the token hash with the
+      // account before committing the approval transaction.
+      const resetToken = issuePasswordResetToken(user);
       await user.save({ session });
 
       const counsellor = new Counsellor({
@@ -980,7 +990,7 @@ router.put('/counsellors/:id/approve', [
       });
       await counsellor.save({ session });
       await PendingApplication.deleteOne({ _id: application._id }, { session });
-      result = { kind: 'approved', application, user, counsellor, plainPassword };
+      result = { kind: 'approved', application, user, counsellor, plainPassword, resetToken };
     });
 
     if (result?.kind === 'not_pending') {
@@ -1001,12 +1011,14 @@ router.put('/counsellors/:id/approve', [
       return res.status(404).json({ success: false, message: 'Application not found' });
     }
 
-    const { user, counsellor, plainPassword } = result;
+    const { user, counsellor, plainPassword, resetToken } = result;
 
-    const credentialEmailSent = await sendCounsellorApprovalEmail({
+    const credentialEmailSent = await sendCounsellorCredentialsEmail({
       email: user.email,
       name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-      password: plainPassword
+      password: plainPassword,
+      resetToken,
+      kind: 'onboarding',
     }).catch((error) => {
       console.error('Counsellor approval credential email error:', error.message);
       return false;
@@ -1015,8 +1027,8 @@ router.put('/counsellors/:id/approve', [
     res.json({
       success: true,
       message: credentialEmailSent
-        ? 'Counsellor approved. Credentials were emailed to the counsellor.'
-        : 'Counsellor approved, but the credential email was not sent. Generate a password reset before sharing access.',
+        ? 'Counsellor approved. A temporary password and secure reset link were emailed to the counsellor.'
+        : 'Counsellor approved, but the credential email was not sent. Generate a new password to email a fresh secure access link.',
       data: {
         counsellorId: counsellor._id,
         status: 'approved',
@@ -1081,7 +1093,8 @@ router.put('/counsellors/:id/reject', [
 });
 
 // POST /api/admin/counsellors/:id/generate-password
-// Generates a new password for the counsellor and activates their account. Returns the plain-text password once.
+// Generates a new password, invalidates existing sessions, and emails the
+// counsellor the temporary password plus a secure, short-lived reset link.
 router.post('/counsellors/:id/generate-password', [
   param('id').isMongoId().withMessage('Invalid counsellor ID')
 ], async (req, res) => {
@@ -1095,7 +1108,9 @@ router.post('/counsellors/:id/generate-password', [
 
     const plainPassword = generateSecurePassword();
     const user = await User.findById(counsellor.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'Counsellor user account not found' });
     user.password = plainPassword;
+    const resetToken = issuePasswordResetToken(user);
     user.isActive = true;
     revokeAllSessions(user, { passwordChanged: true });
     counsellor.isActive = true;
@@ -1106,14 +1121,28 @@ router.post('/counsellors/:id/generate-password', [
     res.locals.securitySessionRevoked = user;
     res.locals.securitySessionRevocationAction = 'password_generated';
 
+    const credentialEmailSent = await sendCounsellorCredentialsEmail({
+      email: user.email,
+      name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      password: plainPassword,
+      resetToken,
+      kind: 'password_reset',
+    }).catch((error) => {
+      console.error('Counsellor password reset credential email error:', error.message);
+      return false;
+    });
+
     res.json({
       success: true,
-      message: 'Credentials generated. Share these with the counsellor — the password will not be shown again.',
+      message: credentialEmailSent
+        ? 'The new temporary password and secure reset link were emailed to the counsellor.'
+        : 'The password was reset, but the email could not be sent. Generate a new password to send a fresh secure access link.',
       data: {
         username: user.email,
-        password: plainPassword,
         counsellorId: counsellor._id,
-        userId: user._id
+        userId: user._id,
+        credentialEmailSent,
+        credentialEmailRecipient: user.email,
       }
     });
   } catch (error) {

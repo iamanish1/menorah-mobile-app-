@@ -42,6 +42,7 @@ import ArticleDetail from '@/screens/articles/ArticleDetail';
 
 const Stack = createNativeStackNavigator();
 const PUBLIC_WEB_BASE_URL = ENV.WEB_BASE_URL.replace(/\/+$/, '');
+const ARTICLE_CANONICAL_BASE_URL = ENV.ARTICLE_CANONICAL_BASE_URL.replace(/\/+$/, '');
 
 export default function RootNavigator() {
   const {
@@ -61,6 +62,8 @@ export default function RootNavigator() {
       'exp+menorah-health-app://',
       PUBLIC_WEB_BASE_URL,
       `${PUBLIC_WEB_BASE_URL}/`,
+      ARTICLE_CANONICAL_BASE_URL,
+      `${ARTICLE_CANONICAL_BASE_URL}/`,
       ENV.API_ORIGIN,
       `${ENV.API_ORIGIN}/`,
       'https://menorah.me',
@@ -72,6 +75,11 @@ export default function RootNavigator() {
           path: 'reset-password',
           alias: ['api/auth/reset-password'],
         },
+        // Published articles are public educational content. Keeping these
+        // routes outside the authenticated branch lets a canonical landing
+        // link open directly in the app for both new and signed-in readers.
+        ArticleList: 'articles',
+        ArticleDetail: 'articles/:slug',
         ...(isAuthed && !requiresProfileCompletion ? {
           Tabs: {
             screens: {
@@ -81,8 +89,6 @@ export default function RootNavigator() {
               Profile: 'profile',
             },
           },
-          ArticleList: 'articles',
-          ArticleDetail: 'articles/:slug',
         } : {}),
       },
     },
@@ -143,9 +149,15 @@ export default function RootNavigator() {
             <Stack.Screen name="Forgot" component={Forgot} />
             <Stack.Screen name="ResetPassword" component={ResetPassword} />
             <Stack.Screen name="Verify" component={Verify} />
+            <Stack.Screen name="ArticleList" component={ArticleList} />
+            <Stack.Screen name="ArticleDetail" component={ArticleDetail} />
           </>
         ) : requiresProfileCompletion ? (
-          <Stack.Screen name="EditProfile" component={EditProfile} />
+          <>
+            <Stack.Screen name="EditProfile" component={EditProfile} />
+            <Stack.Screen name="ArticleList" component={ArticleList} />
+            <Stack.Screen name="ArticleDetail" component={ArticleDetail} />
+          </>
         ) : (
           <>
             <Stack.Screen name="Tabs" component={TabNavigator} />

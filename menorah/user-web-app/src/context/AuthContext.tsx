@@ -9,7 +9,7 @@ interface AuthContextValue {
   isAuthed: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string; needsVerification?: boolean }>;
-  loginWithGoogle: (credential: string, intent: 'signin' | 'signup') => Promise<{ success: boolean; message?: string; isNewUser?: boolean; needsVerification?: boolean }>;
+  loginWithGoogle: (credential: string, intent: 'signin' | 'signup') => Promise<{ success: boolean; message?: string; isNewUser?: boolean; needsVerification?: boolean; requiresSignUp?: boolean }>;
   linkSocialProvider: (provider: 'google' | 'apple', providerToken: string, currentPassword: string) => Promise<{ success: boolean; message?: string }>;
   register: (data: RegisterData) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
@@ -106,6 +106,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithGoogle = async (credential: string, intent: 'signin' | 'signup') => {
     const res = await api.loginWithGoogle(credential, intent);
+    // Signing in must never silently create an account. When the backend
+    // confirms that this Google identity is new, let the login view take the
+    // person to the explicit sign-up flow instead of leaving them at an error.
+    if (res.code === 'ACCOUNT_NOT_FOUND' && intent === 'signin') {
+      setUser(null);
+      return {
+        success: false,
+        requiresSignUp: true,
+        message: res.message || 'Create a Menorah account to continue with Google.',
+      };
+    }
     if (res.code === 'EMAIL_VERIFICATION_REQUIRED') {
       const pendingEmail = res.data?.email;
       setUser(null);

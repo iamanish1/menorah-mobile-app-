@@ -45,6 +45,29 @@ and `/.well-known/assetlinks.json`. Keep the `menorah.me`, `app.menorah.me`,
 `http://reverse-proxy:80`; do not add a redirect, access policy, HTML rewrite,
 or cache rule that intercepts either `/.well-known/` path.
 
+`www.menorah.me` is also an App/Universal Link hostname. Caddy already sends
+both association paths directly to `app-link-associations`, but it cannot
+override a Cloudflare redirect that runs before the Tunnel. If Cloudflare
+redirects `www.menorah.me` to `menorah.me`, edit the redirect rule itself so it
+does **not** match either association path. For a Cloudflare Single Redirect
+rule, use an expression equivalent to:
+
+```text
+http.host eq "www.menorah.me" and not (
+  http.request.uri.path in {
+    "/.well-known/apple-app-site-association"
+    "/.well-known/assetlinks.json"
+  }
+)
+```
+
+Do not rely on a later WAF/Skip rule to repair this: a matching redirect is a
+terminal response. If the redirect is implemented as a Page Rule, Bulk
+Redirect, or Worker, add the same two-path exclusion there or replace it with
+an equivalent conditional redirect rule. The public health gate below must
+return direct `200 application/json` responses for those `www` URLs; `301`,
+`302`, or a redirect followed by `curl -L` is not valid app-link verification.
+
 Set the real Apple Team ID and Android signing SHA-256 fingerprint values in
 the host-only `production.env` before enabling native reset links. Until then,
 the edge intentionally returns `404` for these files. See
@@ -150,6 +173,7 @@ CHECK_PUBLIC=true bash ubuntu/health-check.sh
 
 # Before an internal/native mobile rollout, require the signed association
 # files as well (they intentionally return 404 until identifiers are set).
+# This checks all declared iOS/Android hosts and fails if any path redirects.
 CHECK_PUBLIC=true CHECK_NATIVE_APP_LINKS=true bash ubuntu/health-check.sh
 ```
 

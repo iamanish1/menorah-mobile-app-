@@ -150,7 +150,13 @@ class AdminApiClient {
   }
 
   generatePassword(id: string) {
-    return this.request<{ username: string; password: string; counsellorId: string; userId: string }>(
+    return this.request<{
+      username: string;
+      counsellorId: string;
+      userId: string;
+      credentialEmailSent?: boolean;
+      credentialEmailRecipient?: string;
+    }>(
       () => this.client.post(`/admin/counsellors/${id}/generate-password`)
     );
   }

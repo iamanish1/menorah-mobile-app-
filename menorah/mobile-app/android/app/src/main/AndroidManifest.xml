@@ -35,6 +35,7 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="https" android:host="app.menorah.me" android:pathPrefix="/reset-password"/>
+        <data android:scheme="https" android:host="www.menorah.me" android:pathPrefix="/articles"/>
         <data android:scheme="https" android:host="menorah.me" android:pathPrefix="/reset-password"/>
         <data android:scheme="https" android:host="api-android.menorah.me" android:pathPrefix="/api/auth/reset-password"/>
       </intent-filter>

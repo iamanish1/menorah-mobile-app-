@@ -210,17 +210,33 @@ const sendPasswordResetEmail = async (email, token) => {
   return sendEmail(email, 'Reset Your Menorah Health Password', html);
 };
 
-const sendCounsellorApprovalEmail = async ({ email, name = '', password }) => {
+const sendCounsellorCredentialsEmail = async ({
+  email,
+  name = '',
+  password,
+  resetToken,
+  kind = 'onboarding',
+}) => {
+  if (!password || !resetToken) {
+    throw new Error('Counsellor credential emails require a temporary password and reset token');
+  }
+
   const loginUrl = buildCounsellorAppUrl('/login');
-  const changePasswordUrl = buildCounsellorAppUrl('/profile#password');
+  const resetUrl = buildPasswordResetUrl(resetToken);
+  const isOnboarding = kind === 'onboarding';
   const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
   const safeLoginUrl = escapeHtml(loginUrl);
-  const safeChangePasswordUrl = escapeHtml(changePasswordUrl);
+  const safeResetUrl = escapeHtml(resetUrl);
+  const heading = isOnboarding ? 'Your counsellor account is ready' : 'Your counsellor password was reset';
+  const introduction = isOnboarding
+    ? 'Your Menorah counsellor application has been approved. Use the temporary credentials below to sign in to your counsellor account.'
+    : 'An administrator reset your Menorah counsellor password. Use the temporary credentials below to sign in to your counsellor account.';
 
   const html = layout(`
-    <h2 style="color:#111827;margin:0 0 16px;">${greeting}</h2>
+    <h2 style="color:#111827;margin:0 0 16px;">${heading}</h2>
+    <p style="color:#111827;line-height:1.6;margin:0 0 16px;">${greeting}</p>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 20px;">
-      Your Menorah counsellor application has been approved. Use the temporary credentials below to sign in to your counsellor account.
+      ${introduction}
     </p>
     <table width="100%" cellpadding="0" cellspacing="0"
            style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin:0 0 24px;">
@@ -240,19 +256,33 @@ const sendCounsellorApprovalEmail = async ({ email, name = '', password }) => {
       </a>
     </div>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;">
-      For your security, change this password after signing in. You can use the profile password section here:
-      <a href="${safeChangePasswordUrl}" style="color:#2d7a5c;">Change password</a>.
+      For your security, use this secure link to choose a new password before it expires in <strong>10 minutes</strong>:
     </p>
+    <div style="text-align:center;margin:24px 0 18px;">
+      <a href="${safeResetUrl}"
+         style="background:#111827;color:#ffffff;text-decoration:none;border-radius:8px;padding:14px 24px;display:inline-block;font-weight:700;">
+        Set a new password
+      </a>
+    </div>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;word-break:break-word;">
-      If the button does not work, open this link: <a href="${safeLoginUrl}" style="color:#2d7a5c;">${safeLoginUrl}</a>
+      If the reset button does not work, open this link: <a href="${safeResetUrl}" style="color:#2d7a5c;">${safeResetUrl}</a>
     </p>
     <p style="color:#9ca3af;font-size:13px;margin:0;">
-      If you were not expecting this email, contact Menorah support.
+      If you were not expecting this email, contact Menorah support immediately.
     </p>
   `);
 
-  return sendEmail(email, 'Your Menorah counsellor account is approved', html);
+  return sendEmail(
+    email,
+    isOnboarding ? 'Your Menorah counsellor account is ready' : 'Your Menorah counsellor password was reset',
+    html
+  );
 };
+
+// Retain this name for existing callers while making the credential email
+// reusable whenever an administrator issues a fresh counsellor password.
+const sendCounsellorApprovalEmail = (options) =>
+  sendCounsellorCredentialsEmail({ ...options, kind: 'onboarding' });
 
 const sendBookingConfirmationEmail = async (email, bookingDetails) => {
   const { scheduledAt, sessionDuration, sessionType, counsellorName } = bookingDetails;
@@ -346,6 +376,7 @@ module.exports = {
   sendOTPEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
+  sendCounsellorCredentialsEmail,
   sendCounsellorApprovalEmail,
   sendBookingConfirmationEmail,
   sendSessionReminderEmail,

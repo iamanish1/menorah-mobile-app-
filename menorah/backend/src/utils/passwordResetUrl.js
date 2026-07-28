@@ -1,4 +1,10 @@
+const crypto = require('crypto');
+
 const TOKEN_PLACEHOLDER = '{token}';
+// Keep recovery links deliberately short-lived. This is shared by self-service
+// recovery and credentials issued by an administrator so every reset token has
+// the same expiry semantics.
+const PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
 
 const getPasswordResetUrlTemplate = () => String(process.env.PASSWORD_RESET_URL_TEMPLATE || '').trim();
 
@@ -65,10 +71,24 @@ const buildPasswordResetUrl = (token) => {
   return template.replace(TOKEN_PLACEHOLDER, encodeURIComponent(token));
 };
 
+/**
+ * Attaches a new, one-time password-reset token to a User document and returns
+ * only the plaintext value that must be sent to the account owner. Mongo never
+ * receives the plaintext token.
+ */
+const issuePasswordResetToken = (user, now = Date.now()) => {
+  const token = crypto.randomBytes(32).toString('hex');
+  user.passwordResetToken = crypto.createHash('sha256').update(token).digest('hex');
+  user.passwordResetExpires = new Date(now + PASSWORD_RESET_TTL_MS);
+  return token;
+};
+
 module.exports = {
   TOKEN_PLACEHOLDER,
+  PASSWORD_RESET_TTL_MS,
   getPasswordResetUrlTemplate,
   getCanonicalAppDomain,
   validatePasswordResetUrlTemplate,
   buildPasswordResetUrl,
+  issuePasswordResetToken,
 };

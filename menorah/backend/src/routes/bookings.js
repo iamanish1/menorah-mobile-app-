@@ -337,8 +337,10 @@ router.post('/', [
       });
     }
 
-    // Send confirmation notifications only if counsellor is assigned
-    if (counsellor) {
+    // Paid promo/subscription bookings are confirmed at creation. Regular
+    // Razorpay bookings stay pending here and are notified only after verified
+    // payment in payments.js.
+    if (counsellor && booking.paymentStatus === 'paid' && booking.status === 'confirmed') {
       try {
         const bookingDetails = {
           scheduledAt: booking.scheduledAt,

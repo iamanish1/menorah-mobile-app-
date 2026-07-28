@@ -31,6 +31,8 @@ function buildAppleAssociation(environment = process.env) {
             { '/': '/reset-password/*' },
             { '/': '/api/auth/reset-password' },
             { '/': '/api/auth/reset-password/*' },
+            { '/': '/articles' },
+            { '/': '/articles/*' },
           ],
         },
       ],

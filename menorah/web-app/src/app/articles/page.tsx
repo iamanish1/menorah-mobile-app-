@@ -10,6 +10,7 @@ import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
+import { isPublishedArticle } from '@/lib/articles';
 import type { Article } from '@/types';
 import styles from './articles.module.css';
 
@@ -63,7 +64,10 @@ function ArticlesPageContent() {
         throw new Error(response.message || 'Unable to load articles');
       }
 
-      return response.data;
+      return {
+        ...response.data,
+        articles: response.data.articles.filter(isPublishedArticle),
+      };
     },
   });
 

@@ -15,6 +15,7 @@ type Mode = 'signin' | 'signup';
 interface SocialAuthButtonsProps {
   mode: Mode;
   onSuccess: (result: AuthResult) => void;
+  onSignUpRequired?: () => void;
 }
 
 const getAppleFullName = (name?: AppleAuthentication.AppleAuthenticationFullName | null) => {
@@ -22,7 +23,7 @@ const getAppleFullName = (name?: AppleAuthentication.AppleAuthenticationFullName
   return [name.givenName, name.familyName].filter(Boolean).join(' ').trim() || null;
 };
 
-export function SocialAuthButtons({ mode, onSuccess }: SocialAuthButtonsProps) {
+export function SocialAuthButtons({ mode, onSuccess, onSignUpRequired }: SocialAuthButtonsProps) {
   const iosTheme = useIOSTheme();
   const { loginWithGoogle, loginWithApple } = useAuth();
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'apple' | null>(null);
@@ -90,6 +91,14 @@ export function SocialAuthButtons({ mode, onSuccess }: SocialAuthButtonsProps) {
         onSuccess(authResult);
         return;
       }
+      if (authResult.requiresSignUp && mode === 'signin') {
+        if (onSignUpRequired) {
+          onSignUpRequired();
+        } else {
+          Alert.alert('Create an account', authResult.message || 'Create a Menorah account to continue.');
+        }
+        return;
+      }
       Alert.alert('Google Sign-In failed', authResult.message || 'Please try again.');
     } catch (error: any) {
       if (error?.code === statusCodes.SIGN_IN_CANCELLED) return;
@@ -128,6 +137,14 @@ export function SocialAuthButtons({ mode, onSuccess }: SocialAuthButtonsProps) {
 
       if (authResult.success) {
         onSuccess(authResult);
+        return;
+      }
+      if (authResult.requiresSignUp && mode === 'signin') {
+        if (onSignUpRequired) {
+          onSignUpRequired();
+        } else {
+          Alert.alert('Create an account', authResult.message || 'Create a Menorah account to continue.');
+        }
         return;
       }
       Alert.alert('Apple Sign-In failed', authResult.message || 'Please try again.');

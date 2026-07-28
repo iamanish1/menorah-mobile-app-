@@ -362,8 +362,8 @@ class ApiClient {
     return this.post<{ user: User }>('/payments/verify-subscription-payment', data);
   }
 
-  async getSubscriptionStatus(): Promise<ApiResponse<{ subscription: User['subscription'] }>> {
-    return this.get<{ subscription: User['subscription'] }>('/payments/subscription/status');
+  async getSubscriptionStatus(): Promise<ApiResponse<User['subscription']>> {
+    return this.get<User['subscription']>('/payments/subscription/status');
   }
 
   // ─── Chat ──────────────────────────────────────────────────────────────────

@@ -51,7 +51,7 @@ Use this checklist on a real iPhone after installing a development build or Test
 ## HTTPS Reset And Native Links
 - [ ] Open a reset link at `https://app.menorah.me/reset-password?token=<test-token>` with the app installed: confirm it enters the reset screen and the token is not left in visible navigation/history.
 - [ ] Open the same link without the app installed: confirm it falls back to the browser reset page.
-- [ ] Before a native rollout, set real `APPLE_APP_LINK_TEAM_ID`, `APPLE_APP_LINK_BUNDLE_ID`, `ANDROID_APP_LINK_PACKAGE_NAME`, and `ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS` on the edge host; run `CHECK_PUBLIC=true CHECK_NATIVE_APP_LINKS=true deploy/ubuntu/health-check.sh` and require both association files to return valid JSON.
+- [ ] Before a native rollout, set real `APPLE_APP_LINK_TEAM_ID`, `APPLE_APP_LINK_BUNDLE_ID`, `ANDROID_APP_LINK_PACKAGE_NAME`, and `ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS` on the edge host; run `CHECK_PUBLIC=true CHECK_NATIVE_APP_LINKS=true deploy/ubuntu/health-check.sh`. It must pass for every declared host, including direct (non-redirected) `www.menorah.me` association files.
 
 ## Legal Pages
 - [ ] Open Privacy Policy.

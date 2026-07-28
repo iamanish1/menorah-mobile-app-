@@ -43,6 +43,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const configuredWebBaseUrl =
     process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim() ||
     process.env.PUBLIC_WEB_BASE_URL?.trim();
+  const configuredArticleCanonicalBaseUrl =
+    process.env.EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL?.trim() ||
+    process.env.ARTICLE_CANONICAL_BASE_URL?.trim();
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
   const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim();
@@ -119,6 +122,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       usesAppleSignIn: true,
       associatedDomains: [
         'applinks:app.menorah.me',
+        'applinks:www.menorah.me',
         'applinks:menorah.me',
         'applinks:api-ios.menorah.me',
       ],
@@ -143,6 +147,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
               scheme: 'https',
               host: 'app.menorah.me',
               pathPrefix: '/reset-password',
+            },
+            {
+              scheme: 'https',
+              host: 'www.menorah.me',
+              pathPrefix: '/articles',
             },
             {
               scheme: 'https',
@@ -187,6 +196,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Set EXPO_PUBLIC_API_BASE_URL or EXPO_PUBLIC_LOCAL_IP before starting Expo.
       // All URLs are driven by env vars — no domain is hardcoded in source.
       // In production, set EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_WEB_BASE_URL,
+      // EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL,
       // EXPO_PUBLIC_CHECKOUT_RETURN_URL, and EXPO_PUBLIC_JITSI_BASE_URL before building. Leaving them unset in
       // production will surface the misconfiguration immediately at startup.
       API_BASE_URL: configuredApiBaseUrl
@@ -197,6 +207,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       WEB_BASE_URL: configuredWebBaseUrl
         ? configuredWebBaseUrl.replace(/\/+$/, '')
         : 'https://app.menorah.me',
+
+      // The app shell is hosted at app.menorah.me, but published article HTML
+      // is canonical on the public landing site.
+      ARTICLE_CANONICAL_BASE_URL: configuredArticleCanonicalBaseUrl
+        ? configuredArticleCanonicalBaseUrl.replace(/\/+$/, '')
+        : 'https://www.menorah.me',
 
       // Checkout Return URL
       CHECKOUT_RETURN_URL: process.env.EXPO_PUBLIC_CHECKOUT_RETURN_URL?.trim()

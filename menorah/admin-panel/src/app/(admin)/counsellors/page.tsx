@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, ChevronRight, RefreshCw, Copy, CheckCheck } from 'lucide-react';
+import { Search, ChevronRight } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import { api } from '@/lib/api';
@@ -36,13 +36,11 @@ function CounsellorsContent() {
   const [credModal, setCredModal] = useState<{
     open: boolean;
     username: string;
-    password?: string;
     emailSent?: boolean;
     emailRecipient?: string;
-  }>({ open: false, username: '', password: '' });
+  }>({ open: false, username: '' });
   const [reason, setReason] = useState('');
   const [actionLoading, setActionLoading] = useState('');
-  const [copied, setCopied] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,7 +64,6 @@ function CounsellorsContent() {
       setCredModal({
         open: true,
         username: res.data.username,
-        password: '',
         emailSent: res.data.credentialEmailSent,
         emailRecipient: res.data.credentialEmailRecipient
       });
@@ -96,7 +93,12 @@ function CounsellorsContent() {
     const res = await api.generatePassword(id);
     setActionLoading('');
     if (res.success && res.data) {
-      setCredModal({ open: true, username: res.data.username, password: res.data.password });
+      setCredModal({
+        open: true,
+        username: res.data.username,
+        emailSent: res.data.credentialEmailSent,
+        emailRecipient: res.data.credentialEmailRecipient,
+      });
       load();
     } else {
       toast.error(res.message || 'Failed to generate credentials');
@@ -118,12 +120,6 @@ function CounsellorsContent() {
     } else {
       toast.error(res.message || 'Action failed');
     }
-  };
-
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(key);
-    setTimeout(() => setCopied(''), 2000);
   };
 
   const getBadgeVariant = (c: Counsellor) => {
@@ -253,7 +249,7 @@ function CounsellorsContent() {
                           disabled={actionLoading === c.id + '-creds'}
                           className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg transition-colors disabled:opacity-60"
                         >
-                          {actionLoading === c.id + '-creds' ? '...' : 'Reset Password'}
+                          {actionLoading === c.id + '-creds' ? '...' : 'Reset & Email Password'}
                         </button>
                         <button
                           onClick={() => { setBlockModal({ open: true, id: c.id, name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`, isBlocked: false }); setReason(''); }}
@@ -349,30 +345,17 @@ function CounsellorsContent() {
       </Modal>
 
       {/* Credentials Modal */}
-      <Modal open={credModal.open} onClose={() => setCredModal({ open: false, username: '', password: '' })} title="Counsellor Login Credentials" size="sm">
+      <Modal open={credModal.open} onClose={() => setCredModal({ open: false, username: '' })} title="Counsellor Access Email" size="sm">
         <div className="space-y-4">
           <div className={`border rounded-xl px-4 py-3 text-sm ${credModal.emailSent === true ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
             {credModal.emailSent === true
-              ? `Credentials were emailed to ${credModal.emailRecipient || credModal.username}.`
+              ? `A temporary password and secure reset link were emailed to ${credModal.emailRecipient || credModal.username}.`
               : credModal.emailSent === false
-                ? 'Credentials were generated, but the email was not sent. Generate a password reset before sharing access.'
-                : 'Share these credentials with the counsellor. The password will not be shown again.'}
+                ? 'The password was reset, but the email was not sent. Reset it again to send a fresh secure access link.'
+                : 'The counsellor will receive their temporary password and secure reset link by email.'}
           </div>
-          {[
-            { label: 'Username (Email)', value: credModal.username, key: 'user' },
-            ...(credModal.password ? [{ label: 'Password', value: credModal.password, key: 'pass' }] : [])
-          ].map(({ label, value, key }) => (
-            <div key={key}>
-              <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
-              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
-                <code className="flex-1 text-sm font-mono text-gray-800 break-all">{value}</code>
-                <button onClick={() => copyToClipboard(value, key)} className="text-gray-400 hover:text-blue-600 flex-shrink-0">
-                  {copied === key ? <CheckCheck size={16} className="text-green-500" /> : <Copy size={16} />}
-                </button>
-              </div>
-            </div>
-          ))}
-          <button onClick={() => setCredModal({ open: false, username: '', password: '' })} className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors mt-1">
+          <p className="text-xs text-gray-500">The password is intentionally not shown here; it is delivered only to the counsellor along with a one-time link that expires in 10 minutes.</p>
+          <button onClick={() => setCredModal({ open: false, username: '' })} className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors mt-1">
             Done
           </button>
         </div>

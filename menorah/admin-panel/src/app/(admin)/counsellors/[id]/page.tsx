@@ -198,10 +198,9 @@ export default function CounsellorDetailPage() {
   const [credModal, setCredModal] = useState<{
     open: boolean;
     username: string;
-    password?: string;
     emailSent?: boolean;
     emailRecipient?: string;
-  }>({ open: false, username: '', password: '' });
+  }>({ open: false, username: '' });
   const [reason, setReason] = useState('');
 
   const load = useCallback(async () => {
@@ -250,7 +249,6 @@ export default function CounsellorDetailPage() {
       setCredModal({
         open: true,
         username: res.data.username,
-        password: '',
         emailSent: res.data.credentialEmailSent,
         emailRecipient: res.data.credentialEmailRecipient
       });
@@ -281,7 +279,12 @@ export default function CounsellorDetailPage() {
     const res = await api.generatePassword(counsellor.id || counsellor._id!);
     setActionLoading('');
     if (res.success && res.data) {
-      setCredModal({ open: true, username: res.data.username, password: res.data.password });
+      setCredModal({
+        open: true,
+        username: res.data.username,
+        emailSent: res.data.credentialEmailSent,
+        emailRecipient: res.data.credentialEmailRecipient,
+      });
       await load();
     } else {
       toast.error(res.message || 'Failed');
@@ -362,7 +365,7 @@ export default function CounsellorDetailPage() {
           {counsellor.status === 'approved' && !isBlocked && (
             <>
               <button onClick={handleGeneratePassword} disabled={!!actionLoading} className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60">
-                <Key size={15} /> {actionLoading === 'creds' ? 'Generating...' : 'Generate Password'}
+                <Key size={15} /> {actionLoading === 'creds' ? 'Generating...' : 'Reset & Email Password'}
               </button>
               <button onClick={() => { setBlockModal(true); setReason(''); }} className="flex items-center gap-1.5 rounded-xl bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-200">
                 <Lock size={15} /> Block
@@ -590,27 +593,17 @@ export default function CounsellorDetailPage() {
         </div>
       </Modal>
 
-      <Modal open={credModal.open} onClose={() => setCredModal({ open: false, username: '', password: '' })} title="Credentials Generated" size="sm">
+      <Modal open={credModal.open} onClose={() => setCredModal({ open: false, username: '' })} title="Counsellor Access Email" size="sm">
         <div className="space-y-4">
           <div className={`rounded-xl border px-4 py-3 text-sm ${credModal.emailSent === true ? 'border-green-200 bg-green-50 text-green-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
             {credModal.emailSent === true
-              ? `Credentials were emailed to ${credModal.emailRecipient || credModal.username}.`
+              ? `A temporary password and secure reset link were emailed to ${credModal.emailRecipient || credModal.username}.`
               : credModal.emailSent === false
-                ? 'Credentials were generated, but the email was not sent. Generate a password reset before sharing access.'
-                : 'Share these with the counsellor. Password shown only once.'}
+                ? 'The password was reset, but the email was not sent. Reset it again to send a fresh secure access link.'
+                : 'The counsellor will receive their temporary password and secure reset link by email.'}
           </div>
-          {[
-            { label: 'Username', value: credModal.username },
-            ...(credModal.password ? [{ label: 'Password', value: credModal.password }] : [])
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <label className="mb-1 block text-xs font-medium text-gray-500">{label}</label>
-              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                <code className="break-all font-mono text-sm text-gray-800">{value}</code>
-              </div>
-            </div>
-          ))}
-          <button onClick={() => setCredModal({ open: false, username: '', password: '' })} className="w-full rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Done</button>
+          <p className="text-xs text-gray-500">The password is intentionally not shown here; it is delivered only to the counsellor along with a one-time link that expires in 10 minutes.</p>
+          <button onClick={() => setCredModal({ open: false, username: '' })} className="w-full rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Done</button>
         </div>
       </Modal>
     </div>

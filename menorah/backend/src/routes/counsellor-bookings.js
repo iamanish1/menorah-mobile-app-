@@ -101,11 +101,16 @@ const normalizeTagList = (tags, { limit = 20 } = {}) => {
 const invalidateCounsellorDiscoveryCache = async () => {
   try {
     const redis = getRedisClient();
-    const keys = ['counsellors:specializations', 'counsellors:languages'];
+    // Keep the public catalogue, discover filters, and the counsellor portal
+    // in sync immediately after a counsellor updates their public profile.
+    // The public route namespaces these keys with a cache version (for example
+    // `counsellors:v4:list:*`), so the former unversioned pattern left stale
+    // profile and rate data visible for up to the cache TTL.
+    const keys = [];
     let cursor = '0';
 
     do {
-      const result = await redis.scan(cursor, { MATCH: 'counsellors:list:*', COUNT: 100 });
+      const result = await redis.scan(cursor, { MATCH: 'counsellors:*', COUNT: 100 });
       const nextCursor = Array.isArray(result) ? result[0] : result.cursor;
       const foundKeys = Array.isArray(result) ? result[1] : result.keys;
       cursor = String(nextCursor);
@@ -1553,14 +1558,14 @@ router.put('/me/profile', [
       return res.status(404).json({ success: false, message: 'Counsellor profile not found' });
     }
 
-    if (req.body.licenseNumber !== undefined || req.body.hourlyRate !== undefined) {
+    if (req.body.licenseNumber !== undefined) {
       return res.status(403).json({
         success: false,
-        message: 'License number and session rate are admin-controlled. Contact support to request changes.'
+        message: 'License number is admin-controlled. Contact support to request changes.'
       });
     }
 
-    const { specialization, specializations, experience, bio, languages, availability } = req.body;
+    const { specialization, specializations, experience, hourlyRate, bio, languages, availability } = req.body;
 
     if (specializations !== undefined || specialization !== undefined) {
       const nextSpecializations = normalizeTagList(
@@ -1579,6 +1584,7 @@ router.put('/me/profile', [
     }
 
     if (experience !== undefined) counsellor.experience = experience;
+    if (hourlyRate !== undefined) counsellor.hourlyRate = hourlyRate;
     if (bio !== undefined) counsellor.bio = bio;
     if (languages !== undefined) {
       const nextLanguages = normalizeTagList(languages);

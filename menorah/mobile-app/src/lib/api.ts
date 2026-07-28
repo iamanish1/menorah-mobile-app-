@@ -758,7 +758,7 @@ class ApiClient {
   async getArticle(slug: string): Promise<ApiResponse<{ article: Article }>> {
     return this.request({
       method: 'GET',
-      url: `/articles/${slug}`,
+      url: `/articles/${encodeURIComponent(slug)}`,
       authMode: 'public',
     });
   }
@@ -904,11 +904,10 @@ class ApiClient {
   }
 
   async verifySubscriptionPayment(paymentData: {
-    razorpay_order_id?: string;
-    razorpay_payment_id?: string;
-    razorpay_signature?: string;
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
     subscriptionType: 'weekly' | 'monthly' | 'yearly';
-    orderId?: string;
   }): Promise<ApiResponse<any>> {
     return this.request({
       method: 'POST',

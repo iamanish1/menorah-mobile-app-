@@ -62,7 +62,19 @@ test('valid signing identifiers generate standards-compliant JSON', async () => 
     const appleResponse = await request(server, '/.well-known/apple-app-site-association');
     assert.equal(appleResponse.status, 200);
     assert.equal(appleResponse.headers.get('content-type'), 'application/json; charset=utf-8');
-    assert.equal((await appleResponse.json()).applinks.details[0].appID, 'ABCDEFGHIJ.com.menorah.health.app');
+    const appleAssociation = await appleResponse.json();
+    assert.equal(appleAssociation.applinks.details[0].appID, 'ABCDEFGHIJ.com.menorah.health.app');
+    assert.deepEqual(
+      appleAssociation.applinks.details[0].components.map((component) => component['/']),
+      [
+        '/reset-password',
+        '/reset-password/*',
+        '/api/auth/reset-password',
+        '/api/auth/reset-password/*',
+        '/articles',
+        '/articles/*',
+      ],
+    );
 
     const androidResponse = await request(server, '/.well-known/assetlinks.json');
     assert.equal(androidResponse.status, 200);

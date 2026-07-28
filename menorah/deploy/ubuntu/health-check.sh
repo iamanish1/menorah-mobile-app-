@@ -125,6 +125,66 @@ require_json_marker() {
   failures=$((failures + 1))
 }
 
+require_json_fragment() {
+  local body_file="$1"
+  local fragment="$2"
+  local label="$3"
+  # The association service writes compact JSON, but strip insignificant
+  # whitespace so an edge cache cannot make this validation formatting-sensitive.
+  if tr -d '[[:space:]]' < "${body_file}" | grep -Fq "${fragment}"; then
+    echo "PASS ${label} contains the configured signing metadata" >&2
+    return
+  fi
+  echo "FAIL ${label} does not contain the configured signing metadata" >&2
+  failures=$((failures + 1))
+}
+
+is_blank_or_placeholder() {
+  local value="${1:-}"
+  [[ -z "${value}" || "${value}" == replace_with_* || "${value}" == *"replace_with"* ]]
+}
+
+require_native_app_link_signing_value() {
+  local key="$1"
+  local value="${!key:-}"
+  if is_blank_or_placeholder "${value}"; then
+    echo "FAIL native App/Universal Links require a real ${key} before a mobile rollout." >&2
+    failures=$((failures + 1))
+    return 1
+  fi
+  echo "PASS native App/Universal Link prerequisite ${key} is configured." >&2
+}
+
+require_direct_json_response() {
+  local method="$1"
+  local url="$2"
+  local label="$3"
+  local body_file="${TMP_DIR}/$(echo "${method}-${url}" | tr -c 'A-Za-z0-9' '_').body"
+  local headers_file="${body_file}.headers"
+  local code
+  # Do not add --location here. Apple and Android require the association
+  # document to be served directly, and a Cloudflare www-to-apex redirect must
+  # therefore fail this release gate.
+  if ! code="$(curl -k -sS -X "${method}" -D "${headers_file}" -o "${body_file}" -w "%{http_code}" "${url}")"; then
+    code="000"
+  fi
+
+  if [[ "${code}" != "200" ]]; then
+    echo "FAIL ${label} -> ${code}, expected a direct 200 JSON response (no redirect)." >&2
+    failures=$((failures + 1))
+  elif grep -Eiq '^location:' "${headers_file}"; then
+    echo "FAIL ${label} returned a Location header; association files cannot redirect." >&2
+    failures=$((failures + 1))
+  elif ! grep -Eiq '^content-type:[[:space:]]*application/json([;[:space:]]|$)' "${headers_file}"; then
+    echo "FAIL ${label} is missing an application/json Content-Type." >&2
+    failures=$((failures + 1))
+  else
+    echo "PASS ${label} -> direct 200 application/json" >&2
+  fi
+
+  printf '%s' "${body_file}"
+}
+
 require_container_probe() {
   local container="$1"
   local inspect
@@ -224,13 +284,63 @@ if [[ "${CHECK_PUBLIC:-false}" == "true" ]]; then
 
   # Release 1 deliberately leaves these files fail-closed (404) until real
   # signing identifiers are configured. Native/internal mobile rollout must
-  # opt into this additional public gate and receive valid association JSON.
+  # opt into this additional public gate. It verifies every host declared by
+  # the iOS/Android builds and rejects redirects (especially www -> apex).
   if [[ "${CHECK_NATIVE_APP_LINKS:-false}" == "true" ]]; then
-    app_link_base="https://${APP_DOMAIN:-app.menorah.me}"
-    apple_association_body="$(require_code GET "${app_link_base}/.well-known/apple-app-site-association" 200)"
-    require_json_marker "${apple_association_body}" '"applinks"' 'apple app-link association'
-    android_association_body="$(require_code GET "${app_link_base}/.well-known/assetlinks.json" 200)"
-    require_json_marker "${android_association_body}" '"delegate_permission/common.handle_all_urls"' 'android app-link association'
+    native_app_link_prerequisites_met=true
+    for key in \
+      APPLE_APP_LINK_TEAM_ID \
+      APPLE_APP_LINK_BUNDLE_ID \
+      ANDROID_APP_LINK_PACKAGE_NAME \
+      ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS; do
+      if ! require_native_app_link_signing_value "${key}"; then
+        native_app_link_prerequisites_met=false
+      fi
+    done
+
+    if [[ "${native_app_link_prerequisites_met}" == "true" ]]; then
+      apple_app_link_domains=(
+        "${APP_DOMAIN:-app.menorah.me}"
+        "${WWW_DOMAIN:-www.menorah.me}"
+        "${ROOT_DOMAIN:-menorah.me}"
+        "${API_IOS_DOMAIN:-api-ios.menorah.me}"
+      )
+      android_app_link_domains=(
+        "${APP_DOMAIN:-app.menorah.me}"
+        "${WWW_DOMAIN:-www.menorah.me}"
+        "${ROOT_DOMAIN:-menorah.me}"
+        "${API_ANDROID_DOMAIN:-api-android.menorah.me}"
+      )
+
+      for domain in "${apple_app_link_domains[@]}"; do
+        apple_association_body="$(require_direct_json_response GET "https://${domain}/.well-known/apple-app-site-association" "iOS association at ${domain}")"
+        require_json_marker "${apple_association_body}" '"applinks"' "iOS association at ${domain}"
+        require_json_fragment \
+          "${apple_association_body}" \
+          "\"appID\":\"${APPLE_APP_LINK_TEAM_ID}.${APPLE_APP_LINK_BUNDLE_ID}\"" \
+          "iOS association at ${domain}"
+      done
+
+      for domain in "${android_app_link_domains[@]}"; do
+        android_association_body="$(require_direct_json_response GET "https://${domain}/.well-known/assetlinks.json" "Android association at ${domain}")"
+        require_json_marker "${android_association_body}" '"delegate_permission/common.handle_all_urls"' "Android association at ${domain}"
+        require_json_fragment \
+          "${android_association_body}" \
+          "\"package_name\":\"${ANDROID_APP_LINK_PACKAGE_NAME}\"" \
+          "Android association at ${domain}"
+
+        IFS=',' read -r -a android_fingerprints <<< "${ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS}"
+        for fingerprint in "${android_fingerprints[@]}"; do
+          fingerprint="${fingerprint//[[:space:]]/}"
+          require_json_fragment \
+            "${android_association_body}" \
+            "\"${fingerprint^^}\"" \
+            "Android association at ${domain}"
+        done
+      done
+    else
+      echo "Skipping native association response checks until all signing prerequisites are configured." >&2
+    fi
   fi
 else
   echo "Skipping public HTTPS checks. Re-run with CHECK_PUBLIC=true after Cloudflare hostnames are live."

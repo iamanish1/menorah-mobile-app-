@@ -36,6 +36,16 @@
 	}
 }
 
+# Only the signed browser meeting document needs media permissions. Keep the
+# rest of the API under the restrictive default policy.
+(browser_call_api_proxy) {
+	import browser_call_security_headers
+	encode gzip zstd
+	request_body {
+		max_size 20MB
+	}
+}
+
 {$WWW_DOMAIN} {
 	import security_headers
 	encode gzip zstd
@@ -49,6 +59,8 @@
 {$APP_DOMAIN} {
 	import browser_call_security_headers
 	encode gzip zstd
+	@checkout_sensitive path /checkout/callback /checkout/return /checkout/return/*
+	log_skip @checkout_sensitive
 	reverse_proxy user-web-app:3002
 	log {
 		output file /var/log/caddy/app-access.log
@@ -67,8 +79,18 @@
 }
 
 {$API_IOS_DOMAIN} {
-	import api_proxy
-	reverse_proxy api-ios:8080
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		reverse_proxy api-ios:8080
+	}
+	handle {
+		import api_proxy
+		reverse_proxy api-ios:8080
+	}
 	log {
 		output file /var/log/caddy/api-ios-access.log
 		format json
@@ -76,8 +98,18 @@
 }
 
 {$API_ANDROID_DOMAIN} {
-	import api_proxy
-	reverse_proxy api-android:8080
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		reverse_proxy api-android:8080
+	}
+	handle {
+		import api_proxy
+		reverse_proxy api-android:8080
+	}
 	log {
 		output file /var/log/caddy/api-android-access.log
 		format json
@@ -85,8 +117,18 @@
 }
 
 {$API_WEB_DOMAIN} {
-	import api_proxy
-	reverse_proxy api-web:8080
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		reverse_proxy api-web:8080
+	}
+	handle {
+		import api_proxy
+		reverse_proxy api-web:8080
+	}
 	log {
 		output file /var/log/caddy/api-web-access.log
 		format json

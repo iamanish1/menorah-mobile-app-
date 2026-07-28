@@ -94,6 +94,10 @@ export function GoogleAuthButton({ mode, onError }: GoogleAuthButtonProps) {
 
             onError('');
             const result = await loginWithGoogle(credential, mode);
+            if (result.requiresSignUp) {
+              router.replace('/register');
+              return;
+            }
             if (result.needsVerification) {
               router.push('/verify-otp');
               return;

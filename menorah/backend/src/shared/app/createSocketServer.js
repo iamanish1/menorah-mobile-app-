@@ -11,6 +11,7 @@ const {
   getCookieToken,
   getWebSessionForRequest,
 } = require('../../config/webSessions');
+const { getCounsellorProfileImage } = require('../../utils/chatProfileImage');
 
 const SOCKET_ENABLED_SERVICES = new Set(['api-ios', 'api-android', 'api-web']);
 
@@ -114,7 +115,9 @@ const attachSocketHandlers = (io) => {
         return next(new Error('Authentication error: Token revoked'));
       }
 
-      const user = await User.findById(decoded.userId).select('firstName lastName role isActive isEmailVerified sessionVersion').lean();
+      const user = await User.findById(decoded.userId)
+        .select('firstName lastName profileImage role isActive isEmailVerified sessionVersion')
+        .lean();
       if (!user || !user.isActive || !user.isEmailVerified || (decoded.sessionVersion || 0) !== (user.sessionVersion || 0)) {
         return next(new Error('Authentication error: Invalid token'));
       }
@@ -126,6 +129,7 @@ const attachSocketHandlers = (io) => {
       socket.userRole = user.role || 'user';
       socket.sessionVersion = decoded.sessionVersion || 0;
       socket.userName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+      socket.userProfileImage = user.profileImage || null;
       socket.authTransport = webSession ? 'cookie' : 'bearer';
       return next();
     } catch {
@@ -213,10 +217,25 @@ const attachSocketHandlers = (io) => {
           }
         });
 
+        let senderImage = socket.userProfileImage || null;
+        if (socket.userRole === 'counsellor') {
+          try {
+            const counsellor = await Counsellor.findOne({ user: socket.userId })
+              .populate('user', 'profileImage')
+              .lean();
+            senderImage = getCounsellorProfileImage(counsellor) || senderImage;
+          } catch (error) {
+            // Never let optional avatar lookup prevent a chat message from
+            // being delivered. The user-account image remains a safe fallback.
+            console.warn('Could not resolve counsellor chat avatar:', error.message);
+          }
+        }
+
         const payload = {
           id: msg._id.toString(),
           senderId: socket.userId,
           senderName: socket.userName,
+          senderImage,
           content: msg.content,
           type: msg.type,
           roomId,

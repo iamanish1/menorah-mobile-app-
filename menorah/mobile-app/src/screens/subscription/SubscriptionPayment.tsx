@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ActivityIndicator, Alert, TouchableOpacity, NativeModules } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -12,12 +12,21 @@ import { displayPhone } from '@/lib/authPolicy';
 import subscriptionService from '@/services/subscriptionService';
 import type { SubscriptionType } from './subscriptionPlans';
 import {
+  isKnownCheckoutReturnUrl,
+  parseRazorpayPaymentCallbackMessage,
+  parseRazorpayPaymentCallbackUrl,
+  type RazorpayPaymentCallback,
+} from '@/lib/subscriptionPaymentCallback';
+import {
   IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE,
   shouldDisableIOSSubscriptionPurchase,
 } from '@/lib/paymentPolicy';
 
 const RAZORPAY_UNAVAILABLE_MESSAGE =
   'Payments require a development build. Expo Go preview does not support native Razorpay.';
+
+const isSubscriptionType = (value: unknown): value is SubscriptionType =>
+  value === 'weekly' || value === 'monthly' || value === 'yearly';
 
 type RazorpayCheckoutModule = {
   open: (options: Record<string, unknown>) => Promise<any>;
@@ -56,96 +65,169 @@ export default function SubscriptionPayment({ route, navigation }: any) {
   const [isPolling, setIsPolling] = useState(false);
   const [, setWebViewLoading] = useState(true);
   const [sdkPaymentInitiated, setSdkPaymentInitiated] = useState(false);
+  const isMountedRef = useRef(true);
+  const statusPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusPollRunRef = useRef(0);
+  const verificationInFlightRef = useRef(false);
+  const subscriptionActivatedRef = useRef(false);
   const { scheme } = useThemeMode();
   const { user } = useAuth();
   const colors = palettes[scheme];
   const isDark = scheme === 'dark';
   const actionTextColor = isDark ? colors.primaryDark : 'white';
-  const returnUrl = ENV.CHECKOUT_RETURN_URL || 'menorah://payments/subscription/return';
+  const returnUrl = ENV.CHECKOUT_RETURN_URL || `${ENV.WEB_BASE_URL}/checkout/callback`;
   const USE_RAZORPAY_SDK = ENV.USE_RAZORPAY_SDK ?? true;
   const canUseRazorpaySdk = USE_RAZORPAY_SDK && hasNativeRazorpay();
   const isIOSSubscriptionDisabled = shouldDisableIOSSubscriptionPurchase();
+  const selectedSubscriptionType = isSubscriptionType(subscriptionType) ? subscriptionType : null;
 
-  const verifyAndActivateSubscription = useCallback(async () => {
-    try {
-      // If we have payment details from SDK, verify with them
-      // Otherwise, verify using order status
-      const verifyResponse = await api.verifySubscriptionPayment({
-        subscriptionType: subscriptionType as SubscriptionType,
-        orderId: orderId || undefined
-      });
-
-      if (verifyResponse.success) {
-        // Sync subscription with local storage
-        await subscriptionService.setPremiumSubscription(subscriptionType as SubscriptionType);
-
-        // Navigate to success screen
-        navigation.replace('SubscriptionSuccess', { subscriptionType });
-      } else {
-        setError(verifyResponse.message || 'Failed to activate subscription');
-      }
-    } catch (err: any) {
-      console.error('Error verifying subscription payment:', err);
-      setError('Failed to activate subscription. Please contact support.');
+  const clearStatusPoll = useCallback(() => {
+    statusPollRunRef.current += 1;
+    if (statusPollTimerRef.current) {
+      clearTimeout(statusPollTimerRef.current);
+      statusPollTimerRef.current = null;
     }
-  }, [subscriptionType, orderId, navigation]);
+  }, []);
 
-  const pollOrderStatus = useCallback(async (maxAttempts: number = 15) => {
-    if (!orderId || paymentMethod !== 'razorpay') {
+  const completeSubscriptionActivation = useCallback(async (confirmedType?: SubscriptionType) => {
+    if (subscriptionActivatedRef.current) return;
+
+    const activeType = confirmedType || selectedSubscriptionType;
+    if (!activeType) {
+      if (isMountedRef.current) {
+        setError('Subscription type is required');
+        setIsPolling(false);
+      }
       return;
     }
 
-    setIsPolling(true);
+    subscriptionActivatedRef.current = true;
+    clearStatusPoll();
+    // Local storage is updated only after a signed server verification or the
+    // authenticated server-side subscription status confirms activation.
+    await subscriptionService.setPremiumSubscription(activeType);
+
+    if (!isMountedRef.current) return;
+    setIsPolling(false);
+    navigation.replace('SubscriptionSuccess', { subscriptionType: activeType });
+  }, [clearStatusPoll, navigation, selectedSubscriptionType]);
+
+  const pollSubscriptionStatus = useCallback((maxAttempts: number = 15) => {
+    if (!selectedSubscriptionType || paymentMethod !== 'razorpay' || subscriptionActivatedRef.current) {
+      return;
+    }
+
+    clearStatusPoll();
+    const run = statusPollRunRef.current + 1;
+    statusPollRunRef.current = run;
     let attempts = 0;
+    setIsPolling(true);
 
     const poll = async () => {
-      attempts++;
+      if (!isMountedRef.current || statusPollRunRef.current !== run || subscriptionActivatedRef.current) return;
+      statusPollTimerRef.current = null;
+      attempts += 1;
+
       try {
-        const response = await api.getRazorpayOrderStatus(orderId);
-        
-        if (response.success && response.data?.orderStatus === 'paid') {
-          setIsPolling(false);
-          // Verify and activate subscription
-          await verifyAndActivateSubscription();
+        // Subscription orders intentionally do not use the booking-only
+        // `/payments/order/:orderId/status` endpoint. This is the authenticated
+        // source of truth when a webhook has completed server-side activation.
+        const response = await api.getSubscriptionStatus();
+        if (response.success && response.data?.isActive) {
+          const serverType = isSubscriptionType(response.data.subscriptionType)
+            ? response.data.subscriptionType
+            : selectedSubscriptionType;
+          await completeSubscriptionActivation(serverType);
           return;
         }
-
-        if (attempts < maxAttempts) {
-          setTimeout(poll, 2000);
-        } else {
-          setIsPolling(false);
-          setError('Payment verification timeout. Please check your subscription status.');
-        }
-      } catch (err: any) {
-        console.error('Error polling order status:', err);
-        if (attempts < maxAttempts) {
-          setTimeout(poll, 2000);
-        } else {
-          setIsPolling(false);
-          setError('Unable to verify payment. Please check your subscription status.');
-        }
+      } catch (pollError) {
+        // A transient network error should not turn a successful payment into a
+        // client-side failure. The bounded retry below will ask the server again.
+        console.warn('Unable to check subscription activation status:', pollError);
       }
+
+      if (!isMountedRef.current || statusPollRunRef.current !== run || subscriptionActivatedRef.current) return;
+      if (attempts >= maxAttempts) {
+        setIsPolling(false);
+        setError('We could not confirm your payment yet. Your card has not been charged again. Check your subscription status shortly or contact support.');
+        return;
+      }
+
+      statusPollTimerRef.current = setTimeout(poll, 2000);
     };
 
-    setTimeout(poll, 2000);
-  }, [orderId, paymentMethod, verifyAndActivateSubscription]);
+    statusPollTimerRef.current = setTimeout(poll, 1500);
+  }, [clearStatusPoll, completeSubscriptionActivation, paymentMethod, selectedSubscriptionType]);
+
+  const verifySubscriptionPayment = useCallback(async (payment: RazorpayPaymentCallback) => {
+    if (
+      !selectedSubscriptionType ||
+      !orderId ||
+      payment.razorpay_order_id !== orderId ||
+      verificationInFlightRef.current ||
+      subscriptionActivatedRef.current
+    ) {
+      return;
+    }
+
+    verificationInFlightRef.current = true;
+    clearStatusPoll();
+    setIsPolling(true);
+
+    try {
+      const response = await api.verifySubscriptionPayment({
+        ...payment,
+        subscriptionType: selectedSubscriptionType,
+      });
+
+      if (response.success) {
+        await completeSubscriptionActivation(selectedSubscriptionType);
+        return;
+      }
+
+      // A network/server failure may mean the verified webhook has already
+      // activated the subscription. Reconcile against the authenticated status
+      // endpoint; invalid signatures and validation errors are never retried.
+      if (response.isNetworkError || (response.httpStatus !== undefined && response.httpStatus >= 500)) {
+        pollSubscriptionStatus();
+        return;
+      }
+
+      if (isMountedRef.current) {
+        setError(response.message || 'We could not securely verify this payment. Please contact support before trying again.');
+      }
+    } catch (verificationError) {
+      console.warn('Unable to submit Razorpay subscription verification:', verificationError);
+      pollSubscriptionStatus();
+    } finally {
+      verificationInFlightRef.current = false;
+      if (isMountedRef.current && !subscriptionActivatedRef.current && !statusPollTimerRef.current) {
+        setIsPolling(false);
+      }
+    }
+  }, [clearStatusPoll, completeSubscriptionActivation, orderId, pollSubscriptionStatus, selectedSubscriptionType]);
 
   const createCheckoutSession = useCallback(async () => {
     setLoading(true);
     setError(null);
+    clearStatusPoll();
+    subscriptionActivatedRef.current = false;
+    verificationInFlightRef.current = false;
 
     if (isIOSSubscriptionDisabled) {
       setError(IOS_SUBSCRIPTIONS_UNAVAILABLE_MESSAGE);
       setLoading(false);
       return;
     }
+
+    if (!selectedSubscriptionType) {
+      setError('Subscription type is required');
+      setLoading(false);
+      return;
+    }
     
     try {
-      console.log('Creating subscription checkout session with:', { subscriptionType, paymentMethod });
-      
-      const response = await api.createSubscriptionCheckout(subscriptionType as SubscriptionType);
-      
-      console.log('Subscription checkout session response:', response);
+      const response = await api.createSubscriptionCheckout(selectedSubscriptionType);
       
       if (response.success && response.data) {
         const url = response.data.checkoutUrl || response.data.url || response.data.sessionUrl;
@@ -158,7 +240,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
           if (response.data.keyId) {
             setKeyId(response.data.keyId);
           }
-          if (response.data.amount) {
+          if (response.data.amount !== undefined) {
             setAmount(response.data.amount);
           }
           if (response.data.currency) {
@@ -167,10 +249,8 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         }
         
         if (url) {
-          console.log('Checkout URL received:', url);
           setCheckoutUrl(url);
         } else if (!canUseRazorpaySdk || paymentMethod !== 'razorpay') {
-          console.error('No checkout URL in response:', response);
           setError(
             paymentMethod === 'razorpay' && !canUseRazorpaySdk
               ? RAZORPAY_UNAVAILABLE_MESSAGE
@@ -178,7 +258,6 @@ export default function SubscriptionPayment({ route, navigation }: any) {
           );
         }
       } else {
-        console.error('Subscription checkout session failed:', response);
         setError(response.message || 'Failed to create checkout session');
       }
     } catch (err: any) {
@@ -187,7 +266,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     } finally {
       setLoading(false);
     }
-  }, [subscriptionType, paymentMethod, canUseRazorpaySdk, isIOSSubscriptionDisabled]);
+  }, [canUseRazorpaySdk, clearStatusPoll, isIOSSubscriptionDisabled, paymentMethod, selectedSubscriptionType]);
 
   const initiateSDKPayment = useCallback(async () => {
     if (isIOSSubscriptionDisabled) {
@@ -224,7 +303,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
       const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
 
       const options = {
-        description: `${subscriptionType} Subscription Payment`,
+        description: `${selectedSubscriptionType || 'Premium'} Subscription Payment`,
         currency: currency,
         key: keyId,
         amount: amount.toString(),
@@ -241,40 +320,24 @@ export default function SubscriptionPayment({ route, navigation }: any) {
       };
 
       const paymentData = await RazorpayCheckout.open(options);
-      
-      console.log('Payment success data:', paymentData);
-      
-      if (paymentData.razorpay_payment_id && paymentData.razorpay_signature) {
-        setIsPolling(true);
-        
-        try {
-          const verifyResponse = await api.verifySubscriptionPayment({
-            razorpay_order_id: orderId,
-            razorpay_payment_id: paymentData.razorpay_payment_id,
-            razorpay_signature: paymentData.razorpay_signature,
-            subscriptionType: subscriptionType as SubscriptionType
-          });
 
-          if (verifyResponse.success) {
-            setIsPolling(false);
-            await subscriptionService.setPremiumSubscription(subscriptionType as SubscriptionType);
-            navigation.replace('SubscriptionSuccess', { subscriptionType });
-          } else {
-            setIsPolling(false);
-            await pollOrderStatus();
-          }
-        } catch (verifyError: any) {
-          console.error('Payment verification error:', verifyError);
-          setIsPolling(false);
-          await pollOrderStatus();
-        }
+      if (paymentData.razorpay_payment_id && paymentData.razorpay_signature) {
+        await verifySubscriptionPayment({
+          razorpay_order_id: orderId,
+          razorpay_payment_id: paymentData.razorpay_payment_id,
+          razorpay_signature: paymentData.razorpay_signature,
+        });
       } else {
-        await pollOrderStatus();
+        // The SDK normally returns all three fields. If its result is
+        // interrupted after the provider has captured payment, wait for the
+        // authenticated server status instead of treating a local success as
+        // payment proof.
+        pollSubscriptionStatus();
       }
     } catch (err: any) {
       console.error('Razorpay SDK error:', err);
       
-      if (err.code === 'PayerCancelled' || err.code === 'NativePaymentCancelled') {
+      if (err.code === 0 || err.code === 'PayerCancelled' || err.code === 'NativePaymentCancelled') {
         console.log('User cancelled payment');
         navigation.goBack();
         return;
@@ -289,20 +352,37 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         [{ text: 'OK' }]
       );
     }
-  }, [isIOSSubscriptionDisabled, canUseRazorpaySdk, keyId, orderId, amount, currency, user, subscriptionType, navigation, pollOrderStatus, colors.primary]);
+  }, [
+    isIOSSubscriptionDisabled,
+    canUseRazorpaySdk,
+    keyId,
+    orderId,
+    amount,
+    currency,
+    user,
+    selectedSubscriptionType,
+    navigation,
+    pollSubscriptionStatus,
+    verifySubscriptionPayment,
+    colors.primary,
+  ]);
 
   useEffect(() => {
-    if (subscriptionType) {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      clearStatusPoll();
+    };
+  }, [clearStatusPoll]);
+
+  useEffect(() => {
+    if (selectedSubscriptionType) {
       createCheckoutSession();
     } else {
       setError('Subscription type is required');
       setLoading(false);
     }
-
-    return () => {
-      setIsPolling(false);
-    };
-  }, [subscriptionType, createCheckoutSession]);
+  }, [selectedSubscriptionType, createCheckoutSession]);
 
   useEffect(() => {
     if (
@@ -320,17 +400,54 @@ export default function SubscriptionPayment({ route, navigation }: any) {
     }
   }, [keyId, orderId, amount, loading, error, paymentMethod, sdkPaymentInitiated, canUseRazorpaySdk, initiateSDKPayment]);
 
-  const handleNavigationStateChange = async (nav: any) => {
-    const url = nav.url;
-    
-    if (url.includes('status=success') || url.includes(returnUrl + '?status=success')) {
-      if (paymentMethod === 'razorpay' && orderId) {
-        await pollOrderStatus();
-      }
-    } else if (url.includes('status=cancel') || url.includes('status=failed') || url.includes(returnUrl + '?status=cancel')) {
-      navigation.goBack();
+  const handleCheckoutReturnNavigation = useCallback(async (rawUrl: string) => {
+    if (
+      !orderId ||
+      !isKnownCheckoutReturnUrl(rawUrl, returnUrl, ENV.WEB_BASE_URL) ||
+      subscriptionActivatedRef.current
+    ) {
+      return;
     }
-  };
+
+    const payment = parseRazorpayPaymentCallbackUrl(rawUrl, orderId);
+    if (payment) {
+      await verifySubscriptionPayment(payment);
+      return;
+    }
+
+    try {
+      const status = new URL(rawUrl).searchParams.get('status')?.toLowerCase();
+      if (status === 'success') {
+        // The app-hosted relay may receive Razorpay's form POST and post the
+        // signed fields a moment later. This status poll reconciles only with
+        // server-owned subscription state; it never activates locally on its own.
+        pollSubscriptionStatus();
+      } else if (status === 'cancel' || status === 'failed') {
+        navigation.goBack();
+      }
+    } catch {
+      // Ignore malformed navigation events. They are not a payment signal.
+    }
+  }, [navigation, orderId, pollSubscriptionStatus, returnUrl, verifySubscriptionPayment]);
+
+  const handleNavigationStateChange = useCallback((nav: { url?: string }) => {
+    if (nav.url) {
+      handleCheckoutReturnNavigation(nav.url).catch((navigationError) => {
+        console.warn('Unable to process checkout return navigation:', navigationError);
+      });
+    }
+  }, [handleCheckoutReturnNavigation]);
+
+  const handleWebViewMessage = useCallback((event: { nativeEvent: { data?: string } }) => {
+    if (!orderId || !event.nativeEvent.data) return;
+
+    const payment = parseRazorpayPaymentCallbackMessage(event.nativeEvent.data, orderId);
+    if (payment) {
+      verifySubscriptionPayment(payment).catch((verificationError) => {
+        console.warn('Unable to process checkout callback message:', verificationError);
+      });
+    }
+  }, [orderId, verifySubscriptionPayment]);
 
   const handleClose = () => {
     Alert.alert(
@@ -480,6 +597,7 @@ export default function SubscriptionPayment({ route, navigation }: any) {
         <WebView
           source={{ uri: checkoutUrl || '' }}
           onNavigationStateChange={handleNavigationStateChange}
+          onMessage={handleWebViewMessage}
           onLoadEnd={() => setWebViewLoading(false)}
           onError={(syntheticEvent) => {
             const { nativeEvent } = syntheticEvent;

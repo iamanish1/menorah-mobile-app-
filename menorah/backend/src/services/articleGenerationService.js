@@ -7,6 +7,7 @@ const {
   generateArticleTopics,
   getWordRange
 } = require('./articleAiService');
+const { buildArticleCanonicalUrl } = require('./articleCanonicalUrl');
 const { resolveCoverImage } = require('./articleImageService');
 
 const DEFAULT_TIMEZONE = 'Asia/Dubai';
@@ -32,10 +33,7 @@ const normalizeTags = (tags) => {
   return tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 12);
 };
 
-const buildCanonicalUrl = (slug) => {
-  const baseUrl = (process.env.PUBLIC_WEB_BASE_URL || '').replace(/\/+$/, '');
-  return baseUrl ? `${baseUrl}/articles/${slug}` : '';
-};
+const buildCanonicalUrl = buildArticleCanonicalUrl;
 
 const buildUniqueSlug = async (title) => {
   const baseSlug = slugify(title);

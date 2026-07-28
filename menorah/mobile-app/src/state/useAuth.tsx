@@ -33,6 +33,7 @@ export interface AuthResult {
   email?: string;
   needsProfileCompletion?: boolean;
   requiresSignIn?: boolean;
+  requiresSignUp?: boolean;
 }
 
 interface SocialLoginData {
@@ -321,6 +322,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<AuthResult> => {
     try {
       const response = await request;
+      if (response.code === 'ACCOUNT_NOT_FOUND') {
+        return {
+          success: false,
+          requiresSignUp: true,
+          message: response.message || 'Create a Menorah account to continue with this sign-in method.',
+        };
+      }
       if (response.code === 'EMAIL_VERIFICATION_REQUIRED') {
         return {
           success: true,

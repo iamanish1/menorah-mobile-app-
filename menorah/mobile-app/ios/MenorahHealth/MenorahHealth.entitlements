@@ -9,6 +9,7 @@
     <key>com.apple.developer.associated-domains</key>
     <array>
       <string>applinks:app.menorah.me</string>
+      <string>applinks:www.menorah.me</string>
       <string>applinks:menorah.me</string>
       <string>applinks:api-ios.menorah.me</string>
     </array>
