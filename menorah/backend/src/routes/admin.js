@@ -796,7 +796,7 @@ router.get('/counsellors/:id', [
     if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid ID' });
 
     const counsellor = await Counsellor.findById(req.params.id)
-      .populate('user', 'firstName lastName email phone profileImage isActive createdAt')
+      .populate('user', 'firstName lastName email phone profileImage isActive createdAt dateOfBirth gender')
       .populate('approvedBy', 'firstName lastName email')
       .lean();
 
@@ -881,10 +881,20 @@ router.get('/counsellors/:id', [
       ])
     ]);
 
+    // Approved counsellors keep their personal data on the linked User
+    // document. Keep this response compatible with the pending-application
+    // shape so the admin detail screen always shows the counsellor's latest
+    // date of birth and gender after a self-service profile edit.
+    const formattedCounsellor = {
+      ...counsellor,
+      dateOfBirth: counsellor.user?.dateOfBirth || null,
+      gender: counsellor.user?.gender || null,
+    };
+
     res.json({
       success: true,
       data: {
-        counsellor,
+        counsellor: formattedCounsellor,
         bookingStats: {
           allTime: allTimeStats[0] || { total: 0, completed: 0, cancelled: 0, revenue: 0 },
           today: todayStats[0] || { total: 0, completed: 0, cancelled: 0 },

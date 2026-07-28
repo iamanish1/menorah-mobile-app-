@@ -251,6 +251,12 @@ class AdminApiClient {
     );
   }
 
+  createArticle(payload: Pick<Article, 'title' | 'excerpt' | 'category' | 'contentBlocks'> & Partial<Pick<Article, 'tags' | 'coverImageUrl' | 'coverImagePublicId' | 'seoTitle' | 'seoDescription'>>) {
+    return this.request<{ article: Article }>(
+      () => this.client.post('/articles/admin', payload)
+    );
+  }
+
   updateArticle(id: string, payload: Partial<Article>) {
     return this.request<{ article: Article }>(
       () => this.client.patch(`/articles/admin/${id}`, payload)
@@ -373,6 +379,12 @@ class AdminApiClient {
   getSocialPost(id: string) {
     return this.request<{ post: SocialPost }>(
       () => this.client.get(`/admin/social-studio/posts/${id}`)
+    );
+  }
+
+  createManualSocialPost(payload: Pick<SocialPost, 'topic' | 'caption' | 'imageUrl'> & Partial<Pick<SocialPost, 'campaignName' | 'hookText' | 'bodyText' | 'ctaText' | 'hashtags' | 'postType' | 'aspectRatio' | 'templateKey'>>) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post('/admin/social-studio/posts', payload)
     );
   }
 

@@ -10,6 +10,10 @@ const { revokeAllSessions } = require('../utils/sessionLifecycle');
 const { disconnectUserSockets } = require('../utils/sessionLifecycle');
 const { passwordValidator } = require('../utils/passwordPolicy');
 const {
+  invalidateCounsellorDiscoveryCache,
+  notifyCounsellorProfileUpdated,
+} = require('../utils/counsellorProfileSync');
+const {
   serializePublicUser,
   serializeUserProfile,
 } = require('../serializers/userSerializer');
@@ -184,6 +188,15 @@ router.put('/profile', sharedParticipantAuth, upload.single('profileImage'), [
     }
 
     await user.save();
+
+    // A counsellor's name and fallback image are stored on User, while the
+    // public directory caches joined User + Counsellor records. Clear that
+    // cache and notify active clients so personal edits are visible wherever
+    // the counsellor appears, not only after its normal cache TTL.
+    if (user.role === 'counsellor') {
+      await invalidateCounsellorDiscoveryCache();
+      notifyCounsellorProfileUpdated(req.app.get('io'));
+    }
 
     res.json({
       success: true,

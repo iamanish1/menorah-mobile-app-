@@ -11,8 +11,11 @@ const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
 const { counsellorAuth } = require('../middleware/auth');
-const { getRedisClient } = require('../config/redis');
 const { uploadBuffer, deleteResource } = require('../utils/cloudinary');
+const {
+  invalidateCounsellorDiscoveryCache,
+  notifyCounsellorProfileUpdated,
+} = require('../utils/counsellorProfileSync');
 
 const SERVER_TZ = process.env.SERVER_TZ || 'Asia/Kolkata';
 
@@ -96,31 +99,6 @@ const normalizeTagList = (tags, { limit = 20 } = {}) => {
   }
 
   return normalized;
-};
-
-const invalidateCounsellorDiscoveryCache = async () => {
-  try {
-    const redis = getRedisClient();
-    // Keep the public catalogue, discover filters, and the counsellor portal
-    // in sync immediately after a counsellor updates their public profile.
-    // The public route namespaces these keys with a cache version (for example
-    // `counsellors:v4:list:*`), so the former unversioned pattern left stale
-    // profile and rate data visible for up to the cache TTL.
-    const keys = [];
-    let cursor = '0';
-
-    do {
-      const result = await redis.scan(cursor, { MATCH: 'counsellors:*', COUNT: 100 });
-      const nextCursor = Array.isArray(result) ? result[0] : result.cursor;
-      const foundKeys = Array.isArray(result) ? result[1] : result.keys;
-      cursor = String(nextCursor);
-      keys.push(...(foundKeys || []));
-    } while (cursor !== '0');
-
-    if (keys.length > 0) await redis.del(keys);
-  } catch (error) {
-    console.warn('Counsellor discovery cache invalidation failed:', error.message);
-  }
 };
 
 const hasCompletedProfileMedia = (counsellor) => Boolean(counsellor?.profileImage && counsellor?.voiceIntroUrl);
@@ -575,6 +553,7 @@ router.put('/me/profile-media', profileMediaUploadLimiter, counsellorAuth, uploa
       await deleteStoredCounsellorMedia(previousVoiceIntro);
     }
     await invalidateCounsellorDiscoveryCache();
+    notifyCounsellorProfileUpdated(req.app.get('io'));
 
     return res.json({
       success: true,
@@ -1609,6 +1588,7 @@ router.put('/me/profile', [
 
     await counsellor.save();
     await invalidateCounsellorDiscoveryCache();
+    notifyCounsellorProfileUpdated(req.app.get('io'));
 
     res.json({
       success: true,
@@ -1645,6 +1625,8 @@ router.put('/me/status', counsellorAuth, async (req, res) => {
 
     counsellor.isAvailable = isAvailable;
     await counsellor.save();
+    await invalidateCounsellorDiscoveryCache();
+    notifyCounsellorProfileUpdated(req.app.get('io'));
 
     res.json({
       success: true,

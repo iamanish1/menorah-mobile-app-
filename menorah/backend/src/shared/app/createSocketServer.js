@@ -217,13 +217,22 @@ const attachSocketHandlers = (io) => {
           }
         });
 
+        let senderName = socket.userName;
         let senderImage = socket.userProfileImage || null;
         if (socket.userRole === 'counsellor') {
           try {
             const counsellor = await Counsellor.findOne({ user: socket.userId })
-              .populate('user', 'profileImage')
+              .populate('user', 'firstName lastName profileImage')
               .lean();
             senderImage = getCounsellorProfileImage(counsellor) || senderImage;
+            const currentName = `${counsellor?.user?.firstName || ''} ${counsellor?.user?.lastName || ''}`.trim();
+            if (currentName) {
+              senderName = currentName;
+              // Socket identity is established at connect time. Refresh the
+              // cached display name after a profile edit so an already-open
+              // chat never emits the counsellor's old name.
+              socket.userName = currentName;
+            }
           } catch (error) {
             // Never let optional avatar lookup prevent a chat message from
             // being delivered. The user-account image remains a safe fallback.
@@ -234,7 +243,7 @@ const attachSocketHandlers = (io) => {
         const payload = {
           id: msg._id.toString(),
           senderId: socket.userId,
-          senderName: socket.userName,
+          senderName,
           senderImage,
           content: msg.content,
           type: msg.type,

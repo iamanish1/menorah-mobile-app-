@@ -228,6 +228,16 @@ describe('route profiles', () => {
       .expect(401);
 
     await request(app)
+      .post('/api/articles/admin')
+      .send({})
+      .expect(401);
+
+    await request(app)
+      .post('/api/admin/social-studio/posts')
+      .send({})
+      .expect(401);
+
+    await request(app)
       .post('/api/payments/create-checkout-session')
       .send({ bookingId: '64f000000000000000000000' })
       .expect(404);

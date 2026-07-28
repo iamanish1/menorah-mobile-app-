@@ -59,4 +59,5 @@ export const socketEvents = {
   BOOKING_ASSIGNED: 'booking_assigned',
   BOOKING_SCHEDULED: 'booking_scheduled',
   BOOKING_STATUS: 'booking_status_changed',
+  COUNSELLOR_PROFILE_UPDATED: 'counsellor_profile_updated',
 } as const;

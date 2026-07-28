@@ -101,7 +101,7 @@ const bookingSchema = new mongoose.Schema({
   razorpayOrderId: String,
   orderStatus: {
     type: String,
-    enum: ['created', 'attempted', 'paid', 'failed', 'expired'],
+    enum: ['created', 'attempted', 'paid', 'failed', 'expired', 'cancelled'],
     default: null
   },
   orderCreatedAt: Date,
@@ -266,6 +266,13 @@ bookingSchema.virtual('isPast').get(function() {
 
 // Virtual for can be cancelled
 bookingSchema.virtual('canBeCancelled').get(function() {
+  // A payment hold is not a confirmed session. The patient must always be
+  // able to release it while checkout is outstanding, including when the
+  // session is less than 24 hours away.
+  if (this.status === 'pending' && this.paymentStatus === 'pending') {
+    return true;
+  }
+
   const now = new Date();
   const sessionTime = new Date(this.scheduledAt);
   const hoursUntilSession = (sessionTime - now) / (1000 * 60 * 60);

@@ -64,6 +64,21 @@ const validationErrorResponse = (res, errors) => res.status(400).json({
   errors
 });
 
+const hostedImageUrlValidator = (value) => {
+  try {
+    const url = new URL(String(value || '').trim());
+    if (url.protocol !== 'https:') {
+      throw new Error('Image URL must use HTTPS');
+    }
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Image URL must use HTTPS') {
+      throw error;
+    }
+    throw new Error('A valid HTTPS image URL is required');
+  }
+};
+
 const id = (value) => value?._id?.toString?.() || value?.id?.toString?.() || value?.toString?.();
 
 const formatModel = (doc) => {
@@ -561,6 +576,61 @@ router.patch('/brand-guidelines/:id', [param('id').isMongoId()], async (req, res
 });
 
 // Post generation and management
+//
+// Existing content should not be trapped behind an AI provider. This path is
+// intentionally manual: it stores an editor-supplied, hosted image and puts
+// the post into the normal review queue. Approving it still requires an admin,
+// and only the existing publish action can send it to Instagram.
+router.post('/posts', [
+  body('topic').trim().isLength({ min: 3, max: 220 }),
+  body('caption').trim().isLength({ min: 3, max: 2200 }),
+  body('imageUrl').custom(hostedImageUrlValidator),
+  body('campaignName').optional().isString().trim().isLength({ max: 120 }),
+  body('hookText').optional().isString().trim().isLength({ max: 240 }),
+  body('bodyText').optional().isString().trim().isLength({ max: 1200 }),
+  body('ctaText').optional().isString().trim().isLength({ max: 240 }),
+  body('hashtags').optional().isArray({ max: 30 }),
+  body('postType').optional().isIn(['single_image', 'carousel', 'reel_cover']),
+  body('aspectRatio').optional().isIn(['1:1', '4:5', '9:16']),
+  body('templateKey').optional().isIn(['thought_leadership', 'educational_tip', 'announcement'])
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors.array());
+
+    const imageUrl = String(req.body.imageUrl).trim();
+    const post = await SocialPost.create({
+      platform: 'instagram',
+      postType: req.body.postType || 'single_image',
+      contentSource: 'manual',
+      status: 'needs_review',
+      topic: toPlainText(req.body.topic),
+      campaignName: toPlainText(req.body.campaignName || ''),
+      hookText: toPlainText(req.body.hookText || ''),
+      bodyText: toPlainText(req.body.bodyText || ''),
+      ctaText: toPlainText(req.body.ctaText || ''),
+      caption: toPlainText(req.body.caption),
+      hashtags: normalizeHashtags(req.body.hashtags || []),
+      templateKey: req.body.templateKey || 'thought_leadership',
+      aspectRatio: req.body.aspectRatio || '4:5',
+      imageUrl,
+      // A manual post already has a reviewed external image. Reuse it for the
+      // existing preview and approval flow rather than forcing the renderer to
+      // overwrite a restored asset.
+      finalImageUrl: imageUrl,
+      thumbnailUrl: imageUrl,
+      qualityScore: 0,
+      qualityIssues: ['Manual post: confirm the image and copy before publishing.'],
+      createdBy: req.user._id
+    });
+
+    res.status(201).json({ success: true, data: { post: formatModel(post) } });
+  } catch (error) {
+    console.error('Create manual Social Studio post error:', error);
+    res.status(500).json({ success: false, message: 'Unable to create social post' });
+  }
+});
+
 router.post('/posts/generate', generationLimiter, [
   body('topic').trim().isLength({ min: 3, max: 220 }),
   body('campaignName').optional().isString().trim().isLength({ max: 120 }),
@@ -645,6 +715,7 @@ router.get('/posts/:id', [param('id').isMongoId()], async (req, res) => {
 router.patch('/posts/:id', [
   param('id').isMongoId(),
   body('hashtags').optional().isArray(),
+  body('imageUrl').optional().custom(hostedImageUrlValidator),
   body('scheduledAt').optional({ nullable: true }).isISO8601()
 ], async (req, res) => {
   try {
@@ -667,10 +738,19 @@ router.patch('/posts/:id', [
       post.selectedAssetIds = req.body.selectedAssetIds;
       needsRender = true;
     }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'imageUrl')) {
+      const imageUrl = String(req.body.imageUrl || '').trim();
+      post.imageUrl = imageUrl;
+      post.finalImageUrl = imageUrl;
+      post.thumbnailUrl = imageUrl;
+    }
     if (Object.prototype.hasOwnProperty.call(req.body, 'scheduledAt')) post.scheduledAt = req.body.scheduledAt ? new Date(req.body.scheduledAt) : null;
 
     await post.save();
-    if (needsRender) await renderAndCheckPost(post);
+    // Manual restores retain their supplied image while editors adjust copy.
+    // Explicit Render / Regenerate actions below still let an admin replace it
+    // with a studio-rendered asset when that is intended.
+    if (needsRender && post.contentSource !== 'manual') await renderAndCheckPost(post);
     res.json({ success: true, data: { post: formatModel(post) } });
   } catch (error) {
     console.error('Update Social Studio post error:', error);
@@ -699,6 +779,8 @@ router.post('/posts/:id/regenerate-image', [param('id').isMongoId()], async (req
     const post = await SocialPost.findById(req.params.id);
     if (!post) return res.status(404).json({ success: false, message: 'Social post not found' });
     await renderAndCheckPost(post, { regenerateBackground: true });
+    post.contentSource = 'ai';
+    await post.save();
     res.json({ success: true, data: { post: formatModel(post) } });
   } catch (error) {
     console.error('Regenerate Social Studio image error:', error);
@@ -711,6 +793,8 @@ router.post('/posts/:id/render', [param('id').isMongoId()], async (req, res) => 
     const post = await SocialPost.findById(req.params.id);
     if (!post) return res.status(404).json({ success: false, message: 'Social post not found' });
     await renderAndCheckPost(post);
+    post.contentSource = 'ai';
+    await post.save();
     res.json({ success: true, data: { post: formatModel(post) } });
   } catch (error) {
     console.error('Render Social Studio post error:', error);

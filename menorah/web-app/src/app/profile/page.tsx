@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useId, KeyboardEvent } from 'reac
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
+import { authStore } from '@/lib/auth';
 import AppLayout from '@/components/layout/AppLayout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -668,6 +669,15 @@ export default function ProfilePage() {
     });
     setSavingPersonal(false);
     if (res.success) {
+      // Keep the portal chrome in step with the saved User record. Without
+      // this, the profile card changed immediately but the sidebar/topbar kept
+      // the pre-edit name until a full page reload.
+      if (res.data?.user) {
+        const currentUser = authStore.getState().user;
+        if (currentUser) {
+          authStore.setState({ user: { ...currentUser, ...res.data.user } });
+        }
+      }
       await fetchProfile();
       setEditingPersonal(false);
       showSuccess('Personal info updated.');

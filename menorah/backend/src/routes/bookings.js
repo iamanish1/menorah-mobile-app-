@@ -54,6 +54,17 @@ const canManageSessionState = (booking, user) => {
   return Boolean(counsellorUserId && counsellorUserId === user?._id?.toString());
 };
 
+const canCancelBooking = (booking, now = new Date()) => {
+  if (booking?.status === 'pending' && booking.paymentStatus === 'pending') {
+    return true;
+  }
+
+  const scheduledAt = new Date(booking?.scheduledAt);
+  return booking?.status === 'confirmed'
+    && !Number.isNaN(scheduledAt.getTime())
+    && scheduledAt.getTime() - now.getTime() > 24 * 60 * 60 * 1000;
+};
+
 // @route   POST /api/bookings
 // @desc    Create a new booking
 // @access  Private
@@ -422,14 +433,9 @@ router.get('/', [
       }
     }
 
-    // Never show bookings that are awaiting payment (created but payment not yet completed).
-    // These are excluded from all list views — they only exist temporarily while the
-    // user is in the Razorpay modal, and are auto-cancelled if payment is abandoned.
-    dbQuery.$nor = [{
-      status: 'pending',
-      paymentStatus: 'pending',
-      isSubscriptionBooking: { $ne: true }
-    }];
+    // Keep a live payment hold visible to its owner. They may return after a
+    // browser/app interruption to either complete checkout or explicitly
+    // cancel the booking and release the held slot.
 
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -472,7 +478,7 @@ router.get('/', [
         discountAmount: booking.promo.discountAmount || 0
       } : undefined,
       videoCall: formatVideoCall(booking.videoCall),
-      canBeCancelled: booking.canBeCancelled,
+      canBeCancelled: canCancelBooking(booking),
       canBeRescheduled: booking.canBeRescheduled,
       createdAt: booking.createdAt // Add createdAt for date display
     }));
@@ -567,7 +573,7 @@ router.get('/:id', [
         discountAmount: booking.promo.discountAmount || 0
       } : undefined,
       videoCall: formatVideoCall(booking.videoCall, { includeHostUrl: isCounsellor }),
-      canBeCancelled: booking.canBeCancelled,
+      canBeCancelled: canCancelBooking(booking),
       canBeRescheduled: booking.canBeRescheduled,
       createdAt: booking.createdAt,
     };
@@ -706,24 +712,73 @@ router.put('/:id/cancel', [
       });
     }
 
-    // Cancel booking
-    await booking.cancel(reason, req.user._id);
+    let cancelledBooking = booking;
+    if (isUnpaidHold) {
+      // Claim the outstanding checkout atomically. A payment verifier and a
+      // cancellation can race; only one is allowed to transition a pending
+      // booking. Once this update succeeds, every payment-confirmation path
+      // rejects the booking because it is no longer pending.
+      cancelledBooking = await Booking.findOneAndUpdate({
+        _id: booking._id,
+        user: req.user._id,
+        status: 'pending',
+        paymentStatus: 'pending',
+      }, {
+        $set: {
+          status: 'cancelled',
+          orderStatus: 'cancelled',
+          cancellationReason: reason,
+          cancelledBy: req.user._id,
+          cancelledAt: new Date(),
+        },
+        $unset: { holdExpiresAt: '' },
+        $push: {
+          statusHistory: {
+            status: 'cancelled',
+            timestamp: new Date(),
+            reason: reason || 'Cancelled before payment',
+            updatedBy: req.user._id,
+          },
+        },
+      }, { new: true, runValidators: true });
+
+      if (!cancelledBooking) {
+        return res.status(409).json({
+          success: false,
+          code: 'PAYMENT_STATE_CHANGED',
+          message: 'This booking was updated while you were cancelling it. Please refresh to see its latest status.',
+        });
+      }
+    } else {
+      await booking.cancel(reason, req.user._id);
+    }
 
     // Send cancellation notifications
     try {
       const sessionDetails = {
-        counsellorName: `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`,
+        counsellorName: booking.counsellor?.user
+          ? `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`.trim()
+          : 'Your counsellor',
         scheduledAt: booking.scheduledAt
       };
 
-      await sendCancellationSMS(booking.user.phone, sessionDetails);
+      if (booking.user?.phone) {
+        await sendCancellationSMS(booking.user.phone, sessionDetails);
+      }
     } catch (error) {
       console.error('Error sending cancellation notification:', error);
     }
 
     res.json({
       success: true,
-      message: 'Booking cancelled successfully'
+      message: 'Booking cancelled successfully',
+      data: {
+        booking: {
+          id: cancelledBooking._id,
+          status: cancelledBooking.status,
+          paymentStatus: cancelledBooking.paymentStatus,
+        },
+      },
     });
 
   } catch (error) {

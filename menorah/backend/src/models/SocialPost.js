@@ -27,6 +27,12 @@ const socialPostSchema = new mongoose.Schema({
     enum: ['single_image', 'carousel', 'reel_cover'],
     default: 'single_image'
   },
+  contentSource: {
+    type: String,
+    enum: ['ai', 'manual'],
+    default: 'ai',
+    index: true
+  },
   status: {
     type: String,
     enum: [

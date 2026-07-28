@@ -308,8 +308,8 @@ class ApiClient {
     return this.get<{ booking: Booking }>(`/bookings/${id}`);
   }
 
-  async cancelBooking(id: string, reason?: string): Promise<ApiResponse<{ booking: Booking }>> {
-    return this.put<{ booking: Booking }>(`/bookings/${id}/cancel`, { reason });
+  async cancelBooking(id: string, reason?: string): Promise<ApiResponse<{ booking: Pick<Booking, 'id' | 'status' | 'paymentStatus'> }>> {
+    return this.put<{ booking: Pick<Booking, 'id' | 'status' | 'paymentStatus'> }>(`/bookings/${id}/cancel`, { reason });
   }
 
   async rescheduleBooking(id: string, scheduledAt: string): Promise<ApiResponse<{ booking: Booking }>> {

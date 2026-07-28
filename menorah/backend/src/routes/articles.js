@@ -4,6 +4,7 @@ const Article = require('../models/Article');
 const ArticleGenerationRun = require('../models/ArticleGenerationRun');
 const { adminAuth } = require('../middleware/auth');
 const {
+  buildUniqueSlug,
   countArticleWords,
   createManualGenerationRun,
   createReviewArticle,
@@ -30,6 +31,15 @@ const EDITABLE_FIELDS = [
   'imagePrompt'
 ];
 
+const CONTENT_BLOCK_TYPES = new Set([
+  'heading',
+  'paragraph',
+  'quote',
+  'bullet_list',
+  'image',
+  'callout'
+]);
+
 const formatArticle = (article) => {
   if (!article) {
     return null;
@@ -53,6 +63,60 @@ const validationErrorResponse = (res, errors) => res.status(400).json({
   message: 'Validation failed',
   errors
 });
+
+/**
+ * Manual articles deliberately use the same structured body format as the AI
+ * pipeline. That keeps one public-reader contract for the landing page, user
+ * app, counsellor portal, and mobile clients instead of creating a second
+ * rich-text format just for administrator-authored pieces.
+ */
+const validateContentBlocks = (value) => {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
+    throw new Error('Article content must include between 1 and 100 blocks');
+  }
+
+  const isValid = value.every((block) => {
+    if (!block || typeof block !== 'object' || !CONTENT_BLOCK_TYPES.has(block.type)) {
+      return false;
+    }
+
+    const text = String(block.text || '').trim();
+    const items = Array.isArray(block.items)
+      ? block.items.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+    const imageUrl = String(block.url || '').trim();
+
+    if (
+      block.level !== undefined
+      && block.level !== null
+      && (!Number.isInteger(block.level) || block.level < 1 || block.level > 6)
+    ) {
+      return false;
+    }
+
+    if (block.type === 'bullet_list') return items.length > 0;
+    if (block.type === 'image') return imageUrl.length > 0;
+    return text.length > 0;
+  });
+
+  if (!isValid) {
+    throw new Error('Each article content block needs a supported type and content');
+  }
+
+  return true;
+};
+
+const normalizeContentBlocks = (blocks) => blocks.map((block) => ({
+  type: block.type,
+  text: String(block.text || '').trim(),
+  level: Number.isInteger(block.level) ? block.level : null,
+  items: Array.isArray(block.items)
+    ? block.items.map((item) => String(item || '').trim()).filter(Boolean)
+    : [],
+  url: String(block.url || '').trim() || null,
+  alt: String(block.alt || '').trim(),
+  caption: String(block.caption || '').trim()
+}));
 
 const buildArticleFilter = ({ status, q, runId }) => {
   const filter = {};
@@ -85,6 +149,18 @@ const articleInputValidators = [
   body('imageAvoid').optional().isString().trim().isLength({ max: 500 }),
   body('coverImageUrl').optional().isString().trim().isLength({ max: 1000 }),
   body('coverImagePublicId').optional().isString().trim().isLength({ max: 250 })
+];
+
+const manualArticleValidators = [
+  body('title').trim().isLength({ min: 3, max: 200 }).withMessage('Title is required'),
+  body('excerpt').trim().isLength({ min: 10, max: 800 }).withMessage('Excerpt is required'),
+  body('category').trim().isLength({ min: 2, max: 80 }).withMessage('Category is required'),
+  body('tags').optional().isArray(),
+  body('contentBlocks').custom(validateContentBlocks),
+  body('coverImageUrl').optional().isString().trim().isLength({ max: 1000 }),
+  body('coverImagePublicId').optional().isString().trim().isLength({ max: 250 }),
+  body('seoTitle').optional().isString().trim().isLength({ max: 200 }),
+  body('seoDescription').optional().isString().trim().isLength({ max: 500 })
 ];
 
 // GET /api/articles
@@ -300,6 +376,52 @@ router.get('/admin', adminAuth, [
   } catch (error) {
     console.error('Get admin articles error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// POST /api/articles/admin
+//
+// The legacy admin surface only offered AI generation. A manual path is
+// essential when an editor is restoring an existing article or the AI provider
+// is unavailable. New records begin as drafts and retain the usual review and
+// publish controls, so public readers only ever receive published content.
+router.post('/admin', adminAuth, manualArticleValidators, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return validationErrorResponse(res, errors.array());
+    }
+
+    const contentBlocks = normalizeContentBlocks(req.body.contentBlocks);
+    const slug = await buildUniqueSlug(req.body.title);
+    const article = await Article.create({
+      title: String(req.body.title).trim(),
+      slug,
+      excerpt: String(req.body.excerpt).trim(),
+      category: String(req.body.category).trim(),
+      tags: normalizeTags(req.body.tags),
+      contentBlocks,
+      coverImageUrl: String(req.body.coverImageUrl || '').trim() || null,
+      coverImagePublicId: String(req.body.coverImagePublicId || '').trim() || null,
+      seoTitle: String(req.body.seoTitle || '').trim(),
+      seoDescription: String(req.body.seoDescription || '').trim(),
+      canonicalUrl: buildArticleCanonicalUrl(slug),
+      status: 'draft',
+      wordCount: countArticleWords({ contentBlocks }),
+      generatedByAi: false,
+      reviewedByHuman: false,
+      reviewedBy: null,
+      reviewedAt: null,
+      publishedAt: null
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { article: formatArticle(article) }
+    });
+  } catch (error) {
+    console.error('Create manual article error:', error);
+    res.status(500).json({ success: false, message: 'Unable to create article' });
   }
 });
 

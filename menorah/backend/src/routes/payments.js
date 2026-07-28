@@ -259,6 +259,14 @@ router.post('/create-checkout-session', [
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
+    if (booking.status === 'cancelled') {
+      return res.status(409).json({
+        success: false,
+        code: 'BOOKING_CANCELLED',
+        message: 'This booking has been cancelled and can no longer be paid for.',
+      });
+    }
+
     if (booking.paymentStatus === 'paid') {
       return res.json({
         success: true,
@@ -273,16 +281,22 @@ router.post('/create-checkout-session', [
       });
     }
 
-    if (booking.status === 'pending' && booking.paymentStatus === 'pending') {
-      await expireStalePendingBookings(Booking, { _id: booking._id });
-      const freshBooking = await Booking.findById(booking._id);
-      if (!freshBooking || freshBooking.status === 'expired' || !isBlockingBooking(freshBooking)) {
-        return res.status(409).json({
-          success: false,
-          code: 'SLOT_EXPIRED',
-          message: SLOT_EXPIRED_MESSAGE
-        });
-      }
+    if (booking.status !== 'pending' || booking.paymentStatus !== 'pending') {
+      return res.status(409).json({
+        success: false,
+        code: 'BOOKING_NOT_PAYABLE',
+        message: 'This booking is no longer available for payment.',
+      });
+    }
+
+    await expireStalePendingBookings(Booking, { _id: booking._id });
+    const freshBooking = await Booking.findById(booking._id);
+    if (!freshBooking || freshBooking.status === 'expired' || !isBlockingBooking(freshBooking)) {
+      return res.status(409).json({
+        success: false,
+        code: 'SLOT_EXPIRED',
+        message: SLOT_EXPIRED_MESSAGE
+      });
     }
 
     const razorpay = getRazorpayClient();
@@ -448,9 +462,25 @@ router.post('/verify-razorpay', [
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
+    if (booking.status === 'cancelled') {
+      return res.status(409).json({
+        success: false,
+        code: 'BOOKING_CANCELLED',
+        message: 'This booking has been cancelled and can no longer be paid for.',
+      });
+    }
+
     // Idempotency — already paid, nothing to do
     if (booking.paymentStatus === 'paid') {
       return res.json({ success: true, message: 'Payment already verified' });
+    }
+
+    if (booking.status !== 'pending' || booking.paymentStatus !== 'pending') {
+      return res.status(409).json({
+        success: false,
+        code: 'BOOKING_NOT_PAYABLE',
+        message: 'This booking is no longer available for payment.',
+      });
     }
 
     // Order ID validation — prevent payment-replay across different bookings
@@ -458,16 +488,14 @@ router.post('/verify-razorpay', [
       return res.status(400).json({ success: false, message: 'Order ID does not match booking' });
     }
 
-    if (booking.status === 'pending' && booking.paymentStatus === 'pending') {
-      await expireStalePendingBookings(Booking, { _id: booking._id });
-      const freshBooking = await Booking.findById(booking._id);
-      if (!freshBooking || freshBooking.status === 'expired' || !isBlockingBooking(freshBooking)) {
-        return res.status(409).json({
-          success: false,
-          code: 'SLOT_EXPIRED',
-          message: SLOT_EXPIRED_MESSAGE
-        });
-      }
+    await expireStalePendingBookings(Booking, { _id: booking._id });
+    const freshBooking = await Booking.findById(booking._id);
+    if (!freshBooking || freshBooking.status === 'expired' || !isBlockingBooking(freshBooking)) {
+      return res.status(409).json({
+        success: false,
+        code: 'SLOT_EXPIRED',
+        message: SLOT_EXPIRED_MESSAGE
+      });
     }
 
     const text = `${razorpay_order_id}|${razorpay_payment_id}`;
@@ -1063,7 +1091,7 @@ const handleRazorpayPaymentSuccess = async (payment, io) => {
   if (!bookingId || !orderId) return;
 
   const booking = await Booking.findById(bookingId);
-  if (!booking) return;
+  if (!booking || booking.status === 'cancelled') return;
   if (booking.razorpayOrderId !== orderId) return;
   if (booking.paymentStatus === 'paid') {
     if (!booking.paymentId || String(booking.paymentId) === String(payment.id)) {
@@ -1114,7 +1142,7 @@ const handleRazorpayPaymentFailure = async (payment) => {
   if (!bookingId || !orderId) return;
 
   const booking = await Booking.findById(bookingId);
-  if (!booking || booking.paymentStatus === 'paid' || booking.razorpayOrderId !== orderId) return;
+  if (!booking || booking.status === 'cancelled' || booking.paymentStatus === 'paid' || booking.razorpayOrderId !== orderId) return;
 
   // A failed checkout can be retried while the slot hold is live. Do not mark
   // the booking permanently failed/expired here; the hold expiry job owns that
@@ -1141,7 +1169,7 @@ const handleRazorpayPaymentFailure = async (payment) => {
 
 const handleRazorpayOrderPaid = async (order, io) => {
   const booking = await Booking.findOne({ razorpayOrderId: order.id });
-  if (!booking) return;
+  if (!booking || booking.status === 'cancelled') return;
   if (booking.paymentStatus === 'paid') {
     if (!booking.paymentId || String(booking.paymentId) === String(order.payment_id)) {
       await recordWebhookBookingReceipt({

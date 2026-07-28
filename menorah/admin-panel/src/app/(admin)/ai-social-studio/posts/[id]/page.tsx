@@ -32,6 +32,7 @@ export default function SocialPostReviewPage() {
   const [ctaText, setCtaText] = useState('');
   const [caption, setCaption] = useState('');
   const [hashtags, setHashtags] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [templateKey, setTemplateKey] = useState<SocialTemplateKey>('thought_leadership');
   const [aspectRatio, setAspectRatio] = useState<SocialAspectRatio>('4:5');
 
@@ -42,6 +43,7 @@ export default function SocialPostReviewPage() {
     setCtaText(next.ctaText || '');
     setCaption(next.caption || '');
     setHashtags((next.hashtags || []).join(', '));
+    setImageUrl(next.imageUrl || next.finalImageUrl || '');
     setTemplateKey(next.templateKey || 'thought_leadership');
     setAspectRatio(next.aspectRatio || '4:5');
     setScheduledAt(next.scheduledAt ? next.scheduledAt.slice(0, 16) : '');
@@ -69,13 +71,16 @@ export default function SocialPostReviewPage() {
     ctaText,
     caption,
     hashtags: splitTags(hashtags),
+    imageUrl,
+    finalImageUrl: imageUrl || post.finalImageUrl,
+    thumbnailUrl: imageUrl || post.thumbnailUrl,
     templateKey,
     aspectRatio
-  }) : null, [aspectRatio, bodyText, caption, ctaText, hashtags, hookText, post, templateKey]);
+  }) : null, [aspectRatio, bodyText, caption, ctaText, hashtags, hookText, imageUrl, post, templateKey]);
 
   const save = async () => {
     setSaving(true);
-    const response = await api.updateSocialPost(id, {
+    const payload = {
       hookText,
       bodyText,
       ctaText,
@@ -83,11 +88,14 @@ export default function SocialPostReviewPage() {
       hashtags: splitTags(hashtags),
       templateKey,
       aspectRatio
-    });
+    } as Parameters<typeof api.updateSocialPost>[1];
+    if (imageUrl.trim()) payload.imageUrl = imageUrl.trim();
+
+    const response = await api.updateSocialPost(id, payload);
     setSaving(false);
     if (response.success && response.data?.post) {
       applyPost(response.data.post);
-      toast.success('Post saved and preview re-rendered');
+      toast.success(post?.contentSource === 'manual' ? 'Post saved' : 'Post saved and preview re-rendered');
       return;
     }
     toast.error(response.message || 'Unable to save post');
@@ -174,7 +182,11 @@ export default function SocialPostReviewPage() {
         <section className="space-y-5 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Editable Post Content</h3>
-            <p className="mt-1 text-xs text-gray-500">Changing image text, template, or ratio re-renders the static post after save.</p>
+            <p className="mt-1 text-xs text-gray-500">
+              {post.contentSource === 'manual'
+                ? 'This restored post keeps its supplied image while you edit copy. Use Render or Image only when you want a new studio image.'
+                : 'Changing image text, template, or ratio re-renders the static post after save.'}
+            </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
@@ -210,6 +222,11 @@ export default function SocialPostReviewPage() {
           <label className="block">
             <span className="text-xs font-semibold text-gray-600">Instagram caption</span>
             <textarea value={caption} onChange={(event) => setCaption(event.target.value)} rows={7} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold text-gray-600">Hosted image URL</span>
+            <input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" inputMode="url" placeholder="https://…" />
+            <p className="mt-1 text-xs text-gray-400">The manual restore flow accepts HTTPS images only.</p>
           </label>
           <label className="block">
             <span className="text-xs font-semibold text-gray-600">Hashtags</span>

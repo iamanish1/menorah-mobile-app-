@@ -3,6 +3,9 @@ const request = require('supertest');
 
 const mockUserId = '64f000000000000000000001';
 const mockFindById = jest.fn();
+const mockRedisScan = jest.fn();
+const mockRedisDel = jest.fn();
+const mockSocketEmit = jest.fn();
 
 jest.mock('../../middleware/auth', () => ({
   auth: (req, _res, next) => {
@@ -39,16 +42,21 @@ jest.mock('../../utils/cloudinary', () => ({
   uploadBuffer: jest.fn(),
 }));
 
+jest.mock('../../config/redis', () => ({
+  getRedisClient: () => ({ scan: mockRedisScan, del: mockRedisDel }),
+}));
+
 const usersRouter = require('../users');
 
 const buildApp = () => {
   const app = express();
+  app.set('io', { emit: mockSocketEmit });
   app.use(express.json());
   app.use('/api/users', usersRouter);
   return app;
 };
 
-const makeUserDocument = () => ({
+const makeUserDocument = (overrides = {}) => ({
   _id: { toString: () => mockUserId },
   firstName: 'Asha',
   lastName: 'User',
@@ -73,6 +81,7 @@ const makeUserDocument = () => ({
   toObject() {
     return { ...this };
   },
+  ...overrides,
 });
 
 const flattenKeys = (value, keys = []) => {
@@ -87,6 +96,9 @@ const flattenKeys = (value, keys = []) => {
 describe('user profile serialization', () => {
   beforeEach(() => {
     mockFindById.mockReset();
+    mockRedisScan.mockReset().mockResolvedValue({ cursor: '0', keys: ['counsellors:v4:list:page-1'] });
+    mockRedisDel.mockReset().mockResolvedValue(1);
+    mockSocketEmit.mockReset();
   });
 
   test('PUT /api/users/profile never exposes password, token, reset, or lock fields', async () => {
@@ -114,6 +126,38 @@ describe('user profile serialization', () => {
       id: mockUserId,
       firstName: 'Mira',
       email: 'asha@example.com',
+    });
+    expect(mockRedisScan).not.toHaveBeenCalled();
+    expect(mockSocketEmit).not.toHaveBeenCalled();
+  });
+
+  test('counsellor personal edits clear public directory cache and refresh connected user read models', async () => {
+    const user = makeUserDocument({ role: 'counsellor' });
+    mockFindById.mockResolvedValue(user);
+
+    const res = await request(buildApp())
+      .put('/api/users/profile')
+      .send({
+        firstName: 'Mira',
+        lastName: 'Counsellor',
+        gender: 'other',
+        dateOfBirth: '1992-04-25',
+      })
+      .expect(200);
+
+    expect(user).toMatchObject({
+      firstName: 'Mira',
+      lastName: 'Counsellor',
+      gender: 'other',
+      dateOfBirth: '1992-04-25',
+    });
+    expect(mockRedisScan).toHaveBeenCalledWith('0', { MATCH: 'counsellors:*', COUNT: 100 });
+    expect(mockRedisDel).toHaveBeenCalledWith(['counsellors:v4:list:page-1']);
+    expect(mockSocketEmit).toHaveBeenCalledWith('counsellor_profile_updated');
+    expect(res.body.data.user).toMatchObject({
+      firstName: 'Mira',
+      lastName: 'Counsellor',
+      gender: 'other',
     });
   });
 });

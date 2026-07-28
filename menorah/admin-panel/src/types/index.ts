@@ -526,6 +526,7 @@ export interface SocialPost {
   _id?: string;
   platform: 'instagram';
   postType: SocialPostType;
+  contentSource?: 'ai' | 'manual';
   status: SocialPostStatus;
   topic: string;
   campaignName?: string;

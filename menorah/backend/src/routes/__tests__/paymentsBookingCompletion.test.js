@@ -108,6 +108,15 @@ const makeConfirmedBooking = (overrides = {}) => ({
   ...overrides,
 });
 
+const asPopulatedQuery = (booking) => {
+  const query = {
+    populate: jest.fn(),
+    then: (resolve, reject) => Promise.resolve(booking).then(resolve, reject),
+  };
+  query.populate.mockReturnValue(query);
+  return query;
+};
+
 const buildJsonApp = (io) => {
   const app = express();
   app.use(express.json());
@@ -269,6 +278,104 @@ describe('booking payment completion', () => {
     expect(mockSendBookingConfirmationEmail).not.toHaveBeenCalled();
   });
 
+  test('client verification rejects a checkout after its pending booking was cancelled', async () => {
+    mockBookingFindById.mockResolvedValue(makePendingBooking({
+      status: 'cancelled',
+      orderStatus: 'cancelled',
+    }));
+
+    const response = await request(buildJsonApp(io))
+      .post('/api/payments/verify-razorpay')
+      .send({
+        bookingId,
+        razorpay_order_id: orderId,
+        razorpay_payment_id: paymentId,
+        razorpay_signature: 'a'.repeat(64),
+      })
+      .expect(409);
+
+    expect(response.body).toEqual(expect.objectContaining({
+      success: false,
+      code: 'BOOKING_CANCELLED',
+    }));
+    expect(mockRazorpayOrdersFetch).not.toHaveBeenCalled();
+    expect(mockRazorpayPaymentsFetch).not.toHaveBeenCalled();
+    expect(mockPaymentReceiptCreate).not.toHaveBeenCalled();
+    expect(mockBookingFindOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  test('does not create another checkout order for a cancelled pending-payment booking', async () => {
+    mockBookingFindById.mockReturnValue(asPopulatedQuery(makePendingBooking({
+      status: 'cancelled',
+      orderStatus: 'cancelled',
+    })));
+
+    const response = await request(buildJsonApp(io))
+      .post('/api/payments/create-checkout-session')
+      .send({ bookingId })
+      .expect(409);
+
+    expect(response.body).toEqual(expect.objectContaining({
+      success: false,
+      code: 'BOOKING_CANCELLED',
+    }));
+    expect(mockRazorpayOrdersCreate).not.toHaveBeenCalled();
+  });
+
+  test('a cancellation that wins after client verification starts cannot be overwritten', async () => {
+    const pendingBooking = makePendingBooking();
+    mockBookingFindById
+      .mockResolvedValueOnce(pendingBooking)
+      .mockResolvedValueOnce(pendingBooking)
+      .mockResolvedValueOnce(makePendingBooking({
+        status: 'cancelled',
+        orderStatus: 'cancelled',
+      }));
+    mockBookingFindOneAndUpdate.mockResolvedValue(null);
+    mockRazorpayOrdersFetch.mockResolvedValue({
+      id: orderId,
+      amount: 100000,
+      notes: { bookingId, userId },
+    });
+    mockRazorpayPaymentsFetch.mockResolvedValue({
+      id: paymentId,
+      order_id: orderId,
+      amount: 100000,
+      currency: 'INR',
+      status: 'captured',
+    });
+    const signature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${orderId}|${paymentId}`)
+      .digest('hex');
+
+    const response = await request(buildJsonApp(io))
+      .post('/api/payments/verify-razorpay')
+      .send({
+        bookingId,
+        razorpay_order_id: orderId,
+        razorpay_payment_id: paymentId,
+        razorpay_signature: signature,
+      })
+      .expect(409);
+
+    expect(response.body).toEqual(expect.objectContaining({
+      success: false,
+      code: 'CHECKOUT_SUPERSEDED',
+    }));
+    expect(mockBookingFindOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'pending',
+        paymentStatus: 'pending',
+        razorpayOrderId: orderId,
+      }),
+      expect.any(Object),
+      expect.objectContaining({ new: true }),
+    );
+    expect(mockSendBookingConfirmationEmail).not.toHaveBeenCalled();
+    expect(mockSendBookingConfirmationSMS).not.toHaveBeenCalled();
+  });
+
   test('resumes a live booking claim after a prior verifier left a matching receipt', async () => {
     const pendingBooking = makePendingBooking();
     const confirmedBooking = makeConfirmedBooking();
@@ -357,6 +464,37 @@ describe('booking payment completion', () => {
       .expect(200);
 
     expect(mockBookingUpdateMany).not.toHaveBeenCalled();
+    expect(mockBookingFindOneAndUpdate).not.toHaveBeenCalled();
+    expect(mockSendBookingConfirmationEmail).not.toHaveBeenCalled();
+    expect(mockSendBookingConfirmationSMS).not.toHaveBeenCalled();
+  });
+
+  test('a delayed captured webhook cannot confirm a booking cancelled during checkout', async () => {
+    mockBookingFindById.mockResolvedValue(makePendingBooking({
+      status: 'cancelled',
+      orderStatus: 'cancelled',
+    }));
+    const { body, signature } = signedWebhook({
+      event: 'payment.captured',
+      payload: {
+        payment: {
+          entity: {
+            id: paymentId,
+            order_id: orderId,
+            notes: { bookingId },
+          },
+        },
+      },
+    });
+
+    await request(buildWebhookApp(io))
+      .post('/api/payments/razorpay-webhook')
+      .set('Content-Type', 'application/json')
+      .set('x-razorpay-signature', signature)
+      .send(body)
+      .expect(200);
+
+    expect(mockPaymentReceiptCreate).not.toHaveBeenCalled();
     expect(mockBookingFindOneAndUpdate).not.toHaveBeenCalled();
     expect(mockSendBookingConfirmationEmail).not.toHaveBeenCalled();
     expect(mockSendBookingConfirmationSMS).not.toHaveBeenCalled();
