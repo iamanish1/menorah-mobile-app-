@@ -1,4 +1,4 @@
-import { Bookmark, Heart, MessageCircle, Send } from 'lucide-react';
+import { Bookmark, Heart, MessageCircle, Play, Send } from 'lucide-react';
 import type { SocialPost } from '@/types';
 
 const ensureHash = (tag: string) => {
@@ -6,8 +6,9 @@ const ensureHash = (tag: string) => {
   return clean ? `#${clean}` : '';
 };
 
-export default function InstagramPostPreview({ post }: { post: Pick<SocialPost, 'caption' | 'hashtags' | 'finalImageUrl' | 'hookText' | 'thumbnailUrl'> }) {
+export default function InstagramPostPreview({ post }: { post: Pick<SocialPost, 'postType' | 'caption' | 'hashtags' | 'finalImageUrl' | 'hookText' | 'thumbnailUrl' | 'videoUrl'> }) {
   const tags = (post.hashtags || []).map(ensureHash).filter(Boolean).join(' ');
+  const isReel = post.postType === 'reel';
 
   return (
     <div className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm">
@@ -24,8 +25,24 @@ export default function InstagramPostPreview({ post }: { post: Pick<SocialPost, 
         </div>
       </div>
 
-      <div className="relative aspect-[4/5] bg-gray-100">
-        {post.finalImageUrl || post.thumbnailUrl ? (
+      <div className={`relative bg-gray-100 ${isReel ? 'aspect-[9/16]' : 'aspect-[4/5]'}`}>
+        {isReel && post.videoUrl ? (
+          <>
+            <video
+              src={post.videoUrl}
+              poster={post.thumbnailUrl || post.finalImageUrl || undefined}
+              controls
+              playsInline
+              preload="metadata"
+              className="h-full w-full bg-black object-contain"
+            >
+              Your browser cannot preview this Reel.
+            </video>
+            <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 text-xs font-semibold text-white">
+              <Play size={12} fill="currentColor" /> Reel preview
+            </span>
+          </>
+        ) : post.finalImageUrl || post.thumbnailUrl ? (
           <img
             src={post.finalImageUrl || post.thumbnailUrl}
             alt={post.hookText || 'Instagram post preview'}
@@ -33,7 +50,7 @@ export default function InstagramPostPreview({ post }: { post: Pick<SocialPost, 
           />
         ) : (
           <div className="flex h-full items-center justify-center px-8 text-center text-sm text-gray-400">
-            Preview image will appear after generation.
+            {isReel ? 'Reel video will appear after upload.' : 'Preview image will appear after generation.'}
           </div>
         )}
       </div>

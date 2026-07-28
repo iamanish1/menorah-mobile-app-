@@ -35,6 +35,9 @@ export default function ArticleDetailPage() {
   } = useQuery({
     queryKey: ['article', slug],
     enabled: isAuthenticated && Boolean(slug),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const response = await api.getArticle(slug as string);
       const article = response.data?.article;

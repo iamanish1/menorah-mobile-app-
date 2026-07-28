@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FileImage, Plus, Search } from 'lucide-react';
+import { FileImage, Film, Plus, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
 import SocialStudioTabs from '@/components/social-studio/SocialStudioTabs';
@@ -37,6 +37,8 @@ export default function SocialPostsPage() {
   const [caption, setCaption] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [hashtags, setHashtags] = useState('');
+  const [mediaKind, setMediaKind] = useState<'image' | 'reel'>('image');
+  const [videoFile, setVideoFile] = useState<File | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,18 +58,27 @@ export default function SocialPostsPage() {
   }, [load]);
 
   const createManualPost = async () => {
-    if (topic.trim().length < 3 || caption.trim().length < 3 || !imageUrl.trim()) {
-      toast.error('Add a topic, caption, and HTTPS image URL');
+    if (topic.trim().length < 3 || caption.trim().length < 3 || (mediaKind === 'image' && !imageUrl.trim()) || (mediaKind === 'reel' && !videoFile)) {
+      toast.error(mediaKind === 'reel' ? 'Add a topic, caption, and MP4 or MOV video' : 'Add a topic, caption, and HTTPS image URL');
       return;
     }
 
     setCreating(true);
-    const response = await api.createManualSocialPost({
-      topic: topic.trim(),
-      caption: caption.trim(),
-      imageUrl: imageUrl.trim(),
-      hashtags: hashtags.split(',').map((tag) => tag.trim().replace(/^#/, '')).filter(Boolean)
-    });
+    const response = mediaKind === 'reel' && videoFile
+      ? await (() => {
+        const form = new FormData();
+        form.set('topic', topic.trim());
+        form.set('caption', caption.trim());
+        form.set('hashtags', hashtags);
+        form.set('video', videoFile);
+        return api.createManualSocialReel(form);
+      })()
+      : await api.createManualSocialPost({
+        topic: topic.trim(),
+        caption: caption.trim(),
+        imageUrl: imageUrl.trim(),
+        hashtags: hashtags.split(',').map((tag) => tag.trim().replace(/^#/, '')).filter(Boolean)
+      });
     setCreating(false);
 
     if (response.success && response.data?.post) {
@@ -76,7 +87,9 @@ export default function SocialPostsPage() {
       setCaption('');
       setImageUrl('');
       setHashtags('');
-      toast.success('Social post added to the review queue');
+      setVideoFile(null);
+      setMediaKind('image');
+      toast.success(mediaKind === 'reel' ? 'Reel uploaded to the review queue' : 'Social post added to the review queue');
       router.push(`/ai-social-studio/posts/${response.data.post.id}`);
       return;
     }
@@ -109,7 +122,7 @@ export default function SocialPostsPage() {
             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50"
           >
             <Plus size={16} />
-            Add Existing Post
+            Create Social Post
           </button>
         </div>
       </div>
@@ -148,7 +161,9 @@ export default function SocialPostsPage() {
             {posts.map((post) => (
               <Link key={post.id} href={`/ai-social-studio/posts/${post.id}`} className="group overflow-hidden rounded-xl border border-gray-200 bg-white transition-shadow hover:shadow-md">
                 <div className="relative aspect-[4/3] bg-gray-100">
-                  {post.thumbnailUrl || post.finalImageUrl ? (
+                  {post.postType === 'reel' && post.videoUrl ? (
+                    <video src={post.videoUrl} muted playsInline preload="metadata" className="h-full w-full bg-black object-cover" />
+                  ) : post.thumbnailUrl || post.finalImageUrl ? (
                     <img src={post.thumbnailUrl || post.finalImageUrl} alt={post.topic} className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" />
                   ) : (
                     <div className="flex h-full items-center justify-center text-gray-300"><FileImage size={32} /></div>
@@ -186,11 +201,27 @@ export default function SocialPostsPage() {
         </div>
       )}
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Add Existing Social Post">
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create Social Post">
         <div className="space-y-4">
           <p className="text-sm leading-6 text-gray-600">
-            Restore or add a post without using AI. It enters the normal review queue and cannot publish until an admin approves it.
+            Create an image post or upload a Reel without using AI. It enters review first; no upload can reach Instagram until an admin approves and explicitly publishes it.
           </p>
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1">
+            <button
+              type="button"
+              onClick={() => setMediaKind('image')}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${mediaKind === 'image' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Image post
+            </button>
+            <button
+              type="button"
+              onClick={() => setMediaKind('reel')}
+              className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold ${mediaKind === 'reel' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <Film size={15} /> Video Reel
+            </button>
+          </div>
           <label className="block">
             <span className="text-sm font-semibold text-gray-700">Topic</span>
             <input value={topic} onChange={(event) => setTopic(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" placeholder="Mental health awareness" />
@@ -199,11 +230,24 @@ export default function SocialPostsPage() {
             <span className="text-sm font-semibold text-gray-700">Instagram caption</span>
             <textarea value={caption} onChange={(event) => setCaption(event.target.value)} rows={5} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" placeholder="Post caption" />
           </label>
-          <label className="block">
-            <span className="text-sm font-semibold text-gray-700">Hosted image URL</span>
-            <input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" placeholder="https://…" inputMode="url" />
-            <p className="mt-1 text-xs text-gray-400">Use an HTTPS image. You can update it in the review screen.</p>
-          </label>
+          {mediaKind === 'image' ? (
+            <label className="block">
+              <span className="text-sm font-semibold text-gray-700">Hosted image URL</span>
+              <input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" placeholder="https://…" inputMode="url" />
+              <p className="mt-1 text-xs text-gray-400">Use an HTTPS image. You can update it in the review screen.</p>
+            </label>
+          ) : (
+            <label className="block">
+              <span className="text-sm font-semibold text-gray-700">Reel video</span>
+              <input
+                type="file"
+                accept="video/mp4,video/quicktime,.mp4,.mov"
+                onChange={(event) => setVideoFile(event.target.files?.[0] || null)}
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-gray-400">MP4 or MOV, up to the configured 50 MB default. Production Reel uploads require Cloudinary media hosting.</p>
+            </label>
+          )}
           <label className="block">
             <span className="text-sm font-semibold text-gray-700">Hashtags</span>
             <input value={hashtags} onChange={(event) => setHashtags(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" placeholder="mentalhealth, support" />
@@ -213,7 +257,7 @@ export default function SocialPostsPage() {
             disabled={creating}
             className="w-full rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
           >
-            {creating ? 'Adding...' : 'Add to Review Queue'}
+            {creating ? (mediaKind === 'reel' ? 'Uploading...' : 'Adding...') : 'Add to Review Queue'}
           </button>
         </div>
       </Modal>

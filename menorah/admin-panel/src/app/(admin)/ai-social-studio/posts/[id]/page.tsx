@@ -35,6 +35,7 @@ export default function SocialPostReviewPage() {
   const [imageUrl, setImageUrl] = useState('');
   const [templateKey, setTemplateKey] = useState<SocialTemplateKey>('thought_leadership');
   const [aspectRatio, setAspectRatio] = useState<SocialAspectRatio>('4:5');
+  const isReel = post?.postType === 'reel';
 
   const applyPost = (next: SocialPost) => {
     setPost(next);
@@ -80,7 +81,10 @@ export default function SocialPostReviewPage() {
 
   const save = async () => {
     setSaving(true);
-    const payload = {
+    const payload = (isReel ? {
+      caption,
+      hashtags: splitTags(hashtags)
+    } : {
       hookText,
       bodyText,
       ctaText,
@@ -88,8 +92,8 @@ export default function SocialPostReviewPage() {
       hashtags: splitTags(hashtags),
       templateKey,
       aspectRatio
-    } as Parameters<typeof api.updateSocialPost>[1];
-    if (imageUrl.trim()) payload.imageUrl = imageUrl.trim();
+    }) as Parameters<typeof api.updateSocialPost>[1];
+    if (!isReel && imageUrl.trim()) payload.imageUrl = imageUrl.trim();
 
     const response = await api.updateSocialPost(id, payload);
     setSaving(false);
@@ -141,7 +145,7 @@ export default function SocialPostReviewPage() {
             Back to posts
           </Link>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-bold text-gray-900">Review Instagram Post</h2>
+            <h2 className="text-xl font-bold text-gray-900">Review Instagram {isReel ? 'Reel' : 'Post'}</h2>
             <StatusBadge status={post.status} />
           </div>
           <p className="mt-1 text-sm text-gray-500">Created {formatDate(post.createdAt)} - Quality {post.qualityScore || 0}/100</p>
@@ -155,10 +159,12 @@ export default function SocialPostReviewPage() {
             {action === 'caption' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
             Caption
           </button>
-          <button onClick={() => runAction('image', () => api.regenerateSocialImage(id), 'Image re-rendered')} disabled={action !== ''} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
-            {action === 'image' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            Image
-          </button>
+          {!isReel && (
+            <button onClick={() => runAction('image', () => api.regenerateSocialImage(id), 'Image re-rendered')} disabled={action !== ''} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+              {action === 'image' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+              Image
+            </button>
+          )}
           <button onClick={() => setRejectOpen(true)} disabled={action !== ''} className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60">
             <XCircle size={16} />
             Reject
@@ -183,51 +189,67 @@ export default function SocialPostReviewPage() {
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Editable Post Content</h3>
             <p className="mt-1 text-xs text-gray-500">
-              {post.contentSource === 'manual'
+              {isReel
+                ? 'The uploaded Reel stays fixed for review. Editing its copy sends any prior approval back to review; upload a new Reel to replace the video.'
+                : post.contentSource === 'manual'
                 ? 'This restored post keeps its supplied image while you edit copy. Use Render or Image only when you want a new studio image.'
                 : 'Changing image text, template, or ratio re-renders the static post after save.'}
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-xs font-semibold text-gray-600">Template</span>
-              <select value={templateKey} onChange={(event) => setTemplateKey(event.target.value as SocialTemplateKey)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                <option value="thought_leadership">Thought leadership</option>
-                <option value="educational_tip">Educational tip</option>
-                <option value="announcement">Announcement</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-xs font-semibold text-gray-600">Aspect ratio</span>
-              <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as SocialAspectRatio)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                <option value="1:1">1:1 square</option>
-                <option value="4:5">4:5 portrait</option>
-                <option value="9:16">9:16 story</option>
-              </select>
-            </label>
-          </div>
-          <label className="block">
-            <span className="text-xs font-semibold text-gray-600">Hook text on image</span>
-            <textarea value={hookText} onChange={(event) => setHookText(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-          </label>
-          <label className="block">
-            <span className="text-xs font-semibold text-gray-600">Body text on image</span>
-            <textarea value={bodyText} onChange={(event) => setBodyText(event.target.value)} rows={4} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            <p className="mt-1 text-xs text-gray-400">For educational tips, separate lines with a vertical bar.</p>
-          </label>
-          <label className="block">
-            <span className="text-xs font-semibold text-gray-600">CTA text on image</span>
-            <input value={ctaText} onChange={(event) => setCtaText(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-          </label>
+          {isReel ? (
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-800">
+              <p className="font-semibold">Uploaded Reel media</p>
+              <a href={post.videoUrl} target="_blank" rel="noreferrer" className="mt-1 block break-all font-medium underline">{post.videoUrl}</a>
+              <p className="mt-1">{post.videoMimeType || 'Video'}{post.videoSizeBytes ? ` · ${(post.videoSizeBytes / (1024 * 1024)).toFixed(1)} MB` : ''}</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-xs font-semibold text-gray-600">Template</span>
+                <select value={templateKey} onChange={(event) => setTemplateKey(event.target.value as SocialTemplateKey)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="thought_leadership">Thought leadership</option>
+                  <option value="educational_tip">Educational tip</option>
+                  <option value="announcement">Announcement</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-gray-600">Aspect ratio</span>
+                <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as SocialAspectRatio)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="1:1">1:1 square</option>
+                  <option value="4:5">4:5 portrait</option>
+                  <option value="9:16">9:16 story</option>
+                </select>
+              </label>
+            </div>
+          )}
+          {!isReel && (
+            <>
+              <label className="block">
+                <span className="text-xs font-semibold text-gray-600">Hook text on image</span>
+                <textarea value={hookText} onChange={(event) => setHookText(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-gray-600">Body text on image</span>
+                <textarea value={bodyText} onChange={(event) => setBodyText(event.target.value)} rows={4} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <p className="mt-1 text-xs text-gray-400">For educational tips, separate lines with a vertical bar.</p>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-gray-600">CTA text on image</span>
+                <input value={ctaText} onChange={(event) => setCtaText(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              </label>
+            </>
+          )}
           <label className="block">
             <span className="text-xs font-semibold text-gray-600">Instagram caption</span>
             <textarea value={caption} onChange={(event) => setCaption(event.target.value)} rows={7} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
-          <label className="block">
-            <span className="text-xs font-semibold text-gray-600">Hosted image URL</span>
-            <input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" inputMode="url" placeholder="https://…" />
-            <p className="mt-1 text-xs text-gray-400">The manual restore flow accepts HTTPS images only.</p>
-          </label>
+          {!isReel && (
+            <label className="block">
+              <span className="text-xs font-semibold text-gray-600">Hosted image URL</span>
+              <input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" inputMode="url" placeholder="https://…" />
+              <p className="mt-1 text-xs text-gray-400">The manual restore flow accepts HTTPS images only.</p>
+            </label>
+          )}
           <label className="block">
             <span className="text-xs font-semibold text-gray-600">Hashtags</span>
             <input value={hashtags} onChange={(event) => setHashtags(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
@@ -275,7 +297,7 @@ export default function SocialPostReviewPage() {
 
       <Modal open={publishOpen} onClose={() => setPublishOpen(false)} title="Publish to Instagram">
         <div className="space-y-4">
-          <p className="text-sm leading-6 text-gray-600">This will publish the approved post through the official Meta Instagram API using the connected business account.</p>
+          <p className="text-sm leading-6 text-gray-600">This will publish the approved {isReel ? 'Reel video' : 'post'} through the official Meta Instagram API using the connected business account. This action cannot be undone here.</p>
           <button
             onClick={async () => {
               const ok = await runAction('publish', () => api.publishSocialPostNow(id), 'Post published to Instagram');
@@ -284,7 +306,7 @@ export default function SocialPostReviewPage() {
             disabled={action !== ''}
             className="w-full rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-60"
           >
-            {action === 'publish' ? 'Publishing...' : 'Publish Now'}
+            {action === 'publish' ? 'Publishing...' : isReel ? 'Publish Reel Now' : 'Publish Now'}
           </button>
         </div>
       </Modal>

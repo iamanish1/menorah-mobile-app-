@@ -14,6 +14,10 @@ const {
   startGenerationRun
 } = require('../services/articleGenerationService');
 const { buildArticleCanonicalUrl } = require('../services/articleCanonicalUrl');
+const {
+  normalizeContentBlocks,
+  validateContentBlocks
+} = require('../services/articleContent');
 
 const router = express.Router();
 
@@ -30,15 +34,6 @@ const EDITABLE_FIELDS = [
   'coverImagePublicId',
   'imagePrompt'
 ];
-
-const CONTENT_BLOCK_TYPES = new Set([
-  'heading',
-  'paragraph',
-  'quote',
-  'bullet_list',
-  'image',
-  'callout'
-]);
 
 const formatArticle = (article) => {
   if (!article) {
@@ -64,59 +59,12 @@ const validationErrorResponse = (res, errors) => res.status(400).json({
   errors
 });
 
-/**
- * Manual articles deliberately use the same structured body format as the AI
- * pipeline. That keeps one public-reader contract for the landing page, user
- * app, counsellor portal, and mobile clients instead of creating a second
- * rich-text format just for administrator-authored pieces.
- */
-const validateContentBlocks = (value) => {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
-    throw new Error('Article content must include between 1 and 100 blocks');
-  }
-
-  const isValid = value.every((block) => {
-    if (!block || typeof block !== 'object' || !CONTENT_BLOCK_TYPES.has(block.type)) {
-      return false;
-    }
-
-    const text = String(block.text || '').trim();
-    const items = Array.isArray(block.items)
-      ? block.items.map((item) => String(item || '').trim()).filter(Boolean)
-      : [];
-    const imageUrl = String(block.url || '').trim();
-
-    if (
-      block.level !== undefined
-      && block.level !== null
-      && (!Number.isInteger(block.level) || block.level < 1 || block.level > 6)
-    ) {
-      return false;
-    }
-
-    if (block.type === 'bullet_list') return items.length > 0;
-    if (block.type === 'image') return imageUrl.length > 0;
-    return text.length > 0;
-  });
-
-  if (!isValid) {
-    throw new Error('Each article content block needs a supported type and content');
-  }
-
-  return true;
+// A newly published article is an SEO and reader-facing change. Do not leave
+// an old list/detail response in a browser or intermediary cache after the
+// admin presses Publish; the Next landing reader also uses no-store fetches.
+const setPublicArticleCacheHeaders = (res) => {
+  res.set('Cache-Control', 'no-store, max-age=0');
 };
-
-const normalizeContentBlocks = (blocks) => blocks.map((block) => ({
-  type: block.type,
-  text: String(block.text || '').trim(),
-  level: Number.isInteger(block.level) ? block.level : null,
-  items: Array.isArray(block.items)
-    ? block.items.map((item) => String(item || '').trim()).filter(Boolean)
-    : [],
-  url: String(block.url || '').trim() || null,
-  alt: String(block.alt || '').trim(),
-  caption: String(block.caption || '').trim()
-}));
 
 const buildArticleFilter = ({ status, q, runId }) => {
   const filter = {};
@@ -134,6 +82,26 @@ const buildArticleFilter = ({ status, q, runId }) => {
   }
 
   return filter;
+};
+
+const validateArticleForPublication = (article) => {
+  const title = String(article?.title || '').trim();
+  const excerpt = String(article?.excerpt || '').trim();
+  const category = String(article?.category || '').trim();
+
+  if (title.length < 3 || title.length > 200) {
+    throw new Error('Article title must be between 3 and 200 characters before publishing');
+  }
+
+  if (excerpt.length < 10 || excerpt.length > 800) {
+    throw new Error('Article excerpt must be between 10 and 800 characters before publishing');
+  }
+
+  if (category.length < 2 || category.length > 80) {
+    throw new Error('Article category must be between 2 and 80 characters before publishing');
+  }
+
+  validateContentBlocks(article?.contentBlocks);
 };
 
 const articleInputValidators = [
@@ -171,6 +139,7 @@ router.get('/', [
   query('q').optional().isString().trim()
 ], async (req, res) => {
   try {
+    setPublicArticleCacheHeaders(res);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return validationErrorResponse(res, errors.array());
@@ -224,6 +193,7 @@ router.get('/', [
 // GET /api/articles/categories/list
 router.get('/categories/list', async (req, res) => {
   try {
+    setPublicArticleCacheHeaders(res);
     const categories = await Article.distinct('category', { status: 'published' });
     const normalized = categories
       .map((category) => String(category).trim())
@@ -477,7 +447,7 @@ router.patch('/admin/:id', adminAuth, [
   body('excerpt').optional().trim().isLength({ min: 10, max: 800 }),
   body('category').optional().trim().isLength({ min: 2, max: 80 }),
   body('tags').optional().isArray(),
-  body('contentBlocks').optional().isArray(),
+  body('contentBlocks').optional().custom(validateContentBlocks),
   body('coverImageUrl').optional().isString().trim().isLength({ max: 1000 }),
   body('coverImagePublicId').optional().isString().trim().isLength({ max: 250 }),
   body('imagePrompt').optional().isString().trim().isLength({ max: 1000 }),
@@ -497,11 +467,19 @@ router.patch('/admin/:id', adminAuth, [
       }
     });
 
-    if (updates.tags) {
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Provide at least one editable article field'
+      });
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'tags')) {
       updates.tags = normalizeTags(updates.tags);
     }
 
-    if (updates.contentBlocks) {
+    if (Object.prototype.hasOwnProperty.call(updates, 'contentBlocks')) {
+      updates.contentBlocks = normalizeContentBlocks(updates.contentBlocks);
       updates.wordCount = countArticleWords({ contentBlocks: updates.contentBlocks });
     }
 
@@ -534,28 +512,72 @@ router.post('/admin/:id/publish', adminAuth, [
       return validationErrorResponse(res, errors.array());
     }
 
-    const existingArticle = await Article.findById(req.params.id).select('slug').lean();
+    const existingArticle = await Article.findById(req.params.id).lean();
 
     if (!existingArticle) {
       return res.status(404).json({ success: false, message: 'Article not found' });
     }
 
-    const article = await Article.findByIdAndUpdate(req.params.id, {
-      status: 'published',
-      reviewedByHuman: true,
-      reviewedBy: req.user._id,
-      reviewedAt: new Date(),
-      publishedAt: new Date(),
-      rejectionReason: '',
-      rejectedAt: null,
-      canonicalUrl: buildArticleCanonicalUrl(existingArticle.slug)
+    // Publishing is deliberately idempotent. A retry after a slow response
+    // must preserve the original publication date, canonical record, and
+    // review audit instead of moving a live article to the top of every list.
+    if (existingArticle.status === 'published') {
+      return res.json({
+        success: true,
+        data: { article: formatArticle(existingArticle) }
+      });
+    }
+
+    try {
+      validateArticleForPublication(existingArticle);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message || 'Article is not ready to publish'
+      });
+    }
+
+    const now = new Date();
+
+    const article = await Article.findOneAndUpdate({
+      _id: req.params.id,
+      status: { $ne: 'published' }
+    }, {
+      $set: {
+        status: 'published',
+        reviewedByHuman: true,
+        reviewedBy: req.user._id,
+        reviewedAt: now,
+        publishedAt: now,
+        rejectionReason: '',
+        rejectedAt: null,
+        canonicalUrl: buildArticleCanonicalUrl(existingArticle.slug)
+      }
     }, {
       new: true,
       runValidators: true
     }).lean();
 
     if (!article) {
-      return res.status(404).json({ success: false, message: 'Article not found' });
+      // Another administrator may have won the same publish race. Re-read the
+      // authoritative document and return the already-published result rather
+      // than turning a safe retry into a false failure.
+      const concurrentArticle = await Article.findById(req.params.id).lean();
+      if (!concurrentArticle) {
+        return res.status(404).json({ success: false, message: 'Article not found' });
+      }
+
+      if (concurrentArticle.status === 'published') {
+        return res.json({
+          success: true,
+          data: { article: formatArticle(concurrentArticle) }
+        });
+      }
+
+      return res.status(409).json({
+        success: false,
+        message: 'Article changed before it could be published. Refresh and try again.'
+      });
     }
 
     res.json({
@@ -642,6 +664,7 @@ router.get('/:slug', [
   param('slug').isString().trim().notEmpty()
 ], async (req, res) => {
   try {
+    setPublicArticleCacheHeaders(res);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return validationErrorResponse(res, errors.array());

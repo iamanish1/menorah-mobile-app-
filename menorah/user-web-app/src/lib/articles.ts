@@ -1,4 +1,7 @@
-export const ARTICLE_REVALIDATE_SECONDS = 60;
+// A publish in the admin panel is a reader-facing and SEO-facing change.
+// Article pages therefore read the canonical public API fresh on each request
+// instead of waiting for a previously rendered ISR entry to expire.
+const ARTICLE_FETCH_CACHE = "no-store" as const;
 
 export type ArticleContentBlock =
   | {
@@ -201,9 +204,7 @@ async function fetchArticleJson(url: string): Promise<unknown | null> {
       headers: {
         Accept: "application/json"
       },
-      next: {
-        revalidate: ARTICLE_REVALIDATE_SECONDS
-      }
+      cache: ARTICLE_FETCH_CACHE
     });
 
     if (!response.ok) {

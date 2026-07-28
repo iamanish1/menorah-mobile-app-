@@ -451,7 +451,7 @@ export type SocialPostStatus =
   | 'failed_publish'
   | 'expired_token';
 
-export type SocialPostType = 'single_image' | 'carousel' | 'reel_cover';
+export type SocialPostType = 'single_image' | 'carousel' | 'reel_cover' | 'reel';
 export type SocialAspectRatio = '1:1' | '4:5' | '9:16';
 export type SocialTemplateKey = 'thought_leadership' | 'educational_tip' | 'announcement';
 
@@ -545,6 +545,10 @@ export interface SocialPost {
   imageUrl?: string;
   finalImageUrl?: string;
   thumbnailUrl?: string;
+  videoUrl?: string;
+  videoPublicId?: string;
+  videoMimeType?: string;
+  videoSizeBytes?: number;
   aspectRatio: SocialAspectRatio;
   width?: number;
   height?: number;
@@ -556,7 +560,10 @@ export interface SocialPost {
   publishedAt?: string | null;
   instagramAccount?: InstagramAccount | string | null;
   instagramMediaId?: string;
+  instagramContainerId?: string;
   instagramPermalink?: string;
+  publishingStartedAt?: string | null;
+  publishAttemptCount?: number;
   errorLog?: { message?: string; code?: string; at?: string } | null;
   createdAt: string;
   updatedAt?: string;

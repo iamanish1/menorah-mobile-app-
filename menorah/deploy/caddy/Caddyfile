@@ -36,6 +36,16 @@
 	}
 }
 
+# Keep the larger body allowance limited to the authenticated admin Reel
+# upload route; every other API endpoint remains capped at 20 MB.
+(social_reel_upload_proxy) {
+	import security_headers
+	encode gzip zstd
+	request_body {
+		max_size {$SOCIAL_STUDIO_MAX_VIDEO_REQUEST_SIZE_MB:55}MB
+	}
+}
+
 # Only the signed browser meeting document needs media permissions. Keep the
 # rest of the API under the restrictive default policy.
 (browser_call_api_proxy) {
@@ -136,8 +146,18 @@
 }
 
 {$API_ADMIN_DOMAIN} {
-	import api_proxy
-	reverse_proxy api-admin:8080
+	@social_reel_upload {
+		method POST
+		path /api/admin/social-studio/posts/video
+	}
+	handle @social_reel_upload {
+		import social_reel_upload_proxy
+		reverse_proxy api-admin:8080
+	}
+	handle {
+		import api_proxy
+		reverse_proxy api-admin:8080
+	}
 	log {
 		output file /var/log/caddy/api-admin-access.log
 		format json

@@ -53,6 +53,11 @@ function ArticlesPageContent() {
   } = useQuery({
     queryKey: ['articles', { page, q }],
     enabled: isAuthenticated,
+    // The admin publishes from a separate application, so do not hold a
+    // counsellor on a stale article list when they return to this screen.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const response = await api.getArticles({
         page,

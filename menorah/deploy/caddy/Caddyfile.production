@@ -40,6 +40,18 @@
 	}
 }
 
+# Only the authenticated admin Reel-upload endpoint needs a larger request
+# body. All other API routes retain the 20 MB default limit above.
+(social_reel_upload_proxy) {
+	import security_headers
+	encode gzip zstd
+	@private_metrics path /metrics/*
+	respond @private_metrics 404
+	request_body {
+		max_size {$SOCIAL_STUDIO_MAX_VIDEO_REQUEST_SIZE_MB:55}MB
+	}
+}
+
 # The signed browser call page is intentionally served by the API so that a
 # one-time meeting ticket never has to be exposed to another origin. It is the
 # only API document that needs access to camera and microphone; all JSON API
@@ -173,8 +185,18 @@ http://{$API_WEB_DOMAIN} {
 }
 
 http://{$API_ADMIN_DOMAIN} {
-	import api_proxy
-	reverse_proxy api-admin:8080
+	@social_reel_upload {
+		method POST
+		path /api/admin/social-studio/posts/video
+	}
+	handle @social_reel_upload {
+		import social_reel_upload_proxy
+		reverse_proxy api-admin:8080
+	}
+	handle {
+		import api_proxy
+		reverse_proxy api-admin:8080
+	}
 	log {
 		output file /var/log/caddy/api-admin-access.log
 		format json

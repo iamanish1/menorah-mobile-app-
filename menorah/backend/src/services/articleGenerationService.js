@@ -9,6 +9,10 @@ const {
 } = require('./articleAiService');
 const { buildArticleCanonicalUrl } = require('./articleCanonicalUrl');
 const { resolveCoverImage } = require('./articleImageService');
+const {
+  normalizeContentBlocks,
+  validateContentBlocks
+} = require('./articleContent');
 
 const DEFAULT_TIMEZONE = 'Asia/Dubai';
 
@@ -171,9 +175,18 @@ const buildArticleDraftWithWordTarget = async (input) => {
 };
 
 const createReviewArticle = async ({ input, run }) => {
-  const { draft, wordCount } = await buildArticleDraftWithWordTarget(input);
+  const { draft } = await buildArticleDraftWithWordTarget(input);
+  // The AI schema is strict, but still normalize at the persistence boundary
+  // so generated drafts and manual drafts share the exact reader contract.
+  // Empty AI image placeholders are omitted: a generated cover is attached
+  // below and should not make an otherwise valid draft fail review.
+  const contentBlocks = normalizeContentBlocks(draft.contentBlocks)
+    .filter((block) => block.type !== 'image' || block.url);
+  validateContentBlocks(contentBlocks);
+  const wordCount = countArticleWords({ contentBlocks });
   const articleDraft = {
     ...draft,
+    contentBlocks,
     imagePrompt: String(input.imagePrompt || draft.imagePrompt || '').trim()
   };
   const slug = await buildUniqueSlug(articleDraft.title);

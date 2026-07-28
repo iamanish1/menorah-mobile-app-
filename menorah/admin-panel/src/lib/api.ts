@@ -388,6 +388,14 @@ class AdminApiClient {
     );
   }
 
+  createManualSocialReel(formData: FormData) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post('/admin/social-studio/posts/video', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+    );
+  }
+
   updateSocialPost(id: string, payload: Partial<SocialPost> & { selectedAssetIds?: string[] }) {
     return this.request<{ post: SocialPost }>(
       () => this.client.patch(`/admin/social-studio/posts/${id}`, payload)
@@ -432,13 +440,13 @@ class AdminApiClient {
 
   publishSocialPostNow(id: string) {
     return this.request<{ post: SocialPost }>(
-      () => this.client.post(`/admin/social-studio/posts/${id}/publish-now`)
+      () => this.client.post(`/admin/social-studio/posts/${id}/publish-now`, { confirmation: 'publish' })
     );
   }
 
   retrySocialPost(id: string) {
     return this.request<{ post: SocialPost }>(
-      () => this.client.post(`/admin/social-studio/posts/${id}/retry`)
+      () => this.client.post(`/admin/social-studio/posts/${id}/retry`, { confirmation: 'publish' })
     );
   }
 

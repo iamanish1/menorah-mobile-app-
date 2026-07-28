@@ -41,16 +41,58 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE, 10) || 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (!file.mimetype.startsWith('image/') && file.mimetype !== 'application/pdf' && !file.mimetype.includes('font')) {
+    if (!file.mimetype?.startsWith('image/') && file.mimetype !== 'application/pdf' && !file.mimetype?.includes('font')) {
       return cb(new Error('Only image, PDF, and font assets are allowed'));
     }
     cb(null, true);
   }
 });
 
+const supportedReelMimeTypes = new Set(['video/mp4', 'video/quicktime']);
+const getSocialVideoMaxBytes = () => {
+  const configuredBytes = Number.parseInt(process.env.SOCIAL_STUDIO_MAX_VIDEO_SIZE_BYTES, 10);
+  const configuredMegabytes = Number.parseInt(process.env.SOCIAL_STUDIO_MAX_VIDEO_SIZE_MB, 10);
+  const defaultLimit = 50 * 1024 * 1024;
+  const hardLimit = 250 * 1024 * 1024;
+  const configured = Number.isFinite(configuredBytes) ? configuredBytes
+    : Number.isFinite(configuredMegabytes) ? configuredMegabytes * 1024 * 1024
+      : defaultLimit;
+  if (configured < 1024 * 1024) return defaultLimit;
+  return Math.min(configured, hardLimit);
+};
+
+// Video is intentionally a separate multipart endpoint. Keeping a bounded
+// in-memory upload prevents a large Reel from exhausting the API process.
+const videoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: getSocialVideoMaxBytes(), files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (!supportedReelMimeTypes.has(file.mimetype)) {
+      return cb(new Error('Only MP4 or MOV Reel videos are allowed'));
+    }
+    cb(null, true);
+  }
+});
+
+const handleVideoUpload = (req, res, next) => videoUpload.single('video')(req, res, (error) => {
+  if (!error) return next();
+  const message = error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE'
+    ? `Video must be ${Math.floor(getSocialVideoMaxBytes() / (1024 * 1024))} MB or smaller`
+    : error.message || 'Unable to upload video';
+  return res.status(400).json({ success: false, message });
+});
+
 const generationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: parseInt(process.env.SOCIAL_STUDIO_GENERATION_RATE_LIMIT, 10) || 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip)
+});
+
+const videoUploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: parseInt(process.env.SOCIAL_STUDIO_VIDEO_UPLOAD_RATE_LIMIT, 10) || 10,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip)
@@ -78,6 +120,18 @@ const hostedImageUrlValidator = (value) => {
     throw new Error('A valid HTTPS image URL is required');
   }
 };
+
+const isHttpsUrl = (value) => {
+  try {
+    return new URL(String(value || '').trim()).protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const isIsoBaseMediaFile = (buffer) => Buffer.isBuffer(buffer)
+  && buffer.length >= 12
+  && buffer.subarray(4, 8).toString('ascii') === 'ftyp';
 
 const id = (value) => value?._id?.toString?.() || value?.id?.toString?.() || value?.toString?.();
 
@@ -149,6 +203,13 @@ const saveLocalAsset = async (file, filename) => {
   return `${getPublicBaseUrl()}/uploads/social-studio-assets/${filename}`;
 };
 
+const saveLocalVideo = async (file, filename) => {
+  const uploadDir = path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads', 'social-studio-videos');
+  await fs.mkdir(uploadDir, { recursive: true });
+  await fs.writeFile(path.join(uploadDir, filename), file.buffer);
+  return `${getPublicBaseUrl()}/uploads/social-studio-videos/${filename}`;
+};
+
 const saveUploadedAsset = async (file) => {
   const safeName = `${Date.now()}-${file.originalname}`.replace(/[^A-Za-z0-9_.-]/g, '-');
   if (shouldUseCloudinaryForSocialStudio()) {
@@ -169,6 +230,32 @@ const saveUploadedAsset = async (file) => {
     publicId: '',
     filename: safeName
   };
+};
+
+const saveUploadedVideo = async (file) => {
+  const safeName = `${Date.now()}-${file.originalname}`.replace(/[^A-Za-z0-9_.-]/g, '-');
+  if (shouldUseCloudinaryForSocialStudio()) {
+    const result = await uploadBuffer(file.buffer, {
+      folder: process.env.CLOUDINARY_SOCIAL_STUDIO_VIDEO_FOLDER || 'menorah/social-studio-videos',
+      resource_type: 'video',
+      public_id: safeName.replace(/\.[^.]+$/, '')
+    });
+    return {
+      url: result.secure_url,
+      publicId: result.public_id,
+      filename: safeName
+    };
+  }
+
+  // api-admin stores uploads on its own volume in the production Compose
+  // deployment. Do not create a Reel that looks publishable when another
+  // service/proxy cannot reliably serve its bytes to Meta.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Production Reel uploads require Cloudinary video hosting');
+  }
+
+  const url = await saveLocalVideo(file, safeName);
+  return { url, publicId: '', filename: safeName };
 };
 
 const getImageDimensions = async (file) => {
@@ -222,6 +309,40 @@ const renderAndCheckPost = async (post, { regenerateBackground = false } = {}) =
   post.qualityIssues = quality.qualityIssues;
   await post.save();
   return post;
+};
+
+const isReel = (post) => post?.postType === 'reel';
+
+const ensureEditablePost = (post) => {
+  if (['published', 'publishing'].includes(post.status)) {
+    throw new Error('Published or publishing posts cannot be edited');
+  }
+};
+
+const returnPostToReview = (post) => {
+  if (['approved', 'scheduled', 'rejected', 'failed_publish', 'expired_token'].includes(post.status)) {
+    post.status = 'needs_review';
+    post.scheduledAt = null;
+    post.approvedBy = null;
+    post.instagramContainerId = '';
+    post.publishingStartedAt = null;
+  }
+};
+
+const validateMediaForApproval = (post) => {
+  if (isReel(post)) {
+    if (!isHttpsUrl(post.videoUrl)) {
+      throw new Error('An approved Reel requires a public HTTPS video upload');
+    }
+    if (!supportedReelMimeTypes.has(post.videoMimeType)) {
+      throw new Error('An approved Reel must be an MP4 or MOV video');
+    }
+    return;
+  }
+
+  if (!post.finalImageUrl) {
+    throw new Error('A final image is required before approval');
+  }
 };
 
 // GET /api/admin/social-studio/stats
@@ -580,7 +701,7 @@ router.patch('/brand-guidelines/:id', [param('id').isMongoId()], async (req, res
 // Existing content should not be trapped behind an AI provider. This path is
 // intentionally manual: it stores an editor-supplied, hosted image and puts
 // the post into the normal review queue. Approving it still requires an admin,
-// and only the existing publish action can send it to Instagram.
+// and only the explicit publish action can send it to Instagram.
 router.post('/posts', [
   body('topic').trim().isLength({ min: 3, max: 220 }),
   body('caption').trim().isLength({ min: 3, max: 2200 }),
@@ -628,6 +749,63 @@ router.post('/posts', [
   } catch (error) {
     console.error('Create manual Social Studio post error:', error);
     res.status(500).json({ success: false, message: 'Unable to create social post' });
+  }
+});
+
+// A Reel is uploaded through the admin panel, stored in the configured media
+// host, and then follows the exact same review/approve/publish state machine
+// as image posts. Uploading a file never contacts Meta.
+router.post('/posts/video', videoUploadLimiter, handleVideoUpload, [
+  body('topic').trim().isLength({ min: 3, max: 220 }),
+  body('caption').trim().isLength({ min: 3, max: 2200 }),
+  body('campaignName').optional().isString().trim().isLength({ max: 120 }),
+  body('hookText').optional().isString().trim().isLength({ max: 240 }),
+  body('bodyText').optional().isString().trim().isLength({ max: 1200 }),
+  body('ctaText').optional().isString().trim().isLength({ max: 240 }),
+  body('hashtags').optional().isString().isLength({ max: 1000 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors.array());
+    if (!req.file) return res.status(400).json({ success: false, message: 'Upload an MP4 or MOV Reel video' });
+    if (!supportedReelMimeTypes.has(req.file.mimetype) || !isIsoBaseMediaFile(req.file.buffer)) {
+      return res.status(400).json({ success: false, message: 'The uploaded file is not a valid MP4 or MOV video' });
+    }
+
+    const uploaded = await saveUploadedVideo(req.file);
+    if (!isHttpsUrl(uploaded.url) && process.env.NODE_ENV === 'production') {
+      return res.status(503).json({ success: false, message: 'Reel uploads require configured HTTPS video hosting in production' });
+    }
+
+    const post = await SocialPost.create({
+      platform: 'instagram',
+      postType: 'reel',
+      contentSource: 'manual',
+      status: 'needs_review',
+      topic: toPlainText(req.body.topic),
+      campaignName: toPlainText(req.body.campaignName || ''),
+      hookText: toPlainText(req.body.hookText || ''),
+      bodyText: toPlainText(req.body.bodyText || ''),
+      ctaText: toPlainText(req.body.ctaText || ''),
+      caption: toPlainText(req.body.caption),
+      hashtags: normalizeHashtags(parseList(req.body.hashtags || [])),
+      aspectRatio: '9:16',
+      videoUrl: uploaded.url,
+      videoPublicId: uploaded.publicId,
+      videoMimeType: req.file.mimetype,
+      videoSizeBytes: req.file.size,
+      qualityScore: 0,
+      qualityIssues: [
+        'Manual Reel: confirm content rights, sound, captions, and the final playback before publishing.'
+      ],
+      createdBy: req.user._id
+    });
+
+    res.status(201).json({ success: true, data: { post: formatModel(post) } });
+  } catch (error) {
+    console.error('Create manual Social Studio Reel error:', error);
+    const unavailable = error.message === 'Production Reel uploads require Cloudinary video hosting';
+    res.status(unavailable ? 503 : 500).json({ success: false, message: error.message || 'Unable to upload Reel' });
   }
 });
 
@@ -724,37 +902,50 @@ router.patch('/posts/:id', [
 
     const post = await SocialPost.findById(req.params.id);
     if (!post) return res.status(404).json({ success: false, message: 'Social post not found' });
+    ensureEditablePost(post);
+    if (isReel(post) && Object.prototype.hasOwnProperty.call(req.body, 'imageUrl')) {
+      return res.status(400).json({ success: false, message: 'Replace a Reel by creating a new reviewed Reel upload' });
+    }
 
     const textFields = ['hookText', 'bodyText', 'ctaText', 'caption', 'campaignName', 'audience', 'objective', 'tone', 'aiPrompt', 'designBrief', 'aspectRatio', 'templateKey'];
     let needsRender = false;
+    let contentChanged = false;
     textFields.forEach((field) => {
       if (Object.prototype.hasOwnProperty.call(req.body, field)) {
         post[field] = ['aspectRatio', 'templateKey'].includes(field) ? req.body[field] : toPlainText(req.body[field]);
+        contentChanged = true;
         if (['hookText', 'bodyText', 'ctaText', 'aspectRatio', 'templateKey'].includes(field)) needsRender = true;
       }
     });
-    if (Object.prototype.hasOwnProperty.call(req.body, 'hashtags')) post.hashtags = normalizeHashtags(req.body.hashtags);
+    if (Object.prototype.hasOwnProperty.call(req.body, 'hashtags')) {
+      post.hashtags = normalizeHashtags(req.body.hashtags);
+      contentChanged = true;
+    }
     if (Object.prototype.hasOwnProperty.call(req.body, 'selectedAssetIds')) {
       post.selectedAssetIds = req.body.selectedAssetIds;
       needsRender = true;
+      contentChanged = true;
     }
     if (Object.prototype.hasOwnProperty.call(req.body, 'imageUrl')) {
       const imageUrl = String(req.body.imageUrl || '').trim();
       post.imageUrl = imageUrl;
       post.finalImageUrl = imageUrl;
       post.thumbnailUrl = imageUrl;
+      contentChanged = true;
     }
     if (Object.prototype.hasOwnProperty.call(req.body, 'scheduledAt')) post.scheduledAt = req.body.scheduledAt ? new Date(req.body.scheduledAt) : null;
 
+    if (contentChanged) returnPostToReview(post);
     await post.save();
     // Manual restores retain their supplied image while editors adjust copy.
     // Explicit Render / Regenerate actions below still let an admin replace it
     // with a studio-rendered asset when that is intended.
-    if (needsRender && post.contentSource !== 'manual') await renderAndCheckPost(post);
+    if (needsRender && post.contentSource !== 'manual' && !isReel(post)) await renderAndCheckPost(post);
     res.json({ success: true, data: { post: formatModel(post) } });
   } catch (error) {
     console.error('Update Social Studio post error:', error);
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    res.status(error.message === 'Published or publishing posts cannot be edited' ? 409 : 500)
+      .json({ success: false, message: error.message || 'Internal server error' });
   }
 });
 
@@ -762,10 +953,12 @@ router.post('/posts/:id/regenerate-caption', [param('id').isMongoId()], async (r
   try {
     const post = await SocialPost.findById(req.params.id);
     if (!post) return res.status(404).json({ success: false, message: 'Social post not found' });
+    ensureEditablePost(post);
     const brandGuideline = await getActiveBrandGuidelines();
     const caption = await generateCaption({ socialPost: post, brandGuideline });
     post.caption = caption.caption;
     post.hashtags = normalizeHashtags([...(caption.hashtags || []), ...(brandGuideline.instagramRules?.defaultHashtags || [])]);
+    returnPostToReview(post);
     await post.save();
     res.json({ success: true, data: { post: formatModel(post) } });
   } catch (error) {
@@ -778,6 +971,9 @@ router.post('/posts/:id/regenerate-image', [param('id').isMongoId()], async (req
   try {
     const post = await SocialPost.findById(req.params.id);
     if (!post) return res.status(404).json({ success: false, message: 'Social post not found' });
+    ensureEditablePost(post);
+    if (isReel(post)) return res.status(400).json({ success: false, message: 'Uploaded Reels cannot be replaced by an AI image' });
+    returnPostToReview(post);
     await renderAndCheckPost(post, { regenerateBackground: true });
     post.contentSource = 'ai';
     await post.save();
@@ -792,6 +988,9 @@ router.post('/posts/:id/render', [param('id').isMongoId()], async (req, res) => 
   try {
     const post = await SocialPost.findById(req.params.id);
     if (!post) return res.status(404).json({ success: false, message: 'Social post not found' });
+    ensureEditablePost(post);
+    if (isReel(post)) return res.status(400).json({ success: false, message: 'Uploaded Reels cannot be rendered as a static image' });
+    returnPostToReview(post);
     await renderAndCheckPost(post);
     post.contentSource = 'ai';
     await post.save();
@@ -806,7 +1005,12 @@ router.post('/posts/:id/approve', [param('id').isMongoId()], async (req, res) =>
   try {
     const post = await SocialPost.findById(req.params.id);
     if (!post) return res.status(404).json({ success: false, message: 'Social post not found' });
-    if (!post.finalImageUrl) await renderAndCheckPost(post);
+    if (!['draft', 'needs_review'].includes(post.status)) {
+      return res.status(400).json({ success: false, message: 'Only posts awaiting review can be approved' });
+    }
+    if (isReel(post)) validateMediaForApproval(post);
+    else if (!post.finalImageUrl) await renderAndCheckPost(post);
+    validateMediaForApproval(post);
     post.status = 'approved';
     post.approvedBy = req.user._id;
     post.reviewedBy = req.user._id;
@@ -825,14 +1029,21 @@ router.post('/posts/:id/reject', [
   body('reason').optional().isString().trim().isLength({ max: 500 })
 ], async (req, res) => {
   try {
-    const post = await SocialPost.findByIdAndUpdate(req.params.id, {
+    const post = await SocialPost.findOneAndUpdate({
+      _id: req.params.id,
+      status: { $in: ['draft', 'needs_review', 'approved', 'scheduled', 'rejected', 'failed_generation', 'failed_publish', 'expired_token'] }
+    }, {
       status: 'rejected',
       rejectedBy: req.user._id,
       reviewedBy: req.user._id,
       rejectionReason: toPlainText(req.body.reason || ''),
       scheduledAt: null
     }, { new: true }).lean();
-    if (!post) return res.status(404).json({ success: false, message: 'Social post not found' });
+    if (!post) {
+      const existing = await SocialPost.findById(req.params.id).lean();
+      if (!existing) return res.status(404).json({ success: false, message: 'Social post not found' });
+      return res.status(409).json({ success: false, message: 'Published or publishing posts cannot be rejected' });
+    }
     res.json({ success: true, data: { post: formatModel(post) } });
   } catch (error) {
     console.error('Reject Social Studio post error:', error);
@@ -855,8 +1066,13 @@ router.post('/posts/:id/schedule', [
   }
 });
 
-router.post('/posts/:id/publish-now', [param('id').isMongoId()], async (req, res) => {
+router.post('/posts/:id/publish-now', [
+  param('id').isMongoId(),
+  body('confirmation').equals('publish').withMessage('A publish confirmation is required')
+], async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors.array());
     const post = await publishApprovedPost(req.params.id);
     res.json({ success: true, data: { post: formatModel(post) } });
   } catch (error) {
@@ -865,7 +1081,10 @@ router.post('/posts/:id/publish-now', [param('id').isMongoId()], async (req, res
   }
 });
 
-router.post('/posts/:id/retry', [param('id').isMongoId()], async (req, res) => {
+router.post('/posts/:id/retry', [
+  param('id').isMongoId(),
+  body('confirmation').optional().isString()
+], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return validationErrorResponse(res, errors.array());
@@ -874,6 +1093,9 @@ router.post('/posts/:id/retry', [param('id').isMongoId()], async (req, res) => {
     if (!post) return res.status(404).json({ success: false, message: 'Social post not found' });
 
     if (['failed_publish', 'expired_token'].includes(post.status)) {
+      if (req.body.confirmation !== 'publish') {
+        return res.status(400).json({ success: false, message: 'A publish confirmation is required to retry publishing' });
+      }
       post.status = 'approved';
       post.errorLog = null;
       await post.save();

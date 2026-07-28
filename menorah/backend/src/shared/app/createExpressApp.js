@@ -17,6 +17,7 @@ const SAFE_INLINE_UPLOAD_EXTENSIONS = new Set([
   '.mp3',
   '.m4a',
   '.mp4',
+  '.mov',
   '.webm',
   '.ogg',
   '.wav',

@@ -30,6 +30,13 @@ const validationErrorResponse = (res, errors) => res.status(400).json({
   errors
 });
 
+// Public articles must reflect a completed admin publish immediately. The
+// landing app fetches these routes with no-store as well, so a page reload (or
+// a mobile/web refetch) cannot be served a stale pre-publication response.
+const setPublicArticleCacheHeaders = (res) => {
+  res.set('Cache-Control', 'no-store, max-age=0');
+};
+
 router.get('/', [
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 50 }),
@@ -37,6 +44,7 @@ router.get('/', [
   query('q').optional().isString().trim()
 ], async (req, res) => {
   try {
+    setPublicArticleCacheHeaders(res);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return validationErrorResponse(res, errors.array());
@@ -89,6 +97,7 @@ router.get('/', [
 
 router.get('/categories/list', async (_req, res) => {
   try {
+    setPublicArticleCacheHeaders(res);
     const categories = await Article.distinct('category', { status: 'published' });
     const normalized = categories
       .map((category) => String(category).trim())
@@ -116,6 +125,7 @@ router.get('/:slug', [
   param('slug').isString().trim().notEmpty()
 ], async (req, res) => {
   try {
+    setPublicArticleCacheHeaders(res);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return validationErrorResponse(res, errors.array());
