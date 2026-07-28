@@ -80,7 +80,12 @@ compose_cmd run --rm --no-deps backup-runner bash -lc \
 
 if [[ -d "${MENORAH_DATA_ROOT}/uploads" ]]; then
   echo "Creating uploads backup: ${UPLOAD_ARCHIVE}"
-  tar -C "${MENORAH_DATA_ROOT}" -czf "${UPLOAD_ARCHIVE}" uploads
+  # Runtime uploads can be written with the application container's service
+  # UID and therefore be intentionally unreadable by the host login user.
+  # Archive the existing read-only /uploads mount from backup-runner instead
+  # of weakening patient-media permissions on the host filesystem.
+  compose_cmd run --rm --no-deps backup-runner bash -lc \
+    "tar -C / -czf \"/backups/${BACKUP_TYPE}/${STAMP}/uploads/$(basename "${UPLOAD_ARCHIVE}")\" uploads"
 else
   echo "Uploads directory not found at ${MENORAH_DATA_ROOT}/uploads; skipping uploads archive."
 fi
