@@ -35,8 +35,16 @@ const buildCallbackPayload = (request: Request, body?: FormData) => {
 };
 
 const redirectToReturnPage = (request: Request, body?: FormData) => {
-  const requestUrl = new URL(request.url);
-  const response = NextResponse.redirect(new URL('/checkout/return', requestUrl.origin), { status: 303 });
+  // This route runs behind Cloudflare Tunnel and Caddy. `request.url` can
+  // therefore contain the private upstream address (for example
+  // `http://0.0.0.0:3002`) rather than the browser-visible app domain. A
+  // relative Location is resolved by the browser against the public origin,
+  // avoiding an internal-host redirect while retaining the 303 semantics that
+  // Razorpay callbacks require.
+  const response = new NextResponse(null, {
+    status: 303,
+    headers: { Location: '/checkout/return' },
+  });
   response.headers.set('Cache-Control', 'no-store');
   response.headers.set('Referrer-Policy', 'no-referrer');
 
