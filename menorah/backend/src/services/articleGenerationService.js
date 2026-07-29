@@ -11,6 +11,7 @@ const { buildArticleCanonicalUrl } = require('./articleCanonicalUrl');
 const { resolveCoverImage } = require('./articleImageService');
 const {
   normalizeContentBlocks,
+  toPlainArticleText,
   validateContentBlocks
 } = require('./articleContent');
 
@@ -34,8 +35,26 @@ const normalizeTags = (tags) => {
     return [];
   }
 
-  return tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 12);
+  return tags.map(toPlainArticleText).filter(Boolean).slice(0, 12);
 };
+
+const requirePlainArticleText = (value, field) => {
+  const text = toPlainArticleText(value);
+  if (!text) {
+    throw new Error(`Generated article ${field} is empty after formatting cleanup`);
+  }
+  return text;
+};
+
+const normalizeImageInput = (input = {}, fallbackPrompt = '') => ({
+  ...input,
+  topic: toPlainArticleText(input.topic),
+  imagePrompt: toPlainArticleText(input.imagePrompt) || toPlainArticleText(fallbackPrompt),
+  imageStyle: toPlainArticleText(input.imageStyle),
+  imageMood: toPlainArticleText(input.imageMood),
+  imageColors: toPlainArticleText(input.imageColors),
+  imageAvoid: toPlainArticleText(input.imageAvoid)
+});
 
 const buildCanonicalUrl = buildArticleCanonicalUrl;
 
@@ -177,7 +196,9 @@ const buildArticleDraftWithWordTarget = async (input) => {
 const createReviewArticle = async ({ input, run }) => {
   const { draft } = await buildArticleDraftWithWordTarget(input);
   // The AI schema is strict, but still normalize at the persistence boundary
-  // so generated drafts and manual drafts share the exact reader contract.
+  // so direct calls, scheduled runs, and future providers share the exact
+  // reader contract. This is intentionally independent of articleAiService's
+  // sanitization: no caller can persist raw presentation markers.
   // Empty AI image placeholders are omitted: a generated cover is attached
   // below and should not make an otherwise valid draft fail review.
   const contentBlocks = normalizeContentBlocks(draft.contentBlocks)
@@ -186,12 +207,18 @@ const createReviewArticle = async ({ input, run }) => {
   const wordCount = countArticleWords({ contentBlocks });
   const articleDraft = {
     ...draft,
+    title: requirePlainArticleText(draft.title, 'title'),
+    excerpt: requirePlainArticleText(draft.excerpt, 'excerpt'),
+    category: requirePlainArticleText(draft.category, 'category'),
+    tags: normalizeTags(draft.tags),
     contentBlocks,
-    imagePrompt: String(input.imagePrompt || draft.imagePrompt || '').trim()
+    seoTitle: toPlainArticleText(draft.seoTitle),
+    seoDescription: toPlainArticleText(draft.seoDescription),
+    imagePrompt: toPlainArticleText(input.imagePrompt) || toPlainArticleText(draft.imagePrompt)
   };
   const slug = await buildUniqueSlug(articleDraft.title);
   const image = await resolveCoverImage({
-    ...input,
+    ...normalizeImageInput(input, articleDraft.imagePrompt),
     article: {
       ...articleDraft,
       slug
@@ -201,7 +228,6 @@ const createReviewArticle = async ({ input, run }) => {
   const article = await Article.create({
     ...articleDraft,
     slug,
-    tags: normalizeTags(articleDraft.tags),
     coverImageUrl: image.url,
     coverImagePublicId: image.publicId,
     canonicalUrl: buildCanonicalUrl(slug),

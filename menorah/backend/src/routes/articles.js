@@ -16,6 +16,7 @@ const {
 const { buildArticleCanonicalUrl } = require('../services/articleCanonicalUrl');
 const {
   normalizeContentBlocks,
+  toPlainArticleText,
   validateContentBlocks
 } = require('../services/articleContent');
 
@@ -34,6 +35,61 @@ const EDITABLE_FIELDS = [
   'coverImagePublicId',
   'imagePrompt'
 ];
+const PLAIN_TEXT_ARTICLE_FIELDS = [
+  'title',
+  'excerpt',
+  'category',
+  'seoTitle',
+  'seoDescription',
+  'imagePrompt'
+];
+const PLAIN_TEXT_GENERATION_INPUT_FIELDS = [
+  'topic',
+  'category',
+  'audience',
+  'tone',
+  'imagePrompt',
+  'imageStyle',
+  'imageMood',
+  'imageColors',
+  'imageAvoid'
+];
+
+const hasOwnBodyField = (body, field) => Object.prototype.hasOwnProperty.call(body || {}, field);
+
+const normalizeRequestTextFields = (req, fields) => {
+  if (!req.body || typeof req.body !== 'object') {
+    return;
+  }
+
+  fields.forEach((field) => {
+    if (hasOwnBodyField(req.body, field) && typeof req.body[field] === 'string') {
+      req.body[field] = toPlainArticleText(req.body[field]);
+    }
+  });
+};
+
+// Do this before express-validator runs. Validation must inspect the exact
+// plain-text values that will be saved, otherwise a Markdown-only value could
+// pass validation and become empty after cleanup.
+const normalizeArticleEditorBody = (req, _res, next) => {
+  normalizeRequestTextFields(req, PLAIN_TEXT_ARTICLE_FIELDS);
+
+  if (Array.isArray(req.body?.tags)) {
+    req.body.tags = normalizeTags(req.body.tags);
+  }
+
+  if (Array.isArray(req.body?.contentBlocks)) {
+    req.body.contentBlocks = normalizeContentBlocks(req.body.contentBlocks);
+  }
+
+  next();
+};
+
+const normalizeArticleGenerationBody = (req, _res, next) => {
+  normalizeRequestTextFields(req, PLAIN_TEXT_GENERATION_INPUT_FIELDS);
+  next();
+};
 
 const formatArticle = (article) => {
   if (!article) {
@@ -355,26 +411,27 @@ router.get('/admin', adminAuth, [
 // essential when an editor is restoring an existing article or the AI provider
 // is unavailable. New records begin as drafts and retain the usual review and
 // publish controls, so public readers only ever receive published content.
-router.post('/admin', adminAuth, manualArticleValidators, async (req, res) => {
+router.post('/admin', adminAuth, normalizeArticleEditorBody, manualArticleValidators, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return validationErrorResponse(res, errors.array());
     }
 
+    const title = toPlainArticleText(req.body.title);
     const contentBlocks = normalizeContentBlocks(req.body.contentBlocks);
-    const slug = await buildUniqueSlug(req.body.title);
+    const slug = await buildUniqueSlug(title);
     const article = await Article.create({
-      title: String(req.body.title).trim(),
+      title,
       slug,
-      excerpt: String(req.body.excerpt).trim(),
-      category: String(req.body.category).trim(),
+      excerpt: toPlainArticleText(req.body.excerpt),
+      category: toPlainArticleText(req.body.category),
       tags: normalizeTags(req.body.tags),
       contentBlocks,
       coverImageUrl: String(req.body.coverImageUrl || '').trim() || null,
       coverImagePublicId: String(req.body.coverImagePublicId || '').trim() || null,
-      seoTitle: String(req.body.seoTitle || '').trim(),
-      seoDescription: String(req.body.seoDescription || '').trim(),
+      seoTitle: toPlainArticleText(req.body.seoTitle),
+      seoDescription: toPlainArticleText(req.body.seoDescription),
       canonicalUrl: buildArticleCanonicalUrl(slug),
       status: 'draft',
       wordCount: countArticleWords({ contentBlocks }),
@@ -396,7 +453,7 @@ router.post('/admin', adminAuth, manualArticleValidators, async (req, res) => {
 });
 
 // POST /api/articles/admin/generate
-router.post('/admin/generate', adminAuth, articleInputValidators, async (req, res) => {
+router.post('/admin/generate', adminAuth, normalizeArticleGenerationBody, articleInputValidators, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -441,7 +498,7 @@ router.get('/admin/:id', adminAuth, [
 });
 
 // PATCH /api/articles/admin/:id
-router.patch('/admin/:id', adminAuth, [
+router.patch('/admin/:id', adminAuth, normalizeArticleEditorBody, [
   param('id').isMongoId().withMessage('Invalid article ID'),
   body('title').optional().trim().isLength({ min: 3, max: 200 }),
   body('excerpt').optional().trim().isLength({ min: 10, max: 800 }),
@@ -477,6 +534,12 @@ router.patch('/admin/:id', adminAuth, [
     if (Object.prototype.hasOwnProperty.call(updates, 'tags')) {
       updates.tags = normalizeTags(updates.tags);
     }
+
+    PLAIN_TEXT_ARTICLE_FIELDS.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(updates, field)) {
+        updates[field] = toPlainArticleText(updates[field]);
+      }
+    });
 
     if (Object.prototype.hasOwnProperty.call(updates, 'contentBlocks')) {
       updates.contentBlocks = normalizeContentBlocks(updates.contentBlocks);

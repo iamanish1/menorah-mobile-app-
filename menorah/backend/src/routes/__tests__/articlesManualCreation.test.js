@@ -109,4 +109,45 @@ describe('manual article creation', () => {
 
     expect(mockArticleCreate).not.toHaveBeenCalled();
   });
+
+  test('normalizes Markdown before validating and writing a manual article', async () => {
+    const response = await request(buildApp())
+      .post('/api/articles/admin')
+      .send({
+        title: '**Restored article**',
+        excerpt: 'A concise **summary** of the restored article.',
+        category: '**Wellbeing**',
+        contentBlocks: [{
+          type: 'bullet_list',
+          items: ['**Engage in hobbies:** Find a shared interest.']
+        }]
+      })
+      .expect(201);
+
+    expect(mockBuildUniqueSlug).toHaveBeenCalledWith('Restored article');
+    expect(mockArticleCreate).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Restored article',
+      excerpt: 'A concise summary of the restored article.',
+      category: 'Wellbeing',
+      contentBlocks: [expect.objectContaining({
+        type: 'bullet_list',
+        items: ['Engage in hobbies: Find a shared interest.']
+      })]
+    }));
+    expect(response.body.data.article.title).toBe('Restored article');
+  });
+
+  test('rejects content that becomes empty after Markdown cleanup', async () => {
+    await request(buildApp())
+      .post('/api/articles/admin')
+      .send({
+        title: 'Restored article',
+        excerpt: 'A concise summary of the restored article.',
+        category: 'Wellbeing',
+        contentBlocks: [{ type: 'bullet_list', items: ['***'] }]
+      })
+      .expect(400);
+
+    expect(mockArticleCreate).not.toHaveBeenCalled();
+  });
 });

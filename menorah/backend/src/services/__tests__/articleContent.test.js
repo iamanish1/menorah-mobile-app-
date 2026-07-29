@@ -1,6 +1,7 @@
 const Article = require('../../models/Article');
 const {
   normalizeContentBlocks,
+  toPlainArticleText,
   validateContentBlocks
 } = require('../articleContent');
 
@@ -33,5 +34,37 @@ describe('article content contract', () => {
     await expect(buildArticle(malformedBlocks).validate()).rejects.toThrow(
       'Article content must use supported, renderable content blocks'
     );
+  });
+
+  test('removes Markdown presentation syntax from reader-facing article text', () => {
+    expect(toPlainArticleText('**Engage in hobbies:** Find a shared interest.'))
+      .toBe('Engage in hobbies: Find a shared interest.');
+    expect(toPlainArticleText('## Fostering Connections')).toBe('Fostering Connections');
+    expect(toPlainArticleText('- [Professional help](https://example.com)')).toBe('Professional help');
+    expect(toPlainArticleText('***A grounded opening***')).toBe('A grounded opening');
+    expect(toPlainArticleText('Use `private support` when it feels right.'))
+      .toBe('Use private support when it feels right.');
+
+    const blocks = normalizeContentBlocks([{
+      type: 'bullet_list',
+      items: [
+        '**Join community groups:** Meet people with shared interests.',
+        '- **Volunteer:** Build connection through a shared purpose.'
+      ]
+    }]);
+
+    expect(blocks[0].items).toEqual([
+      'Join community groups: Meet people with shared interests.',
+      'Volunteer: Build connection through a shared purpose.'
+    ]);
+  });
+
+  test('preserves ordinary punctuation while cleaning only presentation syntax', () => {
+    const original = 'Contact foo__bar@example.com or support@menorah_health.com; 5 * 3 is 15 and ~20 minutes is approximate.';
+    const normalized = toPlainArticleText(original);
+
+    expect(normalized).toBe(original);
+    expect(toPlainArticleText(normalized)).toBe(normalized);
+    expect(toPlainArticleText('__')).toBe('');
   });
 });

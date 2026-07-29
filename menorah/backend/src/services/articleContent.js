@@ -25,6 +25,39 @@ const toPlainBlock = (block) => {
 
 const normalizeString = (value) => String(value || '').trim();
 
+/**
+ * Article content is stored as semantic blocks and rendered literally on web
+ * and mobile. Strip Markdown presentation syntax from AI or editor input so
+ * formatting tokens never leak into reader-facing prose. The patterns are
+ * deliberately targeted: ordinary text such as an email underscore, a maths
+ * expression, or an approximate value must remain intact.
+ */
+const toPlainArticleText = (value) => {
+  return String(value || '')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^\s*#{1,6}\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/^\s*(?:[-+*]|\d+[.)])\s+/gm, '')
+    .replace(/^\s*[\u2022\u00b7\u25aa\u25cf]\s*/gm, '')
+    .replace(/^\s*(?:[-*_]\s*){3,}$/gm, '')
+    .replace(/<\/?(?:strong|b|em|i|code|del|s|mark|span|p|br|h[1-6]|ul|ol|li|blockquote)\b[^>]*>/gi, ' ')
+    .replace(/(^|[^\w])(\*{3}|_{3})(?=\S)([^\n]*?\S)\2(?=$|[^\w])/gm, '$1$3')
+    .replace(/(^|[^\w])(\*{2}|_{2})(?=\S)([^\n]*?\S)\2(?=$|[^\w])/gm, '$1$3')
+    .replace(/(^|[^\w])([*_])(?=\S)([^\n]*?\S)\2(?=$|[^\w])/gm, '$1$3')
+    .replace(/(^|[^\w])~~(?=\S)([^\n]*?\S)~~(?=$|[^\w])/gm, '$1$2')
+    .replace(/(^|[^\w])`(?=\S)([^\n]*?\S)`(?=$|[^\w])/gm, '$1$2')
+    // A double asterisk, tilde, or backtick has no useful plain-text meaning
+    // in an article. Underscores need boundary-aware handling so valid email
+    // addresses and identifiers such as foo__bar remain untouched.
+    .replace(/\*{2,}|~{2,}|`/g, '')
+    .replace(/(^|[^\w])_{2,}(?=\S)/gm, '$1')
+    .replace(/(\S)_{2,}(?=$|[^\w])/gm, '$1')
+    .replace(/(^|[^\w])_{2,}(?=$|[^\w])/gm, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 const normalizeContentBlocks = (blocks) => {
   if (!Array.isArray(blocks)) {
     return [];
@@ -35,14 +68,14 @@ const normalizeContentBlocks = (blocks) => {
 
     return {
       type: normalizeString(block.type),
-      text: normalizeString(block.text),
+      text: toPlainArticleText(block.text),
       level: Number.isInteger(block.level) ? block.level : null,
       items: Array.isArray(block.items)
-        ? block.items.map(normalizeString).filter(Boolean)
+        ? block.items.map(toPlainArticleText).filter(Boolean)
         : [],
       url: normalizeString(block.url) || null,
-      alt: normalizeString(block.alt),
-      caption: normalizeString(block.caption)
+      alt: toPlainArticleText(block.alt),
+      caption: toPlainArticleText(block.caption)
     };
   });
 };
@@ -131,6 +164,7 @@ module.exports = {
   CONTENT_BLOCK_TYPES,
   MAX_CONTENT_BLOCKS,
   normalizeContentBlocks,
+  toPlainArticleText,
   validateContentBlocks,
   isSafeImageUrl
 };

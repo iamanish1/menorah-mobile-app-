@@ -158,6 +158,48 @@ describe('article publish pipeline', () => {
     );
   });
 
+  test('cleans editor Markdown before validating and saving an article update', async () => {
+    const app = buildApp();
+    await request(app)
+      .post('/api/articles/admin')
+      .send({
+        title: 'Editor approved article',
+        excerpt: 'A useful summary for the article card and search results.',
+        category: 'Wellbeing',
+        contentBlocks: [{ type: 'paragraph', text: 'A complete article body for an editor to review.' }]
+      })
+      .expect(201);
+
+    const updated = await request(app)
+      .patch(`/api/articles/admin/${mockArticleId}`)
+      .send({
+        title: '**An updated article title**',
+        contentBlocks: [{
+          type: 'bullet_list',
+          items: ['**Engage in hobbies:** Find a shared interest.']
+        }]
+      })
+      .expect(200);
+
+    expect(mockArticleState.title).toBe('An updated article title');
+    expect(mockArticleState.contentBlocks).toEqual([
+      expect.objectContaining({
+        type: 'bullet_list',
+        items: ['Engage in hobbies: Find a shared interest.']
+      })
+    ]);
+    expect(updated.body.data.article.title).toBe('An updated article title');
+
+    await request(app)
+      .patch(`/api/articles/admin/${mockArticleId}`)
+      .send({ contentBlocks: [{ type: 'bullet_list', items: ['***'] }] })
+      .expect(400);
+
+    expect(mockArticleState.contentBlocks[0].items).toEqual([
+      'Engage in hobbies: Find a shared interest.'
+    ]);
+  });
+
   test('makes publish retries idempotent and preserves the original published date', async () => {
     const app = buildApp();
     mockArticleState = {

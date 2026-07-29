@@ -27,20 +27,21 @@ describe('AI article content persistence', () => {
     mockArticleCreate.mockReset();
     mockArticleExists.mockReset().mockResolvedValue(false);
     mockGenerateArticleDraft.mockReset().mockResolvedValue({
-      title: 'A generated article',
-      excerpt: 'A generated article summary that is long enough for the CMS.',
-      category: 'Wellbeing',
-      tags: ['support'],
+      title: '**A generated article**',
+      excerpt: 'A generated **article summary** that is long enough for the CMS.',
+      category: '**Wellbeing**',
+      tags: ['**support**'],
       contentBlocks: [
-        { type: 'heading', text: 'A clear place to start', level: 2 },
+        { type: 'heading', text: '**A clear place to start**', level: 2 },
         { type: 'paragraph', text: 'A practical generated paragraph that is safe for readers.' },
+        { type: 'bullet_list', items: ['**Engage in hobbies:** Find a shared interest.'] },
         // The model schema permits a null URL. It should not prevent a
         // review draft, because resolveCoverImage supplies the cover image.
         { type: 'image', url: null, alt: '', caption: '' }
       ],
-      seoTitle: 'A generated article | Menorah',
-      seoDescription: 'A useful description for readers.',
-      imagePrompt: 'A calm editorial image'
+      seoTitle: '**A generated article** | Menorah',
+      seoDescription: 'A useful **description** for readers.',
+      imagePrompt: '**A calm editorial image**'
     });
     mockCountArticleWords.mockReturnValue(700);
     mockResolveCoverImage.mockReset().mockResolvedValue({
@@ -61,7 +62,8 @@ describe('AI article content persistence', () => {
     const article = await createReviewArticle({
       input: {
         topic: 'A generated article',
-        category: 'Wellbeing'
+        category: 'Wellbeing',
+        imagePrompt: '**A private, calm image direction**'
       }
     });
 
@@ -69,12 +71,27 @@ describe('AI article content persistence', () => {
       status: 'review',
       generatedByAi: true,
       reviewedByHuman: false,
+      title: 'A generated article',
+      excerpt: 'A generated article summary that is long enough for the CMS.',
+      category: 'Wellbeing',
+      tags: ['support'],
+      seoTitle: 'A generated article | Menorah',
+      seoDescription: 'A useful description for readers.',
+      imagePrompt: 'A private, calm image direction',
       contentBlocks: [
         expect.objectContaining({ type: 'heading', text: 'A clear place to start', level: 2 }),
-        expect.objectContaining({ type: 'paragraph', text: 'A practical generated paragraph that is safe for readers.' })
+        expect.objectContaining({ type: 'paragraph', text: 'A practical generated paragraph that is safe for readers.' }),
+        expect.objectContaining({ type: 'bullet_list', items: ['Engage in hobbies: Find a shared interest.'] })
       ]
     }));
-    expect(mockArticleCreate.mock.calls[0][0].contentBlocks).toHaveLength(2);
+    expect(mockArticleCreate.mock.calls[0][0].contentBlocks).toHaveLength(3);
+    expect(mockResolveCoverImage).toHaveBeenCalledWith(expect.objectContaining({
+      imagePrompt: 'A private, calm image direction',
+      article: expect.objectContaining({
+        title: 'A generated article',
+        imagePrompt: 'A private, calm image direction'
+      })
+    }));
     expect(article.status).toBe('review');
   });
 });
