@@ -76,7 +76,7 @@ export function SupportPathwaySection() {
   const phoneJourneyProgress = selectedPhoneIndex ?? journeyProgress;
   const phoneActiveIndex = selectedPhoneIndex ?? scrollActiveIndex;
   const exitProgress = reducedMotion ? 0 : easeInOutCubic(progressBetween(progress, 0.82, 0.98));
-  const phoneRevealProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(progress, 0.06, 0.28));
+  const phoneRevealProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(progress, 0.015, 0.2));
   const stageStyle: CSSProperties = {
     opacity: 1 - exitProgress,
     transform: `translate3d(0, ${lerp(0, -42, exitProgress)}px, 0) scale(${lerp(1, 0.96, exitProgress)})`,
@@ -93,13 +93,15 @@ export function SupportPathwaySection() {
       <h2 id="support-pathway-title" className="sr-only">
         Menorah app feature scroll showcase
       </h2>
-      <div className="landing-scroll-viewport sticky top-0 flex min-h-[clamp(42rem,56vw,52rem)] overflow-hidden px-[var(--landing-page-x)] pb-[clamp(1.25rem,3vh,2.25rem)] pt-[clamp(5.75rem,10vh,7.5rem)] max-sm:min-h-[43rem]">
+      <div data-landing-scroll-viewport="support" className="landing-scroll-viewport landing-support-scroll-viewport sticky top-0 flex overflow-hidden px-[var(--landing-page-x)] pb-[clamp(1.25rem,3vh,2.25rem)] pt-[clamp(5.75rem,10vh,7.5rem)]">
         <div className="feature-transition-glow pointer-events-none absolute inset-x-[-14%] top-0 z-[1] h-40 opacity-60" />
         <div
-          className="relative z-10 mx-auto grid h-full w-[var(--landing-container)] grid-rows-[minmax(0,0.67fr)_minmax(0,0.33fr)] items-center gap-[clamp(0.75rem,2vh,1.5rem)] md:grid-rows-[minmax(0,0.55fr)_minmax(0,0.45fr)] lg:grid-cols-[minmax(20rem,0.86fr)_minmax(24rem,1fr)] lg:grid-rows-none lg:gap-[var(--landing-content-gap)]"
+          data-landing-support-stage
+          data-landing-active-feature={featureSlides[scrollActiveIndex].title}
+          className="landing-support-stage relative z-10 mx-auto grid h-full w-[var(--landing-container)] grid-rows-[minmax(0,0.67fr)_minmax(0,0.33fr)] items-center gap-[clamp(0.75rem,2vh,1.5rem)] md:grid-rows-[minmax(0,0.55fr)_minmax(0,0.45fr)] lg:grid-cols-[minmax(20rem,0.86fr)_minmax(24rem,1fr)] lg:grid-rows-none lg:gap-[var(--landing-content-gap)]"
           style={stageStyle}
         >
-          <div className="relative flex h-full min-h-0 items-center justify-center">
+          <div className="landing-support-device-region relative flex h-full min-h-0 items-center justify-center">
             <PhoneGlowBackdrop
               revealProgress={phoneRevealProgress}
               exitProgress={exitProgress}
@@ -116,7 +118,7 @@ export function SupportPathwaySection() {
             />
           </div>
 
-          <div className="relative h-full min-h-0">
+          <div className="landing-support-copy-region relative h-full min-h-0">
             <FeatureCopyStack
               activeIndex={scrollActiveIndex}
               journeyProgress={journeyProgress}
@@ -150,7 +152,7 @@ function PhoneGlowBackdrop({
 
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-1/2 z-0 aspect-[0.82] w-[min(72vw,clamp(24rem,31vw,33rem))] -translate-y-1/2 sm:w-[min(52vw,clamp(27rem,34vw,35rem))] lg:w-[min(31vw,34rem)]"
+      className="landing-support-phone-glow pointer-events-none absolute left-1/2 top-1/2 z-0 aspect-[0.82] w-[min(72vw,clamp(24rem,31vw,33rem))] -translate-y-1/2 sm:w-[min(52vw,clamp(27rem,34vw,35rem))] lg:w-[min(31vw,34rem)]"
       style={shellStyle}
       aria-hidden="true"
     >
@@ -201,7 +203,7 @@ function PhoneMockup({
     <div
       data-menorah-landing-theme="source"
       data-menorah-phone-mockup="support-pathway"
-      className="relative z-10 mx-auto aspect-[9/18.7] w-[var(--landing-phone-width)] max-w-[22rem]"
+      className="landing-support-phone relative z-10 mx-auto aspect-[9/18.7] w-[var(--landing-phone-width)] max-w-[22rem]"
       style={phoneStyle}
       aria-label={`Menorah app example: ${featureSlides[activeIndex].title}`}
     >
@@ -219,22 +221,27 @@ function PhoneMockup({
           <div className="absolute inset-0 pt-[3.35rem]">
             {featureSlides.map((feature, index) => {
               const delta = reducedMotion ? index : index - journeyProgress;
-              const distance = Math.abs(delta);
-              const focus = 1 - smoothstep(0.04, 0.76, distance);
+              const isActive = index === activeIndex;
+              const focus = isActive ? 1 : 0;
               const screenStyle: CSSProperties = {
-                opacity: focus * focus,
-                filter: `blur(${lerp(8, 0, focus)}px)`,
+                opacity: focus,
+                filter: `blur(${lerp(5, 0, focus)}px)`,
                 transform: `translate3d(${lerp(42, 0, focus) * Math.sign(delta || 1)}px, ${lerp(
                   16,
                   0,
                   focus
                 )}px, 0) scale(${lerp(0.94, 1, focus)})`,
-                zIndex: 10 + Math.round(focus * 10),
+                zIndex: isActive ? 20 : 10,
                 willChange: reducedMotion ? undefined : "transform, opacity, filter"
               };
 
               return (
-                <div key={feature.title} className="absolute inset-0" style={screenStyle} aria-hidden={index !== activeIndex}>
+                <div
+                  key={feature.title}
+                  className="absolute inset-0 transition-[opacity,transform,filter] duration-300 ease-out motion-reduce:transition-none"
+                  style={screenStyle}
+                  aria-hidden={!isActive}
+                >
                   <PhoneScreen
                     index={index}
                     activeIndex={activeIndex}
@@ -744,7 +751,8 @@ function FeatureCopyStack({
 
   return (
     <div
-      className="relative flex h-full min-h-0 items-start justify-center pt-0 md:items-center lg:justify-start"
+      data-landing-support-copy
+      className="landing-support-copy-stack relative flex h-full min-h-0 items-start justify-center pt-0 md:items-center lg:justify-start"
       style={entranceStyle}
     >
       <div className="relative flex h-full min-h-0 w-full max-w-[min(40rem,92vw)] flex-col">
@@ -758,10 +766,10 @@ function FeatureCopyStack({
         <div className="relative min-h-[clamp(16.5rem,31vh,22rem)] flex-1 lg:mt-[clamp(1.15rem,2.4vh,1.85rem)] lg:min-h-[clamp(18rem,34vh,24rem)]">
           {featureSlides.map((feature, index) => {
             const delta = reducedMotion ? index : index - journeyProgress;
-            const distance = Math.abs(delta);
-            const focus = 1 - smoothstep(0.06, 0.82, distance);
+            const isActive = index === activeIndex;
+            const focus = isActive ? 1 : 0;
             const Icon = feature.icon;
-            const copyOpacity = smoothstep(0.58, 0.94, focus) * (1 - exitProgress);
+            const copyOpacity = focus * (1 - exitProgress);
             const copyStyle: CSSProperties = {
               opacity: copyOpacity,
               transform: `translate3d(0, ${lerp(44, 0, focus) * Math.sign(delta || 1)}px, 0) scale(${lerp(
@@ -769,17 +777,17 @@ function FeatureCopyStack({
                 1,
                 focus
               )})`,
-              zIndex: 10 + index,
-              pointerEvents: activeIndex === index ? "auto" : "none",
+              zIndex: isActive ? 20 : 10,
+              pointerEvents: isActive ? "auto" : "none",
               willChange: reducedMotion ? undefined : "transform, opacity"
             };
 
             return (
               <article
                 key={feature.title}
-                className="absolute inset-x-0 top-0 rounded-[var(--landing-radius-md)] border border-foreground/8 bg-white/92 p-[var(--landing-card-pad)] shadow-[0_18px_55px_rgba(35,45,36,0.1)] backdrop-blur-sm"
+                className="absolute inset-x-0 top-0 rounded-[var(--landing-radius-md)] border border-foreground/8 bg-white/92 p-[var(--landing-card-pad)] shadow-[0_18px_55px_rgba(35,45,36,0.1)] backdrop-blur-sm transition-[opacity,transform,filter] duration-300 ease-out motion-reduce:transition-none"
                 style={{ ...copyStyle, backgroundImage: feature.surface }}
-                aria-hidden={activeIndex !== index}
+                aria-hidden={!isActive}
               >
                 <div className="flex items-start gap-4">
                   <div className={cn("flex h-[var(--landing-icon-md)] w-[var(--landing-icon-md)] shrink-0 items-center justify-center rounded-[var(--landing-radius-sm)]", feature.accent)}>

@@ -1,8 +1,10 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useRef } from "react";
 import Link from "next/link";
 import { AnimatedProductMockupSection } from "@/components/landing/AnimatedProductMockupSection";
+import { usePrefersReducedMotion, useScrollProgress } from "@/components/landing/useLandingMotion";
 import { Button } from "@/components/landing-ui/button";
 
 const videoUrl =
@@ -10,6 +12,8 @@ const videoUrl =
 
 export function MenorahHomeHero() {
   const heroRef = useRef<HTMLElement>(null);
+  const scrollProgress = useScrollProgress(heroRef);
+  const reducedMotion = usePrefersReducedMotion();
 
   return (
     <section
@@ -17,7 +21,7 @@ export function MenorahHomeHero() {
       data-menorah-home-ready
       className="landing-home-scroll-stage relative bg-background text-foreground"
     >
-      <div className="landing-scroll-viewport sticky top-0 flex min-h-[clamp(35rem,58vw,49rem)] flex-col overflow-hidden max-sm:min-h-[34rem] relative">
+      <div data-landing-scroll-viewport="hero" className="landing-scroll-viewport landing-home-scroll-viewport sticky top-0 relative flex flex-col overflow-hidden">
         <video
           className="absolute inset-0 z-0 h-full w-full object-cover"
           src={videoUrl}
@@ -27,16 +31,28 @@ export function MenorahHomeHero() {
           playsInline
           aria-hidden="true"
         />
-        <HeroSection />
-        <AnimatedProductMockupSection scrollRootRef={heroRef} />
+        <HeroSection scrollProgress={scrollProgress} reducedMotion={reducedMotion} />
+        <AnimatedProductMockupSection scrollProgress={scrollProgress} />
       </div>
     </section>
   );
 }
 
-function HeroSection() {
+function HeroSection({ scrollProgress, reducedMotion }: { scrollProgress: number; reducedMotion: boolean }) {
+  const copyExitProgress = reducedMotion ? 0 : Math.min(Math.max((scrollProgress - 0.08) / 0.18, 0), 1);
+  const copyStyle: CSSProperties = {
+    opacity: 1 - copyExitProgress,
+    transform: `translate3d(0, ${copyExitProgress * -30}px, 0) scale(${1 - copyExitProgress * 0.025})`,
+    pointerEvents: copyExitProgress > 0.85 ? "none" : undefined,
+    willChange: reducedMotion ? undefined : "transform, opacity"
+  };
+
   return (
-    <main className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-[var(--landing-page-x)] pb-[clamp(4rem,9vh,8rem)] pt-[clamp(5rem,11vh,8.5rem)]">
+    <main
+      data-landing-hero-copy
+      className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-[var(--landing-page-x)] pb-[clamp(4rem,9vh,8rem)] pt-[clamp(5rem,11vh,8.5rem)]"
+      style={copyStyle}
+    >
       <section className="relative z-10 flex w-full max-w-[min(78rem,94vw)] flex-col items-center">
         <h1 className="text-center font-display text-[length:var(--landing-hero-title)] leading-[0.96] tracking-tight text-foreground">
           We are Menorah, the world's firsts Mental health app for men

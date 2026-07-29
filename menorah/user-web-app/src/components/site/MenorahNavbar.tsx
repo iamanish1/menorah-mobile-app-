@@ -120,7 +120,7 @@ export function MenorahNavbar({
               </nav>
               <Link
                 href="/articles"
-                className="inline-flex text-xs font-medium text-muted-foreground transition hover:text-foreground sm:text-sm lg:hidden"
+                className="hidden text-xs font-medium text-muted-foreground transition hover:text-foreground sm:inline-flex sm:text-sm lg:hidden"
               >
                 Articles
               </Link>

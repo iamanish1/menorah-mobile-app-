@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, RefObject } from "react";
+import type { CSSProperties } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, Badge, Button } from "@/components/ui";
-import { useMediaQuery, usePrefersReducedMotion, useScrollProgress } from "@/components/landing/useLandingMotion";
+import { useMediaQuery, usePrefersReducedMotion } from "@/components/landing/useLandingMotion";
 
 const webNavItems = [
   { id: "discover", label: "Discover", icon: Search },
@@ -118,8 +118,7 @@ const demoFilterControls = [
   }
 ] as const;
 
-export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef: RefObject<HTMLElement | null> }) {
-  const scrollProgress = useScrollProgress(scrollRootRef, 0.1);
+export function AnimatedProductMockupSection({ scrollProgress }: { scrollProgress: number }) {
   const reducedMotion = usePrefersReducedMotion();
   const compactViewport = useMediaQuery("(max-width: 767px)");
   const tabletViewport = useMediaQuery("(max-width: 1023px)");

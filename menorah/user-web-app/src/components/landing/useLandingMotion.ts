@@ -6,9 +6,10 @@ import { useEffect, useRef, useState } from "react";
 type ViewportSubscriber = () => void;
 
 const viewportSubscribers = new Set<ViewportSubscriber>();
-let viewportFrame = 0;
 let viewportListenersAttached = false;
 let observedVisualViewport: VisualViewport | null = null;
+let layoutObserver: ResizeObserver | undefined;
+let layoutSettleFrame = 0;
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(Math.max(value, minimum), maximum);
@@ -32,13 +33,22 @@ function cancelViewportFrame(frame: number) {
 }
 
 function notifyViewportSubscribers() {
-  if (viewportFrame) {
+  // Each subscriber queues its own animation-frame measurement. Calling it
+  // directly avoids a second global frame that made scroll-controlled stages
+  // visibly render the previous state while the page was moving.
+  [...viewportSubscribers].forEach((subscriber) => subscriber());
+}
+
+function scheduleLayoutRecheck() {
+  notifyViewportSubscribers();
+
+  if (layoutSettleFrame) {
     return;
   }
 
-  viewportFrame = requestViewportFrame(() => {
-    viewportFrame = 0;
-    [...viewportSubscribers].forEach((subscriber) => subscriber());
+  layoutSettleFrame = requestViewportFrame(() => {
+    layoutSettleFrame = 0;
+    notifyViewportSubscribers();
   });
 }
 
@@ -49,11 +59,26 @@ function attachViewportListeners() {
 
   viewportListenersAttached = true;
   window.addEventListener("scroll", notifyViewportSubscribers, { passive: true });
-  window.addEventListener("resize", notifyViewportSubscribers);
+  window.addEventListener("resize", scheduleLayoutRecheck);
+  window.addEventListener("load", scheduleLayoutRecheck);
 
   observedVisualViewport = window.visualViewport;
-  observedVisualViewport?.addEventListener("resize", notifyViewportSubscribers);
+  observedVisualViewport?.addEventListener("resize", scheduleLayoutRecheck);
   observedVisualViewport?.addEventListener("scroll", notifyViewportSubscribers);
+
+  if (typeof ResizeObserver !== "undefined") {
+    layoutObserver = new ResizeObserver(scheduleLayoutRecheck);
+    layoutObserver.observe(document.documentElement);
+    if (document.body) {
+      layoutObserver.observe(document.body);
+    }
+  }
+
+  // Font and image/layout hydration can shift a stage without emitting a
+  // scroll event. Re-measure after the document finishes settling so a stage
+  // never remains frozen at its pre-layout position.
+  document.fonts?.ready.then(scheduleLayoutRecheck).catch(() => {});
+  scheduleLayoutRecheck();
 }
 
 function detachViewportListeners() {
@@ -63,14 +88,17 @@ function detachViewportListeners() {
 
   viewportListenersAttached = false;
   window.removeEventListener("scroll", notifyViewportSubscribers);
-  window.removeEventListener("resize", notifyViewportSubscribers);
-  observedVisualViewport?.removeEventListener("resize", notifyViewportSubscribers);
+  window.removeEventListener("resize", scheduleLayoutRecheck);
+  window.removeEventListener("load", scheduleLayoutRecheck);
+  observedVisualViewport?.removeEventListener("resize", scheduleLayoutRecheck);
   observedVisualViewport?.removeEventListener("scroll", notifyViewportSubscribers);
   observedVisualViewport = null;
+  layoutObserver?.disconnect();
+  layoutObserver = undefined;
 
-  if (viewportFrame) {
-    cancelViewportFrame(viewportFrame);
-    viewportFrame = 0;
+  if (layoutSettleFrame) {
+    cancelViewportFrame(layoutSettleFrame);
+    layoutSettleFrame = 0;
   }
 }
 
@@ -107,37 +135,12 @@ function subscribeToMediaQuery(media: MediaQueryList, listener: (event: MediaQue
  * The one shared viewport listener prevents every landing section from adding its
  * own scroll and resize handlers.
  */
-export function useScrollProgress(ref: RefObject<HTMLElement | null>, smoothing = 0.14) {
+export function useScrollProgress(ref: RefObject<HTMLElement | null>) {
   const [progress, setProgress] = useState(0);
-  const targetProgressRef = useRef(0);
-  const displayedProgressRef = useRef(0);
 
   useEffect(() => {
     let measureFrame = 0;
-    let animationFrame = 0;
     let resizeObserver: ResizeObserver | undefined;
-
-    const animateProgress = () => {
-      animationFrame = 0;
-      const currentProgress = displayedProgressRef.current;
-      const targetProgress = targetProgressRef.current;
-      const remainingDistance = targetProgress - currentProgress;
-      const nextProgress =
-        Math.abs(remainingDistance) < 0.0005 ? targetProgress : currentProgress + remainingDistance * smoothing;
-
-      displayedProgressRef.current = nextProgress;
-      setProgress((current) => (Math.abs(current - nextProgress) > 0.0001 ? nextProgress : current));
-
-      if (Math.abs(targetProgress - nextProgress) > 0.0005) {
-        animationFrame = requestViewportFrame(animateProgress);
-      }
-    };
-
-    const queueAnimation = () => {
-      if (!animationFrame) {
-        animationFrame = requestViewportFrame(animateProgress);
-      }
-    };
 
     const measure = () => {
       measureFrame = 0;
@@ -150,11 +153,7 @@ export function useScrollProgress(ref: RefObject<HTMLElement | null>, smoothing 
       const rect = element.getBoundingClientRect();
       const travel = Math.max(rect.height - window.innerHeight, 1);
       const nextProgress = clamp(-rect.top / travel, 0, 1);
-
-      if (Math.abs(targetProgressRef.current - nextProgress) > 0.0001) {
-        targetProgressRef.current = nextProgress;
-        queueAnimation();
-      }
+      setProgress((current) => (Math.abs(current - nextProgress) > 0.0001 ? nextProgress : current));
     };
 
     const queueMeasure = () => {
@@ -179,14 +178,10 @@ export function useScrollProgress(ref: RefObject<HTMLElement | null>, smoothing 
         cancelViewportFrame(measureFrame);
       }
 
-      if (animationFrame) {
-        cancelViewportFrame(animationFrame);
-      }
-
       resizeObserver?.disconnect();
       unsubscribe();
     };
-  }, [ref, smoothing]);
+  }, [ref]);
 
   return progress;
 }
