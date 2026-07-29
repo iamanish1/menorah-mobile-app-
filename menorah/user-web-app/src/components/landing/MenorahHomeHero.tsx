@@ -15,9 +15,9 @@ export function MenorahHomeHero() {
     <section
       ref={heroRef}
       data-menorah-home-ready
-      className="relative min-h-[390svh] bg-background text-foreground sm:min-h-[430svh] lg:min-h-[460svh]"
+      className="landing-home-scroll-stage relative bg-background text-foreground"
     >
-      <div className="sticky top-0 flex h-[100svh] min-h-[clamp(35rem,58vw,49rem)] flex-col overflow-hidden max-sm:min-h-[34rem] relative">
+      <div className="landing-scroll-viewport sticky top-0 flex min-h-[clamp(35rem,58vw,49rem)] flex-col overflow-hidden max-sm:min-h-[34rem] relative">
         <video
           className="absolute inset-0 z-0 h-full w-full object-cover"
           src={videoUrl}

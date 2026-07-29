@@ -1,9 +1,10 @@
 "use client";
 
 import type { CSSProperties, RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { BookOpen, CheckCircle2, HeartPulse, LockKeyhole, MessageCircle, ShieldCheck, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useInView, useMediaQuery, usePrefersReducedMotion, useScrollProgress } from "@/components/landing/useLandingMotion";
 
 const featureBackgroundVideoUrl =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_083109_283f3553-e28f-428b-a723-d639c617eb2b.mp4";
@@ -357,7 +358,7 @@ function MobileFeatureCard({
   reducedMotion: boolean;
 }) {
   const cardRef = useRef<HTMLElement>(null);
-  const isVisible = useInView(cardRef);
+  const isVisible = useInView(cardRef, 0.18);
   const Icon = feature.icon;
   const cardStyle: CSSProperties = {
     opacity: reducedMotion || isVisible ? 1 : 0,
@@ -393,93 +394,6 @@ function MobileFeatureCard({
       </ul>
     </article>
   );
-}
-
-function useScrollProgress(ref: RefObject<HTMLElement | null>) {
-  const [progress, setProgress] = useState(0);
-  const targetProgressRef = useRef(0);
-  const displayedProgressRef = useRef(0);
-
-  useEffect(() => {
-    let measureFrame = 0;
-    let animationFrame = 0;
-
-    const animateProgress = () => {
-      animationFrame = 0;
-      const currentProgress = displayedProgressRef.current;
-      const targetProgress = targetProgressRef.current;
-      const remainingDistance = targetProgress - currentProgress;
-      const nextProgress =
-        Math.abs(remainingDistance) < 0.0005 ? targetProgress : currentProgress + remainingDistance * 0.14;
-
-      displayedProgressRef.current = nextProgress;
-      setProgress((current) => (Math.abs(current - nextProgress) > 0.0001 ? nextProgress : current));
-
-      if (Math.abs(targetProgress - nextProgress) > 0.0005) {
-        animationFrame = window.requestAnimationFrame(animateProgress);
-      }
-    };
-
-    const queueAnimation = () => {
-      if (animationFrame) {
-        return;
-      }
-
-      animationFrame = window.requestAnimationFrame(animateProgress);
-    };
-
-    const measure = () => {
-      measureFrame = 0;
-      const element = ref.current;
-
-      if (!element) {
-        return;
-      }
-
-      const rect = element.getBoundingClientRect();
-      const travel = Math.max(rect.height - window.innerHeight, 1);
-      const nextProgress = clamp(-rect.top / travel, 0, 1);
-
-      if (Math.abs(targetProgressRef.current - nextProgress) > 0.0001) {
-        targetProgressRef.current = nextProgress;
-        queueAnimation();
-      }
-    };
-
-    const queueMeasure = () => {
-      if (measureFrame) {
-        return;
-      }
-
-      measureFrame = window.requestAnimationFrame(measure);
-    };
-
-    const resizeObserver = new ResizeObserver(queueMeasure);
-
-    if (ref.current) {
-      resizeObserver.observe(ref.current);
-    }
-
-    measure();
-    window.addEventListener("scroll", queueMeasure, { passive: true });
-    window.addEventListener("resize", queueMeasure);
-
-    return () => {
-      if (measureFrame) {
-        window.cancelAnimationFrame(measureFrame);
-      }
-
-      if (animationFrame) {
-        window.cancelAnimationFrame(animationFrame);
-      }
-
-      resizeObserver.disconnect();
-      window.removeEventListener("scroll", queueMeasure);
-      window.removeEventListener("resize", queueMeasure);
-    };
-  }, [ref]);
-
-  return progress;
 }
 
 function useFadingVideoLoop(videoRef: RefObject<HTMLVideoElement | null>, resetKey: boolean) {
@@ -543,65 +457,6 @@ function useFadingVideoLoop(videoRef: RefObject<HTMLVideoElement | null>, resetK
       video.removeEventListener("ended", restartVideo);
     };
   }, [resetKey, videoRef]);
-}
-
-function usePrefersReducedMotion() {
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => setReducedMotion(media.matches);
-
-    updatePreference();
-    media.addEventListener("change", updatePreference);
-
-    return () => media.removeEventListener("change", updatePreference);
-  }, []);
-
-  return reducedMotion;
-}
-
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const updateMatch = () => setMatches(media.matches);
-
-    updateMatch();
-    media.addEventListener("change", updateMatch);
-
-    return () => media.removeEventListener("change", updateMatch);
-  }, [query]);
-
-  return matches;
-}
-
-function useInView(ref: RefObject<HTMLElement | null>) {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    const element = ref.current;
-
-    if (!element) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-        }
-      },
-      { rootMargin: "0px 0px -12% 0px", threshold: 0.18 }
-    );
-
-    observer.observe(element);
-
-    return () => observer.disconnect();
-  }, [ref]);
-
-  return isVisible;
 }
 
 function lerp(start: number, end: number, progress: number) {

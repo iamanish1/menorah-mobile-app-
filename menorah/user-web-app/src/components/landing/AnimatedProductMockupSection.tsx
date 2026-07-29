@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, Badge, Button } from "@/components/ui";
+import { useMediaQuery, usePrefersReducedMotion, useScrollProgress } from "@/components/landing/useLandingMotion";
 
 const webNavItems = [
   { id: "discover", label: "Discover", icon: Search },
@@ -118,7 +119,7 @@ const demoFilterControls = [
 ] as const;
 
 export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef: RefObject<HTMLElement | null> }) {
-  const scrollProgress = useScrollProgress(scrollRootRef);
+  const scrollProgress = useScrollProgress(scrollRootRef, 0.1);
   const reducedMotion = usePrefersReducedMotion();
   const compactViewport = useMediaQuery("(max-width: 767px)");
   const tabletViewport = useMediaQuery("(max-width: 1023px)");
@@ -953,125 +954,6 @@ function getFeatureSearch(feature: WebMockFeature) {
   };
 
   return placeholders[feature];
-}
-
-function useScrollProgress(ref: RefObject<HTMLElement | null>) {
-  const [progress, setProgress] = useState(0);
-  const targetProgressRef = useRef(0);
-  const displayedProgressRef = useRef(0);
-
-  useEffect(() => {
-    let measureFrame = 0;
-    let animationFrame = 0;
-
-    const animateProgress = () => {
-      animationFrame = 0;
-      const currentProgress = displayedProgressRef.current;
-      const targetProgress = targetProgressRef.current;
-      const remainingDistance = targetProgress - currentProgress;
-      const nextProgress =
-        Math.abs(remainingDistance) < 0.0004 ? targetProgress : currentProgress + remainingDistance * 0.1;
-
-      displayedProgressRef.current = nextProgress;
-      setProgress((current) => (Math.abs(current - nextProgress) > 0.00025 ? nextProgress : current));
-
-      if (Math.abs(targetProgress - nextProgress) > 0.0005) {
-        animationFrame = window.requestAnimationFrame(animateProgress);
-      }
-    };
-
-    const queueAnimation = () => {
-      if (animationFrame) {
-        return;
-      }
-
-      animationFrame = window.requestAnimationFrame(animateProgress);
-    };
-
-    const measure = () => {
-      measureFrame = 0;
-      const element = ref.current;
-
-      if (!element) {
-        return;
-      }
-
-      const rect = element.getBoundingClientRect();
-      const travel = Math.max(rect.height - window.innerHeight, 1);
-      const nextProgress = clamp(-rect.top / travel, 0, 1);
-
-      if (Math.abs(targetProgressRef.current - nextProgress) > 0.0001) {
-        targetProgressRef.current = nextProgress;
-        queueAnimation();
-      }
-    };
-
-    const queueMeasure = () => {
-      if (measureFrame) {
-        return;
-      }
-
-      measureFrame = window.requestAnimationFrame(measure);
-    };
-
-    const resizeObserver = new ResizeObserver(queueMeasure);
-
-    if (ref.current) {
-      resizeObserver.observe(ref.current);
-    }
-
-    measure();
-    window.addEventListener("scroll", queueMeasure, { passive: true });
-    window.addEventListener("resize", queueMeasure);
-
-    return () => {
-      if (measureFrame) {
-        window.cancelAnimationFrame(measureFrame);
-      }
-
-      if (animationFrame) {
-        window.cancelAnimationFrame(animationFrame);
-      }
-
-      resizeObserver.disconnect();
-      window.removeEventListener("scroll", queueMeasure);
-      window.removeEventListener("resize", queueMeasure);
-    };
-  }, [ref]);
-
-  return progress;
-}
-
-function usePrefersReducedMotion() {
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => setReducedMotion(media.matches);
-
-    updatePreference();
-    media.addEventListener("change", updatePreference);
-
-    return () => media.removeEventListener("change", updatePreference);
-  }, []);
-
-  return reducedMotion;
-}
-
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const updateMatch = () => setMatches(media.matches);
-
-    updateMatch();
-    media.addEventListener("change", updateMatch);
-
-    return () => media.removeEventListener("change", updateMatch);
-  }, [query]);
-
-  return matches;
 }
 
 function progressBetween(progress: number, start: number, end: number) {

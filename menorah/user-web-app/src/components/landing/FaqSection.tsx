@@ -1,10 +1,11 @@
 "use client";
 
-import type { CSSProperties, RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { useRef } from "react";
 import { HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FaqQuestionForm } from "@/components/site/FaqQuestionForm";
+import { useInView, usePrefersReducedMotion } from "@/components/landing/useLandingMotion";
 
 const faqs = [
   {
@@ -158,47 +159,4 @@ function getRevealStyle(isVisible: boolean, reducedMotion: boolean, delay: numbe
     transform: reducedMotion || isVisible ? "translate3d(0, 0, 0)" : "translate3d(0, 28px, 0)",
     transitionDelay: `${delay}ms`
   };
-}
-
-function useInView(ref: RefObject<HTMLElement | null>, threshold = 0.24) {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    const element = ref.current;
-
-    if (!element) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-        }
-      },
-      { rootMargin: "0px 0px -12% 0px", threshold }
-    );
-
-    observer.observe(element);
-
-    return () => observer.disconnect();
-  }, [ref, threshold]);
-
-  return isVisible;
-}
-
-function usePrefersReducedMotion() {
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => setReducedMotion(media.matches);
-
-    updatePreference();
-    media.addEventListener("change", updatePreference);
-
-    return () => media.removeEventListener("change", updatePreference);
-  }, []);
-
-  return reducedMotion;
 }

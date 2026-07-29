@@ -1,7 +1,7 @@
 "use client";
 
-import type { CSSProperties, RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Bell,
@@ -22,6 +22,7 @@ import {
   UserRound
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMediaQuery, usePrefersReducedMotion, useScrollProgress } from "@/components/landing/useLandingMotion";
 
 const featureSlides = [
   {
@@ -87,12 +88,12 @@ export function SupportPathwaySection() {
       ref={sectionRef}
       id="support-pathway"
       aria-labelledby="support-pathway-title"
-      className="relative min-h-[410svh] bg-menorah-page text-foreground sm:min-h-[430svh] lg:min-h-[460svh]"
+      className="landing-support-scroll-stage relative bg-menorah-page text-foreground"
     >
       <h2 id="support-pathway-title" className="sr-only">
         Menorah app feature scroll showcase
       </h2>
-      <div className="sticky top-0 flex h-[100svh] min-h-[clamp(42rem,56vw,52rem)] overflow-hidden px-[var(--landing-page-x)] pb-[clamp(1.25rem,3vh,2.25rem)] pt-[clamp(5.75rem,10vh,7.5rem)] max-sm:min-h-[43rem]">
+      <div className="landing-scroll-viewport sticky top-0 flex min-h-[clamp(42rem,56vw,52rem)] overflow-hidden px-[var(--landing-page-x)] pb-[clamp(1.25rem,3vh,2.25rem)] pt-[clamp(5.75rem,10vh,7.5rem)] max-sm:min-h-[43rem]">
         <div className="feature-transition-glow pointer-events-none absolute inset-x-[-14%] top-0 z-[1] h-40 opacity-60" />
         <div
           className="relative z-10 mx-auto grid h-full w-[var(--landing-container)] grid-rows-[minmax(0,0.67fr)_minmax(0,0.33fr)] items-center gap-[clamp(0.75rem,2vh,1.5rem)] md:grid-rows-[minmax(0,0.55fr)_minmax(0,0.45fr)] lg:grid-cols-[minmax(20rem,0.86fr)_minmax(24rem,1fr)] lg:grid-rows-none lg:gap-[var(--landing-content-gap)]"
@@ -827,125 +828,6 @@ function FeatureCopyStack({
       </div>
     </div>
   );
-}
-
-function useScrollProgress(ref: RefObject<HTMLElement | null>) {
-  const [progress, setProgress] = useState(0);
-  const targetProgressRef = useRef(0);
-  const displayedProgressRef = useRef(0);
-
-  useEffect(() => {
-    let measureFrame = 0;
-    let animationFrame = 0;
-
-    const animateProgress = () => {
-      animationFrame = 0;
-      const currentProgress = displayedProgressRef.current;
-      const targetProgress = targetProgressRef.current;
-      const remainingDistance = targetProgress - currentProgress;
-      const nextProgress =
-        Math.abs(remainingDistance) < 0.0005 ? targetProgress : currentProgress + remainingDistance * 0.14;
-
-      displayedProgressRef.current = nextProgress;
-      setProgress((current) => (Math.abs(current - nextProgress) > 0.0001 ? nextProgress : current));
-
-      if (Math.abs(targetProgress - nextProgress) > 0.0005) {
-        animationFrame = window.requestAnimationFrame(animateProgress);
-      }
-    };
-
-    const queueAnimation = () => {
-      if (animationFrame) {
-        return;
-      }
-
-      animationFrame = window.requestAnimationFrame(animateProgress);
-    };
-
-    const measure = () => {
-      measureFrame = 0;
-      const element = ref.current;
-
-      if (!element) {
-        return;
-      }
-
-      const rect = element.getBoundingClientRect();
-      const travel = Math.max(rect.height - window.innerHeight, 1);
-      const nextProgress = clamp(-rect.top / travel, 0, 1);
-
-      if (Math.abs(targetProgressRef.current - nextProgress) > 0.0001) {
-        targetProgressRef.current = nextProgress;
-        queueAnimation();
-      }
-    };
-
-    const queueMeasure = () => {
-      if (measureFrame) {
-        return;
-      }
-
-      measureFrame = window.requestAnimationFrame(measure);
-    };
-
-    const resizeObserver = new ResizeObserver(queueMeasure);
-
-    if (ref.current) {
-      resizeObserver.observe(ref.current);
-    }
-
-    measure();
-    window.addEventListener("scroll", queueMeasure, { passive: true });
-    window.addEventListener("resize", queueMeasure);
-
-    return () => {
-      if (measureFrame) {
-        window.cancelAnimationFrame(measureFrame);
-      }
-
-      if (animationFrame) {
-        window.cancelAnimationFrame(animationFrame);
-      }
-
-      resizeObserver.disconnect();
-      window.removeEventListener("scroll", queueMeasure);
-      window.removeEventListener("resize", queueMeasure);
-    };
-  }, [ref]);
-
-  return progress;
-}
-
-function usePrefersReducedMotion() {
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => setReducedMotion(media.matches);
-
-    updatePreference();
-    media.addEventListener("change", updatePreference);
-
-    return () => media.removeEventListener("change", updatePreference);
-  }, []);
-
-  return reducedMotion;
-}
-
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const updateMatch = () => setMatches(media.matches);
-
-    updateMatch();
-    media.addEventListener("change", updateMatch);
-
-    return () => media.removeEventListener("change", updateMatch);
-  }, [query]);
-
-  return matches;
 }
 
 function progressBetween(progress: number, start: number, end: number) {

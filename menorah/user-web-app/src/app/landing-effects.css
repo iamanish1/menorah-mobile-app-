@@ -17,6 +17,38 @@ body {
   overflow-x: clip;
 }
 
+/* Keep scroll-controlled stages usable in browsers that do not understand svh. */
+.landing-home-scroll-stage {
+  min-height: 390vh;
+  min-height: 390svh;
+}
+
+.landing-support-scroll-stage {
+  min-height: 410vh;
+  min-height: 410svh;
+}
+
+.landing-scroll-viewport {
+  height: 100vh;
+  height: 100svh;
+}
+
+@media (min-width: 640px) {
+  .landing-home-scroll-stage,
+  .landing-support-scroll-stage {
+    min-height: 430vh;
+    min-height: 430svh;
+  }
+}
+
+@media (min-width: 1024px) {
+  .landing-home-scroll-stage,
+  .landing-support-scroll-stage {
+    min-height: 460vh;
+    min-height: 460svh;
+  }
+}
+
 [data-product-dashboard],
 [data-product-dashboard] * {
   -webkit-font-smoothing: antialiased;
