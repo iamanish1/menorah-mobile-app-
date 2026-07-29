@@ -110,6 +110,42 @@ const runChatCheck = async ({ userSession, counsellorSession }) => {
   if (!roomId) fail('Chat start did not return a room ID');
   logPass('authenticated user created a chat room with the QA counsellor');
 
+  // Both web chat clients use REST to post and retrieve messages. Exercise
+  // this path before the Socket.IO checks so a response-serialization failure
+  // cannot be hidden by a successful socket delivery.
+  const userRestMessage = `QA REST chat from user ${Date.now()}`;
+  const userSend = await request('POST', `/api/chat/rooms/${roomId}/messages`, {
+    token: userSession.token,
+    body: { content: userRestMessage, type: 'text' },
+  });
+  if (userSend?.data?.message?.content !== userRestMessage) {
+    fail('User REST chat send did not return the created message');
+  }
+
+  const counsellorHistory = await request('GET', `/api/chat/rooms/${roomId}/messages?page=1&limit=20`, {
+    token: counsellorSession.token,
+  });
+  if (!counsellorHistory?.data?.messages?.some((message) => message?.content === userRestMessage)) {
+    fail('Counsellor REST chat history did not include the user message');
+  }
+
+  const counsellorRestMessage = `QA REST chat from counsellor ${Date.now()}`;
+  const counsellorSend = await request('POST', `/api/chat/rooms/${roomId}/messages`, {
+    token: counsellorSession.token,
+    body: { content: counsellorRestMessage, type: 'text' },
+  });
+  if (counsellorSend?.data?.message?.content !== counsellorRestMessage) {
+    fail('Counsellor REST chat send did not return the created message');
+  }
+
+  const userHistory = await request('GET', `/api/chat/rooms/${roomId}/messages?page=1&limit=20`, {
+    token: userSession.token,
+  });
+  if (!userHistory?.data?.messages?.some((message) => message?.content === counsellorRestMessage)) {
+    fail('User REST chat history did not include the counsellor reply');
+  }
+  logPass('user and counsellor exchanged messages through the REST chat API');
+
   const [userSocket, counsellorSocket] = await Promise.all([
     connectSocket(userSession.token),
     connectSocket(counsellorSession.token),

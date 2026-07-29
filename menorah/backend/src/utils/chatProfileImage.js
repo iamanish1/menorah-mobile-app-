@@ -1,7 +1,11 @@
 const asStringId = (value) => {
   if (!value) return null;
   if (typeof value === 'string') return value;
-  if (value._id) return asStringId(value._id);
+  // Mongoose ObjectIds expose an `_id` getter that returns the ObjectId
+  // itself. Resolve the ObjectId before looking for a document wrapper so
+  // formatting a populated chat message cannot recurse indefinitely.
+  if (typeof value.toHexString === 'function') return value.toHexString();
+  if (value._id && value._id !== value) return asStringId(value._id);
   return typeof value.toString === 'function' ? value.toString() : null;
 };
 
