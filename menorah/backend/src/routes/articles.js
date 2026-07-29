@@ -19,6 +19,7 @@ const {
   toPlainArticleText,
   validateContentBlocks
 } = require('../services/articleContent');
+const { appendArticleSearchClauses, escapeRegex } = require('../services/articleSearch');
 
 const router = express.Router();
 
@@ -133,9 +134,7 @@ const buildArticleFilter = ({ status, q, runId }) => {
     filter.generationRun = runId;
   }
 
-  if (q) {
-    filter.$text = { $search: q };
-  }
+  appendArticleSearchClauses(filter, q);
 
   return filter;
 };
@@ -192,7 +191,7 @@ router.get('/', [
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 50 }),
   query('category').optional().isString().trim(),
-  query('q').optional().isString().trim()
+  query('q').optional().isString().trim().isLength({ max: 100 })
 ], async (req, res) => {
   try {
     setPublicArticleCacheHeaders(res);
@@ -207,19 +206,15 @@ router.get('/', [
     const filter = { status: 'published' };
 
     if (category) {
-      filter.category = { $regex: `^${category}$`, $options: 'i' };
+      filter.category = new RegExp(`^${escapeRegex(category)}$`, 'i');
     }
 
-    if (q) {
-      filter.$text = { $search: q };
-    }
+    appendArticleSearchClauses(filter, q);
 
-    const sort = q
-      ? { score: { $meta: 'textScore' }, publishedAt: -1, createdAt: -1 }
-      : { publishedAt: -1, createdAt: -1 };
+    const sort = { publishedAt: -1, createdAt: -1 };
 
     const [articles, total] = await Promise.all([
-      Article.find(filter, q ? { score: { $meta: 'textScore' } } : undefined)
+      Article.find(filter)
         .select(ARTICLE_SELECT_LIST)
         .sort(sort)
         .skip((pageNumber - 1) * limitNumber)
@@ -360,7 +355,7 @@ router.get('/admin', adminAuth, [
   query('status').optional().isIn(['all', 'draft', 'review', 'published', 'archived', 'rejected']),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 50 }),
-  query('q').optional().isString().trim(),
+  query('q').optional().isString().trim().isLength({ max: 100 }),
   query('runId').optional().isMongoId()
 ], async (req, res) => {
   try {
@@ -373,12 +368,10 @@ router.get('/admin', adminAuth, [
     const pageNumber = parseInt(page, 10);
     const limitNumber = parseInt(limit, 10);
     const filter = buildArticleFilter({ status, q, runId });
-    const sort = q
-      ? { score: { $meta: 'textScore' }, createdAt: -1 }
-      : { createdAt: -1 };
+    const sort = { createdAt: -1 };
 
     const [articles, total] = await Promise.all([
-      Article.find(filter, q ? { score: { $meta: 'textScore' } } : undefined)
+      Article.find(filter)
         .select(ARTICLE_SELECT_LIST)
         .sort(sort)
         .skip((pageNumber - 1) * limitNumber)

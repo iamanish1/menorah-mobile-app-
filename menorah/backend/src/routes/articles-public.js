@@ -2,53 +2,11 @@ const express = require('express');
 const { param, query, validationResult } = require('express-validator');
 const Article = require('../models/Article');
 const { buildArticleCanonicalUrl } = require('../services/articleCanonicalUrl');
+const { appendArticleSearchClauses, escapeRegex } = require('../services/articleSearch');
 
 const router = express.Router();
 
 const ARTICLE_SELECT_LIST = '-contentBlocks';
-const ARTICLE_SEARCH_FIELDS = [
-  'title',
-  'excerpt',
-  'category',
-  'tags',
-  'seoTitle',
-  'seoDescription',
-  'contentBlocks.text',
-  'contentBlocks.items'
-];
-const ARTICLE_SEARCH_EQUIVALENTS = {
-  man: ['man', 'men'],
-  men: ['men', 'man'],
-  woman: ['woman', 'women'],
-  women: ['women', 'woman']
-};
-
-const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const getArticleSearchTermVariants = (term) => {
-  const normalized = String(term).toLowerCase();
-  return ARTICLE_SEARCH_EQUIVALENTS[normalized] || [term];
-};
-
-// Mongo's $text operator only matches indexed words, so a reader searching
-// for a partial word such as "man" would not find "Managing" or "Men".
-// Use bounded, escaped substring matching for the public reader experience.
-const buildArticleSearchClauses = (value) => String(value || '')
-  .trim()
-  .split(/\s+/)
-  .filter(Boolean)
-  .slice(0, 10)
-  .map((term) => {
-    const pattern = getArticleSearchTermVariants(term)
-      .map(escapeRegex)
-      .join('|');
-    const searchRegex = new RegExp(pattern, 'i');
-
-    return {
-      $or: ARTICLE_SEARCH_FIELDS.map((field) => ({ [field]: searchRegex }))
-    };
-  });
-
 const formatArticle = (article) => {
   if (!article) {
     return null;
@@ -101,10 +59,7 @@ router.get('/', [
       filter.category = new RegExp(`^${escapeRegex(category)}$`, 'i');
     }
 
-    const searchClauses = buildArticleSearchClauses(q);
-    if (searchClauses.length) {
-      filter.$and = searchClauses;
-    }
+    appendArticleSearchClauses(filter, q);
 
     const sort = { publishedAt: -1, createdAt: -1 };
 
