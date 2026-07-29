@@ -204,9 +204,11 @@ services:
         NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-${RAZORPAY_KEY_ID:-}}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
         NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
-        NEXT_PUBLIC_WEB_BASE_URL: "https://${WWW_DOMAIN:-www.menorah.me}"
-        NEXT_PUBLIC_SITE_URL: "https://${WWW_DOMAIN:-www.menorah.me}"
-        PUBLIC_WEB_BASE_URL: "https://${WWW_DOMAIN:-www.menorah.me}"
+        # The public landing host is the SEO canonical origin. Keep this on
+        # the apex domain because Cloudflare redirects www -> apex.
+        NEXT_PUBLIC_WEB_BASE_URL: "https://${ROOT_DOMAIN:-menorah.me}"
+        NEXT_PUBLIC_SITE_URL: "https://${ROOT_DOMAIN:-menorah.me}"
+        PUBLIC_WEB_BASE_URL: "https://${ROOT_DOMAIN:-menorah.me}"
         ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
         MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
     restart: unless-stopped

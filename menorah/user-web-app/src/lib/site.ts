@@ -1,4 +1,7 @@
-const FALLBACK_PUBLIC_WEB_BASE_URL = "https://app.menorah.me";
+// This is used by the public landing site's metadata, sitemap, and robots
+// routes whenever a deployment omits an explicit build-time public URL.
+// Keep the safe production fallback on the SEO canonical apex domain.
+const FALLBACK_PUBLIC_WEB_BASE_URL = "https://menorah.me";
 const FALLBACK_ARTICLE_CANONICAL_BASE_URL = "https://menorah.me";
 
 export const SITE_NAME = "Menorah Health";

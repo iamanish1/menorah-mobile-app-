@@ -18,13 +18,11 @@ const STATIC_ROUTES = [
 ] as const;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const now = new Date();
   const articles = await getPublishedArticlesForSitemap();
 
   return [
     ...STATIC_ROUTES.map((route) => ({
       url: route.path === "/articles" ? getArticleCanonicalUrl("") : getPublicWebUrl(route.path),
-      lastModified: now,
       changeFrequency: route.changeFrequency,
       priority: route.priority
     })),
