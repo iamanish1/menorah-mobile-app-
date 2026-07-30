@@ -10,10 +10,15 @@ async function loadLanding(page, reducedMotion = 'no-preference') {
   await expect(page.locator('[data-product-dashboard]')).toBeAttached({ timeout: 15_000 });
   await page.evaluate(() => {
     document.documentElement.style.scrollBehavior = 'auto';
+    document.body.style.scrollBehavior = 'auto';
+  });
+  await page.evaluate(async () => {
+    await document.fonts?.ready;
   });
   // The client auth shell briefly swaps during hydration. Wait for the final
-  // landing layout before calculating section scroll offsets.
-  await page.waitForTimeout(800);
+  // landing layout before calculating section scroll offsets. Font metrics can
+  // change the position of the support stage on a cold, compact viewport.
+  await page.waitForTimeout(350);
 }
 
 async function scrollWithinSection(page, selector, progress) {
@@ -28,7 +33,10 @@ async function scrollWithinSection(page, selector, progress) {
       const rect = section.getBoundingClientRect();
       const absoluteTop = window.scrollY + rect.top;
       const travel = Math.max(section.clientHeight - window.innerHeight, 0);
-      window.scrollTo(0, absoluteTop + travel * sectionProgress);
+      // The app's global stylesheet intentionally enables smooth scrolling.
+      // Use Chromium's explicit instant behavior so a test target is sampled
+      // at the requested stage rather than partway through a native scroll.
+      window.scrollTo({ top: absoluteTop + travel * sectionProgress, behavior: 'instant' });
     },
     { sectionSelector: selector, sectionProgress: progress }
   );
@@ -126,6 +134,7 @@ test.describe('landing scroll animations', () => {
     const response = await page.goto(landingUrl, { waitUntil: 'domcontentloaded' });
     expect(response, 'landing page should return an HTTP response').toBeTruthy();
     await expect(page.locator('[data-menorah-home-ready] video')).toBeAttached({ timeout: 1_500 });
+    await expect(page.locator('[aria-label="Loading Menorah"]')).toHaveCount(0);
   });
 
   test('the hero background video has a playable visible frame', async ({ page }) => {
