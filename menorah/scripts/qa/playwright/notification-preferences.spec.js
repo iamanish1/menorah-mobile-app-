@@ -137,12 +137,13 @@ test('web notification preferences expose and save email only', async ({ page },
   const unexpectedConsoleIssues = consoleIssues.filter((issue) => {
     if (issue.includes('api-web.menorah.me/socket.io/')) return false;
     if (issue.includes('[Socket] Connection error (backend may be offline): xhr poll error')) return false;
+    if (issue.includes('[Socket] Connection error (backend may be offline): Authentication error: Token required')) return false;
     if (hasExpectedMockSocketFailure && issue === 'error: Failed to load resource: net::ERR_FAILED') return false;
     return true;
   });
 
-  // The mocked browser session is intentionally unknown to the live socket
-  // origin during local QA. Ignore only that paired socket/CORS failure and
-  // fail on every other warning or error emitted by the rendered page.
+  // The mocked browser user intentionally has no real socket session. Ignore
+  // only its exact local CORS or live "Token required" failure and fail on
+  // every other warning or error emitted by the rendered page.
   expect(unexpectedConsoleIssues).toEqual([]);
 });
