@@ -142,7 +142,7 @@ test.describe('authentication regressions', () => {
     expect(sessionProbes, 'login must make exactly one session probe').toBe(1);
   });
 
-  test('failed Google sign-in preserves the server error and sends sign-in intent', async ({ page }) => {
+  test('missing Google account redirects to explicit signup and sends sign-in intent', async ({ page }) => {
     let sessionProbes = 0;
     let socialIntent;
     await installGoogleStub(page);
@@ -168,10 +168,10 @@ test.describe('authentication regressions', () => {
     await gotoAuthPage(page, `${urls.app}/login`);
     await page.getByRole('button', { name: /continue with google/i }).click();
 
-    await expect(page.getByRole('alert').filter({ hasText: 'No account is linked to this Google sign-in.' })).toContainText('No account is linked to this Google sign-in.');
-    await expect(page).toHaveURL(/\/login(\?|$)/);
+    await expect(page).toHaveURL(/\/register(\?|$)/);
+    await expect(page.getByRole('heading', { name: /create account/i })).toBeVisible();
     expect(socialIntent).toBe('signin');
-    expect(sessionProbes, 'failed Google sign-in must not reload or probe again').toBe(1);
+    expect(sessionProbes, 'Google signup redirect must not reload or probe again').toBe(1);
   });
 
   test('unverified patient login enters OTP flow without receiving a session', async ({ page }) => {

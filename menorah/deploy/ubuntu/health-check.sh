@@ -4,8 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ENV_FILE="${PRODUCTION_ENV:-${DEPLOY_DIR}/env/production.env}"
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "${TMP_DIR}"' EXIT
+HEALTH_CHECK_TMP_ROOT="${HEALTH_CHECK_TMPDIR:-${TMPDIR:-/var/tmp}}"
+TMP_DIR="$(mktemp -d -p "${HEALTH_CHECK_TMP_ROOT}" menorah-health-check.XXXXXX)"
+trap 'find "${TMP_DIR}" -depth -delete' EXIT
 
 if [[ -f "${ENV_FILE}" ]]; then
   set -a
