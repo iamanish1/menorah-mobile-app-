@@ -68,7 +68,52 @@ async function expectSupportFeature(page, expectedTitle) {
   await expect(phone).toHaveAttribute('aria-label', `Menorah app example: ${expectedTitle}`);
 }
 
+async function expectHeroBackgroundVideo(page) {
+  const video = page.locator('[data-menorah-home-ready] video');
+  const wash = page.locator('[data-landing-hero-video-wash]');
+
+  await expect(video).toBeVisible();
+  await expect(wash).toBeVisible();
+  await expect.poll(async () => video.evaluate((element) => element.readyState)).toBeGreaterThanOrEqual(2);
+
+  const initialTime = await video.evaluate(async (element) => {
+    await element.play();
+    return element.currentTime;
+  });
+
+  await expect.poll(async () => video.evaluate((element) => element.currentTime)).toBeGreaterThan(initialTime + 0.05);
+
+  const state = await video.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      opacity: Number(style.opacity),
+      visibility: style.visibility,
+      width: rect.width,
+      height: rect.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    };
+  });
+
+  expect(state.opacity).toBeGreaterThan(0.99);
+  expect(state.visibility).toBe('visible');
+  expect(state.width).toBeGreaterThanOrEqual(state.viewportWidth);
+  expect(state.height).toBeGreaterThanOrEqual(state.viewportHeight);
+}
+
+async function expectHeroFallbackSurface(page) {
+  const backgroundImage = await page.locator('[data-menorah-home-ready]').evaluate((element) => getComputedStyle(element).backgroundImage);
+  expect(backgroundImage).not.toBe('none');
+}
+
 test.describe('landing scroll animations', () => {
+  test('the hero background video has a playable visible frame', async ({ page }) => {
+    await loadLanding(page);
+    await expectHeroBackgroundVideo(page);
+    await expectHeroFallbackSurface(page);
+  });
+
   test('the hero and support stages stay in sync with scroll progress', async ({ page }) => {
     await loadLanding(page);
     const initialDashboard = await getDashboardState(page);
@@ -105,6 +150,7 @@ test.describe('landing scroll animations', () => {
     await expect.poll(async () => (await getDashboardState(page)).opacity).toBeGreaterThan(0.95);
     await expect.poll(async () => Number(await page.locator('[data-landing-hero-copy]').evaluate((element) => getComputedStyle(element).opacity))).toBeLessThan(0.05);
     await expectStickyViewport(page, 'hero');
+    await expectHeroFallbackSurface(page);
 
     const visibleArticleLinks = await page.locator('header a[href="/articles"]').evaluateAll((links) =>
       links.filter((link) => getComputedStyle(link).display !== 'none').length

@@ -15,6 +15,38 @@ body {
 
 [data-menorah-home-ready] {
   overflow-x: clip;
+  background:
+    radial-gradient(circle at 50% 14%, rgb(239 248 237 / 0.92) 0%, rgb(212 232 214 / 0.88) 34%, rgb(80 125 92 / 0.88) 100%),
+    #d4e8d6;
+}
+
+.landing-hero-background-video {
+  transform: scale(1.08);
+  transform-origin: 50% 66%;
+  filter: brightness(0.82) contrast(1.08) saturate(0.95);
+}
+
+.landing-hero-video-wash {
+  background: linear-gradient(
+    180deg,
+    rgb(219 238 220 / 0.42) 0%,
+    rgb(221 239 222 / 0.15) 43%,
+    rgb(20 77 51 / 0.3) 100%
+  );
+}
+
+.landing-feature-video-surface {
+  background:
+    radial-gradient(circle at 50% 16%, rgb(246 250 245 / 0.96) 0%, rgb(225 239 225 / 0.9) 34%, rgb(132 170 138 / 0.88) 100%),
+    #e1efe1;
+}
+
+.landing-feature-background-video {
+  filter: brightness(0.84) contrast(1.06) saturate(0.94);
+}
+
+.landing-feature-video-wash {
+  background: linear-gradient(180deg, rgb(229 243 229 / 0.18) 0%, rgb(35 91 61 / 0.24) 100%);
 }
 
 /* Keep scroll-controlled stages usable in browsers that do not understand svh. */

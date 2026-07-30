@@ -19,11 +19,11 @@ export function MenorahHomeHero() {
     <section
       ref={heroRef}
       data-menorah-home-ready
-      className="landing-home-scroll-stage relative bg-background text-foreground"
+      className="landing-home-scroll-stage relative text-foreground"
     >
       <div data-landing-scroll-viewport="hero" className="landing-scroll-viewport landing-home-scroll-viewport sticky top-0 relative flex flex-col overflow-hidden">
         <video
-          className="absolute inset-0 z-0 h-full w-full object-cover"
+          className="landing-hero-background-video absolute inset-0 z-0 h-full w-full object-cover"
           src={videoUrl}
           muted
           autoPlay
@@ -31,6 +31,7 @@ export function MenorahHomeHero() {
           playsInline
           aria-hidden="true"
         />
+        <div data-landing-hero-video-wash className="landing-hero-video-wash absolute inset-0 z-[1]" aria-hidden="true" />
         <HeroSection scrollProgress={scrollProgress} reducedMotion={reducedMotion} />
         <AnimatedProductMockupSection scrollProgress={scrollProgress} />
       </div>

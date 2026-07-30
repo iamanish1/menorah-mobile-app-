@@ -98,7 +98,7 @@ export function KeyFeaturesJourneySection() {
 
   if (compactViewport) {
     return (
-      <section className="relative overflow-hidden bg-background px-[var(--landing-page-x)] pb-[var(--landing-section-y-tight)] pt-[clamp(4.75rem,13vw,6.5rem)] text-foreground">
+      <section className="landing-feature-video-surface relative overflow-hidden px-[var(--landing-page-x)] pb-[var(--landing-section-y-tight)] pt-[clamp(4.75rem,13vw,6.5rem)] text-foreground">
         <FeatureBackgroundVideo videoRef={videoRef} />
         <div className="relative z-10">
           <Header />
@@ -113,7 +113,7 @@ export function KeyFeaturesJourneySection() {
   }
 
   return (
-    <section ref={sectionRef} data-feature-journey className="relative min-h-[420vh] bg-background text-foreground">
+    <section ref={sectionRef} data-feature-journey className="landing-feature-video-surface relative min-h-[420vh] text-foreground">
       <div className="landing-feature-sticky sticky top-0 flex h-screen overflow-hidden px-[var(--landing-page-x)] pb-[clamp(1rem,2.2vw,2rem)] pt-[clamp(4.75rem,8vh,6.75rem)]">
         <FeatureBackgroundVideo videoRef={videoRef} />
         <div className="relative z-10 mx-auto flex w-[var(--landing-container)] flex-col items-center">
@@ -167,7 +167,7 @@ function FeatureBackgroundVideo({ videoRef }: { videoRef: RefObject<HTMLVideoEle
     <>
       <video
         ref={videoRef}
-        className="absolute inset-x-0 bottom-0 top-[300px] z-0 w-full object-cover"
+        className="landing-feature-background-video absolute inset-x-0 bottom-0 top-[300px] z-0 w-full object-cover"
         src={featureBackgroundVideoUrl}
         muted
         autoPlay
@@ -176,6 +176,7 @@ function FeatureBackgroundVideo({ videoRef }: { videoRef: RefObject<HTMLVideoEle
         aria-hidden="true"
         style={{ opacity: 0 }}
       />
+      <div className="landing-feature-video-wash absolute inset-x-0 bottom-0 top-[300px] z-[1]" aria-hidden="true" />
     </>
   );
 }
