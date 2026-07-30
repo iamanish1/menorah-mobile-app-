@@ -5,6 +5,7 @@ describe('counsellor credential email', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    require('axios').post.mockReset();
     process.env = {
       ...originalEnv,
       NODE_ENV: 'production',
@@ -18,6 +19,28 @@ describe('counsellor credential email', () => {
 
   afterAll(() => {
     process.env = originalEnv;
+  });
+
+  test.each([
+    ['user', 'https://app.menorah.me/reset-password?token='],
+    ['counsellor', 'https://counsellor.menorah.me/reset-password?token='],
+  ])('sends %s self-service recovery to the correct portal', async (role, expectedUrl) => {
+    const axios = require('axios');
+    axios.post.mockResolvedValue({ data: { id: 'email-id' } });
+    const { sendPasswordResetEmail } = require('../email');
+    const resetToken = role === 'user' ? 'b'.repeat(64) : 'c'.repeat(64);
+
+    const sent = await sendPasswordResetEmail(
+      `${role}@example.com`,
+      resetToken,
+      { role },
+    );
+
+    expect(sent).toBe(true);
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    const [, payload] = axios.post.mock.calls[0];
+    expect(payload.to).toEqual([`${role}@example.com`]);
+    expect(payload.html).toContain(`${expectedUrl}${resetToken}`);
   });
 
   test('includes both the temporary password and secure reset link', async () => {
@@ -42,7 +65,7 @@ describe('counsellor credential email', () => {
     });
     expect(payload.html).toContain('TempPass1!');
     expect(payload.html).toContain(
-      `https://app.menorah.me/reset-password?token=${'a'.repeat(64)}`,
+      `https://counsellor.menorah.me/reset-password?token=${'a'.repeat(64)}`,
     );
     expect(payload.html).toContain('Sign in to counsellor portal');
     expect(payload.html).toContain('expires in <strong>10 minutes</strong>');

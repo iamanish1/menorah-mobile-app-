@@ -75,7 +75,11 @@ function nextWithSecurityHeaders(request: NextRequest, nonce: string, csp: strin
 export function middleware(request: NextRequest) {
   const nonce = createNonce();
   const pathname = request.nextUrl.pathname;
-  const isAuthRoute = pathname === '/login' || pathname === '/register' || pathname.startsWith('/verify-email');
+  const isAuthRoute = pathname === '/login'
+    || pathname === '/register'
+    || pathname === '/forgot-password'
+    || pathname === '/reset-password'
+    || pathname.startsWith('/verify-email');
   const csp = buildCsp(nonce, isAuthRoute);
 
   return nextWithSecurityHeaders(request, nonce, csp);

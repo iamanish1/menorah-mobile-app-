@@ -69,6 +69,8 @@ describe('admin counsellor credential delivery', () => {
       lastName: 'Counsellor',
       email: 'asha@example.com',
       isActive: true,
+      loginAttempts: 5,
+      lockUntil: new Date(Date.now() + 60 * 60 * 1000),
       save: jest.fn(async () => undefined),
     };
 
@@ -107,6 +109,8 @@ describe('admin counsellor credential delivery', () => {
     );
     expect(user.passwordResetToken).not.toBe(emailOptions.resetToken);
     expect(user.passwordResetExpires).toBeInstanceOf(Date);
+    expect(user.loginAttempts).toBe(0);
+    expect(user.lockUntil).toBeNull();
     expect(user.save).toHaveBeenCalledTimes(1);
     expect(counsellor.save).toHaveBeenCalledTimes(1);
     expect(mockRevokeAllSessions).toHaveBeenCalledWith(user, { passwordChanged: true });

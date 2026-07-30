@@ -1122,6 +1122,11 @@ router.post('/counsellors/:id/generate-password', [
     user.password = plainPassword;
     const resetToken = issuePasswordResetToken(user);
     user.isActive = true;
+    user.loginAttempts = 0;
+    // lockUntil is excluded by default, so assigning undefined would not mark
+    // the path as modified. Persist null explicitly to make the new admin-
+    // issued credential usable even when the account was previously locked.
+    user.lockUntil = null;
     revokeAllSessions(user, { passwordChanged: true });
     counsellor.isActive = true;
     counsellor.isAvailable = true;

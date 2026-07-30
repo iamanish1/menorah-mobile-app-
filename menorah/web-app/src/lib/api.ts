@@ -3,6 +3,22 @@ import { Article, ArticlePagination, Booking, DashboardStats, TodaySchedule, Api
 
 export const COUNSELLOR_UNAUTHORIZED_EVENT = 'menorah:counsellor-unauthorized';
 
+const firstValidationMessage = (errors: unknown): string | undefined => {
+  if (!Array.isArray(errors)) return undefined;
+
+  for (const error of errors) {
+    if (!error || typeof error !== 'object') continue;
+    const candidate = 'message' in error
+      ? error.message
+      : 'msg' in error
+        ? error.msg
+        : undefined;
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+
+  return undefined;
+};
+
 class ApiClient {
   private client: AxiosInstance;
   private baseURL: string;
@@ -84,6 +100,40 @@ class ApiClient {
         success: false,
         code: errorResponse?.code,
         message: errorResponse?.message || error.message || 'Could not send a verification code',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async forgotPassword(email: string): Promise<ApiResponse<void>> {
+    try {
+      const response = await this.client.post('/auth/forgot-password', { email });
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        message: firstValidationMessage(errorResponse?.errors)
+          || errorResponse?.message
+          || error.message
+          || 'Could not send password reset instructions',
+        errors: errorResponse?.errors || [],
+      };
+    }
+  }
+
+  async resetPassword(token: string, password: string): Promise<ApiResponse<void>> {
+    try {
+      const response = await this.client.post('/auth/reset-password', { token, password });
+      return response.data;
+    } catch (error: any) {
+      const errorResponse = error.response?.data;
+      return {
+        success: false,
+        message: firstValidationMessage(errorResponse?.errors)
+          || errorResponse?.message
+          || error.message
+          || 'Could not reset password',
         errors: errorResponse?.errors || [],
       };
     }
@@ -677,10 +727,14 @@ class ApiClient {
       const response = await this.client.put('/users/change-password', data);
       return response.data;
     } catch (error: any) {
+      const errorResponse = error.response?.data;
       return {
         success: false,
-        message: error.response?.data?.message || error.message || 'Failed to change password',
-        errors: error.response?.data?.errors || [],
+        message: firstValidationMessage(errorResponse?.errors)
+          || errorResponse?.message
+          || error.message
+          || 'Failed to change password',
+        errors: errorResponse?.errors || [],
       };
     }
   }

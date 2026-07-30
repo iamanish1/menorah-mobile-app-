@@ -419,7 +419,8 @@ router.put('/change-password', [
 
     const { currentPassword, newPassword } = req.body;
 
-    const user = await User.findById(req.user._id).select('+password');
+    const user = await User.findById(req.user._id)
+      .select('+password +passwordResetToken +passwordResetExpires +lockUntil');
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -436,8 +437,25 @@ router.put('/change-password', [
       });
     }
 
+    // Compare against the stored bcrypt hash instead of only comparing the two
+    // submitted strings. This also rejects values that bcrypt would treat as
+    // equivalent because of its input-length limit.
+    const isPasswordReused = await user.comparePassword(newPassword);
+    if (isPasswordReused) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be different from current password'
+      });
+    }
+
     // Update password
     user.password = newPassword;
+    // A successful authenticated password change supersedes every outstanding
+    // recovery link and clears any stale failed-login state.
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    user.loginAttempts = 0;
+    user.lockUntil = null;
     revokeAllSessions(user, { passwordChanged: true });
     await user.save();
     clearMappedSessionCookie(req, res);

@@ -10,6 +10,7 @@ const {
 describe('rate limit client IP handling', () => {
   const originalAuthLimit = process.env.AUTH_RATE_LIMIT_MAX;
   const originalCredentialLimit = process.env.CREDENTIAL_RATE_LIMIT_MAX;
+  const originalResetIpLimit = process.env.RESET_PASSWORD_IP_RATE_LIMIT_MAX;
   const originalOtpLimit = process.env.OTP_MFA_RATE_LIMIT_MAX;
   const originalApiLimit = process.env.RATE_LIMIT_MAX_REQUESTS;
 
@@ -27,6 +28,8 @@ describe('rate limit client IP handling', () => {
     }
     if (originalCredentialLimit === undefined) delete process.env.CREDENTIAL_RATE_LIMIT_MAX;
     else process.env.CREDENTIAL_RATE_LIMIT_MAX = originalCredentialLimit;
+    if (originalResetIpLimit === undefined) delete process.env.RESET_PASSWORD_IP_RATE_LIMIT_MAX;
+    else process.env.RESET_PASSWORD_IP_RATE_LIMIT_MAX = originalResetIpLimit;
     if (originalOtpLimit === undefined) delete process.env.OTP_MFA_RATE_LIMIT_MAX;
     else process.env.OTP_MFA_RATE_LIMIT_MAX = originalOtpLimit;
   });
@@ -48,15 +51,18 @@ describe('rate limit client IP handling', () => {
 
     expect(RATE_LIMIT_STORE_PREFIXES).toEqual({
       credential: 'rl:auth:credential:',
+      resetIp: 'rl:auth:reset-ip:',
       otp: 'rl:auth:otp:',
       email: 'rl:auth:email:',
       api: 'rl:api:'
     });
     expect(stores.credential.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.credential);
+    expect(stores.resetIp.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.resetIp);
     expect(stores.otp.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.otp);
     expect(stores.email.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.email);
     expect(stores.api.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.api);
     expect(stores.credential.store.prefix).not.toBe(stores.otp.store.prefix);
+    expect(stores.credential.store.prefix).not.toBe(stores.resetIp.store.prefix);
   });
 
   test('returns a JSON message when an authentication request is rate limited', async () => {
@@ -172,5 +178,42 @@ describe('rate limit client IP handling', () => {
       .set('Authorization', 'Bearer session-token-for-rate-test')
       .send({ email: 'different-provider@example.com' })
       .expect(429);
+  });
+
+  test('caps reset-password attempts by IP even when every request uses a different token', async () => {
+    process.env.CREDENTIAL_RATE_LIMIT_MAX = '10';
+    process.env.RESET_PASSWORD_IP_RATE_LIMIT_MAX = '2';
+    process.env.RATE_LIMIT_MAX_REQUESTS = '100';
+    const app = express();
+    app.set('trust proxy', 1);
+    app.use(express.json());
+    mountRateLimiters(app, { redisReady: false });
+    app.post('/api/auth/reset-password', (_req, res) => res.json({ success: true }));
+
+    await request(app)
+      .post('/api/auth/reset-password')
+      .set('CF-Connecting-IP', '203.0.113.20')
+      .send({ token: 'token-one' })
+      .expect(200);
+    await request(app)
+      .post('/api/auth/reset-password')
+      .set('CF-Connecting-IP', '203.0.113.20')
+      .send({ token: 'token-two' })
+      .expect(200);
+    await request(app)
+      .post('/api/auth/reset-password')
+      .set('CF-Connecting-IP', '203.0.113.20')
+      .send({ token: 'token-three' })
+      .expect(429)
+      .expect({
+        success: false,
+        message: 'Too many authentication attempts. Please try again later.',
+      });
+
+    await request(app)
+      .post('/api/auth/reset-password')
+      .set('CF-Connecting-IP', '203.0.113.21')
+      .send({ token: 'token-four' })
+      .expect(200);
   });
 });

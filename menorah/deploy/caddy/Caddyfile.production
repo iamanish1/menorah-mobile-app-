@@ -98,6 +98,11 @@ http://{$APP_DOMAIN} {
 	# the reverse-proxy access log.
 	@checkout_sensitive path /checkout/callback /checkout/return /checkout/return/*
 	log_skip @checkout_sensitive
+	# Password reset links carry a short-lived one-time capability in the query
+	# string so installed mobile apps can receive it through Universal/App Links.
+	# Never persist that capability in the reverse-proxy access log.
+	@password_reset_capability path /reset-password /reset-password/*
+	log_skip @password_reset_capability
 	reverse_proxy user-web-app:3002
 	log {
 		output file /var/log/caddy/app-access.log
@@ -118,6 +123,8 @@ http://{$ADMIN_DOMAIN} {
 http://{$COUNSELLOR_DOMAIN} {
 	import browser_call_security_headers
 	encode gzip zstd
+	@password_reset_capability path /reset-password /reset-password/*
+	log_skip @password_reset_capability
 	reverse_proxy web-app:3001
 	log {
 		output file /var/log/caddy/counsellor-access.log
@@ -126,6 +133,8 @@ http://{$COUNSELLOR_DOMAIN} {
 }
 
 http://{$API_IOS_DOMAIN} {
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
 	@video_meet_page {
 		method GET
 		path /api/video/meet
@@ -146,6 +155,8 @@ http://{$API_IOS_DOMAIN} {
 }
 
 http://{$API_ANDROID_DOMAIN} {
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
 	@video_meet_page {
 		method GET
 		path /api/video/meet
@@ -166,6 +177,8 @@ http://{$API_ANDROID_DOMAIN} {
 }
 
 http://{$API_WEB_DOMAIN} {
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
 	@video_meet_page {
 		method GET
 		path /api/video/meet

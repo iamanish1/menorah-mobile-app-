@@ -918,11 +918,47 @@ router.post('/forgot-password', [
 ], async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email });
+    const user = await User.findOne({
+      email,
+      role: { $in: ['user', 'counsellor'] },
+    }).select('+passwordResetToken +passwordResetExpires');
     if (user) {
+      const previousResetToken = user.passwordResetToken;
+      const previousResetExpires = user.passwordResetExpires;
       const resetToken = issuePasswordResetToken(user);
+      const issuedResetTokenHash = user.passwordResetToken;
       await user.save();
-      await sendPasswordResetEmail(user.email, resetToken).catch(() => {});
+
+      let emailSent = false;
+      try {
+        emailSent = await sendPasswordResetEmail(user.email, resetToken, { role: user.role });
+      } catch (emailError) {
+        console.error('Password reset email delivery error:', emailError.message);
+      }
+
+      if (!emailSent) {
+        const rollbackUpdate = {};
+        const rollbackSet = {};
+        const rollbackUnset = {};
+
+        if (previousResetToken) rollbackSet.passwordResetToken = previousResetToken;
+        else rollbackUnset.passwordResetToken = '';
+        if (previousResetExpires) rollbackSet.passwordResetExpires = previousResetExpires;
+        else rollbackUnset.passwordResetExpires = '';
+
+        if (Object.keys(rollbackSet).length) rollbackUpdate.$set = rollbackSet;
+        if (Object.keys(rollbackUnset).length) rollbackUpdate.$unset = rollbackUnset;
+
+        // Compare-and-swap prevents a failed delivery from overwriting a token
+        // issued by a newer concurrent request. Perfect ordering across several
+        // simultaneous delivery failures would require a transactional outbox.
+        await User.updateOne({
+          _id: user._id,
+          passwordResetToken: issuedResetTokenHash,
+        }, rollbackUpdate).catch((rollbackError) => {
+          console.error('Password reset token rollback error:', rollbackError.message);
+        });
+      }
     }
     // Always return the same message regardless — prevents email-existence enumeration
     res.json({ success: true, message: 'If an account exists for that email, a password reset link has been sent' });
@@ -963,6 +999,18 @@ router.post('/reset-password', [
     const { token, password } = req.body;
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
+    // Reject unknown and expired tokens before the intentionally expensive
+    // bcrypt operation. The final update below remains the authoritative,
+    // atomic claim in case the token expires or is redeemed after this check.
+    const resetTokenExists = await User.exists({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: new Date() },
+      role: { $in: ['user', 'counsellor'] },
+    });
+    if (!resetTokenExists) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
+    }
+
     const passwordHash = await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS, 10) || 12);
     // Establish the expiry boundary immediately before the atomic claim. A
     // slow bcrypt operation must not allow a token that expired meanwhile.
@@ -972,13 +1020,16 @@ router.post('/reset-password', [
     const user = await User.findOneAndUpdate({
       passwordResetToken: hashedToken,
       passwordResetExpires: { $gt: revokedAt },
+      role: { $in: ['user', 'counsellor'] },
     }, {
       $set: {
         password: passwordHash,
+        loginAttempts: 0,
         lastSessionRevokedAt: revokedAt,
         lastPasswordChangeAt: revokedAt,
       },
       $unset: {
+        lockUntil: '',
         passwordResetToken: '',
         passwordResetExpires: '',
       },

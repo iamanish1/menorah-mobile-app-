@@ -233,6 +233,66 @@ test.describe('authentication regressions', () => {
     await expect(page.getByText(/uppercase letter/i)).toBeVisible();
   });
 
+  test('patient forgot-password submits safely and keeps the response account-neutral', async ({ page }) => {
+    let submittedEmail;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/forgot-password')) {
+        submittedEmail = route.request().postDataJSON().email;
+        await json(route, 200, {
+          success: true,
+          message: 'If an account exists for that email, a password reset link has been sent',
+        });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.app}/forgot-password`);
+    await page.getByLabel(/email address/i).fill('Patient.QA@example.com');
+    await page.getByRole('button', { name: /send reset link/i }).click();
+
+    await expect(page.getByRole('heading', { name: /check your inbox/i })).toBeVisible();
+    await expect(page.getByRole('status')).toContainText(/if an account exists/i);
+    await expect(page.getByRole('status')).toContainText(/10 minutes/i);
+    expect(submittedEmail).toBe('Patient.QA@example.com');
+    expect(new URL(page.url()).search).toBe('');
+  });
+
+  test('patient can redeem a captured reset token and sees the signed-out confirmation', async ({ page }) => {
+    let resetPayload;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/reset-password')) {
+        resetPayload = route.request().postDataJSON();
+        await json(route, 200, { success: true, message: 'Password reset successfully' });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.app}/reset-password?token=PATIENT_RESET_TOKEN`);
+    await expect(page).toHaveURL(new RegExp(`${urls.app.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/reset-password$`));
+    await page.getByLabel(/^new password$/i).fill('NewPatientPass1');
+    await page.getByLabel(/confirm password/i).fill('NewPatientPass1');
+    await page.getByRole('button', { name: /reset password/i }).click();
+
+    await expect.poll(() => resetPayload).toEqual({
+      token: 'PATIENT_RESET_TOKEN',
+      password: 'NewPatientPass1',
+    });
+    await expect(page).toHaveURL(new RegExp(`${urls.app.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/login$`));
+    await expect(page.getByRole('status')).toContainText(/password was reset/i);
+  });
+
   test('admin login preserves a 401 error instead of reloading', async ({ page }) => {
     let sessionProbes = 0;
     await mockApi(page, async (route) => {
@@ -324,6 +384,65 @@ test.describe('authentication regressions', () => {
     expect(sessionProbes, 'counsellor login must make exactly one session probe').toBe(1);
   });
 
+  test('counsellor forgot-password submits to shared recovery without exposing account status', async ({ page }) => {
+    let submittedEmail;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/forgot-password')) {
+        submittedEmail = route.request().postDataJSON().email;
+        await json(route, 200, {
+          success: true,
+          message: 'If an account exists for that email, a password reset link has been sent',
+        });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.counsellor}/forgot-password`);
+    await page.getByLabel(/email address/i).fill('Counsellor.QA@example.com');
+    await page.getByRole('button', { name: /send reset link/i }).click();
+
+    await expect(page.getByRole('heading', { name: /check your inbox/i })).toBeVisible();
+    await expect(page.getByRole('status')).toContainText(/10 minutes/i);
+    expect(submittedEmail).toBe('counsellor.qa@example.com');
+    expect(new URL(page.url()).search).toBe('');
+  });
+
+  test('counsellor can redeem its portal reset token and returns to counsellor sign-in', async ({ page }) => {
+    let resetPayload;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/reset-password')) {
+        resetPayload = route.request().postDataJSON();
+        await json(route, 200, { success: true, message: 'Password reset successfully' });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.counsellor}/reset-password?token=COUNSELLOR_RESET_TOKEN`);
+    await expect(page).toHaveURL(new RegExp(`${urls.counsellor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/reset-password$`));
+    await page.getByLabel(/^new password$/i).fill('NewCounsellorPass1');
+    await page.getByLabel(/confirm new password/i).fill('NewCounsellorPass1');
+    await page.getByRole('button', { name: /reset password/i }).click();
+
+    await expect.poll(() => resetPayload).toEqual({
+      token: 'COUNSELLOR_RESET_TOKEN',
+      password: 'NewCounsellorPass1',
+    });
+    await expect(page).toHaveURL(new RegExp(`${urls.counsellor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/login$`));
+    await expect(page.getByRole('status')).toContainText(/password was reset/i);
+  });
+
   test('patient registration renders under the strict auth-page CSP', async ({ page }) => {
     await mockApi(page, async (route) => {
       if (new URL(route.request().url()).pathname.endsWith('/api/users/me')) {
@@ -343,4 +462,25 @@ test.describe('authentication regressions', () => {
     await gotoAuthPage(page, `${urls.counsellor}/register`);
     await expect(page.getByRole('heading', { name: /counselor registration/i })).toBeVisible();
   });
+});
+
+test.describe('server-rendered recovery forms fail closed before hydration', () => {
+  test.use({ javaScriptEnabled: false });
+
+  for (const [portal, baseUrl] of [
+    ['patient', urls.app],
+    ['counsellor', urls.counsellor],
+  ]) {
+    test(`${portal} forgot-password cannot submit without its client handler`, async ({ page }) => {
+      const url = `${baseUrl}/forgot-password`;
+      const response = await page.goto(url, { waitUntil: 'domcontentloaded' });
+      assertAuthCsp(response, url);
+
+      const form = page.locator('form');
+      await expect(form).toHaveAttribute('method', 'post');
+      await expect(page.getByLabel(/email address/i)).toBeDisabled();
+      await expect(page.getByRole('button', { name: /send reset link/i })).toBeDisabled();
+      expect(new URL(page.url()).search).toBe('');
+    });
+  }
 });

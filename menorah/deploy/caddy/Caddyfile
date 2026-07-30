@@ -71,6 +71,8 @@
 	encode gzip zstd
 	@checkout_sensitive path /checkout/callback /checkout/return /checkout/return/*
 	log_skip @checkout_sensitive
+	@password_reset_capability path /reset-password /reset-password/*
+	log_skip @password_reset_capability
 	reverse_proxy user-web-app:3002
 	log {
 		output file /var/log/caddy/app-access.log
@@ -89,6 +91,8 @@
 }
 
 {$API_IOS_DOMAIN} {
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
 	@video_meet_page {
 		method GET
 		path /api/video/meet
@@ -108,6 +112,8 @@
 }
 
 {$API_ANDROID_DOMAIN} {
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
 	@video_meet_page {
 		method GET
 		path /api/video/meet
@@ -127,6 +133,8 @@
 }
 
 {$API_WEB_DOMAIN} {
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
 	@video_meet_page {
 		method GET
 		path /api/video/meet

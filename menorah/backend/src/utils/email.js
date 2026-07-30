@@ -104,6 +104,13 @@ const buildCounsellorAppUrl = (path = '/login') => {
   return new URL(path, `${base.replace(/\/+$/, '')}/`).toString();
 };
 
+const buildPasswordResetUrlForRole = (token, role = 'user') => {
+  if (role === 'counsellor') {
+    return buildCounsellorAppUrl(`/reset-password?token=${encodeURIComponent(token)}`);
+  }
+  return buildPasswordResetUrl(token);
+};
+
 const layout = (content) => `
 <!DOCTYPE html>
 <html>
@@ -180,8 +187,8 @@ const sendVerificationEmail = async (email, code) => {
   );
 };
 
-const sendPasswordResetEmail = async (email, token) => {
-  const resetUrl = buildPasswordResetUrl(token);
+const sendPasswordResetEmail = async (email, token, { role = 'user' } = {}) => {
+  const resetUrl = buildPasswordResetUrlForRole(token, role);
 
   if (isDev) {
     console.log('[DEV PASSWORD RESET] Reset link generated; destination and token suppressed.');
@@ -222,7 +229,7 @@ const sendCounsellorCredentialsEmail = async ({
   }
 
   const loginUrl = buildCounsellorAppUrl('/login');
-  const resetUrl = buildPasswordResetUrl(resetToken);
+  const resetUrl = buildPasswordResetUrlForRole(resetToken, 'counsellor');
   const isOnboarding = kind === 'onboarding';
   const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
   const safeLoginUrl = escapeHtml(loginUrl);
@@ -373,6 +380,7 @@ const sendSessionReminderEmail = async (email, sessionDetails) => {
 module.exports = {
   buildPasswordResetUrl,
   buildCounsellorAppUrl,
+  buildPasswordResetUrlForRole,
   sendOTPEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,

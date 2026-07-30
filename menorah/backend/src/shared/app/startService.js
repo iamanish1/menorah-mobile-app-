@@ -24,6 +24,7 @@ const isLocalhost = () => false;
 
 const RATE_LIMIT_STORE_PREFIXES = Object.freeze({
   credential: 'rl:auth:credential:',
+  resetIp: 'rl:auth:reset-ip:',
   otp: 'rl:auth:otp:',
   email: 'rl:auth:email:',
   api: 'rl:api:'
@@ -94,6 +95,7 @@ const makeRateLimitStore = (redisReady, prefix) =>
 
 const createRateLimitStores = (redisReady) => ({
   credential: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.credential),
+  resetIp: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.resetIp),
   otp: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.otp),
   email: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.email),
   api: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.api)
@@ -164,10 +166,11 @@ const getRateLimitSubject = (req) => {
 
 const authRateLimitKeyGenerator = (req) => `${rateLimitKeyGenerator(req)}:${getRateLimitSubject(req)}`;
 
-const mountExactLimiter = (app, routePath, limiter) => {
+const mountExactLimiter = (app, routePath, limiter, method) => {
   app.use((req, res, next) => {
     const requestPath = normalizedPathForRequest(req);
     if (requestPath !== routePath) return next();
+    if (method && req.method !== method) return next();
     return limiter(req, res, next);
   });
 };
@@ -185,6 +188,20 @@ const mountRateLimiters = (app, { redisReady }) => {
     standardHeaders: true,
     legacyHeaders: false,
     skip: isLocalhost
+  });
+
+  // Reset tokens are part of the credential limiter subject, which is useful
+  // for retries but could otherwise let an attacker select a new bucket for
+  // every random token. This second ceiling is keyed only by client IP.
+  const resetIpLimiter = rateLimit({
+    ...stores.resetIp,
+    windowMs: 15 * 60 * 1000,
+    max: parseInt(process.env.RESET_PASSWORD_IP_RATE_LIMIT_MAX, 10) || 30,
+    keyGenerator: rateLimitKeyGenerator,
+    message: authRateLimitResponse,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: isLocalhost,
   });
 
   const otpLimiter = rateLimit({
@@ -220,6 +237,7 @@ const mountRateLimiters = (app, { redisReady }) => {
     skip: (req) => isLocalhost() || EXACT_AUTH_LIMIT_PATHS.has(normalizedPathForRequest(req))
   });
 
+  mountExactLimiter(app, '/api/auth/reset-password', resetIpLimiter, 'POST');
   [
     '/api/auth/login',
     '/api/auth/admin/login',

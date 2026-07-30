@@ -420,6 +420,7 @@ export default function ProfilePage() {
   const [editingPassword, setEditingPassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.push('/login');
@@ -791,8 +792,12 @@ export default function ProfilePage() {
 
   // ── Password ───────────────────────────────────────────────────────────────
   const savePassword = async () => {
+    if (!passwordForm.currentPassword) {
+      setPasswordError('Enter your current password');
+      return;
+    }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setError('New passwords do not match');
+      setPasswordError('New passwords do not match');
       return;
     }
     if (
@@ -801,11 +806,11 @@ export default function ProfilePage() {
       || !/[A-Z]/.test(passwordForm.newPassword)
       || !/\d/.test(passwordForm.newPassword)
     ) {
-      setError('Password must be at least 8 characters and include uppercase, lowercase, and a number');
+      setPasswordError('Password must be at least 8 characters and include uppercase, lowercase, and a number');
       return;
     }
     setSavingPassword(true);
-    setError(null);
+    setPasswordError(null);
     const res = await api.changePassword({
       currentPassword: passwordForm.currentPassword,
       newPassword: passwordForm.newPassword,
@@ -814,9 +819,9 @@ export default function ProfilePage() {
     if (res.success) {
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setEditingPassword(false);
-      window.location.replace('/login');
+      window.location.replace('/login?password=changed');
     } else {
-      setError(res.message || 'Password change failed');
+      setPasswordError(res.message || 'Password change failed');
     }
   };
 
@@ -1451,49 +1456,101 @@ export default function ProfilePage() {
                 <h3 className={styles.cardTitle}>Account Security</h3>
               </div>
               {!editingPassword && (
-                <button className={styles.editBtn} onClick={() => setEditingPassword(true)}>Change Password</button>
+                <button
+                  type="button"
+                  className={styles.editBtn}
+                  onClick={() => {
+                    setPasswordError(null);
+                    setEditingPassword(true);
+                  }}
+                >
+                  Change Password
+                </button>
               )}
             </div>
 
             {editingPassword ? (
               <>
+                {passwordError ? (
+                  <div className={styles.errorAlert} role="alert">
+                    <svg fill="currentColor" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    {passwordError}
+                  </div>
+                ) : null}
                 <div className={styles.passwordSection}>
                   <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>Current Password</label>
+                    <label htmlFor="current-password" className={styles.infoLabel}>Current Password</label>
                     <input
+                      id="current-password"
+                      name="currentPassword"
                       type="password"
+                      autoComplete="current-password"
                       className={styles.formInput}
                       value={passwordForm.currentPassword}
-                      onChange={(e) => setPasswordForm((p) => ({ ...p, currentPassword: e.target.value }))}
+                      onChange={(e) => {
+                        setPasswordError(null);
+                        setPasswordForm((p) => ({ ...p, currentPassword: e.target.value }));
+                      }}
                       placeholder="Enter your current password"
+                      disabled={savingPassword}
                     />
                   </div>
                   <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>New Password</label>
+                    <label htmlFor="profile-new-password" className={styles.infoLabel}>New Password</label>
                     <input
+                      id="profile-new-password"
+                      name="newPassword"
                       type="password"
+                      autoComplete="new-password"
                       className={styles.formInput}
                       value={passwordForm.newPassword}
-                      onChange={(e) => setPasswordForm((p) => ({ ...p, newPassword: e.target.value }))}
+                      onChange={(e) => {
+                        setPasswordError(null);
+                        setPasswordForm((p) => ({ ...p, newPassword: e.target.value }));
+                      }}
                       placeholder="At least 8 characters"
+                      disabled={savingPassword}
+                      aria-describedby="profile-password-requirements"
                     />
+                    <p id="profile-password-requirements" className={styles.securityText}>
+                      Include uppercase, lowercase, and at least one number.
+                    </p>
                   </div>
                   <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>Confirm New Password</label>
+                    <label htmlFor="profile-confirm-password" className={styles.infoLabel}>Confirm New Password</label>
                     <input
+                      id="profile-confirm-password"
+                      name="confirmPassword"
                       type="password"
+                      autoComplete="new-password"
                       className={styles.formInput}
                       value={passwordForm.confirmPassword}
-                      onChange={(e) => setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }))}
+                      onChange={(e) => {
+                        setPasswordError(null);
+                        setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }));
+                      }}
                       placeholder="Re-enter new password"
+                      disabled={savingPassword}
                     />
                   </div>
                 </div>
                 <div className={styles.formActions}>
-                  <Button variant="primary" size="sm" onClick={savePassword} disabled={savingPassword}>
+                  <Button type="button" variant="primary" size="sm" onClick={savePassword} disabled={savingPassword}>
                     {savingPassword ? 'Saving…' : 'Update Password'}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => { setEditingPassword(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); }} disabled={savingPassword}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingPassword(false);
+                      setPasswordError(null);
+                      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                    }}
+                    disabled={savingPassword}
+                  >
                     Cancel
                   </Button>
                 </div>
@@ -1503,6 +1560,7 @@ export default function ProfilePage() {
                 <p className={styles.securityText}>Update your password to keep your account secure.</p>
                 <div className={styles.formActions}>
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => {

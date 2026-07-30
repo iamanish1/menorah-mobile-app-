@@ -23,6 +23,8 @@ export default function LoginPage() {
   const { login, isAuthenticated, isLoading } = useAuth();
   const [error,        setError]        = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -33,6 +35,22 @@ export default function LoginPage() {
       router.push('/dashboard');
     }
   }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    setIsHydrated(true);
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('reset') === 'success') {
+      setNotice('Your password was reset. Sign in with your new password.');
+    } else if (url.searchParams.get('password') === 'changed') {
+      setNotice('Your password was changed and all sessions were signed out. Sign in again.');
+    }
+
+    if (url.searchParams.has('reset') || url.searchParams.has('password')) {
+      url.searchParams.delete('reset');
+      url.searchParams.delete('password');
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+  }, []);
 
   const onSubmit = async (data: LoginForm) => {
     try {
@@ -110,8 +128,17 @@ export default function LoginPage() {
             <h2 className={styles.formHeading}>Welcome back</h2>
             <p className={styles.formSubtitle}>Sign in to your counselor account</p>
 
+            {notice ? (
+              <div className={styles.noticeAlert} role="status">
+                <svg className={styles.noticeIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <p className={styles.noticeText}>{notice}</p>
+              </div>
+            ) : null}
+
             {error && (
-              <div className={styles.errorAlert}>
+              <div className={styles.errorAlert} role="alert">
                 <svg className={styles.errorIcon} fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
@@ -119,7 +146,7 @@ export default function LoginPage() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit(onSubmit)}>
+            <form method="post" noValidate onSubmit={handleSubmit(onSubmit)} aria-busy={isSubmitting}>
               <div className={styles.formGroup}>
                 <label htmlFor="email" className={styles.label}>Email address</label>
                 <div className={styles.inputWrapper}>
@@ -133,6 +160,7 @@ export default function LoginPage() {
                     autoComplete="email"
                     className={styles.input}
                     placeholder="you@example.com"
+                    disabled={!isHydrated || isSubmitting}
                   />
                 </div>
                 {errors.email && (
@@ -158,6 +186,7 @@ export default function LoginPage() {
                     autoComplete="current-password"
                     className={styles.input}
                     placeholder="Enter your password"
+                    disabled={!isHydrated || isSubmitting}
                   />
                 </div>
                 {errors.password && (
@@ -170,11 +199,18 @@ export default function LoginPage() {
                 )}
               </div>
 
+              <div className={styles.authLinkRow}>
+                <Link href="/forgot-password" className={styles.footerLink}>
+                  Forgot password?
+                </Link>
+              </div>
+
               <Button
                 type="submit"
                 variant="primary"
                 size="lg"
                 isLoading={isSubmitting}
+                disabled={!isHydrated}
                 className={styles.fullWidth}
               >
                 Sign in
