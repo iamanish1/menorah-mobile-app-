@@ -52,9 +52,11 @@ export function MenorahHomeHero() {
   }, []);
 
   useEffect(() => {
+    const hero = heroRef.current;
     const video = videoRef.current;
 
     if (!video) {
+      hero?.setAttribute("data-menorah-home-ready", "true");
       return;
     }
 
@@ -85,6 +87,10 @@ export function MenorahHomeHero() {
     window.addEventListener("pointerdown", startVideo, { passive: true });
     window.addEventListener("touchstart", startVideo, { passive: true });
     window.addEventListener("keydown", startVideo);
+    // The loading screen waits for this client-only marker. At this point the
+    // scroll observer and media recovery handlers are attached, so a visitor
+    // cannot begin scrolling an SSR-only, non-interactive mockup.
+    hero?.setAttribute("data-menorah-home-ready", "true");
 
     return () => {
       video.removeEventListener("loadedmetadata", startVideo);
@@ -97,13 +103,13 @@ export function MenorahHomeHero() {
       window.removeEventListener("touchstart", startVideo);
       window.removeEventListener("keydown", startVideo);
       window.clearTimeout(playbackCheck);
+      hero?.removeAttribute("data-menorah-home-ready");
     };
   }, [startVideo]);
 
   return (
     <section
       ref={heroRef}
-      data-menorah-home-ready
       className="landing-home-scroll-stage relative bg-background text-foreground"
     >
       <div

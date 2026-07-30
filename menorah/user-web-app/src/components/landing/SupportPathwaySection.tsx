@@ -581,7 +581,11 @@ function PhoneScreen({
           </div>
           <div className="min-w-0">
             <h4 className="text-2xl font-black leading-none">John doe</h4>
-            <p className="mt-2 truncate text-sm text-gray-500">Johndoe@gmail.com</p>
+            <p className="mt-2 truncate text-sm text-gray-500" aria-label="Johndoe at gmail dot com">
+              <span>Johndoe</span>
+              <span className="landing-email-at" aria-hidden="true" />
+              <span>gmail.com</span>
+            </p>
             <span className="mt-3 inline-flex rounded-full bg-primary-100 px-3 py-2 text-xs font-black text-primary-700">
               Member since June 2026
             </span>

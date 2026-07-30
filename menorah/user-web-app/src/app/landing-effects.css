@@ -125,6 +125,10 @@ a {
   touch-action: manipulation;
 }
 
+.landing-email-at::before {
+  content: "@";
+}
+
 [data-menorah-landing-theme="source"] {
   color-scheme: light;
   --app-primary: #2d7a5c;
