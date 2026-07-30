@@ -9,10 +9,6 @@
   border-color: hsl(var(--border));
 }
 
-body {
-  overflow-x: hidden;
-}
-
 [data-menorah-home-ready] {
   overflow-x: clip;
   background:
@@ -64,6 +60,7 @@ body {
   height: 100vh;
   height: 100svh;
   min-height: 0;
+  touch-action: pan-y;
 }
 
 /* Sticky stages must not become taller than the viewport: a larger min-height

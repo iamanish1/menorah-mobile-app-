@@ -84,7 +84,7 @@ export function KeyFeaturesJourneySection() {
   const scrollProgress = useScrollProgress(sectionRef);
   const reducedMotion = usePrefersReducedMotion();
   const compactViewport = useMediaQuery("(max-width: 767px)");
-  const journeyProgress = reducedMotion ? 0 : Math.min(scrollProgress / 0.86, 1) * (features.length - 1);
+  const journeyProgress = Math.min(scrollProgress / 0.86, 1) * (features.length - 1);
   const stackExitProgress = reducedMotion ? 0 : smoothstep(0.9, 0.98, scrollProgress);
   const stackStyle: CSSProperties = {
     opacity: 1 - stackExitProgress,
@@ -92,7 +92,7 @@ export function KeyFeaturesJourneySection() {
     pointerEvents: stackExitProgress > 0.96 ? "none" : undefined,
     willChange: reducedMotion ? undefined : "transform, opacity"
   };
-  const activeIndex = reducedMotion ? 0 : Math.min(features.length - 1, Math.max(0, Math.round(journeyProgress)));
+  const activeIndex = Math.min(features.length - 1, Math.max(0, Math.round(journeyProgress)));
 
   useFadingVideoLoop(videoRef, compactViewport);
 
@@ -124,9 +124,10 @@ export function KeyFeaturesJourneySection() {
             style={stackStyle}
           >
             {features.map((feature, index) => {
-              const delta = reducedMotion ? index : index - journeyProgress;
+              const delta = index - journeyProgress;
+              const isActive = index === activeIndex;
               const distance = Math.abs(delta);
-              const focus = 1 - smoothstep(0.08, 1.08, distance);
+              const focus = reducedMotion ? Number(isActive) : 1 - smoothstep(0.08, 1.08, distance);
               const handoff = smoothstep(-0.35, 0.35, delta);
               const previousY = delta * 42;
               const incomingY = delta * 540;
@@ -136,13 +137,18 @@ export function KeyFeaturesJourneySection() {
               const scale = lerp(previousScale, incomingScale, handoff);
               const pastOpacity = smoothstep(-1.3, -1.02, delta);
               const futureOpacity = 1 - smoothstep(1.88, 2.22, delta);
-              const cardStyle: CSSProperties = {
-                opacity: Math.min(pastOpacity, futureOpacity),
-                transform: `translate3d(-50%, ${y}px, 0) scale(${scale})`,
-                zIndex: 80 + index,
-                willChange: reducedMotion ? undefined : "transform, opacity"
-              };
-              const isActive = index === activeIndex;
+              const cardStyle: CSSProperties = reducedMotion
+                ? {
+                    opacity: Number(isActive),
+                    transform: "translate3d(-50%, 0, 0)",
+                    zIndex: 80 + index
+                  }
+                : {
+                    opacity: Math.min(pastOpacity, futureOpacity),
+                    transform: `translate3d(-50%, ${y}px, 0) scale(${scale})`,
+                    zIndex: 80 + index,
+                    willChange: "transform, opacity"
+                  };
 
               return (
                 <StackedFeatureCard
@@ -176,7 +182,7 @@ function FeatureBackgroundVideo({ videoRef }: { videoRef: RefObject<HTMLVideoEle
         aria-hidden="true"
         style={{ opacity: 0 }}
       />
-      <div className="landing-feature-video-wash absolute inset-x-0 bottom-0 top-[300px] z-[1]" aria-hidden="true" />
+      <div className="landing-feature-video-wash pointer-events-none absolute inset-x-0 bottom-0 top-[300px] z-[1]" aria-hidden="true" />
     </>
   );
 }

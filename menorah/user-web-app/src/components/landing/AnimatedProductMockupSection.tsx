@@ -126,16 +126,17 @@ export function AnimatedProductMockupSection({ scrollProgress }: { scrollProgres
   const mockUntiltEnd = 0.54;
   const featureCycleStart = mockUntiltEnd;
   const featureCycleEnd = 0.9;
+  const reducedMotionReveal = Number(scrollProgress >= 0.1);
 
-  const dashboardProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.24));
-  const dashboardLiftProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.08, mockUnfoldEnd));
-  const dashboardUntiltProgress = reducedMotion ? 1 : easeInOutCubic(progressBetween(scrollProgress, 0.1, mockUntiltEnd));
-  const backPanelProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.16));
-  const frameProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.07, 0.24));
-  const contentProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.16, mockUnfoldEnd));
-  const badgeProgress = reducedMotion ? 1 : easeOutBack(progressBetween(scrollProgress, 0.22, mockUnfoldEnd));
-  const featureProgress = reducedMotion ? 0 : progressBetween(scrollProgress, featureCycleStart, featureCycleEnd);
-  const autoJourneyProgress = reducedMotion ? 0 : featureProgress * (webNavItems.length - 1);
+  const dashboardProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.24));
+  const dashboardLiftProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.08, mockUnfoldEnd));
+  const dashboardUntiltProgress = reducedMotion ? reducedMotionReveal : easeInOutCubic(progressBetween(scrollProgress, 0.1, mockUntiltEnd));
+  const backPanelProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.16));
+  const frameProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.07, 0.24));
+  const contentProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.16, mockUnfoldEnd));
+  const badgeProgress = reducedMotion ? reducedMotionReveal : easeOutBack(progressBetween(scrollProgress, 0.22, mockUnfoldEnd));
+  const featureProgress = progressBetween(scrollProgress, featureCycleStart, featureCycleEnd);
+  const autoJourneyProgress = featureProgress * (webNavItems.length - 1);
   const autoFeatureIndex = Math.min(webNavItems.length - 1, Math.max(0, Math.round(autoJourneyProgress)));
 
   const dashboardStartY = compactViewport ? 248 : tabletViewport ? 292 : 328;
@@ -150,7 +151,7 @@ export function AnimatedProductMockupSection({ scrollProgress }: { scrollProgres
   const blur = reducedMotion ? 0 : lerp(3, 0, dashboardProgress);
 
   const dashboardStyle: CSSProperties = {
-    opacity: reducedMotion ? 1 : progressBetween(scrollProgress, 0.05, 0.28),
+    opacity: reducedMotion ? reducedMotionReveal : progressBetween(scrollProgress, 0.05, 0.28),
     clipPath: `inset(${clipTop}% ${clipSide}% 0% ${clipSide}% round 24px)`,
     filter: `blur(${blur}px)`,
     transform: `translateX(-50%) translateY(-50%) translate3d(0, ${lerp(
@@ -206,6 +207,7 @@ export function AnimatedProductMockupSection({ scrollProgress }: { scrollProgres
     <div
       data-product-dashboard
       data-menorah-landing-theme="source"
+      data-landing-scroll-feature={webNavItems[autoFeatureIndex].label}
       className="absolute left-1/2 top-1/2 z-20 w-[var(--landing-dashboard-width)] [--mockup-y-inset:clamp(1rem,5svh,5rem)]"
       style={dashboardStyle}
     >

@@ -31,7 +31,7 @@ export function MenorahHomeHero() {
           playsInline
           aria-hidden="true"
         />
-        <div data-landing-hero-video-wash className="landing-hero-video-wash absolute inset-0 z-[1]" aria-hidden="true" />
+        <div data-landing-hero-video-wash className="landing-hero-video-wash pointer-events-none absolute inset-0 z-[1]" aria-hidden="true" />
         <HeroSection scrollProgress={scrollProgress} reducedMotion={reducedMotion} />
         <AnimatedProductMockupSection scrollProgress={scrollProgress} />
       </div>
@@ -40,7 +40,11 @@ export function MenorahHomeHero() {
 }
 
 function HeroSection({ scrollProgress, reducedMotion }: { scrollProgress: number; reducedMotion: boolean }) {
-  const copyExitProgress = reducedMotion ? 0 : Math.min(Math.max((scrollProgress - 0.08) / 0.18, 0), 1);
+  // Reduced-motion users still need the showcase to advance as they scroll;
+  // use a discrete content handoff instead of pinning the hero copy on screen.
+  const copyExitProgress = reducedMotion
+    ? Number(scrollProgress >= 0.1)
+    : Math.min(Math.max((scrollProgress - 0.08) / 0.18, 0), 1);
   const copyStyle: CSSProperties = {
     opacity: 1 - copyExitProgress,
     transform: `translate3d(0, ${copyExitProgress * -30}px, 0) scale(${1 - copyExitProgress * 0.025})`,

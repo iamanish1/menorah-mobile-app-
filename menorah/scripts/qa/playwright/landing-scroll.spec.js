@@ -2,8 +2,8 @@ const { test, expect } = require('@playwright/test');
 
 const landingUrl = process.env.QA_LANDING_URL || process.env.QA_WWW_URL || 'https://menorah.me';
 
-async function loadLanding(page) {
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
+async function loadLanding(page, reducedMotion = 'no-preference') {
+  await page.emulateMedia({ reducedMotion });
   const response = await page.goto(landingUrl, { waitUntil: 'domcontentloaded' });
   expect(response, 'landing page should return an HTTP response').toBeTruthy();
   expect(response.status(), 'landing page should not return an error').toBeLessThan(400);
@@ -32,6 +32,13 @@ async function scrollWithinSection(page, selector, progress) {
     },
     { sectionSelector: selector, sectionProgress: progress }
   );
+}
+
+async function scrollWithWheel(page, x, y, deltaY) {
+  await page.mouse.move(x, y);
+  const before = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, deltaY);
+  await expect.poll(async () => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
 }
 
 async function getDashboardState(page) {
@@ -107,11 +114,37 @@ async function expectHeroFallbackSurface(page) {
   expect(backgroundImage).not.toBe('none');
 }
 
+async function expectDashboardFeature(page, feature) {
+  await expect.poll(async () => page.locator('[data-product-dashboard]').getAttribute('data-landing-scroll-feature')).toBe(feature);
+}
+
 test.describe('landing scroll animations', () => {
   test('the hero background video has a playable visible frame', async ({ page }) => {
     await loadLanding(page);
     await expectHeroBackgroundVideo(page);
     await expectHeroFallbackSurface(page);
+  });
+
+  test('real wheel input advances the hero animation', async ({ page }) => {
+    await loadLanding(page);
+    await scrollWithWheel(page, 56, 560, 420);
+    await expect.poll(async () => (await getDashboardState(page)).opacity).toBeGreaterThan(0.05);
+    await scrollWithWheel(page, 640, 540, 420);
+    await expect.poll(async () => (await getDashboardState(page)).opacity).toBeGreaterThan(0.8);
+  });
+
+  test('reduced motion keeps showcase content in sync with scroll', async ({ page }) => {
+    await loadLanding(page, 'reduce');
+
+    await scrollWithinSection(page, '[data-menorah-home-ready]', 0.7);
+    await expectDashboardFeature(page, 'Bookings');
+    await expect.poll(async () => Number(await page.locator('[data-landing-hero-copy]').evaluate((element) => getComputedStyle(element).opacity))).toBe(0);
+
+    await scrollWithinSection(page, '#support-pathway', 0.55);
+    await expectSupportFeature(page, 'Private Chat');
+
+    await scrollWithinSection(page, '#support-pathway', 0.75);
+    await expectSupportFeature(page, 'Profile');
   });
 
   test('the hero and support stages stay in sync with scroll progress', async ({ page }) => {

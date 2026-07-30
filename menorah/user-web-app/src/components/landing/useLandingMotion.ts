@@ -8,8 +8,13 @@ type ViewportSubscriber = () => void;
 const viewportSubscribers = new Set<ViewportSubscriber>();
 let viewportListenersAttached = false;
 let observedVisualViewport: VisualViewport | null = null;
+let observedDocumentScroller: Element | null = null;
+let observedBodyScroller: HTMLElement | null = null;
 let layoutObserver: ResizeObserver | undefined;
 let layoutSettleFrame = 0;
+let touchSettleFrame = 0;
+let touchSettleIdleFrames = 0;
+let touchSettleLastPosition = 0;
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(Math.max(value, minimum), maximum);
@@ -52,6 +57,51 @@ function scheduleLayoutRecheck() {
   });
 }
 
+function getDocumentScrollPosition() {
+  return Math.max(
+    window.scrollY || 0,
+    window.pageYOffset || 0,
+    document.scrollingElement?.scrollTop || 0,
+    document.documentElement.scrollTop || 0,
+    document.body?.scrollTop || 0
+  );
+}
+
+// Some mobile WebKit contexts update the root scroller during a touch gesture
+// without delivering window scroll events until after momentum has settled.
+// Re-measure from the gesture itself, then follow the short inertial tail.
+function scheduleTouchScrollRecheck() {
+  notifyViewportSubscribers();
+  touchSettleIdleFrames = 0;
+
+  if (touchSettleFrame) {
+    return;
+  }
+
+  touchSettleLastPosition = getDocumentScrollPosition();
+
+  const settle = () => {
+    notifyViewportSubscribers();
+    const nextPosition = getDocumentScrollPosition();
+
+    if (Math.abs(nextPosition - touchSettleLastPosition) > 0.5) {
+      touchSettleLastPosition = nextPosition;
+      touchSettleIdleFrames = 0;
+    } else {
+      touchSettleIdleFrames += 1;
+    }
+
+    if (touchSettleIdleFrames < 3) {
+      touchSettleFrame = requestViewportFrame(settle);
+      return;
+    }
+
+    touchSettleFrame = 0;
+  };
+
+  touchSettleFrame = requestViewportFrame(settle);
+}
+
 function attachViewportListeners() {
   if (viewportListenersAttached) {
     return;
@@ -61,6 +111,18 @@ function attachViewportListeners() {
   window.addEventListener("scroll", notifyViewportSubscribers, { passive: true });
   window.addEventListener("resize", scheduleLayoutRecheck);
   window.addEventListener("load", scheduleLayoutRecheck);
+  window.addEventListener("pageshow", scheduleLayoutRecheck);
+  window.addEventListener("touchmove", scheduleTouchScrollRecheck, { passive: true });
+  window.addEventListener("touchend", scheduleTouchScrollRecheck, { passive: true });
+  window.addEventListener("touchcancel", scheduleTouchScrollRecheck, { passive: true });
+
+  document.addEventListener("scroll", notifyViewportSubscribers, { passive: true });
+  observedDocumentScroller = document.scrollingElement;
+  observedDocumentScroller?.addEventListener("scroll", notifyViewportSubscribers, { passive: true });
+  observedBodyScroller = document.body ?? null;
+  if (observedBodyScroller && observedBodyScroller !== observedDocumentScroller) {
+    observedBodyScroller.addEventListener("scroll", notifyViewportSubscribers, { passive: true });
+  }
 
   observedVisualViewport = window.visualViewport;
   observedVisualViewport?.addEventListener("resize", scheduleLayoutRecheck);
@@ -90,6 +152,17 @@ function detachViewportListeners() {
   window.removeEventListener("scroll", notifyViewportSubscribers);
   window.removeEventListener("resize", scheduleLayoutRecheck);
   window.removeEventListener("load", scheduleLayoutRecheck);
+  window.removeEventListener("pageshow", scheduleLayoutRecheck);
+  window.removeEventListener("touchmove", scheduleTouchScrollRecheck);
+  window.removeEventListener("touchend", scheduleTouchScrollRecheck);
+  window.removeEventListener("touchcancel", scheduleTouchScrollRecheck);
+  document.removeEventListener("scroll", notifyViewportSubscribers);
+  observedDocumentScroller?.removeEventListener("scroll", notifyViewportSubscribers);
+  if (observedBodyScroller && observedBodyScroller !== observedDocumentScroller) {
+    observedBodyScroller.removeEventListener("scroll", notifyViewportSubscribers);
+  }
+  observedDocumentScroller = null;
+  observedBodyScroller = null;
   observedVisualViewport?.removeEventListener("resize", scheduleLayoutRecheck);
   observedVisualViewport?.removeEventListener("scroll", notifyViewportSubscribers);
   observedVisualViewport = null;
@@ -100,6 +173,12 @@ function detachViewportListeners() {
     cancelViewportFrame(layoutSettleFrame);
     layoutSettleFrame = 0;
   }
+
+  if (touchSettleFrame) {
+    cancelViewportFrame(touchSettleFrame);
+    touchSettleFrame = 0;
+  }
+  touchSettleIdleFrames = 0;
 }
 
 function subscribeToViewportChanges(subscriber: ViewportSubscriber) {

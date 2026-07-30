@@ -69,9 +69,11 @@ export function SupportPathwaySection() {
   const scrollProgress = useScrollProgress(sectionRef);
   const reducedMotion = usePrefersReducedMotion();
   const compactViewport = useMediaQuery("(max-width: 767px)");
-  const progress = reducedMotion ? 0.36 : scrollProgress;
+  // Keep content in sync with real scroll position for reduced-motion users.
+  // The individual screens switch without the continuous entrance/exit motion.
+  const progress = scrollProgress;
   const showcaseProgress = progressBetween(progress, 0.18, 0.82);
-  const journeyProgress = reducedMotion ? 0 : showcaseProgress * (featureSlides.length - 1);
+  const journeyProgress = showcaseProgress * (featureSlides.length - 1);
   const scrollActiveIndex = Math.min(featureSlides.length - 1, Math.max(0, Math.round(journeyProgress)));
   const phoneJourneyProgress = selectedPhoneIndex ?? journeyProgress;
   const phoneActiveIndex = selectedPhoneIndex ?? scrollActiveIndex;
