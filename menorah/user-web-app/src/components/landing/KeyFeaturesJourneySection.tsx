@@ -1,10 +1,9 @@
 "use client";
 
 import type { CSSProperties, RefObject } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BookOpen, CheckCircle2, HeartPulse, LockKeyhole, MessageCircle, ShieldCheck, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useInView, useMediaQuery, usePrefersReducedMotion, useScrollProgress } from "@/components/landing/useLandingMotion";
 
 const featureBackgroundVideoUrl =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_083109_283f3553-e28f-428b-a723-d639c617eb2b.mp4";
@@ -84,8 +83,7 @@ export function KeyFeaturesJourneySection() {
   const scrollProgress = useScrollProgress(sectionRef);
   const reducedMotion = usePrefersReducedMotion();
   const compactViewport = useMediaQuery("(max-width: 767px)");
-  const featureVideoVisible = useInView(sectionRef, 0);
-  const journeyProgress = Math.min(scrollProgress / 0.86, 1) * (features.length - 1);
+  const journeyProgress = reducedMotion ? 0 : Math.min(scrollProgress / 0.86, 1) * (features.length - 1);
   const stackExitProgress = reducedMotion ? 0 : smoothstep(0.9, 0.98, scrollProgress);
   const stackStyle: CSSProperties = {
     opacity: 1 - stackExitProgress,
@@ -93,14 +91,14 @@ export function KeyFeaturesJourneySection() {
     pointerEvents: stackExitProgress > 0.96 ? "none" : undefined,
     willChange: reducedMotion ? undefined : "transform, opacity"
   };
-  const activeIndex = Math.min(features.length - 1, Math.max(0, Math.round(journeyProgress)));
+  const activeIndex = reducedMotion ? 0 : Math.min(features.length - 1, Math.max(0, Math.round(journeyProgress)));
 
-  useFadingVideoLoop(videoRef, compactViewport, featureVideoVisible);
+  useFadingVideoLoop(videoRef, compactViewport);
 
   if (compactViewport) {
     return (
-      <section ref={sectionRef} className="landing-feature-video-surface relative overflow-hidden px-[var(--landing-page-x)] pb-[var(--landing-section-y-tight)] pt-[clamp(4.75rem,13vw,6.5rem)] text-foreground">
-        <FeatureBackgroundVideo videoRef={videoRef} shouldLoad={featureVideoVisible} />
+      <section className="relative overflow-hidden bg-background px-[var(--landing-page-x)] pb-[var(--landing-section-y-tight)] pt-[clamp(4.75rem,13vw,6.5rem)] text-foreground">
+        <FeatureBackgroundVideo videoRef={videoRef} />
         <div className="relative z-10">
           <Header />
         </div>
@@ -114,9 +112,9 @@ export function KeyFeaturesJourneySection() {
   }
 
   return (
-    <section ref={sectionRef} data-feature-journey className="landing-feature-video-surface relative min-h-[420vh] text-foreground">
+    <section ref={sectionRef} data-feature-journey className="relative min-h-[420vh] bg-background text-foreground">
       <div className="landing-feature-sticky sticky top-0 flex h-screen overflow-hidden px-[var(--landing-page-x)] pb-[clamp(1rem,2.2vw,2rem)] pt-[clamp(4.75rem,8vh,6.75rem)]">
-        <FeatureBackgroundVideo videoRef={videoRef} shouldLoad={featureVideoVisible} />
+        <FeatureBackgroundVideo videoRef={videoRef} />
         <div className="relative z-10 mx-auto flex w-[var(--landing-container)] flex-col items-center">
           <Header />
 
@@ -125,10 +123,9 @@ export function KeyFeaturesJourneySection() {
             style={stackStyle}
           >
             {features.map((feature, index) => {
-              const delta = index - journeyProgress;
-              const isActive = index === activeIndex;
+              const delta = reducedMotion ? index : index - journeyProgress;
               const distance = Math.abs(delta);
-              const focus = reducedMotion ? Number(isActive) : 1 - smoothstep(0.08, 1.08, distance);
+              const focus = 1 - smoothstep(0.08, 1.08, distance);
               const handoff = smoothstep(-0.35, 0.35, delta);
               const previousY = delta * 42;
               const incomingY = delta * 540;
@@ -138,18 +135,13 @@ export function KeyFeaturesJourneySection() {
               const scale = lerp(previousScale, incomingScale, handoff);
               const pastOpacity = smoothstep(-1.3, -1.02, delta);
               const futureOpacity = 1 - smoothstep(1.88, 2.22, delta);
-              const cardStyle: CSSProperties = reducedMotion
-                ? {
-                    opacity: Number(isActive),
-                    transform: "translate3d(-50%, 0, 0)",
-                    zIndex: 80 + index
-                  }
-                : {
-                    opacity: Math.min(pastOpacity, futureOpacity),
-                    transform: `translate3d(-50%, ${y}px, 0) scale(${scale})`,
-                    zIndex: 80 + index,
-                    willChange: "transform, opacity"
-                  };
+              const cardStyle: CSSProperties = {
+                opacity: Math.min(pastOpacity, futureOpacity),
+                transform: `translate3d(-50%, ${y}px, 0) scale(${scale})`,
+                zIndex: 80 + index,
+                willChange: reducedMotion ? undefined : "transform, opacity"
+              };
+              const isActive = index === activeIndex;
 
               return (
                 <StackedFeatureCard
@@ -169,27 +161,20 @@ export function KeyFeaturesJourneySection() {
   );
 }
 
-function FeatureBackgroundVideo({
-  videoRef,
-  shouldLoad
-}: {
-  videoRef: RefObject<HTMLVideoElement | null>;
-  shouldLoad: boolean;
-}) {
+function FeatureBackgroundVideo({ videoRef }: { videoRef: RefObject<HTMLVideoElement | null> }) {
   return (
     <>
       <video
         ref={videoRef}
-        className="landing-feature-background-video absolute inset-x-0 bottom-0 top-[300px] z-0 w-full object-cover"
-        src={shouldLoad ? featureBackgroundVideoUrl : undefined}
+        className="absolute inset-x-0 bottom-0 top-[300px] z-0 w-full object-cover"
+        src={featureBackgroundVideoUrl}
         muted
-        autoPlay={shouldLoad}
+        autoPlay
         playsInline
-        preload={shouldLoad ? "auto" : "none"}
+        preload="auto"
         aria-hidden="true"
         style={{ opacity: 0 }}
       />
-      <div className="landing-feature-video-wash pointer-events-none absolute inset-x-0 bottom-0 top-[300px] z-[1]" aria-hidden="true" />
     </>
   );
 }
@@ -372,7 +357,7 @@ function MobileFeatureCard({
   reducedMotion: boolean;
 }) {
   const cardRef = useRef<HTMLElement>(null);
-  const isVisible = useInView(cardRef, 0.18);
+  const isVisible = useInView(cardRef);
   const Icon = feature.icon;
   const cardStyle: CSSProperties = {
     opacity: reducedMotion || isVisible ? 1 : 0,
@@ -410,11 +395,98 @@ function MobileFeatureCard({
   );
 }
 
-function useFadingVideoLoop(videoRef: RefObject<HTMLVideoElement | null>, resetKey: boolean, shouldPlay: boolean) {
+function useScrollProgress(ref: RefObject<HTMLElement | null>) {
+  const [progress, setProgress] = useState(0);
+  const targetProgressRef = useRef(0);
+  const displayedProgressRef = useRef(0);
+
+  useEffect(() => {
+    let measureFrame = 0;
+    let animationFrame = 0;
+
+    const animateProgress = () => {
+      animationFrame = 0;
+      const currentProgress = displayedProgressRef.current;
+      const targetProgress = targetProgressRef.current;
+      const remainingDistance = targetProgress - currentProgress;
+      const nextProgress =
+        Math.abs(remainingDistance) < 0.0005 ? targetProgress : currentProgress + remainingDistance * 0.14;
+
+      displayedProgressRef.current = nextProgress;
+      setProgress((current) => (Math.abs(current - nextProgress) > 0.0001 ? nextProgress : current));
+
+      if (Math.abs(targetProgress - nextProgress) > 0.0005) {
+        animationFrame = window.requestAnimationFrame(animateProgress);
+      }
+    };
+
+    const queueAnimation = () => {
+      if (animationFrame) {
+        return;
+      }
+
+      animationFrame = window.requestAnimationFrame(animateProgress);
+    };
+
+    const measure = () => {
+      measureFrame = 0;
+      const element = ref.current;
+
+      if (!element) {
+        return;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const travel = Math.max(rect.height - window.innerHeight, 1);
+      const nextProgress = clamp(-rect.top / travel, 0, 1);
+
+      if (Math.abs(targetProgressRef.current - nextProgress) > 0.0001) {
+        targetProgressRef.current = nextProgress;
+        queueAnimation();
+      }
+    };
+
+    const queueMeasure = () => {
+      if (measureFrame) {
+        return;
+      }
+
+      measureFrame = window.requestAnimationFrame(measure);
+    };
+
+    const resizeObserver = new ResizeObserver(queueMeasure);
+
+    if (ref.current) {
+      resizeObserver.observe(ref.current);
+    }
+
+    measure();
+    window.addEventListener("scroll", queueMeasure, { passive: true });
+    window.addEventListener("resize", queueMeasure);
+
+    return () => {
+      if (measureFrame) {
+        window.cancelAnimationFrame(measureFrame);
+      }
+
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+
+      resizeObserver.disconnect();
+      window.removeEventListener("scroll", queueMeasure);
+      window.removeEventListener("resize", queueMeasure);
+    };
+  }, [ref]);
+
+  return progress;
+}
+
+function useFadingVideoLoop(videoRef: RefObject<HTMLVideoElement | null>, resetKey: boolean) {
   useEffect(() => {
     const video = videoRef.current;
 
-    if (!video || !shouldPlay) {
+    if (!video) {
       return;
     }
 
@@ -446,13 +518,13 @@ function useFadingVideoLoop(videoRef: RefObject<HTMLVideoElement | null>, resetK
       setOpacity(0);
       restartTimer = window.setTimeout(() => {
         video.currentTime = 0;
-        void video.play().catch(() => {});
+        void video.play();
       }, 100);
     };
 
     const startVideo = () => {
       setOpacity(0);
-      void video.play().catch(() => {});
+      void video.play();
       animationFrame = window.requestAnimationFrame(monitorVideo);
     };
 
@@ -470,7 +542,66 @@ function useFadingVideoLoop(videoRef: RefObject<HTMLVideoElement | null>, resetK
 
       video.removeEventListener("ended", restartVideo);
     };
-  }, [resetKey, shouldPlay, videoRef]);
+  }, [resetKey, videoRef]);
+}
+
+function usePrefersReducedMotion() {
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setReducedMotion(media.matches);
+
+    updatePreference();
+    media.addEventListener("change", updatePreference);
+
+    return () => media.removeEventListener("change", updatePreference);
+  }, []);
+
+  return reducedMotion;
+}
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const updateMatch = () => setMatches(media.matches);
+
+    updateMatch();
+    media.addEventListener("change", updateMatch);
+
+    return () => media.removeEventListener("change", updateMatch);
+  }, [query]);
+
+  return matches;
+}
+
+function useInView(ref: RefObject<HTMLElement | null>) {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const element = ref.current;
+
+    if (!element) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+        }
+      },
+      { rootMargin: "0px 0px -12% 0px", threshold: 0.18 }
+    );
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [ref]);
+
+  return isVisible;
 }
 
 function lerp(start: number, end: number, progress: number) {

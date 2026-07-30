@@ -1,105 +1,42 @@
 "use client";
 
-import type { CSSProperties } from "react";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import Link from "next/link";
 import { AnimatedProductMockupSection } from "@/components/landing/AnimatedProductMockupSection";
-import { usePrefersReducedMotion, useScrollProgress } from "@/components/landing/useLandingMotion";
 import { Button } from "@/components/landing-ui/button";
 
-const heroBackgroundVideoUrl =
-  "https://res.cloudinary.com/delcdlmli/video/upload/v1785372722/menorah/landing/hero-background-v20260730.mp4";
-const heroBackgroundPosterUrl =
-  "https://res.cloudinary.com/delcdlmli/image/upload/v1785372736/menorah/landing/hero-background-poster-v20260730.jpg";
+const videoUrl =
+  "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260319_015952_e1deeb12-8fb7-4071-a42a-60779fc64ab6.mp4";
 
 export function MenorahHomeHero() {
   const heroRef = useRef<HTMLElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const scrollProgress = useScrollProgress(heroRef);
-  const reducedMotion = usePrefersReducedMotion();
-
-  useEffect(() => {
-    const video = videoRef.current;
-
-    if (!video) {
-      return;
-    }
-
-    // A muted video is allowed to autoplay, but some mobile browsers only
-    // retry playback after the DOM has hydrated or when a page returns from
-    // the background. Keep those retries silent and non-blocking.
-    const startVideo = () => {
-      video.muted = true;
-      video.defaultMuted = true;
-      video.playsInline = true;
-      video.setAttribute("muted", "");
-      void video.play().catch(() => {});
-    };
-
-    const resumeVisibleVideo = () => {
-      if (!document.hidden) {
-        startVideo();
-      }
-    };
-
-    startVideo();
-    video.addEventListener("canplay", startVideo);
-    window.addEventListener("pageshow", resumeVisibleVideo);
-    document.addEventListener("visibilitychange", resumeVisibleVideo);
-
-    return () => {
-      video.removeEventListener("canplay", startVideo);
-      window.removeEventListener("pageshow", resumeVisibleVideo);
-      document.removeEventListener("visibilitychange", resumeVisibleVideo);
-    };
-  }, []);
 
   return (
     <section
       ref={heroRef}
       data-menorah-home-ready
-      className="landing-home-scroll-stage relative text-foreground"
+      className="relative min-h-[390svh] bg-background text-foreground sm:min-h-[430svh] lg:min-h-[460svh]"
     >
-      <div data-landing-scroll-viewport="hero" className="landing-scroll-viewport landing-home-scroll-viewport sticky top-0 relative flex flex-col overflow-hidden">
+      <div className="sticky top-0 flex h-[100svh] min-h-[clamp(35rem,58vw,49rem)] flex-col overflow-hidden max-sm:min-h-[34rem] relative">
         <video
-          ref={videoRef}
-          className="landing-hero-background-video absolute inset-0 z-0 h-full w-full object-cover"
-          src={heroBackgroundVideoUrl}
-          poster={heroBackgroundPosterUrl}
+          className="absolute inset-0 z-0 h-full w-full object-cover"
+          src={videoUrl}
           muted
           autoPlay
           loop
           playsInline
-          preload="auto"
           aria-hidden="true"
         />
-        <div data-landing-hero-video-wash className="landing-hero-video-wash pointer-events-none absolute inset-0 z-[1]" aria-hidden="true" />
-        <HeroSection scrollProgress={scrollProgress} reducedMotion={reducedMotion} />
-        <AnimatedProductMockupSection scrollProgress={scrollProgress} />
+        <HeroSection />
+        <AnimatedProductMockupSection scrollRootRef={heroRef} />
       </div>
     </section>
   );
 }
 
-function HeroSection({ scrollProgress, reducedMotion }: { scrollProgress: number; reducedMotion: boolean }) {
-  // Reduced-motion users still need the showcase to advance as they scroll;
-  // use a discrete content handoff instead of pinning the hero copy on screen.
-  const copyExitProgress = reducedMotion
-    ? Number(scrollProgress >= 0.1)
-    : Math.min(Math.max((scrollProgress - 0.08) / 0.18, 0), 1);
-  const copyStyle: CSSProperties = {
-    opacity: 1 - copyExitProgress,
-    transform: `translate3d(0, ${copyExitProgress * -30}px, 0) scale(${1 - copyExitProgress * 0.025})`,
-    pointerEvents: copyExitProgress > 0.85 ? "none" : undefined,
-    willChange: reducedMotion ? undefined : "transform, opacity"
-  };
-
+function HeroSection() {
   return (
-    <main
-      data-landing-hero-copy
-      className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-[var(--landing-page-x)] pb-[clamp(4rem,9vh,8rem)] pt-[clamp(5rem,11vh,8.5rem)]"
-      style={copyStyle}
-    >
+    <main className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-[var(--landing-page-x)] pb-[clamp(4rem,9vh,8rem)] pt-[clamp(5rem,11vh,8.5rem)]">
       <section className="relative z-10 flex w-full max-w-[min(78rem,94vw)] flex-col items-center">
         <h1 className="text-center font-display text-[length:var(--landing-hero-title)] leading-[0.96] tracking-tight text-foreground">
           We are Menorah, the world's firsts Mental health app for men

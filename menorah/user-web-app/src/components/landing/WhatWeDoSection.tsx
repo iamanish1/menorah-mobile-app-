@@ -1,11 +1,10 @@
 "use client";
 
-import type { CSSProperties } from "react";
-import { useRef } from "react";
+import type { CSSProperties, RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Building2, Eye, Flag, MessageSquare, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useElementProgress, useInView, usePrefersReducedMotion } from "@/components/landing/useLandingMotion";
 
 const sections = [
   {
@@ -249,6 +248,101 @@ function IllustrationFrame({
       </div>
     </div>
   );
+}
+
+function useInView(ref: RefObject<HTMLElement | null>, threshold = 0.24) {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const element = ref.current;
+
+    if (!element) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+        }
+      },
+      { rootMargin: "0px 0px -12% 0px", threshold }
+    );
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [ref, threshold]);
+
+  return isVisible;
+}
+
+function useElementProgress(ref: RefObject<HTMLElement | null>) {
+  const [progress, setProgress] = useState(0.5);
+
+  useEffect(() => {
+    let frame = 0;
+
+    const measure = () => {
+      frame = 0;
+      const element = ref.current;
+
+      if (!element) {
+        return;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const nextProgress = clamp((window.innerHeight - rect.top) / (window.innerHeight + rect.height), 0, 1);
+
+      setProgress((current) => (Math.abs(current - nextProgress) > 0.001 ? nextProgress : current));
+    };
+
+    const queueMeasure = () => {
+      if (frame) {
+        return;
+      }
+
+      frame = window.requestAnimationFrame(measure);
+    };
+
+    const resizeObserver = new ResizeObserver(queueMeasure);
+
+    if (ref.current) {
+      resizeObserver.observe(ref.current);
+    }
+
+    measure();
+    window.addEventListener("scroll", queueMeasure, { passive: true });
+    window.addEventListener("resize", queueMeasure);
+
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+
+      resizeObserver.disconnect();
+      window.removeEventListener("scroll", queueMeasure);
+      window.removeEventListener("resize", queueMeasure);
+    };
+  }, [ref]);
+
+  return progress;
+}
+
+function usePrefersReducedMotion() {
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setReducedMotion(media.matches);
+
+    updatePreference();
+    media.addEventListener("change", updatePreference);
+
+    return () => media.removeEventListener("change", updatePreference);
+  }, []);
+
+  return reducedMotion;
 }
 
 function lerp(start: number, end: number, progress: number) {

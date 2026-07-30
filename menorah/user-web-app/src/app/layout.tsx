@@ -4,6 +4,7 @@ import { Adamina, Fjalla_One, Inter, Poppins } from 'next/font/google';
 import './globals.css';
 import './landing-effects.css';
 import { Providers } from './providers';
+import { SiteLoadingScreen } from '@/components/site/SiteLoadingScreen';
 import { getPublicWebBaseUrl, SITE_NAME } from '@/lib/site';
 
 const inter = Inter({
@@ -69,6 +70,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {nonce ? <meta name="csp-nonce" content={nonce} /> : null}
       </head>
       <body className={`${inter.variable} ${adamina.variable} ${fjallaOne.variable} ${poppins.variable}`}>
+        <SiteLoadingScreen />
         <script
           nonce={nonce}
           dangerouslySetInnerHTML={{

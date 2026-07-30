@@ -9,119 +9,12 @@
   border-color: hsl(var(--border));
 }
 
+body {
+  overflow-x: hidden;
+}
+
 [data-menorah-home-ready] {
   overflow-x: clip;
-  background:
-    radial-gradient(circle at 50% 14%, rgb(239 248 237 / 0.92) 0%, rgb(212 232 214 / 0.88) 34%, rgb(80 125 92 / 0.88) 100%),
-    #d4e8d6;
-}
-
-.landing-hero-background-video {
-  transform: scale(1.08);
-  transform-origin: 50% 66%;
-  filter: brightness(0.82) contrast(1.08) saturate(0.95);
-}
-
-.landing-hero-video-wash {
-  background: linear-gradient(
-    180deg,
-    rgb(219 238 220 / 0.42) 0%,
-    rgb(221 239 222 / 0.15) 43%,
-    rgb(20 77 51 / 0.3) 100%
-  );
-}
-
-.landing-feature-video-surface {
-  background:
-    radial-gradient(circle at 50% 16%, rgb(246 250 245 / 0.96) 0%, rgb(225 239 225 / 0.9) 34%, rgb(132 170 138 / 0.88) 100%),
-    #e1efe1;
-}
-
-.landing-feature-background-video {
-  filter: brightness(0.84) contrast(1.06) saturate(0.94);
-}
-
-.landing-feature-video-wash {
-  background: linear-gradient(180deg, rgb(229 243 229 / 0.18) 0%, rgb(35 91 61 / 0.24) 100%);
-}
-
-/* Keep scroll-controlled stages usable in browsers that do not understand svh. */
-.landing-home-scroll-stage {
-  min-height: 390vh;
-  min-height: 390svh;
-}
-
-.landing-support-scroll-stage {
-  min-height: 410vh;
-  min-height: 410svh;
-}
-
-.landing-scroll-viewport {
-  height: 100vh;
-  height: 100svh;
-  min-height: 0;
-  touch-action: pan-y;
-}
-
-/* Sticky stages must not become taller than the viewport: a larger min-height
- * prevents sticky positioning from settling correctly on laptops and phones. */
-.landing-home-scroll-viewport,
-.landing-support-scroll-viewport {
-  min-height: 0;
-}
-
-@media (min-width: 640px) {
-  .landing-home-scroll-stage,
-  .landing-support-scroll-stage {
-    min-height: 430vh;
-    min-height: 430svh;
-  }
-}
-
-@media (min-width: 1024px) {
-  .landing-home-scroll-stage,
-  .landing-support-scroll-stage {
-    min-height: 460vh;
-    min-height: 460svh;
-  }
-}
-
-/* Landscape phones and compact tablets have too little vertical space for a
- * portrait phone plus a stacked copy card. Keep the stage scroll-controlled,
- * but switch its interior to a compact two-column composition. */
-@media (max-width: 1023px) and (max-height: 640px) {
-  .landing-support-scroll-viewport {
-    padding-top: max(5.5rem, 18svh);
-    padding-bottom: 0.5rem;
-  }
-
-  .landing-support-stage {
-    grid-template-columns: minmax(7rem, 0.52fr) minmax(15rem, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-    gap: clamp(0.65rem, 2vw, 1.25rem);
-  }
-
-  .landing-support-phone {
-    width: min(18vw, 7.5rem);
-    max-width: 7.5rem;
-  }
-
-  .landing-support-phone-glow {
-    width: min(25vw, 10rem);
-  }
-
-  .landing-support-copy-stack article {
-    padding: 0.65rem;
-  }
-
-  .landing-support-copy-stack article p,
-  .landing-support-copy-stack article ul {
-    margin-top: 0.5rem;
-  }
-
-  .landing-support-copy-stack article li {
-    line-height: 1.35;
-  }
 }
 
 [data-product-dashboard],

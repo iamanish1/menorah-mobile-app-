@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, RefObject } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -27,7 +27,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, Badge, Button } from "@/components/ui";
-import { useMediaQuery, usePrefersReducedMotion } from "@/components/landing/useLandingMotion";
 
 const webNavItems = [
   { id: "discover", label: "Discover", icon: Search },
@@ -118,7 +117,8 @@ const demoFilterControls = [
   }
 ] as const;
 
-export function AnimatedProductMockupSection({ scrollProgress }: { scrollProgress: number }) {
+export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef: RefObject<HTMLElement | null> }) {
+  const scrollProgress = useScrollProgress(scrollRootRef);
   const reducedMotion = usePrefersReducedMotion();
   const compactViewport = useMediaQuery("(max-width: 767px)");
   const tabletViewport = useMediaQuery("(max-width: 1023px)");
@@ -126,17 +126,16 @@ export function AnimatedProductMockupSection({ scrollProgress }: { scrollProgres
   const mockUntiltEnd = 0.54;
   const featureCycleStart = mockUntiltEnd;
   const featureCycleEnd = 0.9;
-  const reducedMotionReveal = Number(scrollProgress >= 0.1);
 
-  const dashboardProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.24));
-  const dashboardLiftProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.08, mockUnfoldEnd));
-  const dashboardUntiltProgress = reducedMotion ? reducedMotionReveal : easeInOutCubic(progressBetween(scrollProgress, 0.1, mockUntiltEnd));
-  const backPanelProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.16));
-  const frameProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.07, 0.24));
-  const contentProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.16, mockUnfoldEnd));
-  const badgeProgress = reducedMotion ? reducedMotionReveal : easeOutBack(progressBetween(scrollProgress, 0.22, mockUnfoldEnd));
-  const featureProgress = progressBetween(scrollProgress, featureCycleStart, featureCycleEnd);
-  const autoJourneyProgress = featureProgress * (webNavItems.length - 1);
+  const dashboardProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.24));
+  const dashboardLiftProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.08, mockUnfoldEnd));
+  const dashboardUntiltProgress = reducedMotion ? 1 : easeInOutCubic(progressBetween(scrollProgress, 0.1, mockUntiltEnd));
+  const backPanelProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.16));
+  const frameProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.07, 0.24));
+  const contentProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.16, mockUnfoldEnd));
+  const badgeProgress = reducedMotion ? 1 : easeOutBack(progressBetween(scrollProgress, 0.22, mockUnfoldEnd));
+  const featureProgress = reducedMotion ? 0 : progressBetween(scrollProgress, featureCycleStart, featureCycleEnd);
+  const autoJourneyProgress = reducedMotion ? 0 : featureProgress * (webNavItems.length - 1);
   const autoFeatureIndex = Math.min(webNavItems.length - 1, Math.max(0, Math.round(autoJourneyProgress)));
 
   const dashboardStartY = compactViewport ? 248 : tabletViewport ? 292 : 328;
@@ -151,7 +150,7 @@ export function AnimatedProductMockupSection({ scrollProgress }: { scrollProgres
   const blur = reducedMotion ? 0 : lerp(3, 0, dashboardProgress);
 
   const dashboardStyle: CSSProperties = {
-    opacity: reducedMotion ? reducedMotionReveal : progressBetween(scrollProgress, 0.05, 0.28),
+    opacity: reducedMotion ? 1 : progressBetween(scrollProgress, 0.05, 0.28),
     clipPath: `inset(${clipTop}% ${clipSide}% 0% ${clipSide}% round 24px)`,
     filter: `blur(${blur}px)`,
     transform: `translateX(-50%) translateY(-50%) translate3d(0, ${lerp(
@@ -207,7 +206,6 @@ export function AnimatedProductMockupSection({ scrollProgress }: { scrollProgres
     <div
       data-product-dashboard
       data-menorah-landing-theme="source"
-      data-landing-scroll-feature={webNavItems[autoFeatureIndex].label}
       className="absolute left-1/2 top-1/2 z-20 w-[var(--landing-dashboard-width)] [--mockup-y-inset:clamp(1rem,5svh,5rem)]"
       style={dashboardStyle}
     >
@@ -955,6 +953,125 @@ function getFeatureSearch(feature: WebMockFeature) {
   };
 
   return placeholders[feature];
+}
+
+function useScrollProgress(ref: RefObject<HTMLElement | null>) {
+  const [progress, setProgress] = useState(0);
+  const targetProgressRef = useRef(0);
+  const displayedProgressRef = useRef(0);
+
+  useEffect(() => {
+    let measureFrame = 0;
+    let animationFrame = 0;
+
+    const animateProgress = () => {
+      animationFrame = 0;
+      const currentProgress = displayedProgressRef.current;
+      const targetProgress = targetProgressRef.current;
+      const remainingDistance = targetProgress - currentProgress;
+      const nextProgress =
+        Math.abs(remainingDistance) < 0.0004 ? targetProgress : currentProgress + remainingDistance * 0.1;
+
+      displayedProgressRef.current = nextProgress;
+      setProgress((current) => (Math.abs(current - nextProgress) > 0.00025 ? nextProgress : current));
+
+      if (Math.abs(targetProgress - nextProgress) > 0.0005) {
+        animationFrame = window.requestAnimationFrame(animateProgress);
+      }
+    };
+
+    const queueAnimation = () => {
+      if (animationFrame) {
+        return;
+      }
+
+      animationFrame = window.requestAnimationFrame(animateProgress);
+    };
+
+    const measure = () => {
+      measureFrame = 0;
+      const element = ref.current;
+
+      if (!element) {
+        return;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const travel = Math.max(rect.height - window.innerHeight, 1);
+      const nextProgress = clamp(-rect.top / travel, 0, 1);
+
+      if (Math.abs(targetProgressRef.current - nextProgress) > 0.0001) {
+        targetProgressRef.current = nextProgress;
+        queueAnimation();
+      }
+    };
+
+    const queueMeasure = () => {
+      if (measureFrame) {
+        return;
+      }
+
+      measureFrame = window.requestAnimationFrame(measure);
+    };
+
+    const resizeObserver = new ResizeObserver(queueMeasure);
+
+    if (ref.current) {
+      resizeObserver.observe(ref.current);
+    }
+
+    measure();
+    window.addEventListener("scroll", queueMeasure, { passive: true });
+    window.addEventListener("resize", queueMeasure);
+
+    return () => {
+      if (measureFrame) {
+        window.cancelAnimationFrame(measureFrame);
+      }
+
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+
+      resizeObserver.disconnect();
+      window.removeEventListener("scroll", queueMeasure);
+      window.removeEventListener("resize", queueMeasure);
+    };
+  }, [ref]);
+
+  return progress;
+}
+
+function usePrefersReducedMotion() {
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setReducedMotion(media.matches);
+
+    updatePreference();
+    media.addEventListener("change", updatePreference);
+
+    return () => media.removeEventListener("change", updatePreference);
+  }, []);
+
+  return reducedMotion;
+}
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const updateMatch = () => setMatches(media.matches);
+
+    updateMatch();
+    media.addEventListener("change", updateMatch);
+
+    return () => media.removeEventListener("change", updateMatch);
+  }, [query]);
+
+  return matches;
 }
 
 function progressBetween(progress: number, start: number, end: number) {
