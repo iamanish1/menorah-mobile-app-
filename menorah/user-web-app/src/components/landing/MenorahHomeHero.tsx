@@ -1,34 +1,142 @@
 "use client";
 
-import { useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatedProductMockupSection } from "@/components/landing/AnimatedProductMockupSection";
+import { useScrollProgress } from "@/components/landing/useLandingMotion";
 import { Button } from "@/components/landing-ui/button";
 
-const videoUrl =
+const heroBackgroundVideoUrl =
+  "https://res.cloudinary.com/delcdlmli/video/upload/v1785372722/menorah/landing/hero-background-v20260730.mp4";
+const heroBackgroundVideoFallbackUrl =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260319_015952_e1deeb12-8fb7-4071-a42a-60779fc64ab6.mp4";
+const heroBackgroundPosterUrl =
+  "https://res.cloudinary.com/delcdlmli/image/upload/v1785372736/menorah/landing/hero-background-poster-v20260730.jpg";
 
 export function MenorahHomeHero() {
   const heroRef = useRef<HTMLElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [needsPlaybackControl, setNeedsPlaybackControl] = useState(false);
+  const scrollProgress = useScrollProgress(heroRef);
+
+  const startVideo = useCallback(() => {
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    video.setAttribute("muted", "");
+
+    if (!video.paused && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setNeedsPlaybackControl(false);
+      return;
+    }
+
+    if (video.error) {
+      video.load();
+    }
+
+    void video.play().then(
+      () => setNeedsPlaybackControl(false),
+      () => {
+        // Browsers cannot be forced past a per-site autoplay policy or Safari
+        // Low Power Mode. Keep the poster visible and expose an explicit play
+        // action so the visitor can recover playback with one click.
+        setNeedsPlaybackControl(true);
+      }
+    );
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    const resumeVisibleVideo = () => {
+      if (!document.hidden) {
+        startVideo();
+      }
+    };
+    const hidePlaybackControl = () => setNeedsPlaybackControl(false);
+    const showPlaybackControlForUnexpectedPause = () => {
+      if (!document.hidden && !video.ended) {
+        setNeedsPlaybackControl(true);
+      }
+    };
+    const playbackCheck = window.setTimeout(() => {
+      if ((video.paused || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) && !document.hidden) {
+        setNeedsPlaybackControl(true);
+      }
+    }, 3000);
+
+    startVideo();
+    video.addEventListener("loadedmetadata", startVideo);
+    video.addEventListener("canplay", startVideo);
+    video.addEventListener("playing", hidePlaybackControl);
+    video.addEventListener("pause", showPlaybackControlForUnexpectedPause);
+    window.addEventListener("pageshow", resumeVisibleVideo);
+    document.addEventListener("visibilitychange", resumeVisibleVideo);
+    window.addEventListener("pointerdown", startVideo, { passive: true });
+    window.addEventListener("touchstart", startVideo, { passive: true });
+    window.addEventListener("keydown", startVideo);
+
+    return () => {
+      video.removeEventListener("loadedmetadata", startVideo);
+      video.removeEventListener("canplay", startVideo);
+      video.removeEventListener("playing", hidePlaybackControl);
+      video.removeEventListener("pause", showPlaybackControlForUnexpectedPause);
+      window.removeEventListener("pageshow", resumeVisibleVideo);
+      document.removeEventListener("visibilitychange", resumeVisibleVideo);
+      window.removeEventListener("pointerdown", startVideo);
+      window.removeEventListener("touchstart", startVideo);
+      window.removeEventListener("keydown", startVideo);
+      window.clearTimeout(playbackCheck);
+    };
+  }, [startVideo]);
 
   return (
     <section
       ref={heroRef}
       data-menorah-home-ready
-      className="relative min-h-[390svh] bg-background text-foreground sm:min-h-[430svh] lg:min-h-[460svh]"
+      className="landing-home-scroll-stage relative bg-background text-foreground"
     >
-      <div className="sticky top-0 flex h-[100svh] min-h-[clamp(35rem,58vw,49rem)] flex-col overflow-hidden max-sm:min-h-[34rem] relative">
+      <div
+        data-landing-scroll-viewport="hero"
+        className="landing-hero-media-fallback landing-scroll-viewport landing-home-scroll-viewport sticky top-0 relative flex flex-col overflow-hidden"
+      >
         <video
+          ref={videoRef}
           className="absolute inset-0 z-0 h-full w-full object-cover"
-          src={videoUrl}
+          poster={heroBackgroundPosterUrl}
           muted
           autoPlay
           loop
           playsInline
+          preload="auto"
+          disablePictureInPicture
           aria-hidden="true"
-        />
+        >
+          <source src={heroBackgroundVideoUrl} type="video/mp4" />
+          <source src={heroBackgroundVideoFallbackUrl} type="video/mp4" />
+        </video>
+        {needsPlaybackControl ? (
+          <button
+            type="button"
+            data-hero-video-playback-control
+            onClick={startVideo}
+            className="absolute bottom-5 left-5 z-30 min-h-11 rounded-full border border-foreground/15 bg-background/90 px-4 text-sm font-medium text-foreground shadow-lg backdrop-blur focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            Play background
+          </button>
+        ) : null}
         <HeroSection />
-        <AnimatedProductMockupSection scrollRootRef={heroRef} />
+        <AnimatedProductMockupSection scrollProgress={scrollProgress} />
       </div>
     </section>
   );

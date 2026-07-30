@@ -9,12 +9,101 @@
   border-color: hsl(var(--border));
 }
 
-body {
-  overflow-x: hidden;
-}
-
 [data-menorah-home-ready] {
   overflow-x: clip;
+}
+
+.landing-hero-media-fallback {
+  background-color: #dcebdd;
+  background-image: url("https://res.cloudinary.com/delcdlmli/image/upload/v1785372736/menorah/landing/hero-background-poster-v20260730.jpg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+/* Keep scroll-controlled stages usable in browsers that do not understand svh. */
+.landing-home-scroll-stage {
+  min-height: 390vh;
+  min-height: 390svh;
+}
+
+.landing-support-scroll-stage {
+  min-height: 410vh;
+  min-height: 410svh;
+}
+
+.landing-scroll-viewport {
+  height: 100vh;
+  height: 100svh;
+  touch-action: pan-y;
+}
+
+/* Sticky stages must never be taller than the viewport. A larger min-height
+ * prevents sticky positioning from settling on short laptops and phones. */
+.landing-home-scroll-viewport,
+.landing-support-scroll-viewport {
+  min-height: 0;
+}
+
+@media (min-width: 640px) {
+  .landing-home-scroll-stage,
+  .landing-support-scroll-stage {
+    min-height: 430vh;
+    min-height: 430svh;
+  }
+}
+
+@media (min-width: 1024px) {
+  .landing-home-scroll-stage,
+  .landing-support-scroll-stage {
+    min-height: 460vh;
+    min-height: 460svh;
+  }
+}
+
+/* Fit the existing support composition into short landscape displays without
+ * making its sticky viewport taller than the physical screen. */
+@media (max-width: 1023px) and (max-height: 640px) and (orientation: landscape) {
+  .landing-support-scroll-viewport {
+    padding-top: max(4.75rem, 18vh);
+    padding-top: max(4.75rem, 18svh);
+    padding-bottom: 0.5rem;
+  }
+
+  .landing-support-stage {
+    grid-template-columns: minmax(7rem, 0.52fr) minmax(15rem, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: clamp(0.65rem, 2vw, 1.25rem);
+  }
+
+  .landing-support-phone {
+    width: min(18vw, 7.5rem);
+    max-width: 7.5rem;
+  }
+
+  .landing-support-phone-glow {
+    width: min(25vw, 10rem);
+  }
+
+  .landing-support-copy-stack article {
+    padding: 0.65rem;
+  }
+
+  .landing-support-copy-stack article p,
+  .landing-support-copy-stack article ul {
+    margin-top: 0.5rem;
+  }
+
+  .landing-support-copy-stack article li {
+    line-height: 1.35;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 700px) {
+  .landing-support-phone {
+    width: min(var(--landing-phone-width), calc((100vh - 7rem) * 0.4813));
+    width: min(var(--landing-phone-width), calc((100svh - 7rem) * 0.4813));
+  }
 }
 
 [data-product-dashboard],
