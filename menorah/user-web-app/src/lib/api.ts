@@ -204,8 +204,13 @@ class ApiClient {
     return this.put<{ user: User }>('/users/emergency-contact', data);
   }
 
-  async updateNotificationPreferences(data: User['notificationPreferences']): Promise<ApiResponse<{ user: User }>> {
-    return this.put<{ user: User }>('/users/notification-preferences', data);
+  async updateNotificationPreferences(data: { email: boolean }): Promise<ApiResponse<{
+    notificationPreferences: NonNullable<User['notificationPreferences']>;
+  }>> {
+    return this.put<{ notificationPreferences: NonNullable<User['notificationPreferences']> }>(
+      '/users/notification-preferences',
+      data
+    );
   }
 
   async changePassword(currentPassword: string, newPassword: string): Promise<ApiResponse<void>> {

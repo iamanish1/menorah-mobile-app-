@@ -7,43 +7,41 @@ import { api } from '@/lib/api';
 import { Button, ToggleSwitch } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
-interface Prefs { email: boolean; sms: boolean; push: boolean; }
-
 export default function NotificationPrefsPage() {
   const { user, updateUser } = useAuth();
   const router = useRouter();
-  const [prefs, setPrefs] = useState<Prefs>({ email: true, sms: true, push: true });
+  const [emailEnabled, setEmailEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (user?.notificationPreferences) {
-      setPrefs({
-        email: user.notificationPreferences.email ?? true,
-        sms:   user.notificationPreferences.sms   ?? true,
-        push:  user.notificationPreferences.push  ?? true,
-      });
+      setEmailEnabled(user.notificationPreferences.email ?? true);
     }
   }, [user]);
 
-  const toggle = (key: keyof Prefs) => setPrefs((p) => ({ ...p, [key]: !p[key] }));
-
   const save = async () => {
     setSaving(true);
-    const res = await api.updateNotificationPreferences(prefs);
-    if (res.success && res.data?.user) {
-      updateUser(res.data.user);
+    setSaved(false);
+    setError('');
+
+    const res = await api.updateNotificationPreferences({ email: emailEnabled });
+    if (res.success && res.data?.notificationPreferences && user) {
+      updateUser({
+        ...user,
+        notificationPreferences: {
+          ...user.notificationPreferences,
+          ...res.data.notificationPreferences,
+        },
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+    } else {
+      setError(res.message || 'Unable to save your email notification preference.');
     }
     setSaving(false);
   };
-
-  const items: { key: keyof Prefs; label: string; desc: string }[] = [
-    { key: 'email', label: 'Email Notifications', desc: 'Booking confirmations, reminders, session updates' },
-    { key: 'sms',   label: 'SMS Notifications',   desc: 'Verification codes, urgent session reminders' },
-    { key: 'push',  label: 'Push Notifications',  desc: 'Real-time alerts when using the app' },
-  ];
 
   return (
     <div className="page-container max-w-md">
@@ -52,23 +50,22 @@ export default function NotificationPrefsPage() {
       </button>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Notification Preferences</h1>
 
-      {saved && <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 mb-4">Preferences saved!</div>}
+      {saved && <div role="status" className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 mb-4">Preferences saved!</div>}
+      {error && <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 mb-4">{error}</div>}
 
-      <div className="card divide-y divide-gray-50">
-        {items.map(({ key, label, desc }) => (
-          <div key={key} className="flex items-center justify-between px-5 py-4">
-            <div>
-              <p className="font-medium text-gray-900 text-sm">{label}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
-            </div>
-            <ToggleSwitch
-              checked={prefs[key]}
-              label={`${label} toggle`}
-              className="ml-4"
-              onCheckedChange={() => toggle(key)}
-            />
+      <div className="card">
+        <div className="flex items-center justify-between px-5 py-4">
+          <div>
+            <p className="font-medium text-gray-900 text-sm">Email Notifications</p>
+            <p className="text-xs text-gray-500 mt-0.5">Booking confirmations, reminders, session updates</p>
           </div>
-        ))}
+          <ToggleSwitch
+            checked={emailEnabled}
+            label="Email Notifications toggle"
+            className="ml-4"
+            onCheckedChange={setEmailEnabled}
+          />
+        </div>
       </div>
 
       <Button fullWidth size="lg" className="mt-6" loading={saving} onClick={save}>Save Preferences</Button>
