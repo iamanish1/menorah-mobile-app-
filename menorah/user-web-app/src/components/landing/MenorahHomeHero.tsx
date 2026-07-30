@@ -1,19 +1,58 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { AnimatedProductMockupSection } from "@/components/landing/AnimatedProductMockupSection";
 import { usePrefersReducedMotion, useScrollProgress } from "@/components/landing/useLandingMotion";
 import { Button } from "@/components/landing-ui/button";
 
-const videoUrl =
-  "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260319_015952_e1deeb12-8fb7-4071-a42a-60779fc64ab6.mp4";
+const heroBackgroundVideoUrl =
+  "https://res.cloudinary.com/delcdlmli/video/upload/v1785372722/menorah/landing/hero-background-v20260730.mp4";
+const heroBackgroundPosterUrl =
+  "https://res.cloudinary.com/delcdlmli/image/upload/v1785372736/menorah/landing/hero-background-poster-v20260730.jpg";
 
 export function MenorahHomeHero() {
   const heroRef = useRef<HTMLElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const scrollProgress = useScrollProgress(heroRef);
   const reducedMotion = usePrefersReducedMotion();
+
+  useEffect(() => {
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    // A muted video is allowed to autoplay, but some mobile browsers only
+    // retry playback after the DOM has hydrated or when a page returns from
+    // the background. Keep those retries silent and non-blocking.
+    const startVideo = () => {
+      video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
+      video.setAttribute("muted", "");
+      void video.play().catch(() => {});
+    };
+
+    const resumeVisibleVideo = () => {
+      if (!document.hidden) {
+        startVideo();
+      }
+    };
+
+    startVideo();
+    video.addEventListener("canplay", startVideo);
+    window.addEventListener("pageshow", resumeVisibleVideo);
+    document.addEventListener("visibilitychange", resumeVisibleVideo);
+
+    return () => {
+      video.removeEventListener("canplay", startVideo);
+      window.removeEventListener("pageshow", resumeVisibleVideo);
+      document.removeEventListener("visibilitychange", resumeVisibleVideo);
+    };
+  }, []);
 
   return (
     <section
@@ -23,12 +62,15 @@ export function MenorahHomeHero() {
     >
       <div data-landing-scroll-viewport="hero" className="landing-scroll-viewport landing-home-scroll-viewport sticky top-0 relative flex flex-col overflow-hidden">
         <video
+          ref={videoRef}
           className="landing-hero-background-video absolute inset-0 z-0 h-full w-full object-cover"
-          src={videoUrl}
+          src={heroBackgroundVideoUrl}
+          poster={heroBackgroundPosterUrl}
           muted
           autoPlay
           loop
           playsInline
+          preload="auto"
           aria-hidden="true"
         />
         <div data-landing-hero-video-wash className="landing-hero-video-wash pointer-events-none absolute inset-0 z-[1]" aria-hidden="true" />

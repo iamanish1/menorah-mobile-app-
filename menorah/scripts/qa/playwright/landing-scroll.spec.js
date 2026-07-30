@@ -81,13 +81,11 @@ async function expectHeroBackgroundVideo(page) {
 
   await expect(video).toBeVisible();
   await expect(wash).toBeVisible();
+  await expect(video).toHaveAttribute('poster', /hero-background-poster-v20260730/);
+  await expect(video).toHaveAttribute('preload', 'auto');
   await expect.poll(async () => video.evaluate((element) => element.readyState)).toBeGreaterThanOrEqual(2);
-
-  const initialTime = await video.evaluate(async (element) => {
-    await element.play();
-    return element.currentTime;
-  });
-
+  await expect.poll(async () => video.evaluate((element) => !element.paused)).toBe(true);
+  const initialTime = await video.evaluate((element) => element.currentTime);
   await expect.poll(async () => video.evaluate((element) => element.currentTime)).toBeGreaterThan(initialTime + 0.05);
 
   const state = await video.evaluate((element) => {
@@ -119,6 +117,17 @@ async function expectDashboardFeature(page, feature) {
 }
 
 test.describe('landing scroll animations', () => {
+  test('renders hero media before anonymous auth resolves', async ({ page }) => {
+    await page.route('**/users/me', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      await route.fulfill({ status: 401, contentType: 'application/json', body: '{}' });
+    });
+
+    const response = await page.goto(landingUrl, { waitUntil: 'domcontentloaded' });
+    expect(response, 'landing page should return an HTTP response').toBeTruthy();
+    await expect(page.locator('[data-menorah-home-ready] video')).toBeAttached({ timeout: 1_500 });
+  });
+
   test('the hero background video has a playable visible frame', async ({ page }) => {
     await loadLanding(page);
     await expectHeroBackgroundVideo(page);

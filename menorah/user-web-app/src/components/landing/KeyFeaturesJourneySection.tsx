@@ -84,6 +84,7 @@ export function KeyFeaturesJourneySection() {
   const scrollProgress = useScrollProgress(sectionRef);
   const reducedMotion = usePrefersReducedMotion();
   const compactViewport = useMediaQuery("(max-width: 767px)");
+  const featureVideoVisible = useInView(sectionRef, 0);
   const journeyProgress = Math.min(scrollProgress / 0.86, 1) * (features.length - 1);
   const stackExitProgress = reducedMotion ? 0 : smoothstep(0.9, 0.98, scrollProgress);
   const stackStyle: CSSProperties = {
@@ -94,12 +95,12 @@ export function KeyFeaturesJourneySection() {
   };
   const activeIndex = Math.min(features.length - 1, Math.max(0, Math.round(journeyProgress)));
 
-  useFadingVideoLoop(videoRef, compactViewport);
+  useFadingVideoLoop(videoRef, compactViewport, featureVideoVisible);
 
   if (compactViewport) {
     return (
-      <section className="landing-feature-video-surface relative overflow-hidden px-[var(--landing-page-x)] pb-[var(--landing-section-y-tight)] pt-[clamp(4.75rem,13vw,6.5rem)] text-foreground">
-        <FeatureBackgroundVideo videoRef={videoRef} />
+      <section ref={sectionRef} className="landing-feature-video-surface relative overflow-hidden px-[var(--landing-page-x)] pb-[var(--landing-section-y-tight)] pt-[clamp(4.75rem,13vw,6.5rem)] text-foreground">
+        <FeatureBackgroundVideo videoRef={videoRef} shouldLoad={featureVideoVisible} />
         <div className="relative z-10">
           <Header />
         </div>
@@ -115,7 +116,7 @@ export function KeyFeaturesJourneySection() {
   return (
     <section ref={sectionRef} data-feature-journey className="landing-feature-video-surface relative min-h-[420vh] text-foreground">
       <div className="landing-feature-sticky sticky top-0 flex h-screen overflow-hidden px-[var(--landing-page-x)] pb-[clamp(1rem,2.2vw,2rem)] pt-[clamp(4.75rem,8vh,6.75rem)]">
-        <FeatureBackgroundVideo videoRef={videoRef} />
+        <FeatureBackgroundVideo videoRef={videoRef} shouldLoad={featureVideoVisible} />
         <div className="relative z-10 mx-auto flex w-[var(--landing-container)] flex-col items-center">
           <Header />
 
@@ -168,17 +169,23 @@ export function KeyFeaturesJourneySection() {
   );
 }
 
-function FeatureBackgroundVideo({ videoRef }: { videoRef: RefObject<HTMLVideoElement | null> }) {
+function FeatureBackgroundVideo({
+  videoRef,
+  shouldLoad
+}: {
+  videoRef: RefObject<HTMLVideoElement | null>;
+  shouldLoad: boolean;
+}) {
   return (
     <>
       <video
         ref={videoRef}
         className="landing-feature-background-video absolute inset-x-0 bottom-0 top-[300px] z-0 w-full object-cover"
-        src={featureBackgroundVideoUrl}
+        src={shouldLoad ? featureBackgroundVideoUrl : undefined}
         muted
-        autoPlay
+        autoPlay={shouldLoad}
         playsInline
-        preload="auto"
+        preload={shouldLoad ? "auto" : "none"}
         aria-hidden="true"
         style={{ opacity: 0 }}
       />
@@ -403,11 +410,11 @@ function MobileFeatureCard({
   );
 }
 
-function useFadingVideoLoop(videoRef: RefObject<HTMLVideoElement | null>, resetKey: boolean) {
+function useFadingVideoLoop(videoRef: RefObject<HTMLVideoElement | null>, resetKey: boolean, shouldPlay: boolean) {
   useEffect(() => {
     const video = videoRef.current;
 
-    if (!video) {
+    if (!video || !shouldPlay) {
       return;
     }
 
@@ -439,13 +446,13 @@ function useFadingVideoLoop(videoRef: RefObject<HTMLVideoElement | null>, resetK
       setOpacity(0);
       restartTimer = window.setTimeout(() => {
         video.currentTime = 0;
-        void video.play();
+        void video.play().catch(() => {});
       }, 100);
     };
 
     const startVideo = () => {
       setOpacity(0);
-      void video.play();
+      void video.play().catch(() => {});
       animationFrame = window.requestAnimationFrame(monitorVideo);
     };
 
@@ -463,7 +470,7 @@ function useFadingVideoLoop(videoRef: RefObject<HTMLVideoElement | null>, resetK
 
       video.removeEventListener("ended", restartVideo);
     };
-  }, [resetKey, videoRef]);
+  }, [resetKey, shouldPlay, videoRef]);
 }
 
 function lerp(start: number, end: number, progress: number) {
