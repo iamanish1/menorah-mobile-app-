@@ -144,6 +144,59 @@ const installFocusedProfileApi = async (page, {
   return requests;
 };
 
+test('profile security opens the forgot-password recovery flow', async ({ page }, testInfo) => {
+  const consoleIssues = [];
+  const expectedSocketFailures = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' || message.type() === 'warning') {
+      consoleIssues.push(`${message.type()}: ${message.text()}`);
+    }
+  });
+  page.on('pageerror', (error) => {
+    consoleIssues.push(`pageerror: ${error.message}`);
+  });
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('/socket.io/')) {
+      expectedSocketFailures.push(request.url());
+    }
+  });
+
+  await installFocusedProfileApi(page, {
+    user: makeQaUser({
+      linkedProviders: {
+        google: true,
+      },
+    }),
+  });
+
+  await page.goto(`${appUrl}/profile/security`, { waitUntil: 'domcontentloaded' });
+
+  await expect(page).toHaveURL(/\/profile\/security$/);
+  await expect(page.getByRole('heading', { name: 'Security & sign-in' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Change account password' })).toHaveCount(0);
+
+  const forgotPasswordLink = page.getByRole('link', { name: 'Forgot password' });
+  await expect(forgotPasswordLink).toBeVisible();
+  await expect(forgotPasswordLink).toHaveAttribute('href', '/forgot-password');
+  await forgotPasswordLink.click();
+
+  await expect(page).toHaveURL(/\/forgot-password$/);
+  await expect(page.getByRole('heading', { name: 'Forgot password?' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send Reset Link' })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('profile-security-forgot-password.png'),
+    fullPage: false,
+  });
+
+  const unexpectedConsoleIssues = consoleIssues.filter((issue) => {
+    if (issue.includes('/socket.io/')) return false;
+    if (issue.includes('[Socket] Connection error (backend may be offline):')) return false;
+    if (expectedSocketFailures.length > 0 && issue.includes('net::ERR_CONNECTION_REFUSED')) return false;
+    return true;
+  });
+  expect(unexpectedConsoleIssues).toEqual([]);
+});
+
 test('profile edit omits address and saves the remaining sections', async ({ page }, testInfo) => {
   const consoleIssues = [];
   let addressRequests = 0;

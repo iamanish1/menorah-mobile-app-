@@ -110,11 +110,11 @@ export default function SecurityPage() {
         </section>
 
         <Link
-          href="/profile/change-password"
+          href="/forgot-password"
           className="inline-flex items-center gap-2 text-sm font-bold text-primary-700 hover:underline dark:text-primary-100"
         >
           <LockKeyhole className="h-4 w-4" />
-          Change account password
+          Forgot password
         </Link>
       </div>
     </div>
