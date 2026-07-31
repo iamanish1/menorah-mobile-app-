@@ -31,7 +31,7 @@ export interface Booking {
     name: string;
     phone: string;
     relationship: string;
-  };
+  } | null;
   preferences?: {
     gender?: string;
     sessionType?: string;

@@ -12,6 +12,7 @@ const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
 const { counsellorAuth } = require('../middleware/auth');
 const { uploadBuffer, deleteResource } = require('../utils/cloudinary');
+const { serializeEmergencyContact } = require('../utils/emergencyContact');
 const {
   invalidateCounsellorDiscoveryCache,
   notifyCounsellorProfileUpdated,
@@ -667,6 +668,7 @@ router.get('/me/bookings/pending', [
 
     // Execute query
     const bookings = await Booking.find(query)
+      .select('-emergencyContact')
       .populate({
         path: 'user',
         select: 'firstName lastName email phone profileImage gender'
@@ -703,7 +705,6 @@ router.get('/me/bookings/pending', [
         symptoms: booking.symptoms,
         concerns: booking.concerns,
         goals: booking.goals,
-        emergencyContact: booking.emergencyContact,
         videoCall: formatVideoCall(booking.videoCall),
         createdAt: booking.createdAt
       }));
@@ -757,25 +758,35 @@ router.get('/me/bookings/:id', [
 
     const { id } = req.params;
 
-    // Find booking that counselor can access (matching dashboard logic):
-    // 1. Assigned to this counselor (any status except cancelled)
-    // 2. Unassigned pending/confirmed bookings (available for any counselor)
+    // Query assigned access first and only select the user's emergency contact
+    // on that path. An unassigned booking may be viewed before acceptance, but
+    // must never load or serialize this sensitive profile field.
     let booking = await Booking.findOne({
       _id: id,
-      status: { $ne: 'cancelled' }, // Exclude cancelled bookings
-      $or: [
-        { counsellor: counsellor._id }, // Assigned to this counselor
-        { 
-          counsellor: null, 
-          status: { $in: ['pending', 'confirmed'] } // Unassigned available bookings
-        }
-      ]
+      counsellor: counsellor._id,
+      status: { $ne: 'cancelled' },
     })
+      .select('-emergencyContact')
       .populate({
         path: 'user',
-        select: 'firstName lastName email phone profileImage gender'
+        select: 'firstName lastName email phone profileImage gender emergencyContact'
       })
       .lean();
+    const isAssignedToRequestingCounsellor = Boolean(booking);
+
+    if (!booking) {
+      booking = await Booking.findOne({
+        _id: id,
+        counsellor: null,
+        status: { $in: ['pending', 'confirmed'] },
+      })
+        .select('-emergencyContact')
+        .populate({
+          path: 'user',
+          select: 'firstName lastName email phone profileImage gender'
+        })
+        .lean();
+    }
 
     if (!booking) {
       // If not found with the above criteria, check if booking exists at all
@@ -811,7 +822,9 @@ router.get('/me/bookings/:id', [
       symptoms: booking.symptoms,
       concerns: booking.concerns,
       goals: booking.goals,
-      emergencyContact: booking.emergencyContact,
+      ...(isAssignedToRequestingCounsellor ? {
+        emergencyContact: serializeEmergencyContact(booking.user?.emergencyContact),
+      } : {}),
       preferences: booking.preferences,
       videoCall: formatVideoCall(booking.videoCall),
       assignedAt: booking.assignedAt,
@@ -879,6 +892,7 @@ router.get('/me/bookings', [
 
     // Execute query
     const bookings = await Booking.find(query)
+      .select('-emergencyContact')
       .populate({
         path: 'user',
         select: 'firstName lastName email phone profileImage'
@@ -912,7 +926,6 @@ router.get('/me/bookings', [
       symptoms: booking.symptoms,
       concerns: booking.concerns,
       goals: booking.goals,
-      emergencyContact: booking.emergencyContact,
       assignedAt: booking.assignedAt
     }));
 

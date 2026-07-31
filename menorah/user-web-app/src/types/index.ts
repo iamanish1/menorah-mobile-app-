@@ -21,7 +21,7 @@ export interface User {
     name?: string;
     relationship?: string;
     phone?: string;
-  };
+  } | null;
   preferredLanguage?: string;
   timezone?: string;
   notificationPreferences?: {

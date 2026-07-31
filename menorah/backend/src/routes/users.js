@@ -10,6 +10,10 @@ const { revokeAllSessions } = require('../utils/sessionLifecycle');
 const { disconnectUserSockets } = require('../utils/sessionLifecycle');
 const { passwordValidator } = require('../utils/passwordPolicy');
 const {
+  inspectEmergencyContact,
+  emergencyContactValidator,
+} = require('../utils/emergencyContact');
+const {
   invalidateCounsellorDiscoveryCache,
   notifyCounsellorProfileUpdated,
 } = require('../utils/counsellorProfileSync');
@@ -302,9 +306,7 @@ router.put('/address', [
 // @desc    Update user's emergency contact
 // @access  Private
 router.put('/emergency-contact', [
-  body('name').notEmpty().withMessage('Emergency contact name is required'),
-  body('relationship').notEmpty().withMessage('Relationship is required'),
-  body('phone').isMobilePhone().withMessage('Please provide a valid phone number')
+  body().custom(emergencyContactValidator),
 ], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -316,8 +318,6 @@ router.put('/emergency-contact', [
       });
     }
 
-    const { name, relationship, phone } = req.body;
-
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({
@@ -326,19 +326,19 @@ router.put('/emergency-contact', [
       });
     }
 
-    // Update emergency contact
-    user.emergencyContact = {
-      name,
-      relationship,
-      phone
-    };
+    const { contact } = inspectEmergencyContact(req.body);
+    // This endpoint replaces the whole contact. An entirely blank payload is
+    // an intentional clear; partial contacts were rejected by validation.
+    user.emergencyContact = contact || undefined;
 
     await user.save();
 
     res.json({
       success: true,
-      message: 'Emergency contact updated successfully',
-      data: { emergencyContact: user.emergencyContact }
+      message: contact
+        ? 'Emergency contact updated successfully'
+        : 'Emergency contact cleared successfully',
+      data: { emergencyContact: contact }
     });
 
   } catch (error) {
