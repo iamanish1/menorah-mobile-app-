@@ -16,12 +16,6 @@ const schema = z.object({
   dateOfBirth: z.string().optional(),
   gender: z.enum(['male','female','other','prefer-not-to-say']).optional(),
   preferredLanguage: z.string().optional(),
-  // Address
-  street:  z.string().optional(),
-  city:    z.string().optional(),
-  state:   z.string().optional(),
-  country: z.string().optional(),
-  zipCode: z.string().optional(),
   // Emergency
   emergencyName:         z.string().optional(),
   emergencyRelationship: z.string().optional(),
@@ -51,11 +45,6 @@ export default function EditProfilePage() {
         dateOfBirth: user.dateOfBirth,
         gender:    user.gender,
         preferredLanguage: user.preferredLanguage,
-        street:    user.address?.street,
-        city:      user.address?.city,
-        state:     user.address?.state,
-        country:   user.address?.country,
-        zipCode:   user.address?.zipCode,
         emergencyName:         user.emergencyContact?.name,
         emergencyRelationship: user.emergencyContact?.relationship,
         emergencyPhone:        user.emergencyContact?.phone,
@@ -74,11 +63,11 @@ export default function EditProfilePage() {
       preferredLanguage: data.preferredLanguage,
     });
     if (res.success && res.data?.user) {
-      // Also update address & emergency contact
-      await Promise.all([
-        api.updateAddress({ street: data.street, city: data.city, state: data.state, country: data.country, zipCode: data.zipCode }),
-        api.updateEmergencyContact({ name: data.emergencyName, relationship: data.emergencyRelationship, phone: data.emergencyPhone }),
-      ]);
+      await api.updateEmergencyContact({
+        name: data.emergencyName,
+        relationship: data.emergencyRelationship,
+        phone: data.emergencyPhone,
+      });
       updateUser(res.data.user);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -150,19 +139,6 @@ export default function EditProfilePage() {
             <option value="prefer-not-to-say">Prefer not to say</option>
           </Select>
           <Input label="Preferred language" placeholder="English" {...register('preferredLanguage')} />
-        </div>
-
-        <div className="card p-5 space-y-4">
-          <h2 className="font-semibold text-gray-900">Address</h2>
-          <Input label="Street" placeholder="123 Main St" {...register('street')} />
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="City"  placeholder="Dubai" {...register('city')} />
-            <Input label="State" placeholder="Dubai"  {...register('state')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Country"  placeholder="UAE" {...register('country')} />
-            <Input label="ZIP code" placeholder="00000" {...register('zipCode')} />
-          </div>
         </div>
 
         <div className="card p-5 space-y-4">
