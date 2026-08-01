@@ -4,10 +4,14 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Spinner } from '@/components/ui/Spinner';
+import {
+  rememberProfileCompletionReturnPath,
+} from '@/lib/profileCompletion';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthed, isLoading, user } = useAuth();
   const router = useRouter();
+  const needsProfileCompletion = user?.role === 'user' && user.profileCompleted === false;
 
   useEffect(() => {
     if (isLoading) return;
@@ -20,8 +24,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       router.replace('/login');
     } else if (user && !user.isEmailVerified) {
       router.replace('/verify-otp');
+    } else if (needsProfileCompletion) {
+      rememberProfileCompletionReturnPath();
+      router.replace('/complete-profile');
     }
-  }, [isAuthed, isLoading, user, router]);
+  }, [isAuthed, isLoading, needsProfileCompletion, user, router]);
 
   if (isLoading) {
     return (
@@ -34,6 +41,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthed || (user && (user.role !== 'user' || !user.isEmailVerified))) return null;
+  if (
+    !isAuthed
+    || (user && (user.role !== 'user' || !user.isEmailVerified))
+    || needsProfileCompletion
+  ) return null;
   return <>{children}</>;
 }

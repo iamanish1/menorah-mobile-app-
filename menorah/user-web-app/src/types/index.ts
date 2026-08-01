@@ -4,9 +4,10 @@ export interface User {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
+  phone: string | null;
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
+  profileCompleted?: boolean;
   profileImage?: string;
   dateOfBirth?: string;
   gender?: 'male' | 'female' | 'other' | 'prefer-not-to-say';

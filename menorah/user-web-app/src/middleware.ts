@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const AUTH_ROUTES = ['/login', '/register', '/verify-otp', '/verify-email', '/forgot-password', '/reset-password'];
+const AUTH_ROUTES = ['/login', '/register', '/verify-otp', '/verify-email', '/forgot-password', '/reset-password', '/complete-profile'];
 // Google Identity Services renders an iframe button only on these routes. It
 // injects a stylesheet and adjusts iframe dimensions with style attributes, so
 // keep the required inline-style exception route-scoped.

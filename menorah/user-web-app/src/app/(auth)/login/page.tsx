@@ -52,6 +52,8 @@ export default function LoginPage() {
     const res = await login(data.email, data.password);
     if (res.needsVerification) {
       router.push('/verify-otp');
+    } else if (res.requiresProfileCompletion) {
+      router.replace('/complete-profile');
     } else if (res.success) {
       router.push('/discover');
     } else {

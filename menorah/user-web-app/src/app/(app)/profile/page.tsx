@@ -52,7 +52,7 @@ export default function ProfilePage() {
             </Badge>
           </div>
           <p className="text-white/80 text-sm mt-0.5 truncate">{user.email}</p>
-          <p className="text-white/65 text-xs mt-0.5">{user.phone}</p>
+          {user.phone ? <p className="text-white/65 text-xs mt-0.5">{user.phone}</p> : null}
           <div className="flex gap-2 mt-2">
             {user.isEmailVerified && <Badge variant="success" size="sm">Email verified</Badge>}
             {user.isPhoneVerified && <Badge variant="success" size="sm">Phone verified</Badge>}

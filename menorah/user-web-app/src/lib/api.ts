@@ -196,6 +196,10 @@ class ApiClient {
     return this.putFormData<{ user: User }>('/users/profile', formData);
   }
 
+  async completeProfile(phone: string): Promise<ApiResponse<{ user: User }>> {
+    return this.put<{ user: User }>('/users/profile/complete', { phone: phone.trim() });
+  }
+
   async updateAddress(data: User['address']): Promise<ApiResponse<{ user: User }>> {
     return this.put<{ user: User }>('/users/address', data);
   }

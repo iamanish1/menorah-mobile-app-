@@ -8,8 +8,8 @@ interface AuthContextValue {
   user: User | null;
   isAuthed: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; needsVerification?: boolean }>;
-  loginWithGoogle: (credential: string, intent: 'signin' | 'signup') => Promise<{ success: boolean; message?: string; isNewUser?: boolean; needsVerification?: boolean; requiresSignUp?: boolean }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; needsVerification?: boolean; requiresProfileCompletion?: boolean }>;
+  loginWithGoogle: (credential: string, intent: 'signin' | 'signup') => Promise<{ success: boolean; message?: string; isNewUser?: boolean; needsVerification?: boolean; requiresSignUp?: boolean; requiresProfileCompletion?: boolean }>;
   linkSocialProvider: (provider: 'google' | 'apple', providerToken: string, currentPassword: string) => Promise<{ success: boolean; message?: string }>;
   register: (data: RegisterData) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
@@ -99,7 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return { success: true, needsVerification: true, message: 'Please verify your email address.' };
       }
-      return { success: true };
+      return { success: true, requiresProfileCompletion: u.profileCompleted === false };
     }
     return { success: false, message: res.message };
   };
@@ -142,7 +142,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
       setUser(res.data.user);
-      return { success: true, isNewUser: res.data.isNewUser };
+      return {
+        success: true,
+        isNewUser: res.data.isNewUser,
+        requiresProfileCompletion: res.data.user.profileCompleted === false,
+      };
     }
     return { success: false, message: res.message };
   };

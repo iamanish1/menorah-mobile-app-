@@ -103,7 +103,7 @@ export function GoogleAuthButton({ mode, onError }: GoogleAuthButtonProps) {
               return;
             }
             if (result.success) {
-              router.push('/discover');
+              router.replace(result.requiresProfileCompletion ? '/complete-profile' : '/discover');
               return;
             }
             onError(result.message || 'Google sign-in failed. Please try again.');

@@ -39,7 +39,7 @@ const gotoAuthPage = async (page, url) => {
   // client effect runs, so use it as an interactive-ready marker before the
   // submit assertions exercise the application handler.
   const parsedUrl = new URL(url);
-  if (parsedUrl.origin === urls.app && parsedUrl.pathname === '/login') {
+  if (parsedUrl.origin === urls.app && ['/login', '/register'].includes(parsedUrl.pathname)) {
     await expect(page.locator('[id^="google-auth-"]')).toHaveAttribute('aria-busy', 'false');
   }
 
@@ -172,6 +172,48 @@ test.describe('authentication regressions', () => {
     await expect(page.getByRole('heading', { name: /create account/i })).toBeVisible();
     expect(socialIntent).toBe('signin');
     expect(sessionProbes, 'Google signup redirect must not reload or probe again').toBe(1);
+  });
+
+  test('new Google account goes directly to required profile completion', async ({ page }) => {
+    let socialIntent;
+    await installGoogleStub(page);
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/google')) {
+        socialIntent = route.request().postDataJSON().intent;
+        await json(route, 200, {
+          success: true,
+          data: {
+            isNewUser: true,
+            user: {
+              id: 'google-onboarding-qa-user',
+              firstName: 'Google',
+              lastName: 'User',
+              email: 'google-onboarding@example.test',
+              phone: null,
+              isEmailVerified: true,
+              isPhoneVerified: false,
+              profileCompleted: false,
+              role: 'user',
+            },
+          },
+        });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.app}/register`);
+    await page.getByRole('button', { name: /continue with google/i }).click();
+
+    await expect(page).toHaveURL(/\/complete-profile$/);
+    await expect(page.getByRole('heading', { name: 'Complete your profile' })).toBeVisible();
+    await expect(page.getByLabel('Account phone number')).toBeVisible();
+    expect(socialIntent).toBe('signup');
   });
 
   test('unverified patient login enters OTP flow without receiving a session', async ({ page }) => {
