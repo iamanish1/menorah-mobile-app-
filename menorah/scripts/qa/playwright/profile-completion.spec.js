@@ -4,6 +4,13 @@ const path = require('path');
 const appUrl = process.env.QA_APP_URL || 'https://app.menorah.me';
 const evidenceDir = process.env.QA_EVIDENCE_DIR;
 
+const waitForVisibleImages = (page) => expect.poll(
+  () => page.locator('img:visible').evaluateAll((images) => (
+    images.length > 0 && images.every((image) => image.complete && image.naturalWidth > 0)
+  )),
+  { message: 'visible onboarding images should finish loading' }
+).toBe(true);
+
 const json = (route, status, body) => route.fulfill({
   status,
   contentType: 'application/json',
@@ -172,10 +179,12 @@ test('incomplete user completes the phone step and returns to the intended booki
   expect(requests.completionRequests).toHaveLength(0);
 
   if (evidenceDir) {
+    await waitForVisibleImages(page);
     await page.screenshot({ path: path.join(evidenceDir, 'profile-completion-desktop.png'), fullPage: false });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: 'Complete your profile' })).toBeVisible();
+    await waitForVisibleImages(page);
     await page.screenshot({ path: path.join(evidenceDir, 'profile-completion-mobile.png'), fullPage: false });
     await page.setViewportSize({ width: 1280, height: 720 });
   }
