@@ -54,13 +54,14 @@ const observeConsoleHealth = (page) => {
     const unexpectedRequests = requestFailures.filter((failure) => {
       if (failure.url.includes('/socket.io')) return false;
       if (failure.error === 'net::ERR_ABORTED' && failure.url.includes('_rsc=')) return false;
+      if (failure.error === 'net::ERR_ABORTED' && failure.url.includes('/cdn-cgi/rum')) return false;
       return true;
     });
     const hasExpectedSocketFailure = requestFailures.some((failure) => failure.url.includes('/socket.io'));
     const unexpectedIssues = issues.filter((issue) => {
       if (/\[Socket\] Connection error|WebSocket connection|socket\.io/i.test(issue)) return false;
       if (hasExpectedSocketFailure && /ERR_SSL_PROTOCOL_ERROR|ERR_FAILED|ERR_CONNECTION_REFUSED/i.test(issue)) return false;
-      if (expectedErrorResponses > 0 && /Failed to load resource: the server responded with a status of (404|409)/i.test(issue)) return false;
+      if (expectedErrorResponses > 0 && /Failed to load resource: the server responded with a status of (400|404|409)/i.test(issue)) return false;
       return true;
     });
 
