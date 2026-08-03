@@ -32,15 +32,15 @@ describe('payment ingress proxy configuration', () => {
 
   test('forwards canonical booking and payout webhook hosts to their app profiles', () => {
     expect(readSiteBlock(caddyfile, 'http://{$API_WEB_DOMAIN}'))
-      .toContain('reverse_proxy api-web:8080');
+      .toContain('import upstream_proxy api-web:8080');
     expect(readSiteBlock(caddyfile, 'http://{$API_ADMIN_DOMAIN}'))
-      .toContain('reverse_proxy api-admin:8080');
+      .toContain('import upstream_proxy api-admin:8080');
   });
 
   test.each([
-    ['http://{$API_IOS_DOMAIN}', 'reverse_proxy api-ios:8080'],
-    ['http://{$API_ANDROID_DOMAIN}', 'reverse_proxy api-android:8080'],
-    ['http://{$API_WEB_DOMAIN}', 'reverse_proxy api-web:8080'],
+    ['http://{$API_IOS_DOMAIN}', 'import upstream_proxy api-ios:8080'],
+    ['http://{$API_ANDROID_DOMAIN}', 'import upstream_proxy api-android:8080'],
+    ['http://{$API_WEB_DOMAIN}', 'import upstream_proxy api-web:8080'],
   ])('routes other payment paths to the %s application profile', (siteLabel, proxy) => {
     const siteBlock = readSiteBlock(caddyfile, siteLabel);
 

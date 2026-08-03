@@ -151,6 +151,14 @@ const socialPostSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Optional for backward compatibility with Reels created before managed
+  // media metadata was recorded. New uploads persist the immutable storage
+  // record so backup/restore verification can link the database reference to
+  // the exact video bytes.
+  videoStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   videoMimeType: {
     type: String,
     default: ''

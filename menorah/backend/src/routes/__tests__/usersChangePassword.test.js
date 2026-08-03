@@ -156,9 +156,9 @@ describe('participant change-password', () => {
         currentPassword: 'CurrentPass1',
         newPassword: 'CurrentPass1',
       })
-      .expect(400);
+      .expect(409);
 
-    expect(response.body.message).toBe('New password must be different from current password');
+    expect(response.body.message).toBe('New password must be different from the current password');
     expect(user.passwordResetToken).toBe(originalResetToken);
     expect(user.passwordResetExpires).toBe(originalResetExpiry);
     expect(user.loginAttempts).toBe(originalLoginAttempts);

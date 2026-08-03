@@ -15,6 +15,59 @@ fail() {
   exit 1
 }
 
+run_checkout_callback_secret_validator() {
+  local script_path="$1"
+  local callback_secret="$2"
+  local jwt_secret="$3"
+  local validator
+
+  validator="$(sed -n '/^validate_checkout_callback_secret() {/,/^}/p' "${script_path}")"
+  [[ -n "${validator}" ]] \
+    || fail "checkout callback secret validator is missing from ${script_path}"
+
+  (
+    eval "${validator}"
+    CHECKOUT_CALLBACK_SECRET="${callback_secret}"
+    JWT_SECRET="${jwt_secret}"
+    JWT_REFRESH_SECRET="refresh_${jwt_secret}"
+    RAZORPAY_KEY_SECRET="razorpay_${jwt_secret}"
+    RAZORPAY_WEBHOOK_SECRET="webhook_${jwt_secret}"
+    RAZORPAY_WEBHOOK_SECRET_PREVIOUS=""
+    RAZORPAY_X_KEY_SECRET="payout_${jwt_secret}"
+    RAZORPAY_X_WEBHOOK_SECRET="payout_webhook_${jwt_secret}"
+    RESEND_WEBHOOK_SECRET="resend_${jwt_secret}"
+    validate_checkout_callback_secret
+  )
+}
+
+test_checkout_callback_secret_guards() {
+  local valid_secret="callback_$(printf 'a%.0s' {1..72})"
+  local other_secret="jwt_$(printf 'b%.0s' {1..72})"
+  local script_path
+
+  for script_path in \
+    "${REPO_ROOT}/deploy/ubuntu/update-from-git.sh" \
+    "${REPO_ROOT}/deploy/ubuntu/first-run.sh"; do
+    run_checkout_callback_secret_validator \
+      "${script_path}" "${valid_secret}" "${other_secret}" >/dev/null \
+      || fail "${script_path} rejected an independent strong callback secret"
+
+    if run_checkout_callback_secret_validator \
+      "${script_path}" "short" "${other_secret}" >/dev/null 2>&1; then
+      fail "${script_path} accepted a short callback secret"
+    fi
+    if run_checkout_callback_secret_validator \
+      "${script_path}" "replace_with_$(printf 'x%.0s' {1..72})" \
+      "${other_secret}" >/dev/null 2>&1; then
+      fail "${script_path} accepted a placeholder callback secret"
+    fi
+    if run_checkout_callback_secret_validator \
+      "${script_path}" "${other_secret}" "${other_secret}" >/dev/null 2>&1; then
+      fail "${script_path} accepted a callback secret reused as JWT_SECRET"
+    fi
+  done
+}
+
 test_backup_runs_as_host_user() {
   local mock_bin="${TMP_ROOT}/bin"
   local backup_root="${TMP_ROOT}/backups"
@@ -809,7 +862,7 @@ test_resume_accepts_proven_applied_interruption() {
   local real_git
   local output
   local -a services=(
-    landing-page user-web-app web-app admin-panel api-ios api-android api-web api-admin worker
+    app-link-associations landing-page user-web-app web-app admin-panel api-ios api-android api-web api-admin worker
     reverse-proxy livekit cloudflared prometheus alertmanager blackbox-exporter
     mongodb-exporter redis-exporter node-exporter backup-metrics grafana uptime-kuma
     docker-metrics-gateway docker-stats-exporter log-collector loki
@@ -1010,7 +1063,10 @@ run_release_environment_validator() {
   local topology_variant="${11:-valid}"
   local validator
 
-  validator="$(sed -n '/^validate_release_environment() {/,/^}/p' "${script_path}")"
+  validator="$(
+    sed -n '/^validate_android_app_link_release_config() {/,/^}/p' "${script_path}"
+    sed -n '/^validate_release_environment() {/,/^}/p' "${script_path}"
+  )"
   [[ -n "${validator}" ]] \
     || fail "release environment validator is missing from ${script_path}"
 
@@ -1051,6 +1107,8 @@ run_release_environment_validator() {
     NEXT_PUBLIC_RAZORPAY_KEY_ID="rzp_test_A1b2C3d4E5f6G7"
     PASSWORD_RESET_BASE_URL="${reset_origin}"
     CHECKOUT_RETURN_URL="https://${APP_DOMAIN}/checkout/callback"
+    ANDROID_APP_LINK_PACKAGE_NAME="com.menorah.healthmobile"
+    ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS="AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA"
     PASSWORD_RESET_URL_TEMPLATE="${reset_template}"
     APPLE_SIGN_IN_ENABLED="${apple_enabled}"
     APPLE_IOS_BUNDLE_ID="${apple_bundle_id}"
@@ -1119,6 +1177,10 @@ run_release_environment_validator() {
         else
           CHECKOUT_RETURN_URL="https://app.staging.example.com/checkout/callback"
         fi
+        ;;
+      android-package) ANDROID_APP_LINK_PACKAGE_NAME="com.example.wrong" ;;
+      android-fingerprint)
+        ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS="aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa"
         ;;
       email-domain) MENORAH_STAGING_EMAIL_DOMAIN="mail.menorah.me" ;;
       email-contact) CONTACT_TO_EMAIL="menorahenquiries@gmail.com" ;;
@@ -1211,6 +1273,14 @@ test_release_environment_guards() {
       >/dev/null 2>&1; then
       fail "$(basename "${script_path}") allowed Apple sign-in to be disabled in production"
     fi
+    for topology_variant in android-package android-fingerprint; do
+      if run_release_environment_validator \
+        "${script_path}" "production" "https://app.menorah.me" "true" \
+        "com.menorah.health.app" "A1B2C3D4E5" "F6G7H8I9J0" "${complete_private_key}" \
+        "production" "" "${topology_variant}" >/dev/null 2>&1; then
+        fail "$(basename "${script_path}") accepted invalid Android App Link ${topology_variant}"
+      fi
+    done
 
     run_release_environment_validator \
       "${script_path}" "staging" "https://app.staging.example.com" "false" \
@@ -1319,6 +1389,7 @@ test_first_run_rejects_dangling_release_state() {
     || fail "bootstrap did not fail closed on dangling deployment state"
 }
 
+test_checkout_callback_secret_guards
 test_backup_runs_as_host_user
 test_backup_rejects_database_scoped_oplog_uri
 test_post_migration_rollback_is_blocked

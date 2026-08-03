@@ -8,6 +8,21 @@ ENV_FILE="${PRODUCTION_ENV:-${DEPLOY_DIR}/env/production.env}"
 CLOUDFLARE_ENV="${CLOUDFLARE_ENV:-${DEPLOY_DIR}/env/cloudflare.env}"
 IMAGE_MANIFEST="${MENORAH_RELEASE_IMAGE_MANIFEST:?MENORAH_RELEASE_IMAGE_MANIFEST is required}"
 IMAGE_CHECKSUM="${IMAGE_MANIFEST}.sha256"
+EXPECTED_PENDING_MIGRATIONS="20260802-booking-active-slot-index.js,20260802-psychometric-assessment-indexes.js,20260803-android-push-notification-indexes.js"
+MODE="${1:-apply}"
+
+case "${MODE}" in
+  apply)
+    MIGRATION_PLAN_ONLY=false
+    ;;
+  plan-only)
+    MIGRATION_PLAN_ONLY=true
+    ;;
+  *)
+    echo "Usage: run-recorded-migration.sh [apply|plan-only]" >&2
+    exit 64
+    ;;
+esac
 
 fail() {
   echo "Recorded migration launch failed: $*" >&2
@@ -63,7 +78,10 @@ resolved_reference_id="$(docker image inspect --format '{{.Id}}' "${image_refere
 [[ "${resolved_reference_id}" == "${image_id}" ]] \
   || fail "api-web build tag drifted after artifact capture; migration was not started"
 
-MENORAH_MIGRATION_IMAGE_ID="${image_id}" docker compose \
+MENORAH_MIGRATION_IMAGE_ID="${image_id}" \
+MENORAH_EXPECTED_PENDING_MIGRATIONS="${EXPECTED_PENDING_MIGRATIONS}" \
+MENORAH_MIGRATION_PLAN_ONLY="${MIGRATION_PLAN_ONLY}" \
+docker compose \
   -f "${DEPLOY_DIR}/docker-compose.production.yml" \
   -f "${DEPLOY_DIR}/docker-compose.tunnel.yml" \
   -f "${DEPLOY_DIR}/docker-compose.migration.yml" \

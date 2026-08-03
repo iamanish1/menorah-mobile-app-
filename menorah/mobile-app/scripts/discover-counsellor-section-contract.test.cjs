@@ -11,6 +11,11 @@ test("Discover replaces static session cards with the mobile counsellor director
   const discover = read("src/screens/discover/DiscoverModern.tsx");
 
   assert.match(discover, /<MobileCounsellorDiscovery/);
+  assert.match(discover, /useCounsellors\(\{/);
+  assert.match(discover, /CounsellorProfile", \{ counsellorId: c\.id \}/);
+  assert.doesNotMatch(discover, /mockCounsellors|@\/mock\/counsellors/);
+  assert.doesNotMatch(discover, /\bINSTA\b|@\/mock\/instagram/);
+  assert.doesNotMatch(discover, /title="Community updates"/);
   assert.doesNotMatch(discover, /<IOSSectionHeader title="Session types"/);
   assert.doesNotMatch(discover, /title="Find support"/);
   assert.doesNotMatch(discover, /title="Book session"/);

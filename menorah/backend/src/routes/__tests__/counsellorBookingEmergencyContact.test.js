@@ -1,5 +1,11 @@
 const express = require('express');
 const request = require('supertest');
+const {
+  installCounsellorVerificationTestConfig,
+  withCurrentProfessionalApproval,
+} = require('../../testUtils/counsellorVerification');
+
+installCounsellorVerificationTestConfig();
 
 const counsellorUserId = '64f000000000000000000001';
 const counsellorId = '64f000000000000000000010';
@@ -18,6 +24,7 @@ jest.mock('../../middleware/auth', () => ({
       _id: counsellorUserId,
       role: 'counsellor',
       gender: 'female',
+      isActive: true,
     };
     next();
   },
@@ -94,6 +101,19 @@ const makeBooking = (overrides = {}) => ({
   counsellor: counsellorId,
   status: 'confirmed',
   paymentStatus: 'paid',
+  paymentMethod: 'razorpay',
+  paymentId: 'pay_test_123',
+  razorpayOrderId: 'order_test_123',
+  transactionId: 'order_test_123',
+  orderStatus: 'paid',
+  amountMinor: 100000,
+  pricing: { listAmountMinor: 100000, currency: 'INR' },
+  bookingAuthorization: {
+    kind: 'payment',
+    status: 'authorized',
+    reference: 'pay_test_123',
+    authorizedAt: new Date(),
+  },
   sessionType: 'video',
   sessionDuration: 60,
   scheduledAt: new Date(Date.now() + 60 * 60 * 1000),
@@ -105,12 +125,15 @@ const makeBooking = (overrides = {}) => ({
 
 describe('counsellor emergency-contact access', () => {
   beforeEach(() => {
-    mockCounsellorFindOne.mockReset().mockResolvedValue({
+    mockCounsellorFindOne.mockReset().mockResolvedValue(withCurrentProfessionalApproval({
       _id: counsellorId,
+      user: counsellorUserId,
       isActive: true,
+      isAvailable: true,
+      status: 'approved',
       profileImage: 'https://cdn.example.com/counsellor.jpg',
       voiceIntroUrl: 'https://cdn.example.com/intro.webm',
-    });
+    }));
     mockBookingFindOne.mockReset();
     mockBookingFindById.mockReset();
     mockBookingFind.mockReset();
@@ -119,17 +142,18 @@ describe('counsellor emergency-contact access', () => {
 
   test('returns the current user profile contact in an assigned booking detail', async () => {
     const assignedQuery = buildQuery(makeBooking());
+    mockBookingFindById.mockReturnValueOnce(buildQuery(makeBooking()));
     mockBookingFindOne.mockReturnValueOnce(assignedQuery);
 
     const response = await request(buildApp())
       .get(`/api/counsellors/me/bookings/${bookingId}`)
       .expect(200);
 
-    expect(mockBookingFindOne).toHaveBeenCalledWith({
+    expect(mockBookingFindOne).toHaveBeenCalledWith(expect.objectContaining({
       _id: bookingId,
       counsellor: counsellorId,
-      status: { $ne: 'cancelled' },
-    });
+      $or: expect.any(Array),
+    }));
     expect(assignedQuery.populate).toHaveBeenCalledWith(expect.objectContaining({
       path: 'user',
       select: expect.stringContaining('emergencyContact'),
@@ -140,35 +164,25 @@ describe('counsellor emergency-contact access', () => {
   });
 
   test('does not load or return emergency contact for an unassigned booking detail', async () => {
-    const assignedQuery = buildQuery(null);
     const unassignedQuery = buildQuery(makeBooking({ counsellor: null }));
-    mockBookingFindOne
-      .mockReturnValueOnce(assignedQuery)
-      .mockReturnValueOnce(unassignedQuery);
+    mockBookingFindById.mockReturnValueOnce(unassignedQuery);
 
     const response = await request(buildApp())
       .get(`/api/counsellors/me/bookings/${bookingId}`)
       .expect(200);
 
-    expect(unassignedQuery.populate).toHaveBeenCalledWith(expect.objectContaining({
-      path: 'user',
-      select: expect.not.stringContaining('emergencyContact'),
-    }));
-    expect(unassignedQuery.select).toHaveBeenCalledWith('-emergencyContact');
+    expect(mockBookingFindOne).not.toHaveBeenCalled();
     expect(response.body.data.booking).not.toHaveProperty('emergencyContact');
   });
 
   test('returns no booking data when the booking belongs to another counsellor', async () => {
-    mockBookingFindOne
-      .mockReturnValueOnce(buildQuery(null))
-      .mockReturnValueOnce(buildQuery(null));
     mockBookingFindById.mockReturnValue(buildQuery(makeBooking({
       counsellor: '64f000000000000000000099',
     })));
 
     const response = await request(buildApp())
       .get(`/api/counsellors/me/bookings/${bookingId}`)
-      .expect(403);
+      .expect(404);
 
     expect(response.body).not.toHaveProperty('data');
     expect(JSON.stringify(response.body)).not.toContain(currentEmergencyContact.phone);
@@ -188,7 +202,12 @@ describe('counsellor emergency-contact access', () => {
 
     expect(response.body.data.bookings).toHaveLength(1);
     expect(response.body.data.bookings[0]).not.toHaveProperty('emergencyContact');
-    expect(listQuery.select).toHaveBeenCalledWith('-emergencyContact');
+    if (url.endsWith('/pending')) {
+      const projection = listQuery.select.mock.calls[0][0];
+      expect(projection).not.toMatch(/emergencyContact|\buser\b/);
+    } else {
+      expect(listQuery.select).toHaveBeenCalledWith('-emergencyContact');
+    }
     expect(JSON.stringify(response.body)).not.toContain(currentEmergencyContact.phone);
     expect(JSON.stringify(response.body)).not.toContain(legacyBookingContact.phone);
   });

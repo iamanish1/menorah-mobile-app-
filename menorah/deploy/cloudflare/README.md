@@ -256,7 +256,7 @@ CHECK_PUBLIC=true bash ubuntu/health-check.sh
 # Before an internal/native mobile rollout, require the signed association
 # files as well (they intentionally return 404 until identifiers are set).
 # This checks all declared iOS/Android hosts and fails if any path redirects.
-CHECK_PUBLIC=true CHECK_NATIVE_APP_LINKS=true bash ubuntu/health-check.sh
+CHECK_PUBLIC=true CHECK_ANDROID_APP_LINKS=true bash ubuntu/health-check.sh
 ```
 
 For a remotely managed tunnel, an operator with a minimally scoped read-only

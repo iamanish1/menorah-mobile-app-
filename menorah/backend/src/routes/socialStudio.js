@@ -202,13 +202,6 @@ const EXTENSION_BY_MIME = new Map([
   ['font/woff2', '.woff2'],
 ]);
 
-const saveLocalVideo = async (file, filename) => {
-  const uploadDir = path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads', 'social-studio-videos');
-  await fs.mkdir(uploadDir, { recursive: true });
-  await fs.writeFile(path.join(uploadDir, filename), file.buffer);
-  return `${getPublicBaseUrl()}/uploads/social-studio-videos/${filename}`;
-};
-
 const saveUploadedAsset = async (file) => {
   const originalExtension = path.extname(file.originalname || '').toLowerCase();
   const extension = EXTENSION_BY_MIME.get(file.mimetype)
@@ -233,29 +226,24 @@ const saveUploadedAsset = async (file) => {
 };
 
 const saveUploadedVideo = async (file) => {
-  const safeName = `${Date.now()}-${file.originalname}`.replace(/[^A-Za-z0-9_.-]/g, '-');
-  if (shouldUseCloudinaryForSocialStudio()) {
-    const result = await uploadBuffer(file.buffer, {
-      folder: process.env.CLOUDINARY_SOCIAL_STUDIO_VIDEO_FOLDER || 'menorah/social-studio-videos',
-      resource_type: 'video',
-      public_id: safeName.replace(/\.[^.]+$/, '')
-    });
-    return {
-      url: result.secure_url,
-      publicId: result.public_id,
-      filename: safeName
-    };
-  }
+  const extension = file.mimetype === 'video/quicktime' ? '.mov' : '.mp4';
+  const stored = await storeMediaBuffer(file.buffer, {
+    service: 'social-studio',
+    category: 'reel-videos',
+    extension,
+    contentType: file.mimetype,
+    cloudinaryFolder:
+      process.env.CLOUDINARY_SOCIAL_STUDIO_VIDEO_FOLDER
+      || 'menorah/social-studio-videos',
+    cloudinaryResourceType: 'video',
+  });
 
-  // api-admin stores uploads on its own volume in the production Compose
-  // deployment. Do not create a Reel that looks publishable when another
-  // service/proxy cannot reliably serve its bytes to Meta.
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('Production Reel uploads require Cloudinary video hosting');
-  }
-
-  const url = await saveLocalVideo(file, safeName);
-  return { url, publicId: '', filename: safeName };
+  return {
+    url: stored.url,
+    publicId: stored.metadata.publicId || '',
+    filename: path.basename(stored.metadata.objectKey),
+    metadata: stored.metadata,
+  };
 };
 
 const getImageDimensions = async (file) => {
@@ -804,6 +792,7 @@ router.post('/posts/video', videoUploadLimiter, handleVideoUpload, [
       aspectRatio: '9:16',
       videoUrl: uploaded.url,
       videoPublicId: uploaded.publicId,
+      videoStorage: uploaded.metadata,
       videoMimeType: req.file.mimetype,
       videoSizeBytes: req.file.size,
       qualityScore: 0,

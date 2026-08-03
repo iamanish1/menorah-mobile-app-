@@ -218,9 +218,11 @@ const selectSessionLeanQuery = (value) => {
 };
 
 const populateLeanQuery = (value) => {
-  const lean = jest.fn(async () => value);
-  const populate = jest.fn(() => ({ lean }));
-  return { query: { populate }, populate, lean };
+  const query = {};
+  query.select = jest.fn(() => query);
+  query.populate = jest.fn(() => query);
+  query.lean = jest.fn(async () => value);
+  return { query, select: query.select, populate: query.populate, lean: query.lean };
 };
 
 const selectQuery = (value) => ({
@@ -443,6 +445,7 @@ describe('counsellor booking marketplace authorization boundary', () => {
         phone: '+919999999999',
         profileImage: 'https://media.example.test/private.jpg',
         gender: 'female',
+        emergencyContact: { name: 'Family Member', relationship: 'Sibling', phone: '+918888888888' },
       },
       symptoms: ['insomnia'],
       concerns: ['panic attacks'],
@@ -482,9 +485,10 @@ describe('counsellor booking marketplace authorization boundary', () => {
         { $eq: ['$amountMinor', '$pricing.listAmountMinor'] },
       ]),
     });
+    expect(fullBookingQuery.select).toHaveBeenCalledWith('-emergencyContact');
     expect(fullBookingQuery.populate).toHaveBeenCalledWith({
       path: 'user',
-      select: 'firstName lastName email phone profileImage gender',
+      select: 'firstName lastName email phone profileImage gender emergencyContact',
     });
   });
 

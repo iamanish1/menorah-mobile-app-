@@ -33,7 +33,7 @@ const externalTopology = (port = '') => {
     LIVEKIT_API_URL: 'http://staging-livekit:7880',
     PASSWORD_RESET_BASE_URL: httpsOrigin(stagingHosts.APP_DOMAIN),
     CHECKOUT_RETURN_URL:
-      `${httpsOrigin(stagingHosts.APP_DOMAIN)}/checkout/return`,
+      `${httpsOrigin(stagingHosts.APP_DOMAIN)}/checkout/callback`,
     FRONTEND_COUNSELLOR_URL:
       httpsOrigin(stagingHosts.COUNSELLOR_DOMAIN),
     FRONTEND_API_WEB_URL:

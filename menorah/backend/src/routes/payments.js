@@ -99,11 +99,14 @@ const sendSubscriptionUnavailable = (res) => res.status(503).json({
 });
 
 const getCheckoutReturnUrl = () => {
+  // Despite the historical variable name, this is the provider-facing server
+  // callback. The web app seals Razorpay fields at /checkout/callback before
+  // redirecting the browser to the user-facing /checkout/return page.
   const configuredReturnUrl = String(process.env.CHECKOUT_RETURN_URL || '').trim();
   if (process.env.NODE_ENV === 'production' && !configuredReturnUrl) {
     throw new Error('CHECKOUT_RETURN_URL is required in production');
   }
-  return configuredReturnUrl || 'https://app.menorah.me/checkout/return';
+  return configuredReturnUrl || 'https://app.menorah.me/checkout/callback';
 };
 
 const buildCheckoutResponse = ({

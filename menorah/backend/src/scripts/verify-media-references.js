@@ -57,6 +57,8 @@ const loadDocuments = async (database) => ({
     finalImageStorage: 1,
     thumbnailUrl: 1,
     thumbnailStorage: 1,
+    videoUrl: 1,
+    videoStorage: 1,
   }),
   articles: await readCollection(database, 'articles', {
     coverImageUrl: 1,

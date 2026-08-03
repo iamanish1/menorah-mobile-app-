@@ -144,8 +144,8 @@ export default function Settings({ navigation }: any) {
             } catch (error) {
               reportError('settings.logout_failed', error);
               Alert.alert(
-                'Signed Out Securely',
-                'Credential cleanup is still pending and will be retried before another sign-in.',
+                'Sign-out incomplete',
+                'Menorah could not remove the saved credential from this device. Restart the app and try signing out again before another person uses it.',
               );
             }
           }
@@ -561,7 +561,7 @@ export default function Settings({ navigation }: any) {
             />
             <SettingItem
               title="Community Guidelines"
-              subtitle="Safety rules for chat and peer support"
+              subtitle="Safety rules for counsellor chat"
               icon={Users}
               onPress={() => navigation.navigate("Legal", { type: 'community' })}
               colors={colors}

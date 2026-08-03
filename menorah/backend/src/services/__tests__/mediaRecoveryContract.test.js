@@ -119,6 +119,99 @@ describe('media backup and database-reference contract', () => {
     );
   });
 
+  test('verifies a locally hosted Social Studio Reel against its immutable bytes', async () => {
+    const relativePath = 'social-studio/reel-videos/fixture.mp4';
+    const bytes = Buffer.from('immutable-social-reel');
+    await fs.mkdir(path.join(root, 'social-studio', 'reel-videos'), { recursive: true });
+    await fs.writeFile(path.join(root, ...relativePath.split('/')), bytes);
+    const manifest = await createMediaManifest(root, {
+      createdAt: '2026-08-03T00:00:00.000Z',
+    });
+    const entry = manifest.entries.find((candidate) => candidate.path === relativePath);
+    const videoStorage = {
+      storageVersion: 1,
+      backend: 'local',
+      service: 'social-studio',
+      objectKey: relativePath,
+      sha256: entry.sha256,
+      sizeBytes: entry.sizeBytes,
+      contentType: 'video/mp4',
+      localPath: relativePath,
+      publicId: null,
+    };
+
+    const report = await verifyMediaReferences({
+      root,
+      manifest,
+      requireLocalManaged: true,
+      documents: {
+        socialPosts: [{
+          _id: 'social-post-1',
+          postType: 'reel',
+          videoUrl: `https://media.example.test/uploads/${relativePath}`,
+          videoStorage,
+        }],
+      },
+    });
+
+    expect(report).toEqual(expect.objectContaining({
+      valid: true,
+      referenceCount: 1,
+      localReferenceCount: 1,
+      cloudinaryReferenceCount: 0,
+      externalReferenceCount: 0,
+    }));
+  });
+
+  test('keeps a legacy externally hosted Reel as an external reference', async () => {
+    const fixture = await createFixture();
+    const report = await verifyMediaReferences({
+      root,
+      manifest: fixture.manifest,
+      requireLocalManaged: true,
+      documents: {
+        socialPosts: [{
+          _id: 'legacy-social-post',
+          postType: 'reel',
+          videoUrl: 'https://video.example.test/reels/legacy.mp4',
+        }],
+      },
+    });
+
+    expect(report).toEqual(expect.objectContaining({
+      valid: true,
+      referenceCount: 1,
+      localReferenceCount: 0,
+      cloudinaryReferenceCount: 0,
+      externalReferenceCount: 1,
+      externalOrigins: ['https://video.example.test'],
+    }));
+  });
+
+  test.each([
+    'https://media.example.test/uploads/social-studio/reel-videos/legacy.mp4',
+    'https://res.cloudinary.com/menorah/video/upload/legacy.mp4',
+  ])('rejects a managed legacy Reel without immutable metadata: %s', async (videoUrl) => {
+    const fixture = await createFixture();
+    const report = await verifyMediaReferences({
+      root,
+      manifest: fixture.manifest,
+      documents: {
+        socialPosts: [{
+          _id: 'legacy-managed-social-post',
+          postType: 'reel',
+          videoUrl,
+        }],
+      },
+    });
+
+    expect(report.valid).toBe(false);
+    expect(report.referenceCount).toBe(1);
+    expect(report.violations).toEqual([
+      'socialposts/legacy-managed-social-post.videoUrl is managed media without immutable storage metadata',
+    ]);
+  });
+
   test.each([
     {
       name: 'missing metadata',

@@ -37,6 +37,7 @@ jest.mock('../../utils/sessionLifecycle', () => ({
 
 jest.mock('../../config/webSessions', () => ({
   clearMappedSessionCookie: jest.fn(),
+  getWebSessionForRequest: jest.fn(() => null),
   isCookieTransportRequested: jest.fn(() => false),
   setSessionCookieForRequest: jest.fn(),
 }));
@@ -172,6 +173,7 @@ describe('role-aware forgot-password delivery', () => {
 
       expect(mockFindOne).toHaveBeenCalledWith({
         email: user.email,
+        isActive: true,
         role: { $in: ['user', 'counsellor'] },
       });
       expect(select).toHaveBeenCalledWith('+passwordResetToken +passwordResetExpires');
@@ -204,6 +206,7 @@ describe('role-aware forgot-password delivery', () => {
     });
     expect(mockFindOne).toHaveBeenCalledWith({
       email: 'admin-or-missing@example.com',
+      isActive: true,
       role: { $in: ['user', 'counsellor'] },
     });
     expect(select).toHaveBeenCalledWith('+passwordResetToken +passwordResetExpires');

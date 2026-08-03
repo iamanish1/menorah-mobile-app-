@@ -12,13 +12,14 @@ class ExpoPushError extends Error {
   }
 }
 
-const pushHeaders = () => ({
-  Accept: 'application/json',
-  'Content-Type': 'application/json',
-  ...(process.env.EXPO_PUSH_ACCESS_TOKEN
-    ? { Authorization: `Bearer ${process.env.EXPO_PUSH_ACCESS_TOKEN}` }
-    : {}),
-});
+const pushHeaders = () => {
+  const accessToken = String(process.env.EXPO_PUSH_ACCESS_TOKEN || '').trim();
+  return {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+};
 
 const postExpo = async (url, body, { fetchImpl = global.fetch } = {}) => {
   if (typeof fetchImpl !== 'function') {

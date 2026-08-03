@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Animated,
   FlatList,
-  Linking,
   Text,
   TextInput,
   TouchableOpacity,
@@ -18,7 +17,6 @@ import {
   CreditCard,
   FileText,
   HeartPulse,
-  Instagram,
   MessageCircle,
   Search,
   Settings,
@@ -44,8 +42,7 @@ import {
 } from "@/components/ios";
 import { discoverScrollY } from "@/components/ios/iosScrollSignals";
 import { useArticles } from "@/hooks/useArticles";
-import { INSTA } from "@/mock/instagram";
-import { mockCounsellors } from "@/mock/counsellors";
+import { useCounsellors } from "@/hooks/useQueries";
 import { SUBSCRIPTION_PLANS } from "@/screens/subscription/subscriptionPlans";
 import { useNotifications } from "@/state/useNotifications";
 import type { Article } from "@/types/article";
@@ -152,6 +149,17 @@ export default function Discover({ navigation }: any) {
     () => articlesData?.articles || [],
     [articlesData?.articles],
   );
+  const {
+    data: counsellorsData,
+    isLoading: counsellorsLoading,
+  } = useCounsellors({
+    search: isSearching ? trimmedQuery : undefined,
+    limit: isSearching ? 30 : 8,
+  });
+  const counsellors = useMemo(
+    () => counsellorsData?.counsellors || [],
+    [counsellorsData?.counsellors],
+  );
 
   const openArticle = useCallback(
     (article: Article) => {
@@ -226,45 +234,21 @@ export default function Discover({ navigation }: any) {
       onPress: () => openArticle(article),
     }));
 
-    const socialResults = filterResults(
-      INSTA.map((post) => ({
-        id: `instagram-${post.id}`,
-        badge: "INSTAGRAM",
-        title: "Community update",
-        subtitle: post.caption || "Open this Instagram update.",
-        keywords: [
-          "instagram",
-          "insta",
-          "post",
-          "posts",
-          "psot",
-          "psots",
-          "update",
-          "updates",
-          "community",
-          "social",
-          post.platform,
-          post.caption,
-        ],
-        Icon: Instagram,
-        onPress: () => Linking.openURL(post.url),
-      })),
-    );
-
     const counsellorResults = filterResults(
-      mockCounsellors.map((c) => ({
+      counsellors.map((c) => ({
         id: `counsellor-${c.id}`,
         badge: "COUNSELLOR",
         title: c.name,
-        subtitle: `${c.specialization} - ${c.language}`,
+        subtitle: `${c.specialization || "Counsellor"}${c.languages?.length ? ` - ${c.languages.join(", ")}` : ""}`,
         keywords: [
           c.name,
           c.specialization,
-          c.language,
           c.languages,
-          c.location,
           c.specializations,
           c.availability,
+          c.hourlyRate,
+          c.currency,
+          c.isAvailable ? "available" : "unavailable",
           "counsellor",
           "counselor",
           "therapist",
@@ -273,9 +257,7 @@ export default function Discover({ navigation }: any) {
         ],
         Icon: Users,
         onPress: () =>
-          navigation.navigate("CounsellorList", {
-            initialSearch: trimmedQuery,
-          }),
+          navigation.navigate("CounsellorProfile", { counsellorId: c.id }),
       })),
     );
 
@@ -505,12 +487,12 @@ export default function Discover({ navigation }: any) {
     return [
       { title: "Subscriptions", results: subscriptionResults },
       { title: "Articles", results: articleResults },
-      { title: "Community updates", results: socialResults },
       { title: "Counsellors", results: counsellorResults },
       { title: "App features", results: featureResults },
     ].filter((group) => group.results.length > 0);
   }, [
     articles,
+    counsellors,
     isSearching,
     navigation,
     normalizedQuery,
@@ -525,7 +507,7 @@ export default function Discover({ navigation }: any) {
   const searchResultSummary = getSearchResultSummary(
     totalResults,
     trimmedQuery,
-    articlesLoading,
+    articlesLoading || counsellorsLoading,
   );
   const headerFullHeight =
     insets.top + iosTheme.spacing.xl + 68 + iosTheme.spacing.lg;
@@ -669,7 +651,7 @@ export default function Discover({ navigation }: any) {
             <TextInput
               value={q}
               onChangeText={setQ}
-              placeholder="Search plans, posts, articles, features"
+              placeholder="Search counsellors, plans, articles, features"
               placeholderTextColor={iosTheme.colors.textMuted}
               autoCapitalize="none"
               autoCorrect={false}
@@ -747,8 +729,8 @@ export default function Discover({ navigation }: any) {
                     { marginTop: iosTheme.spacing.sm },
                   ]}
                 >
-                  Counsellors, bookings, subscriptions, Instagram, face check,
-                  chat, articles, anxiety, or stress.
+                  Counsellors, bookings, subscriptions, face check, chat,
+                  articles, anxiety, or stress.
                 </Text>
               </IOSCard>
             ) : null}
@@ -773,7 +755,7 @@ export default function Discover({ navigation }: any) {
 
             <IOSChatBanner
               title="Chat with us"
-              subtitle="Speak with a trained clinical psychology student or another man just like you in a safe space."
+              subtitle="Use secure chat with your assigned counsellor around your booking."
               onPress={() => navigation.navigate("Chat")}
               style={{ marginTop: iosTheme.spacing.xl }}
             />
@@ -869,55 +851,6 @@ export default function Discover({ navigation }: any) {
               />
             </View>
 
-            <IOSSectionHeader
-              title="Community updates"
-              actionLabel="Instagram"
-              onPress={() =>
-                Linking.openURL("https://www.instagram.com/wearemenorah")
-              }
-            />
-            <FlatList
-              data={INSTA}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{
-                paddingRight: iosTheme.layout.screenPadding,
-              }}
-              renderItem={({ item }) => (
-                <IOSCard
-                  onPress={() => Linking.openURL(item.url)}
-                  style={{
-                    width: 236,
-                    minHeight: 154,
-                    marginRight: iosTheme.spacing.lg,
-                  }}
-                >
-                  <BookOpen
-                    size={20}
-                    color={iosTheme.colors.primary}
-                    strokeWidth={2.2}
-                  />
-                  <Text
-                    style={[
-                      iosTheme.typography.caption,
-                      { marginTop: iosTheme.spacing.md },
-                    ]}
-                  >
-                    INSTAGRAM
-                  </Text>
-                  <Text
-                    style={[
-                      iosTheme.typography.body,
-                      { marginTop: iosTheme.spacing.xs },
-                    ]}
-                    numberOfLines={4}
-                  >
-                    {item.caption}
-                  </Text>
-                </IOSCard>
-              )}
-            />
           </View>
         )}
       </IOSScreen>

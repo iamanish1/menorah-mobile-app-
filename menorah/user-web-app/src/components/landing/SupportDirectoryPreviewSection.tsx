@@ -451,7 +451,7 @@ function getFeeCopy(counsellor: Counsellor) {
   const hourlyRate = toFiniteNumber(counsellor.hourlyRate);
 
   if (hourlyRate <= 0) {
-    return { label: "Free", unit: "Per session" };
+    return { label: "Rate unavailable", unit: "Check profile" };
   }
 
   try {

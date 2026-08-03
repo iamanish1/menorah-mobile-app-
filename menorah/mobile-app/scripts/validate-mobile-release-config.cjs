@@ -117,11 +117,19 @@ function validateProject(root = projectRoot) {
   const eas = readJson(root, 'eas.json');
   const appConfig = read(root, 'app.config.ts');
   const envSource = read(root, 'src/lib/env.ts');
+  const androidRootGradle = read(root, 'android/build.gradle');
   const androidGradle = read(root, 'android/app/build.gradle');
+  const androidGradleProperties = read(root, 'android/gradle.properties');
   const androidManifest = read(root, 'android/app/src/main/AndroidManifest.xml');
   const androidStrings = read(root, 'android/app/src/main/res/values/strings.xml');
   const androidStyles = read(root, 'android/app/src/main/res/values/styles.xml');
   const androidColors = read(root, 'android/app/src/main/res/values/colors.xml');
+  const notificationIcon = read(
+    root,
+    'android/app/src/main/res/drawable/notification_icon.xml'
+  );
+  const notificationIconSource = read(root, 'assets/notification-icon-source.svg');
+  const notificationIconPng = readFileSync(join(root, 'assets/notification-icon.png'));
   const mainActivity = read(
     root,
     'android/app/src/main/java/com/menorah/healthmobile/MainActivity.kt'
@@ -159,6 +167,13 @@ function validateProject(root = projectRoot) {
   const socialAuthButtons = read(root, 'src/components/auth/SocialAuthButtons.tsx');
   const changePassword = read(root, 'src/screens/profile/ChangePassword.tsx');
   const safeDiagnostics = read(root, 'src/lib/safeDiagnostics.ts');
+  const googleServicesHook = read(root, 'scripts/prepare-google-services.cjs');
+  const googleServicesCleanup = read(root, 'scripts/cleanup-google-services.cjs');
+  const androidArtifactInspector = read(root, 'scripts/inspect-android-aab.cjs');
+  const playApkInspector = read(root, 'scripts/inspect-play-delivered-apk.cjs');
+  const rootGitignore = read(root, '.gitignore');
+  const easIgnore = read(root, '.easignore');
+  const androidGitignore = read(root, 'android/.gitignore');
   const mobileStoreActions = read(root, 'docs/mobile-store-external-actions.md');
   const androidBuildWorkflow = read(
     repositoryRoot,
@@ -169,6 +184,9 @@ function validateProject(root = projectRoot) {
   const buildNumber = String(app.ios.buildNumber);
   const iosBundleIdentifier = 'com.menorah.health.app';
   const androidPackageName = 'com.menorah.healthmobile';
+  const notificationPlugin = (app.plugins || []).find((plugin) =>
+    Array.isArray(plugin) && plugin[0] === 'expo-notifications'
+  );
 
   const expectedExpoVersions = {
     expo: '~57.0.9',
@@ -228,8 +246,13 @@ function validateProject(root = projectRoot) {
     'native store identifiers must match app configuration'
   );
   fail(
-    eas.cli && eas.cli.appVersionSource === 'local',
-    'EAS must use the repository-aligned local version metadata'
+    eas.cli
+      && eas.cli.appVersionSource === 'local'
+      && eas.cli.version === '21.4.0'
+      && eas.cli.requireCommit === true
+      && !pkg.dependencies?.['eas-cli']
+      && !pkg.devDependencies?.['eas-cli'],
+    'EAS must require the reviewed CLI version without a legacy local CLI dependency, a committed source tree, and repository-aligned local version metadata'
   );
   for (const [profileName, expectedEnvironment] of [
     ['development-ios', 'development'],
@@ -241,6 +264,7 @@ function validateProject(root = projectRoot) {
     fail(
       profile
         && profile.environment === expectedEnvironment
+        && profile.autoIncrement === false
         && profile.env.MENORAH_MOBILE_ENVIRONMENT === expectedEnvironment
         && !containsProductionReleaseHost(profile.env)
         && RELEASE_URL_VARIABLES.every((name) => !(name in profile.env))
@@ -266,21 +290,26 @@ function validateProject(root = projectRoot) {
         && !profileEnv.EXPO_PUBLIC_API_BASE_URL,
       `${profileName} must retain the approved production platform API URLs in the production EAS environment`
     );
+    fail(
+      profile?.autoIncrement === false,
+      `${profileName} must keep EAS automatic version increments disabled`
+    );
   }
+  fail(
+    eas.submit?.['internal-testing']?.android?.track === 'internal' &&
+      eas.submit?.['internal-testing']?.android?.releaseStatus === 'completed' &&
+      eas.submit?.production?.android?.track === 'production' &&
+      eas.submit?.production?.android?.releaseStatus === 'completed',
+    'EAS must define separate Android internal-testing and production submission profiles'
+  );
   fail(
     appConfig.includes("require('./scripts/release-environment.cjs')") &&
       appConfig.includes('readReleaseEnvironment(process.env)') &&
-      RELEASE_URL_VARIABLES.every((name) =>
-        androidBuildWorkflow.includes(`${name}: \${{ vars.${name} }}`)
-      ) &&
-      [
-        'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID',
-        'EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID',
-      ].every((name) =>
-        androidBuildWorkflow.includes(`${name}: \${{ vars.${name} }}`)
-      ) &&
-      androidBuildWorkflow.includes('NODE_ENV: production') &&
-      androidBuildWorkflow.includes('MENORAH_MOBILE_ENVIRONMENT: production') &&
+      appConfig.includes('const mobileEnvironment = process.env.MENORAH_MOBILE_ENVIRONMENT?.trim()') &&
+      appConfig.includes("mobileEnvironment === 'development'") &&
+      app.extra?.CHECKOUT_RETURN_URL === 'https://app.menorah.me/checkout/return' &&
+      androidBuildWorkflow.includes('name: Build Android AAB with EAS') &&
+      androidBuildWorkflow.includes('timeout-minutes: 120') &&
       androidBuildWorkflow.includes('environment: android-release-signing') &&
       androidBuildWorkflow.includes('GITHUB_TRIGGER_REF: ${{ github.ref }}') &&
       androidBuildWorkflow.includes('GITHUB_TRIGGER_SHA: ${{ github.sha }}') &&
@@ -288,18 +317,26 @@ function validateProject(root = projectRoot) {
         'ANDROID_RELEASE_SIGNING_READY: ${{ vars.ANDROID_RELEASE_SIGNING_READY }}'
       ) &&
       androidBuildWorkflow.includes(
-        '"$GITHUB_TRIGGER_REF" != "refs/heads/main" || "$RELEASE_SHA" != "$GITHUB_TRIGGER_SHA"'
+        '"$GITHUB_TRIGGER_REF" != "refs/heads/release/android-2.7.0-20260803" || "$RELEASE_SHA" != "$GITHUB_TRIGGER_SHA"'
       ) &&
       androidBuildWorkflow.includes(
-        '"$ANDROID_RELEASE_SIGNING_READY" != "protected-main-only"'
+        '"$ANDROID_RELEASE_SIGNING_READY" != "protected-release-only"'
       ) &&
+      androidBuildWorkflow.includes('EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}') &&
       androidBuildWorkflow.includes('release_sha:') &&
       androidBuildWorkflow.includes('ref: ${{ inputs.release_sha }}') &&
       androidBuildWorkflow.includes('persist-credentials: false') &&
-      androidBuildWorkflow.includes("readAndroidReleaseEnvironment(process.env)") &&
-      androidBuildWorkflow.indexOf('Validate release environment') <
-        androidBuildWorkflow.indexOf('Decode keystore'),
-    'manual Android release builds must bind an exact approved SHA and validate protected release variables before accessing signing material'
+      androidBuildWorkflow.includes('npm run validate:release-config') &&
+      androidBuildWorkflow.includes('node --test scripts/*.test.cjs') &&
+      androidBuildWorkflow.includes(
+        'npx --yes eas-cli@21.4.0 build --platform android --profile production-android --non-interactive'
+      ) &&
+      androidBuildWorkflow.indexOf('Validate release workspace') <
+        androidBuildWorkflow.indexOf('Build exact Android AAB on EAS') &&
+      !/(?:gradlew\s+bundleRelease|ANDROID_KEYSTORE_|GOOGLE_SERVICES_JSON_BASE64|upload-artifact)/.test(
+        androidBuildWorkflow
+      ),
+    'manual Android release builds must bind the exact protected release SHA and invoke one guarded EAS artifact without direct signing material'
   );
   fail(
     envSource.includes("Platform.OS === 'ios'") &&
@@ -321,6 +358,12 @@ function validateProject(root = projectRoot) {
   );
 
   fail(app.version === version, 'app.json version must equal package.json version');
+  fail(
+    version === '2.7.0' &&
+      app.android.versionCode === 15 &&
+      buildNumber === '15',
+    'the provisional Android 2.7.0 candidate must keep coupled build number/versionCode 15'
+  );
   fail(app.runtimeVersion === version, 'Expo runtimeVersion must equal the app version');
   fail(
     new RegExp(`version:\\s*'${escapeRegex(version)}'`).test(appConfig),
@@ -349,6 +392,21 @@ function validateProject(root = projectRoot) {
       androidGradle
     ),
     'Android native versionCode must equal app.json'
+  );
+  fail(
+    app.android.googleServicesFile === './android/app/google-services.json' &&
+      appConfig.includes("googleServicesFile: './android/app/google-services.json'") &&
+      androidRootGradle.includes("classpath('com.google.gms:google-services:4.5.0')") &&
+      androidGradle.includes('apply plugin: "com.google.gms.google-services"'),
+    'checked-in Android native configuration must apply the pinned Google Services plugin'
+  );
+  fail(
+    androidGradleProperties.includes('android.buildToolsVersion=36.0.0') &&
+      androidGradleProperties.includes('android.compileSdkVersion=36') &&
+      androidGradleProperties.includes('android.targetSdkVersion=36') &&
+      androidGradle.includes('compileSdk rootProject.ext.compileSdkVersion') &&
+      androidGradle.includes('targetSdkVersion rootProject.ext.targetSdkVersion'),
+    'checked-in Android native configuration must compile and target SDK 36'
   );
   fail(
     valuesAfterKey(infoPlist, 'CFBundleShortVersionString')[0] === version,
@@ -422,6 +480,63 @@ function validateProject(root = projectRoot) {
     'Android must verify only the canonical password-reset App Link path'
   );
   fail(
+    androidManifest.includes('android:usesCleartextTraffic="false"') &&
+      !androidManifest.includes('android:debuggable="true"'),
+    'the production Android manifest must disable cleartext traffic and debug mode'
+  );
+  for (const permission of [
+    'android.permission.POST_NOTIFICATIONS',
+    'android.permission.RECEIVE_BOOT_COMPLETED',
+    'android.permission.WAKE_LOCK',
+    'com.google.android.c2dm.permission.RECEIVE',
+  ]) {
+    fail(
+      androidManifest.includes(`<uses-permission android:name="${permission}"/>`) &&
+        (app.android.permissions || []).includes(permission) &&
+        appConfig.includes(`'${permission}'`),
+      `${permission} must be synchronized across Expo and native Android configuration`
+    );
+  }
+  fail(
+    androidManifest.includes('expo.modules.notifications.service.ExpoFirebaseMessagingService') &&
+      androidManifest.includes('expo.modules.notifications.service.NotificationsService') &&
+      androidManifest.includes('expo.modules.notifications.service.NotificationForwarderActivity') &&
+      androidManifest.includes('com.google.firebase.MESSAGING_EVENT'),
+    'checked-in Android native configuration must retain Expo/Firebase notification components'
+  );
+  fail(
+    androidManifest.includes('com.google.firebase.messaging.default_notification_icon') &&
+      androidManifest.includes('com.google.firebase.messaging.default_notification_color') &&
+      androidManifest.includes('com.google.firebase.messaging.default_notification_channel_id') &&
+      androidManifest.includes('android:value="general"') &&
+      androidManifest.includes('expo.modules.notifications.default_notification_icon') &&
+      androidManifest.includes('expo.modules.notifications.default_notification_color') &&
+      androidColors.includes('<color name="notification_icon_color">#2d7a5c</color>') &&
+      notificationPlugin?.[1]?.icon === './assets/notification-icon.png' &&
+      notificationPlugin?.[1]?.color === '#2d7a5c' &&
+      notificationPlugin?.[1]?.defaultChannel === 'general' &&
+      notificationIcon.includes('<vector') &&
+      notificationIcon.includes('android:fillColor="#FFFFFFFF"') &&
+      !notificationIcon.includes('<bitmap') &&
+      notificationIconSource.includes('fill="#ffffff"') &&
+      notificationIconPng.subarray(1, 4).toString('ascii') === 'PNG' &&
+      notificationIconPng.readUInt32BE(16) === 96 &&
+      notificationIconPng.readUInt32BE(20) === 96 &&
+      notificationIconPng[25] === 6 &&
+      appConfig.includes("icon: './assets/notification-icon.png'") &&
+      appConfig.includes("defaultChannel: 'general'"),
+    'checked-in Android notification icon, color, and general fallback metadata must be complete'
+  );
+  fail(
+    mainApplication.includes('NotificationChannel(') &&
+      mainApplication.includes('DEFAULT_NOTIFICATION_CHANNEL_ID = "general"') &&
+      pushNotifications.includes("setNotificationChannelAsync('general'") &&
+      ['messages', 'sessions', 'articles'].every((channel) =>
+        pushNotifications.includes(`setNotificationChannelAsync('${channel}'`)
+      ),
+    'native startup and Expo runtime must create general while retaining all event channels'
+  );
+  fail(
     appConfig.includes("associatedDomains: ['applinks:app.menorah.me']") &&
       appConfig.includes("path: '/reset-password'"),
     'app.config.ts must mirror the native associated-link scope'
@@ -470,6 +585,9 @@ function validateProject(root = projectRoot) {
       androidGradle.includes("file('eas-build.gradle').isFile()") &&
       androidGradle.includes("rootProject.file('../credentials.json').isFile()") &&
       androidGradle.includes('gradle.taskGraph.whenReady') &&
+      androidGradle.includes("file('google-services.json').isFile()") &&
+      androidGradle.includes("System.getenv('PLAY_HIGHEST_VERSION_CODE')") &&
+      androidGradle.includes('15 <= highestPlayVersionCode.toInteger()') &&
       androidGradle.includes('Release task resolved without a complete readable signing configuration') &&
       !androidGradle.includes('if (releaseBuildRequested || releaseSigningPartiallyConfigured)'),
     'Android release signing must accept verified EAS injection and still fail closed after task resolution'
@@ -575,6 +693,55 @@ function validateProject(root = projectRoot) {
       safeDiagnostics.includes("diagnosticLabel(event) ?? 'invalid_event'") &&
       safeDiagnostics.includes('SAFE_ERROR_CODES'),
     'diagnostics must not construct payload logs or emit unvalidated labels/codes'
+  );
+  fail(
+    pkg.scripts['eas-build-post-install'] ===
+      'node scripts/prepare-google-services.cjs' &&
+      pkg.scripts['eas-build-on-complete'] ===
+      'node scripts/cleanup-google-services.cjs' &&
+      pkg.scripts['eas-build-on-cancel'] ===
+      'node scripts/cleanup-google-services.cjs' &&
+      googleServicesHook.includes("environment.GOOGLE_SERVICES_JSON?.trim()") &&
+      googleServicesHook.includes("EXPECTED_ANDROID_PACKAGE = 'com.menorah.healthmobile'") &&
+      googleServicesHook.includes("EXPECTED_FIREBASE_PROJECT_NUMBER = '873291355021'") &&
+      googleServicesHook.includes('constants.COPYFILE_EXCL') &&
+      googleServicesHook.includes('chmodSync(destination, 0o600)') &&
+      googleServicesHook.includes('PLAY_HIGHEST_VERSION_CODE') &&
+      googleServicesHook.includes('MENORAH_APPROVED_RELEASE_SHA') &&
+      googleServicesHook.includes('EAS_BUILD_GIT_COMMIT_HASH') &&
+      googleServicesCleanup.includes('MARKER_RELATIVE_PATH') &&
+      rootGitignore.includes('android/app/google-services.json') &&
+      androidGitignore.includes('app/google-services.json') &&
+      easIgnore.includes('android/app/google-services.json') &&
+      easIgnore.includes('credentials.json') &&
+      easIgnore.includes('*.jks') &&
+      rootGitignore.includes('service-account*.json') &&
+      rootGitignore.includes('firebase-adminsdk-*.json') &&
+      easIgnore.includes('service-account*.json') &&
+      easIgnore.includes('firebase-adminsdk-*.json') &&
+      easIgnore.includes('.env.*'),
+    'EAS must validate, install, protect, ignore, and clean up GOOGLE_SERVICES_JSON fail closed'
+  );
+  fail(
+    pkg.scripts['inspect:android-aab'] === 'node scripts/inspect-android-aab.cjs' &&
+      androidArtifactInspector.includes("packageName: 'com.menorah.healthmobile'") &&
+      androidArtifactInspector.includes("versionName: '2.7.0'") &&
+      androidArtifactInspector.includes('targetSdk: 36') &&
+      androidArtifactInspector.includes('EXPECTED_ANDROID_UPLOAD_CERT_SHA256') &&
+      androidArtifactInspector.includes('PLAY_HIGHEST_VERSION_CODE') &&
+      androidArtifactInspector.includes('aabSha256: sha256File(absoluteAab)') &&
+      androidArtifactInspector.includes("checkoutReturn: 'https://app.menorah.me/checkout/return'") &&
+      androidArtifactInspector.includes("articleCanonical: 'https://menorah.me'") &&
+      androidArtifactInspector.includes("callBase: 'https://calls.menorah.me'") &&
+      androidArtifactInspector.includes('android.permission.READ_PHONE_STATE') &&
+      androidArtifactInspector.includes('jarsigner') &&
+      !androidArtifactInspector.includes("['-verify', '-strict'") &&
+      androidArtifactInspector.includes('networkSecurityConfig') &&
+      pkg.scripts['inspect:play-apk'] === 'node scripts/inspect-play-delivered-apk.cjs' &&
+      playApkInspector.includes('EXPECTED_PLAY_APP_SIGNING_CERT_SHA256') &&
+      playApkInspector.includes("['verify', '--verbose', '--print-certs'") &&
+      playApkInspector.includes('inspectManifestText(manifest)'),
+    'Android AAB inspection must verify release identity, policy, Play version, and upload signing'
   );
   const setTokenBody = apiSource.match(/async setToken\(token: string\)[\s\S]*?\n  }/)?.[0] || '';
   const replacementBody = secureTokenPolicy.match(

@@ -31,7 +31,7 @@ describe('startup validation', () => {
       LIVEKIT_API_URL: `https://${stagingHosts.CALLS_DOMAIN}`,
       PASSWORD_RESET_BASE_URL: `https://${stagingHosts.APP_DOMAIN}`,
       CHECKOUT_RETURN_URL:
-        `https://${stagingHosts.APP_DOMAIN}/checkout/return`,
+        `https://${stagingHosts.APP_DOMAIN}/checkout/callback`,
       FRONTEND_COUNSELLOR_URL:
         `https://${stagingHosts.COUNSELLOR_DOMAIN}`,
       FRONTEND_API_WEB_URL: `https://${stagingHosts.API_WEB_DOMAIN}/api`,
@@ -84,7 +84,7 @@ describe('startup validation', () => {
       LIVEKIT_API_URL: 'http://livekit:7880',
       PASSWORD_RESET_BASE_URL: httpsOrigin(localHosts.APP_DOMAIN),
       CHECKOUT_RETURN_URL:
-        `${httpsOrigin(localHosts.APP_DOMAIN)}/checkout/return`,
+        `${httpsOrigin(localHosts.APP_DOMAIN)}/checkout/callback`,
       FRONTEND_COUNSELLOR_URL:
         httpsOrigin(localHosts.COUNSELLOR_DOMAIN),
       FRONTEND_API_WEB_URL:
@@ -147,7 +147,7 @@ describe('startup validation', () => {
       LIVEKIT_API_URL: 'http://staging-livekit:7880',
       PASSWORD_RESET_BASE_URL: httpsOrigin(hosts.APP_DOMAIN),
       CHECKOUT_RETURN_URL:
-        `${httpsOrigin(hosts.APP_DOMAIN)}/checkout/return`,
+        `${httpsOrigin(hosts.APP_DOMAIN)}/checkout/callback`,
       FRONTEND_COUNSELLOR_URL:
         httpsOrigin(hosts.COUNSELLOR_DOMAIN),
       FRONTEND_API_WEB_URL:
@@ -263,7 +263,7 @@ describe('startup validation', () => {
       EMAIL_FROM: 'Menorah <noreply@example.com>',
       CONTACT_TO_EMAIL: 'contact@example.com',
       PASSWORD_RESET_BASE_URL: 'https://app.menorah.me',
-      CHECKOUT_RETURN_URL: 'https://app.menorah.me/checkout/return',
+      CHECKOUT_RETURN_URL: 'https://app.menorah.me/checkout/callback',
       MEDIA_STORAGE_BACKEND: 'local',
       MEDIA_PUBLIC_BASE_URL: 'https://media.example.com',
       UPLOAD_PATH: '/app/uploads',
@@ -354,11 +354,13 @@ describe('startup validation', () => {
 
   test('requires a protected Expo access token when the active worker enables notification jobs', () => {
     process.env.WORKER_MODE = 'active';
+    for (const value of ['true', 'TRUE', '1', 'yes', 'on']) {
+      process.env.ENABLE_NOTIFICATION_JOBS = value;
+      expect(() => validateStartupEnv({ serviceName: 'worker' }))
+        .toThrow(/EXPO_PUSH_ACCESS_TOKEN must contain a non-placeholder protected token/);
+    }
+
     process.env.ENABLE_NOTIFICATION_JOBS = 'true';
-
-    expect(() => validateStartupEnv({ serviceName: 'worker' }))
-      .toThrow(/EXPO_PUSH_ACCESS_TOKEN must contain a non-placeholder protected token/);
-
     process.env.EXPO_PUSH_ACCESS_TOKEN = 'REPLACE_WITH_EXPO_PUSH_ACCESS_TOKEN';
     expect(() => validateStartupEnv({ serviceName: 'worker' }))
       .toThrow(/EXPO_PUSH_ACCESS_TOKEN must contain a non-placeholder protected token/);
@@ -372,6 +374,10 @@ describe('startup validation', () => {
     process.env.ENABLE_NOTIFICATION_JOBS = 'false';
     expect(() => validateStartupEnv({ serviceName: 'worker' })).not.toThrow();
     expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
+
+    process.env.WORKER_MODE = 'active';
+    delete process.env.ENABLE_NOTIFICATION_JOBS;
+    expect(() => validateStartupEnv({ serviceName: 'worker' })).not.toThrow();
   });
 
   test('requires a usable Resend webhook secret on api-web in production', () => {
@@ -667,7 +673,7 @@ describe('startup validation', () => {
     ['LIVEKIT_URL', 'wss://calls.other-staging.example.com'],
     ['LIVEKIT_API_URL', 'https://calls.other-staging.example.com'],
     ['PASSWORD_RESET_BASE_URL', 'https://other.staging.example.com'],
-    ['CHECKOUT_RETURN_URL', 'https://app.menorah.me/checkout/return'],
+    ['CHECKOUT_RETURN_URL', 'https://app.menorah.me/checkout/callback'],
     ['FRONTEND_COUNSELLOR_URL', 'https://counsellor.menorah.me'],
     ['FRONTEND_API_WEB_URL', 'https://api-web.staging.example.com'],
     ['FRONTEND_API_ADMIN_URL', 'https://api-web.staging.example.com/api'],
@@ -702,11 +708,11 @@ describe('startup validation', () => {
 
   test('retains the canonical checkout return URL in production', () => {
     process.env.CHECKOUT_RETURN_URL =
-      'https://app.staging.example.com/checkout/return';
+      'https://app.staging.example.com/checkout/callback';
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' }))
       .toThrow(
-        /CHECKOUT_RETURN_URL must equal https:\/\/app\.menorah\.me\/checkout\/return/
+        /CHECKOUT_RETURN_URL must equal https:\/\/app\.menorah\.me\/checkout\/callback/
       );
   });
 
@@ -909,7 +915,7 @@ describe('startup validation', () => {
     process.env.RAZORPAY_WEBHOOK_SECRET =
       'Booking-Webhook-A1b2C3d4E5';
     process.env.CHECKOUT_RETURN_URL =
-      'https://app.staging.menorah.me/checkout/return';
+      'https://app.staging.menorah.me/checkout/callback';
 
     expect(() => validateStartupEnv({
       serviceName: 'api-ios',
@@ -944,7 +950,7 @@ describe('startup validation', () => {
     process.env.RAZORPAY_WEBHOOK_SECRET =
       'Booking-Webhook-A1b2C3d4E5';
     process.env.CHECKOUT_RETURN_URL =
-      'https://app.staging.menorah.me/checkout/return';
+      'https://app.staging.menorah.me/checkout/callback';
 
     expect(() => validateStartupEnv({
       serviceName: 'api-ios',
@@ -1121,7 +1127,7 @@ describe('startup validation', () => {
     })).toThrow(/CHECKOUT_RETURN_URL/);
 
     process.env.CHECKOUT_RETURN_URL =
-      'https://app.staging.menorah.me/checkout/return';
+      'https://app.staging.menorah.me/checkout/callback';
     expect(() => validateStartupEnv({
       serviceName: 'api-ios',
     })).not.toThrow();
@@ -1131,7 +1137,7 @@ describe('startup validation', () => {
     process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
     configureExactSyntheticServerStagingEnvironment();
     process.env.CHECKOUT_RETURN_URL =
-      'https://app.staging.menorah.me/checkout/return';
+      'https://app.staging.menorah.me/checkout/callback';
 
     expect(() => validateStartupEnv({
       serviceName: 'api-web',

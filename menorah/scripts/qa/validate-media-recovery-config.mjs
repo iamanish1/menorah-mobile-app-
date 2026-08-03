@@ -12,6 +12,19 @@ const read = (relative) => fs.readFileSync(path.join(menorahRoot, relative), 'ut
 const compose = YAML.parse(read('deploy/docker-compose.production.yml'));
 const backendEnv = compose['x-backend-env'];
 assert.equal(backendEnv.MEDIA_STORAGE_BACKEND, '${MEDIA_STORAGE_BACKEND:-local}');
+for (const obsoleteSelector of [
+  'COUNSELLOR_MEDIA_STORAGE',
+  'SOCIAL_STUDIO_STORAGE',
+  'CLOUDINARY_SOCIAL_STUDIO_FOLDER',
+  'CLOUDINARY_SOCIAL_STUDIO_ASSET_FOLDER',
+  'CLOUDINARY_SOCIAL_STUDIO_VIDEO_FOLDER',
+]) {
+  assert.equal(
+    Object.hasOwn(backendEnv, obsoleteSelector),
+    false,
+    `${obsoleteSelector} must not bypass the single production media selector`,
+  );
+}
 assert.equal(backendEnv.UPLOAD_PATH, '/app/uploads');
 assert.equal(
   backendEnv.MEDIA_PUBLIC_BASE_URL,
@@ -55,6 +68,13 @@ assert.match(startupValidation, /validateMediaStorageConfig/);
 assert.match(startupValidation, /COUNSELLOR_MEDIA_STORAGE must be unset/);
 assert.match(startupValidation, /SOCIAL_STUDIO_STORAGE must be unset/);
 
+const productionEnvironmentExample = read('deploy/env/production.env.example');
+assert.doesNotMatch(
+  productionEnvironmentExample,
+  /^(?:COUNSELLOR_MEDIA_STORAGE|SOCIAL_STUDIO_STORAGE|CLOUDINARY_SOCIAL_STUDIO_(?:FOLDER|ASSET_FOLDER|VIDEO_FOLDER))=/m,
+  'production environment example must not revive a legacy media selector',
+);
+
 const storage = read('backend/src/services/mediaStorage.js');
 assert.match(storage, /crypto\.randomUUID\(\)/);
 assert.match(storage, /await handle\.sync\(\)/);
@@ -62,6 +82,17 @@ assert.match(storage, /await fs\.link\(temporary, target\)/);
 assert.doesNotMatch(storage, /await fs\.rename\(temporary, target\)/);
 assert.match(storage, /overwrite: false/);
 assert.doesNotMatch(storage, /overwrite: true/);
+
+const socialPostModel = read('backend/src/models/SocialPost.js');
+assert.match(socialPostModel, /videoStorage:\s*\{/);
+const socialStudioRoute = read('backend/src/routes/socialStudio.js');
+assert.match(socialStudioRoute, /videoStorage:\s*uploaded\.metadata/);
+const mediaReferenceVerifier = read('backend/src/services/mediaReferenceVerifier.js');
+assert.match(mediaReferenceVerifier, /field:\s*'videoUrl'/);
+assert.match(mediaReferenceVerifier, /storage:\s*document\.videoStorage/);
+const mediaReferenceScript = read('backend/src/scripts/verify-media-references.js');
+assert.match(mediaReferenceScript, /videoUrl:\s*1/);
+assert.match(mediaReferenceScript, /videoStorage:\s*1/);
 
 for (const relative of [
   'backend/src/routes/counsellor-bookings.js',

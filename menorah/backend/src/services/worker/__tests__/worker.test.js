@@ -39,6 +39,7 @@ describe('worker scheduler isolation', () => {
     process.env.ENABLE_ARTICLE_SCHEDULER = 'true';
     process.env.ENABLE_SOCIAL_SCHEDULER = 'true';
     process.env.PRIVACY_RETENTION_EXECUTION_ENABLED = 'true';
+    process.env.ENABLE_NOTIFICATION_JOBS = 'true';
 
     const jobs = resolveWorkerJobs();
 
@@ -63,6 +64,16 @@ describe('worker scheduler isolation', () => {
     process.env.ENABLE_NOTIFICATION_JOBS = 'false';
 
     expect(resolveWorkerJobs().notificationJobs).toBe(false);
+  });
+
+  test('Android push jobs are fail-closed and use every accepted true spelling', () => {
+    process.env.WORKER_MODE = 'active';
+    expect(resolveWorkerJobs().notificationJobs).toBe(false);
+
+    for (const value of ['true', 'TRUE', '1', 'yes', 'on']) {
+      process.env.ENABLE_NOTIFICATION_JOBS = value;
+      expect(resolveWorkerJobs().notificationJobs).toBe(true);
+    }
   });
 
   test('active workers can explicitly disable the expiry job', () => {

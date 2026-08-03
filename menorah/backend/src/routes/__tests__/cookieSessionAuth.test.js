@@ -4,12 +4,18 @@ const request = require('supertest');
 const mockUserId = '64f000000000000000000021';
 const mockFindOne = jest.fn();
 const mockFindById = jest.fn();
+const mockExists = jest.fn();
+const mockFindOneAndUpdate = jest.fn();
+const mockUpdateOne = jest.fn();
 const mockEvaluateCounsellorAccountAccess = jest.fn();
 const mockSendPasswordResetEmail = jest.fn();
 
 jest.mock('../../models/User', () => ({
   findOne: (...args) => mockFindOne(...args),
   findById: (...args) => mockFindById(...args),
+  exists: (...args) => mockExists(...args),
+  findOneAndUpdate: (...args) => mockFindOneAndUpdate(...args),
+  updateOne: (...args) => mockUpdateOne(...args),
 }));
 jest.mock('../../services/counsellorVerificationExpiry', () => ({
   evaluateAccountAccess: (...args) => mockEvaluateCounsellorAccountAccess(...args),
@@ -74,11 +80,15 @@ describe('browser cookie session authentication', () => {
       ...originalEnv,
       NODE_ENV: 'test',
       JWT_SECRET: 'x'.repeat(64),
+      BCRYPT_ROUNDS: '4',
       WEB_SESSION_ORIGINS: 'https://app.example.com=user,https://admin.example.com=admin',
     };
     delete process.env.SESSION_COOKIE_DOMAIN;
     mockFindOne.mockReset();
     mockFindById.mockReset();
+    mockExists.mockReset();
+    mockFindOneAndUpdate.mockReset();
+    mockUpdateOne.mockReset();
     mockEvaluateCounsellorAccountAccess.mockReset().mockResolvedValue({
       allowed: true,
       reason: null,
@@ -174,13 +184,12 @@ describe('browser cookie session authentication', () => {
 
     expect(counsellorResult.body.data.role).toBe('counsellor');
 
-    const adminAsUserAudience = makeUser({ role: 'admin' });
-    mockFindById.mockResolvedValue(adminAsUserAudience);
+    const admin = makeUser({ role: 'admin' });
+    const { signAdminToken } = require('../../utils/authTokens');
     await request(buildAuthApp())
       .get('/api/private-participant')
-      .set('Authorization', `Bearer ${signUserToken(adminAsUserAudience)}`)
-      .expect(403)
-      .expect((res) => expect(res.body.code).toBe('PARTICIPANT_ROLE_REQUIRED'));
+      .set('Authorization', `Bearer ${signAdminToken(admin)}`)
+      .expect(401);
   });
 
   test('trusted browser origins cannot use bearer tokens instead of mapped cookies', async () => {
@@ -215,7 +224,8 @@ describe('browser cookie session authentication', () => {
   });
 
   test('forgot-password does not issue reset material for an inactive review account', async () => {
-    mockFindOne.mockResolvedValue(null);
+    const select = jest.fn().mockResolvedValue(null);
+    mockFindOne.mockReturnValue({ select });
 
     await request(buildAuthApp())
       .post('/api/auth/forgot-password')
@@ -225,7 +235,9 @@ describe('browser cookie session authentication', () => {
     expect(mockFindOne).toHaveBeenCalledWith({
       email: 'reviewing@example.com',
       isActive: true,
+      role: { $in: ['user', 'counsellor'] },
     });
+    expect(select).toHaveBeenCalledWith('+passwordResetToken +passwordResetExpires');
     expect(mockSendPasswordResetEmail).not.toHaveBeenCalled();
   });
 
@@ -252,24 +264,25 @@ describe('browser cookie session authentication', () => {
       .send({ token: 'reset-token', password: 'weakpassword1' })
       .expect(400);
 
-    expect(mockFindOne).not.toHaveBeenCalled();
+    expect(mockExists).not.toHaveBeenCalled();
+    expect(mockFindOneAndUpdate).not.toHaveBeenCalled();
   });
 
   test('a pre-issued reset token cannot mutate an inactive review account', async () => {
-    const select = jest.fn().mockResolvedValue(null);
-    mockFindOne.mockReturnValue({ select });
+    mockExists.mockResolvedValue(null);
 
     await request(buildAuthApp())
       .post('/api/auth/reset-password')
       .send({ token: 'pre-review-reset-token', password: 'UpdatedPass123' })
       .expect(400);
 
-    expect(mockFindOne).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockExists).toHaveBeenCalledWith(expect.objectContaining({
       isActive: true,
+      role: { $in: ['user', 'counsellor'] },
       passwordResetToken: expect.stringMatching(/^[a-f0-9]{64}$/),
-      passwordResetExpires: { $gt: expect.any(Number) },
+      passwordResetExpires: { $gt: expect.any(Date) },
     }));
-    expect(select).toHaveBeenCalledWith('+passwordResetToken +passwordResetExpires');
+    expect(mockFindOneAndUpdate).not.toHaveBeenCalled();
   });
 
   test('verified reset establishes password auth for a social-only account', async () => {
@@ -279,9 +292,8 @@ describe('browser cookie session authentication', () => {
       passwordResetToken: 'hashed-reset-token',
       passwordResetExpires: Date.now() + 60000,
     });
-    mockFindOne.mockReturnValue({
-      select: jest.fn().mockResolvedValue(user),
-    });
+    mockExists.mockResolvedValue({ _id: user._id });
+    mockFindOneAndUpdate.mockResolvedValue(user);
 
     await request(buildAuthApp())
       .post('/api/auth/reset-password')
@@ -291,12 +303,31 @@ describe('browser cookie session authentication', () => {
       })
       .expect(200);
 
-    expect(user.password).toBe('UpdatedPass123');
-    expect(user.passwordAuthEnabled).toBe(true);
-    expect(user.passwordResetToken).toBeUndefined();
-    expect(user.passwordResetExpires).toBeUndefined();
-    expect(user.sessionVersion).toBe(1);
-    expect(user.save).toHaveBeenCalledTimes(1);
+    expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        passwordResetToken: expect.stringMatching(/^[a-f0-9]{64}$/),
+        passwordResetExpires: { $gt: expect.any(Date) },
+        isActive: true,
+        role: { $in: ['user', 'counsellor'] },
+      }),
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          password: expect.stringMatching(/^\$2[aby]\$/),
+          passwordAuthEnabled: true,
+          loginAttempts: 0,
+          lastSessionRevokedAt: expect.any(Date),
+          lastPasswordChangeAt: expect.any(Date),
+        }),
+        $unset: {
+          lockUntil: '',
+          passwordResetToken: '',
+          passwordResetExpires: '',
+        },
+        $inc: { sessionVersion: 1 },
+      }),
+      { new: true },
+    );
+    expect(user.save).not.toHaveBeenCalled();
   });
 
   test('cookie-authenticated cross-site writes are rejected by CSRF validation', async () => {

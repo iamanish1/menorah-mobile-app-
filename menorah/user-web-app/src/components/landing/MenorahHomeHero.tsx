@@ -153,7 +153,7 @@ function HeroSection() {
     <main className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-[var(--landing-page-x)] pb-[clamp(4rem,9vh,8rem)] pt-[clamp(5rem,11vh,8.5rem)]">
       <section className="relative z-10 flex w-full max-w-[min(78rem,94vw)] flex-col items-center">
         <h1 className="text-center font-display text-[length:var(--landing-hero-title)] leading-[0.96] tracking-tight text-foreground">
-          We are Menorah, the world's firsts Mental health app for men
+          Menorah helps men find verified counsellors and practical wellbeing resources
         </h1>
 
         <p className="mt-[clamp(1rem,2.4vw,1.75rem)] max-w-[min(48rem,88vw)] text-center font-body text-[length:var(--landing-hero-body)] leading-relaxed text-muted-foreground">

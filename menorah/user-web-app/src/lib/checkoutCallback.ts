@@ -19,6 +19,8 @@ export type CheckoutCallbackPayload = {
 type CallbackFields = Record<string, unknown>;
 
 const MAX_CALLBACK_FIELD_LENGTH = 512;
+const MIN_CHECKOUT_CALLBACK_SECRET_LENGTH = 64;
+const CALLBACK_SECRET_PLACEHOLDER = /(?:replace|placeholder|example|change(?:me)?|todo)/i;
 
 const getString = (value: unknown) =>
   typeof value === 'string' && value.length > 0 && value.length <= MAX_CALLBACK_FIELD_LENGTH
@@ -58,7 +60,11 @@ export function hasGatewayProof(callback: CheckoutCallbackPayload | null) {
 function getCheckoutCallbackSecret() {
   const configuredSecret = process.env.CHECKOUT_CALLBACK_SECRET?.trim();
 
-  if (configuredSecret && configuredSecret.length >= 32) {
+  if (
+    configuredSecret
+    && configuredSecret.length >= MIN_CHECKOUT_CALLBACK_SECRET_LENGTH
+    && !CALLBACK_SECRET_PLACEHOLDER.test(configuredSecret)
+  ) {
     return configuredSecret;
   }
 

@@ -15,6 +15,13 @@ jest.mock('../../middleware/auth', () => ({
     req.user = { _id: { toString: () => '64f000000000000000000099' }, role: 'admin' };
     next();
   },
+  requireRecentAdminMfa: (_req, _res, next) => next(),
+}));
+
+jest.mock('../../middleware/adminAuthorization', () => ({
+  hasAdminPermission: jest.fn(() => true),
+  requireAdminPermission: jest.fn(() => (_req, _res, next) => next()),
+  requireAssignedAdminRole: (_req, _res, next) => next(),
 }));
 
 jest.mock('../../models/User', () => ({
@@ -34,6 +41,11 @@ jest.mock('../../utils/email', () => ({
 jest.mock('../../utils/sessionLifecycle', () => ({
   revokeAllSessions: (...args) => mockRevokeAllSessions(...args),
   disconnectUserSockets: (...args) => mockDisconnectUserSockets(...args),
+}));
+jest.mock('../../services/counsellorVerificationPolicy', () => ({
+  buildProfessionallyApprovedCounsellorQuery: jest.fn(() => ({})),
+  isCounsellorProfessionallyApproved: jest.fn(() => true),
+  validateProfessionalApprovalPrerequisites: jest.fn(() => ({ ok: true, failures: [] })),
 }));
 
 const adminRouter = require('../admin');
@@ -68,6 +80,7 @@ describe('admin counsellor credential delivery', () => {
       firstName: 'Asha',
       lastName: 'Counsellor',
       email: 'asha@example.com',
+      role: 'counsellor',
       isActive: true,
       loginAttempts: 5,
       lockUntil: new Date(Date.now() + 60 * 60 * 1000),
@@ -112,7 +125,7 @@ describe('admin counsellor credential delivery', () => {
     expect(user.loginAttempts).toBe(0);
     expect(user.lockUntil).toBeNull();
     expect(user.save).toHaveBeenCalledTimes(1);
-    expect(counsellor.save).toHaveBeenCalledTimes(1);
+    expect(counsellor.save).not.toHaveBeenCalled();
     expect(mockRevokeAllSessions).toHaveBeenCalledWith(user, { passwordChanged: true });
     expect(mockDisconnectUserSockets).toHaveBeenCalledWith(undefined, user, 'password_generated');
   });

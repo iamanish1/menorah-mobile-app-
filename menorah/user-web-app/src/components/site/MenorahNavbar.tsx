@@ -78,11 +78,11 @@ export function MenorahNavbar({
         </div>
       )}
 
-      <div className="relative z-10 flex w-full items-center justify-between gap-3">
+      <div className="relative z-10 flex w-full flex-wrap items-center justify-between gap-3 min-[480px]:flex-nowrap">
         <Link
           href="/"
           className={cn(
-            "flex min-w-0 items-center gap-3 font-semibold tracking-tight text-foreground transition-all duration-500 motion-reduce:transition-none",
+            "flex shrink-0 items-center gap-3 font-semibold tracking-tight text-foreground transition-all duration-500 motion-reduce:transition-none",
             morphOnScroll && isFloating
               ? "text-[clamp(1rem,1.4vw,1.5rem)]"
               : "text-[clamp(1.15rem,1.35vw,1.55rem)]"
@@ -101,10 +101,10 @@ export function MenorahNavbar({
                 : "h-[clamp(2.55rem,2.8vw,3.05rem)] w-[clamp(2.55rem,2.8vw,3.05rem)]"
             )}
           />
-          <span className="truncate">Menorah</span>
+          <span className="whitespace-nowrap">Menorah</span>
         </Link>
 
-        <div className="flex items-center gap-2 sm:gap-5">
+        <div className="flex items-center gap-2 max-[479px]:w-full max-[479px]:justify-end sm:gap-5">
           {showArticlesLink && (
             <>
               <nav className="hidden items-center gap-5 lg:flex" aria-label="Primary navigation">

@@ -49,6 +49,7 @@ DEPLOY_SUCCEEDED=false
 SOURCE_CHECKOUT_CHANGED=false
 MAINTENANCE_STARTED=false
 BUILD_SERVICES=(
+  app-link-associations
   landing-page
   user-web-app
   web-app
@@ -1102,12 +1103,15 @@ validate_backend_startup_config() {
 
 wait_for_health() {
   local check_public="${1:-false}"
+  local check_android_app_links="${2:-false}"
   local attempts="${DEPLOY_HEALTH_ATTEMPTS:-18}"
   local delay_seconds="${DEPLOY_HEALTH_DELAY_SECONDS:-5}"
   local attempt
 
   for ((attempt = 1; attempt <= attempts; attempt++)); do
-    if CHECK_PUBLIC="${check_public}" "${SCRIPT_DIR}/health-check.sh"; then
+    if CHECK_PUBLIC="${check_public}" \
+      CHECK_ANDROID_APP_LINKS="${check_android_app_links}" \
+      "${SCRIPT_DIR}/health-check.sh"; then
       return 0
     fi
 
@@ -1226,6 +1230,58 @@ require_min_length() {
   fi
 }
 
+validate_checkout_callback_secret() {
+  local callback_secret="${CHECKOUT_CALLBACK_SECRET:-}"
+  local normalized="${callback_secret,,}"
+  local comparison_name comparison_value
+
+  if (( ${#callback_secret} < 64 )) \
+    || [[ "${normalized}" == *replace* \
+      || "${normalized}" == *placeholder* \
+      || "${normalized}" == *example* \
+      || "${normalized}" == *changeme* \
+      || "${normalized}" == *change_me* \
+      || "${normalized}" == *todo* ]]; then
+    echo "CHECKOUT_CALLBACK_SECRET must contain at least 64 non-placeholder characters." >&2
+    return 1
+  fi
+
+  for comparison_name in \
+    JWT_SECRET JWT_REFRESH_SECRET \
+    RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET RAZORPAY_WEBHOOK_SECRET_PREVIOUS \
+    RAZORPAY_X_KEY_SECRET RAZORPAY_X_WEBHOOK_SECRET RESEND_WEBHOOK_SECRET; do
+    comparison_value="${!comparison_name:-}"
+    if [[ -n "${comparison_value}" && "${callback_secret}" == "${comparison_value}" ]]; then
+      echo "CHECKOUT_CALLBACK_SECRET must be distinct from ${comparison_name}." >&2
+      return 1
+    fi
+  done
+}
+
+validate_android_app_link_release_config() {
+  local fingerprint compact_fingerprint
+  local fingerprint_pattern='^([A-F0-9]{2}:){31}[A-F0-9]{2}$'
+  local -a fingerprints=()
+
+  if [[ "${ANDROID_APP_LINK_PACKAGE_NAME:-}" != "com.menorah.healthmobile" ]]; then
+    echo "ANDROID_APP_LINK_PACKAGE_NAME must equal com.menorah.healthmobile for this release." >&2
+    return 1
+  fi
+  IFS=',' read -r -a fingerprints \
+    <<< "${ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS:-}"
+  if (( ${#fingerprints[@]} == 0 )); then
+    echo "ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS must contain the Play App Signing SHA-256." >&2
+    return 1
+  fi
+  for fingerprint in "${fingerprints[@]}"; do
+    compact_fingerprint="${fingerprint//[[:space:]]/}"
+    if [[ ! "${compact_fingerprint}" =~ ${fingerprint_pattern} ]]; then
+      echo "Every Android App Link fingerprint must be a canonical uppercase colon-delimited SHA-256." >&2
+      return 1
+    fi
+  done
+}
+
 validate_release_environment() {
   local staging_bundle_id_pattern
   local staging_display_sender_pattern
@@ -1252,6 +1308,7 @@ validate_release_environment() {
   export DEPLOYMENT_ENVIRONMENT
   case "${DEPLOYMENT_ENVIRONMENT}" in
     production)
+      validate_android_app_link_release_config || return 1
       if [[ "${APPLE_SIGN_IN_ENABLED:-}" != "true" \
         || "${APPLE_IOS_BUNDLE_ID:-}" != "com.menorah.health.app" \
         || ! "${APPLE_TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ \
@@ -1441,6 +1498,7 @@ require_min_length DATA_ENCRYPTION_KEY 32
 require_min_length AUDIT_LOG_SIGNING_KEY 32
 require_min_length BACKUP_ENCRYPTION_PASSWORD 32
 require_min_length BACKUP_INTEGRITY_HMAC_KEY 32
+validate_checkout_callback_secret
 if [[ ! "${BACKUP_INTEGRITY_EPOCH_ID:-}" =~ ^[a-z0-9][a-z0-9-]{2,63}$ ]]; then
   echo "BACKUP_INTEGRITY_EPOCH_ID must be a 3-64 character lowercase integrity epoch ID." >&2
   exit 1
@@ -1720,6 +1778,9 @@ echo "Validating the operator-controlled Alertmanager delivery configuration..."
 compose_cmd run --rm --no-deps --entrypoint /bin/amtool alertmanager \
   check-config /etc/alertmanager/alertmanager.yml
 capture_release_image_ids
+echo "Validating the exact pending migration plan without database writes..."
+MENORAH_RELEASE_IMAGE_MANIFEST="${IMAGE_MANIFEST}" \
+  "${SCRIPT_DIR}/run-recorded-migration.sh" plan-only
 DEPLOY_PHASE="artifacts-recorded"
 write_release_metadata
 
@@ -1809,7 +1870,7 @@ if ! compose_cmd exec -T reverse-proxy \
   exit 1
 fi
 
-if wait_for_health false && wait_for_health true; then
+if wait_for_health false && wait_for_health true true; then
   echo "Health result: PASS"
   echo "health=PASS" >> "${LOG_FILE}"
   HEALTH_STATUS="passed"

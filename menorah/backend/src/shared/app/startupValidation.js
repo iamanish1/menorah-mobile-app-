@@ -2,7 +2,7 @@ const MIN_JWT_SECRET_LENGTH = 64;
 const MAX_ADMIN_JWT_SECONDS = 30 * 60;
 const CANONICAL_PASSWORD_RESET_BASE_URL = 'https://app.menorah.me';
 const CANONICAL_CHECKOUT_RETURN_URL =
-  'https://app.menorah.me/checkout/return';
+  'https://app.menorah.me/checkout/callback';
 const {
   DEPLOYMENT_ENVIRONMENTS,
   LOCAL_STAGING_HTTPS_PORT_ENV,
@@ -50,6 +50,9 @@ const {
 const {
   validateMediaStorageConfig,
 } = require('../../services/mediaStorage');
+const {
+  resolveNotificationJobsEnabled,
+} = require('../../config/workerRuntime');
 
 const SERVER_STAGING_BOOKING_PAYMENT_SERVICE = 'api-ios';
 const SERVER_STAGING_PAYOUT_SERVICE = 'api-admin';
@@ -125,8 +128,7 @@ const requireExactValue = (key, expected, errors) => {
 
 const validateNotificationPushSecurity = ({ serviceName, errors }) => {
   if (serviceName !== 'worker') return;
-  if (String(process.env.WORKER_MODE || '').trim() !== 'active') return;
-  if (String(process.env.ENABLE_NOTIFICATION_JOBS || '').trim() !== 'true') return;
+  if (!resolveNotificationJobsEnabled(process.env)) return;
 
   const token = String(process.env.EXPO_PUSH_ACCESS_TOKEN || '').trim();
   const placeholder = /(?:replace|placeholder|example|change(?:me)?|todo|your[-_ ]?token)/i;

@@ -20,7 +20,7 @@ const mockNotifyEligibleCounsellors = jest.fn();
 
 jest.mock('razorpay', () => jest.fn(() => mockRazorpayClient));
 jest.mock('../../middleware/auth', () => ({
-  auth: (req, _res, next) => {
+  verifiedPatientAuth: (req, _res, next) => {
     req.user = { _id: '64f000000000000000000002', role: 'user' };
     next();
   },
@@ -154,7 +154,7 @@ describe('payment routes use durable captured-only reconciliation', () => {
       PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS: '5',
       BOOKING_PAYMENTS_ENABLED: 'true',
       SUBSCRIPTION_PAYMENTS_ENABLED: 'false',
-      CHECKOUT_RETURN_URL: 'https://app.menorah.me/checkout/return',
+      CHECKOUT_RETURN_URL: 'https://app.menorah.me/checkout/callback',
     };
     jest.clearAllMocks();
     Booking.findById.mockResolvedValue(booking);
@@ -254,7 +254,7 @@ describe('payment routes use durable captured-only reconciliation', () => {
     const checkoutUrl = new URL(response.body.data.checkoutUrl);
     const redirectUrl = new URL(checkoutUrl.searchParams.get('redirect_url'));
     expect(redirectUrl.origin).toBe('https://app.menorah.me');
-    expect(redirectUrl.pathname).toBe('/checkout/return');
+    expect(redirectUrl.pathname).toBe('/checkout/callback');
     expect(redirectUrl.searchParams.get('bookingId')).toBe(BOOKING_ID);
     expect(redirectUrl.searchParams.get('order_id')).toBe(ORDER_ID);
   });
@@ -263,7 +263,7 @@ describe('payment routes use durable captured-only reconciliation', () => {
     process.env.NODE_ENV = 'production';
     process.env.DEPLOYMENT_ENVIRONMENT = 'staging';
     process.env.CHECKOUT_RETURN_URL =
-      'https://app.staging.example.com/checkout/return';
+      'https://app.staging.example.com/checkout/callback';
 
     const response = await request(buildApp())
       .post('/api/payments/create-checkout-session')
@@ -273,17 +273,23 @@ describe('payment routes use durable captured-only reconciliation', () => {
     const checkoutUrl = new URL(response.body.data.checkoutUrl);
     const redirectUrl = new URL(checkoutUrl.searchParams.get('redirect_url'));
     expect(redirectUrl.origin).toBe('https://app.staging.example.com');
-    expect(redirectUrl.pathname).toBe('/checkout/return');
+    expect(redirectUrl.pathname).toBe('/checkout/callback');
   });
 
   test('fails before provider order creation when production return routing is missing', async () => {
     process.env.NODE_ENV = 'production';
     delete process.env.CHECKOUT_RETURN_URL;
 
-    const response = await request(buildApp())
-      .post('/api/payments/create-checkout-session')
-      .send({ bookingId: BOOKING_ID })
-      .expect(503);
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    let response;
+    try {
+      response = await request(buildApp())
+        .post('/api/payments/create-checkout-session')
+        .send({ bookingId: BOOKING_ID })
+        .expect(503);
+    } finally {
+      errorSpy.mockRestore();
+    }
 
     expect(response.body.code).toBe('PAYMENT_ORDER_UNAVAILABLE');
     expect(mockCreateOrReuseBookingOrder).not.toHaveBeenCalled();

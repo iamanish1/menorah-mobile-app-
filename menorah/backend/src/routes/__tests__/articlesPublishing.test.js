@@ -21,6 +21,11 @@ jest.mock('../../middleware/auth', () => ({
   }
 }));
 
+jest.mock('../../middleware/adminAuthorization', () => ({
+  requireAdminPermission: jest.fn(() => (_req, _res, next) => next()),
+  requireAssignedAdminRole: (_req, _res, next) => next(),
+}));
+
 jest.mock('../../models/Article', () => ({
   create: jest.fn(async (fields) => {
     mockArticleState = {
@@ -83,6 +88,10 @@ jest.mock('../../services/articleGenerationService', () => ({
 
 jest.mock('../../services/articleCanonicalUrl', () => ({
   buildArticleCanonicalUrl: (slug) => `https://menorah.me/articles/${slug}`
+}));
+
+jest.mock('../../services/pushNotificationService', () => ({
+  enqueueArticlePublishedNotifications: jest.fn(async () => ({ queued: 0 })),
 }));
 
 const Article = require('../../models/Article');

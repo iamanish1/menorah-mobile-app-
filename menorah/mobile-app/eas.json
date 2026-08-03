@@ -1,10 +1,12 @@
 {
   "cli": {
-    "version": ">= 3.14.0",
+    "version": "21.4.0",
+    "requireCommit": true,
     "appVersionSource": "local"
   },
   "build": {
     "development": {
+      "autoIncrement": false,
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
@@ -26,6 +28,7 @@
       }
     },
     "preview": {
+      "autoIncrement": false,
       "distribution": "internal",
       "channel": "preview",
       "environment": "preview",
@@ -46,6 +49,7 @@
       }
     },
     "production-do-not-use-base": {
+      "autoIncrement": false,
       "distribution": "store",
       "channel": "production",
       "environment": "production",
@@ -56,7 +60,7 @@
         "MENORAH_MOBILE_ENVIRONMENT": "production",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
-        "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
+        "EXPO_PUBLIC_JITSI_BASE_URL": "https://calls.menorah.me",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
       }
     },
@@ -67,7 +71,7 @@
         "EXPO_PUBLIC_ANDROID_API_BASE_URL": "https://api-android.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
-        "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
+        "EXPO_PUBLIC_JITSI_BASE_URL": "https://calls.menorah.me",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return"
       }
     },
@@ -81,10 +85,24 @@
         "EXPO_PUBLIC_ANDROID_API_BASE_URL": "https://api-android.menorah.me/api",
         "EXPO_PUBLIC_WEB_BASE_URL": "https://app.menorah.me",
         "EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL": "https://menorah.me",
-        "EXPO_PUBLIC_JITSI_BASE_URL": "https://meet.jit.si",
+        "EXPO_PUBLIC_JITSI_BASE_URL": "https://calls.menorah.me",
         "EXPO_PUBLIC_CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "873291355021-soma7nima003rvq9usj8fqj0t9kbjm6a.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "873291355021-bi43pprpqlks9hvpjdto7kt0ekcbefr8.apps.googleusercontent.com"
+      }
+    }
+  },
+  "submit": {
+    "internal-testing": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
+      }
+    },
+    "production": {
+      "android": {
+        "track": "production",
+        "releaseStatus": "completed"
       }
     }
   }

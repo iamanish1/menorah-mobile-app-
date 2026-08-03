@@ -84,7 +84,7 @@ export default function DiscoverPage() {
       <div className="mb-6 rounded-[1.75rem] border border-primary-100 bg-primary-50 px-5 py-5 shadow-[0_14px_32px_-26px_rgba(45,122,92,0.5)] dark:border-primary-800 dark:bg-primary-900/70">
         <h1 className="app-page-heading">Find your counsellor</h1>
         <p className="app-page-subtitle mt-1">
-          Browse {pagination?.total ?? ''} certified men&apos;s mental health counsellors
+          Browse verified counsellor profiles, availability, and hourly rates
         </p>
       </div>
 

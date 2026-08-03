@@ -563,7 +563,7 @@ function WebFeaturePanel({
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <h4 className="min-w-0 truncate text-xl font-black text-white">John Doe</h4>
-                  <Badge variant="success" className="shrink-0 bg-white/[0.92] text-primary-700">Free</Badge>
+                  <Badge variant="success" className="shrink-0 bg-white/[0.92] text-primary-700">Member</Badge>
                 </div>
                 <p className="mt-1 truncate text-sm font-medium text-white/[0.82]">john.doe@example.com</p>
                 <p className="mt-0.5 text-xs text-white/[0.65]">+1 555 013 2048</p>
@@ -576,7 +576,7 @@ function WebFeaturePanel({
 
             <div className="mt-6 grid grid-cols-3 gap-2">
               {[
-                ["Plan", "Free"],
+                ["Bookings", "Pay per session"],
                 ["Sessions", "Ready"],
                 ["Status", "Verified"]
               ].map(([label, value]) => (
@@ -801,8 +801,8 @@ function DemoCounsellorProfileCard({
             <p className="counsellor-profile-card__stat-label">Languages</p>
           </div>
           <div className="counsellor-profile-card__stat">
-            <p className="counsellor-profile-card__stat-value">Free</p>
-            <p className="counsellor-profile-card__stat-label">Per session</p>
+            <p className="counsellor-profile-card__stat-value">INR 1,000</p>
+            <p className="counsellor-profile-card__stat-label">Per hour</p>
           </div>
         </div>
 
@@ -837,7 +837,7 @@ function DemoBookingCard({ booking, compact = false }: { booking: (typeof bookin
         </p>
         <div className="mt-1 flex items-center gap-3 text-xs text-gray-400">
           <span>{booking.time}</span>
-          <span>Free</span>
+          <span>INR 1,000</span>
         </div>
       </div>
     </div>
@@ -935,7 +935,7 @@ function getFeatureHeading(feature: WebMockFeature) {
 
 function getFeatureSubtitle(feature: WebMockFeature) {
   const subtitles: Record<WebMockFeature, string> = {
-    discover: "Browse certified men's mental health counsellors",
+    discover: "Browse verified profiles, availability, and hourly rates",
     articles: "Searchable resources for practical support",
     bookings: "Track and manage your sessions",
     chat: "Chat with a counsellor",

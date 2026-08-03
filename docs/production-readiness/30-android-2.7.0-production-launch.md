@@ -60,6 +60,10 @@ the exact candidate.
       version control and no automatic increment.
 - [ ] Checked-in Android native configuration is synchronized explicitly;
       Continuous Native Generation is not assumed to apply config plugins.
+- [ ] The protected GitHub workflow is the only production build trigger and
+      invokes the pinned EAS CLI once for the exact release SHA; it cannot
+      build or upload a second direct-Gradle AAB and holds no Firebase or
+      Android signing material.
 - [ ] The EAS file secret `GOOGLE_SERVICES_JSON` exists and a fail-closed hook
       validates project/package before copying it temporarily without logging
       or committing it.
@@ -167,13 +171,73 @@ reviewed hotfix with a higher unused version code.
 
 ## Evidence record
 
+### Fail-closed discovery on 2026-08-03
+
+Read-only checks completed by `2026-08-03T07:22:49Z` established the following
+external blockers. They are evidence of a safe stop, not release failures to
+bypass:
+
+- GitHub currently reports no active repository ruleset or legacy branch
+  protection for the required branches. The authenticated release operator
+  can push but does not have repository administration authority, so an owner
+  must apply the documented rules before PR #4 can be approved or merged.
+- The EAS `production` environment currently has no project variables. The
+  real `GOOGLE_SERVICES_JSON` file secret, fresh Play maximum, dedicated FCM V1
+  credential, enhanced-push token configuration, and Play submission
+  credential therefore remain unproved. No EAS build was started.
+- The candidate GitHub workflow now invokes the single authoritative EAS
+  `production-android` build and rejects every other SHA/branch. The earlier
+  direct-Gradle AAB, GitHub keystore and GitHub Firebase-file path has been
+  removed. The protected GitHub environment and scoped EAS access token still
+  require owner configuration before that trigger can run.
+- Read-only inspection of the last successful EAS store AAB (`2.6.0`, code
+  `14`) recorded historical upload-certificate SHA-256
+  `61:85:7B:CB:06:38:B8:F8:11:46:9F:BE:96:51:C5:1D:DF:B9:BC:0F:7F:A3:FF:A3:5F:01:44:80:0F:81:BE:F9`
+  and SHA-1 `34:6B:27:CD:E7:D8:46:E8:EE:1E:9B:3F:8C:87:30:9B:8B:2A:C4:74`.
+  This is historical EAS evidence only; it does not replace comparison with
+  the current EAS credential, Play Upload certificate, Play App Signing
+  certificate or signing-incident closure.
+- `https://app.menorah.me/.well-known/assetlinks.json` currently returns HTTP
+  404. The Play App Signing SHA-256 is not available in the repository and a
+  placeholder association must not be published.
+- The public Play listing still presents **Menorah Health Plus** and includes
+  the disallowed fully-free, 24/7, psychology-student and absolute
+  confidentiality claims. Repository copy is remediated, but the console
+  listing and screenshots remain a `GOOGLE ACTION` before submission.
+- The production migration ledger contains the recorded July 12 and July
+  27/29 migrations, but nine July 19/23 files in the combined candidate are
+  unrecorded. They are outside the approved three-migration Android launch
+  plan. The updater now performs a read-only exact-plan check and will stop
+  before maintenance or database writes until those historical migrations are
+  separately reviewed and dispositioned. Do not delete migration files, add
+  ledger rows, or edit release/recovery markers to force a match.
+- The protected production environment does not yet contain the Expo enhanced
+  push access token and notification jobs remain disabled. It also fails the
+  candidate Compose secret contract at the missing Resend webhook secret. Its
+  legacy `SOCIAL_STUDIO_STORAGE` selector is still set and must be removed by
+  the guarded deployment change because `MEDIA_STORAGE_BACKEND=local` is the
+  sole production media selector; the candidate no longer injects the legacy
+  Cloudinary social-storage variables.
+- The daily backup was current when inspected, but the last isolated restore
+  evidence was older than 24 hours and the installed restore timer was not yet
+  the candidate's reviewed daily schedule.
+- Host hygiene completed without reading credential contents: the owner demo
+  credential file was moved outside the Git worktree to a user-owned mode-0600
+  private path, and the two exact unmanaged Playwright QA containers were
+  stopped after confirming that no active test owned them. No Docker prune was
+  run.
+
+The repository release tooling intentionally leaves all of these states
+`NOT READY`. Re-run the read-only checks and attach new evidence after the
+accountable owner completes each external action.
+
 | Evidence | Reference | Status |
 | --- | --- | --- |
 | Final merge SHA/tree and three lineage ancestor checks | Pending | NOT READY |
 | Branch protections and independent PR approval | Pending | NOT READY |
 | Exact-SHA readiness/functional/security runs | Pending | NOT READY |
 | Highest Play version code and selected release version code | Pending | NOT READY |
-| Signing-incident closure and certificate identities | Restricted evidence pending | NOT READY |
+| Signing-incident closure and certificate identities | Historical EAS upload fingerprint recorded above; current EAS/Play comparison pending | NOT READY |
 | Firebase/FCM/EAS/Play credential configuration | Restricted evidence pending | NOT READY |
 | Backend release, migrations, worker mode and fresh restore | Pending | NOT READY |
 | EAS build ID and AAB digest/inspection | Pending | NOT READY |

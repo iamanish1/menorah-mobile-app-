@@ -31,7 +31,7 @@ After deployment, run this from the repository root before shipping a mobile
 binary:
 
 ```bash
-CHECK_PUBLIC=true CHECK_NATIVE_APP_LINKS=true bash deploy/ubuntu/health-check.sh
+CHECK_PUBLIC=true CHECK_ANDROID_APP_LINKS=true bash deploy/ubuntu/health-check.sh
 ```
 
 The check requires the configured Apple/Android signing identifiers and tests

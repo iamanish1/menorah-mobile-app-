@@ -205,7 +205,7 @@ export default function SubscriptionPage() {
     <div className="page-container">
       <div className="text-center mb-8 rounded-[1.75rem] border border-primary-100 bg-primary-50 px-5 py-6 dark:border-primary-800 dark:bg-primary-900/70">
         <h1 className="app-page-heading">Choose your plan</h1>
-        <p className="app-page-subtitle mt-2">Unlimited access to certified mental health counsellors</p>
+        <p className="app-page-subtitle mt-2">Compare plan prices and included-session limits before purchase</p>
       </div>
 
       {/* Current subscription status */}

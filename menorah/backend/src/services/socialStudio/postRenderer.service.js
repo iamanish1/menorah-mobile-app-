@@ -1,3 +1,4 @@
+const path = require('path');
 const sharp = require('sharp');
 const { storeMediaBuffer } = require('../mediaStorage');
 const { toPlainText } = require('./textUtils');

@@ -11,53 +11,51 @@ const featureBackgroundVideoUrl =
 
 const features = [
   {
-    title: "Confidential Chat Support",
+    title: "Secure Counsellor Chat",
     icon: MessageCircle,
     points: [
-      "One-to-one conversations with trained peer supporters.",
-      "Access to counsellors for guidance and support.",
-      "Judgment-free and confidential environment."
+      "One-to-one conversations with your assigned counsellor.",
+      "Chat access connected to your booking.",
+      "Privacy controls and secure data transport."
     ],
     accent: "bg-menorah-green text-white",
     mobileSurface: "linear-gradient(135deg, hsl(var(--menorah-green) / 0.08) 0%, rgb(236 253 245 / 0.98) 100%)",
     surface: "linear-gradient(135deg, #f4f8ef 0%, #ecfdf5 100%)"
   },
   {
-    title: "Man2Man Community",
+    title: "Counsellor Discovery",
     icon: Users,
     points: [
-      "Peer-to-peer support network.",
-      "Age-based communities:",
-      "15-18",
-      "19-24",
-      "25-35",
-      "Connect with men facing similar challenges and life situations."
+      "Browse counsellors reviewed by Menorah.",
+      "Compare professional information and areas of focus.",
+      "Review availability and hourly rates.",
+      "Book a suitable one-to-one session."
     ],
     accent: "bg-menorah-olive text-white",
     mobileSurface: "linear-gradient(135deg, hsl(var(--menorah-olive) / 0.1) 0%, hsl(var(--menorah-cream) / 0.98) 100%)",
     surface: "linear-gradient(135deg, #f7f4e8 0%, #fbfaf5 100%)"
   },
   {
-    title: "Self-Help Tools",
+    title: "Wellbeing Check-ins",
     icon: HeartPulse,
     points: [
-      "Mental wellness exercises.",
-      "Coping strategies.",
-      "Stress and anxiety management resources.",
-      "Evidence-based self-improvement techniques."
+      "Optional wellbeing check-ins.",
+      "Review your own submitted responses and results.",
+      "Informational guidance, not a diagnosis.",
+      "Emergency support is not provided."
     ],
     accent: "bg-emerald-700 text-white",
     mobileSurface: "linear-gradient(135deg, rgb(4 120 87 / 0.08) 0%, rgb(255 255 255 / 0.98) 100%)",
     surface: "linear-gradient(135deg, #eff7f0 0%, #ffffff 100%)"
   },
   {
-    title: "Expert Resources & Media",
+    title: "Educational Resources",
     icon: BookOpen,
     points: [
-      "Articles and educational content.",
-      "Mental health videos.",
-      "Newsletters and informational resources.",
-      "Content specifically tailored to men's mental health."
+      "Practical mental-health and wellbeing articles.",
+      "Search articles by title and topic.",
+      "Informational content, not medical advice.",
+      "Resources written for men's wellbeing."
     ],
     accent: "bg-slate-800 text-white",
     mobileSurface: "linear-gradient(135deg, rgb(30 41 59 / 0.08) 0%, hsl(var(--menorah-page) / 0.98) 100%)",
@@ -67,10 +65,10 @@ const features = [
     title: "Privacy & Security",
     icon: ShieldCheck,
     points: [
-      "Confidential conversations.",
-      "Anonymous interactions.",
-      "Encrypted data transmission.",
-      "User-controlled privacy."
+      "Role-based account access.",
+      "Secure data transmission.",
+      "User profile controls.",
+      "Published privacy information."
     ],
     accent: "bg-menorah-green text-white",
     mobileSurface: "linear-gradient(135deg, hsl(var(--menorah-green) / 0.08) 0%, hsl(var(--menorah-cream) / 0.98) 100%)",
@@ -279,7 +277,7 @@ function FeatureVisual({ index }: { index: number }) {
           I need someone to talk to.
         </div>
         <div className="mt-[clamp(0.85rem,1.4vw,1.25rem)] min-h-[clamp(3.25rem,4vw,4.2rem)] w-[72%] rounded-[var(--landing-radius-md)] bg-menorah-cream px-[clamp(0.75rem,1vw,1rem)] py-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-medium text-foreground/80">
-          You are in a confidential space.
+          Your chat is protected by account access controls.
         </div>
         <div className="absolute bottom-[8%] right-[8%] flex h-[var(--landing-icon-md)] w-[var(--landing-icon-md)] items-center justify-center rounded-full bg-menorah-green text-white">
           <MessageCircle className="h-5 w-5" aria-hidden="true" />
@@ -291,7 +289,7 @@ function FeatureVisual({ index }: { index: number }) {
   if (index === 1) {
     return (
       <div className="landing-feature-visual-panel relative h-[var(--landing-feature-visual-h)] w-[var(--landing-feature-visual-w)] rounded-[var(--landing-radius-lg)] bg-white/70 p-[var(--landing-card-pad)] shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
-        {["15-18", "19-24", "25-35"].map((label, itemIndex) => (
+        {["Verified", "Rates", "Times"].map((label, itemIndex) => (
           <div
             key={label}
             className="absolute flex h-[clamp(4.9rem,7vw,6.5rem)] w-[clamp(4.9rem,7vw,6.5rem)] items-center justify-center rounded-full border border-menorah-green/15 bg-menorah-cream text-[length:var(--landing-body-sm)] font-semibold text-menorah-green shadow-sm"
@@ -305,7 +303,7 @@ function FeatureVisual({ index }: { index: number }) {
         ))}
         <div className="absolute bottom-[13%] left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-white px-[clamp(0.85rem,1vw,1.1rem)] py-[clamp(0.45rem,0.7vw,0.65rem)] text-[length:var(--landing-body-sm)] font-semibold text-menorah-olive shadow-dashboard">
           <Users className="h-4 w-4" aria-hidden="true" />
-          Man2Man
+          Find a counsellor
         </div>
       </div>
     );
@@ -314,7 +312,7 @@ function FeatureVisual({ index }: { index: number }) {
   if (index === 2) {
     return (
       <div className="landing-feature-visual-panel relative h-[var(--landing-feature-visual-h)] w-[var(--landing-feature-visual-w)] rounded-[var(--landing-radius-lg)] bg-white/70 p-[var(--landing-card-pad)] shadow-[0_18px_55px_rgba(35,45,36,0.12)]">
-        {["Breathe", "Ground", "Reflect"].map((label, itemIndex) => (
+        {["Check in", "Respond", "Review"].map((label, itemIndex) => (
           <div key={label} className="mb-[clamp(0.75rem,1vw,1rem)] rounded-[var(--landing-radius-sm)] border border-menorah-green/10 bg-white px-[clamp(0.75rem,1vw,1rem)] py-[clamp(0.6rem,0.8vw,0.8rem)] shadow-sm">
             <div className="flex items-center justify-between text-[length:var(--landing-body-sm)] font-semibold text-foreground">
               <span>{label}</span>
@@ -339,7 +337,7 @@ function FeatureVisual({ index }: { index: number }) {
         </div>
         <div className="mt-[clamp(0.75rem,1vw,1rem)] grid grid-cols-2 gap-[clamp(0.6rem,0.8vw,0.8rem)]">
           <div className="rounded-[var(--landing-radius-sm)] bg-menorah-cream p-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-semibold text-menorah-green">Articles</div>
-          <div className="rounded-[var(--landing-radius-sm)] bg-menorah-cream p-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-semibold text-menorah-green">Videos</div>
+          <div className="rounded-[var(--landing-radius-sm)] bg-menorah-cream p-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-semibold text-menorah-green">Search</div>
           <div className="col-span-2 rounded-[var(--landing-radius-sm)] bg-white p-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-semibold text-menorah-olive shadow-sm">
             Men&apos;s mental health resources
           </div>
@@ -354,7 +352,7 @@ function FeatureVisual({ index }: { index: number }) {
         <ShieldCheck className="landing-feature-privacy-icon h-12 w-12" aria-hidden="true" />
       </div>
       <div className="landing-feature-privacy-options mt-[clamp(1rem,1.8vw,1.55rem)] space-y-[clamp(0.6rem,0.9vw,0.8rem)]">
-        {["Anonymous mode", "Encrypted data", "Privacy controls"].map((label) => (
+        {["Account access", "Secure transport", "Privacy controls"].map((label) => (
           <div key={label} className="landing-feature-privacy-option flex items-center justify-between rounded-[var(--landing-radius-sm)] bg-white px-[clamp(0.75rem,1vw,1rem)] py-[clamp(0.6rem,0.8vw,0.8rem)] text-[length:var(--landing-body-sm)] font-semibold text-foreground shadow-sm">
             {label}
             <LockKeyhole className="h-4 w-4 text-menorah-green" aria-hidden="true" />

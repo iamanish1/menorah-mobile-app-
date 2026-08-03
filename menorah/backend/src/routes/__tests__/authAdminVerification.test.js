@@ -4,6 +4,7 @@ const request = require('supertest');
 const mockFindById = jest.fn();
 const mockFindOne = jest.fn();
 const mockConsumeOtp = jest.fn();
+const mockConsumeAdminMfaChallenge = jest.fn();
 const mockClearMappedCookie = jest.fn();
 const mockSignAdminToken = jest.fn(() => 'admin-session-token');
 const mockSendVerificationEmail = jest.fn();
@@ -33,6 +34,13 @@ jest.mock('../../utils/authTokens', () => ({
 
 jest.mock('../../middleware/auth', () => ({
   adminAuth: (_req, _res, next) => next(),
+  requireRecentAdminMfa: (_req, _res, next) => next(),
+}));
+
+jest.mock('../../services/adminMfaChallenge', () => ({
+  adminMfaKey: jest.fn((challengeId) => `admin:mfa:${challengeId}`),
+  createAdminMfaChallengeRecord: jest.fn(),
+  consumeAdminMfaChallenge: (...args) => mockConsumeAdminMfaChallenge(...args),
 }));
 
 jest.mock('../../utils/email', () => ({
@@ -70,16 +78,31 @@ const buildApp = () => {
 };
 
 describe('admin MFA verification boundary', () => {
+  const originalEnv = process.env;
+
   beforeEach(() => {
+    process.env = {
+      ...originalEnv,
+      NODE_ENV: 'test',
+      ADMIN_ROLE_GRANTS_JSON: JSON.stringify([{
+        adminId: '64f000000000000000000021',
+        role: 'admin',
+      }]),
+    };
     mockFindById.mockReset();
     mockFindOne.mockReset();
     mockConsumeOtp.mockReset();
+    mockConsumeAdminMfaChallenge.mockReset();
     mockClearMappedCookie.mockReset();
     mockSignAdminToken.mockClear();
     mockSendVerificationEmail.mockReset();
     mockRedis.del.mockReset();
     mockRedis.set.mockReset();
     mockRedis.setEx.mockReset();
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
   });
 
   test('a correct MFA code for an unverified admin never issues a session', async () => {
@@ -91,9 +114,8 @@ describe('admin MFA verification boundary', () => {
       isEmailVerified: false,
       resetLoginAttempts: jest.fn(),
     };
-    mockConsumeOtp.mockResolvedValue({
-      status: 1,
-      value: { userId: admin._id.toString() },
+    mockConsumeAdminMfaChallenge.mockResolvedValue({
+      userId: admin._id.toString(),
     });
     mockFindById.mockReturnValue(selectable(admin));
 

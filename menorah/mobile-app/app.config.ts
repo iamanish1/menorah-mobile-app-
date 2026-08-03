@@ -47,7 +47,10 @@ const googleIosUrlSchemeFromClientId = (clientId?: string) => {
 };
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  const isDev = process.env.NODE_ENV !== 'production';
+  const mobileEnvironment = process.env.MENORAH_MOBILE_ENVIRONMENT?.trim();
+  const isDev = mobileEnvironment
+    ? mobileEnvironment === 'development'
+    : process.env.NODE_ENV !== 'production';
   const releaseEnvironment = readReleaseEnvironment(process.env);
   const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
   const configuredIosApiBaseUrl = releaseEnvironment.iosApiBaseUrl;
@@ -101,6 +104,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       'expo-notifications',
       {
         color: '#2d7a5c',
+        icon: './assets/notification-icon.png',
         defaultChannel: 'general'
       }
     ],
@@ -121,7 +125,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: 'Menorah Health',
     slug: 'menorah-health-app',
     owner: 'menorahsoftware',
-    version: '2.6.0',
+    version: '2.7.0',
     orientation: 'portrait',
     // ─── OTA Updates via EAS Update ──────────────────────────────────────────
     updates: {
@@ -129,7 +133,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       checkAutomatically: 'ON_LOAD',
       fallbackToCacheTimeout: 0,
     },
-    runtimeVersion: '2.6.0',
+    runtimeVersion: '2.7.0',
     // ─────────────────────────────────────────────────────────────────────────
     icon: './assets/brand/menorah_logo.png',
     userInterfaceStyle: 'automatic',
@@ -139,7 +143,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.menorah.health.app',
-      buildNumber: '14',
+      buildNumber: '15',
       associatedDomains: ['applinks:app.menorah.me'],
       usesAppleSignIn: true,
       infoPlist: {
@@ -160,7 +164,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#f0f9f4'
       },
       package: 'com.menorah.healthmobile',
-      versionCode: 14,
+      versionCode: 15,
+      googleServicesFile: './android/app/google-services.json',
       intentFilters: [
         {
           action: 'VIEW',
@@ -172,6 +177,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
       permissions: [
+        'android.permission.POST_NOTIFICATIONS',
+        'android.permission.RECEIVE_BOOT_COMPLETED',
+        'android.permission.WAKE_LOCK',
+        'com.google.android.c2dm.permission.RECEIVE',
         'android.permission.CAMERA',
         'android.permission.RECORD_AUDIO',
         'android.permission.MODIFY_AUDIO_SETTINGS',

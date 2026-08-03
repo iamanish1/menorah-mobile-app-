@@ -45,6 +45,7 @@ const makeAccount = ({
   role = 'user',
   sessionVersion = 0,
   isActive = true,
+  isEmailVerified = true,
 } = {}) => ({
   _id: id,
   firstName: 'Current',
@@ -52,6 +53,7 @@ const makeAccount = ({
   role,
   sessionVersion,
   isActive,
+  isEmailVerified,
 });
 
 const buildApp = (onAuthorized = jest.fn()) => {

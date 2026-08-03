@@ -31,6 +31,16 @@ jest.mock('../../middleware/auth', () => ({
     req.user = { _id: '64f000000000000000000001', role: 'user' };
     next();
   },
+  verifiedPatientAuth: (req, _res, next) => {
+    req.user = {
+      _id: '64f000000000000000000001',
+      role: 'user',
+      email: 'user@example.test',
+      phone: '+910000000000',
+      profileCompleted: true,
+    };
+    next();
+  },
 }));
 
 jest.mock('../../models/Booking', () => {

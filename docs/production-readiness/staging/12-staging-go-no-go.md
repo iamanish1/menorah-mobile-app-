@@ -45,7 +45,7 @@ store submission or public launch. Production remains governed by
 - The required `staging-security` GitHub environment is absent, so
   authenticated DAST is blocked.
 - The required `android-release-signing` GitHub environment and protected
-  `ANDROID_RELEASE_SIGNING_READY=protected-main-only` marker are absent;
+  `ANDROID_RELEASE_SIGNING_READY=protected-release-only` marker are absent;
   signing secrets remain repository-scoped and Android release signing is
   blocked.
 - `main` and the release branch have no branch protection and the repository

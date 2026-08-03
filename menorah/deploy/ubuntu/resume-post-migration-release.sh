@@ -22,7 +22,7 @@ RESTORE_IN_PROGRESS_MARKER="${STATE_DIR}/production-restore-in-progress.json"
 RESTORE_REVIEW_MARKER="${STATE_DIR}/production-restore-requires-review.json"
 WRITER_SERVICES=(api-ios api-android api-web api-admin worker)
 EXPECTED_RELEASE_SERVICES=(
-  landing-page user-web-app web-app admin-panel api-ios api-android api-web api-admin worker
+  app-link-associations landing-page user-web-app web-app admin-panel api-ios api-android api-web api-admin worker
   reverse-proxy livekit cloudflared prometheus alertmanager blackbox-exporter
   mongodb-exporter redis-exporter node-exporter backup-metrics grafana uptime-kuma
   docker-metrics-gateway docker-stats-exporter log-collector loki
@@ -390,7 +390,7 @@ done < "${IMAGE_MANIFEST}"
 compose_cmd exec -T reverse-proxy \
   caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 CHECK_PUBLIC=false "${SCRIPT_DIR}/health-check.sh"
-CHECK_PUBLIC=true "${SCRIPT_DIR}/health-check.sh"
+CHECK_PUBLIC=true CHECK_ANDROID_APP_LINKS=true "${SCRIPT_DIR}/health-check.sh"
 retire_legacy_compose_services
 
 if [[ "${RECORDED_HEALTH_STATUS}" != "passed" ]]; then

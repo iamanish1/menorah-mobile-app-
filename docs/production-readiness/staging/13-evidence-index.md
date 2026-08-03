@@ -132,18 +132,19 @@ evidence does not convert any staging, live or governance row to `PASS`.
 
 ## Current external governance snapshot
 
-Read-only review found both required GitHub environments absent, `main` and
-the release branch without branch protection, no repository rulesets, and
-Android signing secrets at repository scope. These are release blockers, not
-authorizations to mutate GitHub configuration.
+Read-only review found both required GitHub environments absent, `main`
+without branch protection, the required release branch not yet created, no
+repository rulesets, and obsolete direct-build Android signing secrets at
+repository scope. These are release blockers, not authorizations to mutate
+GitHub configuration.
 
 | Control | Current state | Required external action |
 | --- | --- | --- |
 | `staging-security` environment | Absent; read-only lookup returned `404 Not Found` | `OWNER ACTION` creates and protects it before DAST variables/secrets or a run |
 | `android-release-signing` environment | Absent | `OWNER ACTION` / `GOOGLE ACTION` creates and protects it before the readiness marker or signing secrets |
-| Android release workflow | Main-HEAD-only and marker-gated in code | Keep disabled until the protected environment holds `ANDROID_RELEASE_SIGNING_READY=protected-main-only` |
-| Android signing secrets | Repository-scoped | Move to the protected environment and remove repository scope through an approved external change |
-| Branch/ruleset governance | `main` and release unprotected; no rulesets | Add approved protections/rulesets and preserve read-only before/after evidence |
+| Android release workflow | release-HEAD-only, marker-gated EAS build trigger in code | Keep disabled until the protected environment holds `ANDROID_RELEASE_SIGNING_READY=protected-release-only` and a scoped `EXPO_TOKEN` |
+| Obsolete direct-build signing secrets | Repository-scoped but no longer consumed by the candidate workflow | Remove repository scope after the protected EAS trigger is established through an approved external change; keep signing/Firebase material in EAS |
+| Branch/ruleset governance | `main` unprotected, release branch absent, no rulesets | Create the release branch only after the approved merge, then add the approved protections/rulesets and preserve read-only before/after evidence |
 
 ## Required category coverage
 
@@ -176,7 +177,7 @@ authorizations to mutate GitHub configuration.
 | `REP-008` | Read-only deployment workflow and fail-closed legacy-path governance | Release/security | Workflow validation, tombstone tests and immutable candidate record | Exact release-readiness run 30212940956, functional run 30212940958 and immutable candidate record | PASS FOR REPOSITORY SCOPE | P0 | Each candidate | Runtime SHA above |
 | `REP-009` | Adversarial workflow regression suite passes after security fixes | Security/release | Pinned workflow-test log | Candidate-bound local suite and exact release/functional push runs pass; see report 28 for counts | PASS | P0 | Each workflow change | Runtime SHA above |
 | `REP-010` | Protected `staging-security` environment supports authenticated DAST | `OWNER ACTION`; security | Environment policy, variables/secrets presence and successful run ID | TBD — restricted GitHub evidence | BLOCKED | P0 | Each environment/change | Runtime SHA above |
-| `REP-011` | Android signing is protected-environment, main-HEAD-only and marker-gated | `OWNER ACTION`; `GOOGLE ACTION`; security | Environment protection, secret-scope removal and successful guarded run | TBD — restricted GitHub evidence | BLOCKED | P0 | Each signing/environment change | Runtime SHA above |
+| `REP-011` | Android EAS build is protected-environment, exact release-HEAD-only and marker-gated | `OWNER ACTION`; `GOOGLE ACTION`; security | Environment protection, obsolete secret-scope removal, EAS credential custody and successful guarded run | TBD — restricted GitHub/EAS evidence | BLOCKED | P0 | Each signing/environment change | Runtime SHA above |
 | `REP-012` | Branch protections/rulesets enforce the approved release policy | `OWNER ACTION`; security/release | Read-only before/after protection and bypass inventory | TBD — restricted GitHub evidence | BLOCKED | P0 | Each governance change | Runtime SHA above |
 | `STG-001` | Host/network/domain/database/cache/storage/provider isolation; no production path | `INFRASTRUCTURE ACTION`; privacy custodian | Signed inventories, denied-connectivity proof and two-person review | TBD — restricted infrastructure store | NOT COLLECTED | P0 | Each environment/change | Runtime SHA above |
 | `STG-002` | Protected 268-key template review, 291-key generated environment and fail-closed startup validation | Infrastructure/security | Selected mapping/provenance matrix plus negative/positive validator logs | TBD — restricted infrastructure store | NOT COLLECTED | P0 | Each candidate/config change | Runtime SHA above |
@@ -214,7 +215,7 @@ authorizations to mutate GitHub configuration.
 | `APL-001` | Apple ownership, signing, entitlements, associations and declarations | `APPLE ACTION` | Account/role, profile, associations and privacy proof | TBD — restricted store evidence | NOT COLLECTED | P0 | Each build/declaration change | Runtime SHA above |
 | `APL-002` | Exact-candidate iOS archive, physical devices and TestFlight review | `APPLE ACTION`; mobile QA | Build ID/checksum, device matrix and reviewer evidence | TBD — restricted store evidence | NOT COLLECTED | P0 | Each candidate build | Runtime SHA above |
 | `GGL-001` | Google ownership, Play signing/upload key, asset links and declarations | `GOOGLE ACTION` | Account/role/key, external-link and declaration proof | TBD — restricted store evidence | BLOCKED | P0 | Each account/build change | Runtime SHA above; protected signing environment absent |
-| `GGL-002` | Exact-main-HEAD signed internal-track Android build and device review | `GOOGLE ACTION`; mobile QA | Guarded run, build ID/checksum, track and devices | TBD — restricted store evidence | BLOCKED | P0 | Each candidate build | Runtime SHA above; signing disabled |
+| `GGL-002` | Exact protected-release-HEAD EAS build, signed internal-track Android delivery and device review | `GOOGLE ACTION`; mobile QA | Guarded run, EAS build ID/AAB checksum, track and devices | TBD — restricted store evidence | BLOCKED | P0 | Each candidate build | Runtime SHA above; EAS build trigger disabled |
 | `VEN-001` | Enabled-provider ownership, MFA, contracts, location, subprocessors and assurance | `VENDOR ACTION`; legal/privacy | Provider-by-provider approved assurance pack | TBD — restricted vendor store | NOT COLLECTED | Governance/P0 | Annual/provider change | Runtime SHA above |
 | `VEN-002` | Callback, quota, failure, incident, retention, deletion, export and exit tests | `VENDOR ACTION`; service owners | Sandbox cases and provider/exit records | TBD — restricted vendor store | NOT COLLECTED | P0 | Each integration change | Runtime SHA above |
 | `ISO-001` | ISO/IEC 27001:2022 and ISO/IEC 27701:2025 scoped maps | Owner/security/privacy | Scope, control map, risks, audit and review | TBD — governance/ISMS store | NOT COLLECTED | Governance/P1 | ISMS cycle | Runtime SHA above |

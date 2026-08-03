@@ -1,4 +1,8 @@
-const { parseBooleanEnv } = require('../../shared/app/createSocketServer');
+const {
+  parseBooleanEnv,
+  resolveNotificationJobsEnabled,
+  resolveWorkerMode,
+} = require('../../config/workerRuntime');
 const connectDB = require('../../config/database');
 const { connectRedis } = require('../../config/redis');
 const { createExpressApp } = require('../../shared/app/createExpressApp');
@@ -19,15 +23,10 @@ const {
 } = require('../pushNotificationScheduler');
 require('dotenv').config();
 
-const getWorkerMode = () => {
-  if (process.env.WORKER_MODE) return process.env.WORKER_MODE;
-  return process.env.SERVICE_RUNTIME === 'cloudrun' ? 'standby' : 'active';
-};
-
 const schedulerEnabled = (key, fallback = false) => parseBooleanEnv(process.env[key], fallback);
 
 const resolveWorkerJobs = () => {
-  const mode = getWorkerMode();
+  const mode = resolveWorkerMode(process.env);
   const active = mode === 'active';
 
   return {
@@ -43,7 +42,7 @@ const resolveWorkerJobs = () => {
     backupJobs: active && schedulerEnabled('ENABLE_BACKUP_JOBS', false),
     cleanupJobs: active && schedulerEnabled('ENABLE_CLEANUP_JOBS', false),
     emailJobs: active && schedulerEnabled('ENABLE_EMAIL_JOBS', false),
-    notificationJobs: active && schedulerEnabled('ENABLE_NOTIFICATION_JOBS', true)
+    notificationJobs: resolveNotificationJobsEnabled(process.env)
   };
 };
 

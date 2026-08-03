@@ -43,6 +43,7 @@ const userDocument = () => ({
   firstName: 'Apple',
   lastName: 'User',
   isActive: true,
+  isEmailVerified: true,
   passwordAuthEnabled: false,
   role: 'user',
   sessionVersion: 0,
@@ -119,6 +120,11 @@ describe('Apple auth credential persistence', () => {
       'provider-refresh-token',
       { userId: USER_ID, clientId: CLIENT_ID }
     );
+    expect(mockExchangeAppleAuthorizationCode).toHaveBeenCalledWith({
+      authorizationCode: AUTHORIZATION_CODE,
+      clientId: CLIENT_ID,
+      expectedSubject: APPLE_SUBJECT,
+    });
     expect(mockUpdateOne).toHaveBeenCalledWith(
       {
         _id: USER_ID,

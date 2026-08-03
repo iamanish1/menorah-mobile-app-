@@ -20,6 +20,7 @@ const {
   getWebSessionForRequest,
 } = require('../../config/webSessions');
 const { getCounsellorProfileImage } = require('../../utils/chatProfileImage');
+const { parseBooleanEnv } = require('../../config/workerRuntime');
 
 const SOCKET_ENABLED_SERVICES = new Set(['api-ios', 'api-android', 'api-web']);
 const DEFAULT_SOCKET_SESSION_REVALIDATION_INTERVAL_MS = 30 * 1000;
@@ -27,11 +28,6 @@ const SOCKET_REVALIDATION_CONCURRENCY = 10;
 const MAX_JOINED_CHAT_ROOMS = 100;
 const SOCKET_CHAT_DENIAL_AUDIT_INTERVAL_MS = 30 * 1000;
 const SOCKET_PRESENCE_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
-
-const parseBooleanEnv = (value, fallback) => {
-  if (value === undefined || value === null || value === '') return fallback;
-  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
-};
 
 const getServiceRuntime = () => process.env.SERVICE_RUNTIME || 'home';
 

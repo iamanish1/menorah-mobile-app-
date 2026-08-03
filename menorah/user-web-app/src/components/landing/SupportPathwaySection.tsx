@@ -45,9 +45,9 @@ const featureSlides = [
   },
   {
     title: "Private Chat",
-    kicker: "03 Confidential support",
-    body: "Move into a calm, private space for counsellor conversations and guided next steps.",
-    points: ["Private message flow", "Available counsellor sheet", "Safe conversation cues"],
+    kicker: "03 Secure counsellor chat",
+    body: "Use a calm, account-protected space for conversations with your assigned counsellor.",
+    points: ["Booking-linked message flow", "Available counsellor sheet", "Clear conversation cues"],
     icon: MessageCircle,
     accent: "bg-emerald-700 text-white",
     surface: "linear-gradient(135deg, #effaf3 0%, #ffffff 100%)"
@@ -337,7 +337,7 @@ function PhoneScreen({
           <div>
             <h4 className="text-[1.05rem] font-black leading-tight">Private chat</h4>
             <p className="mt-1.5 line-clamp-2 text-[11px] font-semibold leading-4 text-gray-600">
-              Message a counsellor in a confidential space.
+              Message your assigned counsellor through secure in-app chat.
             </p>
           </div>
           <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-700 ring-[7px] ring-primary-100/80">
@@ -446,8 +446,8 @@ function PhoneScreen({
               <LockKeyhole className="h-7 w-7" aria-hidden="true" />
             </div>
           </div>
-          <h4 className="mt-3 text-base font-black">Safe. Private. Personal.</h4>
-          <p className="mt-1 text-xs leading-5 text-gray-500">Your conversations are end-to-end encrypted and confidential.</p>
+          <h4 className="mt-3 text-base font-black">Secure account access</h4>
+          <p className="mt-1 text-xs leading-5 text-gray-500">Chat is protected in transit and limited to authorized account roles.</p>
         </div>
 
         <div className="mt-4 rounded-[1.2rem] border border-primary-100 bg-white shadow-sm">

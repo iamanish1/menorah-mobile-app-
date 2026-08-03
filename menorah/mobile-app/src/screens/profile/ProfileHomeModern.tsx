@@ -139,8 +139,8 @@ export default function ProfileHome({ navigation }: any) {
             } catch (error) {
               reportError("profile.logout_failed", error);
               Alert.alert(
-                "Signed Out Securely",
-                "Credential cleanup is still pending and will be retried before another sign-in.",
+                "Sign-out incomplete",
+                "Menorah could not safely finish signing out. Your session remains protected; try again before another person uses this device.",
               );
               return;
             }

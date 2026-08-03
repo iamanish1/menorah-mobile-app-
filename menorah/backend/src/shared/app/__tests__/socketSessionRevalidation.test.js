@@ -64,6 +64,7 @@ describe('Socket.IO live session revalidation', () => {
       _id: USER_ID,
       role: 'counsellor',
       isActive: true,
+      isEmailVerified: true,
       sessionVersion: 3,
     };
     const evaluateCounsellorAccess = jest.fn(async () => ({
@@ -90,6 +91,7 @@ describe('Socket.IO live session revalidation', () => {
       _id: USER_ID,
       role: 'user',
       isActive: true,
+      isEmailVerified: true,
       sessionVersion: 2,
     };
     const evaluateCounsellorAccess = jest.fn();
@@ -115,6 +117,7 @@ describe('Socket.IO live session revalidation', () => {
       lastName: 'Counsellor',
       role: 'counsellor',
       isActive: true,
+      isEmailVerified: true,
       sessionVersion: 2,
     };
     const evaluateCounsellorAccess = jest.fn(async () => ({ allowed: true }));
@@ -160,6 +163,7 @@ describe('Socket.IO live session revalidation', () => {
       firstName: 'Current',
       lastName: 'Account',
       isActive: true,
+      isEmailVerified: true,
       ...stored,
     };
 
@@ -256,6 +260,7 @@ describe('Socket.IO live session revalidation', () => {
       lastName: 'Counsellor',
       role: 'counsellor',
       isActive: true,
+      isEmailVerified: true,
       sessionVersion: 2,
     };
     const token = signUserToken(account);

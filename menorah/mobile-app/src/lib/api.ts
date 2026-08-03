@@ -1284,6 +1284,20 @@ class ApiClient {
     });
   }
 
+  async registerPushDeviceWithToken(payload: {
+    expoPushToken: string;
+    platform: "android";
+    projectId: string;
+  }, authToken: string): Promise<ApiResponse<{ registered: boolean }>> {
+    return this.request({
+      method: "POST",
+      url: "/users/push-devices",
+      data: payload,
+      authMode: 'manual',
+      manualAuthToken: authToken,
+    });
+  }
+
   async unregisterPushDevice(
     expoPushToken: string,
   ): Promise<ApiResponse<{ registered: boolean }>> {
@@ -1292,6 +1306,19 @@ class ApiClient {
       url: "/users/push-devices",
       data: { expoPushToken },
       authMode: 'required',
+    });
+  }
+
+  async unregisterPushDeviceWithToken(
+    expoPushToken: string,
+    authToken: string,
+  ): Promise<ApiResponse<{ registered: boolean }>> {
+    return this.request({
+      method: "DELETE",
+      url: "/users/push-devices",
+      data: { expoPushToken },
+      authMode: 'manual',
+      manualAuthToken: authToken,
     });
   }
 

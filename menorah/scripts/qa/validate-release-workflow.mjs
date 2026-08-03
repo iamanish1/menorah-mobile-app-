@@ -608,7 +608,7 @@ export function validateDastWorkflow(workflow, rawWorkflow) {
 }
 
 export function validateAndroidBuildWorkflow(workflow, rawWorkflow) {
-  assert.equal(workflow.name, 'Build Android AAB');
+  assert.equal(workflow.name, 'Build Android AAB with EAS');
   assert.deepEqual(
     Object.keys(workflow).sort(),
     ['name', 'on', 'permissions', 'jobs'].sort(),
@@ -633,28 +633,20 @@ export function validateAndroidBuildWorkflow(workflow, rawWorkflow) {
   );
 
   const job = workflow.jobs?.build;
-  assert.ok(job, 'Android signing must retain its build job');
-  rejectContinueOnError(job, 'Android signing');
+  assert.ok(job, 'Android EAS build must retain its build job');
+  rejectContinueOnError(job, 'Android EAS build');
   assert.deepEqual(
     Object.keys(job).sort(),
-    ['runs-on', 'environment', 'env', 'steps'].sort(),
-    'Android signing job fields must remain exact',
+    ['runs-on', 'timeout-minutes', 'environment', 'env', 'steps'].sort(),
+    'Android EAS build job fields must remain exact',
   );
   assert.equal(job['runs-on'], 'ubuntu-latest');
+  assert.equal(job['timeout-minutes'], 120);
   assert.equal(job.environment, 'android-release-signing');
   assert.deepEqual(job.env, {
-    NODE_ENV: 'production',
-    MENORAH_MOBILE_ENVIRONMENT: 'production',
     GITHUB_TRIGGER_REF: '${{ github.ref }}',
     GITHUB_TRIGGER_SHA: '${{ github.sha }}',
     ANDROID_RELEASE_SIGNING_READY: '${{ vars.ANDROID_RELEASE_SIGNING_READY }}',
-    EXPO_PUBLIC_IOS_API_BASE_URL: '${{ vars.EXPO_PUBLIC_IOS_API_BASE_URL }}',
-    EXPO_PUBLIC_ANDROID_API_BASE_URL: '${{ vars.EXPO_PUBLIC_ANDROID_API_BASE_URL }}',
-    EXPO_PUBLIC_WEB_BASE_URL: '${{ vars.EXPO_PUBLIC_WEB_BASE_URL }}',
-    EXPO_PUBLIC_CHECKOUT_RETURN_URL: '${{ vars.EXPO_PUBLIC_CHECKOUT_RETURN_URL }}',
-    EXPO_PUBLIC_JITSI_BASE_URL: '${{ vars.EXPO_PUBLIC_JITSI_BASE_URL }}',
-    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: '${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}',
-    EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: '${{ vars.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID }}',
   });
 
   const expectedStepNames = [
@@ -662,26 +654,19 @@ export function validateAndroidBuildWorkflow(workflow, rawWorkflow) {
     'Checkout',
     'Verify checked-out release SHA',
     'Setup Node.js',
-    'Setup Java',
     'Install dependencies',
-    'Validate release environment',
-    'Decode keystore',
-    'Make gradlew executable',
-    'Build Android AAB',
-    'Remove signing material',
-    'Upload AAB artifact',
+    'Validate release workspace',
+    'Build exact Android AAB on EAS',
   ];
   assert.deepEqual(
     (job.steps || []).map((step) => step.name),
     expectedStepNames,
-    'Android signing step order and secret boundary must remain exact',
+    'Android EAS build step order and secret boundary must remain exact',
   );
-  rejectSecretReferencesInRuns(job.steps, 'Android signing');
+  rejectSecretReferencesInRuns(job.steps, 'Android EAS build');
   const expectedUses = new Map([
     ['Checkout', 'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683'],
     ['Setup Node.js', 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020'],
-    ['Setup Java', 'actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9'],
-    ['Upload AAB artifact', 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02'],
   ]);
   const expectedEnvs = new Map([
     ['Validate approved release SHA', {
@@ -690,14 +675,8 @@ export function validateAndroidBuildWorkflow(workflow, rawWorkflow) {
     ['Verify checked-out release SHA', {
       RELEASE_SHA: '${{ inputs.release_sha }}',
     }],
-    ['Decode keystore', {
-      ANDROID_KEYSTORE_BASE64: '${{ secrets.ANDROID_KEYSTORE_BASE64 }}',
-    }],
-    ['Build Android AAB', {
-      ANDROID_KEYSTORE_FILE: '${{ runner.temp }}/menorah-release.keystore',
-      ANDROID_KEYSTORE_PASSWORD: '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}',
-      ANDROID_KEY_ALIAS: '${{ secrets.ANDROID_KEY_ALIAS }}',
-      ANDROID_KEY_PASSWORD: '${{ secrets.ANDROID_KEY_PASSWORD }}',
+    ['Build exact Android AAB on EAS', {
+      EXPO_TOKEN: '${{ secrets.EXPO_TOKEN }}',
     }],
   ]);
   const expectedWith = new Map([
@@ -711,19 +690,11 @@ export function validateAndroidBuildWorkflow(workflow, rawWorkflow) {
       cache: 'npm',
       'cache-dependency-path': 'menorah/mobile-app/package-lock.json',
     }],
-    ['Setup Java', {
-      distribution: 'temurin',
-      'java-version': 17,
-    }],
-    ['Upload AAB artifact', {
-      name: 'android-release',
-      path: 'menorah/mobile-app/android/app/build/outputs/bundle/release/*.aab',
-    }],
   ]);
   const expectedWorkingDirectories = new Map([
     ['Install dependencies', 'menorah/mobile-app'],
-    ['Validate release environment', 'menorah/mobile-app'],
-    ['Build Android AAB', 'menorah/mobile-app/android'],
+    ['Validate release workspace', 'menorah/mobile-app'],
+    ['Build exact Android AAB on EAS', 'menorah/mobile-app'],
   ]);
   const expectedRuns = new Map([
     ['Validate approved release SHA', [
@@ -731,12 +702,12 @@ export function validateAndroidBuildWorkflow(workflow, rawWorkflow) {
       '  echo "::error::release_sha must be an exact lowercase 40-character commit SHA."',
       '  exit 1',
       'fi',
-      'if [[ "$GITHUB_TRIGGER_REF" != "refs/heads/main" || "$RELEASE_SHA" != "$GITHUB_TRIGGER_SHA" ]]; then',
-      '  echo "::error::Android release signing is restricted to the exact workflow-dispatch main HEAD."',
+      'if [[ "$GITHUB_TRIGGER_REF" != "refs/heads/release/android-2.7.0-20260803" || "$RELEASE_SHA" != "$GITHUB_TRIGGER_SHA" ]]; then',
+      '  echo "::error::Android release signing is restricted to the exact protected Android 2.7.0 release HEAD."',
       '  exit 1',
       'fi',
-      'if [[ "$ANDROID_RELEASE_SIGNING_READY" != "protected-main-only" ]]; then',
-      '  echo "::error::Configure ANDROID_RELEASE_SIGNING_READY=protected-main-only only in the protected android-release-signing environment."',
+      'if [[ "$ANDROID_RELEASE_SIGNING_READY" != "protected-release-only" ]]; then',
+      '  echo "::error::Configure ANDROID_RELEASE_SIGNING_READY=protected-release-only only in the protected android-release-signing environment."',
       '  exit 1',
       'fi',
       '',
@@ -747,21 +718,14 @@ export function validateAndroidBuildWorkflow(workflow, rawWorkflow) {
       '',
     ].join('\n')],
     ['Install dependencies', 'npm ci'],
-    ['Validate release environment', [
-      'node -e "require(\'./scripts/release-environment.cjs\').readAndroidReleaseEnvironment(process.env)"',
+    ['Validate release workspace', [
+      'npm run lint',
+      'npm run typecheck',
       'npm run validate:release-config',
+      'node --test scripts/*.test.cjs',
       '',
     ].join('\n')],
-    ['Decode keystore', [
-      'umask 077',
-      'test -n "${ANDROID_KEYSTORE_BASE64}"',
-      'printf \'%s\' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${RUNNER_TEMP}/menorah-release.keystore"',
-      'test -s "${RUNNER_TEMP}/menorah-release.keystore"',
-      '',
-    ].join('\n')],
-    ['Make gradlew executable', 'chmod +x menorah/mobile-app/android/gradlew'],
-    ['Build Android AAB', './gradlew bundleRelease --stacktrace --no-daemon'],
-    ['Remove signing material', 'rm -f "${RUNNER_TEMP}/menorah-release.keystore"'],
+    ['Build exact Android AAB on EAS', 'npx --yes eas-cli@21.4.0 build --platform android --profile production-android --non-interactive'],
   ]);
 
   for (const step of job.steps || []) {
@@ -770,48 +734,46 @@ export function validateAndroidBuildWorkflow(workflow, rawWorkflow) {
     const expectedInput = expectedWith.get(step.name);
     const expectedWorkingDirectory = expectedWorkingDirectories.get(step.name);
     const expectedRun = expectedRuns.get(step.name);
-    const expectedIf = step.name === 'Remove signing material' ? 'always()' : undefined;
     const expectedKeys = ['name', expectedAction ? 'uses' : 'run'];
     if (expectedEnv !== undefined) expectedKeys.push('env');
     if (expectedInput !== undefined) expectedKeys.push('with');
     if (expectedWorkingDirectory !== undefined) expectedKeys.push('working-directory');
-    if (expectedIf !== undefined) expectedKeys.push('if');
 
     assert.equal(
       step.uses,
       expectedAction,
-      `Android signing step ${step.name} must use the exact reviewed action`,
+      `Android EAS build step ${step.name} must use the exact reviewed action`,
     );
     assert.deepEqual(
       step.env,
       expectedEnv,
-      `Android signing step ${step.name} must retain its exact environment boundary`,
+      `Android EAS build step ${step.name} must retain its exact environment boundary`,
     );
     assert.deepEqual(
       step.with,
       expectedInput,
-      `Android signing step ${step.name} must retain its exact action inputs`,
+      `Android EAS build step ${step.name} must retain its exact action inputs`,
     );
     assert.equal(
       step['working-directory'],
       expectedWorkingDirectory,
-      `Android signing step ${step.name} must retain its exact working directory`,
+      `Android EAS build step ${step.name} must retain its exact working directory`,
     );
     assert.equal(
       step.if,
-      expectedIf,
-      `Android signing step ${step.name} must retain its exact condition`,
+      undefined,
+      `Android EAS build step ${step.name} must retain its exact condition`,
     );
     assert.equal(
       step.shell,
       undefined,
-      `Android signing step ${step.name} must not override its reviewed shell`,
+      `Android EAS build step ${step.name} must not override its reviewed shell`,
     );
     const commandMessage = step.name === 'Validate approved release SHA'
-      ? 'Android signing input must equal the workflow-dispatch main HEAD; approved release guard command changed'
-      : `Android signing step ${step.name} command changed from the reviewed implementation`;
+      ? 'Android signing input must equal the workflow-dispatch protected release HEAD; approved release guard command changed'
+      : `Android EAS build step ${step.name} command changed from the reviewed implementation`;
     assert.equal(step.run, expectedRun, commandMessage);
-    assertExactStepKeys(step, expectedKeys, 'Android signing');
+    assertExactStepKeys(step, expectedKeys, 'Android EAS build');
   }
 
   const secretReferences = [
@@ -819,12 +781,16 @@ export function validateAndroidBuildWorkflow(workflow, rawWorkflow) {
       /\$\{\{\s*secrets\s*(?:\.\s*([A-Z0-9_]+)|\[\s*['"]([A-Z0-9_]+)['"]\s*\])\s*\}\}/gi,
     ),
   ].map((match) => match[1] ?? match[2]);
-  assert.deepEqual(secretReferences.sort(), [
-    'ANDROID_KEYSTORE_BASE64',
-    'ANDROID_KEYSTORE_PASSWORD',
-    'ANDROID_KEY_ALIAS',
-    'ANDROID_KEY_PASSWORD',
-  ].sort(), 'Android workflow may consume only the four reviewed signing secrets');
+  assert.deepEqual(
+    secretReferences,
+    ['EXPO_TOKEN'],
+    'Android workflow may consume only the protected EAS build token',
+  );
+  assert.doesNotMatch(
+    rawWorkflow,
+    /(?:gradlew\s+bundleRelease|ANDROID_KEYSTORE_|GOOGLE_SERVICES_JSON_BASE64|upload-artifact)/,
+    'Android workflow must not create a competing direct-Gradle artifact or hold signing/Firebase files',
+  );
 }
 
 export function validateUpdateScript(script) {
@@ -864,7 +830,7 @@ export function validateUpdateScript(script) {
     [/WRITER_SERVICES/, 'writer maintenance boundary'],
     [/migration-in-progress-sha/, 'partial migration recovery marker'],
     [/SKIP_ALREADY_APPLIED/, 'duplicate migration prevention'],
-    [/wait_for_health false && wait_for_health true/, 'local and public health gates'],
+    [/wait_for_health false && wait_for_health true true/, 'local, public, and Android App Links health gates'],
     [/RELEASE_METADATA/, 'recovery metadata'],
     [/validate_backend_startup_config/, 'reviewed-image startup preflight'],
     [/validate_monitoring_release_config/, 'monitoring identity and delivery preflight'],
@@ -1071,7 +1037,7 @@ function validateRecordedMigration(script, compose) {
   );
   requirePattern(
     script,
-    /MENORAH_MIGRATION_IMAGE_ID="\$\{image_id\}" docker compose/,
+    /MENORAH_MIGRATION_IMAGE_ID="\$\{image_id\}"[\s\S]*?docker compose/,
     'recorded migration must bind Compose to the captured content ID',
   );
   requirePattern(
@@ -1125,6 +1091,26 @@ function validateProductionComposeReleaseSafety(compose) {
       `${serviceName} must retain read access to media-group transition copies`,
     );
   }
+  assert.equal(
+    compose?.['x-backend-env']?.EXPO_PUSH_ACCESS_TOKEN,
+    undefined,
+    'Expo push credentials must not be shared with API services',
+  );
+  assert.equal(
+    compose?.['x-backend-env']?.CHECKOUT_CALLBACK_SECRET,
+    undefined,
+    'checkout callback credentials must not be shared with backend services',
+  );
+  assert.equal(
+    compose?.services?.worker?.environment?.EXPO_PUSH_ACCESS_TOKEN,
+    '${EXPO_PUSH_ACCESS_TOKEN:-}',
+    'only the notification worker may receive the Expo push access token',
+  );
+  assert.equal(
+    compose?.services?.['user-web-app']?.environment?.CHECKOUT_CALLBACK_SECRET,
+    '${CHECKOUT_CALLBACK_SECRET:?CHECKOUT_CALLBACK_SECRET is required}',
+    'only the checkout relay must receive its callback secret',
+  );
   const replicaInitCommand = JSON.stringify(compose?.services?.['mongo-replica-init']?.command || []);
   assert.match(replicaInitCommand, /process\.env\.MONGO_ROOT_PASSWORD/);
   assert.doesNotMatch(replicaInitCommand, /(?:^|\s)-p(?:\s|=)/);
@@ -1140,7 +1126,7 @@ function validatePostMigrationResume(script) {
   requirePattern(script, /status --porcelain/, 'post-migration resume must reject a dirty checkout');
   requirePattern(script, /HEAD\^\{tree\}/, 'post-migration resume must bind to the recorded source tree');
   requirePattern(script, /EXPECTED_RELEASE_SERVICES/, 'post-migration resume must enforce the exact service set');
-  requirePattern(script, /CHECK_PUBLIC=false[\s\S]*CHECK_PUBLIC=true/, 'post-migration resume must pass local and public health');
+  requirePattern(script, /CHECK_PUBLIC=false[\s\S]*CHECK_PUBLIC=true CHECK_ANDROID_APP_LINKS=true/, 'post-migration resume must pass local, public, and Android App Links health');
   requirePattern(script, /stop_writers/, 'failed post-migration resume must stop writers');
   requirePattern(script, /retire_legacy_compose_services/, 'successful resume must retire predecessor-only socket/log agents');
   rejectPattern(script, /src\/database\/migrate/, 'post-migration resume must never rerun a migration');

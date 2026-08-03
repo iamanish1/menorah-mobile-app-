@@ -373,31 +373,31 @@ test('rejects dot-form and bracket-form secret interpolation in DAST run command
   }
 });
 
-test('accepts the manual main-head-only Android signing workflow', () => {
+test('accepts the manual protected-release-head-only Android EAS build workflow', () => {
   validateAndroidBuildWorkflow(
     copyAndroidBuildWorkflow(),
     rawAndroidBuildWorkflow,
   );
 });
 
-test('rejects Android signing of a SHA other than the dispatch main HEAD', () => {
+test('rejects Android signing of a SHA other than the dispatch protected release HEAD', () => {
   const weakenedRaw = rawAndroidBuildWorkflow.replace(
-    'if [[ \"$GITHUB_TRIGGER_REF\" != \"refs/heads/main\" || \"$RELEASE_SHA\" != \"$GITHUB_TRIGGER_SHA\" ]]; then',
-    'if [[ \"$GITHUB_TRIGGER_REF\" != \"refs/heads/main\" ]]; then',
+    'if [[ \"$GITHUB_TRIGGER_REF\" != \"refs/heads/release/android-2.7.0-20260803\" || \"$RELEASE_SHA\" != \"$GITHUB_TRIGGER_SHA\" ]]; then',
+    'if [[ \"$GITHUB_TRIGGER_REF\" != \"refs/heads/release/android-2.7.0-20260803\" ]]; then',
   );
   assert.notEqual(weakenedRaw, rawAndroidBuildWorkflow);
   assert.throws(
     () => validateAndroidBuildWorkflow(parse(weakenedRaw), weakenedRaw),
-    /input must equal the workflow-dispatch main HEAD/,
+    /input must equal the workflow-dispatch protected release HEAD/,
   );
 });
 
-test('rejects moving Android signing secrets into an unreviewed step', () => {
+test('rejects moving the Android EAS token into an unreviewed step', () => {
   const weakened = copyAndroidBuildWorkflow();
   weakened.jobs.build.steps.splice(1, 0, {
     name: 'Use signing secret early',
     env: {
-      ANDROID_KEYSTORE_BASE64: '${{ secrets.ANDROID_KEYSTORE_BASE64 }}',
+      EXPO_TOKEN: '${{ secrets.EXPO_TOKEN }}',
     },
     run: 'echo unsafe',
   });
@@ -454,9 +454,9 @@ test('rejects a comment-only or no-op Android release approval guard', () => {
   const workflow = copyAndroidBuildWorkflow();
   workflow.jobs.build.steps[0].run = [
     '# ^[0-9a-f]{40}$',
-    '# "$GITHUB_TRIGGER_REF" != "refs/heads/main"',
+    '# "$GITHUB_TRIGGER_REF" != "refs/heads/release/android-2.7.0-20260803"',
     '# "$RELEASE_SHA" != "$GITHUB_TRIGGER_SHA"',
-    '# "$ANDROID_RELEASE_SIGNING_READY" != "protected-main-only"',
+    '# "$ANDROID_RELEASE_SIGNING_READY" != "protected-release-only"',
     'true',
   ].join('\n');
 
@@ -468,13 +468,13 @@ test('rejects a comment-only or no-op Android release approval guard', () => {
 
 test('rejects dot-form and bracket-form secret interpolation in Android run commands', () => {
   const secretReferences = [
-    '${{ secrets.ANDROID_KEY_PASSWORD }}',
-    "${{ secrets['ANDROID_KEY_PASSWORD'] }}",
+    '${{ secrets.EXPO_TOKEN }}',
+    "${{ secrets['EXPO_TOKEN'] }}",
   ];
 
   for (const reference of secretReferences) {
     const workflow = copyAndroidBuildWorkflow();
-    workflow.jobs.build.steps[5].run += `\nprintf '%s' '${reference}'\n`;
+    workflow.jobs.build.steps[6].run += `\nprintf '%s' '${reference}'\n`;
     assert.throws(
       () => validateAndroidBuildWorkflow(workflow, rawAndroidBuildWorkflow),
       /must not interpolate a secret directly in run/,
@@ -499,13 +499,13 @@ test('rejects unexpected Android step environment, condition, and shell fields',
       index: 5,
       mutate: (step) => {
         step.env = {
-          EARLY_SECRET: "${{ secrets['ANDROID_KEYSTORE_PASSWORD'] }}",
+          EARLY_SECRET: "${{ secrets['EXPO_TOKEN'] }}",
         };
       },
       message: /must retain its exact environment boundary/,
     },
     {
-      index: 7,
+      index: 6,
       mutate: (step) => {
         step.if = 'always()';
       },
@@ -528,6 +528,18 @@ test('rejects unexpected Android step environment, condition, and shell fields',
       message,
     );
   }
+});
+
+test('rejects a competing direct-Gradle Android artifact path', () => {
+  const weakenedRaw = rawAndroidBuildWorkflow.replace(
+    'npx --yes eas-cli@21.4.0 build --platform android --profile production-android --non-interactive',
+    './gradlew bundleRelease --stacktrace --no-daemon',
+  );
+  assert.notEqual(weakenedRaw, rawAndroidBuildWorkflow);
+  assert.throws(
+    () => validateAndroidBuildWorkflow(parse(weakenedRaw), weakenedRaw),
+    /command changed|competing direct-Gradle artifact/,
+  );
 });
 
 test('rejects a workflow that consumes a repository secret', () => {

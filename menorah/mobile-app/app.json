@@ -2,7 +2,7 @@
   "expo": {
     "name": "Menorah Health",
     "slug": "menorah-health-app",
-    "version": "2.6.0",
+    "version": "2.7.0",
     "orientation": "portrait",
     "icon": "./assets/brand/menorah_logo.png",
     "userInterfaceStyle": "automatic",
@@ -12,7 +12,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.menorah.health.app",
-      "buildNumber": "14",
+      "buildNumber": "15",
       "associatedDomains": [
         "applinks:app.menorah.me"
       ]
@@ -29,7 +29,20 @@
         "backgroundColor": "#f0f9f4"
       },
       "package": "com.menorah.healthmobile",
-      "versionCode": 14
+      "versionCode": 15,
+      "googleServicesFile": "./android/app/google-services.json",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.WAKE_LOCK",
+        "com.google.android.c2dm.permission.RECEIVE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.VIBRATE"
+      ]
     },
     "androidStatusBar": {
       "barStyle": "light-content",
@@ -50,6 +63,7 @@
         "expo-notifications",
         {
           "color": "#2d7a5c",
+          "icon": "./assets/notification-icon.png",
           "defaultChannel": "general"
         }
       ]
@@ -57,9 +71,9 @@
     "updates": {
       "url": "https://u.expo.dev/d7fb6e65-3440-4a79-b4b2-6746d2582fa7"
     },
-    "runtimeVersion": "2.6.0",
+    "runtimeVersion": "2.7.0",
     "extra": {
-      "CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
+      "CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return",
       "eas": {
         "projectId": "d7fb6e65-3440-4a79-b4b2-6746d2582fa7"
       }

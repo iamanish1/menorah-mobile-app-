@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import {
   PushPermissionState,
   addPushResponseListener,
+  addPushTokenChangeListener,
   clearLastPushResponseAsync,
   getAndroidPushPermissionAsync,
   getLastPushResponseAsync,
@@ -154,19 +155,21 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       if (enabled) {
         const registration = await registerAndroidPushNotificationsAsync({
           requestPermission: true,
+          userId: user.id,
         });
         setPushPermission(registration.permission);
         if (!registration.enabled) return false;
 
         const preferenceResponse = await api.updateNotificationPreferences({ push: true });
         if (!preferenceResponse.success) {
-          await unregisterStoredPushDeviceAsync();
+          await unregisterStoredPushDeviceAsync(user.id);
           return false;
         }
       } else {
         const preferenceResponse = await api.updateNotificationPreferences({ push: false });
         if (!preferenceResponse.success) return false;
-        await unregisterStoredPushDeviceAsync();
+        const detached = await unregisterStoredPushDeviceAsync(user.id);
+        if (!detached) reportError('push.preference_detachment_deferred');
       }
 
       setPushEnabled(enabled);
@@ -190,7 +193,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!user?.id) return;
     let active = true;
 
-    (async () => {
+    const reconcilePushRegistration = async () => {
       try {
         const permission = await getAndroidPushPermissionAsync();
         if (!active) return;
@@ -199,6 +202,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (permission === 'granted' && user.notificationPreferences?.push !== false) {
           const registration = await registerAndroidPushNotificationsAsync({
             requestPermission: false,
+            userId: user.id,
           });
           if (active) {
             setPushPermission(registration.permission);
@@ -208,10 +212,21 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       } catch (error) {
         reportError('push.permission_check_failed', error);
       }
-    })();
+    };
+
+    reconcilePushRegistration().catch(error => {
+      reportError('push.registration_reconciliation_failed', error);
+    });
+    const tokenSubscription = addPushTokenChangeListener(() => {
+      if (!active || user.notificationPreferences?.push === false) return;
+      reconcilePushRegistration().catch(error => {
+        reportError('push.token_rollover_failed', error);
+      });
+    });
 
     return () => {
       active = false;
+      tokenSubscription.remove();
     };
   }, [user?.id, user?.notificationPreferences?.push]);
 

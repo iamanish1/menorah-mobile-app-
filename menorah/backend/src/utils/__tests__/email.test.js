@@ -57,7 +57,7 @@ describe('email delivery logging', () => {
       LIVEKIT_API_URL: 'http://livekit:7880',
       PASSWORD_RESET_BASE_URL: origin(hosts.APP_DOMAIN),
       CHECKOUT_RETURN_URL:
-        `${origin(hosts.APP_DOMAIN)}/checkout/return`,
+        `${origin(hosts.APP_DOMAIN)}/checkout/callback`,
       FRONTEND_COUNSELLOR_URL: origin(hosts.COUNSELLOR_DOMAIN),
       FRONTEND_API_WEB_URL: `${origin(hosts.API_WEB_DOMAIN)}/api`,
       FRONTEND_API_ADMIN_URL:
@@ -114,7 +114,7 @@ describe('email delivery logging', () => {
       LIVEKIT_API_URL: 'http://staging-livekit:7880',
       PASSWORD_RESET_BASE_URL: origin(hosts.APP_DOMAIN),
       CHECKOUT_RETURN_URL:
-        `${origin(hosts.APP_DOMAIN)}/checkout/return`,
+        `${origin(hosts.APP_DOMAIN)}/checkout/callback`,
       FRONTEND_COUNSELLOR_URL: origin(hosts.COUNSELLOR_DOMAIN),
       FRONTEND_API_WEB_URL: `${origin(hosts.API_WEB_DOMAIN)}/api`,
       FRONTEND_API_ADMIN_URL:

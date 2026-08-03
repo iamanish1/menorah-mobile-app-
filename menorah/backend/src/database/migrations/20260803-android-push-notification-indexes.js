@@ -1,3 +1,5 @@
+const { isDeepStrictEqual } = require('util');
+
 const PLANS = Object.freeze([
   {
     collection: 'pushdevices',
@@ -58,6 +60,22 @@ const migrationError = (message) => new Error(
 const sameKey = (left, right) => JSON.stringify(Object.entries(left || {}))
   === JSON.stringify(Object.entries(right || {}));
 
+const semanticIndexOptions = (index = {}) => ({
+  unique: Boolean(index.unique),
+  sparse: Boolean(index.sparse),
+  hidden: Boolean(index.hidden),
+  prepareUnique: Boolean(index.prepareUnique),
+  partialFilterExpression: index.partialFilterExpression || null,
+  collation: index.collation || null,
+  expireAfterSeconds: index.expireAfterSeconds ?? null,
+  wildcardProjection: index.wildcardProjection || null,
+});
+
+const sameIndexOptions = (existing, desiredOptions) => isDeepStrictEqual(
+  semanticIndexOptions(existing),
+  semanticIndexOptions(desiredOptions)
+);
+
 const listIndexes = async (collection) => {
   try {
     return await collection.indexes();
@@ -81,6 +99,7 @@ const assertNoDuplicates = async (collection, index) => {
 
 module.exports = {
   async up({ mongoose }) {
+    const preflight = [];
     for (const plan of PLANS) {
       const collection = mongoose.connection.db.collection(plan.collection);
       const existing = await listIndexes(collection);
@@ -89,7 +108,7 @@ module.exports = {
         const byName = existing.find(({ name }) => name === desired.options.name);
         if (byName && (
           !sameKey(byName.key, desired.key)
-          || Boolean(byName.unique) !== Boolean(desired.options.unique)
+          || !sameIndexOptions(byName, desired.options)
         )) {
           throw migrationError(`Index "${desired.options.name}" is incompatible.`);
         }
@@ -102,6 +121,13 @@ module.exports = {
         if (!byName) await assertNoDuplicates(collection, desired);
       }
 
+      preflight.push({ collection, existing, plan });
+    }
+
+    // Build only after every collection, index shape, and unique domain has
+    // passed. A conflict in a later collection therefore cannot leave a
+    // partially applied release migration.
+    for (const { collection, existing, plan } of preflight) {
       for (const desired of plan.indexes) {
         if (!existing.some(({ name }) => name === desired.options.name)) {
           await collection.createIndex(desired.key, desired.options);
@@ -113,4 +139,6 @@ module.exports = {
   assertNoDuplicates,
   listIndexes,
   sameKey,
+  sameIndexOptions,
+  semanticIndexOptions,
 };

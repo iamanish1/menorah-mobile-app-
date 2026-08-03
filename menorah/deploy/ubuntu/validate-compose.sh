@@ -84,7 +84,8 @@ fi
 for required_routing_variable in \
   EMAIL_FROM \
   CONTACT_TO_EMAIL \
-  CHECKOUT_RETURN_URL; do
+  CHECKOUT_RETURN_URL \
+  CHECKOUT_CALLBACK_SECRET; do
   missing_routing_output=""
   if missing_routing_output="$(
     env "${required_routing_variable}=" \

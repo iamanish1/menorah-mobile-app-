@@ -19,6 +19,38 @@ ios/build/
 *.swo
 *~
 
+# Local environment files. Production build values must come from the selected
+# EAS environment; no developer dotenv file belongs in the upload archive.
+.env
+.env.*
+!.env.example
+
+# Signing credentials and provider secrets. `.easignore` takes precedence over
+# `.gitignore`, so these rules must remain duplicated here.
+credentials.json
+credentials/
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+upload_certificate*.pem
+
+# Firebase configuration is supplied only as the protected EAS file variable
+# GOOGLE_SERVICES_JSON and installed by the fail-closed build hook.
+google-services.json
+GoogleService-Info.plist
+android/app/google-services.json
+android/app/.google-services-prepared
+firebase-adminsdk-*.json
+service-account*.json
+*-service-account.json
+fcm-service-account*.json
+google-play-service-account*.json
+play-store-credentials*.json
+
 # Documentation
 *.md
 !README.md
@@ -43,4 +75,3 @@ Thumbs.db
 **/*.psd
 **/*.ai
 **/*.sketch
-

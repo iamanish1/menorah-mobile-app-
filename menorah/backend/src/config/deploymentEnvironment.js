@@ -307,7 +307,7 @@ const validateStagingEnvironmentIsolation = (
   };
   if (requireCheckoutReturnUrl) {
     exactValues.CHECKOUT_RETURN_URL =
-      `${httpsOrigin(env.APP_DOMAIN)}/checkout/return`;
+      `${httpsOrigin(env.APP_DOMAIN)}/checkout/callback`;
   }
   if (requireMediaPublicBaseUrl) {
     exactValues.MEDIA_PUBLIC_BASE_URL =

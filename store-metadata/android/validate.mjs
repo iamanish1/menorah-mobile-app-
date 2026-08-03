@@ -1,8 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = path.resolve(directory, '../..');
 
 const files = {
   title: ['en-US/title.txt', 30],
@@ -48,9 +49,14 @@ for (const [pattern, label] of requiredPatterns) {
 
 const prohibitedPatterns = [
   [/\b(?:fully|completely|100%)\s+free\b/i, 'fully-free claim'],
+  [/\bfree\s+mental\s+health\s+(?:app|platform)\b/i, 'free-product claim'],
+  [/\bworld(?:'|’)?s\s+first\b/i, 'world-first claim'],
+  [/\b(?:all|every)\s+features?\b.{0,40}\bfree\b/i, 'all-features-free claim'],
   [/\bpsycholog(?:y|ist)\s+students?\b/i, 'psychology-student claim'],
   [/\b24\s*\/\s*7\b/i, '24/7 claim'],
   [/\babsolute(?:ly)?\s+confidential(?:ity)?\b/i, 'absolute-confidentiality claim'],
+  [/\b100%\s+private\b/i, 'absolute-privacy claim'],
+  [/\bend-to-end\s+encrypt(?:ed|ion)\b/i, 'unverified end-to-end-encryption claim'],
   [/\bguarantee(?:d|s)?\s+(?:confidentiality|results?|outcomes?)\b/i, 'guaranteed claim'],
   [/(?<!not )\b(?:offers?|provides?)\s+(?:a\s+)?diagnos(?:is|tic)\b/i, 'diagnostic-service claim'],
   [/\b(?:is|provides?)\s+(?:an?\s+)?(?:emergency|crisis)\s+service\b/i, 'emergency-service claim'],
@@ -58,6 +64,39 @@ const prohibitedPatterns = [
 
 for (const [pattern, label] of prohibitedPatterns) {
   if (pattern.test(listingCopy)) errors.push(`listing copy contains prohibited ${label}`);
+}
+
+const productSourceRoots = [
+  'menorah/mobile-app/src',
+  'menorah/user-web-app/src',
+  'menorah/web-app/src',
+];
+
+async function listProductSourceFiles(relativeDirectory) {
+  const absoluteDirectory = path.join(repositoryRoot, relativeDirectory);
+  const entries = await readdir(absoluteDirectory, { withFileTypes: true });
+  const filesFound = [];
+
+  for (const entry of entries) {
+    const relativePath = path.join(relativeDirectory, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === '__tests__') continue;
+      filesFound.push(...await listProductSourceFiles(relativePath));
+      continue;
+    }
+    if (!/\.(?:js|jsx|ts|tsx)$/.test(entry.name) || /\.test\.[^.]+$/.test(entry.name)) continue;
+    filesFound.push(relativePath);
+  }
+
+  return filesFound;
+}
+
+const productSourceFiles = (await Promise.all(productSourceRoots.map(listProductSourceFiles))).flat();
+for (const relativePath of productSourceFiles) {
+  const source = await readFile(path.join(repositoryRoot, relativePath), 'utf8');
+  for (const [pattern, label] of prohibitedPatterns) {
+    if (pattern.test(source)) errors.push(`${relativePath} contains prohibited ${label}`);
+  }
 }
 
 if (!/\b2\.7\.0\b/.test(content.releaseNotes)) {

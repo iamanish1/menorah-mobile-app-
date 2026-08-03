@@ -156,6 +156,31 @@ require_android_app_link_signing_value() {
     failures=$((failures + 1))
     return 1
   fi
+  if [[ "${key}" == "ANDROID_APP_LINK_PACKAGE_NAME" \
+    && "${value}" != "com.menorah.healthmobile" ]]; then
+    echo "FAIL Android App Links require package com.menorah.healthmobile." >&2
+    failures=$((failures + 1))
+    return 1
+  fi
+  if [[ "${key}" == "ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS" ]]; then
+    local fingerprint compact_fingerprint
+    local fingerprint_pattern='^([A-F0-9]{2}:){31}[A-F0-9]{2}$'
+    local -a fingerprints=()
+    IFS=',' read -r -a fingerprints <<< "${value}"
+    if (( ${#fingerprints[@]} == 0 )); then
+      echo "FAIL Android App Links require the Play App Signing SHA-256." >&2
+      failures=$((failures + 1))
+      return 1
+    fi
+    for fingerprint in "${fingerprints[@]}"; do
+      compact_fingerprint="${fingerprint//[[:space:]]/}"
+      if [[ ! "${compact_fingerprint}" =~ ${fingerprint_pattern} ]]; then
+        echo "FAIL Android App Link fingerprints must be canonical uppercase colon-delimited SHA-256 values." >&2
+        failures=$((failures + 1))
+        return 1
+      fi
+    done
+  fi
   echo "PASS Android App Link prerequisite ${key} is configured." >&2
 }
 

@@ -115,6 +115,13 @@ const collectMediaReferences = ({
       url: document.thumbnailUrl,
       storage: document.thumbnailStorage,
     });
+    add({
+      collection: 'socialposts',
+      id: document._id,
+      field: 'videoUrl',
+      url: document.videoUrl,
+      storage: document.videoStorage,
+    });
   });
 
   articles.forEach((document) => {

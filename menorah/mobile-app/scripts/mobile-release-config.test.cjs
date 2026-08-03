@@ -191,6 +191,13 @@ test('production builds require exact approved URLs rather than hostname matches
     }),
     /approved production destinations/
   );
+  assert.throws(
+    () => readReleaseEnvironment({
+      ...productionEnv,
+      EXPO_PUBLIC_JITSI_BASE_URL: 'https://meet.jit.si',
+    }),
+    /approved production destinations/
+  );
 });
 
 test('manual Android releases require both approved Google client IDs', () => {

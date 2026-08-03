@@ -34,17 +34,17 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   metadataBase: new URL(getPublicWebBaseUrl()),
   title: {
-    default: 'Menorah Health | Free Mental Health Support for Men in India',
+    default: 'Menorah Health | Counsellor Support for Men in India',
     template: `%s | ${SITE_NAME}`,
   },
   description:
-    'Menorah is a free mental health platform for men in India, with private support, counsellor access, articles, and practical tools for stress, burnout, anxiety, relationships, and help-seeking.',
+    'Find verified counsellors, review hourly rates, book one-to-one support, use secure chat, and explore practical wellbeing resources for men in India.',
   applicationName: SITE_NAME,
   alternates: {
     canonical: '/',
   },
   openGraph: {
-    title: 'Menorah Health | Free Mental Health Support for Men in India',
+    title: 'Menorah Health | Counsellor Support for Men in India',
     description:
       'Private mental health support, counsellor access, and practical articles for Indian men navigating stress, burnout, anxiety, relationships, and emotional wellbeing.',
     url: '/',
@@ -54,7 +54,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Menorah Health | Free Mental Health Support for Men in India',
+    title: 'Menorah Health | Counsellor Support for Men in India',
     description:
       'Private support, counsellor access, and practical mental-health articles for men in India.',
   },

@@ -11,37 +11,37 @@ const faqs = [
   {
     question: "What is Menorah?",
     answer:
-      "Menorah is a men's mental health organization that offers support, guidance, and resources for men seeking help with their mental well-being. We provide a mobile app through which users can connect with clinical psychologist students and engage in peer-to-peer conversations to address their mental health concerns."
+      "Menorah is a men's wellbeing platform for finding counsellors reviewed through Menorah's verification process, booking one-to-one sessions, using secure chat, completing optional wellbeing check-ins, and reading practical resources."
   },
   {
     question: "How does the Menorah app work?",
     answer:
-      "The Menorah app allows you to chat with handpicked clinical psychologist students and engage in peer support with other men who have volunteered to help. You can choose from different age groups (15-18, 19-24, and 25-35) for peer support, and you have access to a range of educational resources, self-help tools, and support groups."
+      "Create an account, browse counsellor profiles and hourly rates, choose an available time, complete payment, and manage your booking in the app. Secure chat, wellbeing check-ins, and educational articles are also available."
   },
   {
-    question: "Is my conversation confidential?",
+    question: "How is my conversation protected?",
     answer:
-      "Absolutely. We prioritize your privacy and confidentiality. All interactions within the Menorah app, whether with clinical psychologist students or peers, are secure and anonymous. You can express yourself openly without worrying about your information being shared."
+      "Menorah uses access controls and secure transport to protect in-app chat. Access and disclosure are governed by our Privacy Policy and applicable safety or legal obligations, so privacy is not without limits and chat is not anonymous."
   },
   {
-    question: "How do I connect with clinical psychologist students?",
+    question: "How do I connect with a counsellor?",
     answer:
-      "Once you're on the Menorah app, you can initiate a chat with one of our handpicked clinical psychologist students. They are available 24/7 to provide expert advice, guidance, and support tailored to your mental health needs."
+      "Browse verified counsellor profiles, areas of focus, availability, and hourly rates. After you choose and book an available session, the app gives you the relevant booking and secure-chat options. Availability varies by counsellor."
   },
   {
-    question: 'What is "Man to Man" peer support?',
+    question: "Does Menorah currently offer peer-to-peer chat?",
     answer:
-      "Man to Man is a feature on the Menorah app that allows you to connect with other men who have volunteered to offer peer support. You can choose your age group (15-18, 19-24, or 25-35) and engage in conversations with individuals who may have experienced similar challenges or life stages."
+      "Menorah is currently focused on verified counsellor discovery, paid one-to-one bookings, secure counsellor chat, wellbeing check-ins, and educational resources. Peer-to-peer community chat is not part of the current production service."
   },
   {
     question: "Are there any self-help resources available on the app?",
     answer:
-      "Yes, the Menorah app provides a variety of self-help resources, including articles, podcasts, newsletters and videos. These resources cover a wide range of mental health topics and are designed to empower you to take control of your mental well-being."
+      "Yes. Menorah provides practical mental-health and wellbeing articles alongside optional wellbeing check-ins. These resources are educational and informational; they do not provide a diagnosis, medical advice, or emergency support."
   },
   {
     question: "Is there a cost to using the Menorah app?",
     answer:
-      "Our aim is to make mental health support accessible to all. All features of the app are free to all users. We are committed to providing value and ensuring that everyone can benefit from our resources."
+      "Browsing resources may not require a paid session, but one-to-one counsellor bookings are paid at the hourly rate shown on the counsellor's profile. Review the rate and final payment details before confirming."
   },
   {
     question: "How do I ensure my safety while using the app?",
@@ -51,7 +51,7 @@ const faqs = [
   {
     question: "How do I get started with the Menorah app?",
     answer:
-      "To get started, simply download the Menorah app from the Apple App Store or Google Play Store, create an account, and explore the various features available. You can begin chatting with clinical psychologist students, engaging in peer support, accessing resources, and joining support groups to enhance your mental well-being journey."
+      "Download Menorah Health, create an account, complete your profile, and browse verified counsellors and educational resources. When you are ready, select an available counsellor and booking time and review the price before payment."
   },
   {
     question: "I think I have a serious problem with my mental health. What do I do to tackle it?",
@@ -91,7 +91,7 @@ export function FaqSection({ headingLevel = "h2" }: { headingLevel?: "h1" | "h2"
             FAQ&apos;S
           </Heading>
           <p className="mx-auto mt-[clamp(1rem,1.6vw,1.45rem)] max-w-[min(44rem,88vw)] text-[length:var(--landing-body-lg)] leading-[1.65] text-foreground/75">
-            Straight answers about Menorah, confidentiality, peer support, safety, and getting started.
+            Straight answers about Menorah, counsellor bookings, privacy, safety, and getting started.
           </p>
         </div>
 

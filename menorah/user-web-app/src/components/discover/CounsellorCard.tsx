@@ -21,7 +21,7 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
   const availability = getNextAvailability(c);
   const therapyHours = getTherapyHours(c);
   const primaryLanguage = c.languages[0] ?? 'English';
-  const price = c.hourlyRate > 0 ? formatCurrency(c.hourlyRate, c.currency) : 'Free';
+  const price = c.hourlyRate > 0 ? formatCurrency(c.hourlyRate, c.currency) : 'Rate unavailable';
   const hasVoiceIntro = Boolean(c.voiceIntroUrl);
 
   const toggleVoiceIntro = async () => {

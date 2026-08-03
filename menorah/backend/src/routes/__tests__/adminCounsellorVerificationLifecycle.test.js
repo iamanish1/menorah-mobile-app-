@@ -10,7 +10,7 @@ const mockReject = jest.fn();
 const mockSuspend = jest.fn();
 const mockExpire = jest.fn();
 const mockIssueReverificationInvitation = jest.fn();
-const mockSendApprovalEmail = jest.fn();
+const mockSendCredentialsEmail = jest.fn();
 const mockSendReverificationEmail = jest.fn();
 const mockInvalidateCounsellorDiscoveryCache = jest.fn();
 const mockReconcileExpiryBatch = jest.fn();
@@ -78,7 +78,7 @@ jest.mock('../../services/counsellorVerificationExpiry', () => ({
 }));
 
 jest.mock('../../utils/email', () => ({
-  sendCounsellorApprovalEmail: (...args) => mockSendApprovalEmail(...args),
+  sendCounsellorCredentialsEmail: (...args) => mockSendCredentialsEmail(...args),
   sendCounsellorReverificationEmail: (...args) => mockSendReverificationEmail(...args),
 }));
 
@@ -90,7 +90,6 @@ const APPLICATION_ID = '64f000000000000000000003';
 const COUNSELLOR_ID = '64f000000000000000000004';
 const USER_ID = '64f000000000000000000005';
 const MFA_MAX_AGE_MS = 5 * 60 * 1000;
-const ACTIVATION_TOKEN = 'activation-token-that-must-not-be-returned';
 const INVITATION_TOKEN = 'invitation-token-that-must-not-be-returned';
 
 const approvalBody = {
@@ -148,7 +147,7 @@ const mutationMocks = [
   mockSuspend,
   mockExpire,
   mockIssueReverificationInvitation,
-  mockSendApprovalEmail,
+  mockSendCredentialsEmail,
   mockSendReverificationEmail,
   mockInvalidateCounsellorDiscoveryCache,
 ];
@@ -218,6 +217,7 @@ describe('admin counsellor verification lifecycle routes', () => {
       _id: id,
       role: String(id) === NON_ADMIN_ID ? 'user' : 'admin',
       isActive: true,
+      isEmailVerified: true,
       sessionVersion: 0,
     }));
     mockVerifyAdminToken.mockImplementation((token) => {
@@ -369,7 +369,7 @@ describe('admin counsellor verification lifecycle routes', () => {
     });
   });
 
-  test('approve forwards reviewed evidence and keeps the activation token out of the response', async () => {
+  test('approve forwards reviewed evidence and keeps emailed credentials out of the response', async () => {
     const expiresAt = new Date(approvalBody.verificationExpiresAt);
     mockApprove.mockResolvedValue({
       application: { _id: APPLICATION_ID },
@@ -383,10 +383,11 @@ describe('admin counsellor verification lifecycle routes', () => {
         email: 'counsellor@example.com',
         firstName: 'Rina',
         lastName: 'Shah',
+        sessionVersion: 0,
+        save: jest.fn(async () => undefined),
       },
-      activationToken: ACTIVATION_TOKEN,
     });
-    mockSendApprovalEmail.mockResolvedValue(true);
+    mockSendCredentialsEmail.mockResolvedValue(true);
 
     const response = await makeRequest(
       buildApp(),
@@ -401,13 +402,17 @@ describe('admin counsellor verification lifecycle routes', () => {
       credentialPolicyVersion: approvalBody.credentialPolicyVersion,
       verificationExpiresAt: approvalBody.verificationExpiresAt,
     });
-    expect(mockSendApprovalEmail).toHaveBeenCalledWith({
+    expect(mockSendCredentialsEmail).toHaveBeenCalledWith({
       email: 'counsellor@example.com',
       name: 'Rina Shah',
-      activationToken: ACTIVATION_TOKEN,
+      password: expect.any(String),
+      resetToken: expect.stringMatching(/^[a-f0-9]{64}$/),
+      kind: 'onboarding',
     });
     expect(mockInvalidateCounsellorDiscoveryCache).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(response.body)).not.toContain(ACTIVATION_TOKEN);
+    const credentialPayload = mockSendCredentialsEmail.mock.calls[0][0];
+    expect(JSON.stringify(response.body)).not.toContain(credentialPayload.password);
+    expect(JSON.stringify(response.body)).not.toContain(credentialPayload.resetToken);
   });
 
   test('reject forwards the bounded reason and authenticated admin identity', async () => {

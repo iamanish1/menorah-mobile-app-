@@ -165,29 +165,35 @@ affected device/store evidence.
 
 ## Android release-signing boundary
 
-The checked-in `Build Android AAB` workflow is deliberately **not usable for
-this release-branch staging candidate**. Its current contract requires:
+The checked-in `Build Android AAB with EAS` workflow is deliberately **not
+usable for this staging candidate**. It is the sole production AAB trigger and
+its current contract requires:
 
-1. manual `workflow_dispatch` from `refs/heads/main`;
-2. `release_sha` equal to the exact dispatch-time `main` HEAD;
+1. manual `workflow_dispatch` from
+   `refs/heads/release/android-2.7.0-20260803`;
+2. `release_sha` equal to that exact dispatch-time release-branch HEAD;
 3. protected environment `android-release-signing`; and
-4. environment marker `ANDROID_RELEASE_SIGNING_READY=protected-main-only`
-   before checkout or candidate-controlled execution.
+4. environment marker `ANDROID_RELEASE_SIGNING_READY=protected-release-only`
+   before checkout or candidate-controlled execution; and
+5. a protected `EXPO_TOKEN` that may only ask EAS to perform the reviewed
+   `production-android` build. Firebase files, FCM credentials, Play submission
+   credentials and upload signing stay in EAS, not GitHub.
 
 The `android-release-signing` environment is currently absent, so the marker
-and environment-owned signing controls are absent. External review also found
-the signing secrets repository-scoped. `OWNER ACTION`, `GOOGLE ACTION` and
-security administration must create/protect the environment, require the
-approved reviewers, prevent self-review/admin bypass as approved, move signing
-secrets to it and remove repository-scoped copies. This package does not
-authorize those mutations.
+and environment-owned build authorization are absent. External review also
+found obsolete direct-build signing secrets repository-scoped. `OWNER ACTION`,
+`GOOGLE ACTION` and security administration must create/protect the environment,
+require the approved reviewers, prevent self-review/admin bypass as approved,
+install only the EAS build token there, and remove the obsolete repository-level
+direct-build secrets after confirming they are no longer used. This package
+does not authorize those mutations.
 
 Signed Android release status is **BLOCKED / NOT COLLECTED**. This package does
 not authorize a merge to `main`; a separately authorized governance action
-must first supply an exact eligible protected `main` head and the protected
-environment evidence, after which affected runtime/build evidence must be
-revalidated. Never weaken the main-HEAD check or use preview credentials as
-store-release evidence.
+must first merge the approved candidate and create the exact protected release
+branch and protected-environment evidence, after which affected runtime/build
+evidence must be revalidated. Never weaken the release-HEAD check, create a
+second direct-Gradle AAB, or use preview credentials as store-release evidence.
 
 ## Physical-device matrix
 

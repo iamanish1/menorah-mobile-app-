@@ -6,33 +6,33 @@ import { MenorahNavbar } from "@/components/site/MenorahNavbar";
 
 export const metadata: Metadata = {
   title: "About Us | Menorah",
-  description: "Learn about Menorah, the world's first free mental health app exclusively for men."
+  description: "Learn how Menorah helps men find verified counsellors, book support, use secure chat, and explore practical wellbeing resources."
 };
 
 const offers = [
   {
-    title: "Confidential Chat Support",
+    title: "Secure Counsellor Chat",
     icon: MessageCircle,
     image: "/what-we-do-vision.png",
-    body: "Our chat service connects users with clinical psychology students from top universities, offering a unique and empathetic support system. With a built-in profanity filter to ensure respectful conversations, we maintain a safe environment. Plus, our email notification system ensures that no message goes unanswered, keeping support readily available."
+    body: "Use secure in-app chat with your assigned counsellor around a booking. Menorah reviews counsellors' submitted professional information before activation and provides account and session updates by email."
   },
   {
-    title: "Man2Man Community",
+    title: "One-to-One Support",
     icon: UsersRound,
     image: "/what-we-do-about.png",
-    body: "Recognizing that mental health is a journey best shared, our Man2Man feature enables users to connect with peers across different age groups (15-18, 19-24, 25-35). Whether you are looking for mentorship, companionship, or simply someone who understands, this space fosters meaningful, relatable conversations tailored to different life stages."
+    body: "Menorah is currently focused on verified counsellor discovery, paid one-to-one bookings, secure counsellor chat, wellbeing check-ins, and educational resources. Community features will only be described here after they are available and fully governed."
   },
   {
-    title: "Self-help Tools & Mental Wellness Tips",
+    title: "Wellbeing Check-ins & Resources",
     icon: ShieldCheck,
     image: "/what-we-do-mission.png",
-    body: "We believe that mental health is more than just conversations. It is about actionable solutions. That is why we provide comprehensive self-help resources, practical coping strategies, and guided exercises designed to enhance emotional resilience and well-being."
+    body: "Use optional wellbeing check-ins and explore practical educational resources. Check-ins and articles are informational and do not provide a diagnosis, medical advice, or emergency support."
   },
   {
-    title: "Expert Insights & Media",
+    title: "Practical Articles",
     icon: Newspaper,
     image: "/menorah-logo-banner.jpg",
-    body: "Stay informed and inspired with our regular newsletters, insightful posts, and engaging media content curated to help men navigate mental health challenges with confidence."
+    body: "Read practical mental-health and wellbeing articles written to help men reflect on stress, burnout, relationships, and help-seeking."
   }
 ];
 
@@ -58,10 +58,9 @@ export default function AboutUsPage() {
               <p className="font-brand text-sm uppercase tracking-[0.28em] text-menorah-olive">Mind over matter, redefined</p>
               <h1 className="mt-5 font-display text-4xl leading-tight tracking-[0.08em] md:text-5xl">ABOUT US</h1>
               <p className="mt-7 text-lg leading-8 text-foreground/75">
-                At <strong>Menorah</strong>, we are pioneering a transformative approach to revolutionizing men&apos;s
-                mental health by creating <strong>The World&apos;s First Free Mental Health App Exclusively for Men.</strong>{" "}
-                Our mission is to provide a safe, supportive, and judgment-free space where men can openly discuss their
-                struggles, seek guidance, and receive the help they need without barriers.
+                At <strong>Menorah</strong>, we help men find verified counsellors, review transparent hourly rates,
+                book one-to-one sessions, use secure chat, and explore practical wellbeing resources. Our mission is to
+                make it easier to take a considered next step toward support.
               </p>
             </div>
           </div>

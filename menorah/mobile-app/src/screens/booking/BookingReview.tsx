@@ -847,7 +847,7 @@ export default function BookingReview({ navigation, route }: any) {
             <Text
               style={{ fontSize: 12, color: colors.muted, fontWeight: "500" }}
             >
-              Secure & Confidential
+              Secure booking
             </Text>
           </View>
           <Text
@@ -858,7 +858,7 @@ export default function BookingReview({ navigation, route }: any) {
               marginTop: 2,
             }}
           >
-            Your privacy is our priority.
+            Review the counsellor, time, rate, and payment details before confirming.
           </Text>
         </ScrollView>
 

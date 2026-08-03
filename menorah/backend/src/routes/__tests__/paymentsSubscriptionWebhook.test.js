@@ -2,379 +2,279 @@ const crypto = require('crypto');
 const express = require('express');
 const request = require('supertest');
 
-const mockBookingFindById = jest.fn();
-const mockBookingFindOne = jest.fn();
-const mockBookingFindOneAndUpdate = jest.fn();
-const mockBookingUpdateMany = jest.fn();
-const mockPaymentReceiptCreate = jest.fn();
-const mockPaymentReceiptFindOne = jest.fn();
-const mockUserFindById = jest.fn();
-const mockRazorpayOrdersFetch = jest.fn();
-const mockRazorpayPaymentsFetch = jest.fn();
 let mockAuthUser;
+const mockRazorpayClient = {
+  orders: {
+    create: jest.fn(),
+    fetch: jest.fn(),
+  },
+  payments: {
+    fetch: jest.fn(),
+  },
+};
+const mockClaimWebhookEvent = jest.fn();
+const mockFinalizeWebhookEvent = jest.fn();
+const mockFinalizeWebhookEventFailure = jest.fn();
+const mockReconcileCapturedBookingPayment = jest.fn();
+const mockRecordBookingPaymentFailure = jest.fn();
 
+jest.mock('razorpay', () => jest.fn(() => mockRazorpayClient));
 jest.mock('../../middleware/auth', () => ({
   verifiedPatientAuth: (req, _res, next) => {
     req.user = mockAuthUser;
     next();
   },
 }));
-
 jest.mock('../../models/Booking', () => ({
-  findById: (...args) => mockBookingFindById(...args),
-  findOne: (...args) => mockBookingFindOne(...args),
-  findOneAndUpdate: (...args) => mockBookingFindOneAndUpdate(...args),
-  updateMany: (...args) => mockBookingUpdateMany(...args),
+  findById: jest.fn(),
+  updateMany: jest.fn(),
 }));
-
-jest.mock('../../models/PaymentReceipt', () => ({
-  create: (...args) => mockPaymentReceiptCreate(...args),
-  findOne: (...args) => mockPaymentReceiptFindOne(...args),
+jest.mock('../../models/PaymentAttempt', () => ({
+  findOne: jest.fn(),
 }));
-
 jest.mock('../../models/User', () => ({
-  findById: (...args) => mockUserFindById(...args),
+  findById: jest.fn(),
+}));
+jest.mock('../../services/razorpayBookingOrderService', () => ({
+  BookingPaymentOrderError: class BookingPaymentOrderError extends Error {},
+  createOrReuseBookingOrder: jest.fn(),
+}));
+jest.mock('../../services/razorpayPaymentReconciliation', () => ({
+  claimWebhookEvent: (...args) => mockClaimWebhookEvent(...args),
+  finalizeWebhookEvent: (...args) => mockFinalizeWebhookEvent(...args),
+  finalizeWebhookEventFailure: (...args) => mockFinalizeWebhookEventFailure(...args),
+  reconcileCapturedBookingPayment: (...args) => mockReconcileCapturedBookingPayment(...args),
+  recordBookingPaymentFailure: (...args) => mockRecordBookingPaymentFailure(...args),
+}));
+jest.mock('../../services/bookingMarketplaceNotifications', () => ({
+  notifyEligibleCounsellorsOfBooking: jest.fn(),
 }));
 
-jest.mock('../../utils/email', () => ({
-  sendBookingConfirmationEmail: jest.fn(),
-}));
-
-jest.mock('../../utils/sms', () => ({
-  sendBookingConfirmationSMS: jest.fn(),
-}));
-
-jest.mock('razorpay', () => jest.fn().mockImplementation(() => ({
-  orders: {
-    fetch: (...args) => mockRazorpayOrdersFetch(...args),
-  },
-  payments: {
-    fetch: (...args) => mockRazorpayPaymentsFetch(...args),
-  },
-})));
-
+const PaymentAttempt = require('../../models/PaymentAttempt');
+const User = require('../../models/User');
 const paymentsRouter = require('../payments');
 
-const userId = '64f000000000000000000102';
-const anotherUserId = '64f000000000000000000103';
-const orderId = 'order_subscription_monthly';
-const paymentId = 'pay_subscription_monthly';
-const paymentCreatedAt = 1780000000;
+const WEBHOOK_SECRET = ['Webhook', '-Sub-A1', 'b2C3d4E5f6'].join('');
+const USER_ID = '64f000000000000000000102';
+const ORDER_ID = 'order_subscription_monthly';
+const PAYMENT_ID = 'pay_subscription_monthly';
 
-const objectId = (value) => ({ toString: () => value });
-
-const makeUser = (overrides = {}) => ({
-  _id: objectId(userId),
-  role: 'user',
-  isActive: true,
-  subscription: {
-    plan: 'free',
-    subscriptionType: null,
-    startDate: null,
-    endDate: null,
-    isActive: false,
-  },
-  save: jest.fn().mockResolvedValue(undefined),
-  ...overrides,
-});
-
-const makeOrder = (overrides = {}) => ({
-  id: orderId,
-  payment_id: paymentId,
-  status: 'paid',
-  amount: 150000,
-  currency: 'INR',
-  notes: {
-    type: 'subscription',
-    userId,
-    subscriptionType: 'monthly',
-  },
-  ...overrides,
-});
-
-const makePayment = (overrides = {}) => ({
-  id: paymentId,
-  order_id: orderId,
-  status: 'captured',
-  amount: 150000,
-  currency: 'INR',
-  created_at: paymentCreatedAt,
-  notes: {
-    type: 'subscription',
-    userId,
-    subscriptionType: 'monthly',
-  },
-  ...overrides,
-});
-
-const buildWebhookApp = () => {
+const buildApp = () => {
   const app = express();
-  app.use(express.raw({ type: 'application/json' }));
-  app.use('/api/payments', paymentsRouter);
-  return app;
-};
-
-const buildJsonApp = () => {
-  const app = express();
+  app.use('/api/payments/razorpay-webhook', express.raw({ type: 'application/json' }));
   app.use(express.json());
+  app.set('io', { emit: jest.fn() });
   app.use('/api/payments', paymentsRouter);
   return app;
 };
 
-const signedWebhook = (event) => {
-  const body = JSON.stringify(event);
-  return {
-    body,
-    signature: crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET).update(body).digest('hex'),
-  };
-};
-
-const postWebhook = (event) => {
-  const { body, signature } = signedWebhook(event);
-  return request(buildWebhookApp())
+const sendSignedWebhook = (event) => {
+  const rawBody = JSON.stringify(event);
+  const signature = crypto
+    .createHmac('sha256', WEBHOOK_SECRET)
+    .update(rawBody)
+    .digest('hex');
+  return request(buildApp())
     .post('/api/payments/razorpay-webhook')
     .set('Content-Type', 'application/json')
     .set('x-razorpay-signature', signature)
-    .send(body);
+    .set('x-razorpay-event-id', 'evt_subscription_123')
+    .send(rawBody);
 };
 
-describe('subscription payment webhook recovery', () => {
+describe('subscription payment routes remain fail-closed', () => {
   const originalEnv = process.env;
-  let warnSpy;
 
   beforeEach(() => {
     process.env = {
       ...originalEnv,
-      RAZORPAY_KEY_ID: 'rzp_test_key',
-      RAZORPAY_KEY_SECRET: 'rzp_test_secret',
-      RAZORPAY_WEBHOOK_SECRET: 'rzp_test_webhook_secret',
+      NODE_ENV: 'test',
+      RAZORPAY_KEY_ID: 'rzp_test_A1b2C3d4E5f6G7',
+      RAZORPAY_KEY_SECRET: ['KeySec', 'ret-A1', 'b2C3d4E5f6G7h8'].join(''),
+      RAZORPAY_WEBHOOK_SECRET: WEBHOOK_SECRET,
+      RAZORPAY_WEBHOOK_SECRET_PREVIOUS: '',
+      PAYMENT_WEBHOOK_MAX_PROCESSING_ATTEMPTS: '5',
+      BOOKING_PAYMENTS_ENABLED: 'true',
+      SUBSCRIPTION_PAYMENTS_ENABLED: 'true',
+      CHECKOUT_RETURN_URL: 'https://app.menorah.me/checkout/callback',
     };
-    mockAuthUser = { _id: objectId(userId), role: 'user' };
-    [
-      mockBookingFindById,
-      mockBookingFindOne,
-      mockBookingFindOneAndUpdate,
-      mockBookingUpdateMany,
-      mockPaymentReceiptCreate,
-      mockPaymentReceiptFindOne,
-      mockUserFindById,
-      mockRazorpayOrdersFetch,
-      mockRazorpayPaymentsFetch,
-    ].forEach((mock) => mock.mockReset());
-    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    mockBookingFindOne.mockResolvedValue(null);
-    mockPaymentReceiptCreate.mockResolvedValue({ _id: objectId('64f000000000000000000104') });
-  });
-
-  afterEach(() => {
-    warnSpy.mockRestore();
+    jest.clearAllMocks();
+    mockAuthUser = { _id: USER_ID, role: 'user' };
+    PaymentAttempt.findOne.mockResolvedValue(null);
+    mockClaimWebhookEvent.mockResolvedValue({
+      claimed: true,
+      eventKey: 'event:evt_subscription_123',
+      claimToken: 1,
+    });
+    mockFinalizeWebhookEvent.mockResolvedValue({ finalized: true });
+    mockFinalizeWebhookEventFailure.mockResolvedValue({ finalized: true });
   });
 
   afterAll(() => {
     process.env = originalEnv;
   });
 
-  test('activates a subscription from a signed payment.captured event after authoritative validation', async () => {
-    const user = makeUser();
-    mockUserFindById.mockResolvedValue(user);
-    mockRazorpayOrdersFetch.mockResolvedValue(makeOrder());
-    mockRazorpayPaymentsFetch.mockResolvedValue(makePayment());
+  test('does not enable subscription checkout from an environment flag alone', async () => {
+    const response = await request(buildApp())
+      .post('/api/payments/create-subscription-checkout')
+      .send({ subscriptionType: 'monthly' })
+      .expect(503);
 
-    await postWebhook({
-      event: 'payment.captured',
-      payload: { payment: { entity: makePayment() } },
-    }).expect(200);
+    expect(response.body).toEqual({
+      success: false,
+      code: 'SUBSCRIPTION_PAYMENTS_DISABLED',
+      message: 'Subscription payments are not available.',
+    });
+    expect(mockRazorpayClient.orders.create).not.toHaveBeenCalled();
+  });
 
-    expect(mockRazorpayOrdersFetch).toHaveBeenCalledWith(orderId);
-    expect(mockRazorpayPaymentsFetch).toHaveBeenCalledWith(paymentId);
-    expect(mockPaymentReceiptCreate).toHaveBeenCalledWith(expect.objectContaining({
-      paymentId,
-      orderId,
-      purpose: 'subscription',
-      user: user._id,
+  test('does not enable subscription verification from an environment flag alone', async () => {
+    const response = await request(buildApp())
+      .post('/api/payments/verify-subscription-payment')
+      .send({
+        subscriptionType: 'monthly',
+        razorpay_order_id: ORDER_ID,
+        razorpay_payment_id: PAYMENT_ID,
+        razorpay_signature: 'a'.repeat(64),
+      })
+      .expect(503);
+
+    expect(response.body.code).toBe('SUBSCRIPTION_PAYMENTS_DISABLED');
+    expect(mockRazorpayClient.orders.fetch).not.toHaveBeenCalled();
+    expect(mockRazorpayClient.payments.fetch).not.toHaveBeenCalled();
+    expect(mockReconcileCapturedBookingPayment).not.toHaveBeenCalled();
+  });
+
+  test('still validates the authenticated request before returning the disabled contract', async () => {
+    const response = await request(buildApp())
+      .post('/api/payments/create-subscription-checkout')
+      .send({ subscriptionType: 'lifetime' })
+      .expect(400);
+
+    expect(response.body.code).toBe('VALIDATION_FAILED');
+  });
+
+  test('quarantines a subscription-shaped captured webhook instead of granting entitlement', async () => {
+    const payment = {
+      id: PAYMENT_ID,
+      order_id: ORDER_ID,
       amount: 150000,
       currency: 'INR',
-    }));
-    expect(user.subscription).toEqual({
-      plan: 'premium',
-      subscriptionType: 'monthly',
-      startDate: new Date(paymentCreatedAt * 1000),
-      endDate: new Date((paymentCreatedAt + 30 * 24 * 60 * 60) * 1000),
-      isActive: true,
-    });
-    expect(user.save).toHaveBeenCalledTimes(1);
-  });
+      status: 'captured',
+      captured: true,
+      notes: {
+        type: 'subscription',
+        userId: USER_ID,
+        subscriptionType: 'monthly',
+      },
+    };
 
-  test('supports a signed order.paid event when the payment callback did not arrive', async () => {
-    const user = makeUser();
-    mockUserFindById.mockResolvedValue(user);
-    mockRazorpayOrdersFetch.mockResolvedValue(makeOrder());
-    mockRazorpayPaymentsFetch.mockResolvedValue(makePayment());
-
-    await postWebhook({
-      event: 'order.paid',
-      payload: { order: { entity: makeOrder() } },
+    const response = await sendSignedWebhook({
+      event: 'payment.captured',
+      payload: { payment: { entity: payment } },
     }).expect(200);
 
-    expect(mockPaymentReceiptCreate).toHaveBeenCalledWith(expect.objectContaining({
-      purpose: 'subscription',
-      paymentId,
-      orderId,
+    expect(PaymentAttempt.findOne).toHaveBeenCalledWith({ orderId: ORDER_ID });
+    expect(mockFinalizeWebhookEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventKey: 'event:evt_subscription_123',
+      claimToken: 1,
+      processingState: 'needs_review',
+      decision: 'needs_review',
+      mismatchCodes: ['ATTEMPT_MISSING'],
+      orderId: ORDER_ID,
+      paymentId: PAYMENT_ID,
     }));
-    expect(user.save).toHaveBeenCalledTimes(1);
+    expect(response.body).toEqual({ received: true, reviewRequired: true });
+    expect(User.findById).not.toHaveBeenCalled();
+    expect(mockRazorpayClient.orders.fetch).not.toHaveBeenCalled();
+    expect(mockReconcileCapturedBookingPayment).not.toHaveBeenCalled();
   });
 
-  test('does not replace a subscription that already covers a matching receipt', async () => {
-    const user = makeUser({
+  test('ignores order.paid instead of using it as a subscription entitlement signal', async () => {
+    const response = await sendSignedWebhook({
+      event: 'order.paid',
+      payload: {
+        order: {
+          entity: {
+            id: ORDER_ID,
+            payment_id: PAYMENT_ID,
+            amount: 150000,
+            currency: 'INR',
+            notes: {
+              type: 'subscription',
+              userId: USER_ID,
+              subscriptionType: 'monthly',
+            },
+          },
+        },
+      },
+    }).expect(200);
+
+    expect(response.body).toEqual({ received: true, ignored: true });
+    expect(mockFinalizeWebhookEvent).toHaveBeenCalledWith(expect.objectContaining({
+      processingState: 'ignored',
+      mismatchCodes: [],
+    }));
+    expect(PaymentAttempt.findOne).not.toHaveBeenCalled();
+    expect(User.findById).not.toHaveBeenCalled();
+  });
+
+  test('reports an active pre-existing subscription without modifying it', async () => {
+    const startDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const user = {
+      _id: USER_ID,
       subscription: {
         plan: 'premium',
         subscriptionType: 'monthly',
-        startDate: new Date(paymentCreatedAt * 1000),
-        endDate: new Date((paymentCreatedAt + 31 * 24 * 60 * 60) * 1000),
         isActive: true,
+        startDate,
+        endDate,
       },
-    });
-    mockUserFindById.mockResolvedValue(user);
-    mockRazorpayOrdersFetch.mockResolvedValue(makeOrder());
-    mockRazorpayPaymentsFetch.mockResolvedValue(makePayment());
-    mockPaymentReceiptCreate.mockRejectedValue({ code: 11000 });
-    mockPaymentReceiptFindOne.mockResolvedValue({
-      paymentId,
-      orderId,
-      purpose: 'subscription',
-      user: objectId(userId),
-    });
+      save: jest.fn(),
+    };
+    User.findById.mockResolvedValue(user);
 
-    await postWebhook({
-      event: 'payment.captured',
-      payload: { payment: { entity: makePayment() } },
-    }).expect(200);
+    const response = await request(buildApp())
+      .get('/api/payments/subscription/status')
+      .expect(200);
 
+    expect(User.findById).toHaveBeenCalledWith(USER_ID);
+    expect(response.body.data).toEqual({
+      plan: 'premium',
+      subscriptionType: 'monthly',
+      isActive: true,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+    });
     expect(user.save).not.toHaveBeenCalled();
   });
 
-  test('recovers a matching receipt when the prior subscription save failed', async () => {
-    const failedUser = makeUser({
-      save: jest.fn().mockRejectedValue(new Error('temporary user-store failure')),
-    });
-    const recoveredUser = makeUser();
-    mockUserFindById
-      .mockResolvedValueOnce(failedUser)
-      .mockResolvedValueOnce(recoveredUser);
-    mockRazorpayOrdersFetch.mockResolvedValue(makeOrder());
-    mockRazorpayPaymentsFetch.mockResolvedValue(makePayment());
-    mockPaymentReceiptCreate
-      .mockResolvedValueOnce({ _id: objectId('64f000000000000000000104') })
-      .mockRejectedValueOnce({ code: 11000 });
-    mockPaymentReceiptFindOne.mockResolvedValue({
-      paymentId,
-      orderId,
-      purpose: 'subscription',
-      user: objectId(userId),
-    });
-    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-
-    try {
-      await postWebhook({
-        event: 'payment.captured',
-        payload: { payment: { entity: makePayment() } },
-      }).expect(500);
-
-      await postWebhook({
-        event: 'payment.captured',
-        payload: { payment: { entity: makePayment() } },
-      }).expect(200);
-    } finally {
-      errorSpy.mockRestore();
-    }
-
-    expect(failedUser.save).toHaveBeenCalledTimes(1);
-    expect(recoveredUser.save).toHaveBeenCalledTimes(1);
-    expect(recoveredUser.subscription).toEqual({
-      plan: 'premium',
-      subscriptionType: 'monthly',
-      startDate: new Date(paymentCreatedAt * 1000),
-      endDate: new Date((paymentCreatedAt + 30 * 24 * 60 * 60) * 1000),
-      isActive: true,
-    });
-  });
-
-  test('recovers a matching receipt through the authenticated subscription verifier', async () => {
-    const failedUser = makeUser({
-      save: jest.fn().mockRejectedValue(new Error('temporary user-store failure')),
-    });
-    const recoveredUser = makeUser();
-    mockUserFindById
-      .mockResolvedValueOnce(failedUser)
-      .mockResolvedValueOnce(recoveredUser);
-    mockRazorpayOrdersFetch.mockResolvedValue(makeOrder());
-    mockRazorpayPaymentsFetch.mockResolvedValue(makePayment());
-    mockPaymentReceiptCreate
-      .mockResolvedValueOnce({ _id: objectId('64f000000000000000000104') })
-      .mockRejectedValueOnce({ code: 11000 });
-    mockPaymentReceiptFindOne.mockResolvedValue({
-      paymentId,
-      orderId,
-      purpose: 'subscription',
-      user: objectId(userId),
-    });
-    const signature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(`${orderId}|${paymentId}`)
-      .digest('hex');
-    const payload = {
-      razorpay_order_id: orderId,
-      razorpay_payment_id: paymentId,
-      razorpay_signature: signature,
-      subscriptionType: 'monthly',
+  test('reports an expired pre-existing subscription as free without renewing it', async () => {
+    const user = {
+      _id: USER_ID,
+      subscription: {
+        plan: 'premium',
+        subscriptionType: 'monthly',
+        isActive: true,
+        startDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+        endDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      },
+      save: jest.fn(),
     };
-    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    User.findById.mockResolvedValue(user);
 
-    try {
-      await request(buildJsonApp())
-        .post('/api/payments/verify-subscription-payment')
-        .send(payload)
-        .expect(500);
+    const response = await request(buildApp())
+      .get('/api/payments/subscription/status')
+      .expect(200);
 
-      await request(buildJsonApp())
-        .post('/api/payments/verify-subscription-payment')
-        .send(payload)
-        .expect(200);
-    } finally {
-      errorSpy.mockRestore();
-    }
-
-    expect(failedUser.save).toHaveBeenCalledTimes(1);
-    expect(recoveredUser.save).toHaveBeenCalledTimes(1);
-    expect(recoveredUser.subscription).toEqual({
-      plan: 'premium',
-      subscriptionType: 'monthly',
-      startDate: new Date(paymentCreatedAt * 1000),
-      endDate: new Date((paymentCreatedAt + 30 * 24 * 60 * 60) * 1000),
-      isActive: true,
+    expect(response.body.data).toEqual({
+      plan: 'free',
+      subscriptionType: null,
+      isActive: false,
+      startDate: null,
+      endDate: null,
     });
-  });
-
-  test('rejects a signed subscription event when the amount, owner, or type does not match the fetched order', async () => {
-    const user = makeUser();
-    mockUserFindById.mockResolvedValue(user);
-    mockRazorpayPaymentsFetch.mockResolvedValue(makePayment());
-
-    const invalidOrders = [
-      makeOrder({ amount: 149999 }),
-      makeOrder({ notes: { type: 'subscription', userId: anotherUserId, subscriptionType: 'monthly' } }),
-      makeOrder({ notes: { type: 'booking', userId, subscriptionType: 'monthly' } }),
-    ];
-
-    for (const invalidOrder of invalidOrders) {
-      mockRazorpayOrdersFetch.mockResolvedValueOnce(invalidOrder);
-      await postWebhook({
-        event: 'payment.captured',
-        payload: { payment: { entity: makePayment() } },
-      }).expect(200);
-    }
-
-    expect(mockPaymentReceiptCreate).not.toHaveBeenCalled();
     expect(user.save).not.toHaveBeenCalled();
   });
 });

@@ -131,9 +131,7 @@ function readReleaseEnvironment(env = process.env) {
       || urls.androidApiBaseUrl !== 'https://api-android.menorah.me/api'
       || urls.webBaseUrl !== 'https://app.menorah.me'
       || urls.checkoutReturnUrl !== 'https://app.menorah.me/checkout/return'
-      || !['https://calls.menorah.me', 'https://meet.jit.si'].includes(
-        urls.jitsiBaseUrl
-      )
+      || urls.jitsiBaseUrl !== 'https://calls.menorah.me'
     )) {
       throw new Error('production mobile builds must use approved production destinations');
     }

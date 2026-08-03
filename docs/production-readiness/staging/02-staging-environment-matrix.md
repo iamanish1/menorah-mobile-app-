@@ -394,20 +394,22 @@ mutation.
 
 | Variable | Service(s) | Requirement / exact staging mapping | Validation | Staging source | Production source | Secret? | Owner | Evidence | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `release_sha` | Manual Android release workflow input | C; exact lowercase 40-character SHA and exactly the workflow-dispatch `main` HEAD | Workflow guard before checkout/candidate code | Approved main release record | Derived immutable artifact/release record - not accessed | No | Release/Google | Workflow guard/run evidence | ANDROID |
-| `ANDROID_RELEASE_SIGNING_READY` | Android release workflow | C; exactly `protected-main-only`, stored only in protected `android-release-signing` environment | Workflow guard before checkout | Environment variable reference | Reviewed production configuration - not accessed | No | Owner/security/Google | Environment protection evidence | ANDROID |
-| `ANDROID_KEYSTORE_BASE64` | Android release workflow | C; protected environment secret only | Non-empty decode and cleanup | Environment secret reference | Protected production secret-manager/file reference - not accessed | Yes | Google/security | Environment ownership/run evidence | ANDROID |
-| `ANDROID_KEYSTORE_PASSWORD` | Android release workflow | C; protected environment secret only | Gradle signing step | Environment secret reference | Protected production secret-manager/file reference - not accessed | Yes | Google/security | Run evidence | ANDROID |
-| `ANDROID_KEY_ALIAS` | Android release workflow | C; protected environment secret only | Gradle signing step | Environment secret reference | Protected production secret-manager/file reference - not accessed | Yes | Google/security | Run evidence | ANDROID |
-| `ANDROID_KEY_PASSWORD` | Android release workflow | C; protected environment secret only | Gradle signing step | Environment secret reference | Protected production secret-manager/file reference - not accessed | Yes | Google/security | Run evidence | ANDROID |
+| `release_sha` | Manual Android release workflow input | C; exact lowercase 40-character SHA and exactly the workflow-dispatch `release/android-2.7.0-20260803` HEAD | Workflow guard before checkout/candidate code | Approved release record | Derived immutable artifact/release record - not accessed | No | Release/Google | Workflow guard/run evidence | ANDROID |
+| `ANDROID_RELEASE_SIGNING_READY` | Android release workflow | C; exactly `protected-release-only`, stored only in protected `android-release-signing` environment | Workflow guard before checkout | Environment variable reference | Reviewed production configuration - not accessed | No | Owner/security/Google | Environment protection evidence | ANDROID |
+| `EXPO_TOKEN` | Android release workflow | C; protected `android-release-signing` environment secret only; authorizes the pinned EAS CLI build trigger | Step-scoped environment reference; never interpolated into a command | Environment secret reference | Protected Expo access-token reference - not accessed | Yes | Owner/security/Google | Environment ownership/run evidence | ANDROID |
+| `GOOGLE_SERVICES_JSON` | EAS `production` environment | C; secret file for Firebase project `873291355021` and package `com.menorah.healthmobile` | Fail-closed EAS build hook validates identity, copies with mode `0600`, and removes it | Not used for staging unless separately approved | Protected EAS file secret - not accessed | Yes | Google/security | Redacted EAS variable and build-hook evidence | EAS, ANDROID |
+| `PLAY_HIGHEST_VERSION_CODE` | EAS `production` environment | C; fresh Play Console maximum lower than candidate code `15` | Fail-closed EAS hook and native release task | Not used for staging | Protected EAS variable - not accessed | No | Google/release | Dated Play lookup and build log | EAS, ANDROID |
+| `MENORAH_APPROVED_RELEASE_SHA` | EAS `production` environment | C; exact independently approved release-branch SHA | Compared with `EAS_BUILD_GIT_COMMIT_HASH` on the EAS cloud worker | Not used for staging | Protected EAS variable - not accessed | No | Owner/release/security | Approval and build-hook evidence | EAS, ANDROID |
 
-Android release signing is **not a staging procedure**. It is restricted to the
-exact protected `main` HEAD and remains disabled because the
+Android release signing is **not a staging procedure**. The sole GitHub trigger
+requests one EAS build from the exact protected release-branch HEAD and remains
+disabled because the
 `android-release-signing` GitHub environment and protected readiness marker
-are currently absent. The release branch candidate must not be signed by this
-workflow. Current repository-scoped signing secrets must be moved to the
-protected environment and removed from repository scope by `OWNER ACTION` /
-`GOOGLE ACTION`; this document does not authorize those external changes.
+are currently absent. The required release branch also does not exist yet.
+Upload signing, Firebase and submission credentials remain in EAS. Obsolete
+repository-scoped direct-build signing secrets must be removed only after the
+protected EAS trigger is established by `OWNER ACTION` / `GOOGLE ACTION`; this
+document does not authorize those external changes.
 
 ## Monitoring, backup and restore control variables
 

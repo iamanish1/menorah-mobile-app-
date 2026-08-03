@@ -5,7 +5,11 @@ const crypto = require('crypto');
 const mockFindOne = jest.fn();
 const mockFindById = jest.fn();
 const mockCreate = jest.fn();
+const mockUpdateOne = jest.fn();
 const mockAxiosGet = jest.fn();
+const mockStartSession = jest.fn();
+const mockVerifyAppleIdentityToken = jest.fn();
+const mockExchangeAppleAuthorizationCode = jest.fn();
 let mockAuthenticatedUser;
 
 jest.mock('../../models/User', () => ({
@@ -13,6 +17,20 @@ jest.mock('../../models/User', () => ({
   findById: (...args) => mockFindById(...args),
   create: (...args) => mockCreate(...args),
   findOneAndUpdate: jest.fn(),
+  updateOne: (...args) => mockUpdateOne(...args),
+}));
+
+jest.mock('mongoose', () => ({
+  startSession: (...args) => mockStartSession(...args),
+}));
+
+jest.mock('../../services/appleSignInService', () => ({
+  verifyAppleIdentityToken: (...args) => mockVerifyAppleIdentityToken(...args),
+  exchangeAppleAuthorizationCode: (...args) => mockExchangeAppleAuthorizationCode(...args),
+}));
+
+jest.mock('../../utils/appleRefreshTokenEncryption', () => ({
+  encryptAppleRefreshToken: jest.fn(() => 'encrypted-apple-refresh-token'),
 }));
 
 jest.mock('axios', () => ({
@@ -98,11 +116,28 @@ describe('social authentication contracts', () => {
       ...originalEnv,
       GOOGLE_CLIENT_ID: 'google-test-client',
       APPLE_IOS_BUNDLE_ID: 'com.menorah.test',
+      APPLE_SIGN_IN_ENABLED: 'true',
     };
     mockFindOne.mockReset();
     mockFindById.mockReset();
     mockCreate.mockReset();
+    mockUpdateOne.mockReset();
     mockAxiosGet.mockReset();
+    mockStartSession.mockReset();
+    mockVerifyAppleIdentityToken.mockReset();
+    mockExchangeAppleAuthorizationCode.mockReset();
+    mockStartSession.mockResolvedValue({
+      withTransaction: jest.fn(async (callback) => callback()),
+      endSession: jest.fn(async () => undefined),
+    });
+    mockVerifyAppleIdentityToken.mockResolvedValue({
+      sub: 'apple-unknown-subject',
+      aud: 'com.menorah.test',
+    });
+    mockExchangeAppleAuthorizationCode.mockResolvedValue({
+      refreshToken: 'apple-refresh-token',
+    });
+    mockUpdateOne.mockResolvedValue({ matchedCount: 1 });
     mockAuthenticatedUser = makeLinkUser();
     createPublicKeySpy = jest.spyOn(crypto, 'createPublicKey').mockReturnValue({});
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -194,6 +229,7 @@ describe('social authentication contracts', () => {
       .post('/api/auth/apple')
       .send({
         identityToken: 'a'.repeat(32),
+        authorizationCode: 'c'.repeat(32),
         intent: 'signup',
         email: 'victim@example.com',
       })
@@ -216,6 +252,7 @@ describe('social authentication contracts', () => {
       .post('/api/auth/apple')
       .send({
         identityToken: 'a'.repeat(32),
+        authorizationCode: 'c'.repeat(32),
         intent: 'signin',
         email: null,
         fullName: null,

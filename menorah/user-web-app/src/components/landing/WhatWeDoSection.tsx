@@ -21,13 +21,11 @@ const sections = [
     accent: "bg-menorah-green text-white",
     body: (
       <>
-        <strong>Menorah Health, The World&apos;s First Free Mental Health App for Men,</strong> is a groundbreaking
-        organization dedicated to providing support, guidance, and resources for men seeking help with their mental
-        well-being. The organization&apos;s primary tool for achieving this mission is their innovative and{" "}
-        <strong>user-friendly mobile app.</strong> Through this app, <strong>Menorah</strong> strives to dismantle
-        barriers that hinder men from seeking help, providing a safe and empathetic space for addressing their mental
-        health concerns, including stress, burnout, anxiety, family pressure, work pressure, and relationship challenges
-        that Indian men may find difficult to discuss openly.
+        <strong>Menorah Health helps men take a practical next step toward support.</strong> The platform brings
+        verified counsellor profiles, transparent hourly rates, one-to-one bookings, secure chat, wellbeing check-ins,
+        and educational resources into a <strong>user-friendly mobile app.</strong> Through this app, Menorah aims to
+        reduce barriers to help-seeking around stress, burnout, anxiety, family pressure, work pressure, and relationship
+        challenges that Indian men may find difficult to discuss openly.
       </>
     )
   },

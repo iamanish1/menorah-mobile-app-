@@ -12,6 +12,11 @@ jest.mock('../../middleware/auth', () => ({
   }
 }));
 
+jest.mock('../../middleware/adminAuthorization', () => ({
+  requireAdminPermission: jest.fn(() => (_req, _res, next) => next()),
+  requireAssignedAdminRole: (_req, _res, next) => next(),
+}));
+
 jest.mock('../../models/Article', () => ({
   create: (...args) => mockArticleCreate(...args)
 }));

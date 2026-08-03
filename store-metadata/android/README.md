@@ -26,7 +26,8 @@ node store-metadata/android/validate.mjs
 ```
 
 It enforces Google Play text limits, the product name, required release
-positioning and prohibited-claim patterns. A passing check does not replace
+positioning, and prohibited-claim patterns in both the listing and the
+Android/user/counsellor application source. A passing check does not replace
 legal, privacy, clinical or Google review.
 
 The limits follow Google's current

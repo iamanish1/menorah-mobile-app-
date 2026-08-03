@@ -63,8 +63,13 @@ describe('counsellor hourly-rate profile updates', () => {
 
     expect(counsellor.hourlyRate).toBe(1425);
     expect(counsellor.save).toHaveBeenCalledTimes(1);
-    expect(mockRedisScan).toHaveBeenCalledWith('0', { MATCH: 'counsellors:*', COUNT: 100 });
-    expect(mockRedisDel).toHaveBeenCalledWith(['counsellors:v4:list:page-1']);
+    expect(mockRedisScan).toHaveBeenCalledWith('0', { MATCH: 'counsellors:v5:*', COUNT: 100 });
+    expect(mockRedisScan).toHaveBeenCalledWith('0', { MATCH: 'counsellors:list:*', COUNT: 100 });
+    expect(mockRedisDel).toHaveBeenCalledWith([
+      'counsellors:specializations',
+      'counsellors:languages',
+      'counsellors:v4:list:page-1',
+    ]);
     expect(mockSocketEmit).toHaveBeenCalledWith('counsellor_profile_updated');
   });
 
@@ -96,7 +101,11 @@ describe('counsellor hourly-rate profile updates', () => {
 
     expect(counsellor.isAvailable).toBe(false);
     expect(counsellor.save).toHaveBeenCalledTimes(1);
-    expect(mockRedisDel).toHaveBeenCalledWith(['counsellors:v4:list:page-1']);
+    expect(mockRedisDel).toHaveBeenCalledWith([
+      'counsellors:specializations',
+      'counsellors:languages',
+      'counsellors:v4:list:page-1',
+    ]);
     expect(mockSocketEmit).toHaveBeenCalledWith('counsellor_profile_updated');
   });
 });

@@ -10,6 +10,13 @@ jest.mock('../../middleware/auth', () => ({
     req.user = { _id: '64f000000000000000000099', role: 'admin' };
     next();
   },
+  requireRecentAdminMfa: (_req, _res, next) => next(),
+}));
+
+jest.mock('../../middleware/adminAuthorization', () => ({
+  hasAdminPermission: jest.fn(() => true),
+  requireAdminPermission: jest.fn(() => (_req, _res, next) => next()),
+  requireAssignedAdminRole: (_req, _res, next) => next(),
 }));
 
 jest.mock('../../models/Counsellor', () => ({
@@ -18,6 +25,10 @@ jest.mock('../../models/Counsellor', () => ({
 
 jest.mock('../../models/Booking', () => ({
   aggregate: (...args) => mockBookingAggregate(...args),
+}));
+jest.mock('../../services/counsellorVerificationExpiry', () => ({
+  reconcileBatch: jest.fn(),
+  reconcileOne: jest.fn(async () => ({ outcome: 'not_due' })),
 }));
 
 const adminRouter = require('../admin');
@@ -75,7 +86,7 @@ describe('admin counsellor profile read model', () => {
 
     expect(query.populate).toHaveBeenCalledWith(
       'user',
-      'firstName lastName email phone profileImage isActive createdAt dateOfBirth gender',
+      'firstName lastName email phone profileImage role isActive createdAt dateOfBirth gender',
     );
     expect(res.body.data.counsellor).toMatchObject({
       user: {

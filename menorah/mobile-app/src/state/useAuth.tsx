@@ -25,7 +25,12 @@ import { socketService } from '@/lib/socket';
 import { ENV } from '@/lib/env';
 import { reportError } from '@/lib/safeDiagnostics';
 import { onSessionInvalidated } from '@/lib/authSession';
-import { unregisterStoredPushDeviceAsync } from '@/services/pushNotifications';
+import {
+  beginPushAccountTransitionAsync,
+  endPushAccountTransition,
+  preparePushDeviceForAccountTransitionAsync,
+  retryPendingPushDeviceDetachmentsAsync,
+} from '@/services/pushNotifications';
 
 export interface AuthResult {
   success: boolean;
@@ -155,6 +160,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const logoutServerTokenOrQueue = useCallback(async (token: string) => {
+    const response = await api.logoutToken(token);
+    if (!response.success && response.httpStatus !== 401) {
+      await secureStorage.queuePendingLogoutToken(token);
+    }
+  }, []);
+
   const acceptSession = useCallback(async (
     candidateUser: User,
     token: string,
@@ -183,17 +195,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       candidateUser,
       options?.socialProfileRequirement,
     );
-    await clearPrivateState();
-    await api.setToken(token);
-    setAuthenticatedEntryRoute(profileCompletionRequired ? 'EditProfile' : 'Tabs');
-    setUser(candidateUser);
-    setRecoveryPending(false);
+
+    const previousToken = await secureStorage.getToken();
+    const replacingSession = Boolean(previousToken && previousToken !== token);
+    if (replacingSession) await beginPushAccountTransitionAsync();
+    try {
+      if (previousToken && replacingSession) {
+        const pushTransition = await preparePushDeviceForAccountTransitionAsync(
+          previousToken,
+          user?.id,
+        );
+        // A queued detachment retains this bearer deliberately: the retry must
+        // remove the old account's device before revoking its only credential.
+        if (pushTransition.status !== 'queued') {
+          await logoutServerTokenOrQueue(previousToken);
+        }
+      }
+
+      await clearPrivateState();
+      await api.setToken(token);
+      setAuthenticatedEntryRoute(profileCompletionRequired ? 'EditProfile' : 'Tabs');
+      setUser(candidateUser);
+      setRecoveryPending(false);
+    } catch (error) {
+      await rejectCandidateToken(token);
+      reportError('auth.account_transition_failed', error);
+      return {
+        success: false,
+        message: 'Could not safely switch accounts. Please try again.',
+      };
+    } finally {
+      if (replacingSession) endPushAccountTransition();
+    }
 
     return {
       success: true,
       needsProfileCompletion: profileCompletionRequired,
     };
-  }, [clearPrivateState, rejectCandidateToken, setRecoveryPending]);
+  }, [
+    clearPrivateState,
+    logoutServerTokenOrQueue,
+    rejectCandidateToken,
+    setRecoveryPending,
+    user?.id,
+  ]);
 
   const loadStoredSession = useCallback(async () => {
     const token = await secureStorage.getToken();
@@ -286,18 +331,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [retrySession]);
 
   useEffect(() => {
-    const retryPendingLogouts = () => {
-      api.retryPendingLogouts().catch(error => {
-        reportError('auth.pending_logout_retry_failed', error);
+    const retryPendingSessionCleanup = () => {
+      (async () => {
+        // Always detach devices first. Revoking a queued bearer first would
+        // permanently remove the authorization required for safe detachment.
+        await retryPendingPushDeviceDetachmentsAsync();
+        await api.retryPendingLogouts();
+      })().catch(error => {
+        reportError('auth.pending_session_cleanup_retry_failed', error);
       });
     };
 
-    retryPendingLogouts();
-    return NetInfo.addEventListener(state => {
+    retryPendingSessionCleanup();
+    const unsubscribeNetwork = NetInfo.addEventListener(state => {
       if (state.isConnected && state.isInternetReachable !== false) {
-        retryPendingLogouts();
+        retryPendingSessionCleanup();
       }
     });
+    const appStateSubscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') retryPendingSessionCleanup();
+    });
+
+    return () => {
+      unsubscribeNetwork();
+      appStateSubscription.remove();
+    };
   }, []);
 
   const login = async (email: string, password: string): Promise<AuthResult> => {
@@ -423,25 +481,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     const token = await secureStorage.getToken();
+    await beginPushAccountTransitionAsync();
     try {
-      await unregisterStoredPushDeviceAsync();
       if (token) {
-        const response = await api.logoutToken(token);
-        if (!response.success && response.httpStatus !== 401) {
-          await secureStorage.queuePendingLogoutToken(token);
+        const pushTransition = await preparePushDeviceForAccountTransitionAsync(
+          token,
+          user?.id,
+        );
+        if (pushTransition.status !== 'queued') {
+          await logoutServerTokenOrQueue(token);
         }
       }
-    } catch (error) {
-      if (token) {
-        try {
-          await secureStorage.queuePendingLogoutToken(token);
-        } catch (queueError) {
-          reportError('auth.pending_logout_queue_failed', queueError);
-        }
-      }
-      reportError('auth.server_logout_deferred', error);
-    } finally {
       await terminateLocalSession();
+    } catch (error) {
+      reportError('auth.logout_safety_failed', error);
+      throw error;
+    } finally {
+      endPushAccountTransition();
     }
   };
 

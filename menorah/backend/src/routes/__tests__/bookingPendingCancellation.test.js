@@ -41,6 +41,14 @@ jest.mock('../../utils/bookingAvailability', () => ({
   getPendingHoldExpiresAt: jest.fn(),
   expireStalePendingBookings: jest.fn(),
   isBlockingBooking: jest.fn(),
+  isUnpaidPaymentHold: (booking) => Boolean(
+    booking?.status === 'pending'
+    && ['pending', 'failed'].includes(booking?.paymentStatus)
+    && booking?.paymentMethod === 'razorpay'
+    && booking?.bookingAuthorization?.kind === 'payment'
+    && booking?.bookingAuthorization?.status === 'pending'
+  ),
+  isDirectlyCancellableUnpaidHold: jest.fn(),
 }));
 jest.mock('../../services/callPolicyService', () => ({
   isAllowedExternalProvider: jest.fn(),
@@ -60,24 +68,25 @@ const objectId = (value) => ({ toString: () => value });
 const makeFindByIdQuery = (booking) => {
   const query = {
     populate: jest.fn(),
+    select: jest.fn(),
     then: (resolve, reject) => Promise.resolve(booking).then(resolve, reject),
   };
   query.populate.mockReturnValue(query);
+  query.select.mockReturnValue(query);
   return query;
 };
 
 const makePendingBooking = (overrides = {}) => ({
   _id: objectId(bookingId),
-  user: {
-    _id: objectId(userId),
-    phone: '+919999999999',
-  },
+  user: objectId(userId),
   counsellor: {
     user: { firstName: 'Dr', lastName: 'Rao' },
   },
   status: 'pending',
   paymentStatus: 'pending',
-  razorpayOrderId: 'order_active',
+  paymentMethod: 'razorpay',
+  razorpayOrderId: null,
+  bookingAuthorization: { kind: 'payment', status: 'pending' },
   holdExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
   scheduledAt: new Date('2026-08-01T09:00:00.000Z'),
   canBeCancelled: false,
@@ -103,9 +112,11 @@ describe('pending-payment booking cancellation', () => {
   test('lets the owning patient atomically cancel a pending payment hold', async () => {
     const pendingBooking = makePendingBooking();
     const cancelledBooking = makePendingBooking({
+      user: { _id: objectId(userId), phone: '+919999999999' },
       status: 'cancelled',
-      orderStatus: 'cancelled',
+      orderStatus: 'expired',
       holdExpiresAt: undefined,
+      populate: jest.fn(async () => undefined),
     });
     mockBookingFindById.mockReturnValueOnce(makeFindByIdQuery(pendingBooking));
     mockBookingFindOneAndUpdate.mockResolvedValue(cancelledBooking);
@@ -129,21 +140,24 @@ describe('pending-payment booking cancellation', () => {
         _id: pendingBooking._id,
         user: mockAuthUser._id,
         status: 'pending',
-        paymentStatus: 'pending',
+        paymentStatus: { $in: ['pending', 'failed'] },
+        paymentMethod: 'razorpay',
+        'bookingAuthorization.kind': 'payment',
+        'bookingAuthorization.status': 'pending',
+        holdExpiresAt: { $gt: expect.any(Date) },
       }),
       expect.objectContaining({
         $set: expect.objectContaining({
           status: 'cancelled',
-          orderStatus: 'cancelled',
+          orderStatus: 'expired',
           cancellationReason: 'I no longer need this time',
           cancelledBy: mockAuthUser._id,
           cancelledAt: expect.any(Date),
+          'bookingAuthorization.status': 'revoked',
         }),
-        $unset: { holdExpiresAt: '' },
         $push: expect.objectContaining({
           statusHistory: expect.objectContaining({
             status: 'cancelled',
-            reason: 'I no longer need this time',
             updatedBy: mockAuthUser._id,
           }),
         }),
@@ -158,7 +172,7 @@ describe('pending-payment booking cancellation', () => {
 
   test('does not let another patient cancel the pending hold', async () => {
     const pendingBooking = makePendingBooking({
-      user: { _id: objectId(otherUserId), phone: '+918888888888' },
+      user: objectId(otherUserId),
     });
     mockBookingFindById.mockReturnValueOnce(makeFindByIdQuery(pendingBooking));
 
@@ -173,7 +187,13 @@ describe('pending-payment booking cancellation', () => {
 
   test('reports a conflict instead of overwriting a payment confirmation that won the race', async () => {
     const pendingBooking = makePendingBooking();
-    mockBookingFindById.mockReturnValueOnce(makeFindByIdQuery(pendingBooking));
+    const paidBooking = makePendingBooking({
+      status: 'confirmed',
+      paymentStatus: 'paid',
+    });
+    mockBookingFindById
+      .mockReturnValueOnce(makeFindByIdQuery(pendingBooking))
+      .mockReturnValueOnce(makeFindByIdQuery(paidBooking));
     mockBookingFindOneAndUpdate.mockResolvedValue(null);
 
     const response = await request(buildApp())
@@ -183,8 +203,24 @@ describe('pending-payment booking cancellation', () => {
 
     expect(response.body).toEqual(expect.objectContaining({
       success: false,
-      code: 'PAYMENT_STATE_CHANGED',
+      code: 'PAID_CANCELLATION_REVIEW_REQUIRED',
     }));
     expect(mockSendCancellationSMS).not.toHaveBeenCalled();
+  });
+
+  test('requires provider reconciliation after a Razorpay order has been bound', async () => {
+    const orderBoundBooking = makePendingBooking({ razorpayOrderId: 'order_active' });
+    mockBookingFindById.mockReturnValueOnce(makeFindByIdQuery(orderBoundBooking));
+
+    const response = await request(buildApp())
+      .put(`/api/bookings/${bookingId}/cancel`)
+      .send({})
+      .expect(409);
+
+    expect(response.body).toMatchObject({
+      success: false,
+      code: 'PAYMENT_RECONCILIATION_PENDING',
+    });
+    expect(mockBookingFindOneAndUpdate).not.toHaveBeenCalled();
   });
 });

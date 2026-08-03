@@ -88,6 +88,58 @@ require_env() {
   fi
 }
 
+validate_checkout_callback_secret() {
+  local callback_secret="${CHECKOUT_CALLBACK_SECRET:-}"
+  local normalized="${callback_secret,,}"
+  local comparison_name comparison_value
+
+  if (( ${#callback_secret} < 64 )) \
+    || [[ "${normalized}" == *replace* \
+      || "${normalized}" == *placeholder* \
+      || "${normalized}" == *example* \
+      || "${normalized}" == *changeme* \
+      || "${normalized}" == *change_me* \
+      || "${normalized}" == *todo* ]]; then
+    echo "CHECKOUT_CALLBACK_SECRET must contain at least 64 non-placeholder characters." >&2
+    return 1
+  fi
+
+  for comparison_name in \
+    JWT_SECRET JWT_REFRESH_SECRET \
+    RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET RAZORPAY_WEBHOOK_SECRET_PREVIOUS \
+    RAZORPAY_X_KEY_SECRET RAZORPAY_X_WEBHOOK_SECRET RESEND_WEBHOOK_SECRET; do
+    comparison_value="${!comparison_name:-}"
+    if [[ -n "${comparison_value}" && "${callback_secret}" == "${comparison_value}" ]]; then
+      echo "CHECKOUT_CALLBACK_SECRET must be distinct from ${comparison_name}." >&2
+      return 1
+    fi
+  done
+}
+
+validate_android_app_link_release_config() {
+  local fingerprint compact_fingerprint
+  local fingerprint_pattern='^([A-F0-9]{2}:){31}[A-F0-9]{2}$'
+  local -a fingerprints=()
+
+  if [[ "${ANDROID_APP_LINK_PACKAGE_NAME:-}" != "com.menorah.healthmobile" ]]; then
+    echo "ANDROID_APP_LINK_PACKAGE_NAME must equal com.menorah.healthmobile for this release." >&2
+    return 1
+  fi
+  IFS=',' read -r -a fingerprints \
+    <<< "${ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS:-}"
+  if (( ${#fingerprints[@]} == 0 )); then
+    echo "ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS must contain the Play App Signing SHA-256." >&2
+    return 1
+  fi
+  for fingerprint in "${fingerprints[@]}"; do
+    compact_fingerprint="${fingerprint//[[:space:]]/}"
+    if [[ ! "${compact_fingerprint}" =~ ${fingerprint_pattern} ]]; then
+      echo "Every Android App Link fingerprint must be a canonical uppercase colon-delimited SHA-256." >&2
+      return 1
+    fi
+  done
+}
+
 warn_optional_env() {
   local key="$1"
   local value="${!key:-}"
@@ -122,6 +174,7 @@ validate_release_environment() {
   export DEPLOYMENT_ENVIRONMENT
   case "${DEPLOYMENT_ENVIRONMENT}" in
     production)
+      validate_android_app_link_release_config || return 1
       if [[ "${APPLE_SIGN_IN_ENABLED:-}" != "true" \
         || "${APPLE_IOS_BUNDLE_ID:-}" != "com.menorah.health.app" \
         || ! "${APPLE_TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ \
@@ -350,6 +403,7 @@ required=(
   CONTACT_TO_EMAIL
   PASSWORD_RESET_BASE_URL
   CHECKOUT_RETURN_URL
+  CHECKOUT_CALLBACK_SECRET
   MEDIA_STORAGE_BACKEND
   MEDIA_PUBLIC_BASE_URL
   UPLOAD_PATH
@@ -370,6 +424,7 @@ required=(
 for key in "${required[@]}"; do
   require_env "${key}"
 done
+validate_checkout_callback_secret
 
 require_env RAZORPAY_KEY_ID
 require_env RAZORPAY_KEY_SECRET

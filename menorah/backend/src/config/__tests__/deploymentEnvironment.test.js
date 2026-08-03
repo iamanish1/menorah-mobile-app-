@@ -32,7 +32,7 @@ const externalTopology = (port = '') => {
     LIVEKIT_URL: `wss://${stagingHosts.CALLS_DOMAIN}${suffix}`,
     PASSWORD_RESET_BASE_URL: httpsOrigin(stagingHosts.APP_DOMAIN),
     CHECKOUT_RETURN_URL:
-      `${httpsOrigin(stagingHosts.APP_DOMAIN)}/checkout/return`,
+      `${httpsOrigin(stagingHosts.APP_DOMAIN)}/checkout/callback`,
     FRONTEND_COUNSELLOR_URL:
       httpsOrigin(stagingHosts.COUNSELLOR_DOMAIN),
     FRONTEND_API_WEB_URL:
@@ -390,7 +390,7 @@ describe('server-staging deployment environment isolation', () => {
       LIVEKIT_API_URL: 'http://livekit:7880',
       PASSWORD_RESET_BASE_URL: httpsOrigin(localHosts.APP_DOMAIN),
       CHECKOUT_RETURN_URL:
-        `${httpsOrigin(localHosts.APP_DOMAIN)}/checkout/return`,
+        `${httpsOrigin(localHosts.APP_DOMAIN)}/checkout/callback`,
       FRONTEND_COUNSELLOR_URL:
         httpsOrigin(localHosts.COUNSELLOR_DOMAIN),
       FRONTEND_API_WEB_URL:

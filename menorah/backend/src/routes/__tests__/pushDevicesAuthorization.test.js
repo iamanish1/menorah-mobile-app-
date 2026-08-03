@@ -5,15 +5,20 @@ const mockRegisterPushDevice = jest.fn();
 const mockUnregisterPushDevice = jest.fn();
 let mockAuthenticated = true;
 
-jest.mock('../../middleware/auth', () => ({
-  auth: (req, res, next) => {
+jest.mock('../../middleware/auth', () => {
+  const authenticate = (req, res, next) => {
     if (!mockAuthenticated) {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
     req.user = { _id: '64f000000000000000000001', role: 'user' };
     return next();
-  },
-}));
+  };
+  return {
+    auth: authenticate,
+    patientAuth: authenticate,
+    sharedParticipantAuth: authenticate,
+  };
+});
 
 jest.mock('../../services/pushDeviceService', () => {
   class PushDeviceError extends Error {}

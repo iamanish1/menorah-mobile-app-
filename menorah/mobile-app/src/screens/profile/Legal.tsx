@@ -153,11 +153,11 @@ If you do not agree to these Terms, you must not access or use the Platform.
 3. Nature of Services
 
 3.1 What We Provide
-Menorah Health provides a digital men's mental health platform offering:
-• Individual therapy sessions with licensed mental health professionals via audio/video
-• Wellness tools including mood tracking, journaling, and psychoeducational content
-• Community and peer support features (where available)
-• Crisis resource information and referrals
+Menorah Health provides a digital wellbeing platform offering:
+• Profiles of counsellors who complete Menorah's verification and onboarding process
+• Hourly session pricing and booking for available audio, video, or chat sessions
+• Secure account-based chat between users and their booked counsellors
+• Wellbeing check-ins and informational articles and resources
 
 3.2 What We Do Not Provide
 The Platform is NOT a substitute for emergency mental health services. We do not provide:
@@ -166,14 +166,14 @@ The Platform is NOT a substitute for emergency mental health services. We do not
 • Prescription of medications (unless through a separately licensed psychiatrist on platform, if applicable)
 • Medical diagnosis of any condition
 
-4. Practitioner Standards
-All therapists and mental health professionals on the Platform:
-• Are registered with the Rehabilitation Council of India (RCI) or the relevant State Medical Council
-• Have been verified by Menorah Health prior to onboarding
-• Are bound by a separate Therapist/Contractor Agreement incorporating professional ethics obligations
-• Are independent professionals; Menorah Health does not control the clinical content of therapeutic advice
+4. Counsellor Standards
+Counsellors shown on the Platform:
+• Complete Menorah Health's identity and professional-information review before activation
+• Provide qualifications, experience, and registration details where applicable for display and review
+• Are bound by a separate counsellor agreement incorporating professional conduct obligations
+• Are independent professionals; Menorah Health does not control the content of their counselling advice
 
-Menorah Health is responsible for platform operations and practitioner verification, but is not liable for the specific clinical advice or decisions of individual practitioners.
+Menorah Health is responsible for platform operations and its onboarding checks, but users should review each counsellor's displayed information before booking. Menorah Health is not liable for the specific advice or decisions of individual counsellors.
 
 5. User Obligations
 By using the Platform, you agree to:
@@ -228,7 +228,7 @@ We reserve the right to amend these Terms. Material changes will be communicated
 
   const communityGuidelines = `Community Guidelines
 
-Menorah Health is designed for respectful mental wellness support, peer support, and educational discussion.
+Menorah Health is designed for respectful counsellor support and educational discussion.
 
 1. Be respectful
 Do not harass, threaten, bully, shame, discriminate, or target another person.
@@ -250,7 +250,7 @@ Menorah may remove content, restrict features, or suspend accounts that create s
 
   const wellnessDisclaimer = `Mental Wellness Disclaimer
 
-Menorah Health provides mental wellness support, peer support, self-help tools, and educational resources.
+Menorah Health provides counsellor discovery, paid one-to-one bookings, secure chat, wellbeing tools, and educational resources.
 
 The app does not diagnose, treat, cure, prevent, or replace professional medical or mental healthcare. Information in the app is for general wellness and educational support only.
 
@@ -284,7 +284,7 @@ For urgent danger, self-harm risk, medical emergencies, or threats to another pe
     },
     community: {
       title: 'Community Guidelines',
-      subtitle: 'Safety rules for chat and peer support',
+      subtitle: 'Safety rules for counsellor chat',
       body: communityGuidelines,
       icon: Users,
     },
