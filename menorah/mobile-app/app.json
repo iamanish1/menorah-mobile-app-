@@ -45,7 +45,15 @@
         "backgroundColor": "#f0f9f4"
       }
     },
-    "plugins": [],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#2d7a5c",
+          "defaultChannel": "general"
+        }
+      ]
+    ],
     "updates": {
       "url": "https://u.expo.dev/d7fb6e65-3440-4a79-b4b2-6746d2582fa7"
     },

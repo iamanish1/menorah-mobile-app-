@@ -65,11 +65,10 @@ chatRoomSchema.index({ booking: 1 });
 chatRoomSchema.index({ updatedAt: -1 });
 
 // Static method to find or create a chat room
-chatRoomSchema.statics.findOrCreate = async function(userId, counsellorId, bookingId = null) {
+chatRoomSchema.statics.findOrCreate = async function(userId, counsellorId) {
   let room = await this.findOne({
     user: userId,
-    counsellor: counsellorId,
-    ...(bookingId && { booking: bookingId })
+    counsellor: counsellorId
   })
     .populate('counsellor', 'user')
     .populate('counsellor.user', 'firstName lastName profileImage')
@@ -77,14 +76,20 @@ chatRoomSchema.statics.findOrCreate = async function(userId, counsellorId, booki
     .populate('lastMessage.senderId', 'firstName lastName');
 
   if (!room) {
-    room = await this.create({
-      user: userId,
-      counsellor: counsellorId,
-      booking: bookingId,
-      isActive: true
-    });
+    try {
+      room = await this.create({
+        user: userId,
+        counsellor: counsellorId,
+        booking: null,
+        isActive: true
+      });
+    } catch (error) {
+      // Two devices may resolve the same conversation at once. The unique
+      // participant-pair index makes that safe; load the winner of the race.
+      if (error?.code !== 11000) throw error;
+    }
 
-    room = await this.findById(room._id)
+    room = await this.findOne({ user: userId, counsellor: counsellorId })
       .populate('counsellor', 'user')
       .populate('counsellor.user', 'firstName lastName profileImage')
       .populate('user', 'firstName lastName profileImage');
@@ -121,4 +126,3 @@ chatRoomSchema.methods.resetUnread = function(forUser) {
 };
 
 module.exports = mongoose.model('ChatRoom', chatRoomSchema);
-

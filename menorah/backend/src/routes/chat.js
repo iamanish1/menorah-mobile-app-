@@ -15,6 +15,9 @@ const {
   populateChatRoomAuthorizationQuery,
 } = require('../services/chatRoomAuthorization');
 const { recordSecurityEvent } = require('../utils/securityAudit');
+const {
+  enqueueUserPushNotification,
+} = require('../services/pushNotificationService');
 
 // Socket.IO instance will be set from server.js to avoid circular dependency
 let socketIOInstance = null;
@@ -102,6 +105,31 @@ const loadAuthorizedRoomForRequest = async (req, res, roomId) => {
   return { room, access };
 };
 
+const identifierString = (value) => {
+  const identifier = value?._id ?? value;
+  return identifier?.toString?.() || null;
+};
+
+const getChatEventRooms = (room, roomId) => {
+  const participantUserIds = [
+    identifierString(room?.user),
+    identifierString(room?.counsellor?.user),
+  ].filter(Boolean);
+
+  return [
+    `chat_${roomId}`,
+    ...participantUserIds.map((userId) => `user_${userId}`),
+  ].filter((roomName, index, roomNames) => roomNames.indexOf(roomName) === index);
+};
+
+const emitChatEvent = (io, room, roomId, eventName, payload) => {
+  if (!io) return;
+  io.to(getChatEventRooms(room, roomId)).emit(eventName, {
+    ...payload,
+    roomId: roomId.toString(),
+  });
+};
+
 const getVisiblePresenceUserIds = async (requester) => {
   const requesterId = requester._id.toString();
 
@@ -187,6 +215,7 @@ router.get('/rooms', auth, async (req, res) => {
         counsellorUserId: counsellorUserId, // Add counselor userId for presence tracking
         lastMessage: room.lastMessage?.content || '',
         lastMessageTime: room.lastMessage?.timestamp || room.updatedAt,
+        lastMessageSenderId: identifierString(room.lastMessage?.senderId),
         unreadCount: unreadCount || 0,
         isOnline: isOnline || false
       };
@@ -379,8 +408,25 @@ router.post('/rooms/:roomId/messages', [
     };
 
     // Emit via Socket.IO for real-time updates
-    if (socketIOInstance) {
-      socketIOInstance.to(`chat_${roomId}`).emit('new_message', formattedMessage);
+    emitChatEvent(socketIOInstance, room, roomId, 'new_message', formattedMessage);
+
+    if (!isUser) {
+      try {
+        await enqueueUserPushNotification({
+          user: room.user?._id || room.user,
+          eventKey: `chat-message:${message._id}`,
+          type: 'message',
+          title: 'New message',
+          body: 'Open Menorah to view your message.',
+          channelId: 'messages',
+          data: { roomId: String(roomId) },
+        });
+      } catch (notificationError) {
+        console.error(
+          'Queue chat push notification failed:',
+          notificationError?.code || 'CHAT_PUSH_ENQUEUE_FAILED'
+        );
+      }
     }
 
     res.status(201).json({
@@ -418,7 +464,9 @@ router.put('/rooms/:roomId/messages/:messageId/read', [
     const { roomId, messageId } = req.params;
     const userId = req.user._id;
 
-    if (!await loadAuthorizedRoomForRequest(req, res, roomId)) return;
+    const authorizedRoom = await loadAuthorizedRoomForRequest(req, res, roomId);
+    if (!authorizedRoom) return;
+    const { room } = authorizedRoom;
 
     // Find and mark message as read
     const message = await Message.findOne({ _id: messageId, room: roomId });
@@ -432,13 +480,12 @@ router.put('/rooms/:roomId/messages/:messageId/read', [
     await message.markAsRead(userId);
 
     // Emit read receipt via Socket.IO
-    if (socketIOInstance) {
-      socketIOInstance.to(`chat_${roomId}`).emit('message_read', {
-        messageId: messageId,
-        readBy: userId,
-        timestamp: new Date()
-      });
-    }
+    emitChatEvent(socketIOInstance, room, roomId, 'message_read', {
+      messageId: messageId,
+      readBy: userId.toString(),
+      readByUserName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+      timestamp: new Date()
+    });
 
     res.json({
       success: true,
@@ -474,7 +521,9 @@ router.delete('/rooms/:roomId/messages/:messageId', [
     const { roomId, messageId } = req.params;
     const userId = req.user._id;
 
-    if (!await loadAuthorizedRoomForRequest(req, res, roomId)) return;
+    const authorizedRoom = await loadAuthorizedRoomForRequest(req, res, roomId);
+    if (!authorizedRoom) return;
+    const { room } = authorizedRoom;
 
     const message = await Message.findOne({ _id: messageId, room: roomId });
     if (!message) {
@@ -496,13 +545,11 @@ router.delete('/rooms/:roomId/messages/:messageId', [
     await message.softDelete(userId);
 
     // Emit deletion via Socket.IO
-    if (socketIOInstance) {
-      socketIOInstance.to(`chat_${roomId}`).emit('message_deleted', {
-        messageId: messageId,
-        deletedBy: userId,
-        timestamp: new Date()
-      });
-    }
+    emitChatEvent(socketIOInstance, room, roomId, 'message_deleted', {
+      messageId: messageId,
+      deletedBy: userId.toString(),
+      timestamp: new Date()
+    });
 
     res.json({
       success: true,
@@ -867,3 +914,6 @@ module.exports = router;
 module.exports.setSocketIO = setSocketIO;
 module.exports.setUserOnline = setUserOnline;
 module.exports.setUserOffline = setUserOffline;
+module.exports._private = {
+  getChatEventRooms,
+};

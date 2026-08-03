@@ -28,6 +28,13 @@ const {
   serializePublicUser,
   serializeUserProfile,
 } = require('../serializers/userSerializer');
+const {
+  EXPO_PUSH_TOKEN_PATTERN,
+  PushDeviceError,
+  disablePushDevicesForUser,
+  registerPushDevice,
+  unregisterPushDevice,
+} = require('../services/pushDeviceService');
 
 const router = express.Router();
 const leanWithPasswordAuth = (query) => {
@@ -42,6 +49,13 @@ const accountDeletionChallengeLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `account-deletion:${String(req.user?._id || 'unauthenticated')}`,
+});
+const pushDeviceLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `push-device:${String(req.user?._id || 'unauthenticated')}`,
 });
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -379,6 +393,17 @@ router.put('/notification-preferences', [
 
     await user.save();
 
+    if (push === false) {
+      try {
+        await disablePushDevicesForUser({ userId: req.user._id });
+      } catch (disableError) {
+        console.error(
+          'Disable push devices after preference update failed:',
+          disableError?.code || 'PUSH_DEVICE_DISABLE_FAILED'
+        );
+      }
+    }
+
     res.json({
       success: true,
       message: 'Notification preferences updated successfully',
@@ -391,6 +416,72 @@ router.put('/notification-preferences', [
       success: false,
       message: 'Internal server error'
     });
+  }
+});
+
+// @route   POST /api/users/push-devices
+// @desc    Register the signed-in user's Android Expo push token
+// @access  Private
+router.post('/push-devices', auth, pushDeviceLimiter, [
+  body('expoPushToken')
+    .isString()
+    .trim()
+    .matches(EXPO_PUSH_TOKEN_PATTERN)
+    .withMessage('A valid Android push token is required'),
+  body('platform').equals('android').withMessage('Only Android push is supported'),
+  body('projectId').optional({ nullable: true }).isString().trim().isLength({ max: 128 }),
+], async (req, res) => {
+  try {
+    if (!validationResult(req).isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Invalid push registration' });
+    }
+
+    await registerPushDevice({
+      userId: req.user._id,
+      expoPushToken: req.body.expoPushToken,
+      platform: req.body.platform,
+      projectId: req.body.projectId,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: { registered: true },
+    });
+  } catch (error) {
+    if (error instanceof PushDeviceError) {
+      return res.status(400).json({ success: false, message: 'Invalid push registration' });
+    }
+    console.error('Register push device failed:', error?.code || 'PUSH_DEVICE_REGISTER_FAILED');
+    return res.status(500).json({ success: false, message: 'Unable to enable push notifications' });
+  }
+});
+
+// @route   DELETE /api/users/push-devices
+// @desc    Disable this Android device for the signed-in user
+// @access  Private
+router.delete('/push-devices', auth, pushDeviceLimiter, [
+  body('expoPushToken')
+    .isString()
+    .trim()
+    .matches(EXPO_PUSH_TOKEN_PATTERN)
+    .withMessage('A valid Android push token is required'),
+], async (req, res) => {
+  try {
+    if (!validationResult(req).isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Invalid push registration' });
+    }
+
+    await unregisterPushDevice({
+      userId: req.user._id,
+      expoPushToken: req.body.expoPushToken,
+    });
+    return res.json({ success: true, data: { registered: false } });
+  } catch (error) {
+    if (error instanceof PushDeviceError) {
+      return res.status(400).json({ success: false, message: 'Invalid push registration' });
+    }
+    console.error('Unregister push device failed:', error?.code || 'PUSH_DEVICE_DISABLE_FAILED');
+    return res.status(500).json({ success: false, message: 'Unable to disable push notifications' });
   }
 });
 

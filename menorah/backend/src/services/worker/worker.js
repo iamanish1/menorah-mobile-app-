@@ -14,6 +14,9 @@ const {
 } = require('../privacyRetentionScheduler');
 const { startSocialScheduler } = require('../socialStudio/socialScheduler.service');
 const { startProviderRevocationScheduler } = require('../providerRevocationService');
+const {
+  startPushNotificationScheduler,
+} = require('../pushNotificationScheduler');
 require('dotenv').config();
 
 const getWorkerMode = () => {
@@ -40,7 +43,7 @@ const resolveWorkerJobs = () => {
     backupJobs: active && schedulerEnabled('ENABLE_BACKUP_JOBS', false),
     cleanupJobs: active && schedulerEnabled('ENABLE_CLEANUP_JOBS', false),
     emailJobs: active && schedulerEnabled('ENABLE_EMAIL_JOBS', false),
-    notificationJobs: active && schedulerEnabled('ENABLE_NOTIFICATION_JOBS', false)
+    notificationJobs: active && schedulerEnabled('ENABLE_NOTIFICATION_JOBS', true)
   };
 };
 
@@ -71,7 +74,11 @@ const startWorkerJobs = (jobs) => {
     startSocialScheduler();
   }
 
-  ['backupJobs', 'cleanupJobs', 'emailJobs', 'notificationJobs'].forEach((jobKey) => {
+  if (jobs.notificationJobs) {
+    startPushNotificationScheduler();
+  }
+
+  ['backupJobs', 'cleanupJobs', 'emailJobs'].forEach((jobKey) => {
     if (jobs[jobKey]) {
       console.log(`${jobKey} enabled but no job implementation is registered yet`);
     }
@@ -130,6 +137,7 @@ const startWorker = async () => {
     console.log(`Privacy retention: ${jobs.privacyRetention ? 'enabled' : 'disabled'}`);
     console.log(`Provider revocation: ${jobs.providerRevocation ? 'enabled' : 'disabled'}`);
     console.log(`Social scheduler: ${jobs.socialScheduler ? 'enabled' : 'disabled'}`);
+    console.log(`Android push notifications: ${jobs.notificationJobs ? 'enabled' : 'disabled'}`);
   });
 
   registerGracefulShutdown({ server, serviceName });

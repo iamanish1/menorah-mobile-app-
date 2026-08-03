@@ -46,7 +46,13 @@ const createCorsOptions = (corsOrigin) => ({
   origin: corsOrigin,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Auth-Transport'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Idempotency-Key',
+    'X-Requested-With',
+    'X-Auth-Transport',
+  ],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
   maxAge: 86400
 });

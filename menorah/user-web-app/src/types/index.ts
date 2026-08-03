@@ -152,6 +152,7 @@ export interface ChatRoom {
   counsellorUserId?: string;
   lastMessage?: string;
   lastMessageTime?: string;
+  lastMessageSenderId?: string;
   unreadCount: number;
   isOnline?: boolean;
 }
@@ -165,6 +166,7 @@ export interface ChatMessage {
   timestamp: string;
   type: 'text' | 'image' | 'file';
   status?: 'sent' | 'delivered' | 'read';
+  roomId?: string;
   attachment?: {
     url: string;
     fileName: string;

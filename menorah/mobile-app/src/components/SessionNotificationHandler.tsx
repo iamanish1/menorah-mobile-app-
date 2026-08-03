@@ -5,6 +5,7 @@ import { navigate } from '@/services/navigationService';
 import { isSafeNavigationIdentifier } from '@/lib/deepLinks';
 import { reportError } from '@/lib/safeDiagnostics';
 import { useAuth } from '@/state/useAuth';
+import { resolveBookingChatRoomId } from '@/lib/bookingChat';
 
 /**
  * Component that handles session started notifications
@@ -13,7 +14,11 @@ import { useAuth } from '@/state/useAuth';
 export default function SessionNotificationHandler() {
   const { user } = useAuth();
 
-  const navigateToSession = useCallback((bookingId: string, sessionType: string) => {
+  const navigateToSession = useCallback(async (
+    bookingId: string,
+    sessionType: string,
+    suppliedRoomId?: string
+  ) => {
     try {
       if (!user?.id || !isSafeNavigationIdentifier(bookingId)) {
         reportError('session_notification.invalid_booking');
@@ -23,7 +28,10 @@ export default function SessionNotificationHandler() {
       if (sessionType === 'video' || sessionType === 'audio') {
         navigate('PreCallCheck', { bookingId });
       } else if (sessionType === 'chat') {
-        navigate('ChatThread', { roomId: bookingId });
+        const roomId = isSafeNavigationIdentifier(suppliedRoomId)
+          ? suppliedRoomId
+          : await resolveBookingChatRoomId(bookingId);
+        navigate('ChatThread', { roomId });
       }
     } catch (error) {
       reportError('session_notification.navigation_failed', error);
@@ -54,7 +62,7 @@ export default function SessionNotificationHandler() {
         {
           text: 'Join Session',
           onPress: () => {
-            navigateToSession(bookingId, sessionType);
+            navigateToSession(bookingId, sessionType, data.roomId);
           },
         },
       ],

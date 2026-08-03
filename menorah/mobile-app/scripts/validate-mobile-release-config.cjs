@@ -155,6 +155,7 @@ function validateProject(root = projectRoot) {
   const resetPassword = read(root, 'src/screens/auth/ResetPassword.tsx');
   const editProfile = read(root, 'src/screens/profile/EditProfile.tsx');
   const settingsScreen = read(root, 'src/screens/profile/Settings.tsx');
+  const pushNotifications = read(root, 'src/services/pushNotifications.ts');
   const socialAuthButtons = read(root, 'src/components/auth/SocialAuthButtons.tsx');
   const changePassword = read(root, 'src/screens/profile/ChangePassword.tsx');
   const safeDiagnostics = read(root, 'src/lib/safeDiagnostics.ts');
@@ -534,7 +535,7 @@ function validateProject(root = projectRoot) {
   fail(
     rootNavigator.includes('splitDeepLinkPath') &&
       rootNavigator.includes('extractPasswordResetToken') &&
-      rootNavigator.includes('...(isAuthed ? {'),
+      /\.\.\.\(isAuthed\s*\?\s*\{/.test(rootNavigator),
     'deep-link state must discard queries, validate reset tokens, and gate protected routes'
   );
   fail(
@@ -547,9 +548,19 @@ function validateProject(root = projectRoot) {
     'Android profile photos must use the system picker without broad media permission'
   );
   fail(
-    settingsScreen.includes('Not available in this release') &&
-      !settingsScreen.includes('handleNotificationToggle') &&
-      !settingsScreen.includes('notificationPreferences.push || true'),
+    (
+      settingsScreen.includes('Not available in this release') &&
+        !settingsScreen.includes('handleNotificationToggle') &&
+        !settingsScreen.includes('notificationPreferences.push || true')
+    ) || (
+      settingsScreen.includes('setPushNotificationsEnabled') &&
+        pushNotifications.includes('getExpoPushTokenAsync') &&
+        pushNotifications.includes('registerPushDevice') &&
+        apiSource.includes('url: "/users/push-devices"') &&
+        app.plugins.some((plugin) => (
+          plugin === 'expo-notifications' || plugin?.[0] === 'expo-notifications'
+        ))
+    ),
     'Settings must not expose a nonfunctional push-notification control'
   );
   fail(
@@ -616,9 +627,9 @@ function validateProject(root = projectRoot) {
     'chat copy must not claim end-to-end encryption or absolute confidentiality'
   );
   fail(
-    queryHooks.includes("['bookings', userId") &&
-      queryHooks.includes("['chatRooms', userId") &&
-      queryHooks.includes("['profile', userId"),
+    /["']bookings["']\s*,\s*userId/.test(queryHooks) &&
+      /["']chatRooms["']\s*,\s*userId/.test(queryHooks) &&
+      /["']profile["']\s*,\s*userId/.test(queryHooks),
     'protected React Query keys must include the authenticated user ID'
   );
   fail(
@@ -636,13 +647,13 @@ function validateProject(root = projectRoot) {
   );
   fail(
     socialAuthButtons.includes('credential.authorizationCode') &&
-      apiSource.includes("url: '/auth/apple'") &&
+      /url:\s*["']\/auth\/apple["']/.test(apiSource) &&
       apiSource.includes('authorizationCode: string;'),
     'Apple sign-in must send the one-time authorization code for server-held revocation credentials'
   );
   fail(
-    apiSource.includes("url: '/users/account/deletion-challenge'") &&
-      apiSource.includes("method: 'apple';") &&
+    /url:\s*["']\/users\/account\/deletion-challenge["']/.test(apiSource) &&
+      /method:\s*["']apple["']\s*;/.test(apiSource) &&
       settingsScreen.includes('nonce: challenge.data.nonce') &&
       settingsScreen.includes('state: challenge.data.challengeId') &&
       settingsScreen.includes('credential.state !== challenge.data.challengeId') &&
@@ -676,6 +687,7 @@ function validateProject(root = projectRoot) {
     .sort();
   fail(
     JSON.stringify(asyncStorageImports) === JSON.stringify([
+      'src/components/onboarding/first-login-tour.tsx',
       'src/lib/secureStorage.ts',
       'src/theme/ThemeProvider.tsx',
     ]),

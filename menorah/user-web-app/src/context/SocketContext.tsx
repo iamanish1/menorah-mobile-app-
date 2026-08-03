@@ -24,6 +24,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(false);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const socketRef      = useRef<Socket | null>(null);
+  const joinedRoomsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     // Wait until auth state is resolved before touching the socket.
@@ -35,6 +36,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       disconnectSocket();
       setSocket(null);
       socketRef.current = null;
+      joinedRoomsRef.current.clear();
       setIsConnected(false);
       return;
     }
@@ -43,7 +45,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socketRef.current = s;
     setSocket(s);
 
-    const onConnect    = () => setIsConnected(true);
+    const onConnect = () => {
+      setIsConnected(true);
+      joinedRoomsRef.current.forEach((roomId) => {
+        s.emit(socketEvents.JOIN_ROOM, roomId);
+      });
+    };
     const onDisconnect = () => setIsConnected(false);
 
     s.on('connect',    onConnect);
@@ -58,11 +65,17 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthed, isLoading]);
 
   const joinRoom = useCallback((roomId: string) => {
-    socketRef.current?.emit(socketEvents.JOIN_ROOM, roomId);
+    joinedRoomsRef.current.add(roomId);
+    if (socketRef.current?.connected) {
+      socketRef.current.emit(socketEvents.JOIN_ROOM, roomId);
+    }
   }, []);
 
   const leaveRoom = useCallback((roomId: string) => {
-    socketRef.current?.emit(socketEvents.LEAVE_ROOM, roomId);
+    joinedRoomsRef.current.delete(roomId);
+    if (socketRef.current?.connected) {
+      socketRef.current.emit(socketEvents.LEAVE_ROOM, roomId);
+    }
   }, []);
 
   const sendMessage = useCallback((roomId: string, content: string, type = 'text') => {

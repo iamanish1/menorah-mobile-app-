@@ -25,6 +25,7 @@ const DEFAULT_SOCKET_SESSION_REVALIDATION_INTERVAL_MS = 30 * 1000;
 const SOCKET_REVALIDATION_CONCURRENCY = 10;
 const MAX_JOINED_CHAT_ROOMS = 100;
 const SOCKET_CHAT_DENIAL_AUDIT_INTERVAL_MS = 30 * 1000;
+const SOCKET_PRESENCE_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
 
 const parseBooleanEnv = (value, fallback) => {
   if (value === undefined || value === null || value === '') return fallback;
@@ -69,6 +70,23 @@ const loadAuthorizedRoom = async (
   lean: true,
   ChatRoomModel,
 });
+
+const identifierString = (value) => {
+  const identifier = value?._id ?? value;
+  return identifier?.toString?.() || null;
+};
+
+const getChatEventRooms = (room, roomId) => {
+  const participantUserIds = [
+    identifierString(room?.user),
+    identifierString(room?.counsellor?.user),
+  ].filter(Boolean);
+
+  return [
+    `chat_${roomId}`,
+    ...participantUserIds.map((userId) => `user_${userId}`),
+  ].filter((roomName, index, roomNames) => roomNames.indexOf(roomName) === index);
+};
 
 const getJoinedChatRoomNames = (socket) => [...socket.rooms]
   .filter((roomName) =>
@@ -148,7 +166,10 @@ const emitPresenceToAuthorizedChatRooms = async (
   await Promise.all(roomNames.map(async (roomName) => {
     const roomId = roomName.slice('chat_'.length);
     if (!await authorizeSocketRoom(socket, roomId)) return;
-    socket.to(roomName).emit('user_status_changed', event);
+    socket.to(roomName).emit('user_status_changed', {
+      ...event,
+      roomId,
+    });
   }));
 };
 
@@ -379,6 +400,10 @@ const attachSocketHandlers = (io) => {
 
     socket.join(`user_${socket.userId}`);
     chatRoutes.setUserOnline(socket.userId, socket.userName);
+    const presenceHeartbeat = setInterval(() => {
+      chatRoutes.setUserOnline(socket.userId, socket.userName);
+    }, SOCKET_PRESENCE_REFRESH_INTERVAL_MS);
+    presenceHeartbeat.unref?.();
 
     if (socket.userRole === 'counsellor' || socket.userRole === 'admin') {
       Counsellor.findOne({ user: socket.userId, isActive: true })
@@ -413,6 +438,7 @@ const attachSocketHandlers = (io) => {
         socket.join(`chat_${roomId}`);
         socket.to(`chat_${roomId}`).emit('user_joined', {
           userId,
+          userName: socket.userName,
           roomId,
           timestamp: new Date().toISOString()
         });
@@ -432,6 +458,7 @@ const attachSocketHandlers = (io) => {
         socket.leave(`chat_${roomId}`);
         socket.to(`chat_${roomId}`).emit('user_left', {
           userId: socket.userId,
+          userName: socket.userName,
           roomId,
           timestamp: new Date().toISOString()
         });
@@ -448,7 +475,9 @@ const attachSocketHandlers = (io) => {
         const { roomId, content, type = 'text' } = data;
         if (!roomId || !content) return;
         if (!socket.rooms.has(`chat_${roomId}`)) return;
-        if (!await authorizeSocketRoom(socket, roomId)) return;
+        const authorization = await authorizeSocketRoom(socket, roomId);
+        if (!authorization) return;
+        const { room, access } = authorization;
 
         const safeContent = String(content)
           .slice(0, 5000)
@@ -463,13 +492,17 @@ const attachSocketHandlers = (io) => {
           status: 'sent'
         });
 
+        const unreadField = access.participantRole === 'user'
+          ? 'unreadCount.counsellor'
+          : 'unreadCount.user';
         await ChatRoom.findByIdAndUpdate(roomId, {
           $set: {
             'lastMessage.content': msg.content,
             'lastMessage.senderId': socket.userId,
             'lastMessage.timestamp': msg.createdAt,
             updatedAt: msg.createdAt
-          }
+          },
+          $inc: { [unreadField]: 1 },
         });
 
         const payload = {
@@ -482,7 +515,7 @@ const attachSocketHandlers = (io) => {
           timestamp: msg.createdAt.toISOString(),
           status: 'sent'
         };
-        io.to(`chat_${roomId}`).emit('new_message', payload);
+        io.to(getChatEventRooms(room, roomId)).emit('new_message', payload);
         socket.emit('message_delivered', {
           messageId: msg._id.toString(),
           timestamp: payload.timestamp
@@ -499,7 +532,12 @@ const attachSocketHandlers = (io) => {
       try {
         if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
         if (!await authorizeSocketRoom(socket, roomId)) return;
-        socket.to(`chat_${roomId}`).emit('user_typing', { userId: socket.userId, isTyping: true });
+        socket.to(`chat_${roomId}`).emit('user_typing', {
+          userId: socket.userId,
+          userName: socket.userName,
+          isTyping: true,
+          roomId,
+        });
       } catch (error) {
         console.error(
           'Socket typing authorization failed closed:',
@@ -512,7 +550,12 @@ const attachSocketHandlers = (io) => {
       try {
         if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
         if (!await authorizeSocketRoom(socket, roomId)) return;
-        socket.to(`chat_${roomId}`).emit('user_typing', { userId: socket.userId, isTyping: false });
+        socket.to(`chat_${roomId}`).emit('user_typing', {
+          userId: socket.userId,
+          userName: socket.userName,
+          isTyping: false,
+          roomId,
+        });
       } catch (error) {
         console.error(
           'Socket typing authorization failed closed:',
@@ -525,14 +568,17 @@ const attachSocketHandlers = (io) => {
       try {
         const { roomId, messageId } = data || {};
         if (!roomId || !socket.rooms.has(`chat_${roomId}`)) return;
-        if (!await authorizeSocketRoom(socket, roomId)) return;
+        const authorization = await authorizeSocketRoom(socket, roomId);
+        if (!authorization) return;
         if (!/^[a-f0-9]{24}$/i.test(String(messageId || ''))) return;
         const message = await Message.findOne({ _id: messageId, room: roomId });
         if (!message) return;
         await message.markAsRead(socket.userId);
-        socket.to(`chat_${roomId}`).emit('message_read', {
+        io.to(getChatEventRooms(authorization.room, roomId)).emit('message_read', {
           messageId,
           readBy: socket.userId,
+          readByUserName: socket.userName,
+          roomId,
           timestamp: new Date().toISOString()
         });
       } catch (error) {
@@ -557,18 +603,28 @@ const attachSocketHandlers = (io) => {
     );
 
     socket.on('disconnecting', () => {
-      const roomNames = getJoinedChatRoomNames(socket);
-      chatRoutes.setUserOffline(socket.userId);
-      emitPresenceToAuthorizedChatRooms(socket, {
-        userId: socket.userId,
-        isOnline: false,
-        timestamp: new Date().toISOString()
-      }, roomNames).catch((error) => {
+      socket.disconnectingChatRoomNames = getJoinedChatRoomNames(socket);
+    });
+
+    socket.on('disconnect', async () => {
+      clearInterval(presenceHeartbeat);
+      try {
+        const remainingUserSockets = await io.in(`user_${socket.userId}`).fetchSockets();
+        if (remainingUserSockets.length > 0) return;
+
+        chatRoutes.setUserOffline(socket.userId);
+        await emitPresenceToAuthorizedChatRooms(socket, {
+          userId: socket.userId,
+          userName: socket.userName,
+          isOnline: false,
+          timestamp: new Date().toISOString()
+        }, socket.disconnectingChatRoomNames || []);
+      } catch (error) {
         console.error(
           'Socket disconnect presence authorization failed closed:',
           error?.code || 'SOCKET_DISCONNECT_AUTHORIZATION_FAILED'
         );
-      });
+      }
     });
   });
 
@@ -628,6 +684,7 @@ module.exports = {
     authenticateSocketHandshake,
     loadAuthorizedRoom,
     createSocketSessionRevalidator,
+    getChatEventRooms,
     readSocketSessionRevalidationInterval,
     revalidateConnectedSockets,
     shouldRecordSocketChatDenial,

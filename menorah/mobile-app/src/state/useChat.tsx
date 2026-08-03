@@ -1,8 +1,16 @@
 import React, { createContext, useContext, useEffect, useLayoutEffect, useState, useCallback } from 'react';
-import { socketService, ChatMessage, TypingIndicator, UserStatus, MessageReadReceipt } from '@/lib/socket';
-import { api, ChatRoom } from '@/lib/api';
+import {
+  socketService,
+  ChatMessage,
+  TypingIndicator,
+  UserStatus,
+  MessageReadReceipt,
+  MessageDeletedData,
+} from '@/lib/socket';
+import { api, ChatRoom, Message as ApiMessage } from '@/lib/api';
 import { reportError, reportEvent } from '@/lib/safeDiagnostics';
 import { useAuth } from './useAuth';
+import { mergeChatMessages } from '@/lib/chatMessages';
 
 interface ChatContextType {
   // Chat rooms
@@ -12,8 +20,9 @@ interface ChatContextType {
   
   // Messages
   messages: { [roomId: string]: ChatMessage[] };
+  messagePagination: { [roomId: string]: MessagePagination };
   loadingMessages: boolean;
-  fetchMessages: (roomId: string) => Promise<void>;
+  fetchMessages: (roomId: string, options?: FetchMessagesOptions) => Promise<void>;
   sendMessage: (roomId: string, content: string) => Promise<void>;
   
   // Real-time features
@@ -55,6 +64,38 @@ interface AccountScope {
   generation: number;
 }
 
+interface MessagePagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
+
+interface FetchMessagesOptions {
+  page?: number;
+  limit?: number;
+}
+
+function mapApiMessage(message: ApiMessage, roomId: string): ChatMessage {
+  const sender = typeof message.sender === 'object' && message.sender !== null
+    ? message.sender
+    : undefined;
+
+  return {
+    id: message.id || message._id || `${roomId}-${message.timestamp}`,
+    senderId: message.senderId || sender?._id || (typeof message.sender === 'string' ? message.sender : ''),
+    senderName: message.senderName
+      || `${sender?.firstName || ''} ${sender?.lastName || ''}`.trim()
+      || 'User',
+    senderImage: message.senderImage || sender?.profileImage || null,
+    content: message.content || '',
+    timestamp: message.timestamp || message.createdAt || new Date().toISOString(),
+    type: message.type || 'text',
+    status: message.status || 'sent',
+    roomId,
+  };
+}
+
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const { user } = useAuth();
   const renderedUserId = user?.id ?? null;
@@ -84,6 +125,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // State
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [messages, setMessages] = useState<{ [roomId: string]: ChatMessage[] }>({});
+  const [messagePagination, setMessagePagination] = useState<{ [roomId: string]: MessagePagination }>({});
   const [typingUsers, setTypingUsers] = useState<{ [roomId: string]: TypingIndicator[] }>({});
   const [onlineUsers, setOnlineUsers] = useState<{ [userId: string]: UserStatus }>({});
   const [roomPresence, setRoomPresence] = useState<{ [roomId: string]: { [userId: string]: boolean } }>({});
@@ -109,6 +151,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     currentRoomRef.current = null;
     setChatRooms([]);
     setMessages({});
+    setMessagePagination({});
     setTypingUsers({});
     setOnlineUsers({});
     setRoomPresence({});
@@ -141,26 +184,45 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       return;
     }
     
+    const isOwnMessage = message.senderId === activeUserIdRef.current;
+    const isActiveRoom = currentRoomRef.current === roomId;
+
     setMessages(prev => {
-      const roomMessages = prev[roomId] || [];
-      // Check if message already exists to prevent duplicates
-      const exists = roomMessages.find((m: ChatMessage) => m.id === message.id);
-      if (exists) {
-        // Update existing message instead of adding duplicate
-        return {
-          ...prev,
-          [roomId]: roomMessages.map((m: ChatMessage) => m.id === message.id ? message : m)
-        };
-      }
-      // Add new message and sort by timestamp
-      const updatedMessages = [...roomMessages, message].sort((a, b) => 
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
+      const updatedMessages = mergeChatMessages(prev[roomId] || [], [message]);
       return {
         ...prev,
         [roomId]: updatedMessages
       };
     });
+
+    setChatRooms((previousRooms) => {
+      const roomIndex = previousRooms.findIndex((room) => room.id === roomId);
+      if (roomIndex === -1) return previousRooms;
+
+      const room = previousRooms[roomIndex];
+      const updatedRoom: ChatRoom = {
+        ...room,
+        lastMessage: message.content,
+        lastMessageTime: message.timestamp,
+        lastMessageSenderId: message.senderId,
+        unreadCount: isOwnMessage || isActiveRoom ? 0 : (room.unreadCount || 0) + 1,
+      };
+
+      return [updatedRoom, ...previousRooms.filter((_, index) => index !== roomIndex)];
+    });
+
+    if (isActiveRoom && !isOwnMessage) {
+      socketService.markMessageAsRead(roomId, message.id);
+    }
+  }, []);
+
+  const handleMessageDeleted = useCallback((data: MessageDeletedData) => {
+    setMessages((previousMessages) => ({
+      ...previousMessages,
+      [data.roomId]: (previousMessages[data.roomId] || []).filter(
+        (message) => message.id !== data.messageId
+      ),
+    }));
   }, []);
 
   const handleTyping = useCallback((typing: TypingIndicator) => {
@@ -261,6 +323,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       const unsubscribeTyping = socketService.onTyping(whenActive(handleTyping));
       const unsubscribeStatus = socketService.onStatusChange(whenActive(handleStatusChange));
       const unsubscribeReadReceipt = socketService.onReadReceipt(whenActive(handleReadReceipt));
+      const unsubscribeMessageDeleted = socketService.onMessageDeleted(whenActive(handleMessageDeleted));
       const unsubscribeConnection = socketService.onConnectionChange(whenActive(handleConnectionChange));
       reportEvent('chat.socket_listeners_ready');
 
@@ -269,6 +332,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         unsubscribeTyping();
         unsubscribeStatus();
         unsubscribeReadReceipt();
+        unsubscribeMessageDeleted();
         unsubscribeConnection();
       };
     } catch (error) {
@@ -280,6 +344,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     captureAccountScope,
     handleConnectionChange,
     handleNewMessage,
+    handleMessageDeleted,
     handleReadReceipt,
     handleStatusChange,
     handleTyping,
@@ -291,7 +356,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     let cancelled = false;
     let cleanupListeners: (() => void) | undefined;
 
-    if (user) {
+    if (renderedUserId) {
       initializeSocket().then((cleanup) => {
         if (cancelled) {
           if (cleanup) cleanup();
@@ -306,7 +371,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       cleanupListeners?.();
       socketService.disconnect();
     };
-  }, [initializeSocket, user]);
+  }, [initializeSocket, renderedUserId]);
 
   // Chat room management
   const fetchChatRooms = useCallback(async () => {
@@ -340,47 +405,36 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   }, [captureAccountScope, isAccountScopeActive]);
 
   // Message management
-  const fetchMessages = useCallback(async (roomId: string) => {
+  const fetchMessages = useCallback(async (
+    roomId: string,
+    { page = 1, limit = 30 }: FetchMessagesOptions = {}
+  ) => {
     const scope = captureAccountScope();
     if (!scope) return;
-    
-    setLoadingMessages(true);
+
+    if (page === 1) setLoadingMessages(true);
     try {
-      const response = await api.getMessages(roomId);
+      const response = await api.getMessages(roomId, { page, limit });
       if (isAccountScopeActive(scope) && response.success && response.data) {
-        const msgs = response.data.messages || [];
-        // Map API messages to ChatMessage format
-        const mappedMessages: ChatMessage[] = msgs.map((msg: any) => ({
-          id: msg.id || msg._id,
-          senderId: msg.senderId || msg.sender?._id || msg.sender,
-          senderName: msg.senderName || `${msg.sender?.firstName || ''} ${msg.sender?.lastName || ''}`.trim() || 'User',
-          senderImage: msg.senderImage || msg.sender?.profileImage || null,
-          content: msg.content || '',
-          timestamp: msg.timestamp || msg.createdAt || new Date().toISOString(),
-          type: msg.type || 'text',
-          status: msg.status || 'sent',
-          roomId: roomId
-        }));
-        // Remove duplicates by ID
-        const uniqueMessages = mappedMessages.reduce((acc: ChatMessage[], msg: ChatMessage) => {
-          if (!acc.find(m => m.id === msg.id)) {
-            acc.push(msg);
-          }
-          return acc;
-        }, []);
-        // Sort by timestamp
-        uniqueMessages.sort((a, b) => 
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        const mappedMessages = (response.data.messages || []).map(
+          (message) => mapApiMessage(message, roomId)
         );
         setMessages(prev => ({
           ...prev,
-          [roomId]: uniqueMessages
+          [roomId]: mergeChatMessages(prev[roomId] || [], mappedMessages),
         }));
+        setMessagePagination((previousPagination) => ({
+          ...previousPagination,
+          [roomId]: response.data!.pagination,
+        }));
+        setChatRooms((previousRooms) => previousRooms.map((room) =>
+          room.id === roomId ? { ...room, unreadCount: 0 } : room
+        ));
       }
     } catch (error) {
       if (isAccountScopeActive(scope)) reportError('chat.messages_fetch_failed', error);
     } finally {
-      if (isAccountScopeActive(scope)) setLoadingMessages(false);
+      if (page === 1 && isAccountScopeActive(scope)) setLoadingMessages(false);
     }
   }, [captureAccountScope, isAccountScopeActive]);
 
@@ -456,17 +510,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Room management
   const joinRoom = useCallback((roomId: string) => {
-    socketService.joinRoom(roomId);
     setCurrentRoom(roomId);
-    
-    // Fetch messages if not already loaded
-    if (!messages[roomId]) {
-      fetchMessages(roomId);
-    }
-  }, [messages, fetchMessages]);
+    currentRoomRef.current = roomId;
+    socketService.joinRoom(roomId);
+  }, []);
 
   const leaveRoom = useCallback((roomId: string) => {
     socketService.leaveRoom(roomId);
+    if (currentRoomRef.current === roomId) currentRoomRef.current = null;
     setCurrentRoom(null);
   }, []);
 
@@ -531,6 +582,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     
     // Messages
     messages,
+    messagePagination,
     loadingMessages,
     fetchMessages,
     sendMessage,

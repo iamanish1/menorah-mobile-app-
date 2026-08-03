@@ -1,10 +1,20 @@
-import { useCallback, useMemo, useState, type ComponentType } from 'react';
-import { ActivityIndicator, Animated, FlatList, Linking, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useCallback, useMemo, useState, type ComponentType } from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  FlatList,
+  Linking,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import {
   ArrowRight,
   Bell,
   BookOpen,
   CalendarDays,
+  ClipboardCheck,
   CreditCard,
   FileText,
   HeartPulse,
@@ -18,11 +28,12 @@ import {
   Sparkles,
   User,
   Users,
-} from 'lucide-react-native';
-import HelpSheet from '@/components/help/HelpSheet';
+} from "lucide-react-native";
+import HelpSheet from "@/components/help/HelpSheet";
+import MobileCounsellorDiscovery from "@/components/discover/mobile-counsellor-discovery";
 import {
-  IOSActionCard,
   IOSArticleCard,
+  IOSActionCard,
   IOSCard,
   IOSChatBanner,
   IOSDiscoverHeader,
@@ -30,17 +41,15 @@ import {
   IOSScreen,
   IOSSectionHeader,
   useIOSTheme,
-} from '@/components/ios';
-import { discoverScrollY } from '@/components/ios/iosScrollSignals';
-import { useArticles } from '@/hooks/useArticles';
-import { INSTA } from '@/mock/instagram';
-import { mockCounsellors } from '@/mock/counsellors';
-import { SUBSCRIPTION_PLANS } from '@/screens/subscription/subscriptionPlans';
-import { useNotifications } from '@/state/useNotifications';
-import type { Article } from '@/types/article';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-type SessionType = 'basic' | 'premium' | 'pro';
+} from "@/components/ios";
+import { discoverScrollY } from "@/components/ios/iosScrollSignals";
+import { useArticles } from "@/hooks/useArticles";
+import { INSTA } from "@/mock/instagram";
+import { mockCounsellors } from "@/mock/counsellors";
+import { SUBSCRIPTION_PLANS } from "@/screens/subscription/subscriptionPlans";
+import { useNotifications } from "@/state/useNotifications";
+import type { Article } from "@/types/article";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type SearchIconProps = {
   color?: string;
@@ -66,50 +75,9 @@ type SearchGroup = {
 
 type SearchKeyword = string | number | null | undefined | SearchKeyword[];
 
-const SESSION_DETAILS: Record<SessionType, { duration: number; price: number; label: string }> = {
-  basic: { duration: 45, price: 1000, label: '45 min' },
-  premium: { duration: 60, price: 2000, label: '60 min' },
-  pro: { duration: 90, price: 3000, label: '90 min' },
-};
-
-const SESSION_SEARCH_ITEMS: Array<{
-  id: SessionType;
-  title: string;
-  description: string;
-  keywords: SearchKeyword[];
-}> = [
-  {
-    id: 'basic',
-    title: 'Basic session',
-    description: '45 minutes for getting started with support.',
-    keywords: ['basic', '45', '45 min', 'session', 'therapy', 'counselling', 'counseling', 'book', 'INR 1000', '1000'],
-  },
-  {
-    id: 'premium',
-    title: 'Premium session',
-    description: '60 minutes for a deeper therapy experience.',
-    keywords: [
-      'premium',
-      '60',
-      '60 min',
-      'session',
-      'therapy',
-      'counselling',
-      'counseling',
-      'book',
-      'INR 2000',
-      '2000',
-    ],
-  },
-  {
-    id: 'pro',
-    title: 'Pro session',
-    description: '90 minutes for an extended deep-dive session.',
-    keywords: ['pro', '90', '90 min', 'session', 'therapy', 'counselling', 'counseling', 'book', 'INR 3000', '3000'],
-  },
-];
-
-function flattenSearchKeywords(values: SearchKeyword[]): Array<string | number> {
+function flattenSearchKeywords(
+  values: SearchKeyword[],
+): Array<string | number> {
   return values.flatMap((value): Array<string | number> => {
     if (Array.isArray(value)) {
       return flattenSearchKeywords(value);
@@ -125,19 +93,45 @@ function flattenSearchKeywords(values: SearchKeyword[]): Array<string | number> 
 
 function matchesSearch(result: SearchDestination, normalizedQuery: string) {
   const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
-  const haystack = flattenSearchKeywords([result.title, result.subtitle, result.badge, ...result.keywords])
-    .join(' ')
+  const haystack = flattenSearchKeywords([
+    result.title,
+    result.subtitle,
+    result.badge,
+    ...result.keywords,
+  ])
+    .join(" ")
     .toLowerCase();
 
   return tokens.every((token) => {
-    const candidates = token.endsWith('s') && token.length > 3 ? [token, token.slice(0, -1)] : [token];
+    const candidates =
+      token.endsWith("s") && token.length > 3
+        ? [token, token.slice(0, -1)]
+        : [token];
     return candidates.some((candidate) => haystack.includes(candidate));
   });
 }
 
+function getSearchResultSummary(
+  resultCount: number,
+  query: string,
+  isLoading: boolean,
+) {
+  const quotedQuery = `“${query}”`;
+
+  if (isLoading) {
+    return `Searching for ${quotedQuery}…`;
+  }
+
+  if (resultCount === 0) {
+    return `No results for ${quotedQuery}`;
+  }
+
+  return `${resultCount.toLocaleString()} ${resultCount === 1 ? "result" : "results"} for ${quotedQuery}`;
+}
+
 export default function Discover({ navigation }: any) {
   const [help, setHelp] = useState(false);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState("");
   const { unreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const iosTheme = useIOSTheme();
@@ -154,20 +148,17 @@ export default function Discover({ navigation }: any) {
     limit: isSearching ? 30 : 8,
     q: isSearching ? trimmedQuery : undefined,
   });
-  const articles = useMemo(() => articlesData?.articles || [], [articlesData?.articles]);
+  const articles = useMemo(
+    () => articlesData?.articles || [],
+    [articlesData?.articles],
+  );
 
-  const handleSessionSelect = useCallback((sessionType: SessionType) => {
-    const details = SESSION_DETAILS[sessionType];
-    navigation.navigate('GenderSelection', {
-      sessionType,
-      duration: details.duration,
-      price: details.price,
-    });
-  }, [navigation]);
-
-  const openArticle = useCallback((article: Article) => {
-    navigation.navigate('ArticleDetail', { slug: article.slug });
-  }, [navigation]);
+  const openArticle = useCallback(
+    (article: Article) => {
+      navigation.navigate("ArticleDetail", { slug: article.slug });
+    },
+    [navigation],
+  );
 
   const searchGroups = useMemo<SearchGroup[]>(() => {
     if (!isSearching) {
@@ -177,26 +168,10 @@ export default function Discover({ navigation }: any) {
     const filterResults = (results: SearchDestination[]) =>
       results.filter((result) => matchesSearch(result, normalizedQuery));
 
-    const sessionResults = filterResults(
-      SESSION_SEARCH_ITEMS.map((session) => {
-        const details = SESSION_DETAILS[session.id];
-
-        return {
-          id: `session-${session.id}`,
-          badge: 'SESSION',
-          title: session.title,
-          subtitle: `${details.label} - INR ${details.price}. ${session.description}`,
-          keywords: ['appointment', 'booking', 'price', 'pricing', session.keywords],
-          Icon: ShieldCheck,
-          onPress: () => handleSessionSelect(session.id),
-        };
-      }),
-    );
-
     const subscriptionResults = filterResults(
       SUBSCRIPTION_PLANS.map((plan) => ({
         id: `subscription-${plan.id}`,
-        badge: 'SUBSCRIPTION',
+        badge: "SUBSCRIPTION",
         title: plan.title,
         subtitle: `${plan.price} - ${plan.billingLabel}. ${plan.description}`,
         keywords: [
@@ -204,18 +179,18 @@ export default function Discover({ navigation }: any) {
           plan.description,
           plan.billingLabel,
           plan.features,
-          'subscription',
-          'subs',
-          'membership',
-          'premium access',
-          'premium',
-          'payment',
-          'pricing',
-          'plan',
+          "subscription",
+          "subs",
+          "membership",
+          "premium access",
+          "premium",
+          "payment",
+          "pricing",
+          "plan",
         ],
         Icon: CreditCard,
         onPress: () =>
-          navigation.navigate('SubscriptionDetails', {
+          navigation.navigate("SubscriptionDetails", {
             subscriptionType: plan.id,
           }),
         color: plan.color,
@@ -224,22 +199,28 @@ export default function Discover({ navigation }: any) {
 
     const articleResults = articles.map((article) => ({
       id: `article-${article.id || article._id || article.slug}`,
-      badge: article.category || 'ARTICLE',
+      badge: article.category || "ARTICLE",
       title: article.title,
-      subtitle: article.excerpt || article.readTime || 'Read this article in the app.',
+      subtitle:
+        article.excerpt || article.readTime || "Read this article in the app.",
       keywords: [
         article.category,
         article.excerpt,
         article.tags,
         article.readTime,
-        article.contentBlocks?.flatMap((block) => [block.text, block.alt, block.caption, block.items]),
-        'article',
-        'articles',
-        'blog',
-        'read',
-        'cms',
-        'mental health',
-        'wellness',
+        article.contentBlocks?.flatMap((block) => [
+          block.text,
+          block.alt,
+          block.caption,
+          block.items,
+        ]),
+        "article",
+        "articles",
+        "blog",
+        "read",
+        "cms",
+        "mental health",
+        "wellness",
       ],
       Icon: FileText,
       onPress: () => openArticle(article),
@@ -248,20 +229,20 @@ export default function Discover({ navigation }: any) {
     const socialResults = filterResults(
       INSTA.map((post) => ({
         id: `instagram-${post.id}`,
-        badge: 'INSTAGRAM',
-        title: 'Community update',
-        subtitle: post.caption || 'Open this Instagram update.',
+        badge: "INSTAGRAM",
+        title: "Community update",
+        subtitle: post.caption || "Open this Instagram update.",
         keywords: [
-          'instagram',
-          'insta',
-          'post',
-          'posts',
-          'psot',
-          'psots',
-          'update',
-          'updates',
-          'community',
-          'social',
+          "instagram",
+          "insta",
+          "post",
+          "posts",
+          "psot",
+          "psots",
+          "update",
+          "updates",
+          "community",
+          "social",
           post.platform,
           post.caption,
         ],
@@ -273,7 +254,7 @@ export default function Discover({ navigation }: any) {
     const counsellorResults = filterResults(
       mockCounsellors.map((c) => ({
         id: `counsellor-${c.id}`,
-        badge: 'COUNSELLOR',
+        badge: "COUNSELLOR",
         title: c.name,
         subtitle: `${c.specialization} - ${c.language}`,
         keywords: [
@@ -284,15 +265,15 @@ export default function Discover({ navigation }: any) {
           c.location,
           c.specializations,
           c.availability,
-          'counsellor',
-          'counselor',
-          'therapist',
-          'therapy',
-          'support',
+          "counsellor",
+          "counselor",
+          "therapist",
+          "therapy",
+          "support",
         ],
         Icon: Users,
         onPress: () =>
-          navigation.navigate('CounsellorList', {
+          navigation.navigate("CounsellorList", {
             initialSearch: trimmedQuery,
           }),
       })),
@@ -300,178 +281,268 @@ export default function Discover({ navigation }: any) {
 
     const featureResults = filterResults([
       {
-        id: 'feature-counsellors',
-        badge: 'FEATURE',
-        title: 'Find counsellors',
-        subtitle: 'Browse therapists by issue, language, and availability.',
+        id: "feature-mental-health-check-in",
+        badge: "FEATURE",
+        title: "Mental Health Check-in",
+        subtitle: "Complete a private seven-question GAD-7 screening tool.",
         keywords: [
-          'find support',
-          'counsellors',
-          'counselors',
-          'therapists',
-          'doctors',
-          'anxiety',
-          'depression',
-          'stress',
-          'trauma',
-          'help',
+          "mental health check-in",
+          "psychometric",
+          "assessment",
+          "gad-7",
+          "anxiety questionnaire",
+          "screening",
+          "wellness",
+        ],
+        Icon: ClipboardCheck,
+        onPress: () => navigation.navigate("MentalHealthCheckIn"),
+      },
+      {
+        id: "feature-counsellors",
+        badge: "FEATURE",
+        title: "Find counsellors",
+        subtitle: "Browse therapists by issue, language, and availability.",
+        keywords: [
+          "find support",
+          "counsellors",
+          "counselors",
+          "therapists",
+          "doctors",
+          "anxiety",
+          "depression",
+          "stress",
+          "trauma",
+          "help",
         ],
         Icon: Users,
         onPress: () =>
-          navigation.navigate('CounsellorList', {
+          navigation.navigate("CounsellorList", {
             initialSearch: trimmedQuery,
           }),
       },
       {
-        id: 'feature-book-session',
-        badge: 'FEATURE',
-        title: 'Book a session',
-        subtitle: 'Choose your session type and start a booking.',
+        id: "feature-book-session",
+        badge: "FEATURE",
+        title: "Book a session",
+        subtitle: "Choose a counsellor, duration, date, and time.",
         keywords: [
-          'book',
-          'booking',
-          'appointment',
-          'session',
-          'basic',
-          'premium',
-          'pro',
-          'therapy',
-          'calendar',
-          'schedule',
+          "book",
+          "booking",
+          "appointment",
+          "session",
+          "duration",
+          "hourly rate",
+          "therapy",
+          "calendar",
+          "schedule",
         ],
         Icon: CalendarDays,
-        onPress: () => navigation.navigate('GenderSelection'),
+        onPress: () => navigation.navigate("CounsellorList"),
       },
       {
-        id: 'feature-articles',
-        badge: 'FEATURE',
-        title: 'Article library',
-        subtitle: 'Search and read CMS articles inside the app.',
-        keywords: ['articles', 'article', 'blog', 'cms', 'read', 'updates', 'mental health reads', 'wellness'],
+        id: "feature-articles",
+        badge: "FEATURE",
+        title: "Article library",
+        subtitle: "Search and read CMS articles inside the app.",
+        keywords: [
+          "articles",
+          "article",
+          "blog",
+          "cms",
+          "read",
+          "updates",
+          "mental health reads",
+          "wellness",
+        ],
         Icon: BookOpen,
-        onPress: () => navigation.navigate('ArticleList', { initialSearch: trimmedQuery }),
+        onPress: () =>
+          navigation.navigate("ArticleList", { initialSearch: trimmedQuery }),
       },
       {
-        id: 'feature-bookings',
-        badge: 'FEATURE',
-        title: 'Your bookings',
-        subtitle: 'See upcoming and past therapy bookings.',
-        keywords: ['bookings', 'appointments', 'calendar', 'schedule', 'upcoming', 'past sessions'],
+        id: "feature-bookings",
+        badge: "FEATURE",
+        title: "Your bookings",
+        subtitle: "See upcoming and past therapy bookings.",
+        keywords: [
+          "bookings",
+          "appointments",
+          "calendar",
+          "schedule",
+          "upcoming",
+          "past sessions",
+        ],
         Icon: CalendarDays,
-        onPress: () => navigation.navigate('Bookings'),
+        onPress: () => navigation.navigate("Bookings"),
       },
       {
-        id: 'feature-chat',
-        badge: 'FEATURE',
-        title: 'Chat',
-        subtitle: 'Open your support conversations.',
-        keywords: ['chat', 'messages', 'conversation', 'support', 'talk', 'help'],
+        id: "feature-chat",
+        badge: "FEATURE",
+        title: "Chat",
+        subtitle: "Open your support conversations.",
+        keywords: [
+          "chat",
+          "messages",
+          "conversation",
+          "support",
+          "talk",
+          "help",
+        ],
         Icon: MessageCircle,
-        onPress: () => navigation.navigate('Chat'),
+        onPress: () => navigation.navigate("Chat"),
       },
       {
-        id: 'feature-alerts',
-        badge: 'FEATURE',
-        title: 'Alerts',
-        subtitle: 'Open notifications and app alerts.',
-        keywords: ['alerts', 'notifications', 'bell', 'updates', 'reminders'],
+        id: "feature-alerts",
+        badge: "FEATURE",
+        title: "Alerts",
+        subtitle: "Open notifications and app alerts.",
+        keywords: ["alerts", "notifications", "bell", "updates", "reminders"],
         Icon: Bell,
-        onPress: () => navigation.navigate('Notifications'),
+        onPress: () => navigation.navigate("Notifications"),
       },
       {
-        id: 'feature-profile',
-        badge: 'FEATURE',
-        title: 'Profile',
-        subtitle: 'Manage your Menorah account.',
-        keywords: ['profile', 'account', 'user', 'personal details', 'edit profile'],
+        id: "feature-profile",
+        badge: "FEATURE",
+        title: "Profile",
+        subtitle: "Manage your Menorah account.",
+        keywords: [
+          "profile",
+          "account",
+          "user",
+          "personal details",
+          "edit profile",
+        ],
         Icon: User,
-        onPress: () => navigation.navigate('Profile'),
+        onPress: () => navigation.navigate("Profile"),
       },
       {
-        id: 'feature-settings',
-        badge: 'FEATURE',
-        title: 'Settings',
-        subtitle: 'Change app and account settings.',
-        keywords: ['settings', 'preferences', 'account settings', 'app settings'],
+        id: "feature-settings",
+        badge: "FEATURE",
+        title: "Settings",
+        subtitle: "Change app and account settings.",
+        keywords: [
+          "settings",
+          "preferences",
+          "account settings",
+          "app settings",
+        ],
         Icon: Settings,
-        onPress: () => navigation.navigate('Settings'),
+        onPress: () => navigation.navigate("Settings"),
       },
       {
-        id: 'feature-ekyc',
-        badge: 'FEATURE',
-        title: 'Optional face check',
-        subtitle: 'Complete or review your account trust check.',
-        keywords: ['face check', 'selfie', 'trust', 'safety', 'verification'],
+        id: "feature-ekyc",
+        badge: "FEATURE",
+        title: "Optional face check",
+        subtitle: "Complete or review your account trust check.",
+        keywords: ["face check", "selfie", "trust", "safety", "verification"],
         Icon: Shield,
-        onPress: () => navigation.navigate('IdentityVerification'),
+        onPress: () => navigation.navigate("IdentityVerification"),
       },
       {
-        id: 'feature-privacy',
-        badge: 'FEATURE',
-        title: 'Privacy settings',
-        subtitle: 'Control privacy and security options.',
-        keywords: ['privacy', 'security', 'private', 'confidential', 'data'],
+        id: "feature-privacy",
+        badge: "FEATURE",
+        title: "Privacy settings",
+        subtitle: "Control privacy and security options.",
+        keywords: ["privacy", "security", "private", "confidential", "data"],
         Icon: ShieldCheck,
-        onPress: () => navigation.navigate('PrivacySettings'),
+        onPress: () => navigation.navigate("PrivacySettings"),
       },
       {
-        id: 'feature-crisis',
-        badge: 'FEATURE',
-        title: 'Crisis help',
-        subtitle: 'Open urgent support resources.',
-        keywords: ['crisis', 'emergency', 'urgent', 'help', 'support', 'hotline', 'danger'],
+        id: "feature-crisis",
+        badge: "FEATURE",
+        title: "Crisis help",
+        subtitle: "Open urgent support resources.",
+        keywords: [
+          "crisis",
+          "emergency",
+          "urgent",
+          "help",
+          "support",
+          "hotline",
+          "danger",
+        ],
         Icon: HeartPulse,
-        onPress: () => navigation.navigate('CrisisHelp'),
+        onPress: () => navigation.navigate("CrisisHelp"),
       },
       {
-        id: 'feature-legal',
-        badge: 'FEATURE',
-        title: 'Legal',
-        subtitle: 'Read app policies and legal information.',
-        keywords: ['legal', 'terms', 'privacy policy', 'policy', 'policies', 'conditions'],
+        id: "feature-legal",
+        badge: "FEATURE",
+        title: "Legal",
+        subtitle: "Read app policies and legal information.",
+        keywords: [
+          "legal",
+          "terms",
+          "privacy policy",
+          "policy",
+          "policies",
+          "conditions",
+        ],
         Icon: FileText,
-        onPress: () => navigation.navigate('Legal'),
+        onPress: () => navigation.navigate("Legal"),
       },
       {
-        id: 'feature-premium',
-        badge: 'FEATURE',
-        title: 'Premium plans',
-        subtitle: 'Compare weekly, monthly, and yearly subscriptions.',
-        keywords: ['premium', 'subscription', 'subs', 'membership', 'weekly', 'monthly', 'yearly', 'payments'],
+        id: "feature-premium",
+        badge: "FEATURE",
+        title: "Premium plans",
+        subtitle: "Compare weekly, monthly, and yearly subscriptions.",
+        keywords: [
+          "premium",
+          "subscription",
+          "subs",
+          "membership",
+          "weekly",
+          "monthly",
+          "yearly",
+          "payments",
+        ],
         Icon: Sparkles,
         onPress: () =>
-          navigation.navigate('SubscriptionDetails', {
-            subscriptionType: 'monthly',
+          navigation.navigate("SubscriptionDetails", {
+            subscriptionType: "monthly",
           }),
       },
     ]);
 
     return [
-      { title: 'Session types', results: sessionResults },
-      { title: 'Subscriptions', results: subscriptionResults },
-      { title: 'Articles', results: articleResults },
-      { title: 'Community updates', results: socialResults },
-      { title: 'Counsellors', results: counsellorResults },
-      { title: 'App features', results: featureResults },
+      { title: "Subscriptions", results: subscriptionResults },
+      { title: "Articles", results: articleResults },
+      { title: "Community updates", results: socialResults },
+      { title: "Counsellors", results: counsellorResults },
+      { title: "App features", results: featureResults },
     ].filter((group) => group.results.length > 0);
-  }, [articles, handleSessionSelect, isSearching, navigation, normalizedQuery, openArticle, trimmedQuery]);
+  }, [
+    articles,
+    isSearching,
+    navigation,
+    normalizedQuery,
+    openArticle,
+    trimmedQuery,
+  ]);
 
-  const totalResults = searchGroups.reduce((sum, group) => sum + group.results.length, 0);
-  const headerFullHeight = insets.top + iosTheme.spacing.xl + 68 + iosTheme.spacing.lg;
+  const totalResults = searchGroups.reduce(
+    (sum, group) => sum + group.results.length,
+    0,
+  );
+  const searchResultSummary = getSearchResultSummary(
+    totalResults,
+    trimmedQuery,
+    articlesLoading,
+  );
+  const headerFullHeight =
+    insets.top + iosTheme.spacing.xl + 68 + iosTheme.spacing.lg;
   const headerOpacity = discoverScrollY.interpolate({
     inputRange: [0, 54, 104],
     outputRange: [1, 0.5, 0],
-    extrapolate: 'clamp',
+    extrapolate: "clamp",
   });
   const headerTranslateY = discoverScrollY.interpolate({
     inputRange: [0, 104],
     outputRange: [0, -24],
-    extrapolate: 'clamp',
+    extrapolate: "clamp",
   });
   const headerHeight = discoverScrollY.interpolate({
     inputRange: [0, 104],
     outputRange: [headerFullHeight, 0],
-    extrapolate: 'clamp',
+    extrapolate: "clamp",
   });
 
   const renderSearchResult = (result: SearchDestination) => {
@@ -479,11 +550,15 @@ export default function Discover({ navigation }: any) {
     const color = result.color || iosTheme.colors.primary;
 
     return (
-      <IOSCard key={result.id} onPress={result.onPress} style={{ marginBottom: iosTheme.spacing.md }}>
+      <IOSCard
+        key={result.id}
+        onPress={result.onPress}
+        style={{ marginBottom: iosTheme.spacing.md }}
+      >
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
+            flexDirection: "row",
+            alignItems: "center",
             gap: iosTheme.spacing.md,
           }}
         >
@@ -493,8 +568,8 @@ export default function Discover({ navigation }: any) {
               height: 46,
               borderRadius: iosTheme.radius.lg,
               backgroundColor: `${color}18`,
-              alignItems: 'center',
-              justifyContent: 'center',
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             <Icon size={22} color={color} strokeWidth={2.2} />
@@ -504,15 +579,28 @@ export default function Discover({ navigation }: any) {
             <Text style={iosTheme.typography.caption} numberOfLines={1}>
               {result.badge}
             </Text>
-            <Text style={[iosTheme.typography.cardTitle, { marginTop: 2 }]} numberOfLines={2}>
+            <Text
+              style={[iosTheme.typography.cardTitle, { marginTop: 2 }]}
+              numberOfLines={2}
+            >
               {result.title}
             </Text>
-            <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]} numberOfLines={2}>
+            <Text
+              style={[
+                iosTheme.typography.body,
+                { marginTop: iosTheme.spacing.xs },
+              ]}
+              numberOfLines={2}
+            >
               {result.subtitle}
             </Text>
           </View>
 
-          <ArrowRight size={18} color={iosTheme.colors.textMuted} strokeWidth={2.2} />
+          <ArrowRight
+            size={18}
+            color={iosTheme.colors.textMuted}
+            strokeWidth={2.2}
+          />
         </View>
       </IOSCard>
     );
@@ -526,29 +614,32 @@ export default function Discover({ navigation }: any) {
           opacity: headerOpacity,
           transform: [{ translateY: headerTranslateY }],
           backgroundColor: iosTheme.colors.background,
-          overflow: 'hidden',
+          overflow: "hidden",
         }}
       >
         <IOSDiscoverHeader
           onMenuPress={() => setHelp(true)}
-          onNotificationsPress={() => navigation.navigate('Notifications')}
-          onChatPress={() => navigation.navigate('Chat')}
+          onNotificationsPress={() => navigation.navigate("Notifications")}
+          onChatPress={() => navigation.navigate("Chat")}
           unreadCount={unreadCount}
         />
       </Animated.View>
 
       <IOSScreen
-        edges={['right', 'bottom', 'left']}
+        edges={["right", "bottom", "left"]}
         contentContainerStyle={{ paddingTop: iosTheme.spacing.sm }}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: discoverScrollY } } }], {
-          useNativeDriver: false,
-        })}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: discoverScrollY } } }],
+          {
+            useNativeDriver: false,
+          },
+        )}
         scrollEventThrottle={16}
       >
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
+            flexDirection: "row",
+            alignItems: "center",
             gap: iosTheme.spacing.md,
             marginBottom: iosTheme.spacing.xl,
           }}
@@ -562,15 +653,19 @@ export default function Discover({ navigation }: any) {
                 backgroundColor: iosTheme.colors.surface,
                 borderWidth: 1,
                 borderColor: iosTheme.colors.border,
-                flexDirection: 'row',
-                alignItems: 'center',
+                flexDirection: "row",
+                alignItems: "center",
                 paddingHorizontal: iosTheme.spacing.lg,
                 gap: iosTheme.spacing.sm,
               },
               iosTheme.shadows.card,
             ]}
           >
-            <Search size={18} color={iosTheme.colors.textMuted} strokeWidth={2.2} />
+            <Search
+              size={18}
+              color={iosTheme.colors.textMuted}
+              strokeWidth={2.2}
+            />
             <TextInput
               value={q}
               onChangeText={setQ}
@@ -600,31 +695,42 @@ export default function Discover({ navigation }: any) {
                 backgroundColor: iosTheme.colors.surface,
                 borderWidth: 1,
                 borderColor: iosTheme.colors.border,
-                alignItems: 'center',
-                justifyContent: 'center',
+                alignItems: "center",
+                justifyContent: "center",
               },
               iosTheme.shadows.card,
             ]}
           >
-            <SlidersHorizontal size={20} color={iosTheme.colors.primary} strokeWidth={2.2} />
+            <SlidersHorizontal
+              size={20}
+              color={iosTheme.colors.primary}
+              strokeWidth={2.2}
+            />
           </TouchableOpacity>
         </View>
 
         {isSearching ? (
           <View>
-            <IOSCard style={{ marginBottom: iosTheme.spacing.lg }}>
-              <Text style={iosTheme.typography.cardTitle}>Search results</Text>
-              <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
-                {articlesLoading
-                  ? `Searching CMS articles and app content for "${trimmedQuery}"`
-                  : totalResults > 0
-                    ? `${totalResults} result${totalResults === 1 ? '' : 's'} found for "${trimmedQuery}"`
-                    : `No matches found for "${trimmedQuery}"`}
-              </Text>
-            </IOSCard>
+            <Text
+              selectable
+              accessibilityLiveRegion="polite"
+              style={[
+                iosTheme.typography.body,
+                {
+                  marginBottom: iosTheme.spacing.lg,
+                  fontWeight: "600",
+                  fontVariant: ["tabular-nums"],
+                },
+              ]}
+            >
+              {searchResultSummary}
+            </Text>
 
             {searchGroups.map((group) => (
-              <View key={group.title} style={{ marginBottom: iosTheme.spacing.lg }}>
+              <View
+                key={group.title}
+                style={{ marginBottom: iosTheme.spacing.lg }}
+              >
                 <IOSSectionHeader title={group.title} />
                 {group.results.map(renderSearchResult)}
               </View>
@@ -632,9 +738,17 @@ export default function Discover({ navigation }: any) {
 
             {totalResults === 0 && !articlesLoading ? (
               <IOSCard>
-                <Text style={iosTheme.typography.cardTitle}>Try searching for</Text>
-                <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.sm }]}>
-                  Basic, premium, pro, subscriptions, Instagram, face check, bookings, chat, articles, anxiety, or stress.
+                <Text style={iosTheme.typography.cardTitle}>
+                  Try searching for
+                </Text>
+                <Text
+                  style={[
+                    iosTheme.typography.body,
+                    { marginTop: iosTheme.spacing.sm },
+                  ]}
+                >
+                  Counsellors, bookings, subscriptions, Instagram, face check,
+                  chat, articles, anxiety, or stress.
                 </Text>
               </IOSCard>
             ) : null}
@@ -642,43 +756,73 @@ export default function Discover({ navigation }: any) {
         ) : (
           <View>
             <IOSHeroCard
-              source={require('../../../assets/brand/team-hero.jpeg')}
+              source={require("../../../assets/brand/team-hero.jpeg")}
               eyebrow="Menorah"
               title="Mind Over Matter, Redefined"
-              subtitle="A calmer place to begin the conversation."
+              subtitle="Book a Session Now"
+              subtitleStyle={{
+                fontSize: 18,
+                lineHeight: 24,
+                fontWeight: "800",
+              }}
               height={248}
-              onPress={() => navigation.navigate('CounsellorList')}
+              accessibilityLabel="Find a counsellor and book a session"
+              accessibilityHint="Opens the counsellor directory"
+              onPress={() => navigation.navigate("CounsellorList")}
             />
 
             <IOSChatBanner
               title="Chat with us"
               subtitle="Speak with a trained clinical psychology student or another man just like you in a safe space."
-              onPress={() => navigation.navigate('Chat')}
+              onPress={() => navigation.navigate("Chat")}
+              style={{ marginTop: iosTheme.spacing.xl }}
+            />
+
+            <IOSActionCard
+              title="Take Mental Health Check-in"
+              subtitle="Private seven-question GAD-7 screening tool"
+              actionLabel="Start Check-in"
+              icon={ClipboardCheck}
+              onPress={() => navigation.navigate("MentalHealthCheckIn")}
               style={{ marginTop: iosTheme.spacing.xl }}
             />
 
             <IOSSectionHeader
               title="Read Articles"
               actionLabel="View all"
-              onPress={() => navigation.navigate('ArticleList')}
+              onPress={() => navigation.navigate("ArticleList")}
             />
             {articlesLoading ? (
               <IOSCard style={{ marginRight: iosTheme.layout.screenPadding }}>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     gap: iosTheme.spacing.md,
                   }}
                 >
                   <ActivityIndicator color={iosTheme.colors.primary} />
-                  <Text style={iosTheme.typography.body}>Loading articles...</Text>
+                  <Text style={iosTheme.typography.body}>
+                    Loading articles...
+                  </Text>
                 </View>
               </IOSCard>
             ) : articlesError ? (
-              <IOSCard onPress={() => refetchArticles()} style={{ marginRight: iosTheme.layout.screenPadding }}>
-                <Text style={iosTheme.typography.cardTitle}>Articles could not load</Text>
-                <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>Tap to try again.</Text>
+              <IOSCard
+                onPress={() => refetchArticles()}
+                style={{ marginRight: iosTheme.layout.screenPadding }}
+              >
+                <Text style={iosTheme.typography.cardTitle}>
+                  Articles could not load
+                </Text>
+                <Text
+                  style={[
+                    iosTheme.typography.body,
+                    { marginTop: iosTheme.spacing.xs },
+                  ]}
+                >
+                  Tap to try again.
+                </Text>
               </IOSCard>
             ) : articles.length > 0 ? (
               <FlatList
@@ -689,84 +833,48 @@ export default function Discover({ navigation }: any) {
                 contentContainerStyle={{
                   paddingRight: iosTheme.layout.screenPadding,
                 }}
-                renderItem={({ item }) => <IOSArticleCard item={item} onPress={() => openArticle(item)} />}
+                renderItem={({ item }) => (
+                  <IOSArticleCard
+                    item={item}
+                    onPress={() => openArticle(item)}
+                  />
+                )}
               />
             ) : (
               <IOSCard style={{ marginRight: iosTheme.layout.screenPadding }}>
-                <Text style={iosTheme.typography.cardTitle}>No articles yet</Text>
-                <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
+                <Text style={iosTheme.typography.cardTitle}>
+                  No articles yet
+                </Text>
+                <Text
+                  style={[
+                    iosTheme.typography.body,
+                    { marginTop: iosTheme.spacing.xs },
+                  ]}
+                >
                   Check back soon for new Menorah reads.
                 </Text>
               </IOSCard>
             )}
 
-            <View
-              style={{
-                flexDirection: 'row',
-                gap: iosTheme.spacing.md,
-                marginTop: iosTheme.spacing.md,
-              }}
-            >
-              <IOSActionCard
-                compact
-                icon={Users}
-                title="Find support"
-                subtitle="Browse counsellors"
-                onPress={() => navigation.navigate('CounsellorList')}
-                style={{ flex: 1 }}
+            <View style={{ marginTop: iosTheme.spacing.xxl }}>
+              <MobileCounsellorDiscovery
+                onOpenDirectory={(search) =>
+                  navigation.navigate("CounsellorList", {
+                    initialSearch: search || "",
+                  })
+                }
+                onOpenCounsellor={(counsellorId) =>
+                  navigation.navigate("CounsellorProfile", { counsellorId })
+                }
               />
-              <IOSActionCard
-                compact
-                icon={CalendarDays}
-                title="Book session"
-                subtitle="Choose a format"
-                onPress={() => navigation.navigate('GenderSelection')}
-                style={{ flex: 1 }}
-              />
-            </View>
-
-            <IOSSectionHeader title="Session types" />
-            <View style={{ gap: iosTheme.spacing.md }}>
-              {(Object.entries(SESSION_DETAILS) as Array<[SessionType, (typeof SESSION_DETAILS)[SessionType]]>).map(
-                ([sessionType, details]) => (
-                  <IOSCard key={sessionType} onPress={() => handleSessionSelect(sessionType)}>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: iosTheme.spacing.md,
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: 48,
-                          height: 48,
-                          borderRadius: iosTheme.radius.lg,
-                          backgroundColor: iosTheme.colors.surfaceAlt,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <ShieldCheck size={22} color={iosTheme.colors.primary} strokeWidth={2.2} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={iosTheme.typography.cardTitle}>
-                          {sessionType.charAt(0).toUpperCase() + sessionType.slice(1)}
-                        </Text>
-                        <Text style={[iosTheme.typography.body, { marginTop: 2 }]}>
-                          {details.label} session - INR {details.price}
-                        </Text>
-                      </View>
-                    </View>
-                  </IOSCard>
-                ),
-              )}
             </View>
 
             <IOSSectionHeader
               title="Community updates"
               actionLabel="Instagram"
-              onPress={() => Linking.openURL('https://www.instagram.com/wearemenorah')}
+              onPress={() =>
+                Linking.openURL("https://www.instagram.com/wearemenorah")
+              }
             />
             <FlatList
               data={INSTA}
@@ -785,9 +893,26 @@ export default function Discover({ navigation }: any) {
                     marginRight: iosTheme.spacing.lg,
                   }}
                 >
-                  <BookOpen size={20} color={iosTheme.colors.primary} strokeWidth={2.2} />
-                  <Text style={[iosTheme.typography.caption, { marginTop: iosTheme.spacing.md }]}>INSTAGRAM</Text>
-                  <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]} numberOfLines={4}>
+                  <BookOpen
+                    size={20}
+                    color={iosTheme.colors.primary}
+                    strokeWidth={2.2}
+                  />
+                  <Text
+                    style={[
+                      iosTheme.typography.caption,
+                      { marginTop: iosTheme.spacing.md },
+                    ]}
+                  >
+                    INSTAGRAM
+                  </Text>
+                  <Text
+                    style={[
+                      iosTheme.typography.body,
+                      { marginTop: iosTheme.spacing.xs },
+                    ]}
+                    numberOfLines={4}
+                  >
                     {item.caption}
                   </Text>
                 </IOSCard>

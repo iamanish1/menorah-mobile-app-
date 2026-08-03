@@ -44,6 +44,7 @@ const {
   evaluateScheduledSessionAccess,
 } = require('../services/sessionAuthorizationPolicy');
 const { recordSecurityEvent } = require('../utils/securityAudit');
+const { ensureBookingChatRoom } = require('../services/bookingChatRoom');
 
 const router = express.Router();
 const SLOT_TAKEN_MESSAGE = 'This time slot was just booked by someone else. Please choose another available slot.';
@@ -884,6 +885,8 @@ router.get('/:id', [
       });
     }
 
+    const chatRoomId = await ensureBookingChatRoom(booking);
+
     // Format response to match frontend expectations
     const formattedBooking = {
       id: booking._id,
@@ -905,6 +908,7 @@ router.get('/:id', [
         discountAmount: booking.promo.discountAmount || 0
       } : undefined,
       createdAt: booking.createdAt,
+      chat: chatRoomId ? { roomId: chatRoomId } : undefined,
     };
 
     res.json({
@@ -1265,6 +1269,10 @@ router.put('/:id/start', [
       await booking.save();
     }
 
+    const chatRoomId = booking.sessionType === 'chat'
+      ? await ensureBookingChatRoom(booking)
+      : null;
+
     // Emit Socket.IO events for status change and session started
     if (req.app.get('io')) {
       const io = req.app.get('io');
@@ -1287,7 +1295,8 @@ router.put('/:id/start', [
         roomUrl: roomUrl,
         counsellorName: counsellorName,
         scheduledAt: booking.scheduledAt.toISOString(),
-        sessionDuration: booking.sessionDuration
+        sessionDuration: booking.sessionDuration,
+        ...(chatRoomId ? { roomId: chatRoomId } : {})
       });
       
       if (booking.counsellor) {
@@ -1303,7 +1312,8 @@ router.put('/:id/start', [
       message: 'Session started successfully',
       data: {
         roomUrl,
-        sessionType: booking.sessionType
+        sessionType: booking.sessionType,
+        ...(chatRoomId ? { roomId: chatRoomId } : {})
       }
     });
 

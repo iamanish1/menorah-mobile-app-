@@ -6,6 +6,7 @@ import { socketService } from '@/lib/socket';
 import { ENV } from '@/lib/env';
 import { reportError } from '@/lib/safeDiagnostics';
 import { onSessionInvalidated } from '@/lib/authSession';
+import { unregisterStoredPushDeviceAsync } from '@/services/pushNotifications';
 
 interface AuthResult {
   success: boolean;
@@ -277,6 +278,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       // Disconnect socket first
       socketService.disconnect();
+      await unregisterStoredPushDeviceAsync();
       // Call API logout
       await api.logout();
     } catch (error) {

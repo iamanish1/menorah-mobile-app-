@@ -235,8 +235,58 @@ describe('chat authorization hardening', () => {
       .expect(200);
 
     expect(message.softDelete).toHaveBeenCalledWith(mockAuthUser._id);
-    expect(mockSocketTo).toHaveBeenCalledWith(`chat_${roomId}`);
+    expect(mockSocketTo).toHaveBeenCalledWith([
+      `chat_${roomId}`,
+      `user_${userId}`,
+      `user_${counsellorUserId}`,
+    ]);
     expect(mockSocketEmit).toHaveBeenCalledWith('message_deleted', expect.objectContaining({ messageId }));
+  });
+
+  test('a persisted message is fanned out to every signed-in participant device', async () => {
+    const room = {
+      ...roomForUserAndCounsellor,
+      updateLastMessage: jest.fn().mockResolvedValue(undefined),
+      incrementUnread: jest.fn().mockResolvedValue(undefined),
+    };
+    const message = {
+      _id: objectId(messageId),
+      sender: {
+        _id: objectId(userId),
+        firstName: 'Asha',
+        lastName: 'User',
+        profileImage: null,
+      },
+      content: 'Continue this conversation on my phone',
+      type: 'text',
+      status: 'sent',
+      createdAt: new Date('2026-08-02T10:00:00.000Z'),
+      save: jest.fn().mockResolvedValue(undefined),
+      populate: jest.fn().mockResolvedValue(undefined),
+    };
+    mockChatRoomFindById.mockReturnValue(queryResult(room));
+    mockMessageConstructor.mockReturnValue(message);
+
+    const response = await request(buildApp())
+      .post(`/api/chat/rooms/${roomId}/messages`)
+      .send({ content: message.content, type: 'text' })
+      .expect(201);
+
+    expect(response.body.data.message).toMatchObject({
+      id: messageId,
+      roomId,
+      content: message.content,
+    });
+    expect(room.incrementUnread).toHaveBeenCalledWith('counsellor');
+    expect(mockSocketTo).toHaveBeenCalledWith([
+      `chat_${roomId}`,
+      `user_${userId}`,
+      `user_${counsellorUserId}`,
+    ]);
+    expect(mockSocketEmit).toHaveBeenCalledWith(
+      'new_message',
+      expect.objectContaining({ roomId, id: messageId })
+    );
   });
 
   test('does not write sensitive message content to production error logs', async () => {

@@ -1,6 +1,7 @@
 const {
   _private: {
     loadAuthorizedRoom,
+    getChatEventRooms,
     shouldRecordSocketChatDenial,
   },
 } = require('../createSocketServer');
@@ -159,5 +160,13 @@ describe('Socket.IO chat room authorization', () => {
       .toBe(false);
     expect(shouldRecordSocketChatDenial(socket, `cancelled:${ROOM_ID}`, 31001))
       .toBe(true);
+  });
+
+  test('targets the open chat room and every device owned by both participants', () => {
+    expect(getChatEventRooms(room(), ROOM_ID)).toEqual([
+      `chat_${ROOM_ID}`,
+      `user_${USER_ID}`,
+      `user_${COUNSELLOR_USER_ID}`,
+    ]);
   });
 });

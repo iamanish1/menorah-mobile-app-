@@ -14,6 +14,7 @@ describe('worker scheduler isolation', () => {
     delete process.env.ENABLE_SOCIAL_SCHEDULER;
     delete process.env.PRIVACY_RETENTION_EXECUTION_ENABLED;
     delete process.env.ARTICLE_SCHEDULER_ENABLED;
+    delete process.env.ENABLE_NOTIFICATION_JOBS;
   });
 
   afterAll(() => {
@@ -46,6 +47,7 @@ describe('worker scheduler isolation', () => {
     expect(jobs.counsellorVerificationExpiry).toBe(true);
     expect(jobs.privacyRetention).toBe(true);
     expect(jobs.socialScheduler).toBe(true);
+    expect(jobs.notificationJobs).toBe(true);
 
     process.env.WORKER_MODE = 'standby';
     const standbyJobs = resolveWorkerJobs();
@@ -53,6 +55,14 @@ describe('worker scheduler isolation', () => {
     expect(standbyJobs.counsellorVerificationExpiry).toBe(false);
     expect(standbyJobs.privacyRetention).toBe(false);
     expect(standbyJobs.socialScheduler).toBe(false);
+    expect(standbyJobs.notificationJobs).toBe(false);
+  });
+
+  test('active workers can explicitly disable Android push jobs', () => {
+    process.env.WORKER_MODE = 'active';
+    process.env.ENABLE_NOTIFICATION_JOBS = 'false';
+
+    expect(resolveWorkerJobs().notificationJobs).toBe(false);
   });
 
   test('active workers can explicitly disable the expiry job', () => {

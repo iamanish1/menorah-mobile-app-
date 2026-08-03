@@ -23,6 +23,7 @@ import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from "@/state/useAuth";
 import { api } from "@/lib/api";
+import { useNotifications } from '@/state/useNotifications';
 
 const SettingItem = ({ title, subtitle, icon: Icon, onPress, disabled, colors, danger = false }: any) => (
   <TouchableOpacity
@@ -70,6 +71,12 @@ export default function Settings({ navigation }: any) {
   const dangerBg = colors.error + (isDark ? '18' : '0A');
   const dangerBorder = colors.error + (isDark ? '35' : '20');
   const { forgotPassword, invalidateSession, logout, user } = useAuth();
+  const {
+    pushEnabled,
+    pushLoading,
+    pushPermission,
+    setPushNotificationsEnabled,
+  } = useNotifications();
   const deletionMethod = Platform.OS === 'ios' && user?.reauthenticationMethods?.apple
     ? 'apple'
     : user?.reauthenticationMethods?.password
@@ -98,6 +105,18 @@ export default function Settings({ navigation }: any) {
       Alert.alert('Error', 'Failed to update email preferences.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePushToggle = async (value: boolean) => {
+    const updated = await setPushNotificationsEnabled(value);
+    if (!updated) {
+      Alert.alert(
+        value ? 'Push notifications not enabled' : 'Unable to update notifications',
+        value && pushPermission === 'denied'
+          ? 'Allow notifications for Menorah in Android Settings, then try again.'
+          : 'Please check your connection and try again.'
+      );
     }
   };
 
@@ -370,9 +389,24 @@ export default function Settings({ navigation }: any) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 16, color: colors.cardText }}>Push Notifications</Text>
-                <Text style={{ fontSize: 14, color: colors.muted }}>Not available in this release</Text>
+                <Text style={{ fontSize: 14, color: colors.muted }}>
+                  {Platform.OS !== 'android'
+                    ? 'Available on Android'
+                    : pushPermission === 'denied'
+                      ? 'Permission is disabled in Android Settings'
+                      : 'Chat, session reminders and new articles'}
+                </Text>
               </View>
-              <Text style={{ fontSize: 13, color: colors.muted }}>Unavailable</Text>
+              {pushLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Switch
+                  value={pushEnabled}
+                  onValueChange={handlePushToggle}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  disabled={Platform.OS !== 'android'}
+                />
+              )}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16 }}>
               <View style={{

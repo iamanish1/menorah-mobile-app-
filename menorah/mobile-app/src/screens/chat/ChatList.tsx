@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   RefreshControl, Alert, Modal, TextInput,
@@ -16,6 +16,7 @@ import { useChat } from "@/state/useChat";
 import { useAuth } from "@/state/useAuth";
 import { api, ChatRoom } from "@/lib/api";
 import { reportError } from "@/lib/safeDiagnostics";
+import { useFocusEffect } from "@react-navigation/native";
 
 type FilterTab = 'all' | 'unread' | 'counsellors' | 'archived';
 
@@ -39,6 +40,8 @@ export default function ChatList({ navigation }: any) {
   const [loadingCounsellors, setLoadingCounsellors]     = useState(false);
   const [activeFilter, setActiveFilter]                 = useState<FilterTab>('all');
   const [searchQ, setSearchQ]                           = useState('');
+  const connectedOnceRef = useRef(isConnected);
+  const missedSocketEventsRef = useRef(false);
 
   const loadChatRooms = useCallback(async () => {
     setLoading(true);
@@ -51,7 +54,26 @@ export default function ChatList({ navigation }: any) {
     }
   }, [fetchChatRooms]);
 
-  useEffect(() => { loadChatRooms(); }, [loadChatRooms]);
+  useFocusEffect(useCallback(() => {
+    loadChatRooms();
+  }, [loadChatRooms]));
+
+  useEffect(() => {
+    if (!isConnected) {
+      if (connectedOnceRef.current) missedSocketEventsRef.current = true;
+      return;
+    }
+
+    if (!connectedOnceRef.current) {
+      connectedOnceRef.current = true;
+      return;
+    }
+
+    if (missedSocketEventsRef.current) {
+      missedSocketEventsRef.current = false;
+      fetchChatRooms();
+    }
+  }, [fetchChatRooms, isConnected]);
 
   const onRefresh = async () => {
     setRefreshing(true);

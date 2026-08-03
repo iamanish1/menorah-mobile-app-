@@ -15,6 +15,9 @@ const {
   normalizeTags,
   startGenerationRun
 } = require('../services/articleGenerationService');
+const {
+  enqueueArticlePublishedNotifications,
+} = require('../services/pushNotificationService');
 
 const router = express.Router();
 const requireContentRead = requireAdminPermission('content_read');
@@ -409,6 +412,15 @@ router.patch('/admin/:id', adminAuth, requireContentManage, [
       }
     }
 
+    let transitionedToPublished = false;
+    if (updates.status === 'published') {
+      const existingArticle = await Article.findById(req.params.id).select('status').lean();
+      if (!existingArticle) {
+        return res.status(404).json({ success: false, message: 'Article not found' });
+      }
+      transitionedToPublished = existingArticle.status !== 'published';
+    }
+
     updateReviewMetadata(updates, req.user._id);
 
     const article = await Article.findByIdAndUpdate(req.params.id, updates, {
@@ -418,6 +430,17 @@ router.patch('/admin/:id', adminAuth, requireContentManage, [
 
     if (!article) {
       return res.status(404).json({ success: false, message: 'Article not found' });
+    }
+
+    if (transitionedToPublished) {
+      try {
+        await enqueueArticlePublishedNotifications(article);
+      } catch (notificationError) {
+        console.error(
+          'Queue article push notifications failed:',
+          notificationError?.code || 'ARTICLE_PUSH_ENQUEUE_FAILED'
+        );
+      }
     }
 
     res.json({
@@ -440,6 +463,11 @@ router.post('/admin/:id/publish', adminAuth, requireContentManage, [
       return validationErrorResponse(res, errors.array());
     }
 
+    const existingArticle = await Article.findById(req.params.id).select('status').lean();
+    if (!existingArticle) {
+      return res.status(404).json({ success: false, message: 'Article not found' });
+    }
+
     const article = await Article.findByIdAndUpdate(req.params.id, {
       status: 'published',
       reviewedByHuman: true,
@@ -455,6 +483,17 @@ router.post('/admin/:id/publish', adminAuth, requireContentManage, [
 
     if (!article) {
       return res.status(404).json({ success: false, message: 'Article not found' });
+    }
+
+    if (existingArticle.status !== 'published') {
+      try {
+        await enqueueArticlePublishedNotifications(article);
+      } catch (notificationError) {
+        console.error(
+          'Queue article push notifications failed:',
+          notificationError?.code || 'ARTICLE_PUSH_ENQUEUE_FAILED'
+        );
+      }
     }
 
     res.json({

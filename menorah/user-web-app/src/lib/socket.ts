@@ -7,7 +7,10 @@ export function getSocket(): Socket | null {
 }
 
 export function connectSocket(): Socket {
-  if (socket?.connected) return socket;
+  if (socket) {
+    if (!socket.connected) socket.connect();
+    return socket;
+  }
 
   const apiURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
   const url = process.env.NEXT_PUBLIC_SOCKET_URL || apiURL.replace(/\/api\/?$/, '');
@@ -52,6 +55,7 @@ export const socketEvents = {
   USER_TYPING: 'user_typing',
   MARK_READ: 'mark_read',
   MESSAGE_READ: 'message_read',
+  MESSAGE_DELETED: 'message_deleted',
   MESSAGE_DELIVERED: 'message_delivered',
   SET_ONLINE_STATUS: 'set_online_status',
   USER_STATUS_CHANGED: 'user_status_changed',

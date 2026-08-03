@@ -1,16 +1,27 @@
-import { Text, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
-import { Image, type ImageProps } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useIOSTheme } from './iosTheme';
+import {
+  Text,
+  TouchableOpacity,
+  View,
+  type GestureResponderEvent,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native";
+import { Image, type ImageProps } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
+import { useIOSTheme } from "./iosTheme";
 
 type IOSHeroCardProps = {
-  source: ImageProps['source'];
+  source: ImageProps["source"];
   title: string;
   subtitle?: string;
   eyebrow?: string;
   height?: number;
   onPress?: (event: GestureResponderEvent) => void;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
   style?: StyleProp<ViewStyle>;
+  subtitleStyle?: StyleProp<TextStyle>;
 };
 
 export default function IOSHeroCard({
@@ -20,7 +31,10 @@ export default function IOSHeroCard({
   eyebrow,
   height = 250,
   onPress,
+  accessibilityLabel,
+  accessibilityHint,
   style,
+  subtitleStyle,
 }: IOSHeroCardProps) {
   const iosTheme = useIOSTheme();
 
@@ -28,34 +42,41 @@ export default function IOSHeroCard({
     <TouchableOpacity
       onPress={onPress}
       disabled={!onPress}
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       activeOpacity={0.9}
       style={[
         {
           height,
           borderRadius: 30,
-          overflow: 'hidden',
+          overflow: "hidden",
           backgroundColor: iosTheme.colors.primaryDeep,
         },
         iosTheme.shadows.card,
         style,
       ]}
     >
-      <Image source={source} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+      <Image
+        source={source}
+        style={{ width: "100%", height: "100%" }}
+        contentFit="cover"
+      />
       <LinearGradient
         colors={[
           iosTheme.colors.heroOverlayStart,
           iosTheme.colors.heroOverlayMiddle,
           iosTheme.colors.heroOverlayEnd,
         ]}
-        style={{ position: 'absolute', inset: 0 }}
+        style={{ position: "absolute", inset: 0 }}
       />
       <View
         style={{
-          position: 'absolute',
+          position: "absolute",
           left: iosTheme.spacing.lg,
           right: iosTheme.spacing.lg,
           bottom: iosTheme.spacing.xl,
-          alignItems: 'center',
+          alignItems: "center",
         }}
       >
         {eyebrow ? (
@@ -64,8 +85,8 @@ export default function IOSHeroCard({
               color: iosTheme.colors.inverseTextMuted,
               fontSize: 12,
               lineHeight: 16,
-              fontWeight: '800',
-              textTransform: 'uppercase',
+              fontWeight: "800",
+              textTransform: "uppercase",
               marginBottom: iosTheme.spacing.sm,
             }}
           >
@@ -77,8 +98,8 @@ export default function IOSHeroCard({
             color: iosTheme.colors.inverseText,
             fontSize: 29,
             lineHeight: 35,
-            fontWeight: '900',
-            textAlign: 'center',
+            fontWeight: "900",
+            textAlign: "center",
           }}
           numberOfLines={2}
         >
@@ -86,14 +107,17 @@ export default function IOSHeroCard({
         </Text>
         {subtitle ? (
           <Text
-            style={{
-              color: iosTheme.colors.inverseTextSecondary,
-              fontSize: 14,
-              lineHeight: 21,
-              textAlign: 'center',
-              marginTop: iosTheme.spacing.sm,
-              fontWeight: '600',
-            }}
+            style={[
+              {
+                color: iosTheme.colors.inverseTextSecondary,
+                fontSize: 14,
+                lineHeight: 21,
+                textAlign: "center",
+                marginTop: iosTheme.spacing.sm,
+                fontWeight: "600",
+              },
+              subtitleStyle,
+            ]}
           >
             {subtitle}
           </Text>

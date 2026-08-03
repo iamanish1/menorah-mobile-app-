@@ -1,10 +1,11 @@
-import { Alert, Text, View } from 'react-native';
-import { reportError } from '@/lib/safeDiagnostics';
-import { Image } from 'expo-image';
-import { CommonActions, useNavigation } from '@react-navigation/native';
+import { Alert, Text, View } from "react-native";
+import { reportError } from "@/lib/safeDiagnostics";
+import { Image } from "expo-image";
+import { CommonActions, useNavigation } from "@react-navigation/native";
 import {
   BookOpen,
   CalendarDays,
+  ClipboardCheck,
   Heart,
   LogOut,
   MessageCircleMore,
@@ -12,7 +13,7 @@ import {
   Settings,
   ShieldCheck,
   User,
-} from 'lucide-react-native';
+} from "lucide-react-native";
 import {
   IOSActionCard,
   IOSCard,
@@ -22,50 +23,75 @@ import {
   IOSScreen,
   IOSSectionHeader,
   useIOSTheme,
-} from '@/components/ios';
-import { useAuth } from '@/state/useAuth';
+} from "@/components/ios";
+import { useAuth } from "@/state/useAuth";
 
 const WELLNESS_TIPS = [
   "Taking care of yourself isn't selfish. It's essential. Remember to breathe deeply and practice self-compassion today.",
-  'Small steps every day lead to big changes. Be patient with yourself on this journey.',
-  'Your mental health matters. Reaching out for support is a sign of strength, not weakness.',
-  'Rest is not laziness. Giving yourself time to recharge is an act of self-care.',
+  "Small steps every day lead to big changes. Be patient with yourself on this journey.",
+  "Your mental health matters. Reaching out for support is a sign of strength, not weakness.",
+  "Rest is not laziness. Giving yourself time to recharge is an act of self-care.",
 ];
 
 const dailyTip = WELLNESS_TIPS[new Date().getDay() % WELLNESS_TIPS.length];
 
 const QUICK_ACTIONS = [
   {
+    icon: ClipboardCheck,
+    label: "Take Mental Health Check-in",
+    sub: "Private 7-question screening tool",
+    route: "MentalHealthCheckIn",
+  },
+  {
     icon: CalendarDays,
-    label: 'Book a session',
-    sub: 'Start your wellness journey',
-    route: 'GenderSelection',
+    label: "Book a session",
+    sub: "Start your wellness journey",
+    route: "CounsellorList",
   },
   {
     icon: BookOpen,
-    label: 'Resources',
-    sub: 'Articles and support',
-    route: 'CrisisHelp',
+    label: "Resources",
+    sub: "Articles and support",
+    route: "CrisisHelp",
   },
   {
     icon: MessageCircleMore,
-    label: 'Get support',
+    label: "Get support",
     sub: "We're here to help",
-    route: 'CrisisHelp',
+    route: "CrisisHelp",
   },
 ];
 
 const ACCOUNT_ITEMS = [
-  { icon: User, label: 'Edit Profile', sub: 'Update your personal information', route: 'EditProfile', danger: false },
-  { icon: Settings, label: 'Settings & Privacy', sub: 'Manage preferences and account deletion', route: 'Settings', danger: false },
-  { icon: LogOut, label: 'Sign Out', sub: 'Logout from your account', route: null, danger: true },
+  {
+    icon: User,
+    label: "Edit Profile",
+    sub: "Update your personal information",
+    route: "EditProfile",
+    danger: false,
+  },
+  {
+    icon: Settings,
+    label: "Settings & Privacy",
+    sub: "Manage preferences and account deletion",
+    route: "Settings",
+    danger: false,
+  },
+  {
+    icon: LogOut,
+    label: "Sign Out",
+    sub: "Logout from your account",
+    route: null,
+    danger: true,
+  },
 ];
 
 const kycSubtitle = (status?: string) => {
-  if (status === 'verified') return 'Optional face check completed';
-  if (status === 'manual_review' || status === 'pending') return 'Admin review in progress';
-  if (status === 'rejected') return 'Submit a clear selfie to try again';
-  return 'Optional account trust and safety check';
+  if (status === "verified") return "Optional face check completed";
+  if (status === "manual_review" || status === "pending")
+    return "Admin review in progress";
+  if (status === "rejected") return "Submit a clear selfie to try again";
+  return "Optional account trust and safety check";
 };
 
 export default function ProfileHome({ navigation }: any) {
@@ -76,20 +102,23 @@ export default function ProfileHome({ navigation }: any) {
   const memberSince = (() => {
     try {
       if (!user?.createdAt) return null;
-      return new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      return new Date(user.createdAt).toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      });
     } catch {
       return null;
     }
   })();
 
-  const initials = user?.firstName?.charAt(0)?.toUpperCase() || 'U';
-  const kycStatus = user?.kyc?.status || 'not_started';
+  const initials = user?.firstName?.charAt(0)?.toUpperCase() || "U";
+  const kycStatus = user?.kyc?.status || "not_started";
   const accountItems = [
     {
       icon: ShieldCheck,
-      label: 'Optional Face Check',
+      label: "Optional Face Check",
       sub: kycSubtitle(kycStatus),
-      route: 'IdentityVerification',
+      route: "IdentityVerification",
       danger: false,
     },
     ...ACCOUNT_ITEMS,
@@ -97,21 +126,21 @@ export default function ProfileHome({ navigation }: any) {
 
   const handleSignOut = () => {
     Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
+      "Sign Out",
+      "Are you sure you want to sign out?",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Sign Out',
-          style: 'destructive',
+          text: "Sign Out",
+          style: "destructive",
           onPress: async () => {
             try {
               await logout();
             } catch (error) {
-              reportError('profile.logout_failed', error);
+              reportError("profile.logout_failed", error);
               Alert.alert(
-                'Signed Out Securely',
-                'Credential cleanup is still pending and will be retried before another sign-in.',
+                "Signed Out Securely",
+                "Credential cleanup is still pending and will be retried before another sign-in.",
               );
               return;
             }
@@ -120,20 +149,23 @@ export default function ProfileHome({ navigation }: any) {
               try {
                 const rootNav = navigation.getParent()?.getParent();
                 if (rootNav?.reset) {
-                  rootNav.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+                  rootNav.reset({ index: 0, routes: [{ name: "Onboarding" }] });
                 } else {
                   rootNavigation.dispatch(
-                    CommonActions.reset({ index: 0, routes: [{ name: 'Onboarding' }] })
+                    CommonActions.reset({
+                      index: 0,
+                      routes: [{ name: "Onboarding" }],
+                    }),
                   );
                 }
               } catch (error) {
-                reportError('profile.logout_navigation_failed', error);
+                reportError("profile.logout_navigation_failed", error);
               }
             }, 250);
           },
         },
       ],
-      { cancelable: true }
+      { cancelable: true },
     );
   };
 
@@ -143,12 +175,15 @@ export default function ProfileHome({ navigation }: any) {
         title="Profile"
         subtitle="Settings and support"
         showWordmark={false}
-        onMenuPress={() => navigation.navigate('Settings')}
-        onRightPress={() => navigation.navigate('EditProfile')}
+        onMenuPress={() => navigation.navigate("Settings")}
+        onRightPress={() => navigation.navigate("EditProfile")}
         rightIcon={Pencil}
       />
 
-      <IOSScreen edges={['right', 'bottom', 'left']} contentContainerStyle={{ paddingTop: iosTheme.spacing.sm }}>
+      <IOSScreen
+        edges={["right", "bottom", "left"]}
+        contentContainerStyle={{ paddingTop: iosTheme.spacing.sm }}
+      >
         <IOSCard contentStyle={{ padding: 0 }}>
           <View
             style={{
@@ -158,7 +193,13 @@ export default function ProfileHome({ navigation }: any) {
               borderBottomRightRadius: iosTheme.radius.xl,
             }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: iosTheme.spacing.md }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: iosTheme.spacing.md,
+              }}
+            >
               {user?.profileImage ? (
                 <Image
                   source={{ uri: user.profileImage }}
@@ -181,12 +222,19 @@ export default function ProfileHome({ navigation }: any) {
                     borderWidth: 2,
                     borderColor: iosTheme.colors.inverseTextMuted,
                     backgroundColor: iosTheme.colors.inverseSurface,
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    alignItems: "center",
+                    justifyContent: "center",
                     flexShrink: 0,
                   }}
                 >
-                  <Text style={{ color: iosTheme.colors.inverseText, fontSize: 28, lineHeight: 34, fontWeight: '900' }}>
+                  <Text
+                    style={{
+                      color: iosTheme.colors.inverseText,
+                      fontSize: 28,
+                      lineHeight: 34,
+                      fontWeight: "900",
+                    }}
+                  >
                     {initials}
                   </Text>
                 </View>
@@ -194,22 +242,32 @@ export default function ProfileHome({ navigation }: any) {
 
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text
-                  style={{ color: iosTheme.colors.inverseText, fontSize: 19, lineHeight: 24, fontWeight: '900' }}
+                  style={{
+                    color: iosTheme.colors.inverseText,
+                    fontSize: 19,
+                    lineHeight: 24,
+                    fontWeight: "900",
+                  }}
                   numberOfLines={1}
                 >
-                  {user ? `${user.firstName} ${user.lastName}` : 'User'}
+                  {user ? `${user.firstName} ${user.lastName}` : "User"}
                 </Text>
                 <Text
-                  style={{ color: iosTheme.colors.inverseTextMuted, fontSize: 13, lineHeight: 19, marginTop: 3 }}
+                  style={{
+                    color: iosTheme.colors.inverseTextMuted,
+                    fontSize: 13,
+                    lineHeight: 19,
+                    marginTop: 3,
+                  }}
                   numberOfLines={1}
                 >
-                  {user?.email || ''}
+                  {user?.email || ""}
                 </Text>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    alignSelf: 'flex-start',
+                    flexDirection: "row",
+                    alignItems: "center",
+                    alignSelf: "flex-start",
                     gap: iosTheme.spacing.xs,
                     backgroundColor: iosTheme.colors.inverseSurface,
                     paddingHorizontal: iosTheme.spacing.md,
@@ -218,41 +276,75 @@ export default function ProfileHome({ navigation }: any) {
                     marginTop: iosTheme.spacing.md,
                   }}
                 >
-                  <ShieldCheck size={13} color={iosTheme.colors.inverseText} strokeWidth={2.2} />
-                  <Text style={{ color: iosTheme.colors.inverseText, fontSize: 11, lineHeight: 14, fontWeight: '800' }}>
-                    {kycStatus === 'verified' ? 'Face check complete' : memberSince ? `Member since ${memberSince}` : 'Member'}
+                  <ShieldCheck
+                    size={13}
+                    color={iosTheme.colors.inverseText}
+                    strokeWidth={2.2}
+                  />
+                  <Text
+                    style={{
+                      color: iosTheme.colors.inverseText,
+                      fontSize: 11,
+                      lineHeight: 14,
+                      fontWeight: "800",
+                    }}
+                  >
+                    {kycStatus === "verified"
+                      ? "Face check complete"
+                      : memberSince
+                        ? `Member since ${memberSince}`
+                        : "Member"}
                   </Text>
                 </View>
               </View>
 
               <IOSIconButton
                 icon={Pencil}
-                onPress={() => navigation.navigate('EditProfile')}
+                onPress={() => navigation.navigate("EditProfile")}
                 accessibilityLabel="Edit profile"
                 color={iosTheme.colors.inverseText}
                 backgroundColor={iosTheme.colors.inverseSurface}
-                style={{ borderColor: iosTheme.colors.inverseSurfaceBorder, shadowOpacity: 0, flexShrink: 0 }}
+                style={{
+                  borderColor: iosTheme.colors.inverseSurfaceBorder,
+                  shadowOpacity: 0,
+                  flexShrink: 0,
+                }}
               />
             </View>
           </View>
 
           <View style={{ padding: iosTheme.spacing.xl }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: iosTheme.spacing.md }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: iosTheme.spacing.md,
+              }}
+            >
               <View
                 style={{
                   width: 44,
                   height: 44,
                   borderRadius: 18,
                   backgroundColor: iosTheme.colors.surfaceAlt,
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                <Heart size={21} color={iosTheme.colors.primary} strokeWidth={2.2} />
+                <Heart
+                  size={21}
+                  color={iosTheme.colors.primary}
+                  strokeWidth={2.2}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={iosTheme.typography.cardTitle}>Wellness Tip</Text>
-                <Text style={[iosTheme.typography.body, { marginTop: iosTheme.spacing.xs }]}>
+                <Text
+                  style={[
+                    iosTheme.typography.body,
+                    { marginTop: iosTheme.spacing.xs },
+                  ]}
+                >
                   {dailyTip}
                 </Text>
               </View>
@@ -260,14 +352,22 @@ export default function ProfileHome({ navigation }: any) {
           </View>
         </IOSCard>
 
-        {kycStatus !== 'verified' ? (
+        {kycStatus !== "verified" ? (
           <IOSActionCard
             dark
             icon={ShieldCheck}
-            title={kycStatus === 'manual_review' || kycStatus === 'pending' ? 'Face check under review' : 'Optional face check'}
+            title={
+              kycStatus === "manual_review" || kycStatus === "pending"
+                ? "Face check under review"
+                : "Optional face check"
+            }
             subtitle={kycSubtitle(kycStatus)}
-            actionLabel={kycStatus === 'manual_review' || kycStatus === 'pending' ? 'View status' : 'Start check'}
-            onPress={() => navigation.navigate('IdentityVerification')}
+            actionLabel={
+              kycStatus === "manual_review" || kycStatus === "pending"
+                ? "View status"
+                : "Start check"
+            }
+            onPress={() => navigation.navigate("IdentityVerification")}
             style={{ marginTop: iosTheme.spacing.md }}
           />
         ) : null}
@@ -296,7 +396,11 @@ export default function ProfileHome({ navigation }: any) {
               icon={item.icon}
               danger={item.danger}
               showDivider={index < accountItems.length - 1}
-              onPress={item.danger ? handleSignOut : () => navigation.navigate(item.route)}
+              onPress={
+                item.danger
+                  ? handleSignOut
+                  : () => navigation.navigate(item.route)
+              }
             />
           ))}
         </IOSCard>

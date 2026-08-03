@@ -38,6 +38,13 @@ export interface MessageReadReceipt {
   roomId?: string; // Added for context
 }
 
+export interface MessageDeletedData {
+  messageId: string;
+  deletedBy: string;
+  timestamp: string;
+  roomId: string;
+}
+
 export interface SessionStartedData {
   bookingId: string;
   status: string;
@@ -46,6 +53,7 @@ export interface SessionStartedData {
   counsellorName: string;
   scheduledAt: string;
   sessionDuration: number;
+  roomId?: string;
 }
 
 export interface BookingStatusData {
@@ -80,6 +88,7 @@ class SocketService {
   private typingListeners: ((typing: TypingIndicator) => void)[] = [];
   private statusListeners: ((status: UserStatus) => void)[] = [];
   private readReceiptListeners: ((receipt: MessageReadReceipt) => void)[] = [];
+  private messageDeletedListeners: ((data: MessageDeletedData) => void)[] = [];
   private connectionListeners: ((connected: boolean) => void)[] = [];
   private sessionStartedListeners: ((data: SessionStartedData) => void)[] = [];
   private bookingStatusListeners: ((data: BookingStatusData) => void)[] = [];
@@ -159,25 +168,23 @@ class SocketService {
             this.notifyConnectionListeners(false);
           });
 
-          socket.on('reconnect_attempt', (attemptNumber) => {
+          socket.io.on('reconnect_attempt', (attemptNumber) => {
             if (!this.isCurrentSocket(socket, generation)) return;
             reportEvent('socket.reconnect_attempt');
             this.reconnectAttempts = attemptNumber;
           });
 
-          socket.on('reconnect', () => {
+          socket.io.on('reconnect', () => {
             if (!this.isCurrentSocket(socket, generation)) return;
             reportEvent('socket.reconnected');
-            this.isConnected = true;
-            this.notifyConnectionListeners(true);
           });
 
-          socket.on('reconnect_error', (error) => {
+          socket.io.on('reconnect_error', (error) => {
             if (!this.isCurrentSocket(socket, generation)) return;
             reportError('socket.reconnect_failed', error);
           });
 
-          socket.on('reconnect_failed', () => {
+          socket.io.on('reconnect_failed', () => {
             if (!this.isCurrentSocket(socket, generation)) {
               resolve();
               return;
@@ -229,6 +236,12 @@ class SocketService {
       // Add roomId to receipt if not present
       const receiptWithRoom = { ...receipt, roomId: receipt.roomId };
       this.notifyReadReceiptListeners(receiptWithRoom);
+    });
+
+    socket.on('message_deleted', (data: MessageDeletedData) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.message_deleted');
+      this.notifyMessageDeletedListeners(data);
     });
 
     // Message delivered confirmation
@@ -398,6 +411,13 @@ class SocketService {
     };
   }
 
+  onMessageDeleted(callback: (data: MessageDeletedData) => void): () => void {
+    this.messageDeletedListeners.push(callback);
+    return () => {
+      this.messageDeletedListeners = this.messageDeletedListeners.filter(cb => cb !== callback);
+    };
+  }
+
   onConnectionChange(callback: (connected: boolean) => void): () => void {
     this.connectionListeners.push(callback);
     return () => {
@@ -448,6 +468,10 @@ class SocketService {
 
   private notifyReadReceiptListeners(receipt: MessageReadReceipt): void {
     this.readReceiptListeners.forEach(callback => callback(receipt));
+  }
+
+  private notifyMessageDeletedListeners(data: MessageDeletedData): void {
+    this.messageDeletedListeners.forEach(callback => callback(data));
   }
 
   private notifyConnectionListeners(connected: boolean): void {

@@ -169,6 +169,18 @@ describe('route profiles', () => {
     }
   });
 
+  test('user-facing api profiles expose only authenticated assessment routes', async () => {
+    for (const profileName of ['api-ios', 'api-android', 'api-web']) {
+      await request(buildProfileApp(profileName))
+        .get('/api/assessments/instruments/gad-7')
+        .expect(401);
+    }
+
+    await request(buildProfileApp('api-admin'))
+      .get('/api/assessments/instruments/gad-7')
+      .expect(404);
+  });
+
   test('api-admin exposes admin routes but not public payment checkout', async () => {
     const app = buildProfileApp('api-admin');
 

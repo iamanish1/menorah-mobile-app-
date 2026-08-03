@@ -7,16 +7,19 @@ import { api } from '@/lib/api';
 import { Avatar, Spinner } from '@/components/ui';
 import { formatChatTime, truncate } from '@/lib/utils';
 import { useSocket } from '@/context/SocketContext';
-import { useEffect, useState } from 'react';
-import type { ChatRoom } from '@/types';
+import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import type { ChatMessage, ChatRoom } from '@/types';
 
 export default function ChatListPage() {
   const router = useRouter();
   const { socket } = useSocket();
+  const { user } = useAuth();
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [startingChat, setStartingChat] = useState<string | null>(null);
+  const roomsRef = useRef<ChatRoom[]>([]);
 
-  const { data: roomsData, isLoading: roomsLoading } = useQuery({
+  const { data: roomsData, isLoading: roomsLoading, refetch: refetchRooms } = useQuery({
     queryKey: ['chatRooms'],
     queryFn:  () => api.getChatRooms(),
   });
@@ -34,19 +37,37 @@ export default function ChatListPage() {
   }, [roomsData]);
 
   useEffect(() => {
+    roomsRef.current = rooms;
+  }, [rooms]);
+
+  useEffect(() => {
     if (!socket) return;
-    const onNewMessage = (msg: { roomId?: string }) => {
+    const onNewMessage = (msg: ChatMessage) => {
+      if (!msg.roomId) return;
+      if (!roomsRef.current.some((room) => room.id === msg.roomId)) {
+        void refetchRooms();
+        return;
+      }
+
       setRooms((prev) =>
-        prev.map((r) =>
-          r.id === msg.roomId
-            ? { ...r, unreadCount: r.unreadCount + 1, lastMessage: 'New message', lastMessageTime: new Date().toISOString() }
-            : r
-        )
+        prev
+          .map((room) => room.id === msg.roomId
+            ? {
+                ...room,
+                unreadCount: msg.senderId === user?.id ? room.unreadCount : room.unreadCount + 1,
+                lastMessage: msg.content,
+                lastMessageSenderId: msg.senderId,
+                lastMessageTime: msg.timestamp,
+              }
+            : room)
+          .sort((a, b) =>
+            new Date(b.lastMessageTime || 0).getTime() - new Date(a.lastMessageTime || 0).getTime()
+          )
       );
     };
     socket.on('new_message', onNewMessage);
     return () => { socket.off('new_message', onNewMessage); };
-  }, [socket]);
+  }, [refetchRooms, socket, user?.id]);
 
   const handleStartChat = async (counsellorId: string) => {
     setStartingChat(counsellorId);

@@ -24,6 +24,10 @@ const {
 const {
   reconcileOne: reconcileCounsellorVerificationExpiry,
 } = require('../services/counsellorVerificationExpiry');
+const {
+  countCompletedSessions,
+  countCompletedSessionsByCounsellor,
+} = require('../services/counsellorCompletedSessions');
 
 // ── Regex safety helper ────────────────────────────────────────────────────
 // Escapes regex metacharacters to prevent ReDoS via user-supplied search strings
@@ -287,7 +291,6 @@ router.get('/', [
     }
     sort.rating = sort.rating || -1;
     sort.reviewCount = -1;
-    sort.totalSessions = -1;
     sort._id = 1;
 
     // Calculate pagination
@@ -308,7 +311,11 @@ router.get('/', [
         Counsellor.countDocuments(query),
       ]);
 
-      const formatted = counsellors.filter((counsellor) => counsellor.user).map(counsellor => ({
+      const publicCounsellors = counsellors.filter((counsellor) => counsellor.user);
+      const completedSessionCounts = await countCompletedSessionsByCounsellor(
+        publicCounsellors.map((counsellor) => counsellor._id)
+      );
+      const formatted = publicCounsellors.map(counsellor => ({
         id: counsellor._id,
         name: `${counsellor.user.firstName} ${counsellor.user.lastName}`,
         specialization: counsellor.specialization,
@@ -324,7 +331,7 @@ router.get('/', [
         voiceIntroDurationSeconds: counsellor.voiceIntroDurationSeconds,
         bio: counsellor.bio,
         isAvailable: counsellor.isAvailable,
-        totalSessions: counsellor.totalSessions,
+        totalSessions: completedSessionCounts.get(counsellor._id.toString()) || 0,
       }));
 
       return {
@@ -517,6 +524,8 @@ router.get('/:id', [
       });
     }
 
+    const totalSessions = await countCompletedSessions(counsellor._id);
+
     // Format response
     const formattedCounsellor = {
       id: counsellor._id,
@@ -539,13 +548,13 @@ router.get('/:id', [
       sessionDuration: counsellor.sessionDuration,
       timezone: counsellor.timezone,
       isAvailable: counsellor.isAvailable,
-      totalSessions: counsellor.totalSessions,
+      totalSessions,
       // Only expose non-financial stats — totalEarnings/monthlyEarnings are internal
-      stats: counsellor.stats ? {
-        completedSessions:    counsellor.stats.completedSessions,
-        cancelledSessions:    counsellor.stats.cancelledSessions,
-        averageSessionRating: counsellor.stats.averageSessionRating,
-      } : undefined,
+      stats: {
+        completedSessions: totalSessions,
+        cancelledSessions: counsellor.stats?.cancelledSessions || 0,
+        averageSessionRating: counsellor.stats?.averageSessionRating || 0,
+      },
       gallery: counsellor.gallery
     };
 

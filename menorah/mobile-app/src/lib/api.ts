@@ -1,9 +1,9 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import { secureStorage } from './secureStorage';
-import { ENV } from './env';
-import { reportError, reportEvent } from './safeDiagnostics';
-import { invalidateLocalSession } from './authSession';
-import type { Article } from '@/types/article';
+import axios, { AxiosInstance, AxiosResponse } from "axios";
+import { secureStorage } from "./secureStorage";
+import { ENV } from "./env";
+import { reportError, reportEvent } from "./safeDiagnostics";
+import { invalidateLocalSession } from "./authSession";
+import type { Article } from "@/types/article";
 
 // Types
 export interface User {
@@ -39,7 +39,12 @@ export interface User {
   createdAt?: string;
 }
 
-export type KycStatus = 'not_started' | 'pending' | 'verified' | 'manual_review' | 'rejected';
+export type KycStatus =
+  | "not_started"
+  | "pending"
+  | "verified"
+  | "manual_review"
+  | "rejected";
 
 export interface KycVerification {
   id: string;
@@ -85,16 +90,23 @@ export interface Booking {
   counsellorName: string;
   counsellorImage?: string;
   specialization: string;
-  sessionType: 'video' | 'audio' | 'chat';
+  sessionType: "video" | "audio" | "chat";
   sessionDuration: number;
   scheduledAt: string;
-  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show' | 'expired';
+  status:
+    | "pending"
+    | "confirmed"
+    | "in-progress"
+    | "completed"
+    | "cancelled"
+    | "no-show"
+    | "expired";
   amount: number;
   currency: string;
-  paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
-  paymentMethod?: 'razorpay' | 'wallet' | 'subscription' | 'promo';
+  paymentStatus: "pending" | "paid" | "failed" | "refunded";
+  paymentMethod?: "razorpay" | "wallet" | "subscription" | "promo";
   paymentReviewRequired?: boolean;
-  paymentAction?: 'resume_payment' | 'contact_support' | null;
+  paymentAction?: "resume_payment" | "contact_support" | null;
   holdExpiresAt?: string | null;
   promo?: {
     code?: string;
@@ -104,12 +116,22 @@ export interface Booking {
   canBeCancelled: boolean;
   canBeRescheduled: boolean;
   createdAt?: string; // Date when booking was created/paid
+  chat?: {
+    roomId?: string;
+  };
 }
 
 export interface VideoRoomSession {
-  provider?: 'livekit' | 'vsee' | 'doxy' | 'zoom' | 'google_meet' | 'teams' | 'disabled';
-  joinMode?: 'in_app' | 'external_link' | 'disabled';
-  region?: 'IN' | 'AE' | 'UNKNOWN';
+  provider?:
+    | "livekit"
+    | "vsee"
+    | "doxy"
+    | "zoom"
+    | "google_meet"
+    | "teams"
+    | "disabled";
+  joinMode?: "in_app" | "external_link" | "disabled";
+  region?: "IN" | "AE" | "UNKNOWN";
   bookingId?: string;
   roomName?: string;
   roomId?: string;
@@ -151,18 +173,20 @@ export interface Message {
   id: string;
   senderId: string;
   senderName: string;
-  sender?: string | {
-    _id?: string;
-    firstName?: string;
-    lastName?: string;
-    profileImage?: string | null;
-  };
+  sender?:
+    | string
+    | {
+        _id?: string;
+        firstName?: string;
+        lastName?: string;
+        profileImage?: string | null;
+      };
   senderImage?: string | null;
   content: string;
   timestamp: string;
   createdAt?: string;
-  type: 'text' | 'image' | 'file';
-  status?: 'sent' | 'delivered' | 'read';
+  type: "text" | "image" | "file";
+  status?: "sent" | "delivered" | "read";
   roomId?: string;
 }
 
@@ -199,19 +223,54 @@ export interface ProfileImageUpload {
   type?: string;
 }
 
+export type AssessmentSeverity = "Minimal" | "Mild" | "Moderate" | "Severe";
+
+export interface Gad7Answer {
+  questionId: number;
+  value: number;
+}
+
+export interface Gad7Instrument {
+  assessmentType: "GAD-7";
+  assessmentVersion: string;
+  language: "en";
+  title: string;
+  timeframe: string;
+  disclaimer: string;
+  resultNotice: string;
+  questions: Array<{
+    questionId: number;
+    prompt: string;
+  }>;
+  responses: Array<{
+    value: number;
+    label: string;
+  }>;
+}
+
+export interface PsychometricAssessmentResult {
+  id: string;
+  assessmentType: "GAD-7";
+  assessmentVersion: string;
+  language: "en";
+  totalScore: number;
+  severityCategory: AssessmentSeverity;
+  completedAt: string;
+}
+
 // API Client
 class ApiClient {
   private client: AxiosInstance;
   private token: string | null = null;
 
   constructor() {
-    reportEvent('api.client_initialized');
-    
+    reportEvent("api.client_initialized");
+
     this.client = axios.create({
       baseURL: ENV.API_BASE_URL,
       timeout: 10000,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
     });
 
@@ -226,7 +285,7 @@ class ApiClient {
         }
         return config;
       },
-      (error) => Promise.reject(error)
+      (error) => Promise.reject(error),
     );
 
     // Response interceptor to handle token refresh and errors
@@ -241,11 +300,11 @@ class ApiClient {
           try {
             await secureStorage.clearToken();
           } catch (storageError) {
-            reportError('auth.token_cleanup_pending', storageError);
+            reportError("auth.token_cleanup_pending", storageError);
           }
         }
         return Promise.reject(error);
-      }
+      },
     );
   }
 
@@ -265,14 +324,14 @@ class ApiClient {
 
   // Helper method to remove undefined values from request data
   private cleanRequestData(data: any): any {
-    if (!data || typeof data !== 'object') {
+    if (!data || typeof data !== "object") {
       return data;
     }
-    
+
     if (Array.isArray(data)) {
-      return data.map(item => this.cleanRequestData(item));
+      return data.map((item) => this.cleanRequestData(item));
     }
-    
+
     const cleaned: any = {};
     for (const key of Object.keys(data)) {
       if (data[key] !== undefined) {
@@ -293,28 +352,32 @@ class ApiClient {
       if (config.data) {
         config.data = this.cleanRequestData(config.data);
       }
-      
+
       const response: AxiosResponse<ApiResponse<T>> = await this.client(config);
       return response.data;
     } catch (error: any) {
       // Check if it's a network error first
-      const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error');
-      
+      const isNetworkError =
+        error.code === "ERR_NETWORK" ||
+        error.code === "NETWORK_ERROR" ||
+        error.message?.includes("Network Error");
+
       if (isNetworkError) {
-        reportError('api.network_unavailable', error);
+        reportError("api.network_unavailable", error);
         return {
           success: false,
-          message: 'Network error: Unable to connect to server. Please check your internet connection and try again.'
+          message:
+            "Network error: Unable to connect to server. Please check your internet connection and try again.",
         };
       }
-      
+
       const responseData = error.response?.data;
-      reportError('api.request_failed', error);
-      
+      reportError("api.request_failed", error);
+
       if (responseData) {
         return responseData;
       }
-      
+
       throw error;
     }
   }
@@ -330,8 +393,8 @@ class ApiClient {
     gender: string;
   }): Promise<ApiResponse<{ user?: User; token?: string; email?: string }>> {
     return this.request({
-      method: 'POST',
-      url: '/auth/register',
+      method: "POST",
+      url: "/auth/register",
       data: {
         ...userData,
         firstName: userData.firstName.trim(),
@@ -343,23 +406,28 @@ class ApiClient {
     });
   }
 
-  async login(credentials: { email: string; password: string }): Promise<ApiResponse<{ user: User; token: string }>> {
+  async login(credentials: {
+    email: string;
+    password: string;
+  }): Promise<ApiResponse<{ user: User; token: string }>> {
     const payload = {
       email: credentials.email.trim().toLowerCase(),
       password: credentials.password,
     };
 
     return this.request({
-      method: 'POST',
-      url: '/auth/login',
+      method: "POST",
+      url: "/auth/login",
       data: payload,
     });
   }
 
-  async loginWithGoogle(credential: string): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
+  async loginWithGoogle(
+    credential: string,
+  ): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
     return this.request({
-      method: 'POST',
-      url: '/auth/google',
+      method: "POST",
+      url: "/auth/google",
       data: { credential },
     });
   }
@@ -371,79 +439,85 @@ class ApiClient {
     fullName?: string | null;
   }): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
     return this.request({
-      method: 'POST',
-      url: '/auth/apple',
+      method: "POST",
+      url: "/auth/apple",
       data,
     });
   }
 
   async verifyEmail(code: string): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'POST',
-      url: '/auth/verify-email',
+      method: "POST",
+      url: "/auth/verify-email",
       data: { code },
     });
   }
 
-  async verifyEmailOtp(email: string, otp: string): Promise<ApiResponse<{ user: User; token: string }>> {
+  async verifyEmailOtp(
+    email: string,
+    otp: string,
+  ): Promise<ApiResponse<{ user: User; token: string }>> {
     return this.request({
-      method: 'POST',
-      url: '/auth/verify-email-otp',
+      method: "POST",
+      url: "/auth/verify-email-otp",
       data: { email: this.normalizeEmail(email), otp: otp.trim() },
     });
   }
 
   async resendEmailVerification(email: string): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'POST',
-      url: '/auth/resend-email-verification',
+      method: "POST",
+      url: "/auth/resend-email-verification",
       data: { email: this.normalizeEmail(email) },
     });
   }
 
   async resendEmailOtp(email: string): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'POST',
-      url: '/auth/resend-email-otp',
+      method: "POST",
+      url: "/auth/resend-email-otp",
       data: { email: this.normalizeEmail(email) },
     });
   }
 
   async verifyPhone(phone: string, otp: string): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'POST',
-      url: '/auth/verify-phone',
+      method: "POST",
+      url: "/auth/verify-phone",
       data: { phone, otp },
     });
   }
 
   async forgotPassword(email: string): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'POST',
-      url: '/auth/forgot-password',
+      method: "POST",
+      url: "/auth/forgot-password",
       data: { email },
     });
   }
 
-  async resetPassword(token: string, password: string): Promise<ApiResponse<void>> {
+  async resetPassword(
+    token: string,
+    password: string,
+  ): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'POST',
-      url: '/auth/reset-password',
+      method: "POST",
+      url: "/auth/reset-password",
       data: { token, password },
     });
   }
 
   async getCurrentUser(): Promise<ApiResponse<{ user: User }>> {
     return this.request({
-      method: 'GET',
-      url: '/users/me',
+      method: "GET",
+      url: "/users/me",
     });
   }
 
   async logout(): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'POST',
-      url: '/auth/logout',
+      method: "POST",
+      url: "/auth/logout",
     });
   }
 
@@ -457,19 +531,26 @@ class ApiClient {
     minPrice?: number;
     page?: number;
     limit?: number;
-    sortBy?: 'rating' | 'price' | 'experience' | 'name';
-    sortOrder?: 'asc' | 'desc';
-  }): Promise<ApiResponse<{ counsellors: Counsellor[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {
+    sortBy?: "rating" | "price" | "experience" | "name";
+    sortOrder?: "asc" | "desc";
+  }): Promise<
+    ApiResponse<{
+      counsellors: Counsellor[];
+      pagination: { page: number; limit: number; total: number; pages: number };
+    }>
+  > {
     return this.request({
-      method: 'GET',
-      url: '/counsellors',
+      method: "GET",
+      url: "/counsellors",
       params,
     });
   }
 
-  async getCounsellor(id: string): Promise<ApiResponse<{ counsellor: Counsellor }>> {
+  async getCounsellor(
+    id: string,
+  ): Promise<ApiResponse<{ counsellor: Counsellor }>> {
     return this.request({
-      method: 'GET',
+      method: "GET",
       url: `/counsellors/${id}`,
     });
   }
@@ -478,10 +559,10 @@ class ApiClient {
     id: string,
     startDate: string,
     endDate: string,
-    duration?: number
+    duration?: number,
   ): Promise<ApiResponse<{ availability: any[] }>> {
     return this.request({
-      method: 'GET',
+      method: "GET",
       url: `/counsellors/${id}/availability`,
       params: { startDate, endDate, duration },
     });
@@ -493,39 +574,97 @@ class ApiClient {
     limit?: number;
     category?: string;
     q?: string;
-  }): Promise<ApiResponse<{ articles: Article[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {
+  }): Promise<
+    ApiResponse<{
+      articles: Article[];
+      pagination: { page: number; limit: number; total: number; pages: number };
+    }>
+  > {
     return this.request({
-      method: 'GET',
-      url: '/articles',
+      method: "GET",
+      url: "/articles",
       params,
     });
   }
 
   async getArticle(slug: string): Promise<ApiResponse<{ article: Article }>> {
     return this.request({
-      method: 'GET',
+      method: "GET",
       url: `/articles/${slug}`,
     });
   }
 
-  async getSpecializations(): Promise<ApiResponse<{ specializations: string[] }>> {
+  // English-only psychometric assessment API methods
+  async getGad7Instrument(): Promise<
+    ApiResponse<{ instrument: Gad7Instrument }>
+  > {
     return this.request({
-      method: 'GET',
-      url: '/counsellors/specializations',
+      method: "GET",
+      url: "/assessments/instruments/gad-7",
+    });
+  }
+
+  async submitGad7Assessment(
+    assessmentVersion: string,
+    answers: Gad7Answer[],
+    idempotencyKey: string,
+  ): Promise<
+    ApiResponse<{
+      assessment: PsychometricAssessmentResult;
+      replayed: boolean;
+    }>
+  > {
+    return this.request({
+      method: "POST",
+      url: "/assessments/gad-7",
+      headers: { "Idempotency-Key": idempotencyKey },
+      data: { assessmentVersion, answers },
+    });
+  }
+
+  async getAssessmentResults(limit = 20): Promise<
+    ApiResponse<{
+      assessments: PsychometricAssessmentResult[];
+    }>
+  > {
+    return this.request({
+      method: "GET",
+      url: "/assessments",
+      params: { limit },
+    });
+  }
+
+  async getAssessmentResult(id: string): Promise<
+    ApiResponse<{
+      assessment: PsychometricAssessmentResult;
+    }>
+  > {
+    return this.request({
+      method: "GET",
+      url: `/assessments/${id}`,
+    });
+  }
+
+  async getSpecializations(): Promise<
+    ApiResponse<{ specializations: string[] }>
+  > {
+    return this.request({
+      method: "GET",
+      url: "/counsellors/specializations",
     });
   }
 
   async getLanguages(): Promise<ApiResponse<{ languages: string[] }>> {
     return this.request({
-      method: 'GET',
-      url: '/counsellors/languages',
+      method: "GET",
+      url: "/counsellors/languages",
     });
   }
 
   // Bookings API Methods
   async createBooking(bookingData: {
     counsellorId?: string;
-    sessionType: 'video' | 'audio' | 'chat';
+    sessionType: "video" | "audio" | "chat";
     sessionDuration: number;
     scheduledAt: string;
     serviceCode?: string;
@@ -540,8 +679,8 @@ class ApiClient {
     emergencyContact?: any;
   }): Promise<ApiResponse<{ booking: Booking }>> {
     return this.request({
-      method: 'POST',
-      url: '/bookings',
+      method: "POST",
+      url: "/bookings",
       data: bookingData,
     });
   }
@@ -550,39 +689,46 @@ class ApiClient {
     status?: string;
     page?: number;
     limit?: number;
-  }): Promise<ApiResponse<{ bookings: Booking[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {
+  }): Promise<
+    ApiResponse<{
+      bookings: Booking[];
+      pagination: { page: number; limit: number; total: number; pages: number };
+    }>
+  > {
     return this.request({
-      method: 'GET',
-      url: '/bookings',
+      method: "GET",
+      url: "/bookings",
       params,
     });
   }
 
   async getBooking(id: string): Promise<ApiResponse<{ booking: Booking }>> {
     return this.request({
-      method: 'GET',
+      method: "GET",
       url: `/bookings/${id}`,
     });
   }
 
   async cancelBooking(id: string, reason?: string): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'PUT',
+      method: "PUT",
       url: `/bookings/${id}/cancel`,
       data: { reason },
     });
   }
 
-  async startSession(id: string): Promise<ApiResponse<{ roomUrl?: string; sessionType: string }>> {
+  async startSession(
+    id: string,
+  ): Promise<ApiResponse<{ roomUrl?: string; sessionType: string }>> {
     return this.request({
-      method: 'PUT',
+      method: "PUT",
       url: `/bookings/${id}/start`,
     });
   }
 
   async completeSession(id: string): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'PUT',
+      method: "PUT",
       url: `/bookings/${id}/complete`,
     });
   }
@@ -590,8 +736,8 @@ class ApiClient {
   // Payments API Methods
   async createCheckoutSession(bookingId: string): Promise<ApiResponse<any>> {
     return this.request({
-      method: 'POST',
-      url: '/payments/create-checkout-session',
+      method: "POST",
+      url: "/payments/create-checkout-session",
       data: { bookingId },
     });
   }
@@ -603,33 +749,33 @@ class ApiClient {
     bookingId: string;
   }): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'POST',
-      url: '/payments/verify-razorpay',
+      method: "POST",
+      url: "/payments/verify-razorpay",
       data: paymentData,
     });
   }
 
   async getPaymentStatus(bookingId: string): Promise<ApiResponse<any>> {
     return this.request({
-      method: 'GET',
+      method: "GET",
       url: `/payments/booking/${bookingId}`,
     });
   }
 
   async getRazorpayOrderStatus(orderId: string): Promise<ApiResponse<any>> {
     return this.request({
-      method: 'GET',
+      method: "GET",
       url: `/payments/order/${orderId}/status`,
     });
   }
 
   // Subscription Payment API Methods
   async createSubscriptionCheckout(
-    subscriptionType: 'weekly' | 'monthly' | 'yearly'
+    subscriptionType: "weekly" | "monthly" | "yearly",
   ): Promise<ApiResponse<any>> {
     return this.request({
-      method: 'POST',
-      url: '/payments/create-subscription-checkout',
+      method: "POST",
+      url: "/payments/create-subscription-checkout",
       data: { subscriptionType },
     });
   }
@@ -638,112 +784,141 @@ class ApiClient {
     razorpay_order_id?: string;
     razorpay_payment_id?: string;
     razorpay_signature?: string;
-    subscriptionType: 'weekly' | 'monthly' | 'yearly';
+    subscriptionType: "weekly" | "monthly" | "yearly";
     orderId?: string;
   }): Promise<ApiResponse<any>> {
     return this.request({
-      method: 'POST',
-      url: '/payments/verify-subscription-payment',
+      method: "POST",
+      url: "/payments/verify-subscription-payment",
       data: paymentData,
     });
   }
 
   async getSubscriptionStatus(): Promise<ApiResponse<any>> {
     return this.request({
-      method: 'GET',
-      url: '/payments/subscription/status',
+      method: "GET",
+      url: "/payments/subscription/status",
     });
   }
 
   // Chat API Methods
   async getChatRooms(): Promise<ApiResponse<{ chatRooms: ChatRoom[] }>> {
     return this.request({
-      method: 'GET',
-      url: '/chat/rooms',
+      method: "GET",
+      url: "/chat/rooms",
     });
   }
 
-  async getMessages(roomId: string, params?: { page?: number; limit?: number }): Promise<ApiResponse<{ messages: Message[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {
+  async getMessages(
+    roomId: string,
+    params?: { page?: number; limit?: number },
+  ): Promise<
+    ApiResponse<{
+      messages: Message[];
+      pagination: { page: number; limit: number; total: number; pages: number };
+    }>
+  > {
     return this.request({
-      method: 'GET',
+      method: "GET",
       url: `/chat/rooms/${roomId}/messages`,
       params,
     });
   }
 
-  async sendMessage(roomId: string, content: string, type: 'text' | 'image' | 'file' = 'text'): Promise<ApiResponse<{ message: Message }>> {
+  async sendMessage(
+    roomId: string,
+    content: string,
+    type: "text" | "image" | "file" = "text",
+  ): Promise<ApiResponse<{ message: Message }>> {
     return this.request({
-      method: 'POST',
+      method: "POST",
       url: `/chat/rooms/${roomId}/messages`,
       data: { content, type },
     });
   }
 
-  async markMessageAsRead(roomId: string, messageId: string): Promise<ApiResponse<void>> {
+  async markMessageAsRead(
+    roomId: string,
+    messageId: string,
+  ): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'PUT',
+      method: "PUT",
       url: `/chat/rooms/${roomId}/messages/${messageId}/read`,
     });
   }
 
-  async deleteMessage(roomId: string, messageId: string): Promise<ApiResponse<void>> {
+  async deleteMessage(
+    roomId: string,
+    messageId: string,
+  ): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'DELETE',
+      method: "DELETE",
       url: `/chat/rooms/${roomId}/messages/${messageId}`,
     });
   }
 
-  async sendTypingIndicator(roomId: string, isTyping: boolean): Promise<ApiResponse<void>> {
+  async sendTypingIndicator(
+    roomId: string,
+    isTyping: boolean,
+  ): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'POST',
+      method: "POST",
       url: `/chat/rooms/${roomId}/typing`,
       data: { isTyping },
     });
   }
 
   // Get available counselors for chat
-  async getAvailableCounsellors(): Promise<ApiResponse<{ counsellors: any[] }>> {
+  async getAvailableCounsellors(): Promise<
+    ApiResponse<{ counsellors: any[] }>
+  > {
     return this.request({
-      method: 'GET',
-      url: '/chat/available-counsellors',
+      method: "GET",
+      url: "/chat/available-counsellors",
     });
   }
 
   // Start a chat with a counselor
   async startChat(counsellorId: string): Promise<ApiResponse<{ room: any }>> {
     return this.request({
-      method: 'POST',
-      url: '/chat/start',
+      method: "POST",
+      url: "/chat/start",
       data: { counsellorId },
     });
   }
 
   // Video Call API Methods
-  async createVideoRoom(bookingId: string): Promise<ApiResponse<VideoRoomSession>> {
+  async createVideoRoom(
+    bookingId: string,
+  ): Promise<ApiResponse<VideoRoomSession>> {
     return this.request({
-      method: 'POST',
-      url: '/video/create-room',
+      method: "POST",
+      url: "/video/create-room",
       data: { bookingId },
     });
   }
 
-  async getVideoRoom(bookingId: string): Promise<ApiResponse<VideoRoomSession>> {
+  async getVideoRoom(
+    bookingId: string,
+  ): Promise<ApiResponse<VideoRoomSession>> {
     return this.request({
-      method: 'GET',
+      method: "GET",
       url: `/video/room/${bookingId}`,
     });
   }
 
-  async joinVideoRoom(bookingId: string): Promise<ApiResponse<VideoRoomSession>> {
+  async joinVideoRoom(
+    bookingId: string,
+  ): Promise<ApiResponse<VideoRoomSession>> {
     return this.request({
-      method: 'POST',
+      method: "POST",
       url: `/video/room/${bookingId}/join`,
     });
   }
 
   async leaveVideoRoom(bookingId: string): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'POST',
+      method: "POST",
       url: `/video/room/${bookingId}/leave`,
     });
   }
@@ -759,8 +934,8 @@ class ApiClient {
     profileImage?: string;
   }): Promise<ApiResponse<{ user: User }>> {
     return this.request({
-      method: 'PUT',
-      url: '/users/profile',
+      method: "PUT",
+      url: "/users/profile",
       data: profileData,
     });
   }
@@ -778,23 +953,23 @@ class ApiClient {
       const formData = new FormData();
 
       Object.entries(profileData).forEach(([key, value]) => {
-        if (!value || key === 'profileImage') {
+        if (!value || key === "profileImage") {
           return;
         }
         formData.append(key, String(value));
       });
 
       if (profileData.profileImage?.uri) {
-        formData.append('profileImage', {
+        formData.append("profileImage", {
           uri: profileData.profileImage.uri,
           name: profileData.profileImage.name || `profile-${Date.now()}.jpg`,
-          type: profileData.profileImage.type || 'image/jpeg',
+          type: profileData.profileImage.type || "image/jpeg",
         } as any);
       }
 
-      const response = await this.client.put('/users/profile', formData, {
+      const response = await this.client.put("/users/profile", formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          "Content-Type": "multipart/form-data",
         },
       });
 
@@ -805,17 +980,21 @@ class ApiClient {
         return errorResponse;
       }
 
-      const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error');
+      const isNetworkError =
+        error.code === "ERR_NETWORK" ||
+        error.code === "NETWORK_ERROR" ||
+        error.message?.includes("Network Error");
       if (isNetworkError) {
         return {
           success: false,
-          message: 'Network error: Unable to upload image. Please check your internet connection and try again.'
+          message:
+            "Network error: Unable to upload image. Please check your internet connection and try again.",
         };
       }
 
       return {
         success: false,
-        message: error.message || 'Failed to update profile image',
+        message: error.message || "Failed to update profile image",
       };
     }
   }
@@ -828,8 +1007,8 @@ class ApiClient {
     zipCode?: string;
   }): Promise<ApiResponse<{ user: User }>> {
     return this.request({
-      method: 'PUT',
-      url: '/users/address',
+      method: "PUT",
+      url: "/users/address",
       data: addressData,
     });
   }
@@ -840,16 +1019,19 @@ class ApiClient {
     phone?: string;
   }): Promise<ApiResponse<{ user: User }>> {
     return this.request({
-      method: 'PUT',
-      url: '/users/emergency-contact',
+      method: "PUT",
+      url: "/users/emergency-contact",
       data: contactData,
     });
   }
 
-  async changePassword(currentPassword: string, newPassword: string): Promise<ApiResponse<void>> {
+  async changePassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<ApiResponse<void>> {
     return this.request({
-      method: 'PUT',
-      url: '/users/change-password',
+      method: "PUT",
+      url: "/users/change-password",
       data: { currentPassword, newPassword },
     });
   }
@@ -860,16 +1042,40 @@ class ApiClient {
     push?: boolean;
   }): Promise<ApiResponse<{ user: User }>> {
     return this.request({
-      method: 'PUT',
-      url: '/users/notification-preferences',
+      method: "PUT",
+      url: "/users/notification-preferences",
       data: preferences,
     });
   }
 
-  async getKycStatus(): Promise<ApiResponse<{ status: KycStatus; verification: KycVerification | null }>> {
+  async registerPushDevice(payload: {
+    expoPushToken: string;
+    platform: "android";
+    projectId: string;
+  }): Promise<ApiResponse<{ registered: boolean }>> {
     return this.request({
-      method: 'GET',
-      url: '/ekyc/status',
+      method: "POST",
+      url: "/users/push-devices",
+      data: payload,
+    });
+  }
+
+  async unregisterPushDevice(
+    expoPushToken: string,
+  ): Promise<ApiResponse<{ registered: boolean }>> {
+    return this.request({
+      method: "DELETE",
+      url: "/users/push-devices",
+      data: { expoPushToken },
+    });
+  }
+
+  async getKycStatus(): Promise<
+    ApiResponse<{ status: KycStatus; verification: KycVerification | null }>
+  > {
+    return this.request({
+      method: "GET",
+      url: "/ekyc/status",
     });
   }
 
@@ -877,19 +1083,28 @@ class ApiClient {
     selfie: ProfileImageUpload;
     consentAccepted: boolean;
     consentVersion: string;
-  }): Promise<ApiResponse<{ status: KycStatus; verification: KycVerification; kyc: User['kyc'] }>> {
+  }): Promise<
+    ApiResponse<{
+      status: KycStatus;
+      verification: KycVerification;
+      kyc: User["kyc"];
+    }>
+  > {
     try {
       const formData = new FormData();
-      formData.append('consentAccepted', payload.consentAccepted ? 'true' : 'false');
-      formData.append('consentVersion', payload.consentVersion);
-      formData.append('selfie', {
+      formData.append(
+        "consentAccepted",
+        payload.consentAccepted ? "true" : "false",
+      );
+      formData.append("consentVersion", payload.consentVersion);
+      formData.append("selfie", {
         uri: payload.selfie.uri,
         name: payload.selfie.name || `selfie-${Date.now()}.jpg`,
-        type: payload.selfie.type || 'image/jpeg',
+        type: payload.selfie.type || "image/jpeg",
       } as any);
 
-      const response = await this.client.post('/ekyc/submit', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const response = await this.client.post("/ekyc/submit", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
         timeout: 30000,
       });
 
@@ -897,39 +1112,47 @@ class ApiClient {
     } catch (error: any) {
       const errorResponse = error.response?.data;
       const status = error.response?.status;
-      if (status === 413 || (typeof errorResponse === 'string' && errorResponse.includes('413 Request Entity Too Large'))) {
-        reportError('api.face_check_upload_limit', error);
+      if (
+        status === 413 ||
+        (typeof errorResponse === "string" &&
+          errorResponse.includes("413 Request Entity Too Large"))
+      ) {
+        reportError("api.face_check_upload_limit", error);
         return {
           success: false,
-          message: 'The selfie upload is being blocked by the server upload limit. Please try again later or skip the optional face check.',
+          message:
+            "The selfie upload is being blocked by the server upload limit. Please try again later or skip the optional face check.",
         };
       }
 
       if (errorResponse) {
-        reportError('api.face_check_submit_failed', error);
+        reportError("api.face_check_submit_failed", error);
         return errorResponse;
       }
 
-      const isNetworkError = error.code === 'ERR_NETWORK' || error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error');
+      const isNetworkError =
+        error.code === "ERR_NETWORK" ||
+        error.code === "NETWORK_ERROR" ||
+        error.message?.includes("Network Error");
       return {
         success: false,
         message: isNetworkError
-          ? 'Network error: Unable to submit the optional face check. Please check your connection and try again.'
-          : error.message || 'The optional face check failed',
+          ? "Network error: Unable to submit the optional face check. Please check your connection and try again."
+          : error.message || "The optional face check failed",
       };
     }
   }
 
   async updatePrivacyPreferences(preferences: {
-    profileVisibility?: 'public' | 'counsellors' | 'private';
+    profileVisibility?: "public" | "counsellors" | "private";
     showEmail?: boolean;
     showPhone?: boolean;
     allowMessages?: boolean;
   }): Promise<ApiResponse<void>> {
     // TODO: Confirm the production privacy-preferences endpoint path with the backend team.
     const response = await this.request<void>({
-      method: 'PUT',
-      url: '/users/privacy-preferences',
+      method: "PUT",
+      url: "/users/privacy-preferences",
       data: preferences,
     });
 
@@ -938,38 +1161,44 @@ class ApiClient {
       : {
           ...response,
           message: response.success
-            ? 'Privacy preferences saved.'
-            : 'Privacy preferences endpoint is not connected yet. Please contact support if you need this changed now.',
+            ? "Privacy preferences saved."
+            : "Privacy preferences endpoint is not connected yet. Please contact support if you need this changed now.",
         };
   }
 
-  async createAccountDeletionChallenge(): Promise<ApiResponse<{
-    challengeId: string;
-    nonce: string;
-    expiresAt: string;
-  }>> {
+  async createAccountDeletionChallenge(): Promise<
+    ApiResponse<{
+      challengeId: string;
+      nonce: string;
+      expiresAt: string;
+    }>
+  > {
     return this.request({
-      method: 'POST',
-      url: '/users/account/deletion-challenge',
-      data: { method: 'apple' },
+      method: "POST",
+      url: "/users/account/deletion-challenge",
+      data: { method: "apple" },
     });
   }
 
-  async requestAccountDeletion(payload:
-    | { method: 'password'; password: string }
-    | {
-        method: 'apple';
-        challengeId: string;
-        identityToken: string;
-        authorizationCode: string;
-      }
+  async requestAccountDeletion(
+    payload:
+      | { method: "password"; password: string }
+      | {
+          method: "apple";
+          challengeId: string;
+          identityToken: string;
+          authorizationCode: string;
+        },
   ): Promise<ApiResponse<void>> {
-    if (payload.method === 'password' && !payload.password.trim()) {
-      return { success: false, message: 'Enter your password to confirm account deletion.' };
+    if (payload.method === "password" && !payload.password.trim()) {
+      return {
+        success: false,
+        message: "Enter your password to confirm account deletion.",
+      };
     }
     return this.request<void>({
-      method: 'DELETE',
-      url: '/users/account',
+      method: "DELETE",
+      url: "/users/account",
       data: payload,
     });
   }
@@ -977,8 +1206,8 @@ class ApiClient {
   // Health check
   async healthCheck(): Promise<ApiResponse<any>> {
     return this.request({
-      method: 'GET',
-      url: '/health',
+      method: "GET",
+      url: "/health",
     });
   }
 }
@@ -992,7 +1221,7 @@ export async function listCounsellors(): Promise<Counsellor[]> {
     const response = await api.getCounsellors();
     return response.data?.counsellors || [];
   } catch (error) {
-    reportError('api.counsellors_fetch_failed', error);
+    reportError("api.counsellors_fetch_failed", error);
     return [];
   }
 }

@@ -346,6 +346,7 @@ bookingSchema.index({ 'videoCall.roomId': 1 });
 bookingSchema.index(
   { counsellor: 1, scheduledAt: 1 },
   {
+    name: 'counsellor_1_scheduledAt_1',
     unique: true,
     partialFilterExpression: {
       counsellor: { $exists: true, $type: 'objectId' },
