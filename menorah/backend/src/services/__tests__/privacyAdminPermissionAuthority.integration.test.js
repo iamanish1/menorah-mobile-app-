@@ -33,6 +33,7 @@ const userFields = (suffix) => ({
   gender: 'prefer-not-to-say',
   role: 'admin',
   isActive: true,
+  isEmailVerified: true,
   sessionVersion: 0,
 });
 
