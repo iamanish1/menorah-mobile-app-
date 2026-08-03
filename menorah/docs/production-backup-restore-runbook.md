@@ -17,6 +17,7 @@ daily/
 weekly/
 monthly/
 metadata/
+  integrity-epochs/
 restore-tests/
   sanitized/
 ```
@@ -28,10 +29,12 @@ The source backup set includes:
 - An encrypted, full-instance MongoDB archive with an oplog.
 - A mandatory encrypted uploads archive from the shared
   `MENORAH_DATA_ROOT/uploads` namespace.
-- A signed per-file media manifest (path, byte size, and SHA-256) and a signed
-  database-reference verification report linked to that exact manifest.
-- Signed metadata with the archive digest, exact deployed release, migration
+- A media manifest (path, byte size, and SHA-256) and database-reference
+  verification report linked to that exact manifest.
+- Source metadata with the archive digest, exact deployed release, migration
   marker, MongoDB Database Tools version, server version, FCV, and backup type.
+- Immutable signed evidence inside the configured integrity epoch that binds
+  every source artifact, metadata digest, restore result, and latest pointer.
 
 The full source archive contains MongoDB system identity data and is never a
 direct production-restore input. A successful isolated restore test derives a
@@ -56,9 +59,10 @@ Secrets are not written into git or normal logs. Env/secrets are represented as 
 ## Encryption Rule
 
 Set `BACKUP_ENCRYPTION_PASSWORD` in the host-only `production.env` before copying backups off-host.
-Set a distinct `BACKUP_INTEGRITY_HMAC_KEY` of at least 32 characters so source
-metadata, latest-success markers, sanitized metadata, and restore-test evidence
-can be authenticated.
+Set a distinct `BACKUP_INTEGRITY_HMAC_KEY` of at least 32 characters and the
+non-secret `BACKUP_INTEGRITY_EPOCH_ID`. New authenticated evidence is written
+only below `metadata/integrity-epochs/<epoch-id>/`; legacy root-level markers
+remain retained but cryptographically unverifiable and are never a fallback.
 
 For production, set:
 
@@ -133,6 +137,12 @@ Logs are written under `/opt/menorah/logs/` and rotated weekly.
 
 ## Retention Policy
 
+The historical retention values below describe the desired policy, but this
+release deliberately makes pruning preservation-only until an operator-approved
+epoch-aware deletion policy is implemented. It will not remove epoch records,
+their evidence or pointers, current/closed records, restore evidence, or legacy
+root-level markers.
+
 Default retention:
 
 - Manual: 30 days
@@ -167,8 +177,10 @@ The check verifies:
 
 - Backup root is mounted when required.
 - Latest daily backup is under `BACKUP_MAX_AGE_HOURS`.
-- The cadence-specific latest marker and source metadata have valid HMACs and
-  match the expected full-instance/oplog safety contract.
+- A complete active integrity epoch has valid signed start, completion, and
+  activation records; legacy root-level markers are ignored.
+- Fresh daily and weekly signed evidence chains both match the expected
+  full-instance/oplog safety contract.
 - Source MongoDB and mandatory uploads archives are canonical files inside the
   signed backup set, are above the configured minimum where applicable, and
   match both their checksum sidecars and signed digests.
@@ -176,8 +188,9 @@ The check verifies:
   Tools version, MongoDB 7 server version, and FCV `7.0`.
 - Backup disk usage is below `BACKUP_DISK_USAGE_MAX_PERCENT`.
 - RAID1 device is healthy when expected.
-- The restore-test marker is signed and no older than 24 hours. Production
-  refuses `CHECK_RESTORE_TEST=false` or a configured maximum above 24 hours.
+- The signed restore-test evidence is no older than 24 hours and is linked to
+  the current daily or weekly source. Production refuses
+  `CHECK_RESTORE_TEST=false` or a configured maximum above 24 hours.
 - The restore-test source is fresh and checksum-valid, and the derived
   `menorah.*` artifact, checksum, signed metadata, source digest linkage,
   release linkage, version linkage, and timestamp chain all match.
@@ -200,6 +213,9 @@ Run the deterministic lifecycle regression tests on a Linux host:
 ```bash
 bash scripts/qa/test-backup-lifecycle.sh
 ```
+
+For the future approved production transition and later rotations, follow the
+[backup-integrity epoch transition runbook](./backup-integrity-epoch-transition-runbook.md).
 
 ## Restore Test
 

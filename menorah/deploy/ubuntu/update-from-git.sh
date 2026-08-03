@@ -1651,6 +1651,21 @@ compose_cmd --profile backup-job stop -t "${DEPLOY_STOP_TIMEOUT_SECONDS:-60}" ba
 compose_cmd --profile backup-job rm -f backup-runner
 echo "Resolving the digest-pinned backup job image..."
 compose_cmd pull --policy always backup-runner
+if node "${SCRIPT_DIR}/backup-integrity-epoch.js" validate >/dev/null 2>&1; then
+  if [[ -n "${BACKUP_INTEGRITY_BOOTSTRAP:-}" ]]; then
+    echo "BACKUP_INTEGRITY_BOOTSTRAP is only valid when no complete epoch is selected." >&2
+    exit 1
+  fi
+else
+  if [[ "${BACKUP_INTEGRITY_BOOTSTRAP:-}" != "INITIALIZE_NEW_EPOCH" ]]; then
+    echo "A complete integrity epoch is required before the mandatory backup; use the reviewed explicit bootstrap mode for first adoption." >&2
+    exit 1
+  fi
+  echo "Initializing the explicitly requested immutable backup-integrity epoch..."
+  "${SCRIPT_DIR}/initialize-backup-integrity-epoch.sh" initial-establishment
+  "${SCRIPT_DIR}/activate-backup-integrity-epoch.sh"
+  node "${SCRIPT_DIR}/backup-integrity-epoch.js" validate >/dev/null
+fi
 echo "Creating a fresh pre-migration backup..."
 BACKUP_DEPLOYED_RELEASE_SHA="${PREVIOUS_SHA}" "${SCRIPT_DIR}/backup-now.sh" manual
 FRESH_BACKUP_EVIDENCE="$(node "${SCRIPT_DIR}/backup-integrity-epoch.js" get-backup-evidence manual)"
