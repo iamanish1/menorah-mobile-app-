@@ -171,20 +171,20 @@ function validateProject(root = projectRoot) {
   const androidPackageName = 'com.menorah.healthmobile';
 
   const expectedExpoVersions = {
-    expo: '~57.0.8',
+    expo: '~57.0.9',
     'expo-constants': '~57.0.7',
-    'expo-dev-client': '~57.0.9',
-    'expo-image-picker': '~57.0.6',
+    'expo-dev-client': '~57.0.10',
+    'expo-image-picker': '~57.0.7',
     'expo-linking': '~57.0.4',
-    'expo-updates': '~57.0.10',
+    'expo-updates': '~57.0.11',
     'react-native-screens': '~4.26.0',
   };
   for (const [name, expected] of Object.entries(expectedExpoVersions)) {
     fail(pkg.dependencies[name] === expected, `${name} must be ${expected}`);
   }
   fail(
-    pkg.devDependencies['@expo/metro-runtime'] === '~57.0.7',
-    '@expo/metro-runtime must be ~57.0.7'
+    pkg.devDependencies['@expo/metro-runtime'] === '~57.0.8',
+    '@expo/metro-runtime must be ~57.0.8'
   );
   fail(
     pkg.dependencies['expo-screen-capture'] === '~57.0.1',
@@ -199,8 +199,8 @@ function validateProject(root = projectRoot) {
     'unused STOMP client must not return to the production bundle'
   );
   fail(
-    wrapperPkg.dependencies.expo === '~57.0.8',
-    'nested mobile wrapper must use Expo ~57.0.8'
+    wrapperPkg.dependencies.expo === '~57.0.9',
+    'nested mobile wrapper must use Expo ~57.0.9'
   );
   fail(
     app.ios.bundleIdentifier === iosBundleIdentifier &&

@@ -94,6 +94,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ],
     'expo-image',
     'expo-localization',
+    [
+      'expo-notifications',
+      {
+        color: '#2d7a5c',
+        defaultChannel: 'general'
+      }
+    ],
     'expo-secure-store',
     'expo-status-bar',
     'expo-apple-authentication'

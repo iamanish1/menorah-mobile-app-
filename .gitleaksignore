@@ -33,6 +33,15 @@ b5e87b08f688d402c6f91cd65089ba01da130a37:menorah/backend/src/shared/app/__tests_
 6710f322e58af5237c017a465952934aab165df3:menorah/backend/src/services/__tests__/accountDeletionService.test.js:generic-api-key:402
 6710f322e58af5237c017a465952934aab165df3:menorah/backend/src/services/__tests__/accountDeletionService.test.js:generic-api-key:430
 
+# Reviewed synthetic password fixtures and the host example placeholder added
+# after the production-readiness remediation. These remain bound to their exact
+# historical commit, path, rule, and line.
+bf937717a203edaec28258f6c06905782d2aad06:menorah/backend/src/routes/__tests__/usersChangePassword.test.js:generic-api-key:99
+bf937717a203edaec28258f6c06905782d2aad06:menorah/backend/src/routes/__tests__/usersChangePassword.test.js:generic-api-key:134
+bf937717a203edaec28258f6c06905782d2aad06:menorah/backend/src/routes/__tests__/usersChangePassword.test.js:generic-api-key:177
+bf937717a203edaec28258f6c06905782d2aad06:menorah/scripts/qa/playwright/auth-regression.spec.js:generic-api-key:440
+45766c501fcba0d0758f5f63734895bc89dd24a5:menorah/deploy/env/home.env.example:generic-api-key:58
+
 # Incident SEC-2026-07-ANDROID-SIGNING. These suppress only the two known
 # historical findings while rotation and coordinated history rewriting occur.
 d9bb6686738c1c9aeeebc539cb83e9b62861ec85:menorah/mobile-app/credentials.json:generic-api-key:5
