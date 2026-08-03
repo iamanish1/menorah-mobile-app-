@@ -345,23 +345,47 @@ export function validateTunnelDocument(document, manifest) {
   return errors;
 }
 
-function extractCaddySites(caddySource) {
-  const sites = [];
+function caddyBraceDelta(sourceLine) {
+  return (sourceLine.match(/{/g) || []).length
+    - (sourceLine.match(/}/g) || []).length;
+}
+
+function extractCaddySiteBlocks(caddySource) {
+  const blocks = [];
+  let current = null;
+  let depth = 0;
+
   for (const sourceLine of caddySource.split(/\r?\n/)) {
     const line = sourceLine.trim();
-    if (!line.startsWith('http://') || !line.endsWith('{')) {
-      continue;
+    if (!current) {
+      if (!line.startsWith('http://') || !line.endsWith('{')) continue;
+
+      const declaration = line.slice(0, -1).trim();
+      const sites = declaration
+        .split(',')
+        .map((address) => address.trim())
+        .filter((address) => address.startsWith('http://'))
+        .map((address) => address.slice('http://'.length));
+      current = { sites, lines: [line] };
+      depth = caddyBraceDelta(sourceLine);
+    } else {
+      current.lines.push(line);
+      depth += caddyBraceDelta(sourceLine);
     }
 
-    const declaration = line.slice(0, -1).trim();
-    for (const address of declaration.split(',')) {
-      const trimmedAddress = address.trim();
-      if (trimmedAddress.startsWith('http://')) {
-        sites.push(trimmedAddress.slice('http://'.length));
-      }
+    if (current && depth === 0) {
+      blocks.push(current);
+      current = null;
     }
   }
-  return sites;
+
+  if (current) blocks.push(current);
+  return blocks;
+}
+
+function extractCaddySites(caddySource) {
+  return extractCaddySiteBlocks(caddySource)
+    .flatMap(({ sites }) => sites);
 }
 
 export function validateCaddySource(caddySource, manifest) {
@@ -463,20 +487,31 @@ export function validateCaddySource(caddySource, manifest) {
     || reverseProxyLines[0] !== 'reverse_proxy {args[0]} {'
   ) {
     errors.push(
-      'all Caddy upstreams must use the sanitized_reverse_proxy snippet',
+      'all Caddy upstreams must use the guarded upstream_proxy snippet',
     );
   }
-  const siteBlockCount = caddySource
-    .split(/\r?\n/)
-    .filter((line) => line.trim().startsWith('http://') && line.trim().endsWith('{'))
-    .length;
-  const sanitizedProxyImports = lines.filter(
-    (line) => line.startsWith('import sanitized_reverse_proxy '),
-  ).length;
-  if (sanitizedProxyImports !== siteBlockCount) {
-    errors.push(
-      'every Caddy production site must import sanitized_reverse_proxy exactly once',
-    );
+
+  for (const block of extractCaddySiteBlocks(caddySource)) {
+    const sanitizedRequestImports = block.lines.filter(
+      (line) => line === 'import sanitized_request',
+    ).length;
+    const sanitizedProxyImports = block.lines.filter(
+      (line) => line.startsWith('import sanitized_reverse_proxy '),
+    ).length;
+    if (sanitizedRequestImports + sanitizedProxyImports !== 1) {
+      errors.push(
+        `Caddy production site block ${block.sites.join(',')} must import exactly one request-sanitization boundary`,
+      );
+    }
+
+    const upstreamImports = block.lines.filter(
+      (line) => line.startsWith('import upstream_proxy '),
+    ).length;
+    if (sanitizedRequestImports === 1 && upstreamImports === 0) {
+      errors.push(
+        `Caddy production site block ${block.sites.join(',')} must route through upstream_proxy`,
+      );
+    }
   }
 
   return errors;

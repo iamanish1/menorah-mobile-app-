@@ -226,12 +226,45 @@ test('rejects a Caddy upstream that bypasses forwarding-header sanitization', as
     readFile(DEFAULT_CADDY_PATH, 'utf8'),
   ]);
   const unsafe = caddySource.replace(
-    'import sanitized_reverse_proxy api-web:8080',
+    'import upstream_proxy api-web:8080',
     'reverse_proxy api-web:8080',
   );
+  assert.notEqual(unsafe, caddySource);
   assert.match(
     validateCaddySource(unsafe, manifest).join('\n'),
-    /all Caddy upstreams must use|every Caddy production site must import/,
+    /all Caddy upstreams must use the guarded upstream_proxy snippet/,
+  );
+});
+
+test('rejects a Caddy site without one request-sanitization boundary', async () => {
+  const [manifest, caddySource] = await Promise.all([
+    readFile(DEFAULT_MANIFEST_PATH, 'utf8').then(JSON.parse),
+    readFile(DEFAULT_CADDY_PATH, 'utf8'),
+  ]);
+  const unsafe = caddySource.replace(
+    'http://{$API_WEB_DOMAIN} {\n\timport sanitized_request',
+    'http://{$API_WEB_DOMAIN} {',
+  );
+  assert.notEqual(unsafe, caddySource);
+  assert.match(
+    validateCaddySource(unsafe, manifest).join('\n'),
+    /site block \{\$API_WEB_DOMAIN\} must import exactly one request-sanitization boundary/,
+  );
+});
+
+test('rejects duplicate request sanitization inside one Caddy site', async () => {
+  const [manifest, caddySource] = await Promise.all([
+    readFile(DEFAULT_MANIFEST_PATH, 'utf8').then(JSON.parse),
+    readFile(DEFAULT_CADDY_PATH, 'utf8'),
+  ]);
+  const unsafe = caddySource.replace(
+    'http://{$API_WEB_DOMAIN} {\n\timport sanitized_request',
+    'http://{$API_WEB_DOMAIN} {\n\timport sanitized_request\n\timport sanitized_request',
+  );
+  assert.notEqual(unsafe, caddySource);
+  assert.match(
+    validateCaddySource(unsafe, manifest).join('\n'),
+    /site block \{\$API_WEB_DOMAIN\} must import exactly one request-sanitization boundary/,
   );
 });
 
