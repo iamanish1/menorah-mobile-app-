@@ -11,7 +11,7 @@
 #### Check Backend Server
 ```bash
 # Make sure your backend server is running
-cd Menorah/backend
+cd menorah/backend
 npm run dev
 ```
 
@@ -53,7 +53,7 @@ curl http://localhost:3000/health
 ```
 
 #### Verify CORS Configuration
-In `Menorah/backend/src/server.js`, ensure CORS includes your development URLs:
+In `menorah/backend/src/server.js`, ensure CORS includes your development URLs:
 ```javascript
 app.use(cors({
   origin: [
@@ -137,7 +137,7 @@ this.socket = io(socketUrl, {
 netstat -an | grep 3000
 
 # Check server logs
-cd Menorah/backend
+cd menorah/backend
 npm run dev
 
 # Test Socket.IO manually

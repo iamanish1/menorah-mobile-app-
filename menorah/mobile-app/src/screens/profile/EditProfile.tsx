@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Camera, Mail, Phone } from 'lucide-react-native';
 import { Image } from 'expo-image';
@@ -9,9 +9,22 @@ import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from "@/state/useAuth";
 import { api } from "@/lib/api";
+import { displayPhone, isUsablePhone } from '@/lib/authPolicy';
+import { reportError } from '@/lib/safeDiagnostics';
 
-export default function EditProfile({ navigation }: any) {
-  const { user, updateUser, logout } = useAuth();
+export default function EditProfile({ navigation, route }: any) {
+  const {
+    user,
+    updateUser,
+    logout,
+    requiresProfileCompletion,
+  } = useAuth();
+  const fromSocialAuth =
+    requiresProfileCompletion
+    || (
+      route?.params?.fromSocialAuth === true
+      && user?.profileCompleted !== true
+    );
   const [selectedImage, setSelectedImage] = useState<{
     uri: string;
     name?: string;
@@ -21,7 +34,7 @@ export default function EditProfile({ navigation }: any) {
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
     email: user?.email || '',
-    phone: user?.phone || '',
+    phone: displayPhone(user?.phone),
     dateOfBirth: user?.dateOfBirth || '',
     gender: user?.gender || 'prefer-not-to-say',
     profileImage: user?.profileImage || ''
@@ -40,7 +53,7 @@ export default function EditProfile({ navigation }: any) {
         firstName: user.firstName || '',
         lastName: user.lastName || '',
         email: user.email || '',
-        phone: user.phone || '',
+        phone: displayPhone(user.phone),
         dateOfBirth: user.dateOfBirth || '',
         gender: user.gender || 'prefer-not-to-say',
         profileImage: user.profileImage || ''
@@ -54,9 +67,18 @@ export default function EditProfile({ navigation }: any) {
       return;
     }
 
+    const normalizedPhone = formData.phone.replace(/[\s()-]/g, '');
+    if (fromSocialAuth && !isUsablePhone(normalizedPhone)) {
+      Alert.alert(
+        'Valid phone required',
+        'Enter your phone in international format with country code, for example +919876543210.',
+      );
+      return;
+    }
+
     setLoading(true);
     try {
-      const finalResponse = selectedImage
+      const profileResponse = selectedImage
         ? await api.updateProfileWithImage({
             firstName: formData.firstName,
             lastName: formData.lastName,
@@ -72,16 +94,41 @@ export default function EditProfile({ navigation }: any) {
             profileImage: formData.profileImage
           });
 
-      if (finalResponse.success && finalResponse.data) {
-        updateUser(finalResponse.data.user);
-        setSelectedImage(null);
-        Alert.alert('Success', 'Profile updated successfully!');
-        navigation.goBack();
-      } else {
-        Alert.alert('Error', finalResponse.message || 'Failed to update profile. Please try again.');
+      if (!profileResponse.success || !profileResponse.data?.user) {
+        Alert.alert('Error', profileResponse.message || 'Failed to update profile. Please try again.');
+        return;
       }
+
+      const finalResponse = fromSocialAuth
+        ? await api.completeProfile(normalizedPhone)
+        : profileResponse;
+
+      if (!finalResponse.success || !finalResponse.data?.user) {
+        Alert.alert(
+          'Could not complete profile',
+          finalResponse.message || 'Check your phone number and try again.',
+        );
+        return;
+      }
+
+      updateUser(finalResponse.data.user);
+      setSelectedImage(null);
+      Alert.alert(
+        fromSocialAuth ? 'Profile complete' : 'Success',
+        fromSocialAuth
+          ? 'Your contact details were saved. You can now use all patient features.'
+          : 'Profile updated successfully!',
+        [{
+          text: 'OK',
+          onPress: () => fromSocialAuth
+            ? navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] })
+            : navigation.canGoBack()
+              ? navigation.goBack()
+              : navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] }),
+        }],
+      );
     } catch (error: any) {
-      console.error('Error updating profile:', error);
+      reportError('profile.update_failed', error);
       Alert.alert('Error', 'Failed to update profile. Please try again.');
     } finally {
       setLoading(false);
@@ -89,66 +136,37 @@ export default function EditProfile({ navigation }: any) {
   };
 
   const handleDeleteAccount = () => {
+    navigation.navigate('Settings');
+  };
+
+  const handleBack = () => {
+    if (!fromSocialAuth) {
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
+      }
+      return;
+    }
+
     Alert.alert(
-      'Delete Account',
-      'This will request deletion of your account and personal data. Some records may be retained if required for legal, safety, payment, or dispute obligations.',
+      'Complete your profile',
+      'A verified phone number is required before you can continue. You can stay here or sign out.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Stay', style: 'cancel' },
         {
-          text: 'Request Deletion',
+          text: 'Sign out',
           style: 'destructive',
-          onPress: async () => {
-            setLoading(true);
-            try {
-              const response = await api.requestAccountDeletion();
-              if (response.success) {
-                Alert.alert(
-                  'Request Submitted',
-                  'Your account deletion request has been submitted. You will be signed out now.',
-                  [
-                    {
-                      text: 'OK',
-                      onPress: async () => {
-                        await logout();
-                        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
-                      },
-                    },
-                  ]
-                );
-              } else {
-                Alert.alert(
-                  'Request Not Submitted',
-                  response.message ||
-                    'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
-                );
-              }
-            } catch (error) {
-              console.error('Account deletion request error:', error);
-              Alert.alert(
-                'Request Not Submitted',
-                'Account deletion is not fully connected yet. Please contact support to request deletion manually.'
-              );
-            } finally {
-              setLoading(false);
-            }
-          },
-        }
-      ]
+          onPress: logout,
+        },
+      ],
     );
   };
 
   const handlePickImage = async () => {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permission.granted) {
-        Alert.alert(
-          'Permission Required',
-          'Please allow photo library access to upload a profile picture.'
-        );
-        return;
-      }
-
+      // The Android system photo picker avoids broad storage access. On iOS,
+      // launchImageLibraryAsync requests the scoped access it needs.
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -175,7 +193,7 @@ export default function EditProfile({ navigation }: any) {
         profileImage: asset.uri,
       }));
     } catch (error) {
-      console.error('Image picker error:', error);
+      reportError('profile.image_picker_failed', error);
       Alert.alert('Upload Failed', 'Unable to select image. Please try again.');
     }
   };
@@ -192,7 +210,7 @@ export default function EditProfile({ navigation }: any) {
         borderBottomLeftRadius: 24,
         borderBottomRightRadius: 24
       }}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={handleBack}>
           <ArrowLeft size={24} color="white" />
         </TouchableOpacity>
         <Text style={{ 
@@ -318,7 +336,7 @@ export default function EditProfile({ navigation }: any) {
             </View>
           </View>
           
-          {/* Phone - Read Only */}
+          {/* Phone is required for social-account profile completion. */}
           <View style={{ marginTop: 16 }}>
             <Text style={{ 
               fontSize: 14, 
@@ -328,25 +346,55 @@ export default function EditProfile({ navigation }: any) {
             }}>
               Phone Number
             </Text>
-            <View style={{
-              backgroundColor: colors.surface,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 16,
-              paddingHorizontal: 16,
-              paddingVertical: 12,
-              flexDirection: 'row',
-              alignItems: 'center'
-            }}>
-              <Phone size={20} color={colors.muted} style={{ marginRight: 12 }} />
-              <Text style={{ 
-                fontSize: 16, 
-                color: colors.muted,
-                flex: 1
+            {fromSocialAuth ? (
+              <View style={{
+                backgroundColor: colors.surface,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 16,
+                paddingHorizontal: 16,
+                flexDirection: 'row',
+                alignItems: 'center'
               }}>
-                {formData.phone}
+                <Phone size={20} color={colors.muted} style={{ marginRight: 12 }} />
+                <TextInput
+                  value={formData.phone}
+                  onChangeText={(phone) => setFormData({ ...formData, phone })}
+                  placeholder="+919876543210"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="phone-pad"
+                  autoComplete="tel"
+                  textContentType="telephoneNumber"
+                  style={{
+                    flex: 1,
+                    color: colors.cardText,
+                    paddingVertical: 14,
+                    fontSize: 16,
+                  }}
+                />
+              </View>
+            ) : (
+              <View style={{
+                backgroundColor: colors.surface,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 16,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                flexDirection: 'row',
+                alignItems: 'center'
+              }}>
+                <Phone size={20} color={colors.muted} style={{ marginRight: 12 }} />
+                <Text style={{ fontSize: 16, color: colors.muted, flex: 1 }}>
+                  {formData.phone || 'Not added'}
+                </Text>
+              </View>
+            )}
+            {fromSocialAuth ? (
+              <Text style={{ marginTop: 8, color: colors.muted, fontSize: 12, lineHeight: 17 }}>
+                Include the country code. This completes the required contact profile for your social account.
               </Text>
-            </View>
+            ) : null}
           </View>
         </View>
 
@@ -367,8 +415,8 @@ export default function EditProfile({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        {/* Delete Account */}
-        <View style={{ 
+        {/* Account deletion requires the authenticated Settings confirmation flow. */}
+        {!fromSocialAuth ? <View style={{
           marginTop: 32, 
           paddingTop: 24, 
           borderTopWidth: 1, 
@@ -386,7 +434,7 @@ export default function EditProfile({ navigation }: any) {
           >
             <Text style={{ color: colors.error, fontWeight: '600' }}>Delete Account</Text>
           </TouchableOpacity>
-        </View>
+        </View> : null}
       </ScrollView>
     </SafeAreaView>
   );

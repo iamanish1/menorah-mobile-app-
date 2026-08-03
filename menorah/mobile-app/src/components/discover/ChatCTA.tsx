@@ -37,7 +37,7 @@ export default function ChatCTA() {
             fontSize: 14,
             lineHeight: 20
           }}>
-            Speak with a trained clinical psychology student or another man just like you in a safe space.
+            Use secure chat with your assigned counsellor around your booking.
           </Text>
         </View>
         <View style={{

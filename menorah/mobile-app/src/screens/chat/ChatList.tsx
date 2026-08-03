@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   RefreshControl, Alert, Modal, TextInput,
@@ -15,6 +15,8 @@ import { palettes } from "@/theme/colors";
 import { useChat } from "@/state/useChat";
 import { useAuth } from "@/state/useAuth";
 import { api, ChatRoom } from "@/lib/api";
+import { reportError } from "@/lib/safeDiagnostics";
+import { useFocusEffect } from "@react-navigation/native";
 
 type FilterTab = 'all' | 'unread' | 'counsellors' | 'archived';
 
@@ -38,19 +40,40 @@ export default function ChatList({ navigation }: any) {
   const [loadingCounsellors, setLoadingCounsellors]     = useState(false);
   const [activeFilter, setActiveFilter]                 = useState<FilterTab>('all');
   const [searchQ, setSearchQ]                           = useState('');
+  const connectedOnceRef = useRef(isConnected);
+  const missedSocketEventsRef = useRef(false);
 
   const loadChatRooms = useCallback(async () => {
     setLoading(true);
     try {
       await fetchChatRooms();
     } catch (error) {
-      console.warn('[ChatList] Failed to load chat rooms:', error);
+      reportError('chat.list_fetch_failed', error);
     } finally {
       setLoading(false);
     }
   }, [fetchChatRooms]);
 
-  useEffect(() => { loadChatRooms(); }, [loadChatRooms]);
+  useFocusEffect(useCallback(() => {
+    loadChatRooms();
+  }, [loadChatRooms]));
+
+  useEffect(() => {
+    if (!isConnected) {
+      if (connectedOnceRef.current) missedSocketEventsRef.current = true;
+      return;
+    }
+
+    if (!connectedOnceRef.current) {
+      connectedOnceRef.current = true;
+      return;
+    }
+
+    if (missedSocketEventsRef.current) {
+      missedSocketEventsRef.current = false;
+      fetchChatRooms();
+    }
+  }, [fetchChatRooms, isConnected]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -255,10 +278,10 @@ export default function ChatList({ navigation }: any) {
                 </View>
               </View>
               <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: 4 }}>
-                Safe. Private. Personal.
+                Care conversations
               </Text>
               <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 18 }}>
-                Your conversations are end-to-end encrypted and always confidential.
+                Messages use secure connections and are stored to support your care conversation.
               </Text>
             </View>
 
@@ -446,10 +469,10 @@ export default function ChatList({ navigation }: any) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
-                  Turn on notifications
+                  View app notifications
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.muted }}>
-                  Never miss a reply from your counsellor.
+                  Review recent updates from this app.
                 </Text>
               </View>
               <ChevronRight size={16} color={colors.muted} strokeWidth={2.5} />
@@ -521,10 +544,10 @@ export default function ChatList({ navigation }: any) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
-                  Turn on notifications
+                  View app notifications
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.muted }}>
-                  Never miss a reply from your counsellor.
+                  Review recent updates from this app.
                 </Text>
               </View>
               <ChevronRight size={16} color={colors.muted} strokeWidth={2.5} />

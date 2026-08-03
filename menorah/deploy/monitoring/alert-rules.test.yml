@@ -1,0 +1,793 @@
+rule_files:
+  - alert-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: distinct frontend probes fire without overlapping the landing rule
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="landing-page",instance="http://landing-page:3002/"}'
+        values: '0 0 0 0 0'
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="user-web-app",instance="http://user-web-app:3002/"}'
+        values: '0 0 0 0 0'
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="admin-panel",instance="http://admin-panel:3003/"}'
+        values: '0 0 0 0 0'
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="counsellor-web",instance="http://web-app:3001/"}'
+        values: '0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: InternalFrontendProbeFailed
+        exp_alerts:
+          - exp_labels:
+              component: frontend
+              instance: "http://landing-page:3002/"
+              job: blackbox-http-internal
+              owner: web
+              service: landing-page
+              severity: critical
+            exp_annotations:
+              summary: "Internal frontend probe failed"
+              description: "landing-page at http://landing-page:3002/ is not serving an expected success response."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#internalfrontendprobefailed"
+      - eval_time: 4m
+        alertname: UserFrontendProbeFailed
+        exp_alerts:
+          - exp_labels:
+              component: frontend
+              instance: "http://user-web-app:3002/"
+              job: blackbox-http-internal
+              owner: web-response-owner-tbd
+              service: user-web-app
+              severity: critical
+            exp_annotations:
+              summary: "User frontend probe failed"
+              description: "The user web surface at http://user-web-app:3002/ has failed its expected HTTP success probe for three minutes."
+              resolution: "The alert resolves after the user frontend returns the expected HTTP success response."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#userfrontendprobefailed"
+      - eval_time: 4m
+        alertname: AdminFrontendProbeFailed
+        exp_alerts:
+          - exp_labels:
+              component: frontend
+              instance: "http://admin-panel:3003/"
+              job: blackbox-http-internal
+              owner: web-response-owner-tbd
+              service: admin-panel
+              severity: critical
+            exp_annotations:
+              summary: "Admin frontend probe failed"
+              description: "The administrator web surface at http://admin-panel:3003/ has failed its expected HTTP success probe for three minutes."
+              resolution: "The alert resolves after the administrator frontend returns the expected HTTP success response."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminfrontendprobefailed"
+      - eval_time: 4m
+        alertname: CounsellorFrontendProbeFailed
+        exp_alerts:
+          - exp_labels:
+              component: frontend
+              instance: "http://web-app:3001/"
+              job: blackbox-http-internal
+              owner: web-response-owner-tbd
+              service: counsellor-web
+              severity: critical
+            exp_annotations:
+              summary: "Counsellor frontend probe failed"
+              description: "The counsellor web surface at http://web-app:3001/ has failed its expected HTTP success probe for three minutes."
+              resolution: "The alert resolves after the counsellor frontend returns the expected HTTP success response."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#counsellorfrontendprobefailed"
+
+  - name: distinct frontend probes recover independently
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="user-web-app",instance="http://user-web-app:3002/"}'
+        values: '0 0 0 0 1 1'
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="admin-panel",instance="http://admin-panel:3003/"}'
+        values: '0 0 0 0 1 1'
+      - series: 'probe_success{job="blackbox-http-internal",component="frontend",service="counsellor-web",instance="http://web-app:3001/"}'
+        values: '0 0 0 0 1 1'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: UserFrontendProbeFailed
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: AdminFrontendProbeFailed
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: CounsellorFrontendProbeFailed
+        exp_alerts: []
+
+  - name: latest backup failure fires immediately and a later success resolves it
+    interval: 1m
+    input_series:
+      - series: 'menorah_backup_attempt_metadata_present{backup_type="six-hourly",job="node-exporter",instance="node-exporter:9100"}'
+        values: '1 1 1'
+      - series: 'menorah_backup_last_attempt_result{backup_type="six-hourly",job="node-exporter",instance="node-exporter:9100"}'
+        values: '0 0 1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: BackupJobFailed
+        exp_alerts:
+          - exp_labels:
+              backup_type: six-hourly
+              instance: node-exporter:9100
+              job: node-exporter
+              owner: backup-response-owner-tbd
+              severity: critical
+            exp_annotations:
+              summary: "Backup execution failed"
+              description: "The latest six-hourly backup attempt failed; the previous success marker remains unchanged."
+              resolution: "The alert resolves only after a later backup attempt for this bounded schedule type succeeds."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#backupjobfailed"
+      - eval_time: 2m
+        alertname: BackupJobFailed
+        exp_alerts: []
+
+  - name: checkpoint invalid and queue overflow deltas are immediate incidents
+    interval: 1m
+    input_series:
+      - series: 'menorah_security_audit_sink_failures_total{service="api-ios",reason="checkpoint_invalid",job="security-events",instance="api-ios:8080"}'
+        values: '0 1 1 1'
+      - series: 'menorah_security_audit_sink_failures_total{service="api-admin",reason="queue_overflow",job="security-events",instance="api-admin:8080"}'
+        values: '0 1 1 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: SecurityAuditEvidenceIntegrityFailure
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              reason: checkpoint_invalid
+              service: api-ios
+              severity: critical
+            exp_annotations:
+              summary: "Durable security-audit evidence is invalid or overflowing"
+              description: "api-ios recorded checkpoint_invalid in the durable audit sink; preserve evidence and follow the security-incident procedure."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditevidenceintegrityfailure"
+          - exp_labels:
+              owner: security
+              reason: queue_overflow
+              service: api-admin
+              severity: critical
+            exp_annotations:
+              summary: "Durable security-audit evidence is invalid or overflowing"
+              description: "api-admin recorded queue_overflow in the durable audit sink; preserve evidence and follow the security-incident procedure."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditevidenceintegrityfailure"
+
+  - name: sustained pending events and repeated write failures alert
+    interval: 1m
+    input_series:
+      - series: 'menorah_security_audit_sink_pending{service="api-web",job="security-events",instance="api-web:8080"}'
+        values: '1+0x16'
+      - series: 'menorah_security_audit_sink_failures_total{service="api-web",reason="database_unavailable",job="security-events",instance="api-web:8080"}'
+        values: '0 1 2 3 3 3 3 3 3 3 3 3 3 3 3 3 3'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: SecurityAuditSinkPending
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "Security-audit events remain outside the durable ledger"
+              description: "api-web has retained at least one audit event in its process-local queue for ten minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditsinkpending"
+      - eval_time: 9m
+        alertname: SecurityAuditSinkWriteFailures
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "Durable security-audit writes are repeatedly failing"
+              description: "api-web recorded at least three audit-sink write failures in ten minutes, sustained across the five-minute hold."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securityauditsinkwritefailures"
+
+  - name: an admin permission denial is independently visible
+    interval: 1m
+    input_series:
+      - series: 'menorah_security_events_total{event="admin_permission_denied",outcome="failure",service="api-admin",job="security-events",instance="api-admin:8080"}'
+        values: '0 1 1 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: AdminPermissionDenied
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              service: api-admin
+              severity: critical
+            exp_annotations:
+              summary: "An admin permission check denied an operation"
+              description: "api-admin recorded an admin permission denial in the last five minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminpermissiondenied"
+
+  - name: security metrics alert when one scrape fails or a target disappears
+    interval: 1m
+    input_series:
+      - series: 'up{job="security-events",instance="api-ios:8080"}'
+        values: '0 0 0 0'
+      - series: 'up{job="security-events",instance="api-android:8080"}'
+        values: '1 1 1 1'
+      - series: 'up{job="security-events",instance="api-web:8080"}'
+        values: '1 1 1 1'
+      - series: 'up{job="security-events",instance="api-admin:8080"}'
+        values: '1 1 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: SecurityMetricsScrapeFailed
+        exp_alerts:
+          - exp_labels:
+              instance: api-ios:8080
+              job: security-events
+              owner: security
+              severity: critical
+            exp_annotations:
+              summary: "A security-event metrics endpoint is unavailable"
+              description: "api-ios:8080 has not supplied security-event metrics for two minutes; alert coverage for that service is blind."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securitymetricsscrapefailed"
+      - eval_time: 3m
+        alertname: SecurityMetricsCoverageIncomplete
+        exp_alerts:
+          - exp_labels:
+              owner: security
+              severity: critical
+            exp_annotations:
+              summary: "Security-event metrics target coverage is incomplete"
+              description: "Fewer than the five required API and worker security-event targets are registered in Prometheus."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securitymetricscoverageincomplete"
+
+  - name: absent security metrics job cannot fail open
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: SecurityMetricsCoverageIncomplete
+        exp_alerts:
+          - exp_labels:
+              job: security-events
+              owner: security
+              severity: critical
+            exp_annotations:
+              summary: "Security-event metrics target coverage is incomplete"
+              description: "Fewer than the five required API and worker security-event targets are registered in Prometheus."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#securitymetricscoverageincomplete"
+
+  - name: internal API outage becomes critical after the hold period
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox-http-internal",component="api",service="api-ios",instance="http://api-ios:8080/health/ready"}'
+        values: '0 0 0 0'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: InternalApiProbeFailed
+        exp_alerts:
+          - exp_labels:
+              component: api
+              instance: http://api-ios:8080/health/ready
+              job: blackbox-http-internal
+              owner: backend
+              service: api-ios
+              severity: critical
+            exp_annotations:
+              summary: "Internal API readiness probe failed"
+              description: "api-ios at http://api-ios:8080/health/ready has failed readiness probes for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#internalapiprobefailed"
+
+  - name: database exporters distinguish exporter and database health
+    interval: 1m
+    input_series:
+      - series: 'up{job="mongodb-exporter",instance="mongodb-exporter:9216"}'
+        values: '1 1 1 1'
+      - series: 'mongodb_up{job="mongodb-exporter",instance="mongodb-exporter:9216"}'
+        values: '0 0 0 0'
+      - series: 'mongodb_mongod_replset_my_state{job="mongodb-exporter",instance="mongodb-exporter:9216"}'
+        values: '2 2 2 2 2 2 2'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: MongoUnavailable
+        exp_alerts:
+          - exp_labels:
+              instance: mongodb-exporter:9216
+              job: mongodb-exporter
+              owner: data-platform
+              severity: critical
+            exp_annotations:
+              summary: "MongoDB exporter cannot query MongoDB"
+              description: "The exporter is running but its authenticated MongoDB health query is failing."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mongounavailable"
+      - eval_time: 6m
+        alertname: MongoReplicaNotPrimary
+        exp_alerts:
+          - exp_labels:
+              instance: mongodb-exporter:9216
+              job: mongodb-exporter
+              owner: data-platform
+              severity: critical
+            exp_annotations:
+              summary: "MongoDB member is not PRIMARY"
+              description: "The production single-member replica set has reported state 2 instead of PRIMARY (1) for five minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mongoreplicanotprimary"
+
+  - name: stale backup metadata is detected
+    interval: 5m
+    input_series:
+      - series: 'menorah_backup_metrics_last_run_timestamp_seconds{job="node-exporter",instance="node-exporter:9100"}'
+        values: '0 0 0 0 0 0'
+      - series: 'menorah_backup_metadata_present{backup_type="daily",job="node-exporter",instance="node-exporter:9100"}'
+        values: '0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: BackupMetricsStale
+        exp_alerts:
+          - exp_labels:
+              instance: node-exporter:9100
+              job: node-exporter
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Backup metadata exporter is stale"
+              description: "Backup telemetry has not refreshed for more than fifteen minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#backupmetricsstale"
+      - eval_time: 25m
+        alertname: DailyBackupMissing
+        exp_alerts:
+          - exp_labels:
+              backup_type: daily
+              instance: node-exporter:9100
+              job: node-exporter
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Daily backup success marker is missing"
+              description: "No daily backup success metadata is visible to the monitoring sidecar."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#dailybackupmissing"
+      - eval_time: 25m
+        alertname: DailyBackupTooOld
+        exp_alerts: []
+
+  - name: missing six-hourly recovery point is detected
+    interval: 5m
+    input_series:
+      - series: 'menorah_backup_metadata_present{backup_type="six-hourly",job="node-exporter",instance="node-exporter:9100"}'
+        values: '0 0 0 0 0'
+      - series: 'menorah_backup_last_success_timestamp_seconds{backup_type="six-hourly",job="node-exporter",instance="node-exporter:9100"}'
+        values: '0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: SixHourlyBackupTooOld
+        exp_alerts:
+          - exp_labels:
+              backup_type: six-hourly
+              instance: node-exporter:9100
+              job: node-exporter
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Six-hourly backup is missing or older than six hours"
+              description: "The highest-frequency recovery point is absent or outside its approved schedule window."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#sixhourlybackuptooold"
+
+  - name: restore evidence beyond the hard 24-hour window is detected
+    interval: 5m
+    input_series:
+      - series: 'menorah_restore_test_metadata_present{job="node-exporter",instance="node-exporter:9100"}'
+        values: '1+0x300'
+      - series: 'menorah_restore_test_last_success_timestamp_seconds{job="node-exporter",instance="node-exporter:9100"}'
+        values: '0+0x300'
+    alert_rule_test:
+      - eval_time: 24h35m
+        alertname: RestoreTestTooOld
+        exp_alerts:
+          - exp_labels:
+              instance: node-exporter:9100
+              job: node-exporter
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Restore test is missing or older than 24 hours"
+              description: "The latest successful isolated restore-test marker is absent or stale."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#restoretesttooold"
+
+  - name: absent backup telemetry is detected
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: BackupMetricsStale
+        exp_alerts:
+          - exp_labels:
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Backup metadata exporter is stale"
+              description: "Backup telemetry has not refreshed for more than fifteen minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#backupmetricsstale"
+
+  - name: healthy exporter scrape without fresh named container series cannot fail open
+    interval: 1m
+    input_series:
+      - series: 'up{job="docker-stats-exporter",instance="docker-stats-exporter:9250"}'
+        values: '1 1 1 1 1 1 1'
+      - series: 'menorah_docker_exporter_collection_success{job="docker-stats-exporter",instance="docker-stats-exporter:9250"}'
+        values: '0 0 0 0 0 0 0'
+      - series: 'menorah_docker_exporter_last_success_timestamp_seconds{job="docker-stats-exporter",instance="docker-stats-exporter:9250"}'
+        values: '0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ContainerMetricsCoverageMissing
+        exp_alerts:
+          - exp_labels:
+              owner: infrastructure
+              severity: critical
+            exp_annotations:
+              summary: "Docker stats collection is missing or stale"
+              description: "The exporter scrape may be up, but its Docker API collection failed, is stale, or contains no named container series."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#containermetricscoveragemissing"
+
+  - name: healthy datastore exporter scrapes without health metrics cannot fail open
+    interval: 1m
+    input_series:
+      - series: 'up{job="mongodb-exporter",instance="mongodb-exporter:9216"}'
+        values: '1 1 1 1 1 1 1'
+      - series: 'up{job="redis-exporter",instance="redis-exporter:9121"}'
+        values: '1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: MongoMetricsCoverageMissing
+        exp_alerts:
+          - exp_labels:
+              job: mongodb-exporter
+              owner: data-platform
+              severity: critical
+            exp_annotations:
+              summary: "MongoDB health metric is absent"
+              description: "The exporter scrape may be up, but it is not exposing the required mongodb_up health metric."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#mongometricscoveragemissing"
+      - eval_time: 6m
+        alertname: RedisMetricsCoverageMissing
+        exp_alerts:
+          - exp_labels:
+              job: redis-exporter
+              owner: data-platform
+              severity: critical
+            exp_annotations:
+              summary: "Redis health metric is absent"
+              description: "The exporter scrape may be up, but it is not exposing the required redis_up health metric."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#redismetricscoveragemissing"
+
+  - name: bounded HTTP auth and role-change signals fire independently
+    interval: 1m
+    input_series:
+      - series: 'menorah_auth_attempts_total{service="api-web",subject="user",method="password",outcome="failure"}'
+        values: '0 11 22 33 44 55 66 77'
+      - series: 'menorah_auth_attempts_total{service="api-web",subject="counsellor",method="password",outcome="failure"}'
+        values: '0 6 12 18 24 30 36 42'
+      - series: 'menorah_auth_attempts_total{service="api-admin",subject="admin",method="mfa",outcome="failure"}'
+        values: '0 3 6 9 12 15 18 21'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/auth/*",status="401"}'
+        values: '0 13 26 39 52 65 78 91'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/admin/*",status="403"}'
+        values: '0 5 10 15 20 25 30 35'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/other",status="429"}'
+        values: '0 13 26 39 52 65 78 91'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/bookings/*",status="500"}'
+        values: '0 3 6 9 12 15 18 21'
+      - series: 'menorah_privilege_changes_total{service="api-web",category="privileged_role",outcome="success"}'
+        values: '0 1 1 1 1 1 1 1'
+      - series: 'menorah_privilege_changes_total{service="api-admin",category="admin_role",outcome="success"}'
+        values: '0 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: UserAuthenticationFailureSpike
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-web
+              subject: user
+              severity: warning
+            exp_annotations:
+              summary: "User authentication failures exceed the expected threshold"
+              description: "More than 20 bounded user authentication failures occurred in ten minutes."
+              resolution: "The alert resolves after the rolling ten-minute user failure count remains below the threshold for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#userauthenticationfailurespike"
+      - eval_time: 4m
+        alertname: CounsellorAuthenticationFailureSpike
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-web
+              subject: counsellor
+              severity: critical
+            exp_annotations:
+              summary: "Counsellor authentication failures exceed the expected threshold"
+              description: "More than ten bounded counsellor authentication failures occurred in ten minutes."
+              resolution: "The alert resolves after the rolling ten-minute counsellor failure count remains below the threshold for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#counsellorauthenticationfailurespike"
+      - eval_time: 4m
+        alertname: AdminAuthenticationMfaFailureSpike
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-admin
+              subject: admin
+              severity: critical
+            exp_annotations:
+              summary: "Administrator password or MFA failures exceed the expected threshold"
+              description: "More than five bounded administrator password or MFA failures occurred in ten minutes."
+              resolution: "The alert resolves after the rolling ten-minute administrator failure count remains below the threshold for one minute."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminauthenticationmfafailurespike"
+      - eval_time: 4m
+        alertname: ElevatedHttp401Rate
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "HTTP 401 responses are elevated"
+              description: "api-web returned at least 25 HTTP 401 responses in five minutes."
+              resolution: "The alert resolves after the rolling five-minute 401 count remains below 25 for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp401rate"
+      - eval_time: 4m
+        alertname: ElevatedHttp403Rate
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "HTTP 403 responses are elevated"
+              description: "api-web returned at least 10 HTTP 403 responses in five minutes."
+              resolution: "The alert resolves after the rolling five-minute 403 count remains below 10 for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp403rate"
+      - eval_time: 7m
+        alertname: ElevatedHttp429Rate
+        exp_alerts:
+          - exp_labels:
+              owner: platform-response-owner-tbd
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "HTTP 429 responses are elevated"
+              description: "api-web returned at least 25 HTTP 429 responses in five minutes."
+              resolution: "The alert resolves after the rolling five-minute 429 count remains below 25 for five minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp429rate"
+      - eval_time: 4m
+        alertname: ElevatedHttp500Rate
+        exp_alerts:
+          - exp_labels:
+              owner: backend-response-owner-tbd
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "HTTP 500 responses are elevated"
+              description: "api-web returned at least five HTTP 500 responses in five minutes."
+              resolution: "The alert resolves after the rolling five-minute 500 count remains below five for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#elevatedhttp500rate"
+      - eval_time: 2m
+        alertname: PrivilegedRoleChanged
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "A privileged role assignment changed"
+              description: "api-web recorded a counsellor privileged-role assignment, removal, or transition in the last five minutes."
+              resolution: "The event alert resolves when the five-minute change window expires; the signed audit event remains durable evidence."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#privilegedrolechanged"
+      - eval_time: 2m
+        alertname: AdminRoleChanged
+        exp_alerts:
+          - exp_labels:
+              owner: security-response-owner-tbd
+              service: api-admin
+              severity: critical
+            exp_annotations:
+              summary: "An administrator role assignment changed"
+              description: "api-admin recorded an administrator role assignment, removal, or transition in the last five minutes."
+              resolution: "The event alert resolves when the five-minute change window expires; the signed audit event remains durable evidence."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#adminrolechanged"
+
+  - name: bounded HTTP auth and role-change signals resolve after quiet windows
+    interval: 1m
+    input_series:
+      - series: 'menorah_auth_attempts_total{service="api-web",subject="user",method="password",outcome="failure"}'
+        values: '0 30+0x20'
+      - series: 'menorah_auth_attempts_total{service="api-web",subject="counsellor",method="password",outcome="failure"}'
+        values: '0 20+0x20'
+      - series: 'menorah_auth_attempts_total{service="api-admin",subject="admin",method="mfa",outcome="failure"}'
+        values: '0 10+0x20'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/auth/*",status="401"}'
+        values: '0 30+0x20'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/admin/*",status="403"}'
+        values: '0 15+0x20'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/other",status="429"}'
+        values: '0 30+0x20'
+      - series: 'menorah_http_responses_total{service="api-web",route="/api/bookings/*",status="500"}'
+        values: '0 10+0x20'
+      - series: 'menorah_privilege_changes_total{service="api-web",category="privileged_role",outcome="success"}'
+        values: '0 1+0x20'
+      - series: 'menorah_privilege_changes_total{service="api-admin",category="admin_role",outcome="success"}'
+        values: '0 1+0x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: UserAuthenticationFailureSpike
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: CounsellorAuthenticationFailureSpike
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: AdminAuthenticationMfaFailureSpike
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ElevatedHttp401Rate
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ElevatedHttp403Rate
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ElevatedHttp429Rate
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ElevatedHttp500Rate
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PrivilegedRoleChanged
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: AdminRoleChanged
+        exp_alerts: []
+
+  - name: queue payment email and call reliability signals fire from bounded producers
+    interval: 1m
+    input_series:
+      - series: 'menorah_queue_pending_jobs{service="worker",queue="provider_revocation"}'
+        values: '30+0x10'
+      - series: 'menorah_payment_operations_total{service="api-admin",provider="razorpay",operation="payout",outcome="failure"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10'
+      - series: 'menorah_payment_webhook_events_total{service="api-web",provider="razorpay",event="relationship",outcome="failure"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10'
+      - series: 'menorah_email_dispatch_total{service="api-web",provider="resend",outcome="failure"}'
+        values: '0 2 4 6 8 10 12 14 16 18 20'
+      - series: 'menorah_email_delivery_outcomes_total{service="api-web",provider="resend",outcome="bounced"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10'
+      - series: 'menorah_call_provider_operations_total{service="api-web",provider="livekit",operation="connect",outcome="failure"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10'
+      - series: 'menorah_call_media_outcomes_total{service="api-web",provider="livekit",media="video",outcome="failure"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: WorkerQueueBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              owner: worker-response-owner-tbd
+              queue: provider_revocation
+              service: worker
+              severity: critical
+            exp_annotations:
+              summary: "A durable worker queue is not draining safely"
+              description: "worker queue provider_revocation has sustained size, age, retry, dead-letter, failure, or heartbeat pressure."
+              resolution: "The alert resolves after every queue threshold and the worker heartbeat remain healthy for five minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#workerqueuebackloghigh"
+      - eval_time: 7m
+        alertname: PaymentProviderFailure
+        exp_alerts:
+          - exp_labels:
+              operation: payout
+              owner: payments-response-owner-tbd
+              provider: razorpay
+              service: api-admin
+              severity: critical
+            exp_annotations:
+              summary: "Payment provider operations are failing"
+              description: "razorpay operation payout on api-admin crossed its bounded failure threshold."
+              resolution: "The alert resolves after the rolling five-minute provider failure count remains below threshold for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#paymentproviderfailure"
+      - eval_time: 7m
+        alertname: PaymentWebhookFailure
+        exp_alerts:
+          - exp_labels:
+              event: relationship
+              owner: payments-response-owner-tbd
+              provider: razorpay
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "Payment webhook validation or reconciliation is failing"
+              description: "razorpay webhook event relationship on api-web crossed its failure threshold."
+              resolution: "The alert resolves after the rolling five-minute webhook failure count remains below threshold for one minute."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#paymentwebhookfailure"
+      - eval_time: 7m
+        alertname: EmailDispatchFailed
+        exp_alerts:
+          - exp_labels:
+              owner: messaging-response-owner-tbd
+              provider: resend
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "Email dispatch requests are failing"
+              description: "resend dispatch on api-web failed at least three times in five minutes."
+              resolution: "The alert resolves after the rolling five-minute dispatch failure count remains below three for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#emaildispatchfailed"
+      - eval_time: 7m
+        alertname: EmailDeliveryOutcomeFailed
+        exp_alerts:
+          - exp_labels:
+              outcome: bounced
+              owner: messaging-response-owner-tbd
+              provider: resend
+              service: api-web
+              severity: warning
+            exp_annotations:
+              summary: "The email provider reported a terminal delivery outcome"
+              description: "resend reported bounced delivery outcomes on api-web."
+              resolution: "The event alert resolves after the ten-minute provider callback window expires and remains quiet for one minute."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#emaildeliveryoutcomefailed"
+      - eval_time: 7m
+        alertname: CallProviderFailure
+        exp_alerts:
+          - exp_labels:
+              operation: connect
+              owner: calls-response-owner-tbd
+              provider: livekit
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "Call provider operations are failing"
+              description: "livekit operation connect on api-web failed at least twice in five minutes."
+              resolution: "The alert resolves after the rolling five-minute call provider failure count remains below two for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#callproviderfailure"
+      - eval_time: 7m
+        alertname: CallMediaFailure
+        exp_alerts:
+          - exp_labels:
+              media: video
+              owner: calls-response-owner-tbd
+              provider: livekit
+              service: api-web
+              severity: critical
+            exp_annotations:
+              summary: "Call media establishment is failing"
+              description: "livekit video establishment on api-web failed at least twice in five minutes."
+              resolution: "The alert resolves after the rolling five-minute media failure count remains below two for two minutes."
+              runbook_url: "https://github.com/menorahsoftware-cmyk/menorah-mobile-app-/blob/release/final-production-readiness/menorah/docs/monitoring-alert-runbook.md#callmediafailure"
+
+  - name: queue payment email and call reliability signals recover after quiet windows
+    interval: 1m
+    input_series:
+      - series: 'menorah_queue_pending_jobs{service="worker",queue="provider_revocation"}'
+        values: '30 0+0x25'
+      - series: 'menorah_payment_operations_total{service="api-admin",provider="razorpay",operation="payout",outcome="failure"}'
+        values: '0 2+0x25'
+      - series: 'menorah_payment_webhook_events_total{service="api-web",provider="razorpay",event="relationship",outcome="failure"}'
+        values: '0 2+0x25'
+      - series: 'menorah_email_dispatch_total{service="api-web",provider="resend",outcome="failure"}'
+        values: '0 5+0x25'
+      - series: 'menorah_email_delivery_outcomes_total{service="api-web",provider="resend",outcome="bounced"}'
+        values: '0 1+0x25'
+      - series: 'menorah_call_provider_operations_total{service="api-web",provider="livekit",operation="connect",outcome="failure"}'
+        values: '0 3+0x25'
+      - series: 'menorah_call_media_outcomes_total{service="api-web",provider="livekit",media="video",outcome="failure"}'
+        values: '0 3+0x25'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: WorkerQueueBacklogHigh
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: PaymentProviderFailure
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: PaymentWebhookFailure
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: EmailDispatchFailed
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: EmailDeliveryOutcomeFailed
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: CallProviderFailure
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: CallMediaFailure
+        exp_alerts: []

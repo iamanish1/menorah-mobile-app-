@@ -2,8 +2,8 @@ import { ArrowLeft, Phone, MessageCircle, Globe, AlertTriangle } from 'lucide-re
 import Link from 'next/link';
 
 const resources = [
-  { name: 'iCall (India)',          phone: '9152987821',    type: 'phone',   desc: 'Free psychological counselling' },
-  { name: 'Vandrevala Foundation',  phone: '1860-2662-345', type: 'phone',   desc: '24/7 mental health helpline (India)' },
+  { name: 'iCall (India)',          phone: '9152987821',    type: 'phone',   desc: 'Psychological counselling helpline; verify current terms and hours' },
+  { name: 'Vandrevala Foundation',  phone: '1860-2662-345', type: 'phone',   desc: 'Mental health helpline (India); verify current hours' },
   { name: 'NIMHANS Helpline',       phone: '080-46110007',  type: 'phone',   desc: 'National mental health helpline (India)' },
   { name: 'Befrienders Worldwide',  phone: null,            type: 'web',     desc: 'Find local crisis support worldwide', url: 'https://www.befrienders.org' },
   { name: 'Dubai Health Authority', phone: '800342',        type: 'phone',   desc: 'Mental health support in UAE' },
@@ -28,7 +28,9 @@ export default function CrisisHelpPage() {
       </div>
 
       <h1 className="text-2xl font-bold text-gray-900 mb-2">Crisis Resources</h1>
-      <p className="text-gray-500 text-sm mb-6">Free and confidential support is available 24/7.</p>
+      <p className="text-gray-500 text-sm mb-6">
+        Menorah is not an emergency service. Availability, privacy terms, and charges vary by the independent resource.
+      </p>
 
       <div className="space-y-3">
         {resources.map((r) => (

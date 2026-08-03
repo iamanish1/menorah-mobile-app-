@@ -43,6 +43,10 @@ const brandAssetSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  storage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   tags: [{
     type: String,
     trim: true,

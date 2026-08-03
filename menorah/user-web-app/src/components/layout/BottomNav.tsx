@@ -7,11 +7,11 @@ import { cn } from '@/lib/utils';
 import { useNotifications } from '@/context/NotificationContext';
 
 const tabs = [
-  { href: '/discover',      label: 'Discover',  icon: Search },
-  { href: '/bookings',      label: 'Bookings',  icon: CalendarDays },
-  { href: '/chat',          label: 'Chat',      icon: MessageCircle },
-  { href: '/notifications', label: 'Alerts',    icon: Bell },
-  { href: '/profile',       label: 'Profile',   icon: User },
+  { href: '/discover',      label: 'Discover',  icon: Search,       tourId: 'discover' },
+  { href: '/bookings',      label: 'Bookings',  icon: CalendarDays, tourId: 'bookings' },
+  { href: '/chat',          label: 'Chat',      icon: MessageCircle, tourId: 'chat' },
+  { href: '/notifications', label: 'Alerts',    icon: Bell,          tourId: 'notifications' },
+  { href: '/profile',       label: 'Profile',   icon: User,          tourId: 'profile' },
 ];
 
 export function BottomNav() {
@@ -21,13 +21,14 @@ export function BottomNav() {
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 border-t border-primary-100 bg-white/95 safe-area-pb backdrop-blur dark:border-primary-800 dark:bg-primary-950/95">
       <div className="flex items-stretch px-1">
-        {tabs.map(({ href, label, icon: Icon }) => {
+        {tabs.map(({ href, label, icon: Icon, tourId }) => {
           const active  = pathname.startsWith(href);
           const isNotif = href === '/notifications';
           return (
             <Link
               key={href}
               href={href}
+              data-tour-id={tourId}
               className="flex flex-col items-center flex-1 min-w-0 pb-2 pt-1 relative"
             >
               {/* Active bar at the very top of the nav */}

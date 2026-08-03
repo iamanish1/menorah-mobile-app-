@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   ScrollView,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -15,31 +17,29 @@ import {
   Search,
   Star,
   IndianRupee,
-  LayoutGrid,
-  Smile,
-  Sun,
-  Brain,
   ChevronDown,
   SlidersHorizontal,
-  ShieldCheck,
   Heart,
   BadgeCheck,
-  ChevronRight,
+  Check,
+  X,
 } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { Counsellor } from '@/lib/api';
-import { useCounsellors } from '@/hooks/useQueries';
-
-const CATEGORIES = [
-  { id: 'all', label: 'All', Icon: LayoutGrid },
-  { id: 'anxiety', label: 'Anxiety', Icon: Smile },
-  { id: 'stress', label: 'Stress', Icon: Sun },
-  { id: 'depression', label: 'Depression', Icon: Brain },
-];
+import { useCounsellors, useSpecializations } from '@/hooks/useQueries';
 
 const SORT_OPTIONS = ['Relevance', 'Rating', 'Experience', 'Price'];
+
+const PRICE_RANGES = [
+  { id: '1-1000', label: '₹1 – ₹1,000', minPrice: 1, maxPrice: 1000 },
+  { id: '1000-3000', label: '₹1,000 – ₹3,000', minPrice: 1000, maxPrice: 3000 },
+  { id: '3000-5000', label: '₹3,000 – ₹5,000', minPrice: 3000, maxPrice: 5000 },
+  { id: '5000-plus', label: '₹5,000+', minPrice: 5000 },
+] as const;
+
+type PriceRangeId = (typeof PRICE_RANGES)[number]['id'];
 
 export default function CounsellorList({ navigation, route }: any) {
   const { scheme } = useThemeMode();
@@ -50,6 +50,10 @@ export default function CounsellorList({ navigation, route }: any) {
   const [search, setSearch] = useState(initialSearch);
   const [debouncedSearch, setDebounced] = useState(initialSearch.trim());
   const [activeCategory, setCategory] = useState('all');
+  const [selectedPriceRange, setSelectedPriceRange] = useState<PriceRangeId | null>(null);
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [draftSpecialization, setDraftSpecialization] = useState<string | null>(null);
+  const [draftPriceRange, setDraftPriceRange] = useState<PriceRangeId | null>(null);
   const [sortIdx, setSortIdx] = useState(0);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,19 +67,62 @@ export default function CounsellorList({ navigation, route }: any) {
     setDebounced(nextSearch.trim());
   }, [route?.params?.initialSearch]);
 
-  // ── React Query — replaces manual useState + useEffect + api call ─────────
-  const { data, isLoading, isFetching, refetch } = useCounsellors(
-    debouncedSearch ? { search: debouncedSearch } : undefined,
+  const { data: availableSpecializations = [] } = useSpecializations();
+
+  const specializationTags = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          availableSpecializations
+            .map((specialization) => specialization.trim())
+            .filter(Boolean),
+        ),
+      ).sort((first, second) => first.localeCompare(second)),
+    [availableSpecializations],
   );
-  const counsellors = data?.counsellors ?? [];
+
+  const activePriceRange = useMemo(
+    () => PRICE_RANGES.find((range) => range.id === selectedPriceRange),
+    [selectedPriceRange],
+  );
+
+  const counsellorQueryParams = useMemo(
+    () => ({
+      ...(debouncedSearch ? { search: debouncedSearch } : {}),
+      ...(activeCategory !== 'all'
+        ? { specialization: activeCategory }
+        : {}),
+      ...(activePriceRange
+        ? {
+            minPrice: activePriceRange.minPrice,
+            ...('maxPrice' in activePriceRange
+              ? { maxPrice: activePriceRange.maxPrice }
+              : {}),
+          }
+        : {}),
+    }),
+    [activeCategory, activePriceRange, debouncedSearch],
+  );
+
+  // ── React Query — replaces manual useState + useEffect + api call ─────────
+  const { data, isLoading, isFetching, refetch } = useCounsellors(counsellorQueryParams);
 
   // ── Client-side filter + sort (no extra API calls needed) ─────────────────
   const filtered = useMemo(() => {
-    let list = [...counsellors];
+    let list = [...(data?.counsellors ?? [])];
     if (activeCategory !== 'all') {
       list = list.filter((c) =>
         [c.specialization, ...(c.specializations || [])].join(' ').toLowerCase().includes(activeCategory),
       );
+    }
+    if (activePriceRange) {
+      list = list.filter((c) => {
+        const withinMinimum = c.hourlyRate >= activePriceRange.minPrice;
+        const withinMaximum =
+          !('maxPrice' in activePriceRange) ||
+          c.hourlyRate <= activePriceRange.maxPrice;
+        return withinMinimum && withinMaximum;
+      });
     }
     switch (SORT_OPTIONS[sortIdx]) {
       case 'Rating':
@@ -89,7 +136,29 @@ export default function CounsellorList({ navigation, route }: any) {
         break;
     }
     return list;
-  }, [counsellors, activeCategory, sortIdx]);
+  }, [data?.counsellors, activeCategory, activePriceRange, sortIdx]);
+
+  const activeFilterCount =
+    (activeCategory !== 'all' ? 1 : 0) + (selectedPriceRange ? 1 : 0);
+
+  const openFilters = () => {
+    setDraftSpecialization(
+      activeCategory === 'all' ? null : activeCategory,
+    );
+    setDraftPriceRange(selectedPriceRange);
+    setFilterVisible(true);
+  };
+
+  const applyFilters = () => {
+    setCategory(draftSpecialization || 'all');
+    setSelectedPriceRange(draftPriceRange);
+    setFilterVisible(false);
+  };
+
+  const resetDraftFilters = () => {
+    setDraftSpecialization(null);
+    setDraftPriceRange(null);
+  };
 
   const handleSearch = (text: string) => {
     setSearch(text);
@@ -399,90 +468,104 @@ export default function CounsellorList({ navigation, route }: any) {
           marginBottom: 12,
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: cardBg,
-          borderRadius: 50,
-          borderWidth: 1,
-          borderColor: isDark ? colors.border : '#e2e8e2',
-          paddingHorizontal: 14,
-          paddingVertical: 10,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.04,
-          shadowRadius: 4,
-          elevation: 1,
+          gap: 8,
         }}
       >
-        <Search size={16} color={colors.muted} />
-        <TextInput
-          value={search}
-          onChangeText={handleSearch}
-          placeholder="Search by name, issue or specialization..."
-          placeholderTextColor={colors.muted}
-          style={{ flex: 1, marginLeft: 8, color: colors.text, fontSize: 13 }}
-          returnKeyType="search"
-          autoCorrect={false}
-        />
-      </View>
-
-      {/* Category chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingBottom: 2,
-          gap: 7,
-        }}
-        style={{ marginBottom: 12 }}
-      >
-        {CATEGORIES.map((cat) => {
-          const active = activeCategory === cat.id;
-          const CatIcon = cat.Icon;
-          return (
-            <TouchableOpacity
-              key={cat.id}
-              onPress={() => setCategory(cat.id)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 5,
-                paddingHorizontal: 13,
-                paddingVertical: 8,
-                borderRadius: 50,
-                backgroundColor: active ? colors.primary : cardBg,
-                borderWidth: 1.5,
-                borderColor: active ? colors.primary : isDark ? colors.border : '#d1d9d1',
-              }}
-            >
-              <CatIcon size={13} color={active ? 'white' : colors.muted} />
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: '700',
-                  color: active ? 'white' : colors.text,
-                }}
-              >
-                {cat.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-        {/* More */}
-        <TouchableOpacity
+        <View
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            backgroundColor: cardBg,
-            borderWidth: 1.5,
-            borderColor: isDark ? colors.border : '#d1d9d1',
+            flex: 1,
+            minHeight: 52,
+            flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'center',
+            backgroundColor: cardBg,
+            borderRadius: 26,
+            borderWidth: 1,
+            borderColor: isDark ? colors.border : '#e2e8e2',
+            paddingHorizontal: 14,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.04,
+            shadowRadius: 4,
+            elevation: 1,
           }}
         >
-          <ChevronDown size={14} color={colors.muted} />
+          <Search size={16} color={colors.muted} />
+          <TextInput
+            value={search}
+            onChangeText={handleSearch}
+            placeholder="Search by name, issue or specialization..."
+            placeholderTextColor={colors.muted}
+            accessibilityLabel="Search counsellors"
+            style={{ flex: 1, minHeight: 50, marginLeft: 8, color: colors.text, fontSize: 13 }}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+        </View>
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Filter counsellors"
+          accessibilityHint="Filter by specialization and hourly price"
+          onPress={openFilters}
+          activeOpacity={0.76}
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 26,
+            backgroundColor: activeFilterCount > 0
+              ? colors.primary + '14'
+              : cardBg,
+            borderWidth: 1,
+            borderColor: activeFilterCount > 0
+              ? colors.primary
+              : isDark
+                ? colors.border
+                : '#e2e8e2',
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.04,
+            shadowRadius: 4,
+            elevation: 1,
+          }}
+        >
+          <SlidersHorizontal
+            size={18}
+            color={activeFilterCount > 0 ? colors.primary : colors.text}
+          />
+          {activeFilterCount > 0 ? (
+            <View
+              style={{
+                position: 'absolute',
+                top: 5,
+                right: 5,
+                minWidth: 17,
+                height: 17,
+                paddingHorizontal: 4,
+                borderRadius: 9,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: colors.primary,
+                borderWidth: 1.5,
+                borderColor: cardBg,
+              }}
+            >
+              <Text
+                style={{
+                  color: 'white',
+                  fontSize: 9,
+                  lineHeight: 12,
+                  fontWeight: '900',
+                  fontVariant: ['tabular-nums'],
+                }}
+              >
+                {activeFilterCount}
+              </Text>
+            </View>
+          ) : null}
         </TouchableOpacity>
-      </ScrollView>
+      </View>
 
       {/* Results + Sort */}
       <View
@@ -509,61 +592,9 @@ export default function CounsellorList({ navigation, route }: any) {
     </View>
   );
 
-  const ListFooter = () => (
-    <TouchableOpacity
-      activeOpacity={0.88}
-      style={{
-        marginHorizontal: 16,
-        marginTop: 8,
-        marginBottom: 32,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 14,
-        backgroundColor: cardBg,
-        borderRadius: 18,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: isDark ? colors.border : '#e8ede8',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.04,
-        shadowRadius: 4,
-        elevation: 1,
-      }}
-    >
-      <View
-        style={{
-          width: 42,
-          height: 42,
-          borderRadius: 21,
-          backgroundColor: colors.primary + '18',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <ShieldCheck size={19} color={colors.primary} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text
-          style={{
-            fontSize: 13,
-            fontWeight: '700',
-            color: colors.primary,
-            marginBottom: 2,
-          }}
-        >
-          Verified & Trusted Professionals
-        </Text>
-        <Text style={{ fontSize: 11, color: colors.muted, lineHeight: 16 }}>
-          All counsellors are verified and committed to your well-being.
-        </Text>
-      </View>
-      <ChevronRight size={16} color={colors.muted} />
-    </TouchableOpacity>
-  );
-
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: pageBg }} edges={['top']}>
+    <>
+      <SafeAreaView style={{ flex: 1, backgroundColor: pageBg }} edges={['top']}>
       {/* Header */}
       <View
         style={{
@@ -610,25 +641,6 @@ export default function CounsellorList({ navigation, route }: any) {
             Book a session with a qualified professional
           </Text>
         </View>
-        <TouchableOpacity
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 19,
-            backgroundColor: cardBg,
-            borderWidth: 1,
-            borderColor: isDark ? colors.border : '#e2e8e2',
-            alignItems: 'center',
-            justifyContent: 'center',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.05,
-            shadowRadius: 3,
-            elevation: 1,
-          }}
-        >
-          <SlidersHorizontal size={16} color={colors.text} />
-        </TouchableOpacity>
       </View>
 
       {isLoading ? (
@@ -641,13 +653,12 @@ export default function CounsellorList({ navigation, route }: any) {
           data={filtered}
           renderItem={renderCard}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingTop: 0 }}
+          contentContainerStyle={{ paddingTop: 0, paddingBottom: 32 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={isFetching && !isLoading} onRefresh={onRefresh} tintColor={colors.primary} />
           }
           ListHeaderComponent={<ListHeader />}
-          ListFooterComponent={filtered.length > 0 ? <ListFooter /> : null}
           ListEmptyComponent={
             <View
               style={{
@@ -696,6 +707,340 @@ export default function CounsellorList({ navigation, route }: any) {
           }
         />
       )}
-    </SafeAreaView>
+      </SafeAreaView>
+
+      <Modal
+        visible={filterVisible}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setFilterVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'flex-end',
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close counsellor filters"
+            onPress={() => setFilterVisible(false)}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundColor: 'rgba(12,24,16,0.48)',
+            }}
+          />
+
+          <View
+            accessibilityViewIsModal
+            style={{
+              maxHeight: '86%',
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              backgroundColor: cardBg,
+              overflow: 'hidden',
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                paddingHorizontal: 16,
+                paddingTop: 16,
+                paddingBottom: 12,
+                borderBottomWidth: 1,
+                borderBottomColor: isDark ? colors.border : '#e8ede8',
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text
+                  accessibilityRole="header"
+                  style={{
+                    color: colors.text,
+                    fontSize: 20,
+                    lineHeight: 26,
+                    fontWeight: '900',
+                  }}
+                >
+                  Filter counsellors
+                </Text>
+                <Text
+                  style={{
+                    color: colors.muted,
+                    fontSize: 12,
+                    lineHeight: 18,
+                    marginTop: 2,
+                  }}
+                >
+                  Choose a specialization and hourly price.
+                </Text>
+              </View>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Close filters"
+                onPress={() => setFilterVisible(false)}
+                activeOpacity={0.72}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  borderWidth: 1,
+                  borderColor: isDark ? colors.border : '#dfe6df',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <X size={19} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{
+                paddingHorizontal: 16,
+                paddingTop: 18,
+                paddingBottom: 24,
+                gap: 24,
+              }}
+            >
+              <View style={{ gap: 12 }}>
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontSize: 15,
+                    fontWeight: '900',
+                  }}
+                >
+                  Specialization
+                </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                  }}
+                >
+                  {[null, ...specializationTags].map((specialization) => {
+                    const normalizedSpecialization = specialization?.toLowerCase() ?? null;
+                    const selected = draftSpecialization === normalizedSpecialization;
+                    const label = specialization || 'Any specialization';
+                    return (
+                      <TouchableOpacity
+                        key={specialization || 'any-specialization'}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                        onPress={() =>
+                          setDraftSpecialization(normalizedSpecialization)
+                        }
+                        activeOpacity={0.76}
+                        style={{
+                          minHeight: 42,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          borderRadius: 21,
+                          backgroundColor: selected
+                            ? colors.primary
+                            : isDark
+                              ? colors.surface
+                              : '#f6f8f6',
+                          borderWidth: 1,
+                          borderColor: selected
+                            ? colors.primary
+                            : isDark
+                              ? colors.border
+                              : '#dce4dc',
+                        }}
+                      >
+                        {selected ? (
+                          <Check size={14} color="white" strokeWidth={2.8} />
+                        ) : null}
+                        <Text
+                          style={{
+                            color: selected ? 'white' : colors.text,
+                            fontSize: 12,
+                            fontWeight: '700',
+                          }}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={{ gap: 12 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 7,
+                  }}
+                >
+                  <IndianRupee size={17} color={colors.primary} />
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 15,
+                      fontWeight: '900',
+                    }}
+                  >
+                    Hourly price
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                  }}
+                >
+                  {PRICE_RANGES.map((range) => {
+                    const selected = draftPriceRange === range.id;
+                    return (
+                      <TouchableOpacity
+                        key={range.id}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                        onPress={() => setDraftPriceRange(range.id)}
+                        activeOpacity={0.76}
+                        style={{
+                          minHeight: 52,
+                          flexBasis: '48%',
+                          flexGrow: 1,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                          paddingHorizontal: 13,
+                          paddingVertical: 10,
+                          borderRadius: 16,
+                          backgroundColor: selected
+                            ? colors.primary + '14'
+                            : isDark
+                              ? colors.surface
+                              : '#f8faf8',
+                          borderWidth: 1.5,
+                          borderColor: selected
+                            ? colors.primary
+                            : isDark
+                              ? colors.border
+                              : '#dce4dc',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            flex: 1,
+                            color: selected ? colors.primary : colors.text,
+                            fontSize: 13,
+                            fontWeight: selected ? '800' : '700',
+                            fontVariant: ['tabular-nums'],
+                          }}
+                        >
+                          {range.label}
+                        </Text>
+                        <View
+                          style={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 10,
+                            borderWidth: 1.5,
+                            borderColor: selected
+                              ? colors.primary
+                              : colors.muted,
+                            backgroundColor: selected
+                              ? colors.primary
+                              : 'transparent',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {selected ? (
+                            <Check size={12} color="white" strokeWidth={3} />
+                          ) : null}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </ScrollView>
+
+            <SafeAreaView
+              edges={['bottom']}
+              style={{
+                borderTopWidth: 1,
+                borderTopColor: isDark ? colors.border : '#e8ede8',
+                backgroundColor: cardBg,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 10,
+                  paddingHorizontal: 16,
+                  paddingTop: 12,
+                  paddingBottom: 12,
+                }}
+              >
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={resetDraftFilters}
+                  activeOpacity={0.72}
+                  style={{
+                    minHeight: 52,
+                    flex: 1,
+                    borderRadius: 26,
+                    borderWidth: 1.5,
+                    borderColor: isDark ? colors.border : '#d7dfd7',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 14,
+                      fontWeight: '800',
+                    }}
+                  >
+                    Reset
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={applyFilters}
+                  activeOpacity={0.82}
+                  style={{
+                    minHeight: 52,
+                    flex: 1.6,
+                    borderRadius: 26,
+                    backgroundColor: colors.primary,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: 'white',
+                      fontSize: 14,
+                      fontWeight: '900',
+                    }}
+                  >
+                    Apply filters
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </SafeAreaView>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }

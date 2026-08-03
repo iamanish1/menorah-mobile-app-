@@ -81,7 +81,7 @@ Users who book sessions (clients) were unable to speak during video calls - thei
 
 1. **Rebuild the app**:
    ```bash
-   cd Menorah/mobile-app
+   cd menorah/mobile-app
    npm run android
    ```
 

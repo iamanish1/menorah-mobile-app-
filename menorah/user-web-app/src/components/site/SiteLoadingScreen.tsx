@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 const FADE_DURATION_MS = 200;
 const HOME_READY_SELECTOR = "[data-menorah-home-ready]";
 const READY_POLL_MS = 40;
-const FALLBACK_HIDE_MS = 900;
+const FALLBACK_HIDE_MS = 5000;
 
 export function SiteLoadingScreen() {
   const pathname = usePathname();

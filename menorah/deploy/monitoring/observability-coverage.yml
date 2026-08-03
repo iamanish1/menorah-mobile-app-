@@ -1,0 +1,405 @@
+schema_version: 1
+signals:
+  - id: api-availability
+    status: covered
+    source: blackbox-http-internal and blackbox-https-public
+    alerts:
+      - InternalApiProbeFailed
+      - PublicEndpointProbeFailed
+      - BlackboxProbeCoverageIncomplete
+
+  - id: frontend-availability
+    status: covered
+    source: blackbox-http-internal and blackbox-https-public
+    alerts:
+      - InternalFrontendProbeFailed
+      - UserFrontendProbeFailed
+      - AdminFrontendProbeFailed
+      - CounsellorFrontendProbeFailed
+      - PublicEndpointProbeFailed
+
+  - id: call-service-availability
+    status: covered
+    source: blackbox TCP and public HTTPS probes
+    alerts:
+      - CallServiceProbeFailed
+      - PublicEndpointProbeFailed
+
+  - id: mongodb-health
+    status: covered
+    source: Percona MongoDB exporter plus a TCP probe
+    alerts:
+      - MongoExporterDown
+      - MongoUnavailable
+      - MongoMetricsCoverageMissing
+      - MongoReplicaNotPrimary
+      - DatastoreTcpProbeFailed
+
+  - id: redis-health
+    status: covered
+    source: Redis exporter plus a TCP probe
+    alerts:
+      - RedisExporterDown
+      - RedisUnavailable
+      - RedisMetricsCoverageMissing
+      - RedisMemoryPressure
+      - RedisRejectedConnections
+      - DatastoreTcpProbeFailed
+
+  - id: worker-readiness
+    status: covered
+    source: worker dependency-aware readiness endpoint through blackbox_exporter
+    alerts:
+      - WorkerReadinessProbeFailed
+
+  - id: queue-backlog
+    status: covered
+    source: durable provider-revocation worker queue snapshots, outcomes, and heartbeat
+    alerts:
+      - WorkerQueueBacklogHigh
+
+  - id: backup-age
+    status: covered
+    source: latest-success metadata exposed through node_exporter textfile collector
+    alerts:
+      - BackupMetricsStale
+      - SixHourlyBackupTooOld
+      - DailyBackupMissing
+      - DailyBackupTooOld
+      - WeeklyBackupTooOld
+      - MonthlyBackupTooOld
+      - RestoreTestTooOld
+
+  - id: backup-immediate-failure
+    status: covered
+    source: bounded atomic systemd/direct execution state through node_exporter textfile collector
+    alerts:
+      - BackupJobFailed
+
+  - id: host-capacity
+    status: covered
+    source: node_exporter
+    alerts:
+      - NodeExporterDown
+      - HostDiskSpaceLow
+      - HostCpuSaturation
+      - HostMemoryPressure
+
+  - id: container-restarts-and-memory
+    status: covered
+    source: sanitized container state and stats through the isolated repository gateway
+    alerts:
+      - ContainerMetricsDown
+      - ContainerMetricsCoverageMissing
+      - ContainerRestartLoop
+      - ContainerMemoryNearLimit
+
+  - id: tls-certificate-expiry
+    status: covered
+    source: blackbox HTTPS probes
+    alerts:
+      - TlsCertificateExpiringSoon
+
+  - id: authentication-mfa-admin-events
+    status: covered
+    source: menorah_auth_attempts_total plus the signed menorah_security_events_total audit stream
+    alerts:
+      - UserAuthenticationFailureSpike
+      - CounsellorAuthenticationFailureSpike
+      - AdminAuthenticationMfaFailureSpike
+      - AdminPermissionDenied
+      - PrivilegedActionFailure
+      - AdminChangeBurst
+      - BankDetailsChanged
+      - SecurityMetricsScrapeFailed
+      - SecurityMetricsCoverageIncomplete
+
+  - id: durable-security-audit-sink
+    status: covered
+    source: security audit sink metrics on all five security-events scrape targets
+    alerts:
+      - SecurityAuditEvidenceIntegrityFailure
+      - SecurityAuditSinkPending
+      - SecurityAuditSinkWriteFailures
+
+  - id: specific-privilege-change-events
+    status: covered
+    source: User role-change model middleware emits a signed audit event plus menorah_privilege_changes_total
+    alerts:
+      - PrivilegedRoleChanged
+      - AdminRoleChanged
+
+  - id: payout-action-failures
+    status: covered
+    source: menorah_security_events_total event=payout_action
+    alerts:
+      - PayoutActionFailed
+
+  - id: payment-webhook-terminal-reconciliation
+    status: covered
+    source: signed security events plus bounded Razorpay webhook outcome counters
+    alerts:
+      - PaymentWebhookReconciliationBlocked
+      - PaymentWebhookFailure
+
+  - id: general-payment-provider-failures
+    status: covered
+    source: bounded Razorpay order, evidence, verification, payout, and webhook outcome counters
+    alerts:
+      - PaymentProviderFailure
+      - PaymentWebhookFailure
+
+  - id: email-delivery-failures
+    status: covered
+    source: Resend dispatch outcomes plus signed replay-safe provider delivery callbacks
+    alerts:
+      - EmailDispatchFailed
+      - EmailDeliveryOutcomeFailed
+
+  - id: call-provider-failures
+    status: covered
+    source: bounded LiveKit room, token, connection, webhook, fallback, and one-time media outcome telemetry
+    alerts:
+      - CallProviderFailure
+      - CallMediaFailure
+
+  - id: call-authorization-denials
+    status: covered
+    source: menorah_security_events_total event=call_authorization_denied
+    alerts:
+      - CallAuthorizationDenialSpike
+
+  - id: http-401-rate
+    status: covered
+    source: menorah_http_responses_total with fixed service, route-family, and status inventories
+    alerts:
+      - ElevatedHttp401Rate
+
+  - id: http-403-rate
+    status: covered
+    source: menorah_http_responses_total with fixed service, route-family, and status inventories
+    alerts:
+      - ElevatedHttp403Rate
+
+  - id: http-429-rate
+    status: covered
+    source: menorah_http_responses_total with fixed service, route-family, and status inventories
+    alerts:
+      - ElevatedHttp429Rate
+
+  - id: http-500-rate
+    status: covered
+    source: menorah_http_responses_total with fixed service, route-family, and status inventories
+    alerts:
+      - ElevatedHttp500Rate
+
+  - id: monitoring-stack-health
+    status: covered
+    source: Prometheus self-scrapes and exporter scrape health
+    alerts:
+      - LogCollectorDown
+      - LokiDown
+      - BlackboxExporterDown
+      - AlertmanagerDown
+      - PrometheusSelfScrapeFailed
+
+p0_alerts:
+  - alert: WorkerQueueBacklogHigh
+    metric: menorah_queue_pending_jobs
+    producer: backend/src/services/providerRevocationService.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: queue payment email and call reliability signals fire from bounded producers
+    severity: critical
+    runbook: monitoring-alert-runbook.md#workerqueuebackloghigh
+    live_evidence_requirement: Isolated staging backlog, retry, dead-letter, and stale-heartbeat firing/recovery evidence.
+    owner_placeholder: worker-response-owner-tbd
+
+  - alert: BackupJobFailed
+    metric: menorah_backup_last_attempt_result
+    producer: deploy/ubuntu/record-backup-result.sh
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: latest backup failure fires immediately and a later success resolves it
+    severity: critical
+    runbook: monitoring-alert-runbook.md#backupjobfailed
+    live_evidence_requirement: Isolated staging scheduled-backup failure and later-success recovery evidence.
+    owner_placeholder: backup-response-owner-tbd
+
+  - alert: PaymentProviderFailure
+    metric: menorah_payment_operations_total
+    producer: backend/src/services/razorpayPaymentSecurity.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: queue payment email and call reliability signals fire from bounded producers
+    severity: critical
+    runbook: monitoring-alert-runbook.md#paymentproviderfailure
+    live_evidence_requirement: Provider sandbox failure injection and recovery evidence without live-account mutation.
+    owner_placeholder: payments-response-owner-tbd
+
+  - alert: PaymentWebhookFailure
+    metric: menorah_payment_webhook_events_total
+    producer: backend/src/routes/payments.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: queue payment email and call reliability signals fire from bounded producers
+    severity: critical
+    runbook: monitoring-alert-runbook.md#paymentwebhookfailure
+    live_evidence_requirement: Signed sandbox webhook replay, relationship-mismatch, processing-failure, and recovery evidence.
+    owner_placeholder: payments-response-owner-tbd
+
+  - alert: EmailDispatchFailed
+    metric: menorah_email_dispatch_total
+    producer: backend/src/utils/email.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: queue payment email and call reliability signals fire from bounded producers
+    severity: warning
+    runbook: monitoring-alert-runbook.md#emaildispatchfailed
+    live_evidence_requirement: Isolated provider-sandbox dispatch rejection and recovery evidence.
+    owner_placeholder: messaging-response-owner-tbd
+
+  - alert: EmailDeliveryOutcomeFailed
+    metric: menorah_email_delivery_outcomes_total
+    producer: backend/src/routes/email-webhook.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: queue payment email and call reliability signals fire from bounded producers
+    severity: warning
+    runbook: monitoring-alert-runbook.md#emaildeliveryoutcomefailed
+    live_evidence_requirement: Signed Resend sandbox bounce/failure callback, replay, and recovery evidence.
+    owner_placeholder: messaging-response-owner-tbd
+
+  - alert: CallProviderFailure
+    metric: menorah_call_provider_operations_total
+    producer: backend/src/routes/video.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: queue payment email and call reliability signals fire from bounded producers
+    severity: critical
+    runbook: monitoring-alert-runbook.md#callproviderfailure
+    live_evidence_requirement: Isolated LiveKit room/token/connect failure and regional fallback recovery evidence.
+    owner_placeholder: calls-response-owner-tbd
+
+  - alert: CallMediaFailure
+    metric: menorah_call_media_outcomes_total
+    producer: backend/src/routes/video.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: queue payment email and call reliability signals fire from bounded producers
+    severity: critical
+    runbook: monitoring-alert-runbook.md#callmediafailure
+    live_evidence_requirement: Isolated browser/mobile audio and video establishment failure/recovery evidence.
+    owner_placeholder: calls-response-owner-tbd
+
+  - alert: PrivilegedRoleChanged
+    metric: menorah_privilege_changes_total
+    producer: backend/src/models/User.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: bounded HTTP auth and role-change signals fire independently
+    severity: warning
+    runbook: monitoring-alert-runbook.md#privilegedrolechanged
+    live_evidence_requirement: Isolated staging counsellor-role assignment/removal plus signed-audit evidence.
+    owner_placeholder: security-response-owner-tbd
+
+  - alert: AdminRoleChanged
+    metric: menorah_privilege_changes_total
+    producer: backend/src/models/User.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: bounded HTTP auth and role-change signals fire independently
+    severity: critical
+    runbook: monitoring-alert-runbook.md#adminrolechanged
+    live_evidence_requirement: Isolated staging administrator-role assignment/removal plus signed-audit evidence.
+    owner_placeholder: security-response-owner-tbd
+
+  - alert: UserAuthenticationFailureSpike
+    metric: menorah_auth_attempts_total
+    producer: backend/src/utils/securityAudit.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: bounded HTTP auth and role-change signals fire independently
+    severity: warning
+    runbook: monitoring-alert-runbook.md#userauthenticationfailurespike
+    live_evidence_requirement: Isolated staging user authentication failure-spike and quiet-window recovery evidence.
+    owner_placeholder: security-response-owner-tbd
+
+  - alert: CounsellorAuthenticationFailureSpike
+    metric: menorah_auth_attempts_total
+    producer: backend/src/routes/auth.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: bounded HTTP auth and role-change signals fire independently
+    severity: critical
+    runbook: monitoring-alert-runbook.md#counsellorauthenticationfailurespike
+    live_evidence_requirement: Isolated staging counsellor authentication failure-spike and recovery evidence.
+    owner_placeholder: security-response-owner-tbd
+
+  - alert: AdminAuthenticationMfaFailureSpike
+    metric: menorah_auth_attempts_total
+    producer: backend/src/routes/auth-admin.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: bounded HTTP auth and role-change signals fire independently
+    severity: critical
+    runbook: monitoring-alert-runbook.md#adminauthenticationmfafailurespike
+    live_evidence_requirement: Isolated staging administrator password/MFA failure-spike and recovery evidence.
+    owner_placeholder: security-response-owner-tbd
+
+  - alert: ElevatedHttp401Rate
+    metric: menorah_http_responses_total
+    producer: backend/src/utils/securityAudit.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: bounded HTTP auth and role-change signals fire independently
+    severity: warning
+    runbook: monitoring-alert-runbook.md#elevatedhttp401rate
+    live_evidence_requirement: Isolated staging bounded HTTP 401 threshold and recovery evidence.
+    owner_placeholder: security-response-owner-tbd
+
+  - alert: ElevatedHttp403Rate
+    metric: menorah_http_responses_total
+    producer: backend/src/utils/securityAudit.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: bounded HTTP auth and role-change signals fire independently
+    severity: warning
+    runbook: monitoring-alert-runbook.md#elevatedhttp403rate
+    live_evidence_requirement: Isolated staging bounded HTTP 403 threshold and recovery evidence.
+    owner_placeholder: security-response-owner-tbd
+
+  - alert: ElevatedHttp429Rate
+    metric: menorah_http_responses_total
+    producer: backend/src/utils/securityAudit.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: bounded HTTP auth and role-change signals fire independently
+    severity: warning
+    runbook: monitoring-alert-runbook.md#elevatedhttp429rate
+    live_evidence_requirement: Isolated staging bounded HTTP 429 threshold and recovery evidence.
+    owner_placeholder: platform-response-owner-tbd
+
+  - alert: ElevatedHttp500Rate
+    metric: menorah_http_responses_total
+    producer: backend/src/utils/securityAudit.js
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: bounded HTTP auth and role-change signals fire independently
+    severity: critical
+    runbook: monitoring-alert-runbook.md#elevatedhttp500rate
+    live_evidence_requirement: Isolated staging bounded HTTP 500 threshold and recovery evidence.
+    owner_placeholder: backend-response-owner-tbd
+
+  - alert: UserFrontendProbeFailed
+    metric: probe_success
+    producer: deploy/monitoring/prometheus.yml
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: distinct frontend probes fire without overlapping the landing rule
+    severity: critical
+    runbook: monitoring-alert-runbook.md#userfrontendprobefailed
+    live_evidence_requirement: Isolated staging user-web outage and recovery evidence.
+    owner_placeholder: web-response-owner-tbd
+
+  - alert: AdminFrontendProbeFailed
+    metric: probe_success
+    producer: deploy/monitoring/prometheus.yml
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: distinct frontend probes fire without overlapping the landing rule
+    severity: critical
+    runbook: monitoring-alert-runbook.md#adminfrontendprobefailed
+    live_evidence_requirement: Isolated staging administrator-web outage and recovery evidence.
+    owner_placeholder: web-response-owner-tbd
+
+  - alert: CounsellorFrontendProbeFailed
+    metric: probe_success
+    producer: deploy/monitoring/prometheus.yml
+    rule: deploy/monitoring/alert-rules.yml
+    test_fixture: distinct frontend probes fire without overlapping the landing rule
+    severity: critical
+    runbook: monitoring-alert-runbook.md#counsellorfrontendprobefailed
+    live_evidence_requirement: Isolated staging counsellor-web outage and recovery evidence.
+    owner_placeholder: web-response-owner-tbd

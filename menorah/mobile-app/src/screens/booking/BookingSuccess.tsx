@@ -97,8 +97,8 @@ export default function BookingSuccess({ navigation, route }: any) {
             lineHeight: 20
           }}>
             • You{"'"}ll receive a confirmation email with session details{'\n'}
-            • Your therapist will be assigned within 24 hours{'\n'}
-            • You{"'"}ll get a notification when your therapist is ready{'\n'}
+            • Your selected counsellor and scheduled time appear in My Bookings{'\n'}
+            • You{"'"}ll receive updates if the booking status changes{'\n'}
             • Session details will be shared via email and app
           </Text>
         </View>

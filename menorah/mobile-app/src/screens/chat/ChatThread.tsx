@@ -1,8 +1,24 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
-import { ArrowLeft, MoreVertical, Phone, Send, Video } from 'lucide-react-native';
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  TextInput,
+  FlatList,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Image } from "expo-image";
+import {
+  ArrowLeft,
+  MoreVertical,
+  Phone,
+  Send,
+  Video,
+} from "lucide-react-native";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useChat } from "@/state/useChat";
@@ -10,90 +26,141 @@ import { useAuth } from "@/state/useAuth";
 import { api } from "@/lib/api";
 import ChatBubble from "@/components/chat/ChatBubble";
 import TypingIndicator from "@/components/chat/TypingIndicator";
-import { ChatMessage } from '@/lib/socket';
+import { ChatMessage } from "@/lib/socket";
+import { reportError } from "@/lib/safeDiagnostics";
+import { useFocusEffect } from "@react-navigation/native";
 
 export default function ChatThread({ navigation, route }: any) {
   const { roomId, counsellorId } = route.params || {};
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [typing, setTyping] = useState(false);
-  const [safetyActionLoading, setSafetyActionLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
-  const isDark = scheme === 'dark';
-  const crisisBg = isDark ? colors.accentLight : '#FEF3C7';
-  const crisisBorder = isDark ? '#5A3E12' : '#FDE68A';
-  const crisisText = isDark ? colors.accent : '#92400E';
-  const primaryActionText = isDark ? colors.primaryDark : 'white';
+  const isDark = scheme === "dark";
+  const crisisBg = isDark ? colors.accentLight : "#FEF3C7";
+  const crisisBorder = isDark ? "#5A3E12" : "#FDE68A";
+  const crisisText = isDark ? colors.accent : "#92400E";
+  const primaryActionText = isDark ? colors.primaryDark : "white";
   const { user } = useAuth();
-  const { 
-    messages, 
-    sendMessage: sendChatMessage, 
-    typingUsers, 
+  const {
+    messages,
+    messagePagination,
+    sendMessage: sendChatMessage,
+    typingUsers,
     isConnected,
     fetchMessages,
     joinRoom,
     leaveRoom,
   } = useChat();
-  
-  const roomMessages = useMemo(() => messages[roomId] || [], [messages, roomId]);
+  const connectedOnceRef = useRef(isConnected);
+  const missedSocketEventsRef = useRef(false);
+
+  const roomMessages = useMemo(
+    () => messages[roomId] || [],
+    [messages, roomId],
+  );
+  const pagination = messagePagination[roomId];
+  const hasOlderMessages = Boolean(
+    pagination && pagination.page < pagination.pages,
+  );
   const typingInRoom = typingUsers[roomId] || [];
-  const counsellorName = route.params?.counsellorName || 'Counsellor';
+  const counsellorName = route.params?.counsellorName || "Counsellor";
   const counsellorImage = route.params?.counsellorImage;
-  const otherUserId = route.params?.counsellorUserId || counsellorId;
-  
 
-  const loadMessages = useCallback(async () => {
-    if (!roomId) return;
+  const loadMessages = useCallback(
+    async (showLoading = true) => {
+      if (!roomId) return;
 
-    setLoading(true);
-    try {
-      await fetchMessages(roomId);
-    } catch (error: any) {
-      console.error('Error loading messages:', error);
-      Alert.alert('Error', 'Failed to load messages. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchMessages, roomId]);
-
-  useEffect(() => {
-    if (roomId) {
-      loadMessages();
-      joinRoom(roomId);
-    }
-
-    return () => {
-      if (roomId) {
-        leaveRoom(roomId);
+      if (showLoading) setLoading(true);
+      try {
+        await fetchMessages(roomId);
+      } catch (error: any) {
+        reportError("chat.thread_load_failed", error);
+        Alert.alert("Error", "Failed to load messages. Please try again.");
+      } finally {
+        if (showLoading) setLoading(false);
       }
-    };
-  }, [joinRoom, leaveRoom, loadMessages, roomId]);
+    },
+    [fetchMessages, roomId],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!roomId) return undefined;
+
+      joinRoom(roomId);
+      loadMessages();
+
+      return () => {
+        leaveRoom(roomId);
+      };
+    }, [joinRoom, leaveRoom, loadMessages, roomId]),
+  );
 
   useEffect(() => {
-    if (roomMessages.length > 0) {
+    if (!isConnected) {
+      if (connectedOnceRef.current) missedSocketEventsRef.current = true;
+      return;
+    }
+
+    if (!connectedOnceRef.current) {
+      connectedOnceRef.current = true;
+      return;
+    }
+
+    if (missedSocketEventsRef.current) {
+      missedSocketEventsRef.current = false;
+      loadMessages(false);
+    }
+  }, [isConnected, loadMessages]);
+
+  const latestMessageId = roomMessages[roomMessages.length - 1]?.id;
+  useEffect(() => {
+    if (latestMessageId) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [roomMessages]);
+  }, [latestMessageId]);
+
+  const handleLoadOlder = async () => {
+    if (!roomId || !pagination || !hasOlderMessages || loadingOlder) return;
+
+    setLoadingOlder(true);
+    try {
+      await fetchMessages(roomId, {
+        page: pagination.page + 1,
+        limit: pagination.limit,
+      });
+    } catch (error) {
+      reportError("chat.thread_load_older_failed", error);
+      Alert.alert(
+        "Error",
+        "Failed to load earlier messages. Please try again.",
+      );
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!message.trim() || !roomId || sending) return;
-    
+
     const messageText = message.trim();
-    setMessage('');
+    setMessage("");
     setSending(true);
     setTyping(false);
-    
+
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-    
+
     try {
       await sendChatMessage(roomId, messageText);
       // Auto-scroll to bottom
@@ -101,8 +168,8 @@ export default function ChatThread({ navigation, route }: any) {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     } catch (error: any) {
-      console.error('Error sending message:', error);
-      Alert.alert('Error', 'Failed to send message. Please try again.');
+      reportError("chat.thread_send_failed", error);
+      Alert.alert("Error", "Failed to send message. Please try again.");
       setMessage(messageText); // Restore message on error
     } finally {
       setSending(false);
@@ -111,150 +178,71 @@ export default function ChatThread({ navigation, route }: any) {
 
   const handleTyping = (text: string) => {
     setMessage(text);
-    
+
     if (!roomId) return;
-    
+
     if (text.length > 0 && !typing) {
       setTyping(true);
       // Send typing indicator via API
-      api.sendTypingIndicator(roomId, true).catch(console.error);
+      api.sendTypingIndicator(roomId, true).catch((error) => {
+        reportError("chat.typing_start_failed", error);
+      });
     } else if (text.length === 0 && typing) {
       setTyping(false);
-      api.sendTypingIndicator(roomId, false).catch(console.error);
+      api.sendTypingIndicator(roomId, false).catch((error) => {
+        reportError("chat.typing_stop_failed", error);
+      });
     }
-    
+
     // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-    
+
     // Set timeout to stop typing indicator after 3 seconds
     typingTimeoutRef.current = setTimeout(() => {
       if (typing) {
         setTyping(false);
-        api.sendTypingIndicator(roomId, false).catch(console.error);
+        api.sendTypingIndicator(roomId, false).catch((error) => {
+          reportError("chat.typing_cleanup_failed", error);
+        });
       }
     }, 3000);
   };
 
-  const showSafetyResult = (title: string, response: { success: boolean; message?: string }) => {
-    if (response.success) {
-      Alert.alert(title, response.message || 'Thank you. The Menorah support team will review this.');
-      return;
-    }
-
-    Alert.alert(
-      `${title} Not Submitted`,
-      response.message ||
-        'This safety action is not fully connected yet. Please contact support from Settings so the team can review this manually.'
-    );
-  };
-
-  const submitSafetyAction = async (action: () => Promise<{ success: boolean; message?: string }>, title: string) => {
-    if (safetyActionLoading) return;
-
-    setSafetyActionLoading(true);
-    try {
-      const response = await action();
-      showSafetyResult(title, response);
-    } catch (error) {
-      console.error('Safety action error:', error);
-      Alert.alert(
-        `${title} Not Submitted`,
-        'This safety action is not fully connected yet. Please contact support from Settings so the team can review this manually.'
-      );
-    } finally {
-      setSafetyActionLoading(false);
-    }
-  };
-
-  const handleReportUser = (userId?: string, reason = 'Unsafe or abusive behavior reported from chat') => {
-    if (!userId) {
-      Alert.alert('Report User', 'User information is missing for this chat.');
-      return;
-    }
-
-    submitSafetyAction(
-      () => api.reportUser({ userId, roomId, reason }),
-      'Report Submitted'
-    );
-  };
-
-  const handleBlockUser = (userId?: string) => {
-    if (!userId) {
-      Alert.alert('Block User', 'User information is missing for this chat.');
-      return;
-    }
-
-    Alert.alert(
-      'Block User',
-      'Blocking helps limit unwanted contact where supported by the service. You can still contact support if there is an immediate safety concern.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Block',
-          style: 'destructive',
-          onPress: () =>
-            submitSafetyAction(
-              () => api.blockUser(userId, roomId),
-              'Block Request Submitted'
-            ),
-        },
-      ]
-    );
-  };
-
   const handleSafetyMenu = () => {
     Alert.alert(
-      'Chat Safety',
-      'Report unsafe behavior, block unwanted contact, or review the community guidelines.',
+      "Chat Safety",
+      "In-app reporting and blocking are not currently available. Contact support if you need help with this conversation.",
       [
-        { text: 'Report User', onPress: () => handleReportUser(otherUserId) },
-        { text: 'Block User', style: 'destructive', onPress: () => handleBlockUser(otherUserId) },
-        { text: 'Community Guidelines', onPress: () => navigation.navigate('Legal', { type: 'community' }) },
-        { text: 'Contact Support', onPress: () => navigation.navigate('Legal', { type: 'support' }) },
-        { text: 'Cancel', style: 'cancel' },
-      ]
+        {
+          text: "Community Guidelines",
+          onPress: () => navigation.navigate("Legal", { type: "community" }),
+        },
+        {
+          text: "Contact Support",
+          onPress: () => navigation.navigate("Legal", { type: "support" }),
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
     );
   };
 
-  const handleMessageLongPress = (chatMessage: ChatMessage, isUser: boolean) => {
-    if (isUser) {
-      Alert.alert(
-        'Message Options',
-        'You can review the community guidelines or contact support if you need help with this conversation.',
-        [
-          { text: 'Community Guidelines', onPress: () => navigation.navigate('Legal', { type: 'community' }) },
-          { text: 'Contact Support', onPress: () => navigation.navigate('Legal', { type: 'support' }) },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-      return;
-    }
-
+  const handleMessageLongPress = () => {
     Alert.alert(
-      'Message Safety',
-      'Report this message or take action on this user.',
+      "Message Options",
+      "In-app reporting and blocking are not currently available. You can review the community guidelines or contact support.",
       [
         {
-          text: 'Report Message',
-          onPress: () =>
-            submitSafetyAction(
-              () =>
-                api.reportContent({
-                  contentType: 'message',
-                  contentId: chatMessage.id,
-                  roomId,
-                  reportedUserId: chatMessage.senderId,
-                  reason: 'Unsafe or inappropriate message reported from chat',
-                }),
-              'Message Report Submitted'
-            ),
+          text: "Community Guidelines",
+          onPress: () => navigation.navigate("Legal", { type: "community" }),
         },
-        { text: 'Report User', onPress: () => handleReportUser(chatMessage.senderId) },
-        { text: 'Block User', style: 'destructive', onPress: () => handleBlockUser(chatMessage.senderId) },
-        { text: 'Cancel', style: 'cancel' },
-      ]
+        {
+          text: "Contact Support",
+          onPress: () => navigation.navigate("Legal", { type: "support" }),
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
     );
   };
 
@@ -265,104 +253,143 @@ export default function ChatThread({ navigation, route }: any) {
       content: item.content,
       timestamp: item.timestamp,
       senderId: item.senderId,
-      senderName: item.senderName || (isUser ? `${user?.firstName} ${user?.lastName}` : counsellorName),
+      senderName:
+        item.senderName ||
+        (isUser ? `${user?.firstName} ${user?.lastName}` : counsellorName),
       senderImage: isUser ? user?.profileImage : counsellorImage,
-      status: item.status || 'sent',
-      type: item.type || 'text'
+      status: item.status || "sent",
+      type: item.type || "text",
     };
-    
+
     return (
       <ChatBubble
         message={chatMessage}
         isUser={isUser}
         showAvatar={!isUser}
-        onLongPress={() => handleMessageLongPress(chatMessage, isUser)}
+        onLongPress={handleMessageLongPress}
       />
     );
   };
 
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         {/* Header */}
-        <View style={{
-          backgroundColor: colors.card,
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-          borderBottomLeftRadius: 24,
-          borderBottomRightRadius: 24
-        }}>
+        <View
+          style={{
+            backgroundColor: colors.card,
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            borderBottomLeftRadius: 24,
+            borderBottomRightRadius: 24,
+          }}
+        >
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={{ marginRight: 12 }}
           >
             <ArrowLeft size={24} color={colors.cardText} />
           </TouchableOpacity>
-          
+
           {counsellorImage ? (
             <Image
               source={{ uri: counsellorImage }}
-              style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12 }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                marginRight: 12,
+              }}
               contentFit="cover"
             />
           ) : (
-            <View style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: colors.primary + '20',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 12
-            }}>
-              <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: colors.primary + "20",
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 12,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.primary,
+                  fontSize: 16,
+                  fontWeight: "600",
+                }}
+              >
                 {counsellorName.charAt(0).toUpperCase()}
               </Text>
             </View>
           )}
-          
+
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.cardText }}>
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: "600",
+                color: colors.cardText,
+              }}
+            >
               {counsellorName}
             </Text>
           </View>
-          
-          <View style={{ flexDirection: 'row', gap: 12 }}>
+
+          <View style={{ flexDirection: "row", gap: 12 }}>
             <TouchableOpacity
-              onPress={() => navigation.navigate('GenderSelection', { sessionType: 'audio' })}
+              onPress={() =>
+                navigation.navigate(
+                  counsellorId ? "CounsellorProfile" : "CounsellorList",
+                  counsellorId ? { counsellorId } : undefined,
+                )
+              }
               style={{
-                width: 38, height: 38, borderRadius: 19,
-                backgroundColor: colors.primary + '14',
-                alignItems: 'center', justifyContent: 'center',
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: colors.primary + "14",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               <Phone size={18} color={colors.primary} />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => navigation.navigate('GenderSelection', { sessionType: 'video' })}
+              onPress={() =>
+                navigation.navigate(
+                  counsellorId ? "CounsellorProfile" : "CounsellorList",
+                  counsellorId ? { counsellorId } : undefined,
+                )
+              }
               style={{
-                width: 38, height: 38, borderRadius: 19,
-                backgroundColor: colors.primary + '14',
-                alignItems: 'center', justifyContent: 'center',
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: colors.primary + "14",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               <Video size={18} color={colors.primary} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleSafetyMenu}
-              disabled={safetyActionLoading}
               style={{
-                width: 38, height: 38, borderRadius: 19,
-                backgroundColor: colors.primary + '14',
-                alignItems: 'center', justifyContent: 'center',
-                opacity: safetyActionLoading ? 0.6 : 1,
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: colors.primary + "14",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               <MoreVertical size={18} color={colors.primary} />
@@ -372,7 +399,9 @@ export default function ChatThread({ navigation, route }: any) {
 
         {/* Messages */}
         {loading ? (
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+          >
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : (
@@ -383,9 +412,61 @@ export default function ChatThread({ navigation, route }: any) {
             keyExtractor={(item) => item.id}
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingVertical: 16 }}
+            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+            ListHeaderComponent={
+              hasOlderMessages ? (
+                <View
+                  style={{
+                    alignItems: "center",
+                    paddingHorizontal: 16,
+                    paddingBottom: 12,
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={handleLoadOlder}
+                    disabled={loadingOlder}
+                    style={{
+                      minHeight: 44,
+                      paddingHorizontal: 18,
+                      borderRadius: 22,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {loadingOlder ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Text
+                        style={{
+                          color: colors.primary,
+                          fontSize: 13,
+                          fontWeight: "700",
+                        }}
+                      >
+                        Load earlier messages
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : null
+            }
             ListEmptyComponent={
-              <View style={{ alignItems: 'center', marginTop: 40, paddingHorizontal: 16 }}>
-                <Text style={{ fontSize: 16, color: colors.muted, textAlign: 'center' }}>
+              <View
+                style={{
+                  alignItems: "center",
+                  marginTop: 40,
+                  paddingHorizontal: 16,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 16,
+                    color: colors.muted,
+                    textAlign: "center",
+                  }}
+                >
                   No messages yet. Start the conversation!
                 </Text>
               </View>
@@ -397,57 +478,70 @@ export default function ChatThread({ navigation, route }: any) {
                 </View>
               ) : null
             }
-            onContentSizeChange={() => {
-              flatListRef.current?.scrollToEnd({ animated: false });
-            }}
           />
         )}
 
         {/* Connection Status - Only show if disconnected for more than 5 seconds */}
         {!isConnected && (
-          <View style={{
-            backgroundColor: '#F59E0B',
-            paddingHorizontal: 16,
-            paddingVertical: 8,
-            alignItems: 'center'
-          }}>
-            <Text style={{ color: 'white', fontSize: 12 }}>
+          <View
+            style={{
+              backgroundColor: "#F59E0B",
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "white", fontSize: 12 }}>
               Connecting... (You can still send messages)
             </Text>
           </View>
         )}
 
-        <View style={{
-          backgroundColor: crisisBg,
-          borderTopWidth: 1,
-          borderTopColor: crisisBorder,
-          paddingHorizontal: 16,
-          paddingVertical: 10
-        }}>
+        <View
+          style={{
+            backgroundColor: crisisBg,
+            borderTopWidth: 1,
+            borderTopColor: crisisBorder,
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+          }}
+        >
           <Text style={{ color: crisisText, fontSize: 12, lineHeight: 18 }}>
-            This app is not an emergency service. If you are in immediate danger, contact local emergency services now.
+            This app is not an emergency service. If you are in immediate
+            danger, contact local emergency services now.
           </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('CrisisHelp')} style={{ marginTop: 6 }}>
-            <Text style={{ color: crisisText, fontSize: 12, fontWeight: '700' }}>View crisis guidance</Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("CrisisHelp")}
+            style={{ marginTop: 6 }}
+          >
+            <Text
+              style={{ color: crisisText, fontSize: 12, fontWeight: "700" }}
+            >
+              View crisis guidance
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* Input */}
-        <View style={{
-          backgroundColor: colors.card,
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-          borderTopWidth: 1,
-          borderTopColor: colors.border
-        }}>
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: colors.surface,
-            borderRadius: 24,
+        <View
+          style={{
+            backgroundColor: colors.card,
             paddingHorizontal: 16,
-            paddingVertical: 8
-          }}>
+            paddingVertical: 12,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.surface,
+              borderRadius: 24,
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+            }}
+          >
             <TextInput
               value={message}
               onChangeText={handleTyping}
@@ -458,7 +552,7 @@ export default function ChatThread({ navigation, route }: any) {
                 fontSize: 16,
                 color: colors.cardText,
                 paddingVertical: 8,
-                maxHeight: 100
+                maxHeight: 100,
               }}
               multiline
               editable={!sending}
@@ -470,7 +564,7 @@ export default function ChatThread({ navigation, route }: any) {
                 backgroundColor: message.trim() ? colors.primary : colors.muted,
                 borderRadius: 24,
                 padding: 8,
-                marginLeft: 8
+                marginLeft: 8,
               }}
             >
               {sending ? (

@@ -1,0 +1,16 @@
+appId: com.menorah.healthmobile
+---
+- launchApp
+- tapOn:
+    text: ".*(Sign in|Login|Get Started|Continue).*"
+    optional: true
+- assertVisible:
+    text: ".*(Login|Welcome back|Email).*"
+- tapOn:
+    text: ".*(Create account|Sign up|Register).*"
+    optional: true
+- assertVisible:
+    text: ".*(Create|Register|Email|Password).*"
+- back
+- assertVisible:
+    text: ".*(Login|Welcome back|Email).*"

@@ -1,0 +1,1 @@
+Menorah Health 2.7.0 adds improved onboarding, booking and pending-payment cancellation, profile syncing, secure chat updates, counsellor photos, article discovery, password recovery, and Android notification support. This release also improves call reliability and production safety checks.

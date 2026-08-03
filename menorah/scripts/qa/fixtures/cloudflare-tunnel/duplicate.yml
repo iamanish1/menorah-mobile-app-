@@ -1,0 +1,46 @@
+ingress:
+  - hostname: menorah.me
+    service: http://reverse-proxy:80
+  - hostname: MENORAH.ME.
+    service: http://reverse-proxy:80
+  - hostname: app.menorah.me
+    service: http://reverse-proxy:80
+  - hostname: admin.menorah.me
+    service: http://reverse-proxy:80
+  - hostname: counsellor.menorah.me
+    service: http://reverse-proxy:80
+  - hostname: api-ios.menorah.me
+    service: http://reverse-proxy:80
+  - hostname: api-android.menorah.me
+    service: http://reverse-proxy:80
+  - hostname: api-web.menorah.me
+    service: http://reverse-proxy:80
+  - hostname: api-admin.menorah.me
+    service: http://reverse-proxy:80
+  - hostname: calls.menorah.me
+    service: http://reverse-proxy:80
+  - hostname: mentle.org
+    service: http://reverse-proxy:80
+  - hostname: www.mentle.org
+    service: http://reverse-proxy:80
+  - hostname: mentle.mentle.org
+    service: http://reverse-proxy:80
+  - hostname: app.mentle.org
+    service: http://reverse-proxy:80
+  - hostname: business.mentle.org
+    service: http://reverse-proxy:80
+  - hostname: admin.mentle.org
+    service: http://reverse-proxy:80
+  - hostname: counsellor.mentle.org
+    service: http://reverse-proxy:80
+  - hostname: api.mentle.org
+    service: http://reverse-proxy:80
+  - hostname: api-business.mentle.org
+    service: http://reverse-proxy:80
+  - hostname: api-admin.mentle.org
+    service: http://reverse-proxy:80
+  - hostname: api-counsellor.mentle.org
+    service: http://reverse-proxy:80
+  - hostname: calls.mentle.org
+    service: http://reverse-proxy:80
+  - service: http_status:404

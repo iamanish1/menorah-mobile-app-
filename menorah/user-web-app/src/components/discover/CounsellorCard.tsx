@@ -1,5 +1,8 @@
+'use client';
+
 import Link from 'next/link';
-import { Play } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Pause, Play } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import type { Counsellor } from '@/types';
 
@@ -12,11 +15,31 @@ interface CounsellorCardProps {
 }
 
 export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const tags = getSpecializationTags(c);
   const availability = getNextAvailability(c);
   const therapyHours = getTherapyHours(c);
   const primaryLanguage = c.languages[0] ?? 'English';
-  const price = c.hourlyRate > 0 ? formatCurrency(c.hourlyRate, c.currency) : 'Free';
+  const price = c.hourlyRate > 0 ? formatCurrency(c.hourlyRate, c.currency) : 'Rate unavailable';
+  const hasVoiceIntro = Boolean(c.voiceIntroUrl);
+
+  const toggleVoiceIntro = async () => {
+    if (!hasVoiceIntro || !audioRef.current) return;
+
+    try {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+        return;
+      }
+
+      await audioRef.current.play();
+      setIsPlaying(true);
+    } catch {
+      setIsPlaying(false);
+    }
+  };
 
   return (
     <article
@@ -30,7 +53,11 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
         </div>
 
         <div className="counsellor-profile-card__avatar" aria-hidden="true">
-          {getInitial(c.name)}
+          {c.profileImage ? (
+            <img src={c.profileImage} alt="" className="h-full w-full rounded-full object-cover" />
+          ) : (
+            getInitial(c.name)
+          )}
         </div>
       </div>
 
@@ -44,9 +71,22 @@ export function CounsellorCard({ c, index = 0 }: CounsellorCardProps) {
         </div>
 
         <div className="mt-4 flex items-center gap-3 border-b border-[#e3e7e0] pb-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1f2933] text-white shadow-sm transition-transform duration-200 group-hover:scale-105">
-            <Play className="h-5 w-5 fill-current" aria-hidden="true" />
-          </span>
+          <button
+            type="button"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1f2933] text-white shadow-sm transition-transform duration-200 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 group-hover:scale-105"
+            onClick={toggleVoiceIntro}
+            disabled={!hasVoiceIntro}
+            aria-label={hasVoiceIntro ? `${isPlaying ? 'Pause' : 'Play'} ${c.name} voice intro` : `${c.name} has no voice intro`}
+          >
+            {isPlaying ? (
+              <Pause className="h-5 w-5 fill-current" aria-hidden="true" />
+            ) : (
+              <Play className="h-5 w-5 fill-current" aria-hidden="true" />
+            )}
+          </button>
+          {hasVoiceIntro && (
+            <audio ref={audioRef} src={c.voiceIntroUrl} preload="none" onEnded={() => setIsPlaying(false)} />
+          )}
 
           <div className="counsellor-profile-card__waveform" aria-hidden="true">
             {WAVEFORM_BARS.map((height, barIndex) => (

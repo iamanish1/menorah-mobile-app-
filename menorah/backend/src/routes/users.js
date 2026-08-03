@@ -1,12 +1,68 @@
 const express = require('express');
+const crypto = require('crypto');
 const { body, param, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 const multer = require('multer');
+const sharp = require('sharp');
 const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
-const { auth } = require('../middleware/auth');
-const { uploadBuffer } = require('../utils/cloudinary');
+const AccountDeletionChallenge = require('../models/AccountDeletionChallenge');
+const { auth, patientAuth, sharedParticipantAuth } = require('../middleware/auth');
+const { storeMediaBuffer } = require('../services/mediaStorage');
+const { clearMappedSessionCookie } = require('../config/webSessions');
+const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const { disconnectUserSockets } = require('../utils/sessionLifecycle');
+const { passwordValidator } = require('../utils/passwordPolicy');
+const {
+  inspectEmergencyContact,
+  emergencyContactValidator,
+} = require('../utils/emergencyContact');
+const {
+  invalidateCounsellorDiscoveryCache,
+  notifyCounsellorProfileUpdated,
+} = require('../utils/counsellorProfileSync');
+const {
+  accountDeletionService,
+} = require('../services/accountDeletionService');
+const { getMaskedBankAccountNumber } = require('../utils/bankAccountEncryption');
+const { encryptAppleRefreshToken } = require('../utils/appleRefreshTokenEncryption');
+const {
+  exchangeAppleAuthorizationCode,
+  verifyAppleIdentityToken,
+} = require('../services/appleSignInService');
+const {
+  serializePublicUser,
+  serializeUserProfile,
+} = require('../serializers/userSerializer');
+const {
+  EXPO_PUSH_TOKEN_PATTERN,
+  PushDeviceError,
+  disablePushDevicesForUser,
+  registerPushDevice,
+  unregisterPushDevice,
+} = require('../services/pushDeviceService');
 
 const router = express.Router();
+const leanWithPasswordAuth = (query) => {
+  const selected = typeof query?.select === 'function'
+    ? query.select('+passwordAuthEnabled')
+    : query;
+  return typeof selected?.lean === 'function' ? selected.lean() : selected;
+};
+const accountDeletionChallengeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `account-deletion:${String(req.user?._id || 'unauthenticated')}`,
+});
+const pushDeviceLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `push-device:${String(req.user?._id || 'unauthenticated')}`,
+});
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -25,7 +81,13 @@ const upload = multer({
 // @access  Private
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password').lean();
+    const user = await leanWithPasswordAuth(User.findById(req.user._id));
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
 
     let counsellorProfile = null;
     if (user.role === 'counsellor') {
@@ -36,9 +98,7 @@ router.get('/me', auth, async (req, res) => {
           accountHolderName: c.bankDetails.accountHolderName,
           bankName:          c.bankDetails.bankName,
           ifscCode:          c.bankDetails.ifscCode,
-          accountNumberMasked: c.bankDetails.accountNumber
-            ? `****${String(c.bankDetails.accountNumber).slice(-4)}`
-            : null,
+          accountNumberMasked: getMaskedBankAccountNumber(c.bankDetails),
         } : null;
 
         counsellorProfile = {
@@ -53,6 +113,11 @@ router.get('/me', auth, async (req, res) => {
           availability:      c.availability,
           isVerified:        c.isVerified,
           isActive:          c.isActive,
+          profileImage:      c.profileImage || null,
+          voiceIntroUrl:     c.voiceIntroUrl || null,
+          voiceIntroDurationSeconds: c.voiceIntroDurationSeconds || null,
+          profileMediaCompletedAt: c.profileMediaCompletedAt || null,
+          profileMediaComplete: Boolean(c.profileImage && c.voiceIntroUrl),
           // commissionRate omitted — internal business metric
           bankDetails:       maskedBank,
         };
@@ -61,7 +126,7 @@ router.get('/me', auth, async (req, res) => {
 
     res.json({
       success: true,
-      data: { user: { ...user, counsellorProfile } }
+      data: { user: serializeUserProfile(user, { counsellorProfile }) }
     });
 
   } catch (error) {
@@ -78,14 +143,17 @@ router.get('/me', auth, async (req, res) => {
 // @access  Private
 router.get('/profile', auth, async (req, res) => {
   try {
-    // Exclude internal/sensitive fields from profile response
-    const user = await User.findById(req.user._id).select(
-      '-password -emailVerificationToken -passwordResetToken -passwordResetExpires -loginAttempts -lockUntil'
-    );
+    const user = await leanWithPasswordAuth(User.findById(req.user._id));
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
 
     res.json({
       success: true,
-      data: { user }
+      data: { user: serializeUserProfile(user) }
     });
 
   } catch (error) {
@@ -100,7 +168,7 @@ router.get('/profile', auth, async (req, res) => {
 // @route   PUT /api/users/profile
 // @desc    Update current user's profile
 // @access  Private
-router.put('/profile', auth, upload.single('profileImage'), [
+router.put('/profile', sharedParticipantAuth, upload.single('profileImage'), [
   body('firstName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
   body('dateOfBirth').optional().isISO8601().withMessage('Please provide a valid date of birth'),
@@ -145,13 +213,25 @@ router.put('/profile', auth, upload.single('profileImage'), [
 
     if (req.file?.buffer) {
       try {
-        const uploadResult = await uploadBuffer(req.file.buffer, {
-          folder: 'menorah/profile-images',
-          resource_type: 'image',
-          public_id: `user_${user._id}_${Date.now()}`,
+        const safeProfileImage = await sharp(req.file.buffer, {
+          failOn: 'warning',
+          limitInputPixels: 16_000_000,
+        })
+          .rotate()
+          .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 86, mozjpeg: true })
+          .toBuffer();
+        const uploadResult = await storeMediaBuffer(safeProfileImage, {
+          service: 'user-profile',
+          category: 'images',
+          extension: '.jpg',
+          contentType: 'image/jpeg',
+          cloudinaryFolder: 'menorah/profile-images',
+          cloudinaryResourceType: 'image',
         });
 
-        user.profileImage = uploadResult.secure_url;
+        user.profileImage = uploadResult.url;
+        user.profileImageStorage = uploadResult.metadata;
       } catch (uploadError) {
         console.error('Profile image upload error:', uploadError);
         return res.status(500).json({
@@ -163,10 +243,19 @@ router.put('/profile', auth, upload.single('profileImage'), [
 
     await user.save();
 
+    // A counsellor's name and fallback image are stored on User, while the
+    // public directory caches joined User + Counsellor records. Clear that
+    // cache and notify active clients so personal edits are visible wherever
+    // the counsellor appears, not only after its normal cache TTL.
+    if (user.role === 'counsellor') {
+      await invalidateCounsellorDiscoveryCache();
+      notifyCounsellorProfileUpdated(req.app.get('io'));
+    }
+
     res.json({
       success: true,
       message: 'Profile updated successfully',
-      data: { user }
+      data: { user: serializeUserProfile(user) }
     });
 
   } catch (error) {
@@ -175,6 +264,37 @@ router.put('/profile', auth, upload.single('profileImage'), [
       success: false,
       message: 'Internal server error'
     });
+  }
+});
+
+// @route   PUT /api/users/profile/complete
+// @desc    Complete the required contact data for a social-signup account
+// @access  Verified patient account (profile completion itself is allowed)
+router.put('/profile/complete', [
+  body('phone').matches(/^\+[1-9]\d{1,14}$/).withMessage('Please provide a valid phone number with country code'),
+], patientAuth, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    user.phone = req.body.phone;
+    user.profileCompleted = true;
+    await user.save();
+    return res.json({
+      success: true,
+      message: 'Profile completed successfully',
+      data: { user: serializeUserProfile(user) },
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ success: false, message: 'That phone number is already in use.' });
+    }
+    console.error('Complete profile error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
@@ -187,7 +307,7 @@ router.put('/address', [
   body('state').optional().isString(),
   body('country').optional().isString(),
   body('zipCode').optional().isString()
-], auth, async (req, res) => {
+], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -236,10 +356,8 @@ router.put('/address', [
 // @desc    Update user's emergency contact
 // @access  Private
 router.put('/emergency-contact', [
-  body('name').notEmpty().withMessage('Emergency contact name is required'),
-  body('relationship').notEmpty().withMessage('Relationship is required'),
-  body('phone').isMobilePhone().withMessage('Please provide a valid phone number')
-], auth, async (req, res) => {
+  body().custom(emergencyContactValidator),
+], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -250,8 +368,6 @@ router.put('/emergency-contact', [
       });
     }
 
-    const { name, relationship, phone } = req.body;
-
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({
@@ -260,19 +376,19 @@ router.put('/emergency-contact', [
       });
     }
 
-    // Update emergency contact
-    user.emergencyContact = {
-      name,
-      relationship,
-      phone
-    };
+    const { contact } = inspectEmergencyContact(req.body);
+    // This endpoint replaces the whole contact. An entirely blank payload is
+    // an intentional clear; partial contacts were rejected by validation.
+    user.emergencyContact = contact || undefined;
 
     await user.save();
 
     res.json({
       success: true,
-      message: 'Emergency contact updated successfully',
-      data: { emergencyContact: user.emergencyContact }
+      message: contact
+        ? 'Emergency contact updated successfully'
+        : 'Emergency contact cleared successfully',
+      data: { emergencyContact: contact }
     });
 
   } catch (error) {
@@ -291,7 +407,7 @@ router.put('/notification-preferences', [
   body('email').optional().isBoolean().withMessage('Email preference must be a boolean'),
   body('sms').optional().isBoolean().withMessage('SMS preference must be a boolean'),
   body('push').optional().isBoolean().withMessage('Push preference must be a boolean')
-], auth, async (req, res) => {
+], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -319,6 +435,17 @@ router.put('/notification-preferences', [
 
     await user.save();
 
+    if (push === false) {
+      try {
+        await disablePushDevicesForUser({ userId: req.user._id });
+      } catch (disableError) {
+        console.error(
+          'Disable push devices after preference update failed:',
+          disableError?.code || 'PUSH_DEVICE_DISABLE_FAILED'
+        );
+      }
+    }
+
     res.json({
       success: true,
       message: 'Notification preferences updated successfully',
@@ -334,13 +461,79 @@ router.put('/notification-preferences', [
   }
 });
 
+// @route   POST /api/users/push-devices
+// @desc    Register the signed-in user's Android Expo push token
+// @access  Private
+router.post('/push-devices', auth, pushDeviceLimiter, [
+  body('expoPushToken')
+    .isString()
+    .trim()
+    .matches(EXPO_PUSH_TOKEN_PATTERN)
+    .withMessage('A valid Android push token is required'),
+  body('platform').equals('android').withMessage('Only Android push is supported'),
+  body('projectId').optional({ nullable: true }).isString().trim().isLength({ max: 128 }),
+], async (req, res) => {
+  try {
+    if (!validationResult(req).isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Invalid push registration' });
+    }
+
+    await registerPushDevice({
+      userId: req.user._id,
+      expoPushToken: req.body.expoPushToken,
+      platform: req.body.platform,
+      projectId: req.body.projectId,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: { registered: true },
+    });
+  } catch (error) {
+    if (error instanceof PushDeviceError) {
+      return res.status(400).json({ success: false, message: 'Invalid push registration' });
+    }
+    console.error('Register push device failed:', error?.code || 'PUSH_DEVICE_REGISTER_FAILED');
+    return res.status(500).json({ success: false, message: 'Unable to enable push notifications' });
+  }
+});
+
+// @route   DELETE /api/users/push-devices
+// @desc    Disable this Android device for the signed-in user
+// @access  Private
+router.delete('/push-devices', auth, pushDeviceLimiter, [
+  body('expoPushToken')
+    .isString()
+    .trim()
+    .matches(EXPO_PUSH_TOKEN_PATTERN)
+    .withMessage('A valid Android push token is required'),
+], async (req, res) => {
+  try {
+    if (!validationResult(req).isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Invalid push registration' });
+    }
+
+    await unregisterPushDevice({
+      userId: req.user._id,
+      expoPushToken: req.body.expoPushToken,
+    });
+    return res.json({ success: true, data: { registered: false } });
+  } catch (error) {
+    if (error instanceof PushDeviceError) {
+      return res.status(400).json({ success: false, message: 'Invalid push registration' });
+    }
+    console.error('Unregister push device failed:', error?.code || 'PUSH_DEVICE_DISABLE_FAILED');
+    return res.status(500).json({ success: false, message: 'Unable to disable push notifications' });
+  }
+});
+
 // @route   PUT /api/users/change-password
 // @desc    Change user's password
 // @access  Private
 router.put('/change-password', [
   body('currentPassword').notEmpty().withMessage('Current password is required'),
-  body('newPassword').isLength({ min: 8 }).withMessage('New password must be at least 8 characters long')
-], auth, async (req, res) => {
+  body('newPassword').custom(passwordValidator)
+], sharedParticipantAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -353,7 +546,8 @@ router.put('/change-password', [
 
     const { currentPassword, newPassword } = req.body;
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id)
+      .select('+password +passwordResetToken +passwordResetExpires +lockUntil');
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -369,10 +563,29 @@ router.put('/change-password', [
         message: 'Current password is incorrect'
       });
     }
+    // Compare against the stored bcrypt hash instead of only comparing the two
+    // submitted strings. This also rejects values that bcrypt would treat as
+    // equivalent because of its input-length limit.
+    const isPasswordReused = await user.comparePassword(newPassword);
+    if (isPasswordReused) {
+      return res.status(409).json({
+        success: false,
+        message: 'New password must be different from the current password'
+      });
+    }
 
     // Update password
     user.password = newPassword;
+    // A successful authenticated password change supersedes every outstanding
+    // recovery link and clears any stale failed-login state.
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    user.loginAttempts = 0;
+    user.lockUntil = null;
+    revokeAllSessions(user, { passwordChanged: true });
     await user.save();
+    clearMappedSessionCookie(req, res);
+    disconnectUserSockets(req.app.get('io'), user, 'password_changed');
 
     res.json({
       success: true,
@@ -388,12 +601,74 @@ router.put('/change-password', [
   }
 });
 
+// @route   POST /api/users/account/deletion-challenge
+// @desc    Issue a single-use nonce for social-provider account deletion
+// @access  Private
+router.post('/account/deletion-challenge', auth, accountDeletionChallengeLimiter, [
+  body('method').equals('apple'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Unsupported deletion reauthentication method' });
+    }
+    if (process.env.APPLE_SIGN_IN_ENABLED !== 'true') {
+      return res.status(503).json({ success: false, message: 'Apple verification is unavailable.' });
+    }
+    if (!req.user.socialAuth?.appleSub) {
+      return res.status(409).json({
+        success: false,
+        code: 'ACCOUNT_REAUTH_METHOD_NOT_LINKED',
+        message: 'This Apple identity is not linked to the account.',
+      });
+    }
+
+    const challengeId = crypto.randomBytes(32).toString('hex');
+    const nonce = crypto.randomBytes(32).toString('base64url');
+    const nonceHash = crypto.createHash('sha256').update(nonce, 'utf8').digest('hex');
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await AccountDeletionChallenge.updateMany(
+      {
+        user: req.user._id,
+        method: 'apple',
+        consumedAt: null,
+      },
+      { $set: { consumedAt: new Date() } }
+    );
+    await AccountDeletionChallenge.create({
+      challengeId,
+      user: req.user._id,
+      method: 'apple',
+      nonceHash,
+      sessionVersion: req.user.sessionVersion,
+      expiresAt,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: { challengeId, nonce, expiresAt: expiresAt.toISOString() },
+    });
+  } catch (error) {
+    console.error('Account deletion challenge error code:', error?.code || 'UNEXPECTED_ERROR');
+    return res.status(500).json({ success: false, message: 'Could not start account deletion verification.' });
+  }
+});
+
 // @route   DELETE /api/users/account
 // @desc    Delete user account
 // @access  Private
 router.delete('/account', [
-  body('password').notEmpty().withMessage('Password is required for account deletion')
-], auth, async (req, res) => {
+  body('method')
+    .customSanitizer((value, { req }) => (
+      value || (typeof req.body?.password === 'string' ? 'password' : value)
+    ))
+    .isIn(['password', 'apple']),
+  body('password').optional().isString().isLength({ min: 1, max: 256 }),
+  body('challengeId').optional().isString().matches(/^[a-f0-9]{64}$/),
+  body('identityToken').optional().isString().isLength({ min: 20, max: 8192 }),
+  body('authorizationCode').optional().isString().isLength({ min: 20, max: 4096 }),
+], sharedParticipantAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -404,39 +679,131 @@ router.delete('/account', [
       });
     }
 
-    const { password } = req.body;
+    let socialReauthentication = null;
+    let providerRevocation = null;
 
-    const user = await User.findById(req.user._id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
+    if (req.body.method === 'password') {
+      if (typeof req.body.password !== 'string' || !req.body.password) {
+        return res.status(400).json({ success: false, message: 'Password is required for account deletion' });
+      }
+    } else {
+      if (process.env.APPLE_SIGN_IN_ENABLED !== 'true') {
+        return res.status(503).json({ success: false, message: 'Apple verification is unavailable.' });
+      }
+      if (!req.body.challengeId || !req.body.identityToken || !req.body.authorizationCode) {
+        return res.status(400).json({ success: false, message: 'Apple reauthentication is incomplete' });
+      }
+
+      const challenge = await AccountDeletionChallenge.findOneAndUpdate(
+        {
+          challengeId: req.body.challengeId,
+          user: req.user._id,
+          method: 'apple',
+          purpose: 'account-deletion',
+          sessionVersion: req.user.sessionVersion,
+          consumedAt: null,
+          expiresAt: { $gt: new Date() },
+        },
+        { $set: { consumedAt: new Date() } },
+        { new: true }
+      ).select('+nonceHash');
+      if (!challenge) {
+        return res.status(409).json({
+          success: false,
+          code: 'ACCOUNT_DELETION_CHALLENGE_INVALID',
+          message: 'Deletion verification expired or was already used. Start again.',
+        });
+      }
+
+      const appleUser = await verifyAppleIdentityToken(req.body.identityToken);
+      const receivedNonceHash = crypto
+        .createHash('sha256')
+        .update(String(appleUser.nonce || ''), 'utf8')
+        .digest('hex');
+      const nonceMatches = crypto.timingSafeEqual(
+        Buffer.from(challenge.nonceHash, 'hex'),
+        Buffer.from(receivedNonceHash, 'hex')
+      );
+      if (!nonceMatches || appleUser.sub !== req.user.socialAuth?.appleSub) {
+        return res.status(403).json({
+          success: false,
+          code: 'ACCOUNT_APPLE_REAUTH_INVALID',
+          message: 'Apple reauthentication did not match this account.',
+        });
+      }
+
+      const clientId = String(appleUser.aud || '').trim();
+      const appleTokens = await exchangeAppleAuthorizationCode({
+        authorizationCode: req.body.authorizationCode,
+        clientId,
+        expectedSubject: appleUser.sub,
+        expectedNonce: appleUser.nonce,
       });
+      providerRevocation = {
+        provider: 'apple',
+        clientId,
+        refreshTokenEncrypted: encryptAppleRefreshToken(
+          appleTokens.refreshToken,
+          { userId: req.user._id, clientId }
+        ),
+      };
+      socialReauthentication = { provider: 'apple', subject: appleUser.sub };
     }
 
-    // Verify password
-    const isPasswordValid = await user.comparePassword(password);
-    if (!isPasswordValid) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password is incorrect'
-      });
-    }
-
-    // Soft delete - mark account as inactive
-    user.isActive = false;
-    await user.save();
+    await accountDeletionService.requestDeletion({
+      userId: req.user._id,
+      password: req.body.password,
+      source: req.app.get('serviceName') || 'authenticated-api',
+      ...(socialReauthentication ? { socialReauthentication } : {}),
+      ...(providerRevocation ? { providerRevocation } : {}),
+    });
+    clearMappedSessionCookie(req, res);
+    disconnectUserSockets(req.app.get('io'), req.user, 'account_disabled');
 
     res.json({
       success: true,
-      message: 'Account deleted successfully'
+      message: 'Account access has been disabled and your deletion request has been recorded for the retention review process.'
     });
 
   } catch (error) {
-    console.error('Delete account error:', error);
-    res.status(500).json({
+    const isAppleError = typeof error.appleErrorCode === 'string'
+      && /^APPLE_[A-Z0-9_]{1,56}$/.test(error.appleErrorCode);
+    const statusCode = isAppleError && error.statusCode === 401
+      ? 403
+      : isAppleError && error.statusCode === 503
+        ? 503
+        : Number.isInteger(error.statusCode)
+      && error.statusCode >= 400
+      && error.statusCode < 500
+        ? error.statusCode
+        : 500;
+    if (statusCode >= 500) {
+      const safeCode = isAppleError
+        ? error.appleErrorCode
+        : typeof error.code === 'string'
+        && /^[A-Z0-9_]{1,64}$/.test(error.code)
+          ? error.code
+          : 'UNEXPECTED_ERROR';
+      console.error('Delete account error code:', safeCode);
+    }
+    res.status(statusCode).json({
       success: false,
-      message: 'Internal server error'
+      message: isAppleError
+        ? statusCode === 503
+          ? 'Apple verification is temporarily unavailable.'
+          : 'Apple reauthentication could not be verified.'
+        : statusCode === 500
+          ? 'Internal server error'
+          : error.message,
+      ...(isAppleError
+        ? {
+          code: statusCode === 503
+            ? 'APPLE_VERIFICATION_UNAVAILABLE'
+            : 'ACCOUNT_APPLE_REAUTH_INVALID',
+        }
+        : statusCode < 500 && error.code
+          ? { code: error.code }
+          : {}),
     });
   }
 });
@@ -472,7 +839,7 @@ router.get('/:id', [
 
     res.json({
       success: true,
-      data: { user }
+      data: { user: serializePublicUser(user) }
     });
 
   } catch (error) {

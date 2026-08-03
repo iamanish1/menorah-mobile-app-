@@ -1,32 +1,40 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { reportError } from '@/lib/safeDiagnostics';
 
 interface State {
-  error: Error | null;
+  hasError: boolean;
+  incidentReference: string | null;
 }
 
-export default class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State> {
-  state: State = { error: null };
+const createIncidentReference = () =>
+  `MOB-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
-  static getDerivedStateFromError(error: Error): State {
-    return { error };
+export default class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State> {
+  state: State = { hasError: false, incidentReference: null };
+
+  static getDerivedStateFromError(): State {
+    return { hasError: true, incidentReference: createIncidentReference() };
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[ErrorBoundary]', error, info.componentStack);
+  componentDidCatch(error: Error) {
+    // safeDiagnostics strips message, stack, request data, and response bodies.
+    reportError('ui.error_boundary', error);
   }
 
   render() {
-    if (this.state.error) {
+    if (this.state.hasError) {
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>App Error</Text>
-          <Text style={styles.subtitle}>Please screenshot this and send to support:</Text>
-          <ScrollView style={styles.scroll}>
-            <Text style={styles.message}>{this.state.error.message}</Text>
-            <Text style={styles.stack}>{this.state.error.stack}</Text>
-          </ScrollView>
-          <TouchableOpacity style={styles.button} onPress={() => this.setState({ error: null })}>
+          <Text style={styles.title}>Something went wrong</Text>
+          <Text style={styles.subtitle}>
+            No health or account details were included. Try again, or share only
+            this reference with support: {this.state.incidentReference}
+          </Text>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => this.setState({ hasError: false, incidentReference: null })}
+          >
             <Text style={styles.buttonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
@@ -37,12 +45,14 @@ export default class ErrorBoundary extends React.Component<{ children: React.Rea
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0a0a', padding: 24, paddingTop: 60 },
-  title: { color: '#ff4444', fontSize: 22, fontWeight: 'bold', marginBottom: 8 },
-  subtitle: { color: '#aaaaaa', fontSize: 13, marginBottom: 16 },
-  scroll: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 8, padding: 12, marginBottom: 16 },
-  message: { color: '#ffcc00', fontSize: 14, fontWeight: 'bold', marginBottom: 12 },
-  stack: { color: '#cccccc', fontSize: 11, fontFamily: 'monospace' },
-  button: { backgroundColor: '#333', padding: 14, borderRadius: 8, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '600' },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: '#0a0a0a',
+    padding: 24,
+  },
+  title: { color: '#ffffff', fontSize: 22, fontWeight: 'bold', marginBottom: 8 },
+  subtitle: { color: '#cccccc', fontSize: 14, lineHeight: 20, marginBottom: 24 },
+  button: { backgroundColor: '#333333', padding: 14, borderRadius: 8, alignItems: 'center' },
+  buttonText: { color: '#ffffff', fontWeight: '600' },
 });

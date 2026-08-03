@@ -1,0 +1,585 @@
+name: Exact-SHA functional release validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'release/**'
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Reviewed full 40-character commit SHA to validate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: functional-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate:
+    name: Resolve immutable candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
+    steps:
+      - name: Validate immutable candidate
+        id: candidate
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_sha || github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${REQUESTED_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Candidate must be an exact lowercase 40-character commit SHA."
+            exit 1
+          fi
+          printf 'sha=%s\n' "${REQUESTED_SHA}" >> "${GITHUB_OUTPUT}"
+          printf 'candidateCommit=%s\n' "${REQUESTED_SHA}" >> "${GITHUB_STEP_SUMMARY}"
+
+  backend-default:
+    name: Backend default suite
+    needs: candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+      RESULT_DIR: /tmp/menorah-backend-default-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout candidate exactly
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test -z "$(git status --porcelain)"
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.1
+      - name: Install backend dependencies
+        working-directory: menorah/backend
+        run: npm ci
+      - name: Lint backend
+        working-directory: menorah/backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RESULT_DIR}"
+          npm run lint 2>&1 | tee "${RESULT_DIR}/lint.log"
+      - name: Run default Jest suite without integration skips
+        working-directory: menorah/backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test -- \
+            --runInBand \
+            --testPathIgnorePatterns='\.integration\.test\.js$' \
+            --json \
+            --outputFile="${RESULT_DIR}/jest.json" \
+            2>&1 | tee "${RESULT_DIR}/jest.log"
+          node ../../.github/scripts/assert-jest-results.mjs \
+            "${RESULT_DIR}/jest.json" --require-no-skips --minimum-tests 1
+      - name: Audit backend production dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .github/scripts/audit-production.mjs menorah/backend \
+            2>&1 | tee "${RESULT_DIR}/dependency-audit.log"
+      - name: Upload backend default results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: backend-default-${{ needs.candidate.outputs.sha }}
+          path: ${{ env.RESULT_DIR }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  backend-integration:
+    name: Backend disposable integration suite
+    needs: candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+      RESULT_DIR: /tmp/menorah-backend-integration-${{ github.run_id }}-${{ github.run_attempt }}
+      INTEGRATION_PROJECT: menorah-functional-${{ github.run_id }}-${{ github.run_attempt }}
+      KYC_MIGRATION_TEST_URI: mongodb://127.0.0.1:27017/menorah_kyc_migration_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_MIGRATION_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_migration_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_STATE_MIGRATION_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_state_migration_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_DELETION_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_deletion_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_PERMISSION_AUTHORITY_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_permission_authority_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_CONSENT_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_consent_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_RETENTION_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_retention_test_ci?replicaSet=menorah-ci&directConnection=true
+      PRIVACY_RIGHTS_TEST_URI: mongodb://127.0.0.1:27017/menorah_privacy_rights_test_ci?replicaSet=menorah-ci&directConnection=true
+      ADMIN_MFA_REDIS_TEST_URL: redis://127.0.0.1:6379/15
+    steps:
+      - name: Checkout candidate exactly
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test -z "$(git status --porcelain)"
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.1
+      - name: Install backend dependencies
+        working-directory: menorah/backend
+        run: npm ci
+      - name: Start disposable MongoDB and Redis
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose \
+            -p "${INTEGRATION_PROJECT}" \
+            -f menorah/scripts/qa/docker-compose.integration.yml \
+            up -d --wait
+          docker compose \
+            -p "${INTEGRATION_PROJECT}" \
+            -f menorah/scripts/qa/docker-compose.integration.yml \
+            exec -T mongo mongosh --quiet --eval \
+              'rs.initiate({_id:"menorah-ci",members:[{_id:0,host:"mongo:27017"}]})'
+          for _attempt in $(seq 1 30); do
+            if docker compose \
+              -p "${INTEGRATION_PROJECT}" \
+              -f menorah/scripts/qa/docker-compose.integration.yml \
+              exec -T mongo mongosh --quiet --eval \
+                'quit(rs.status().myState === 1 ? 0 : 1)'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Disposable MongoDB replica set did not become primary."
+          exit 1
+      - name: Run integration suites without silent skips
+        working-directory: menorah/backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RESULT_DIR}"
+          npm test -- \
+            --runInBand \
+            --testPathPattern='\.integration\.test\.js$' \
+            --json \
+            --outputFile="${RESULT_DIR}/jest.json" \
+            2>&1 | tee "${RESULT_DIR}/jest.log"
+          node ../../.github/scripts/assert-jest-results.mjs \
+            "${RESULT_DIR}/jest.json" --require-no-skips --minimum-tests 1
+      - name: Stop disposable services
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          docker compose \
+            -p "${INTEGRATION_PROJECT}" \
+            -f menorah/scripts/qa/docker-compose.integration.yml \
+            down -v --remove-orphans
+      - name: Upload backend integration results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: backend-integration-${{ needs.candidate.outputs.sha }}
+          path: ${{ env.RESULT_DIR }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  user-web:
+    name: User web validation
+    needs: candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+      RESULT_DIR: /tmp/menorah-user-web-${{ github.run_id }}-${{ github.run_attempt }}
+      NEXT_PUBLIC_API_URL: https://api.functional-test.invalid/api
+      NEXT_PUBLIC_SOCKET_URL: https://api.functional-test.invalid
+      NEXT_PUBLIC_CALLS_URL: https://calls.functional-test.invalid
+      NEXT_PUBLIC_JITSI_DOMAIN: calls.functional-test.invalid
+    steps:
+      - name: Checkout candidate exactly
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test -z "$(git status --porcelain)"
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.1
+      - name: Install user web dependencies
+        working-directory: menorah/user-web-app
+        run: npm ci
+      - name: Lint, type-check, and build user web
+        working-directory: menorah/user-web-app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RESULT_DIR}"
+          npm run lint 2>&1 | tee "${RESULT_DIR}/lint.log"
+          npx --no-install tsc --noEmit --incremental false \
+            2>&1 | tee "${RESULT_DIR}/typecheck.log"
+          npm run build 2>&1 | tee "${RESULT_DIR}/build.log"
+      - name: Audit user web production dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .github/scripts/audit-production.mjs menorah/user-web-app \
+            2>&1 | tee "${RESULT_DIR}/dependency-audit.log"
+      - name: Upload user web results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: user-web-${{ needs.candidate.outputs.sha }}
+          path: ${{ env.RESULT_DIR }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  admin-web:
+    name: Admin web validation
+    needs: candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+      RESULT_DIR: /tmp/menorah-admin-web-${{ github.run_id }}-${{ github.run_attempt }}
+      NEXT_PUBLIC_API_URL: https://api-admin.functional-test.invalid/api
+    steps:
+      - name: Checkout candidate exactly
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test -z "$(git status --porcelain)"
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.1
+      - name: Install admin dependencies
+        working-directory: menorah/admin-panel
+        run: npm ci
+      - name: Lint, type-check, and build admin web
+        working-directory: menorah/admin-panel
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RESULT_DIR}"
+          npm run lint 2>&1 | tee "${RESULT_DIR}/lint.log"
+          npx --no-install tsc --noEmit --incremental false \
+            2>&1 | tee "${RESULT_DIR}/typecheck.log"
+          npm run build 2>&1 | tee "${RESULT_DIR}/build.log"
+      - name: Audit admin production dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .github/scripts/audit-production.mjs menorah/admin-panel \
+            2>&1 | tee "${RESULT_DIR}/dependency-audit.log"
+      - name: Upload admin web results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: admin-web-${{ needs.candidate.outputs.sha }}
+          path: ${{ env.RESULT_DIR }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  counsellor-web:
+    name: Counsellor web validation
+    needs: candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+      RESULT_DIR: /tmp/menorah-counsellor-web-${{ github.run_id }}-${{ github.run_attempt }}
+      NEXT_PUBLIC_API_URL: https://api.functional-test.invalid/api
+      NEXT_PUBLIC_SOCKET_URL: https://api.functional-test.invalid
+      NEXT_PUBLIC_CALLS_URL: https://calls.functional-test.invalid
+      NEXT_PUBLIC_JITSI_DOMAIN: calls.functional-test.invalid
+    steps:
+      - name: Checkout candidate exactly
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test -z "$(git status --porcelain)"
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.1
+      - name: Install counsellor web dependencies
+        working-directory: menorah/web-app
+        run: npm ci
+      - name: Lint, type-check, and build counsellor web
+        working-directory: menorah/web-app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RESULT_DIR}"
+          npm run lint 2>&1 | tee "${RESULT_DIR}/lint.log"
+          npx --no-install tsc --noEmit --incremental false \
+            2>&1 | tee "${RESULT_DIR}/typecheck.log"
+          npm run build 2>&1 | tee "${RESULT_DIR}/build.log"
+      - name: Audit counsellor web production dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .github/scripts/audit-production.mjs menorah/web-app \
+            2>&1 | tee "${RESULT_DIR}/dependency-audit.log"
+      - name: Upload counsellor web results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: counsellor-web-${{ needs.candidate.outputs.sha }}
+          path: ${{ env.RESULT_DIR }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  mobile:
+    name: Mobile release validation
+    needs: candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+      RESULT_DIR: /tmp/menorah-mobile-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout candidate exactly
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test -z "$(git status --porcelain)"
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.1
+      - name: Install mobile dependencies
+        working-directory: menorah/mobile-app
+        run: npm ci
+      - name: Validate mobile release workspace
+        working-directory: menorah/mobile-app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RESULT_DIR}"
+          npm run lint 2>&1 | tee "${RESULT_DIR}/lint.log"
+          npm run typecheck 2>&1 | tee "${RESULT_DIR}/typecheck.log"
+          npm run test:payment-policy 2>&1 | tee "${RESULT_DIR}/payment-policy.log"
+          npm run test:release-config 2>&1 | tee "${RESULT_DIR}/release-config.log"
+          npx --no-install expo-doctor 2>&1 | tee "${RESULT_DIR}/expo-doctor.log"
+      - name: Enforce mobile production dependency policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .github/scripts/audit-production.mjs menorah/mobile-app \
+            2>&1 | tee "${RESULT_DIR}/dependency-audit.log"
+      - name: Upload mobile results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobile-${{ needs.candidate.outputs.sha }}
+          path: ${{ env.RESULT_DIR }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  release-infrastructure:
+    name: Release and infrastructure validation
+    needs: candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+      RESULT_DIR: /tmp/menorah-release-infrastructure-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout candidate exactly
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test -z "$(git status --porcelain)"
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.1
+      - name: Install deterministic QA dependencies
+        working-directory: menorah/scripts/qa
+        run: npm ci --ignore-scripts
+      - name: Install deterministic backend production dependencies
+        working-directory: menorah/backend
+        run: npm ci --omit=dev --ignore-scripts
+      - name: Validate every GitHub workflow
+        run: >-
+          docker run --rm --network none
+          -v "$PWD:/repo:ro"
+          -w /repo
+          rhysd/actionlint:1.7.11@sha256:6f03470d0152251d7f07f7c4dc019dbe7024c72cd952f839544c7798843efa8f
+      - name: Run release and infrastructure suites
+        working-directory: menorah/scripts/qa
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RESULT_DIR}"
+          {
+            npm run test:release-workflow
+            npm run test:tunnel-config
+            npm run test:media-recovery
+            docker run --rm --network none \
+              -v "${GITHUB_WORKSPACE}/menorah:/workspace:ro" \
+              -w /workspace \
+              node:22-bookworm@sha256:5647be709086c696ff32edaaf1c70cd26d1da6ab2b39c32f3c7b4c4a31957e37 \
+              bash scripts/qa/test-media-transition.sh
+            npm run test:mongo-identities
+            npm run test:backup-lifecycle
+            npm run test:monitoring
+            bash test-release-scripts.sh
+            bash test-mongosh-file-mode.sh
+          } 2>&1 | tee "${RESULT_DIR}/release-suites.log"
+      - name: Validate Compose and Caddy from tracked fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash menorah/deploy/ubuntu/validate-compose.sh \
+            2>&1 | tee "${RESULT_DIR}/compose.log"
+          docker compose \
+            -f menorah/deploy/docker-compose.production.yml \
+            -f menorah/deploy/docker-compose.tunnel.yml \
+            --env-file menorah/deploy/env/production.env.example \
+            --env-file menorah/deploy/env/cloudflare.env.example \
+            --profile validation \
+            run -T --rm --no-deps caddy-config-validator \
+            2>&1 | tee "${RESULT_DIR}/caddy.log"
+      - name: Validate clean-archive independence
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_root="$(mktemp -d "${RUNNER_TEMP}/menorah-clean.XXXXXX")"
+          cleanup() {
+            case "${archive_root}" in
+              "${RUNNER_TEMP}"/menorah-clean.*) rm -rf -- "${archive_root}" ;;
+              *) echo "::error::Refusing unsafe archive cleanup."; exit 1 ;;
+            esac
+          }
+          trap cleanup EXIT
+          git archive "${CANDIDATE_SHA}" | tar -x -C "${archive_root}"
+          test ! -e "${archive_root}/menorah/deploy/env/home.env"
+          bash "${archive_root}/menorah/deploy/ubuntu/validate-compose.sh" \
+            2>&1 | tee "${RESULT_DIR}/clean-archive-compose.log"
+      - name: Validate shell syntax and changed-script ShellCheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' script; do
+            bash -n "${script}"
+          done < <(find menorah/deploy menorah/scripts/qa -type f -name '*.sh' -print0)
+          docker run --rm --network none --entrypoint /bin/shellcheck \
+            -v "$PWD:/workspace:ro" \
+            -w /workspace \
+            koalaman/shellcheck-alpine:v0.11.0@sha256:9955be09ea7f0dbf7ae942ac1f2094355bb30d96fffba0ec09f5432207544002 \
+            menorah/deploy/ubuntu/validate-compose.sh \
+            menorah/deploy/scripts/home-compose-up.sh \
+            menorah/deploy/ubuntu/record-backup-result.sh \
+            menorah/deploy/ubuntu/backup-now.sh \
+            menorah/deploy/ubuntu/install-backup-schedule.sh \
+            menorah/deploy/ubuntu/prepare-host.sh \
+            menorah/deploy/monitoring/export-backup-metrics.sh \
+            menorah/deploy/server-staging/*.sh \
+            menorah/scripts/qa/test-backup-lifecycle.sh \
+            menorah/scripts/qa/test-monitoring-native.sh \
+            menorah/scripts/qa/validate-server-staging-isolation.sh \
+            2>&1 | tee "${RESULT_DIR}/shellcheck.log"
+      - name: Upload release-infrastructure results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-infrastructure-${{ needs.candidate.outputs.sha }}
+          path: ${{ env.RESULT_DIR }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  required-functional-release-gates:
+    name: Required functional release gates
+    if: ${{ always() }}
+    needs:
+      - candidate
+      - backend-default
+      - backend-integration
+      - user-web
+      - admin-web
+      - counsellor-web
+      - mobile
+      - release-infrastructure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every functional release job to pass
+        shell: bash
+        env:
+          CANDIDATE_RESULT: ${{ needs.candidate.result }}
+          BACKEND_DEFAULT_RESULT: ${{ needs.backend-default.result }}
+          BACKEND_INTEGRATION_RESULT: ${{ needs.backend-integration.result }}
+          USER_WEB_RESULT: ${{ needs.user-web.result }}
+          ADMIN_WEB_RESULT: ${{ needs.admin-web.result }}
+          COUNSELLOR_WEB_RESULT: ${{ needs.counsellor-web.result }}
+          MOBILE_RESULT: ${{ needs.mobile.result }}
+          RELEASE_INFRASTRUCTURE_RESULT: ${{ needs.release-infrastructure.result }}
+        run: |
+          set -euo pipefail
+          for result in \
+            "${CANDIDATE_RESULT}" \
+            "${BACKEND_DEFAULT_RESULT}" \
+            "${BACKEND_INTEGRATION_RESULT}" \
+            "${USER_WEB_RESULT}" \
+            "${ADMIN_WEB_RESULT}" \
+            "${COUNSELLOR_WEB_RESULT}" \
+            "${MOBILE_RESULT}" \
+            "${RELEASE_INFRASTRUCTURE_RESULT}"; do
+            if [[ "${result}" != "success" ]]; then
+              echo "::error::At least one required functional release job did not pass."
+              exit 1
+            fi
+          done

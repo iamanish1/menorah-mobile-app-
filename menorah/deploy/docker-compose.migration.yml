@@ -1,0 +1,10 @@
+services:
+  api-web:
+    # The updater supplies the recorded content ID from the checksum-protected
+    # release manifest. This prevents a mutable local build tag from selecting
+    # a different image after artifact capture and before the database change.
+    image: ${MENORAH_MIGRATION_IMAGE_ID:?MENORAH_MIGRATION_IMAGE_ID is required}
+    pull_policy: never
+    environment:
+      MENORAH_EXPECTED_PENDING_MIGRATIONS: ${MENORAH_EXPECTED_PENDING_MIGRATIONS:?MENORAH_EXPECTED_PENDING_MIGRATIONS is required}
+      MENORAH_MIGRATION_PLAN_ONLY: ${MENORAH_MIGRATION_PLAN_ONLY:-false}

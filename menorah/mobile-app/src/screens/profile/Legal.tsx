@@ -11,8 +11,8 @@ export default function Legal({ route, navigation }: any) {
   const isDark = scheme === 'dark';
   const headerBg = isDark ? colors.primaryDark : colors.primary;
 
-  const privacyPolicy = `Privacy Policy
-Menorah Health | Effective: November 11, 2025 | v1.0
+const privacyPolicy = `Privacy Policy
+Menorah Health | Effective: November 11, 2025 | Updated: July 22, 2026 | v1.1
 
 1. About This Policy
 Menorah Health ('Company', 'we', 'us', or 'our') operates a digital men's mental health platform accessible via mobile application and website (collectively, the 'Platform'). This Privacy Policy explains how we collect, use, store, share, and protect your personal data. It also sets out your rights as a user.
@@ -35,9 +35,10 @@ Processing: Any operation on personal data including collection, storage, use, d
 3.1 Data You Provide Directly
 • Registration data: name, date of birth, email address, phone number, gender identity
 • Health and wellness data: mood logs, journal entries, symptom check-ins, mental health assessments
-• Session data: audio/video recordings of therapy sessions (only with explicit consent), session notes
+• Session communications and notes. Audio/video session recording is not currently enabled.
 • Payment data: billing details processed via PCI-DSS compliant payment gateways; we do not store card numbers
 • Communications: messages, feedback, support queries
+• Optional face-check data: one selfie, face-detection results, confidence score, consent evidence, submission and review history, and basic image-file metadata
 
 3.2 Data Collected Automatically
 • Device data: device type, OS, app version, unique device identifiers (UDID/IDFA/GAID)
@@ -65,6 +66,8 @@ Legal compliance and audit: Legal obligation under India law; Art. 6(1)(c) – L
 
 Marketing (opt-in only): Consent under India law; Art. 6(1)(a) – Consent under EU/GDPR.
 
+Optional face check: Explicit consent under India law; Art. 9(2)(a) – Explicit Consent under EU/GDPR. The check detects a face for account trust and safety; it does not verify a government-issued identity document.
+
 5. Data Sharing & Disclosure
 
 5.1 With Therapists
@@ -72,6 +75,8 @@ Your session data and health records are shared with the therapist assigned to y
 
 5.2 With Service Providers
 We engage third-party processors (cloud storage, payment gateways, analytics providers) under Data Processing Agreements that restrict them to processing your data only on our instructions.
+
+If you choose the optional face check, your selfie is sent to Luxand, Inc. in the United States for facial analysis. Luxand may generate facial geometry or other biometric information. Review the notice shown before submission and Luxand's privacy policy at https://www.luxand.com/privacy.php.
 
 5.3 Legal Disclosure
 We may disclose data where required by Indian law, court order, or a competent authority. We will notify you where legally permissible before complying with such requests.
@@ -86,6 +91,7 @@ Menorah Health does not sell, rent, or trade your personal data to advertisers o
 • Therapy session notes and clinical records: 7 years from last session (minimum), as recommended under MHCA 2017 guidelines
 • Account data: for the duration of your account, plus 3 years after deletion for legal compliance
 • Payment records: 8 years (as required under Indian tax laws)
+• Optional face-check records: up to 365 days from submission, unless law, a legal hold, fraud investigation, or unresolved security matter requires longer retention
 • Marketing data: until you withdraw consent
 • Anonymised analytics data: indefinitely
 
@@ -95,7 +101,7 @@ We implement the following safeguards:
 • Role-based access control — therapists can only access their own clients' data
 • Multi-factor authentication for all practitioner accounts
 • Regular third-party penetration testing and vulnerability assessments
-• Data localisation: all personal data of Indian users is stored on servers physically located in India
+• Primary application data is hosted on approved infrastructure; specifically disclosed providers may process limited data outside India under contractual and transfer safeguards
 • Data breach notification: we will notify affected users and the Data Protection Board of India within 72 hours of becoming aware of a breach, as required under DPDP Rules 2025
 
 8. Your Rights
@@ -125,7 +131,7 @@ Our web platform uses cookies and similar technologies for authentication, secur
 The Platform is strictly intended for users aged 18 and above. We do not knowingly collect data from minors. If we discover that a minor has provided data without parental consent, we will delete it immediately.
 
 11. International Data Transfers
-If your data is transferred outside India (e.g., for global analytics tools), we ensure equivalent protections via Standard Contractual Clauses (SCCs) under GDPR and comply with data localisation obligations under DPDP Rules 2025 for Indian users' sensitive personal data.
+Some service providers process limited data outside India. In particular, an optional face-check selfie is sent to Luxand, Inc. and its contracted infrastructure providers in the United States. We require appropriate contractual and transfer safeguards and disclose the provider before obtaining explicit consent.
 
 12. Changes to This Policy
 We may update this Policy. Material changes will be notified via email and in-app notification at least 15 days before they take effect. Continued use of the Platform after the effective date constitutes acceptance of the revised Policy.`;
@@ -147,11 +153,11 @@ If you do not agree to these Terms, you must not access or use the Platform.
 3. Nature of Services
 
 3.1 What We Provide
-Menorah Health provides a digital men's mental health platform offering:
-• Individual therapy sessions with licensed mental health professionals via audio/video
-• Wellness tools including mood tracking, journaling, and psychoeducational content
-• Community and peer support features (where available)
-• Crisis resource information and referrals
+Menorah Health provides a digital wellbeing platform offering:
+• Profiles of counsellors who complete Menorah's verification and onboarding process
+• Hourly session pricing and booking for available audio, video, or chat sessions
+• Secure account-based chat between users and their booked counsellors
+• Wellbeing check-ins and informational articles and resources
 
 3.2 What We Do Not Provide
 The Platform is NOT a substitute for emergency mental health services. We do not provide:
@@ -160,14 +166,14 @@ The Platform is NOT a substitute for emergency mental health services. We do not
 • Prescription of medications (unless through a separately licensed psychiatrist on platform, if applicable)
 • Medical diagnosis of any condition
 
-4. Practitioner Standards
-All therapists and mental health professionals on the Platform:
-• Are registered with the Rehabilitation Council of India (RCI) or the relevant State Medical Council
-• Have been verified by Menorah Health prior to onboarding
-• Are bound by a separate Therapist/Contractor Agreement incorporating professional ethics obligations
-• Are independent professionals; Menorah Health does not control the clinical content of therapeutic advice
+4. Counsellor Standards
+Counsellors shown on the Platform:
+• Complete Menorah Health's identity and professional-information review before activation
+• Provide qualifications, experience, and registration details where applicable for display and review
+• Are bound by a separate counsellor agreement incorporating professional conduct obligations
+• Are independent professionals; Menorah Health does not control the content of their counselling advice
 
-Menorah Health is responsible for platform operations and practitioner verification, but is not liable for the specific clinical advice or decisions of individual practitioners.
+Menorah Health is responsible for platform operations and its onboarding checks, but users should review each counsellor's displayed information before booking. Menorah Health is not liable for the specific advice or decisions of individual counsellors.
 
 5. User Obligations
 By using the Platform, you agree to:
@@ -222,7 +228,7 @@ We reserve the right to amend these Terms. Material changes will be communicated
 
   const communityGuidelines = `Community Guidelines
 
-Menorah Health is designed for respectful mental wellness support, peer support, and educational discussion.
+Menorah Health is designed for respectful counsellor support and educational discussion.
 
 1. Be respectful
 Do not harass, threaten, bully, shame, discriminate, or target another person.
@@ -236,15 +242,15 @@ Do not encourage self-harm, violence, abuse, illegal activity, or unsafe medical
 4. No medical claims
 Users should not present themselves as diagnosing, treating, curing, or replacing professional medical care.
 
-5. Reporting and blocking
-You can report messages or users from chat and contact support from Settings. Reports may be reviewed by authorized support or moderation team members. Blocking helps limit unwanted contact where supported by the service.
+5. Safety support
+In-app reporting and blocking are not currently available. Contact support from Settings if you need help with a conversation.
 
 6. Enforcement
 Menorah may remove content, restrict features, or suspend accounts that create safety risks or violate these guidelines.`;
 
   const wellnessDisclaimer = `Mental Wellness Disclaimer
 
-Menorah Health provides mental wellness support, peer support, self-help tools, and educational resources.
+Menorah Health provides counsellor discovery, paid one-to-one bookings, secure chat, wellbeing tools, and educational resources.
 
 The app does not diagnose, treat, cure, prevent, or replace professional medical or mental healthcare. Information in the app is for general wellness and educational support only.
 
@@ -259,7 +265,7 @@ For app support, account questions, privacy questions, or safety concerns, conta
 General support: menorahenquries@gmail.com
 Privacy: privacy@menorah.me
 
-For unsafe content or behavior in chat, use the report options in the chat screen where available and include the conversation context in your support request.
+For unsafe content or behavior in chat, contact support from Settings and include the relevant conversation context in your support request.
 
 For urgent danger, self-harm risk, medical emergencies, or threats to another person, do not wait for app support. Contact local emergency services immediately.`;
 
@@ -278,7 +284,7 @@ For urgent danger, self-harm risk, medical emergencies, or threats to another pe
     },
     community: {
       title: 'Community Guidelines',
-      subtitle: 'Safety rules for chat and peer support',
+      subtitle: 'Safety rules for counsellor chat',
       body: communityGuidelines,
       icon: Users,
     },

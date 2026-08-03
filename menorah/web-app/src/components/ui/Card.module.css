@@ -14,15 +14,15 @@
 
 /* Padding Variants */
 .paddingSm {
-  padding: var(--spacing-md);
+  padding: clamp(0.9rem, 0.65rem + 0.7vw, 1.25rem);
 }
 
 .paddingMd {
-  padding: var(--spacing-lg);
+  padding: clamp(1.1rem, 0.82rem + 0.9vw, 1.75rem);
 }
 
 .paddingLg {
-  padding: var(--spacing-xl);
+  padding: clamp(1.3rem, 1rem + 1.25vw, 2.35rem);
 }
 
 /* Elevation */
@@ -37,4 +37,3 @@
 .elevation3 {
   box-shadow: var(--shadow-lg);
 }
-

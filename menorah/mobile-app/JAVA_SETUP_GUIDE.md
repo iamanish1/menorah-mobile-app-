@@ -49,7 +49,7 @@ No Java compiler found, please ensure you are running Gradle with a JDK
 
 5. **Try Build Again:**
    ```bash
-   cd Menorah/mobile-app
+   cd menorah/mobile-app
    npx expo run:android
    ```
 
@@ -66,7 +66,7 @@ If you have Android Studio installed:
    - Set `JAVA_HOME` to the `jbr` folder path
 
 3. **Or configure in gradle.properties:**
-   - Open `Menorah/mobile-app/android/gradle.properties`
+   - Open `menorah/mobile-app/android/gradle.properties`
    - Uncomment and set:
    ```properties
    org.gradle.java.home=C:\\Program Files\\Android\\Android Studio\\jbr
@@ -82,7 +82,7 @@ If you have JDK installed somewhere:
    Get-ChildItem "C:\Program Files\Java" -Directory
    ```
 
-2. Edit `Menorah/mobile-app/android/gradle.properties`:
+2. Edit `menorah/mobile-app/android/gradle.properties`:
    ```properties
    org.gradle.java.home=C:\\Program Files\\Java\\jdk-17
    ```
@@ -128,7 +128,7 @@ javac -version
 Once JDK 17+ is installed and configured:
 
 ```bash
-cd Menorah/mobile-app
+cd menorah/mobile-app
 npx expo run:android
 ```
 

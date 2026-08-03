@@ -1,56 +1,57 @@
 "use client";
 
-import type { CSSProperties, RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { useRef } from "react";
 import { HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FaqQuestionForm } from "@/components/site/FaqQuestionForm";
+import { useInView, usePrefersReducedMotion } from "@/components/landing/useLandingMotion";
 
 const faqs = [
   {
     question: "What is Menorah?",
     answer:
-      "Menorah is a men's mental health organization that offers support, guidance, and resources for men seeking help with their mental well-being. We provide a mobile app through which users can connect with clinical psychologist students and engage in peer-to-peer conversations to address their mental health concerns."
+      "Menorah is a men's wellbeing platform for finding counsellors reviewed through Menorah's verification process, booking one-to-one sessions, using secure chat, completing optional wellbeing check-ins, and reading practical resources."
   },
   {
     question: "How does the Menorah app work?",
     answer:
-      "The Menorah app allows you to chat with handpicked clinical psychologist students and engage in peer support with other men who have volunteered to help. You can choose from different age groups (15-18, 19-24, and 25-35) for peer support, and you have access to a range of educational resources, self-help tools, and support groups."
+      "Create an account, browse counsellor profiles and hourly rates, choose an available time, complete payment, and manage your booking in the app. Secure chat, wellbeing check-ins, and educational articles are also available."
   },
   {
-    question: "Is my conversation confidential?",
+    question: "How is my conversation protected?",
     answer:
-      "Absolutely. We prioritize your privacy and confidentiality. All interactions within the Menorah app, whether with clinical psychologist students or peers, are secure and anonymous. You can express yourself openly without worrying about your information being shared."
+      "Menorah uses access controls and secure transport to protect in-app chat. Access and disclosure are governed by our Privacy Policy and applicable safety or legal obligations, so privacy is not without limits and chat is not anonymous."
   },
   {
-    question: "How do I connect with clinical psychologist students?",
+    question: "How do I connect with a counsellor?",
     answer:
-      "Once you're on the Menorah app, you can initiate a chat with one of our handpicked clinical psychologist students. They are available 24/7 to provide expert advice, guidance, and support tailored to your mental health needs."
+      "Browse verified counsellor profiles, areas of focus, availability, and hourly rates. After you choose and book an available session, the app gives you the relevant booking and secure-chat options. Availability varies by counsellor."
   },
   {
-    question: 'What is "Man to Man" peer support?',
+    question: "Does Menorah currently offer peer-to-peer chat?",
     answer:
-      "Man to Man is a feature on the Menorah app that allows you to connect with other men who have volunteered to offer peer support. You can choose your age group (15-18, 19-24, or 25-35) and engage in conversations with individuals who may have experienced similar challenges or life stages."
+      "Menorah is currently focused on verified counsellor discovery, paid one-to-one bookings, secure counsellor chat, wellbeing check-ins, and educational resources. Peer-to-peer community chat is not part of the current production service."
   },
   {
     question: "Are there any self-help resources available on the app?",
     answer:
-      "Yes, the Menorah app provides a variety of self-help resources, including articles, podcasts, newsletters and videos. These resources cover a wide range of mental health topics and are designed to empower you to take control of your mental well-being."
+      "Yes. Menorah provides practical mental-health and wellbeing articles alongside optional wellbeing check-ins. These resources are educational and informational; they do not provide a diagnosis, medical advice, or emergency support."
   },
   {
     question: "Is there a cost to using the Menorah app?",
     answer:
-      "Our aim is to make mental health support accessible to all. All features of the app are free to all users. We are committed to providing value and ensuring that everyone can benefit from our resources."
+      "Browsing resources may not require a paid session, but one-to-one counsellor bookings are paid at the hourly rate shown on the counsellor's profile. Review the rate and final payment details before confirming."
   },
   {
     question: "How do I ensure my safety while using the app?",
     answer:
-      "Menorah takes safety seriously. We have implemented measures to ensure a safe and respectful environment within the app. If you encounter any inappropriate behavior or have concerns, you can report it, and our team will take appropriate action."
+      "Menorah takes safety seriously. If you encounter inappropriate behavior or have concerns, contact support so the team can review it. In-app reporting and blocking are not currently available."
   },
   {
     question: "How do I get started with the Menorah app?",
     answer:
-      "To get started, simply download the Menorah app from the Apple App Store or Google Play Store, create an account, and explore the various features available. You can begin chatting with clinical psychologist students, engaging in peer support, accessing resources, and joining support groups to enhance your mental well-being journey."
+      "Download Menorah Health, create an account, complete your profile, and browse verified counsellors and educational resources. When you are ready, select an available counsellor and booking time and review the price before payment."
   },
   {
     question: "I think I have a serious problem with my mental health. What do I do to tackle it?",
@@ -71,11 +72,11 @@ export function FaqSection({ headingLevel = "h2" }: { headingLevel?: "h1" | "h2"
     <section
       id="faq"
       aria-labelledby="faq-title"
-      className="relative overflow-hidden bg-menorah-page px-6 py-16 font-body text-foreground md:px-10 lg:px-20"
+      className="relative overflow-hidden bg-menorah-page px-[var(--landing-page-x)] py-[var(--landing-section-y-tight)] font-body text-foreground"
     >
       <div className="what-we-do-backdrop" aria-hidden="true" />
 
-      <div className="relative z-10 mx-auto max-w-6xl">
+      <div className="relative z-10 mx-auto w-[min(var(--landing-container),78rem)]">
         <div
           ref={headerRef}
           className={cn(
@@ -83,18 +84,18 @@ export function FaqSection({ headingLevel = "h2" }: { headingLevel?: "h1" | "h2"
             headerVisible || reducedMotion ? "is-visible" : ""
           )}
         >
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-menorah-cream bg-background shadow-dashboard">
+          <div className="mx-auto flex h-[clamp(3.5rem,4.4vw,4.75rem)] w-[clamp(3.5rem,4.4vw,4.75rem)] items-center justify-center rounded-full border border-menorah-cream bg-background shadow-dashboard">
             <HelpCircle className="h-8 w-8 text-menorah-olive" aria-hidden="true" />
           </div>
-          <Heading id="faq-title" className="mt-6 font-display text-4xl leading-tight tracking-[0.08em] md:text-5xl">
+          <Heading id="faq-title" className="mt-[clamp(1.25rem,2vw,1.9rem)] font-display text-[length:var(--landing-h2)] leading-tight tracking-[0.08em]">
             FAQ&apos;S
           </Heading>
-          <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-foreground/75">
-            Straight answers about Menorah, confidentiality, peer support, safety, and getting started.
+          <p className="mx-auto mt-[clamp(1rem,1.6vw,1.45rem)] max-w-[min(44rem,88vw)] text-[length:var(--landing-body-lg)] leading-[1.65] text-foreground/75">
+            Straight answers about Menorah, counsellor bookings, privacy, safety, and getting started.
           </p>
         </div>
 
-        <div className="mx-auto mt-12 max-w-4xl space-y-4">
+        <div className="mx-auto mt-[var(--landing-stack-gap)] max-w-[min(56rem,92vw)] space-y-[clamp(0.8rem,1.2vw,1.2rem)]">
           {faqs.map((faq, index) => (
             <FaqItem key={faq.question} faq={faq} index={index} reducedMotion={reducedMotion} />
           ))}
@@ -102,11 +103,11 @@ export function FaqSection({ headingLevel = "h2" }: { headingLevel?: "h1" | "h2"
 
         <section
           ref={formRef}
-          className="mx-auto mt-16 max-w-4xl rounded-[2rem] border border-menorah-cream bg-background px-6 py-10 text-center shadow-dashboard transition duration-700 ease-out md:px-10"
+          className="mx-auto mt-[clamp(3rem,5vw,5rem)] max-w-[min(56rem,92vw)] rounded-[var(--landing-radius-xl)] border border-menorah-cream bg-background px-[var(--landing-card-pad-lg)] py-[clamp(2rem,3.6vw,3.6rem)] text-center shadow-dashboard transition duration-700 ease-out"
           style={getRevealStyle(formVisible, reducedMotion, 0)}
         >
-          <h3 className="font-display text-3xl tracking-[0.08em]">Still have a question?</h3>
-          <p className="mt-3 text-foreground/70">Ask your question here.</p>
+          <h3 className="font-display text-[length:var(--landing-h3)] tracking-[0.08em]">Still have a question?</h3>
+          <p className="mt-[clamp(0.75rem,1vw,1rem)] text-[length:var(--landing-body)] text-foreground/70">Ask your question here.</p>
           <FaqQuestionForm />
         </section>
       </div>
@@ -134,19 +135,19 @@ function FaqItem({
     >
       <details
         className={cn(
-          "group rounded-2xl border border-menorah-cream bg-background p-5 shadow-sm transition-all duration-300 ease-out open:border-menorah-olive/35 open:shadow-dashboard",
+          "group rounded-[var(--landing-radius-md)] border border-menorah-cream bg-background p-[var(--landing-card-pad)] shadow-sm transition-all duration-300 ease-out open:border-menorah-olive/35 open:shadow-dashboard",
           reducedMotion ? "duration-0" : "open:-translate-y-1 open:scale-[1.015]"
         )}
       >
-        <summary className="flex cursor-pointer list-none items-start justify-between gap-5 text-left">
-          <span className="text-base font-semibold leading-7">
+        <summary className="flex cursor-pointer list-none items-start justify-between gap-[clamp(1rem,1.5vw,1.4rem)] text-left">
+          <span className="text-[length:var(--landing-body)] font-semibold leading-[1.7]">
             {index + 1}. {faq.question}
           </span>
-          <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-menorah-page font-semibold text-menorah-olive transition-transform group-open:rotate-45">
+          <span className="mt-1 flex h-[clamp(1.75rem,2vw,2.15rem)] w-[clamp(1.75rem,2vw,2.15rem)] shrink-0 items-center justify-center rounded-full bg-menorah-page font-semibold text-menorah-olive transition-transform group-open:rotate-45">
             +
           </span>
         </summary>
-        <p className="mt-4 text-left text-[15px] leading-7 text-foreground/75">{faq.answer}</p>
+        <p className="mt-[clamp(0.9rem,1.2vw,1.15rem)] text-left text-[length:var(--landing-body-sm)] leading-[1.7] text-foreground/75">{faq.answer}</p>
       </details>
     </div>
   );
@@ -158,47 +159,4 @@ function getRevealStyle(isVisible: boolean, reducedMotion: boolean, delay: numbe
     transform: reducedMotion || isVisible ? "translate3d(0, 0, 0)" : "translate3d(0, 28px, 0)",
     transitionDelay: `${delay}ms`
   };
-}
-
-function useInView(ref: RefObject<HTMLElement | null>, threshold = 0.24) {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    const element = ref.current;
-
-    if (!element) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-        }
-      },
-      { rootMargin: "0px 0px -12% 0px", threshold }
-    );
-
-    observer.observe(element);
-
-    return () => observer.disconnect();
-  }, [ref, threshold]);
-
-  return isVisible;
-}
-
-function usePrefersReducedMotion() {
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => setReducedMotion(media.matches);
-
-    updatePreference();
-    media.addEventListener("change", updatePreference);
-
-    return () => media.removeEventListener("change", updatePreference);
-  }, []);
-
-  return reducedMotion;
 }

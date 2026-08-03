@@ -1,0 +1,178 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: staging
+    stack: menorah-staging
+    compose_project: "${MENORAH_SERVER_STAGING_PROJECT_NAME}"
+    monitoring_scope: server-staging
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - staging-private-alertmanager:9093
+          labels:
+            environment: staging
+            monitoring_scope: server-staging
+
+rule_files:
+  # The shared source contains the complete production P0 rule set. External
+  # labels above make every resulting staging incident unambiguous.
+  - /etc/prometheus/alert-rules.yml
+
+scrape_configs:
+  - job_name: blackbox-http-internal
+    metrics_path: /probe
+    params:
+      module: [http_success]
+    static_configs:
+      - targets: [http://staging-private-api-ios:8080/health/ready]
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-ios, probe_module: http_ready}
+      - targets: [http://staging-private-api-android:8080/health/ready]
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-android, probe_module: http_ready}
+      - targets: [http://staging-private-api-web:8080/health/ready]
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-web, probe_module: http_ready}
+      - targets: [http://staging-private-api-admin:8080/health/ready]
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-admin, probe_module: http_ready}
+      - targets: [http://staging-private-worker:8080/health/ready]
+        labels: {environment: staging, monitoring_scope: server-staging, component: worker, service: worker, probe_module: http_ready}
+      - targets: [http://staging-private-user-web:3002/]
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: landing-page, probe_module: http_success}
+      - targets: [http://staging-private-user-web:3002/]
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: user-web-app, probe_module: http_success}
+      - targets: [http://staging-private-counsellor-web:3001/]
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: counsellor-web, probe_module: http_success}
+      - targets: [http://staging-private-admin-panel:3003/]
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: admin-panel, probe_module: http_success}
+    relabel_configs:
+      - source_labels: [probe_module]
+        target_label: __param_module
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: staging-blackbox-exporter:9115
+
+  - job_name: blackbox-tcp-internal
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets: [staging-private-livekit:7880]
+        labels: {environment: staging, monitoring_scope: server-staging, component: calls, service: livekit}
+      - targets: [staging-mongo-primary:27017]
+        labels: {environment: staging, monitoring_scope: server-staging, component: datastore, service: mongodb}
+      - targets: [staging-redis:6379]
+        labels: {environment: staging, monitoring_scope: server-staging, component: datastore, service: redis}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: staging-blackbox-exporter:9115
+
+  - job_name: blackbox-https-public
+    metrics_path: /probe
+    params:
+      module: [https_staging_success]
+    static_configs:
+      - targets: [https://staging.menorah.me/]
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: public-site, probe_module: https_staging_success}
+      - targets: [https://www.staging.menorah.me/]
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: public-site-www, probe_module: https_staging_success}
+      - targets: [https://app.staging.menorah.me/]
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: user-web, probe_module: https_staging_success}
+      - targets: [https://admin.staging.menorah.me/]
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: admin-web, probe_module: https_staging_success}
+      - targets: [https://counsellor.staging.menorah.me/]
+        labels: {environment: staging, monitoring_scope: server-staging, component: frontend, service: counsellor-web, probe_module: https_staging_success}
+      - targets: [https://api-ios.staging.menorah.me/health/ready]
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-ios, probe_module: https_staging_ready}
+      - targets: [https://api-android.staging.menorah.me/health/ready]
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-android, probe_module: https_staging_ready}
+      - targets: [https://api-web.staging.menorah.me/health/ready]
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-web, probe_module: https_staging_ready}
+      - targets: [https://api-admin.staging.menorah.me/health/ready]
+        labels: {environment: staging, monitoring_scope: server-staging, component: api, service: api-admin, probe_module: https_staging_ready}
+    relabel_configs:
+      - source_labels: [probe_module]
+        target_label: __param_module
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: tls_scope
+        replacement: internal-diagnostics
+      - target_label: __address__
+        replacement: staging-blackbox-exporter:9115
+
+  - job_name: blackbox-https-calls
+    metrics_path: /probe
+    params:
+      module: [https_calls_staging]
+    static_configs:
+      - targets: [https://calls.staging.menorah.me/]
+        labels: {environment: staging, monitoring_scope: server-staging, component: calls, service: livekit-public}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: tls_scope
+        replacement: internal-diagnostics
+      - target_label: __address__
+        replacement: staging-blackbox-exporter:9115
+
+  - job_name: security-events
+    metrics_path: /metrics/security
+    static_configs:
+      - targets:
+          - staging-private-api-ios:8080
+          - staging-private-api-android:8080
+          - staging-private-api-web:8080
+          - staging-private-api-admin:8080
+          - staging-private-worker:8080
+        labels: {environment: staging, monitoring_scope: server-staging}
+
+  - job_name: staging-alert-fixture
+    static_configs:
+      - targets: [staging-alert-fixture:9101]
+        labels: {environment: staging, monitoring_scope: server-staging}
+
+  - job_name: blackbox-exporter
+    static_configs:
+      - targets: [staging-blackbox-exporter:9115]
+        labels: {environment: staging, monitoring_scope: server-staging}
+
+  - job_name: mongodb-exporter
+    static_configs:
+      - targets: [staging-mongodb-exporter:9216]
+        labels: {environment: staging, monitoring_scope: server-staging}
+
+  - job_name: redis-exporter
+    static_configs:
+      - targets: [staging-redis-exporter:9121]
+        labels: {environment: staging, monitoring_scope: server-staging}
+
+  - job_name: alloy
+    static_configs:
+      - targets: [staging-private-alloy:12345]
+        labels: {environment: staging, monitoring_scope: server-staging}
+
+  - job_name: loki
+    static_configs:
+      - targets: [staging-private-loki:3100]
+        labels: {environment: staging, monitoring_scope: server-staging}
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: [staging-private-alertmanager:9093]
+        labels: {environment: staging, monitoring_scope: server-staging}
+
+  - job_name: prometheus
+    static_configs:
+      - targets: [127.0.0.1:9090]
+        labels: {environment: staging, monitoring_scope: server-staging}

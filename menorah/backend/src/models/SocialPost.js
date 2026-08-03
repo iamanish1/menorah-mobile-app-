@@ -24,8 +24,14 @@ const socialPostSchema = new mongoose.Schema({
   },
   postType: {
     type: String,
-    enum: ['single_image', 'carousel', 'reel_cover'],
+    enum: ['single_image', 'carousel', 'reel_cover', 'reel'],
     default: 'single_image'
+  },
+  contentSource: {
+    type: String,
+    enum: ['ai', 'manual'],
+    default: 'ai',
+    index: true
   },
   status: {
     type: String,
@@ -119,9 +125,47 @@ const socialPostSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  finalImageStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   thumbnailUrl: {
     type: String,
     default: ''
+  },
+  thumbnailStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  sourceImageStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  // Reel media is deliberately separate from image fields. A reel must have a
+  // public HTTPS video URL before it can pass review or reach Instagram.
+  videoUrl: {
+    type: String,
+    default: ''
+  },
+  videoPublicId: {
+    type: String,
+    default: ''
+  },
+  // Optional for backward compatibility with Reels created before managed
+  // media metadata was recorded. New uploads persist the immutable storage
+  // record so backup/restore verification can link the database reference to
+  // the exact video bytes.
+  videoStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  videoMimeType: {
+    type: String,
+    default: ''
+  },
+  videoSizeBytes: {
+    type: Number,
+    default: 0
   },
   aspectRatio: {
     type: String,
@@ -189,9 +233,23 @@ const socialPostSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Retaining the creation container lets a retry resume publishing instead
+  // of creating a second Instagram post after a network timeout.
+  instagramContainerId: {
+    type: String,
+    default: ''
+  },
   instagramPermalink: {
     type: String,
     default: ''
+  },
+  publishingStartedAt: {
+    type: Date,
+    default: null
+  },
+  publishAttemptCount: {
+    type: Number,
+    default: 0
   },
   errorLog: {
     type: errorLogSchema,

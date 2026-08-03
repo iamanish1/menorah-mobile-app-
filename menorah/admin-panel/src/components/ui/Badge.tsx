@@ -2,12 +2,13 @@ import { cn } from '@/lib/utils';
 
 interface Props {
   children: React.ReactNode;
-  variant?: 'pending' | 'approved' | 'rejected' | 'blocked' | 'active' | 'default';
+  variant?: 'pending' | 'manual_review' | 'approved' | 'rejected' | 'blocked' | 'active' | 'default';
   size?: 'sm' | 'md';
 }
 
 const variants = {
   pending: 'bg-amber-100 text-amber-700 border-amber-200',
+  manual_review: 'bg-orange-100 text-orange-800 border-orange-200',
   approved: 'bg-green-100 text-green-700 border-green-200',
   rejected: 'bg-red-100 text-red-700 border-red-200',
   blocked: 'bg-gray-100 text-gray-600 border-gray-200',

@@ -1,6 +1,8 @@
+import { useCallback } from 'react';
 import { Animated, Text, TouchableOpacity, View } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FirstLoginTour, type MobileTourRoute } from '@/components/onboarding/first-login-tour';
 import { discoverScrollY } from './iosScrollSignals';
 import { useIOSTheme } from './iosTheme';
 
@@ -26,6 +28,9 @@ export default function IOSFloatingTabBar({ state, descriptors, navigation }: Bo
           extrapolate: 'clamp',
         })
       : 1;
+  const handleTourNavigate = useCallback((route: MobileTourRoute) => {
+    navigation.navigate(route);
+  }, [navigation]);
 
   return (
     <View
@@ -156,6 +161,7 @@ export default function IOSFloatingTabBar({ state, descriptors, navigation }: Bo
           );
         })}
       </Animated.View>
+      <FirstLoginTour onNavigate={handleTourNavigate} />
     </View>
   );
 }

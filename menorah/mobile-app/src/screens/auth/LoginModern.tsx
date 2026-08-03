@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Alert, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Image } from 'expo-image';
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react-native';
 import NetworkError from '@/components/ui/NetworkError';
 import { IOSButton, IOSCard, IOSScreen, useIOSTheme } from '@/components/ios';
 import { useAuth } from '@/state/useAuth';
+import { SocialAuthButtons } from '@/components/auth/SocialAuthButtons';
 
 export default function Login({ navigation }: any) {
   const [email, setEmail] = useState('');
@@ -44,18 +44,15 @@ export default function Login({ navigation }: any) {
     setShowNetworkError(false);
 
     try {
-      if (__DEV__) {
-        console.log('[Login] POST /auth/login payload:', JSON.stringify({
-          email: normalizedEmail,
-          password: `[redacted; length=${password.length}]`,
-        }, null, 2));
-      }
-
       const result = await login(normalizedEmail, password);
 
       if (result.success) {
         if (result.needsVerification) {
-          navigation.navigate('Verify', { email: normalizedEmail });
+          navigation.navigate('Verify', {
+            email: result.email || normalizedEmail,
+            flow: result.verificationFlow || 'account',
+            requestCode: true,
+          });
         } else {
           navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
         }
@@ -86,33 +83,6 @@ export default function Login({ navigation }: any) {
       }}
     >
       <View style={{ alignItems: 'center', marginBottom: iosTheme.spacing.xxl }}>
-        <View
-          style={[
-            {
-              width: 104,
-              height: 104,
-              borderRadius: 52,
-              backgroundColor: iosTheme.colors.surface,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderWidth: 1,
-              borderColor: iosTheme.colors.border,
-              marginBottom: iosTheme.spacing.lg,
-            },
-            iosTheme.shadows.card,
-          ]}
-        >
-          <Image
-            source={require('../../../assets/brand/menorah-logo-no-bg.png')}
-            style={{ width: 76, height: 76 }}
-            contentFit="contain"
-          />
-        </View>
-        <Image
-          source={require('../../../assets/brand/wordmark-dark.png')}
-          style={{ width: 176, height: 42, marginBottom: iosTheme.spacing.sm }}
-          contentFit="contain"
-        />
         <Text style={{ color: iosTheme.colors.textSecondary, fontSize: 15, lineHeight: 22, textAlign: 'center', maxWidth: 280 }}>
           Sign in to continue your mental health journey.
         </Text>
@@ -125,6 +95,27 @@ export default function Login({ navigation }: any) {
         <Text style={[iosTheme.typography.body, { marginBottom: iosTheme.spacing.xl }]}>
           Your private space is ready when you are.
         </Text>
+
+        <SocialAuthButtons
+          mode="signin"
+          onSignUpRequired={() => navigation.replace('Register', { socialAccountNotFound: true })}
+          onSuccess={(result) => {
+            if (result.needsVerification) {
+              navigation.navigate('Verify', {
+                email: result.email,
+                flow: result.verificationFlow || 'account',
+                requestCode: true,
+              });
+              return;
+            }
+            navigation.reset({
+              index: 0,
+              routes: [result.needsProfileCompletion
+                ? { name: 'EditProfile', params: { fromSocialAuth: true } }
+                : { name: 'Tabs' }],
+            });
+          }}
+        />
 
         <Text style={{ color: iosTheme.colors.text, fontSize: 13, lineHeight: 18, fontWeight: '800', marginBottom: iosTheme.spacing.sm }}>
           Email

@@ -2,7 +2,6 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Booking } from '@/types';
 
 // ── Query keys ────────────────────────────────────────────────────────────────
 export const bookingKeys = {
@@ -26,7 +25,7 @@ export function useBookings(params?: {
     queryFn:   () => api.getMyBookings(params),
     staleTime: 0,   // booking state changes frequently — always re-validate
     select: (res) => ({
-      bookings:   res.success ? (res.data?.bookings ?? []) as Booking[] : [],
+      bookings:   res.success ? (res.data?.bookings ?? []) : [],
       pagination: res.data?.pagination ?? null,
     }),
   });
@@ -48,7 +47,7 @@ export function usePendingBookings(params?: { page?: number; limit?: number }) {
     queryFn:   () => api.getPendingBookings(params),
     staleTime: 0,
     select: (res) => ({
-      bookings:   res.success ? (res.data?.bookings ?? []) as Booking[] : [],
+      bookings:   res.success ? (res.data?.bookings ?? []) : [],
       pagination: res.data?.pagination ?? null,
     }),
   });

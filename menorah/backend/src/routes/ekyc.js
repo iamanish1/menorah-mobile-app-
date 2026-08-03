@@ -3,10 +3,32 @@ const multer = require('multer');
 const sharp = require('sharp');
 const User = require('../models/User');
 const KycVerification = require('../models/KycVerification');
-const { auth } = require('../middleware/auth');
+const { verifiedPatientAuth } = require('../middleware/auth');
+const {
+  FACE_CHECK_CONSENT_VERSION,
+  FACE_CHECK_RETENTION_DAYS,
+} = require('../config/kyc');
+const { evaluateFaceCheckConsent } = require('../services/faceCheckConsent');
 
 const router = express.Router();
 const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/heic', 'image/heif']);
+
+const getKycRetentionExpiry = () => {
+  const raw = String(process.env.KYC_RETENTION_DAYS || '').trim();
+  const days = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  if (!Number.isSafeInteger(days) || days !== FACE_CHECK_RETENTION_DAYS) {
+    throw new Error(`KYC_RETENTION_DAYS must equal ${FACE_CHECK_RETENTION_DAYS}`);
+  }
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+};
+
+const getKycConsentVersion = () => {
+  const version = String(process.env.KYC_CONSENT_VERSION || '').trim();
+  if (version !== FACE_CHECK_CONSENT_VERSION) {
+    throw new Error(`KYC_CONSENT_VERSION must equal ${FACE_CHECK_CONSENT_VERSION}`);
+  }
+  return version;
+};
 const DEFAULT_MAX_FILE_SIZE = 15 * 1024 * 1024;
 const maxFileSize = parseInt(process.env.EKYC_MAX_FILE_SIZE, 10) || DEFAULT_MAX_FILE_SIZE;
 
@@ -18,7 +40,7 @@ const upload = multer({
   },
   fileFilter: (_req, file, cb) => {
     if (!allowedMimeTypes.has(file.mimetype)) {
-      return cb(new Error('Only JPEG, PNG, HEIC, or HEIF images are supported for identity verification'));
+      return cb(new Error('Only JPEG, PNG, HEIC, or HEIF images are supported for the optional face check'));
     }
     cb(null, true);
   },
@@ -85,22 +107,22 @@ const sanitizeProviderMessage = (message) => {
 
 const providerFailureMessage = (status, providerMessage) => {
   if (status === 401 || status === 403) {
-    return 'Identity verification is not accepting requests right now. Please contact support or skip for now.';
+    return 'The optional face check is not accepting requests right now. Please contact support or skip it.';
   }
   if (status === 413) {
-    return 'The selfie photo is too large for identity verification. Please retake it and try again.';
+    return 'The selfie photo is too large for the optional face check. Please retake it and try again.';
   }
   if (status === 429) {
-    return 'Identity verification is busy right now. Please try again in a few minutes or skip for now.';
+    return 'The optional face check is busy right now. Please try again in a few minutes or skip it.';
   }
   if (status >= 500) {
-    return 'Identity verification is temporarily unavailable. Please try again later or skip for now.';
+    return 'The optional face check is temporarily unavailable. Please try again later or skip it.';
   }
 
   const cleanProviderMessage = sanitizeProviderMessage(providerMessage);
   return cleanProviderMessage
-    ? `Identity verification could not process this photo: ${cleanProviderMessage}`
-    : 'Identity verification could not process this photo. Please retake it in good light or skip for now.';
+    ? `The optional face check could not process this photo: ${cleanProviderMessage}`
+    : 'The optional face check could not process this photo. Please retake it in good light or skip it.';
 };
 
 const normalizeSelfieForProvider = async (file) => {
@@ -181,7 +203,7 @@ const submitToLuxand = async (file) => {
     const error = new Error('LUXAND_API_TOKEN is not configured');
     error.statusCode = 503;
     error.code = 'EKYC_PROVIDER_NOT_CONFIGURED';
-    error.publicMessage = 'Identity verification is temporarily unavailable. Please skip for now or contact support.';
+    error.publicMessage = 'The optional face check is temporarily unavailable. Please skip it or contact support.';
     throw error;
   }
 
@@ -198,7 +220,7 @@ const submitToLuxand = async (file) => {
   } catch (error) {
     error.statusCode = 502;
     error.code = 'EKYC_PROVIDER_NETWORK_ERROR';
-    error.publicMessage = 'Identity verification service could not be reached. Please try again later or skip for now.';
+    error.publicMessage = 'The optional face-check service could not be reached. Please try again later or skip it.';
     throw error;
   }
 
@@ -216,7 +238,6 @@ const submitToLuxand = async (file) => {
     error.statusCode = response.status >= 500 ? 502 : response.status;
     error.code = `EKYC_PROVIDER_${response.status}`;
     error.publicMessage = providerFailureMessage(response.status, providerMessage);
-    error.providerResponse = payload;
     throw error;
   }
 
@@ -230,7 +251,7 @@ const getFailureReason = ({ faceCount, confidence, threshold }) => {
   return undefined;
 };
 
-router.get('/status', auth, async (req, res) => {
+router.get('/status', verifiedPatientAuth, async (req, res) => {
   try {
     const verification = await KycVerification.findOne({ user: req.user._id })
       .sort({ createdAt: -1 })
@@ -249,13 +270,19 @@ router.get('/status', auth, async (req, res) => {
   }
 });
 
-router.post('/submit', auth, uploadSelfie, async (req, res) => {
+router.post('/submit', verifiedPatientAuth, uploadSelfie, async (req, res) => {
   try {
     const consentAccepted = req.body.consentAccepted === 'true' || req.body.consentAccepted === true;
-    if (!consentAccepted) {
-      return res.status(400).json({
+    const consentCheck = evaluateFaceCheckConsent({
+      accepted: consentAccepted,
+      submittedVersion: req.body.consentVersion,
+      configuredVersion: getKycConsentVersion(),
+    });
+    if (!consentCheck.ok) {
+      return res.status(consentCheck.status).json({
         success: false,
-        message: 'Consent is required before starting identity verification.',
+        code: consentCheck.code,
+        message: consentCheck.message,
       });
     }
 
@@ -285,6 +312,9 @@ router.post('/submit', auth, uploadSelfie, async (req, res) => {
       user: user._id,
       status,
       consentAccepted: true,
+      consentVersion: consentCheck.consentVersion,
+      consentAcceptedAt: new Date(),
+      retentionExpiresAt: getKycRetentionExpiry(),
       verifiedAt: status === 'verified' ? new Date() : undefined,
       failureReason,
       faceCheck: {
@@ -311,8 +341,8 @@ router.post('/submit', auth, uploadSelfie, async (req, res) => {
     res.json({
       success: true,
       message: status === 'verified'
-        ? 'Identity verification completed.'
-        : 'Identity verification needs admin review.',
+        ? 'Optional face check completed.'
+        : 'The optional face check needs admin review.',
       data: {
         status,
         verification: serializeVerification(verification),
@@ -322,20 +352,14 @@ router.post('/submit', auth, uploadSelfie, async (req, res) => {
   } catch (error) {
     console.error('KYC submit error:', {
       code: error?.code,
-      message: error?.message,
       statusCode: error?.statusCode,
-      providerResponse: error?.providerResponse,
-      file: req.file ? {
-        mimetype: req.file.mimetype,
-        size: req.file.size,
-        originalname: req.file.originalname,
-      } : null,
+      fileReceived: Boolean(req.file),
     });
 
     res.status(error?.statusCode || 500).json({
       success: false,
       code: error?.code || 'EKYC_SUBMIT_FAILED',
-      message: error?.publicMessage || 'Identity verification could not be completed right now. Please try again later or skip for now.',
+      message: error?.publicMessage || 'The optional face check could not be completed right now. Please try again later or skip for now.',
     });
   }
 });

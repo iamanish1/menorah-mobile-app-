@@ -13,6 +13,7 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
@@ -38,6 +39,19 @@ credentials.json
 credentials/
 *.jks
 upload_certificate*.pem
+
+# Firebase client configuration is injected from the EAS file secret by the
+# post-install hook and removed when the remote build completes.
+android/app/google-services.json
+android/app/.google-services-prepared
+google-services.json
+GoogleService-Info.plist
+firebase-adminsdk-*.json
+service-account*.json
+*-service-account.json
+fcm-service-account*.json
+google-play-service-account*.json
+play-store-credentials*.json
 
 # typescript
 *.tsbuildinfo

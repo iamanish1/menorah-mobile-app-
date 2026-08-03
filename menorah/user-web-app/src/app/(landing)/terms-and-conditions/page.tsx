@@ -32,9 +32,9 @@ const termsSections = [
         title: "3.1 What We Provide",
         paragraphs: ["Menorah Health provides a digital men's mental health platform offering:"],
         items: [
-          "Individual therapy sessions with licensed mental health professionals via audio/video.",
-          "Wellness tools including mood tracking, journaling, and psychoeducational content.",
-          "Community and peer support features, where available.",
+          "Paid one-to-one sessions with counsellors whose submitted professional information has been reviewed by Menorah, delivered through audio/video where available.",
+          "Optional wellbeing check-ins and practical educational resources.",
+          "Secure counsellor chat and hourly booking features, where available.",
           "Crisis resource information and referrals."
         ]
       },
@@ -44,23 +44,23 @@ const termsSections = [
         items: [
           "Psychiatric emergency intervention.",
           "Inpatient or residential mental health treatment.",
-          "Prescription of medications, unless through a separately licensed psychiatrist on platform, if applicable.",
+          "Prescription or dispensing of medications.",
           "Medical diagnosis of any condition."
         ]
       }
     ]
   },
   {
-    title: "4. Practitioner Standards",
-    paragraphs: ["All therapists and mental health professionals on the Platform:"],
+    title: "4. Counsellor Review and Independence",
+    paragraphs: ["Counsellors activated on the Platform:"],
     items: [
-      "Are registered with the Rehabilitation Council of India (RCI) or the relevant State Medical Council.",
-      "Have been verified by Menorah Health prior to onboarding.",
-      "Are bound by a separate Therapist/Contractor Agreement incorporating professional ethics obligations.",
-      "Are independent professionals; Menorah Health does not control the clinical content of therapeutic advice."
+      "Submit professional information for Menorah's review before activation.",
+      "Display relevant professional information, areas of focus, availability, and hourly rates to help users make a booking decision.",
+      "Remain responsible for the accuracy of their profile and for working within the qualifications, registrations, and legal scope applicable to them.",
+      "Are independent providers; Menorah does not control the content of individual support sessions."
     ],
     closing:
-      "Menorah Health is responsible for platform operations and practitioner verification, but is not liable for the specific clinical advice or decisions of individual practitioners."
+      "Menorah's verification reflects a review of submitted professional information before account activation. It does not itself guarantee licensure, suitability, a particular outcome, or the advice and decisions of an individual counsellor."
   },
   {
     title: "5. User Obligations",

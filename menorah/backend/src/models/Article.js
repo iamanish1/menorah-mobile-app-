@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { validateContentBlocks } = require('../services/articleContent');
 
 const contentBlockSchema = new mongoose.Schema({
   type: {
@@ -31,6 +32,10 @@ const contentBlockSchema = new mongoose.Schema({
   caption: {
     type: String,
     default: ''
+  },
+  storage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
   }
 }, { _id: false });
 
@@ -71,13 +76,27 @@ const articleSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  coverImageStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   imagePrompt: {
     type: String,
     default: ''
   },
   contentBlocks: {
     type: [contentBlockSchema],
-    default: []
+    default: [],
+    validate: {
+      validator: (blocks) => {
+        try {
+          return validateContentBlocks(blocks);
+        } catch {
+          return false;
+        }
+      },
+      message: 'Article content must use supported, renderable content blocks'
+    }
   },
   seoTitle: {
     type: String,

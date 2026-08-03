@@ -2,31 +2,58 @@ import { useCallback, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { socketService, SessionStartedData } from '@/lib/socket';
 import { navigate } from '@/services/navigationService';
+import { isSafeNavigationIdentifier } from '@/lib/deepLinks';
+import { reportError } from '@/lib/safeDiagnostics';
+import { useAuth } from '@/state/useAuth';
+import { resolveBookingChatRoomId } from '@/lib/bookingChat';
 
 /**
  * Component that handles session started notifications
  * Shows alert when counselor starts a session and allows user to join
  */
 export default function SessionNotificationHandler() {
-  const navigateToSession = useCallback((bookingId: string, sessionType: string) => {
+  const { user } = useAuth();
+
+  const navigateToSession = useCallback(async (
+    bookingId: string,
+    sessionType: string,
+    suppliedRoomId?: string
+  ) => {
     try {
+      if (!user?.id || !isSafeNavigationIdentifier(bookingId)) {
+        reportError('session_notification.invalid_booking');
+        return;
+      }
+
       if (sessionType === 'video' || sessionType === 'audio') {
         navigate('PreCallCheck', { bookingId });
-      } else {
-        navigate('ChatThread', { roomId: bookingId });
+      } else if (sessionType === 'chat') {
+        const roomId = isSafeNavigationIdentifier(suppliedRoomId)
+          ? suppliedRoomId
+          : await resolveBookingChatRoomId(bookingId);
+        navigate('ChatThread', { roomId });
       }
     } catch (error) {
-      console.error('Error navigating to session:', error);
+      reportError('session_notification.navigation_failed', error);
       Alert.alert('Error', 'Failed to navigate to session. Please try again.');
     }
-  }, []);
+  }, [user?.id]);
 
   const handleSessionStarted = useCallback((data: SessionStartedData) => {
-    const { bookingId, counsellorName, sessionType } = data;
+    const { bookingId, sessionType } = data;
+
+    if (
+      !user?.id ||
+      !isSafeNavigationIdentifier(bookingId) ||
+      !['video', 'audio', 'chat'].includes(sessionType)
+    ) {
+      reportError('session_notification.invalid_payload');
+      return;
+    }
 
     Alert.alert(
       'Session Started',
-      `${counsellorName} is waiting for you. Please join your session now.`,
+      'Open Menorah to review and join your session.',
       [
         {
           text: 'Later',
@@ -35,15 +62,19 @@ export default function SessionNotificationHandler() {
         {
           text: 'Join Session',
           onPress: () => {
-            navigateToSession(bookingId, sessionType);
+            navigateToSession(bookingId, sessionType, data.roomId);
           },
         },
       ],
       { cancelable: false }
     );
-  }, [navigateToSession]);
+  }, [navigateToSession, user?.id]);
 
   useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
     // Subscribe to session started events
     const unsubscribe = socketService.onSessionStarted((data: SessionStartedData) => {
       handleSessionStarted(data);
@@ -52,7 +83,7 @@ export default function SessionNotificationHandler() {
     return () => {
       unsubscribe();
     };
-  }, [handleSessionStarted]);
+  }, [handleSessionStarted, user?.id]);
 
   // This component doesn't render anything
   return null;

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme as useSystemScheme } from 'react-native';
 import type { Scheme } from './colors';
+import { reportError } from '@/lib/safeDiagnostics';
 
 type Ctx = {
   scheme: Scheme;
@@ -26,7 +27,7 @@ async function trySave(s: Scheme) {
     const mod = await import('@react-native-async-storage/async-storage');
     await mod.default.setItem('MENORAH_THEME', s);
   } catch (error) {
-    console.warn('[ThemeProvider] Failed to save theme preference:', error);
+    reportError('theme.preference_save_failed', error);
   }
 }
 

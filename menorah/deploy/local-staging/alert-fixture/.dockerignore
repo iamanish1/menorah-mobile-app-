@@ -1,0 +1,5 @@
+*
+!.dockerignore
+!Dockerfile
+!server.mjs
+!control.mjs

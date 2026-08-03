@@ -1,291 +1,195 @@
-# Menorah Health — Production Setup Guide
+# Menorah Production Setup
 
-## Architecture Overview
+## Current status and authority
 
+Production verdict: `NOT READY`.
+
+This document describes repository preparation only. It does not authorize a
+deployment, migration, provider change, DNS change, or production-data access.
+The sole supported production release method is the guarded Ubuntu host flow:
+
+- operator runbook: `menorah/docs/production-update-runbook.md`;
+- bootstrap and recovery reference: `menorah/deploy/ubuntu/README.md`;
+- exact handover and go/no-go evidence: `docs/production-readiness/`;
+- authoritative Compose base: `menorah/deploy/docker-compose.production.yml`;
+- authoritative ingress overlay: `menorah/deploy/docker-compose.tunnel.yml`;
+- routine release command: `menorah/deploy/ubuntu/update-from-git.sh`.
+
+`.github/workflows/deploy.yml` validates readiness only. It does not deploy.
+`menorah/backend/cloudbuild.yaml` and `gcp/cloudrun.yaml` are fail-closed
+tombstones. Their `.disabled` archives are historical evidence, not usable
+deployment inputs. Cloud Run is not an approved primary, overflow, or failover
+path for this release.
+
+## Runtime architecture
+
+The reviewed target architecture is:
+
+```text
+public clients
+  -> Cloudflare DNS and Tunnel
+  -> loopback-bound Caddy on the Ubuntu application host
+  -> audience-specific web/API services
+  -> host MongoDB replica set, Redis, worker, uploads, backup and monitoring
+
+calls.menorah.me
+  -> separately governed LiveKit signaling/media service
 ```
-Mobile App / Web Apps
-        │
-        ▼
-api.menorah.me  ←── Cloudflare (Proxy ON, orange cloud)
-        │
-        ▼
-Cloudflare Worker  (menorah-router)
-  ├─ reads KV health state (set by cron every 60s)
-  ├─ /socket.io/*  ──────────────────────────────► VPS (always)
-  ├─ /api/video/livekit-webhook ─────────────────► VPS (always)
-  ├─ VPS healthy + fast  ────────────────────────► VPS
-  ├─ VPS slow (>2s)      ──── 50/50 split ───────► VPS or GCP
-  └─ VPS down            ────────────────────────► GCP (100%)
-        │                                              │
-        ▼                                              ▼
-vps.menorah.me                          Cloud Run .run.app URL
-(Proxy OFF, gray cloud)                 (Google-managed URL)
-        │                                              │
-        ▼                                              ▼
-   nginx → PM2 cluster                     Docker container
-   (port 443 → 3000)                       (port 3000)
-   ENABLE_SOCKET_ADAPTER=true (default)    ENABLE_SOCKET_ADAPTER=false
-        │                                              │
-        └──────────────┬───────────────────────────────┘
-                       │
-             ┌─────────┴──────────┐
-             ▼                    ▼
-      MongoDB Atlas          Upstash Redis
-      (accessible from       (accessible from
-       anywhere via TLS)      anywhere via TLS)
-```
 
----
+Only Cloudflare Tunnel may reach Caddy inside the Compose network. All
+host-published HTTP, diagnostic and observability ports use the exact
+`127.0.0.1:PORT` form. The only approved non-loopback exception is the
+explicitly reviewed LiveKit RTC TCP/UDP media port set. MongoDB, Redis,
+Prometheus, Loki and exporters must not be publicly exposed.
 
-## Step 1 — DNS Setup in Cloudflare
+The production stack uses one canonical local upload namespace. A guarded
+release copies legacy per-service media only after every application writer is
+stopped, verifies collisions and checksums, and retains all predecessor copies.
 
-In your Cloudflare dashboard → **menorah.me** zone → DNS:
+## Prerequisites
 
-| Name  | Type | Value          | Proxy       |
-|-------|------|----------------|-------------|
-| `api` | A    | `<VPS IP>`     | ON (orange) |
-| `vps` | A    | `<VPS IP>`     | OFF (gray)  |
+Before any host command, record the owner-approved protected release branch,
+the reviewed full 40-character commit SHA, change reference, maintenance
+window, backup owner, rollback owner and post-migration recovery owner.
 
-- `api.menorah.me` is the **public** domain — Cloudflare proxy ON means the Worker intercepts all traffic here
-- `vps.menorah.me` is the **direct** domain — proxy OFF means requests go straight to the VPS, bypassing the Worker
-- The Worker uses `vps.menorah.me` as its `VPS_URL` to avoid a circular health-check loop
+Required workstation and CI evidence includes:
 
----
+- clean release worktree and remote parity;
+- application tests, builds and dependency audits;
+- release workflow, Compose, Caddy, monitoring and shell validation;
+- secret-history, static-analysis and image-scan evidence;
+- owner, legal/privacy, clinical, VAPT, Apple, Google and vendor actions in the
+  handover package.
 
-## Step 2 — Upstash Redis (required for GCP Cloud Run)
+Do not put a secret value in Git, command history, CI logs, screenshots or the
+handover documents.
 
-GCP Cloud Run cannot reach `redis://localhost:6379` on the VPS. Both VPS and GCP must use the same external Redis URL.
+## Empty-host bootstrap
 
-1. Go to [upstash.com](https://upstash.com) → Create Database
-   - Region: **Asia (Mumbai)** — closest to your VPS and GCP region (asia-south1)
-   - TLS: enabled (default)
-2. Copy the `REDIS_URL` in format: `rediss://default:<password>@<host>.upstash.io:6379`
-
-Use this URL in **both places**:
-- VPS `.env` → `REDIS_URL=rediss://...`
-- GCP Secret Manager → update the `REDIS_URL` secret value
-
----
-
-## Step 3 — VPS Setup
+Bootstrap is allowed only on an owner-approved empty host. It creates and
+verifies data services; it does not start public/application services or
+authorize traffic.
 
 ```bash
-# Upload the setup script
-scp vps-setup.sh user@<VPS IP>:~
+cd /opt/menorah/menorah-mobile-app-
+git checkout 'release/<reviewed-release-name>'
+git fetch --prune origin
+git checkout --detach '<reviewed-full-40-character-sha>'
 
-# Run it
-ssh user@<VPS IP> "sudo bash ~/vps-setup.sh"
+sudo bash menorah/deploy/ubuntu/prepare-host.sh
+
+export DEPLOY_BRANCH='release/<reviewed-release-name>'
+export DEPLOY_RELEASE_SHA='<reviewed-full-40-character-sha>'
+MENORAH_FIRST_RUN_CONFIRM=BOOTSTRAP_EMPTY_HOST \
+  bash menorah/deploy/ubuntu/first-run.sh
 ```
 
-The script installs: Node 20, PM2, nginx, Certbot, gets SSL certs for **both** `api.menorah.me` and `vps.menorah.me`.
+The bootstrap refuses non-empty data, existing Compose containers, any
+existing release/recovery marker, a dirty worktree, branch/SHA mismatch, or
+unsafe runtime-directory ownership. It records `current-sha` and
+`bootstrap-complete-sha` only after MongoDB and Redis verification.
 
-### VPS `.env` file
+Complete the same-SHA guarded release below before any traffic is introduced.
 
-After the script finishes, create `/var/www/menorah-api/.env`:
+## Guarded release
 
-```env
-NODE_ENV=production
-PORT=3000
-
-MONGODB_URI=mongodb+srv://...
-JWT_SECRET=<64+ char random hex>
-JWT_EXPIRES_IN=7d
-
-# Must be Upstash — NOT redis://localhost:6379
-REDIS_URL=rediss://default:<password>@<host>.upstash.io:6379
-ENABLE_SOCKET_ADAPTER=true
-
-ALLOWED_ORIGINS=https://menorah.me,https://www.menorah.me,https://app.menorah.me
-WEB_APP_URL=https://menorah.me
-MOBILE_APP_SCHEME=menorah://
-
-MSG91_AUTH_KEY=
-MSG91_OTP_TEMPLATE_ID=
-MSG91_SMS_TEMPLATE_ID=
-SENDGRID_API_KEY=
-
-RAZORPAY_KEY_ID=
-RAZORPAY_KEY_SECRET=
-RAZORPAY_WEBHOOK_SECRET=
-
-CLOUDINARY_CLOUD_NAME=
-CLOUDINARY_API_KEY=
-CLOUDINARY_API_SECRET=
-
-OPENAI_API_KEY=
-SOCIAL_STUDIO_OPENAI_API_KEY=
-SOCIAL_STUDIO_AI_PROVIDER=openai
-SOCIAL_STUDIO_AI_TEXT_MODEL=gpt-4o-mini
-SOCIAL_STUDIO_STORAGE=local
-
-LIVEKIT_API_KEY=
-LIVEKIT_API_SECRET=
-LIVEKIT_URL=
-```
+Never invoke the updater from a moving, unreviewed branch tip. Supply the exact
+reviewed SHA and a separate migration approval for that same SHA:
 
 ```bash
-# Upload .env
-scp .env menorah@api.menorah.me:/var/www/menorah-api/.env
-
-# Start with PM2
-ssh menorah@api.menorah.me "cd /var/www/menorah-api && pm2 start ecosystem.config.js --env production && pm2 save"
-
-# Verify
-curl https://api.menorah.me/health      # goes through Worker
-curl https://vps.menorah.me/health      # direct to VPS (what Worker uses)
+cd /opt/menorah/menorah-mobile-app-
+export DEPLOY_BRANCH='release/<reviewed-release-name>'
+export DEPLOY_RELEASE_SHA='<reviewed-full-40-character-sha>'
+export DEPLOY_MIGRATION_APPROVED_SHA="${DEPLOY_RELEASE_SHA}"
+export DEPLOY_CHANGE_REFERENCE='change-YYYY-NNN'
+bash menorah/deploy/ubuntu/update-from-git.sh
 ```
 
----
+The updater retains the deployment lock while handing control to the exact
+candidate script blob. It verifies the healthy predecessor and immutable
+artifact baseline before candidate checkout, creates and restore-tests a new
+backup, validates configuration, builds/pulls before maintenance, records image
+IDs, stops writers, consolidates media, reconciles managed MongoDB identities,
+runs migration once from the recorded `api-web` image with pulling disabled,
+starts only recorded artifacts, verifies local/public health, then atomically
+commits release state.
 
-## Step 4 — GCP Cloud Run Setup
+Do not use `docker compose up`, Cloud Build, Cloud Run, or an automatic push
+workflow as a substitute.
 
-### One-time GCP setup
+## Configuration boundary
+
+Create host-only `menorah/deploy/env/production.env` and
+`menorah/deploy/env/cloudflare.env` from their committed examples. Use the
+complete variable inventory in
+`docs/production-readiness/22-environment-variable-reference.md`.
+
+The updater must reject missing, malformed, placeholder, reused or unsafe
+values. In particular, payment/payout gates remain disabled unless all owner,
+finance, vendor, live callback and reconciliation evidence is approved. Actual
+Cloudflare, Razorpay, Resend, LiveKit, Luxand, Apple, Google and infrastructure
+configuration is an external action; repository examples never prove it.
+
+## Backup and restore
+
+Follow `docs/production-readiness/10-backup-and-restore-runbook.md`. Public
+release requires a fresh encrypted backup and an isolated successful restore
+test with signed/checksummed evidence. Never treat a desktop test as live-host
+proof.
+
+Production restore is destructive and requires every literal confirmation,
+expected digest, source/target SHA, traffic-drain attestation and change or
+incident reference enforced by `restore-latest-backup.sh`. Do not improvise or
+delete recovery markers.
+
+## Monitoring
+
+The production Compose stack uses Prometheus, Alertmanager, blackbox and
+datastore exporters, constrained Docker metrics exporters, Grafana, Loki,
+Grafana Alloy, Uptime Kuma and the backup textfile exporter. Promtail and
+cAdvisor are retired only after candidate health, using verified Compose
+labels.
+
+The committed Alertmanager file is intentionally non-delivering. A reviewed
+host-only destination, delivery test and acknowledgement are an
+`INFRASTRUCTURE ACTION`. Follow
+`menorah/docs/monitoring-alert-runbook.md` and
+`docs/production-readiness/12-monitoring-and-alerting-runbook.md`.
+
+## Rollback and recovery
+
+Before migration, use only the recorded-artifact rollback path:
 
 ```bash
-# Set your project
-gcloud config set project <YOUR_PROJECT_ID>
-
-# Enable required APIs
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
-
-# Create Artifact Registry repo
-gcloud artifacts repositories create menorah-api \
-  --repository-format=docker \
-  --location=asia-south1
-
-# Create all secrets in Secret Manager
-# Replace the values with your real secrets
-
-echo -n "mongodb+srv://..." | gcloud secrets create MONGODB_URI --data-file=-
-echo -n "<64-char-hex>" | gcloud secrets create JWT_SECRET --data-file=-
-
-# REDIS_URL must be Upstash — same URL as VPS
-echo -n "rediss://default:<pass>@<host>.upstash.io:6379" | gcloud secrets create REDIS_URL --data-file=-
-
-echo -n "7d" | gcloud secrets create JWT_EXPIRES_IN --data-file=-
-echo -n "https://menorah.me,https://www.menorah.me" | gcloud secrets create ALLOWED_ORIGINS --data-file=-
-echo -n "https://menorah.me" | gcloud secrets create WEB_APP_URL --data-file=-
-echo -n "<msg91-auth-key>" | gcloud secrets create MSG91_AUTH_KEY --data-file=-
-echo -n "<msg91-otp-template>" | gcloud secrets create MSG91_OTP_TEMPLATE_ID --data-file=-
-echo -n "<msg91-sms-template>" | gcloud secrets create MSG91_SMS_TEMPLATE_ID --data-file=-
-echo -n "<sendgrid-key>" | gcloud secrets create SENDGRID_API_KEY --data-file=-
-echo -n "<razorpay-key-id>" | gcloud secrets create RAZORPAY_KEY_ID --data-file=-
-echo -n "<razorpay-secret>" | gcloud secrets create RAZORPAY_KEY_SECRET --data-file=-
-echo -n "<razorpay-webhook-secret>" | gcloud secrets create RAZORPAY_WEBHOOK_SECRET --data-file=-
-echo -n "<cloudinary-name>" | gcloud secrets create CLOUDINARY_CLOUD_NAME --data-file=-
-echo -n "<cloudinary-api-key>" | gcloud secrets create CLOUDINARY_API_KEY --data-file=-
-echo -n "<cloudinary-api-secret>" | gcloud secrets create CLOUDINARY_API_SECRET --data-file=-
-echo -n "<livekit-api-key>" | gcloud secrets create LIVEKIT_API_KEY --data-file=-
-echo -n "<livekit-api-secret>" | gcloud secrets create LIVEKIT_API_SECRET --data-file=-
-echo -n "wss://..." | gcloud secrets create LIVEKIT_URL --data-file=-
-
-# Grant Cloud Build + Cloud Run access to secrets
-PROJECT_NUM=$(gcloud projects describe <YOUR_PROJECT_ID> --format='value(projectNumber)')
-gcloud projects add-iam-policy-binding <YOUR_PROJECT_ID> \
-  --member="serviceAccount:${PROJECT_NUM}@cloudbuild.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-gcloud projects add-iam-policy-binding <YOUR_PROJECT_ID> \
-  --member="serviceAccount:${PROJECT_NUM}-compute@developer.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
+bash menorah/deploy/ubuntu/rollback-last-deploy.sh
 ```
 
-### Update an existing secret
+An interrupted rollback retains its exact durable target. Rerun the same
+command; do not rewrite `current-sha`, `last-good-sha` or
+`rollback-in-progress-sha` manually.
+
+After a migration is applied, code-only rollback is blocked. If managed MongoDB
+role reconciliation failed before migration, follow the identity recovery
+review and run the literal-confirmation helper from the exact candidate. If
+migration succeeded but startup or health failed, keep writers stopped and use
+the exact recorded-artifact resume helper:
 
 ```bash
-echo -n "new-value" | gcloud secrets versions add REDIS_URL --data-file=-
+MENORAH_MONGO_IDENTITY_RECOVERY_CONFIRM=RECOVER_RECORDED_MONGO_IDENTITIES \
+  bash menorah/deploy/ubuntu/recover-managed-mongo-identities.sh
+
+MENORAH_POST_MIGRATION_RECOVERY_CONFIRM=RESUME_RECORDED_RELEASE \
+  bash menorah/deploy/ubuntu/resume-post-migration-release.sh
 ```
 
-### Deploy to Cloud Run
+The resume path never rebuilds, pulls or reruns migration. Ambiguous migration
+state requires coordinated database/application recovery from the recorded
+backup and evidence; no marker may be removed by hand.
 
-```bash
-# From repo root — triggers cloudbuild.yaml
-gcloud builds submit \
-  --config=Menorah/backend/cloudbuild.yaml \
-  --substitutions=_PROJECT_ID=<YOUR_PROJECT_ID>,_REGION=asia-south1,_SERVICE_NAME=menorah-api \
-  .
-```
+## Go-live boundary
 
-Or set up a Cloud Build trigger on `main` branch push.
-
-### Whitelist GCP IPs in MongoDB Atlas
-
-GCP Cloud Run uses dynamic IPs. Two options:
-
-**Option A (recommended):** Allow `0.0.0.0/0` in Atlas → Network Access → Add IP Address → "Allow access from anywhere"
-- MongoDB Atlas still requires authentication (user + password in connection string)
-- Use a strong password and TLS is always on
-
-**Option B:** Use a Cloud NAT Gateway with a fixed static IP (more complex, more secure)
-
----
-
-## Step 5 — Cloudflare Worker Deploy
-
-```bash
-cd cloudflare
-bash deploy.sh
-```
-
-When prompted:
-- `VPS_URL` → `https://vps.menorah.me`  ← MUST be the direct domain (proxy OFF)
-- `GCP_URL` → `https://menorah-api-<hash>-<region>.a.run.app`  ← the Cloud Run URL from step 4
-
-### Find your Cloud Run URL
-
-```bash
-gcloud run services describe menorah-api --region=asia-south1 --format='value(status.url)'
-```
-
----
-
-## Step 6 — Verify Everything
-
-```bash
-# 1. VPS direct health (what the Worker's cron pings)
-curl https://vps.menorah.me/health
-# Expected: {"success":true,"status":"OK","timestamp":"..."}
-
-# 2. Public API (goes through Worker → VPS or GCP)
-curl https://api.menorah.me/health
-# Expected: same JSON, header X-Menorah-Route: vps or gcp
-
-# 3. Check which backend served the request
-curl -I https://api.menorah.me/health | grep x-menorah-route
-# x-menorah-route: vps   (or gcp when traffic splits)
-
-# 4. GCP health (direct, bypassing Worker)
-curl https://menorah-api-<hash>-uc.a.run.app/health
-
-# 5. Socket.IO — always VPS
-# Check app connects to wss://api.menorah.me/socket.io/
-```
-
----
-
-## Environment Variables Reference
-
-| Var | VPS | GCP Secret | Notes |
-|-----|-----|------------|-------|
-| `NODE_ENV` | `.env` | cloudbuild inline | `production` |
-| `PORT` | `.env` (3000) | cloudbuild inline | 3000 |
-| `ENABLE_SOCKET_ADAPTER` | `.env` = `true` | cloudbuild inline = `false` | GCP never handles sockets |
-| `MONGODB_URI` | `.env` | Secret Manager | same value |
-| `JWT_SECRET` | `.env` | Secret Manager | same value |
-| `REDIS_URL` | `.env` = Upstash | Secret Manager = Upstash | MUST be Upstash, not localhost |
-| `ALLOWED_ORIGINS` | `.env` | Secret Manager | comma-separated |
-| `WEB_APP_URL` | `.env` | Secret Manager | `https://menorah.me` |
-| `MOBILE_APP_SCHEME` | `.env` | cloudbuild inline | `menorah://` |
-| `OPENAI_API_KEY` | `.env` | Secret Manager | CMS article generation |
-| `SOCIAL_STUDIO_OPENAI_API_KEY` | `.env` | not required in Cloud Run while Social Studio is VPS-pinned | Dedicated key for AI Social Studio; falls back to `OPENAI_API_KEY` if empty |
-
----
-
-## Common Mistakes
-
-| Mistake | Symptom | Fix |
-|---------|---------|-----|
-| `VPS_URL=https://api.menorah.me` | Worker health check loops into itself | Use `https://vps.menorah.me` (proxy OFF) |
-| `REDIS_URL=redis://localhost:6379` on GCP | Cloud Run crashes on startup | Use Upstash URL in GCP secret |
-| `vps.menorah.me` proxy ON | Worker can't reach VPS directly | Set proxy to OFF (gray cloud) |
-| MongoDB Atlas IP not whitelisted | GCP sees connection timeout | Add 0.0.0.0/0 or GCP NAT IP to Atlas |
-| Certbot only covers `api.menorah.me` | nginx 502 on `vps.menorah.me` requests | Run certbot with both `-d` flags |
+Do not introduce public traffic until
+`docs/production-readiness/21-production-go-no-go.md` is signed with all P0
+evidence. Repository completion does not close live-server verification,
+provider callbacks, alert delivery, external VAPT, legal/privacy/clinical
+decisions, mobile-console declarations or store review.

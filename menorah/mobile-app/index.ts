@@ -46,7 +46,7 @@ if (__DEV__) {
 }
 
 // Catch unhandled JS errors before React renders so we can surface them
-const errorUtils = (globalThis as any).ErrorUtils;
+const errorUtils = (global as any).ErrorUtils;
 if (errorUtils) {
   const prevHandler = errorUtils.getGlobalHandler();
   errorUtils.setGlobalHandler((error: Error, isFatal: boolean) => {

@@ -52,11 +52,11 @@ export function MenorahNavbar({
           ? cn(
               "fixed left-1/2 z-[60] -translate-x-1/2 overflow-hidden border",
               isFloating
-                ? "top-4 w-[calc(100%-1rem)] max-w-6xl rounded-full border-white/55 bg-background/45 px-2.5 py-3 shadow-[0_24px_90px_rgba(31,41,55,0.20)] backdrop-blur-[28px] backdrop-saturate-150 sm:top-5 sm:w-[calc(100%-3rem)] sm:px-3 md:px-3 lg:px-3 xl:px-4"
-                : "top-0 w-full max-w-[100vw] rounded-none border-transparent bg-transparent px-6 py-5 md:px-12 lg:px-20"
+                ? "top-[clamp(0.75rem,1.4vw,1.35rem)] w-[min(calc(100vw_-_1rem),var(--landing-container))] rounded-full border-white/55 bg-background/45 px-[clamp(0.55rem,0.8vw,1rem)] py-[clamp(0.65rem,0.8vw,0.9rem)] shadow-[0_24px_90px_rgba(31,41,55,0.20)] backdrop-blur-[28px] backdrop-saturate-150"
+                : "top-0 w-full max-w-[100vw] rounded-none border-transparent bg-transparent px-[var(--landing-page-x)] py-[clamp(1rem,1.4vw,1.55rem)]"
             )
           : cn(
-              "relative z-10 px-6 py-5 md:px-12 lg:px-20",
+              "relative z-10 px-[var(--landing-page-x)] py-[clamp(1rem,1.4vw,1.55rem)]",
               elevated && "border-b border-menorah-cream bg-menorah-page/95 backdrop-blur"
             ),
         className
@@ -78,12 +78,14 @@ export function MenorahNavbar({
         </div>
       )}
 
-      <div className="relative z-10 flex w-full items-center justify-between gap-3">
+      <div className="relative z-10 flex w-full flex-wrap items-center justify-between gap-3 min-[480px]:flex-nowrap">
         <Link
           href="/"
           className={cn(
-            "flex min-w-0 items-center gap-3 font-semibold tracking-tight text-foreground transition-all duration-500 motion-reduce:transition-none",
-            morphOnScroll && isFloating ? "text-base sm:text-2xl" : "text-xl sm:text-2xl"
+            "flex shrink-0 items-center gap-3 font-semibold tracking-tight text-foreground transition-all duration-500 motion-reduce:transition-none",
+            morphOnScroll && isFloating
+              ? "text-[clamp(1rem,1.4vw,1.5rem)]"
+              : "text-[clamp(1.15rem,1.35vw,1.55rem)]"
           )}
         >
           <Image
@@ -94,13 +96,15 @@ export function MenorahNavbar({
             priority
             className={cn(
               "shrink-0 rounded-full object-cover transition-all duration-500 motion-reduce:transition-none",
-              morphOnScroll && isFloating ? "h-10 w-10 sm:h-12 sm:w-12" : "h-11 w-11 sm:h-12 sm:w-12"
+              morphOnScroll && isFloating
+                ? "h-[clamp(2.35rem,2.8vw,3rem)] w-[clamp(2.35rem,2.8vw,3rem)]"
+                : "h-[clamp(2.55rem,2.8vw,3.05rem)] w-[clamp(2.55rem,2.8vw,3.05rem)]"
             )}
           />
-          <span className="truncate">Menorah</span>
+          <span className="whitespace-nowrap">Menorah</span>
         </Link>
 
-        <div className="flex items-center gap-2 sm:gap-5">
+        <div className="flex items-center gap-2 max-[479px]:w-full max-[479px]:justify-end sm:gap-5">
           {showArticlesLink && (
             <>
               <nav className="hidden items-center gap-5 lg:flex" aria-label="Primary navigation">
@@ -125,13 +129,13 @@ export function MenorahNavbar({
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
               href="/login"
-              className="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-full border border-primary px-3 py-2 text-xs font-medium text-foreground transition hover:bg-primary hover:text-primary-foreground sm:min-h-11 sm:px-5 sm:text-base"
+              className="inline-flex min-h-[var(--landing-button-h)] items-center justify-center whitespace-nowrap rounded-full border border-primary px-[var(--landing-button-x)] py-2 text-[length:var(--landing-button-text)] font-medium text-foreground transition hover:bg-primary hover:text-primary-foreground"
             >
               Sign In
             </Link>
             <Link
               href="/register"
-              className="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-full bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 sm:min-h-11 sm:px-6 sm:text-base"
+              className="inline-flex min-h-[var(--landing-button-h)] items-center justify-center whitespace-nowrap rounded-full bg-primary px-[var(--landing-button-x)] py-2 text-[length:var(--landing-button-text)] font-medium text-primary-foreground transition hover:bg-primary/90"
             >
               Create Account
             </Link>

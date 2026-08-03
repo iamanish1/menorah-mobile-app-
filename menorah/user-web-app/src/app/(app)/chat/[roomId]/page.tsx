@@ -32,6 +32,26 @@ function getUserName(user: User | null): string {
   return name || 'You';
 }
 
+function mergeChatMessages(existing: LocalChatMessage[], incoming: LocalChatMessage[]) {
+  const messagesById = new Map(existing.map((message) => [message.id, message]));
+  incoming.forEach((message) => {
+    const current = messagesById.get(message.id);
+    const statusRank = { sent: 0, delivered: 1, read: 2 } as const;
+    const currentStatus = current?.status ?? 'sent';
+    const incomingStatus = message.status ?? 'sent';
+    messagesById.set(message.id, {
+      ...current,
+      ...message,
+      status: statusRank[currentStatus] > statusRank[incomingStatus]
+        ? currentStatus
+        : incomingStatus,
+    });
+  });
+  return [...messagesById.values()].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+}
+
 function MessageStatus({ status, localStatus }: { status?: ChatMessage['status']; localStatus?: LocalChatMessage['localStatus'] }) {
   if (localStatus === 'sending') {
     return (
@@ -75,7 +95,7 @@ export default function ChatThreadPage() {
   const router     = useRouter();
   const { user }   = useAuth();
   const qc         = useQueryClient();
-  const { socket, joinRoom, leaveRoom, startTyping, stopTyping, markRead } = useSocket();
+  const { socket, isConnected, joinRoom, leaveRoom, startTyping, stopTyping, markRead } = useSocket();
 
   const [messages, setMessages]       = useState<LocalChatMessage[]>([]);
   const [input, setInput]             = useState('');
@@ -89,7 +109,15 @@ export default function ChatThreadPage() {
   const bottomRef    = useRef<HTMLDivElement>(null);
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
   const typingTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectedOnceRef = useRef(isConnected);
+  const missedSocketEventsRef = useRef(false);
   const myId         = getUserId(user);
+
+  useEffect(() => {
+    setMessages([]);
+    setPage(1);
+    setHasMore(true);
+  }, [roomId]);
 
   // Get chat rooms to find counsellor info — always refetch so newly created rooms show up
   const { data: roomsData } = useQuery({
@@ -106,13 +134,31 @@ export default function ChatThreadPage() {
     queryFn:  async () => {
       const res = await api.getMessages(roomId, 1, 30);
       if (res.success && res.data?.messages) {
-        setMessages(res.data.messages.reverse());
+        setMessages((currentMessages) => mergeChatMessages(currentMessages, res.data!.messages));
         setHasMore((res.data.pagination?.page ?? 1) < (res.data.pagination?.pages ?? 1));
       }
       return res;
     },
     staleTime: 0,
   });
+
+  useEffect(() => {
+    if (!isConnected) {
+      if (connectedOnceRef.current) missedSocketEventsRef.current = true;
+      return;
+    }
+
+    if (!connectedOnceRef.current) {
+      connectedOnceRef.current = true;
+      return;
+    }
+
+    if (missedSocketEventsRef.current) {
+      missedSocketEventsRef.current = false;
+      void qc.invalidateQueries({ queryKey: ['messages', roomId, 1] });
+      void qc.invalidateQueries({ queryKey: ['chatRooms'] });
+    }
+  }, [isConnected, qc, roomId]);
 
   // Socket.IO setup
   useEffect(() => {
@@ -135,6 +181,7 @@ export default function ChatThreadPage() {
     if (!socket) return;
 
     const onNewMessage = (msg: ChatMessage) => {
+      if (msg.roomId !== roomId) return;
       const isOwnIncoming = !!myId && msg.senderId === myId;
 
       setMessages((prev) => {
@@ -171,14 +218,32 @@ export default function ChatThreadPage() {
       }
     };
 
+    const onMessageRead = (data: { roomId?: string; messageId?: string }) => {
+      if (data.roomId !== roomId || !data.messageId) return;
+      setMessages((previousMessages) => previousMessages.map((message) =>
+        message.id === data.messageId ? { ...message, status: 'read' } : message
+      ));
+    };
+
+    const onMessageDeleted = (data: { roomId?: string; messageId?: string }) => {
+      if (data.roomId !== roomId || !data.messageId) return;
+      setMessages((previousMessages) => previousMessages.filter(
+        (message) => message.id !== data.messageId
+      ));
+    };
+
     socket.on(socketEvents.NEW_MESSAGE, onNewMessage);
     socket.on(socketEvents.USER_TYPING, onTyping);
     socket.on(socketEvents.USER_STATUS_CHANGED, onStatusChanged);
+    socket.on(socketEvents.MESSAGE_READ, onMessageRead);
+    socket.on(socketEvents.MESSAGE_DELETED, onMessageDeleted);
 
     return () => {
       socket.off(socketEvents.NEW_MESSAGE, onNewMessage);
       socket.off(socketEvents.USER_TYPING, onTyping);
       socket.off(socketEvents.USER_STATUS_CHANGED, onStatusChanged);
+      socket.off(socketEvents.MESSAGE_READ, onMessageRead);
+      socket.off(socketEvents.MESSAGE_DELETED, onMessageDeleted);
     };
   }, [socket, myId, roomId, room, markRead]);
 
@@ -258,7 +323,7 @@ export default function ChatThreadPage() {
     const nextPage = page + 1;
     const res = await api.getMessages(roomId, nextPage, 30);
     if (res.success && res.data?.messages) {
-      setMessages((prev) => [...res.data!.messages.reverse(), ...prev]);
+      setMessages((prev) => mergeChatMessages(prev, res.data!.messages));
       setPage(nextPage);
       setHasMore(nextPage < (res.data.pagination?.pages ?? 1));
     }

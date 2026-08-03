@@ -6,7 +6,7 @@ Menorah Health is a **mental health counselling platform** with three client app
 
 | Component | Tech | Port | Purpose |
 |-----------|------|------|---------|
-| `Menorah/backend` | Node.js + Express + MongoDB | 3000 | REST API + Socket.IO server |
+| `menorah/backend` | Node.js + Express + MongoDB | 3000 | REST API + Socket.IO server |
 | `Menorah/mobile-app` | React Native (Expo SDK 54) | N/A | User-facing mobile app (Android/iOS) |
 | `Menorah/user-web-app` | Next.js 15 + Tailwind | 3002 | User-facing web app (mirrors mobile) |
 | `Menorah/web-app` | Next.js 16 | 3001 | **Counsellor dashboard** (manage bookings, chat, sessions) |
@@ -150,7 +150,7 @@ User clients    Counsellor web
 ## Notifications
 
 - **SMS**: MSG91 — OTP on registration (MSG91 manages OTP lifecycle, not stored in DB), session reminders
-- **Email**: SendGrid (SENDGRID_API_KEY) — password reset
+- **Email**: Resend (`RESEND_API_KEY`, `EMAIL_FROM`) — signup verification, password reset, booking emails
 - **Push**: structure in place (notificationPreferences.push) but not wired to a push provider
 
 ---
@@ -170,7 +170,7 @@ User clients    Counsellor web
 |---------|----------|-------------|
 | MongoDB Atlas | Database | `MONGODB_URI` |
 | MSG91 | SMS OTP + transactional SMS | `MSG91_AUTH_KEY`, `MSG91_OTP_TEMPLATE_ID`, `MSG91_SMS_TEMPLATE_ID` |
-| SendGrid | Email | `SENDGRID_API_KEY` |
+| Resend | Email | `RESEND_API_KEY`, `EMAIL_FROM` |
 | Razorpay | Payments (INR) | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` |
 | ~~Stripe~~ | Removed — Razorpay only | — |
 | Cloudinary | Image uploads | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` |
@@ -199,7 +199,7 @@ User clients    Counsellor web
 | 4 | `/api/auth/test-email` debug endpoint | **Removed** |
 | 5 | Stripe integration | **Removed** — Razorpay only |
 | 6 | Razorpay webhook secret placeholder | **Hardened** — signature is now always required |
-| 7 | SMTP/nodemailer misleading warning | **Fixed** — startup now shows SendGrid key status |
+| 7 | SMTP/nodemailer misleading warning | **Fixed** — startup now validates Resend email config |
 | 8 | Twilio OTP | **Replaced** with MSG91 — OTP managed by MSG91, not stored in DB |
 | 9 | Verbose sensitive logs in auth routes | **Removed** |
 | 10 | `phoneVerificationToken` stored in DB | **Removed** from User model |
@@ -212,9 +212,8 @@ User clients    Counsellor web
 1. **Set real secrets in `.env`**:
    - `JWT_SECRET` — generate with `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
    - `ALLOWED_ORIGINS` — comma-separated list of your actual domains
-   - `MSG91_AUTH_KEY`, `MSG91_OTP_TEMPLATE_ID`, `MSG91_SMS_TEMPLATE_ID`
    - `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`
-   - `SENDGRID_API_KEY`
+   - `RESEND_API_KEY`, `EMAIL_FROM`
 
 2. **Jitsi rooms are public** — `JITSI_APP_ID`/`JITSI_APP_SECRET` empty; anyone knowing `menorah-<bookingId>` can join
 

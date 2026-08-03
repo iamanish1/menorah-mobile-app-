@@ -1,0 +1,66 @@
+env:
+  contexts:
+    - name: menorah-staging-api
+      urls:
+        - ${DAST_TARGET_URL}
+      excludePaths:
+        - ${DAST_TARGET_URL}/api/payments/razorpay-webhook.*
+        - ${DAST_TARGET_URL}/api/payouts/webhook.*
+        - ${DAST_TARGET_URL}/api/video/livekit-webhook.*
+      authentication:
+        method: manual
+      sessionManagement:
+        method: cookie
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    continueOnFailure: false
+    progressToStdout: true
+
+jobs:
+  - type: requestor
+    parameters: {}
+    requests:
+      - name: Authenticated profile seed
+        url: ${DAST_TARGET_URL}/api/users/profile
+        method: GET
+      - name: Authenticated bookings seed
+        url: ${DAST_TARGET_URL}/api/bookings
+        method: GET
+      - name: Authenticated notifications seed
+        url: ${DAST_TARGET_URL}/api/notifications
+        method: GET
+  - type: spider
+    parameters:
+      context: menorah-staging-api
+      url: ${DAST_TARGET_URL}
+      maxDuration: 5
+      parseGit: false
+      parseDsStore: false
+      threadCount: 2
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 10
+  - type: activeScan
+    parameters:
+      context: menorah-staging-api
+      maxRuleDurationInMins: 3
+      maxScanDurationInMins: 20
+      delayInMs: 100
+      handleAntiCSRFTokens: true
+      threadPerHost: 2
+      maxAlertsPerRule: 20
+    policyDefinition:
+      defaultStrength: Medium
+      defaultThreshold: Medium
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 10
+  - type: exitStatus
+    parameters:
+      errorLevel: Medium
+      warnLevel: Low
+      okExitValue: 0
+      errorExitValue: 1
+      warnExitValue: 0
+    alwaysRun: true

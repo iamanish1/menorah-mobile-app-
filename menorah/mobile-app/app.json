@@ -2,52 +2,78 @@
   "expo": {
     "name": "Menorah Health",
     "slug": "menorah-health-app",
-    "version": "2.6.0",
+    "version": "2.7.0",
     "orientation": "portrait",
     "icon": "./assets/brand/menorah_logo.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/brand/menorah_logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#f0f9f4"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.menorah.health.app"
+      "bundleIdentifier": "com.menorah.health.app",
+      "buildNumber": "15",
+      "associatedDomains": [
+        "applinks:app.menorah.me"
+      ]
     },
     "android": {
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/brand/menorah_logo.png",
+        "foregroundImage": "./assets/brand/menorah-logo-no-bg.png",
         "backgroundColor": "#f0f9f4"
       },
       "package": "com.menorah.healthmobile",
-      "versionCode": 14,
-      "statusBar": {
-        "barStyle": "light-content",
-        "backgroundColor": "#314830",
-        "translucent": false
-      },
-      "navigationBar": {
-        "visible": "leanback",
-        "backgroundColor": "#ffffff",
-        "barStyle": "dark-content"
-      }
+      "versionCode": 15,
+      "googleServicesFile": "./android/app/google-services.json",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.WAKE_LOCK",
+        "com.google.android.c2dm.permission.RECEIVE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.VIBRATE"
+      ]
+    },
+    "androidStatusBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#2d7a5c",
+      "translucent": false
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "splash": {
+        "image": "./assets/brand/menorah_logo.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#f0f9f4"
+      }
     },
-    "plugins": [],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#2d7a5c",
+          "icon": "./assets/notification-icon.png",
+          "defaultChannel": "general"
+        }
+      ]
+    ],
     "updates": {
       "url": "https://u.expo.dev/d7fb6e65-3440-4a79-b4b2-6746d2582fa7"
     },
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "2.7.0",
     "extra": {
-      "API_BASE_URL": "https://api.menorah.me/api",
-      "CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
+      "CHECKOUT_RETURN_URL": "https://app.menorah.me/checkout/return",
       "eas": {
         "projectId": "d7fb6e65-3440-4a79-b4b2-6746d2582fa7"
       }

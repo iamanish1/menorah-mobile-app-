@@ -1,7 +1,217 @@
 const mongoose = require('mongoose');
+const {
+  COUNSELLOR_LICENSE_IDENTITY_COLLATION,
+  COUNSELLOR_CONSENT_SOURCES,
+  LEGACY_PROFESSIONAL_VERIFICATION_STATES,
+  PROFESSIONAL_VERIFICATION_STATES,
+} = require('../config/counsellorVerification');
+
+const hasUniqueObjectIds = (values) => (
+  Array.isArray(values)
+  && values.every((value) => value != null)
+  && new Set(values.map((value) => value.toString())).size === values.length
+);
+
+const adminHistoryActorRequired = function adminHistoryActorRequired() {
+  return this.actorType === 'admin';
+};
+
+const systemHistoryHasNoActor = function systemHistoryHasNoActor(value) {
+  return this.actorType !== 'system' || value == null;
+};
+
+const hasReverificationInviteValue = function hasReverificationInviteValue() {
+  return [
+    this.reverificationInviteTokenHash,
+    this.reverificationInviteIssuedBy,
+    this.reverificationInviteIssuedAt,
+    this.reverificationInviteExpiresAt,
+    this.reverificationInviteConsentVersion,
+  ].some((value) => value != null);
+};
+
+const professionalConsentSchema = new mongoose.Schema({
+  accepted: { type: Boolean, default: false },
+  version: { type: String, default: null, trim: true, maxlength: 128 },
+  acceptedAt: { type: Date, default: null },
+  source: {
+    type: String,
+    enum: COUNSELLOR_CONSENT_SOURCES,
+    default: null,
+  },
+}, { _id: false });
+
+const professionalCredentialReviewSchema = new mongoose.Schema({
+  decision: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending',
+  },
+  policyVersion: { type: String, default: null, trim: true, maxlength: 128 },
+  evidenceIds: {
+    type: [mongoose.Schema.Types.ObjectId],
+    default: [],
+    validate: {
+      validator: hasUniqueObjectIds,
+      message: 'Credential review evidence IDs must be unique',
+    },
+  },
+  reviewedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  reviewedAt: { type: Date, default: null },
+}, { _id: false });
+
+const professionalStatusHistorySchema = new mongoose.Schema({
+  from: { type: String, default: null, maxlength: 64 },
+  to: {
+    type: String,
+    enum: PROFESSIONAL_VERIFICATION_STATES,
+    required: true,
+  },
+  at: { type: Date, required: true },
+  actorType: {
+    type: String,
+    enum: ['applicant', 'admin', 'system'],
+    required: true,
+  },
+  actor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    required: adminHistoryActorRequired,
+    validate: {
+      validator: systemHistoryHasNoActor,
+      message: 'System status history entries cannot name a user actor',
+    },
+  },
+  reason: { type: String, default: null, maxlength: 1000 },
+}, { _id: false });
+
+const legacyVerificationSnapshotSchema = new mongoose.Schema({
+  status: { type: String, default: null },
+  isVerified: { type: Boolean, default: null },
+  isActive: { type: Boolean, default: null },
+  isAvailable: { type: Boolean, default: null },
+  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  approvedAt: { type: Date, default: null },
+  blockedAt: { type: Date, default: null },
+  blockedReason: { type: String, default: null },
+}, { _id: false });
+
+const professionalVerificationSchema = new mongoose.Schema({
+  application: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'PendingApplication',
+    default: null,
+  },
+  onboardingConsent: {
+    type: professionalConsentSchema,
+    default: () => ({}),
+  },
+  credentialReview: {
+    type: professionalCredentialReviewSchema,
+    default: () => ({}),
+  },
+  reviewStartedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  reviewStartedAt: { type: Date, default: null },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  approvedAt: { type: Date, default: null },
+  expiresAt: { type: Date, default: null },
+  suspendedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  suspendedAt: { type: Date, default: null },
+  suspensionReason: { type: String, default: null, trim: true, maxlength: 1000 },
+  expiredAt: { type: Date, default: null },
+  reverificationRequestedAt: { type: Date, default: null },
+  reverificationInviteTokenHash: {
+    type: String,
+    default: null,
+    select: false,
+    lowercase: true,
+    trim: true,
+    match: /^[a-f0-9]{64}$/,
+    required: hasReverificationInviteValue,
+  },
+  reverificationInviteIssuedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    select: false,
+    required: hasReverificationInviteValue,
+  },
+  reverificationInviteIssuedAt: {
+    type: Date,
+    default: null,
+    select: false,
+    required: hasReverificationInviteValue,
+  },
+  reverificationInviteExpiresAt: {
+    type: Date,
+    default: null,
+    select: false,
+    required: hasReverificationInviteValue,
+    validate: {
+      validator(value) {
+        return value == null
+          || this.reverificationInviteIssuedAt == null
+          || value > this.reverificationInviteIssuedAt;
+      },
+      message: 'Re-verification invite expiry must be after issuance',
+    },
+  },
+  reverificationInviteConsentVersion: {
+    type: String,
+    default: null,
+    select: false,
+    trim: true,
+    maxlength: 128,
+    required: hasReverificationInviteValue,
+  },
+  marketplaceAssignmentFence: {
+    type: Number,
+    default: 0,
+    min: 0,
+    validate: {
+      validator: Number.isSafeInteger,
+      message: 'Marketplace assignment fence must be a safe integer',
+    },
+  },
+  legacyReviewRequired: { type: Boolean, default: false },
+  legacySnapshot: {
+    type: legacyVerificationSnapshotSchema,
+    default: undefined,
+  },
+  schemaVersion: { type: Number, default: 1, min: 1 },
+  migrationVersion: { type: String, default: null },
+  statusHistory: {
+    type: [professionalStatusHistorySchema],
+    default: [],
+  },
+}, { _id: false });
 
 const counsellorSchema = new mongoose.Schema({
   // Basic information
+  applicationStatusTokenHash: {
+    type: String,
+    select: false,
+    index: true,
+    unique: true,
+    sparse: true
+  },
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -57,6 +267,7 @@ const counsellorSchema = new mongoose.Schema({
   },
   currency: {
     type: String,
+    enum: ['INR'],
     default: 'INR'
   },
 
@@ -129,9 +340,50 @@ const counsellorSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  profileImagePublicId: {
+    type: String,
+    default: null
+  },
+  profileImageLocalPath: {
+    type: String,
+    default: null
+  },
+  profileImageStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  voiceIntroUrl: {
+    type: String,
+    default: null
+  },
+  voiceIntroPublicId: {
+    type: String,
+    default: null
+  },
+  voiceIntroLocalPath: {
+    type: String,
+    default: null
+  },
+  voiceIntroStorage: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  voiceIntroDurationSeconds: {
+    type: Number,
+    default: null,
+    min: 0
+  },
+  profileMediaCompletedAt: {
+    type: Date,
+    default: null
+  },
   gallery: [{
     url: String,
     caption: String,
+    storage: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
     type: {
       type: String,
       enum: ['image', 'video']
@@ -145,11 +397,11 @@ const counsellorSchema = new mongoose.Schema({
   },
   isActive: {
     type: Boolean,
-    default: true
+    default: false
   },
   isAvailable: {
     type: Boolean,
-    default: true
+    default: false
   },
   verificationDocuments: [{
     type: {
@@ -157,6 +409,10 @@ const counsellorSchema = new mongoose.Schema({
       enum: ['license', 'certification', 'education', 'identity']
     },
     url: String,
+    storage: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
     verified: { type: Boolean, default: false },
     verifiedAt: Date,
     verifiedBy: {
@@ -164,12 +420,19 @@ const counsellorSchema = new mongoose.Schema({
       ref: 'User'
     }
   }],
+  professionalVerification: {
+    type: professionalVerificationSchema,
+    default: () => ({}),
+  },
 
   // Admin-controlled status
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
-    default: 'pending',
+    enum: [
+      ...PROFESSIONAL_VERIFICATION_STATES,
+      ...LEGACY_PROFESSIONAL_VERIFICATION_STATES,
+    ],
+    default: 'draft',
     index: true
   },
   approvedBy: {
@@ -202,7 +465,10 @@ const counsellorSchema = new mongoose.Schema({
     max: 100
   },
   bankDetails: {
-    accountNumber: String,
+    // Legacy plaintext is selected only by the one-time migration that removes it.
+    accountNumber: { type: String, select: false },
+    accountNumberEncrypted: { type: String, select: false },
+    accountNumberLast4: { type: String, maxlength: 4 },
     ifscCode: String,
     accountHolderName: String,
     bankName: String
@@ -255,10 +521,27 @@ counsellorSchema.virtual('availabilityStatus').get(function() {
 // Unique index on the user ref — one User can only be one Counsellor
 // Also speeds up Counsellor.findOne({ user: socket.userId }) on every socket connect
 counsellorSchema.index({ user: 1 }, { unique: true });
+// Keep the applicant-issued license string unchanged while making case-only
+// variants one identity. The legacy binary `licenseNumber_1` index generated
+// by `unique: true` remains intentionally compatible and harmless.
+counsellorSchema.index(
+  { licenseNumber: 1 },
+  {
+    name: 'counsellor_license_identity_unique_v1',
+    unique: true,
+    collation: COUNSELLOR_LICENSE_IDENTITY_COLLATION,
+  }
+);
 
 // Indexes for search and filtering
 // Primary discover query: isActive filter + rating sort
 counsellorSchema.index({ isActive: 1, isAvailable: 1, rating: -1 });
+// Migration-owned bounded expiry sweep. Normal service startup keeps
+// autoIndex disabled; the explicit name documents parity with the migration.
+counsellorSchema.index(
+  { status: 1, 'professionalVerification.expiresAt': 1, _id: 1 },
+  { name: 'professional_verification_expiry_sweep_v1' }
+);
 // Price filter
 counsellorSchema.index({ isActive: 1, hourlyRate: 1 });
 // Language filter
@@ -268,25 +551,10 @@ counsellorSchema.index({ specialization: 1, isActive: 1 });
 counsellorSchema.index({ specializations: 1, isActive: 1 });
 // Full-text search on specialization fields (used by the search query)
 counsellorSchema.index({ specialization: 'text', specializations: 'text' });
-
 // The updateRating() method correctly maintains the running average.
 // The pre-save hook that recalculated rating has been removed — it used
 // a broken formula: (current_rating * 10 / reviewCount) which corrupts
 // the stored value on every unrelated save (e.g. toggling isAvailable).
-
-// Static method to find available counsellors
-counsellorSchema.statics.findAvailable = function(criteria = {}) {
-  const query = {
-    isActive: true,
-    isAvailable: true,
-    isVerified: true,
-    ...criteria
-  };
-  
-  return this.find(query)
-    .populate('user', 'firstName lastName email phone profileImage')
-    .sort({ rating: -1, reviewCount: -1 });
-};
 
 // Method to update rating
 counsellorSchema.methods.updateRating = function(newRating) {

@@ -1,0 +1,528 @@
+const { test, expect } = require('@playwright/test');
+
+const urls = {
+  app: process.env.QA_APP_URL || 'https://app.menorah.me',
+  admin: process.env.QA_ADMIN_URL || 'https://admin.menorah.me',
+  counsellor: process.env.QA_COUNSELLOR_WEB_URL || 'https://counsellor.menorah.me',
+};
+
+const cspViolationsByPage = new WeakMap();
+
+const assertAuthCsp = (response, url) => {
+  expect(response, `expected an HTML response for ${url}`).not.toBeNull();
+  const csp = response.headers()['content-security-policy'] || '';
+  const parsedUrl = new URL(url);
+  const isPatientPortal = parsedUrl.origin === urls.app;
+  const isGoogleAuthRoute = isPatientPortal && ['/login', '/register'].includes(parsedUrl.pathname);
+
+  if (isGoogleAuthRoute) {
+    // Google Identity Services injects its own stylesheet and writes iframe
+    // dimensions through style attributes. This is deliberately limited to
+    // the two routes that render the Google button.
+    expect(csp, `${url} must allow the GIS stylesheet`).toMatch(/style-src-elem(?=[^;]*'self')(?=[^;]*https:\/\/accounts\.google\.com\/gsi\/style)(?=[^;]*'unsafe-inline')[^;]+/);
+    expect(csp, `${url} must allow GIS iframe style attributes`).toMatch(/(?:^|;\s*)style-src-attr 'unsafe-inline'(?:;|$)/);
+    expect(csp, `${url} must allow GIS iframe and status endpoints`).toMatch(/(?:frame-src|connect-src)[^;]*https:\/\/accounts\.google\.com\/gsi\//);
+    return;
+  }
+
+  expect(csp, `${url} must restrict stylesheet elements to self`).toMatch(/(?:^|;\s*)style-src-elem 'self'(?:;|$)/);
+  expect(csp, `${url} must reject inline style attributes`).toMatch(/(?:^|;\s*)style-src-attr 'none'(?:;|$)/);
+  expect(csp, `${url} must not allow inline style elements`).not.toMatch(/style-src-elem[^;]*'unsafe-inline'/);
+};
+
+const gotoAuthPage = async (page, url) => {
+  const response = await page.goto(url, { waitUntil: 'domcontentloaded' });
+  assertAuthCsp(response, url);
+
+  // A browser test can type into server-rendered controls before React has
+  // hydrated the form. The Google button's busy state changes only after its
+  // client effect runs, so use it as an interactive-ready marker before the
+  // submit assertions exercise the application handler.
+  const parsedUrl = new URL(url);
+  if (parsedUrl.origin === urls.app && ['/login', '/register'].includes(parsedUrl.pathname)) {
+    await expect(page.locator('[id^="google-auth-"]')).toHaveAttribute('aria-busy', 'false');
+  }
+
+  return response;
+};
+
+const json = (route, status, body) => route.fulfill({
+  status,
+  contentType: 'application/json',
+  headers: {
+    'access-control-allow-origin': new URL(route.request().headers().origin || route.request().url()).origin,
+    'access-control-allow-credentials': 'true',
+  },
+  body: JSON.stringify(body),
+});
+
+const mockApi = async (page, handler) => {
+  await page.route('**/api/**', async (route) => {
+    const handled = await handler(route);
+    if (!handled) {
+      await json(route, 404, { success: false, message: 'Unexpected test request' });
+    }
+  });
+};
+
+const installGoogleStub = async (page) => {
+  await page.addInitScript(() => {
+    window.google = {
+      accounts: {
+        id: {
+          initialize(options) {
+            window.__qaGoogleCallback = options.callback;
+          },
+          renderButton(parent) {
+            const style = document.createElement('style');
+            style.id = 'googleidentityservice_button_styles';
+            style.textContent = '.qa-google-button { min-height: 40px; }';
+            document.head.appendChild(style);
+            parent.style.minHeight = '40px';
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = 'Continue with Google';
+            button.className = 'qa-google-button';
+            button.setAttribute('aria-label', 'Continue with Google');
+            button.addEventListener('click', () => {
+              window.__qaGoogleCallback?.({ credential: 'QA_GOOGLE_CREDENTIAL' });
+            });
+            parent.appendChild(button);
+          },
+        },
+      },
+    };
+  });
+};
+
+test.describe('authentication regressions', () => {
+  test.beforeEach(async ({ page }) => {
+    const violations = [];
+    cspViolationsByPage.set(page, violations);
+    page.on('console', (message) => {
+      const text = message.text();
+      if (
+        message.type() === 'error'
+        && /(content security policy|violates the following content security policy|refused to apply (?:inline )?style)/i.test(text)
+      ) {
+        violations.push(text);
+      }
+    });
+  });
+
+  test.afterEach(async ({ page }) => {
+    expect(cspViolationsByPage.get(page) || [], 'auth pages emitted CSP console violations').toEqual([]);
+  });
+
+  test('patient login keeps an expected anonymous probe and invalid login on the page', async ({ page }) => {
+    let sessionProbes = 0;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        sessionProbes += 1;
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/login')) {
+        await json(route, 401, { success: false, message: 'Invalid email or password' });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.app}/login`);
+    await page.getByLabel(/email address/i).fill('nobody@example.com');
+    await page.getByLabel(/^password$/i).fill('WrongPass1');
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+
+    await expect(page.getByRole('alert').filter({ hasText: 'Invalid email or password' })).toContainText('Invalid email or password');
+    expect(new URL(page.url()).pathname).toBe('/login');
+    expect(new URL(page.url()).search).toBe('');
+    await page.waitForTimeout(750);
+    expect(sessionProbes, 'login must make exactly one session probe').toBe(1);
+  });
+
+  test('missing Google account redirects to explicit signup and sends sign-in intent', async ({ page }) => {
+    let sessionProbes = 0;
+    let socialIntent;
+    await installGoogleStub(page);
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        sessionProbes += 1;
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/google')) {
+        socialIntent = route.request().postDataJSON().intent;
+        await json(route, 404, {
+          success: false,
+          code: 'ACCOUNT_NOT_FOUND',
+          message: 'No account is linked to this Google sign-in.',
+        });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.app}/login`);
+    await page.getByRole('button', { name: /continue with google/i }).click();
+
+    await expect(page).toHaveURL(/\/register(\?|$)/);
+    await expect(page.getByRole('heading', { name: /create account/i })).toBeVisible();
+    expect(socialIntent).toBe('signin');
+    expect(sessionProbes, 'Google signup redirect must not reload or probe again').toBe(1);
+  });
+
+  test('new Google account goes directly to required profile completion', async ({ page }) => {
+    let socialIntent;
+    await installGoogleStub(page);
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/google')) {
+        socialIntent = route.request().postDataJSON().intent;
+        await json(route, 200, {
+          success: true,
+          data: {
+            isNewUser: true,
+            user: {
+              id: 'google-onboarding-qa-user',
+              firstName: 'Google',
+              lastName: 'User',
+              email: 'google-onboarding@example.test',
+              phone: null,
+              isEmailVerified: true,
+              isPhoneVerified: false,
+              profileCompleted: false,
+              role: 'user',
+            },
+          },
+        });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.app}/register`);
+    await page.getByRole('button', { name: /continue with google/i }).click();
+
+    await expect(page).toHaveURL(/\/complete-profile$/);
+    await expect(page.getByRole('heading', { name: 'Complete your profile' })).toBeVisible();
+    await expect(page.getByLabel('Account phone number')).toBeVisible();
+    expect(socialIntent).toBe('signup');
+  });
+
+  test('unverified patient login enters OTP flow without receiving a session', async ({ page }) => {
+    let verificationRequests = 0;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/login')) {
+        await json(route, 403, {
+          success: false,
+          code: 'EMAIL_VERIFICATION_REQUIRED',
+          message: 'Email verification required',
+          data: { email: 'pending@example.com' },
+        });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/resend-email-verification')) {
+        verificationRequests += 1;
+        await json(route, 200, {
+          success: true,
+          message: 'If an unverified account exists for that email, a new code has been sent.',
+        });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.app}/login`);
+    await page.getByLabel(/email address/i).fill('pending@example.com');
+    await page.getByLabel(/^password$/i).fill('Password1');
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+
+    await expect(page).toHaveURL(/\/verify-otp(\?|$)/);
+    await expect(page.getByRole('heading', { name: /verify your email/i })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => sessionStorage.getItem('pending_verify_email')))
+      .toBe('pending@example.com');
+    await expect.poll(() => verificationRequests).toBe(1);
+  });
+
+  test('password reset scrubs the capability and enforces the server password policy', async ({ page }) => {
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.app}/reset-password?token=TEST_ONLY_TOKEN`);
+    await expect(page).toHaveURL(new RegExp(`${urls.app.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/reset-password$`));
+
+    await page.getByLabel(/new password/i).fill('alllowercase1');
+    await page.getByLabel(/confirm password/i).fill('alllowercase1');
+    await page.getByRole('button', { name: /reset password/i }).click();
+    await expect(page.getByText(/uppercase letter/i)).toBeVisible();
+  });
+
+  test('patient forgot-password submits safely and keeps the response account-neutral', async ({ page }) => {
+    let submittedEmail;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/forgot-password')) {
+        submittedEmail = route.request().postDataJSON().email;
+        await json(route, 200, {
+          success: true,
+          message: 'If an account exists for that email, a password reset link has been sent',
+        });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.app}/forgot-password`);
+    await page.getByLabel(/email address/i).fill('Patient.QA@example.com');
+    await page.getByRole('button', { name: /send reset link/i }).click();
+
+    await expect(page.getByRole('heading', { name: /check your inbox/i })).toBeVisible();
+    await expect(page.getByRole('status')).toContainText(/if an account exists/i);
+    await expect(page.getByRole('status')).toContainText(/10 minutes/i);
+    expect(submittedEmail).toBe('Patient.QA@example.com');
+    expect(new URL(page.url()).search).toBe('');
+  });
+
+  test('patient can redeem a captured reset token and sees the signed-out confirmation', async ({ page }) => {
+    let resetPayload;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/reset-password')) {
+        resetPayload = route.request().postDataJSON();
+        await json(route, 200, { success: true, message: 'Password reset successfully' });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.app}/reset-password?token=PATIENT_RESET_TOKEN`);
+    await expect(page).toHaveURL(new RegExp(`${urls.app.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/reset-password$`));
+    await page.getByLabel(/^new password$/i).fill('NewPatientPass1');
+    await page.getByLabel(/confirm password/i).fill('NewPatientPass1');
+    await page.getByRole('button', { name: /reset password/i }).click();
+
+    await expect.poll(() => resetPayload).toEqual({
+      token: 'PATIENT_RESET_TOKEN',
+      password: 'NewPatientPass1',
+    });
+    await expect(page).toHaveURL(new RegExp(`${urls.app.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/login$`));
+    await expect(page.getByRole('status')).toContainText(/password was reset/i);
+  });
+
+  test('admin login preserves a 401 error instead of reloading', async ({ page }) => {
+    let sessionProbes = 0;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/auth/me')) {
+        sessionProbes += 1;
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/admin/login')) {
+        await json(route, 401, { success: false, message: 'Invalid admin credentials' });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.admin}/login`);
+    await page.getByLabel(/email address/i).fill('nobody@example.com');
+    await page.getByLabel(/^password$/i).fill('WrongPass1');
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+
+    await expect(page.getByText('Invalid admin credentials')).toBeVisible();
+    await expect(page).toHaveURL(/\/login(\?|$)/);
+    await page.waitForTimeout(750);
+    expect(sessionProbes, 'admin login must make exactly one session probe').toBe(1);
+  });
+
+  test('wrong admin MFA code preserves the challenge and error without reloading', async ({ page }) => {
+    let sessionProbes = 0;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/auth/me')) {
+        sessionProbes += 1;
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/admin/login')) {
+        await json(route, 200, {
+          success: true,
+          message: 'Verification code sent',
+          data: { mfaRequired: true, challengeId: 'qa-mfa-challenge' },
+        });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/admin/login/mfa')) {
+        await json(route, 401, { success: false, message: 'Invalid verification code' });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.admin}/login`);
+    await page.getByLabel(/email address/i).fill('admin@example.com');
+    await page.getByLabel(/^password$/i).fill('Password1');
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+    await page.getByLabel(/verification code/i).fill('000000');
+    await page.getByRole('button', { name: /verify code/i }).click();
+
+    await expect(page.getByText('Invalid verification code')).toBeVisible();
+    await expect(page.getByLabel(/verification code/i)).toHaveValue('000000');
+    await expect(page).toHaveURL(/\/login(\?|$)/);
+    expect(sessionProbes, 'wrong MFA must not reload or probe again').toBe(1);
+  });
+
+  test('counsellor login preserves a 401 error instead of reloading', async ({ page }) => {
+    let sessionProbes = 0;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        sessionProbes += 1;
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/login')) {
+        await json(route, 401, { success: false, message: 'Invalid email or password' });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.counsellor}/login`);
+    await page.getByLabel(/email/i).fill('nobody@example.com');
+    await page.getByLabel(/^password$/i).fill('WrongPass1');
+    await page.getByRole('button', { name: /sign in|login/i }).click();
+
+    await expect(page.getByText('Invalid email or password')).toBeVisible();
+    await expect(page).toHaveURL(/\/login(\?|$)/);
+    await page.waitForTimeout(750);
+    expect(sessionProbes, 'counsellor login must make exactly one session probe').toBe(1);
+  });
+
+  test('counsellor forgot-password submits to shared recovery without exposing account status', async ({ page }) => {
+    let submittedEmail;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/forgot-password')) {
+        submittedEmail = route.request().postDataJSON().email;
+        await json(route, 200, {
+          success: true,
+          message: 'If an account exists for that email, a password reset link has been sent',
+        });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.counsellor}/forgot-password`);
+    await page.getByLabel(/email address/i).fill('Counsellor.QA@example.com');
+    await page.getByRole('button', { name: /send reset link/i }).click();
+
+    await expect(page.getByRole('heading', { name: /check your inbox/i })).toBeVisible();
+    await expect(page.getByRole('status')).toContainText(/10 minutes/i);
+    expect(submittedEmail).toBe('counsellor.qa@example.com');
+    expect(new URL(page.url()).search).toBe('');
+  });
+
+  test('counsellor can redeem its portal reset token and returns to counsellor sign-in', async ({ page }) => {
+    let resetPayload;
+    await mockApi(page, async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      if (pathname.endsWith('/api/auth/reset-password')) {
+        resetPayload = route.request().postDataJSON();
+        await json(route, 200, { success: true, message: 'Password reset successfully' });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.counsellor}/reset-password?token=COUNSELLOR_RESET_TOKEN`);
+    await expect(page).toHaveURL(new RegExp(`${urls.counsellor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/reset-password$`));
+    await page.getByLabel(/^new password$/i).fill('NewCounsellorPass1');
+    await page.getByLabel(/confirm new password/i).fill('NewCounsellorPass1');
+    await page.getByRole('button', { name: /reset password/i }).click();
+
+    await expect.poll(() => resetPayload).toEqual({
+      token: 'COUNSELLOR_RESET_TOKEN',
+      password: 'NewCounsellorPass1',
+    });
+    await expect(page).toHaveURL(new RegExp(`${urls.counsellor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/login$`));
+    await expect(page.getByRole('status')).toContainText(/password was reset/i);
+  });
+
+  test('patient registration renders under the strict auth-page CSP', async ({ page }) => {
+    await mockApi(page, async (route) => {
+      if (new URL(route.request().url()).pathname.endsWith('/api/users/me')) {
+        await json(route, 401, { success: false, message: 'No browser session' });
+        return true;
+      }
+      return false;
+    });
+
+    await gotoAuthPage(page, `${urls.app}/register`);
+    await expect(page.getByRole('heading', { name: /create account/i })).toBeVisible();
+  });
+
+  test('counsellor registration renders under the strict auth-page CSP', async ({ page }) => {
+    await mockApi(page, async () => false);
+
+    await gotoAuthPage(page, `${urls.counsellor}/register`);
+    await expect(page.getByRole('heading', { name: /counselor registration/i })).toBeVisible();
+  });
+});
+
+test.describe('server-rendered recovery forms fail closed before hydration', () => {
+  test.use({ javaScriptEnabled: false });
+
+  for (const [portal, baseUrl] of [
+    ['patient', urls.app],
+    ['counsellor', urls.counsellor],
+  ]) {
+    test(`${portal} forgot-password cannot submit without its client handler`, async ({ page }) => {
+      const url = `${baseUrl}/forgot-password`;
+      const response = await page.goto(url, { waitUntil: 'domcontentloaded' });
+      assertAuthCsp(response, url);
+
+      const form = page.locator('form');
+      await expect(form).toHaveAttribute('method', 'post');
+      await expect(page.getByLabel(/email address/i)).toBeDisabled();
+      await expect(page.getByRole('button', { name: /send reset link/i })).toBeDisabled();
+      expect(new URL(page.url()).search).toBe('');
+    });
+  }
+});

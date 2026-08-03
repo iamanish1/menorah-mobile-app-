@@ -1,565 +1,771 @@
 const express = require('express');
-const crypto = require('crypto');
 const { body, param, validationResult } = require('express-validator');
 const Razorpay = require('razorpay');
 const Booking = require('../models/Booking');
+const PaymentAttempt = require('../models/PaymentAttempt');
 const User = require('../models/User');
-const { auth } = require('../middleware/auth');
+const { verifiedPatientAuth } = require('../middleware/auth');
+const {
+  getRazorpayConfigurationState,
+  getPaymentWebhookMaxProcessingAttempts,
+  isBookingPaymentInitiationEnabled,
+  isSubscriptionPaymentFlowEnabled,
+} = require('../config/paymentFeatures');
+const {
+  BookingPaymentOrderError,
+  createOrReuseBookingOrder,
+} = require('../services/razorpayBookingOrderService');
+const {
+  buildWebhookIdentity,
+  fetchRazorpayEvidence,
+  getWebhookPaymentReference,
+  parseVerifiedWebhookEnvelope,
+  validateOrderAgainstExpected,
+  verifyRazorpayCheckoutSignature,
+  verifyRazorpayWebhookSignature,
+  withPaymentProviderTimeout,
+} = require('../services/razorpayPaymentSecurity');
+const {
+  claimWebhookEvent,
+  finalizeWebhookEvent,
+  finalizeWebhookEventFailure,
+  reconcileCapturedBookingPayment,
+  recordBookingPaymentFailure,
+} = require('../services/razorpayPaymentReconciliation');
+const {
+  notifyEligibleCounsellorsOfBooking,
+} = require('../services/bookingMarketplaceNotifications');
+const { expireStalePendingBookings } = require('../utils/bookingAvailability');
+const { recordSecurityEvent } = require('../utils/securityAudit');
+const {
+  recordPaymentOperation,
+  recordPaymentWebhook,
+} = require('../utils/reliabilityMetrics');
 
 const router = express.Router();
+const SLOT_EXPIRED_MESSAGE = 'This slot expired while waiting for payment. Please choose another available time.';
+const PAYMENT_DISABLED_MESSAGE = 'New booking payments are temporarily unavailable.';
+const SUBSCRIPTION_DISABLED_MESSAGE = 'Subscription payments are not available.';
+const PROVIDER_TIMEOUT_MS = 5000;
+const WEBHOOK_PROVIDER_TIMEOUT_MS = 2500;
+const PROVIDER_ID_VALIDATOR = /^[A-Za-z0-9_-]{3,128}$/;
 
-// Lazy initialization of Razorpay client
 let razorpayClient = null;
+let razorpayClientKeyId = null;
+
 const getRazorpayClient = () => {
-  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-    return null;
-  }
-  if (!razorpayClient) {
+  const configuration = getRazorpayConfigurationState();
+  if (!configuration.checkoutConfigured) return null;
+
+  if (!razorpayClient || razorpayClientKeyId !== process.env.RAZORPAY_KEY_ID) {
     try {
       razorpayClient = new Razorpay({
         key_id: process.env.RAZORPAY_KEY_ID,
         key_secret: process.env.RAZORPAY_KEY_SECRET,
       });
-    } catch (error) {
-      console.error('Error initializing Razorpay client:', error);
+      razorpayClientKeyId = process.env.RAZORPAY_KEY_ID;
+    } catch (_error) {
+      razorpayClient = null;
+      razorpayClientKeyId = null;
       return null;
     }
   }
+
   return razorpayClient;
 };
 
-// @route   POST /api/payments/create-checkout-session
-// @desc    Create a Razorpay order for a booking
-// @access  Private
+const sendValidationErrors = (req, res) => {
+  const errors = validationResult(req);
+  if (errors.isEmpty()) return false;
+  res.status(400).json({
+    success: false,
+    code: 'VALIDATION_FAILED',
+    message: 'Validation failed',
+    errors: errors.array(),
+  });
+  return true;
+};
+
+const sendPaymentUnavailable = (res) => res.status(503).json({
+  success: false,
+  code: 'BOOKING_PAYMENTS_DISABLED',
+  message: PAYMENT_DISABLED_MESSAGE,
+});
+
+const sendSubscriptionUnavailable = (res) => res.status(503).json({
+  success: false,
+  code: 'SUBSCRIPTION_PAYMENTS_DISABLED',
+  message: SUBSCRIPTION_DISABLED_MESSAGE,
+});
+
+const getCheckoutReturnUrl = () => {
+  // Despite the historical variable name, this is the provider-facing server
+  // callback. The web app seals Razorpay fields at /checkout/callback before
+  // redirecting the browser to the user-facing /checkout/return page.
+  const configuredReturnUrl = String(process.env.CHECKOUT_RETURN_URL || '').trim();
+  if (process.env.NODE_ENV === 'production' && !configuredReturnUrl) {
+    throw new Error('CHECKOUT_RETURN_URL is required in production');
+  }
+  return configuredReturnUrl || 'https://app.menorah.me/checkout/callback';
+};
+
+const buildCheckoutResponse = ({
+  booking,
+  order,
+  returnUrl = getCheckoutReturnUrl(),
+  reused = false,
+}) => {
+  const isLocalDev = process.env.NODE_ENV === 'development';
+  const successUrl = isLocalDev
+    ? `menorah://payments/return?status=success&bookingId=${booking._id}&order_id=${order.id}`
+    : `${returnUrl}?status=success&bookingId=${booking._id}&order_id=${order.id}`;
+  const baseCheckoutUrl = `https://checkout.razorpay.com/v1/checkout.html?key=${encodeURIComponent(process.env.RAZORPAY_KEY_ID)}&order_id=${encodeURIComponent(order.id)}`;
+  const checkoutUrl = isLocalDev
+    ? baseCheckoutUrl
+    : `${baseCheckoutUrl}&redirect_url=${encodeURIComponent(successUrl)}`;
+
+  return {
+    orderId: order.id,
+    amount: order.amount,
+    currency: order.currency,
+    keyId: process.env.RAZORPAY_KEY_ID,
+    checkoutUrl,
+    sessionUrl: checkoutUrl,
+    url: checkoutUrl,
+    paymentMethod: 'razorpay',
+    reused,
+  };
+};
+
+const notifyAfterCommittedAuthorization = async ({ result, io }) => {
+  if (!result?.shouldNotify || !result.bookingId || !io) return;
+  try {
+    const booking = await Booking.findById(result.bookingId);
+    if (booking && !booking.counsellor) {
+      await notifyEligibleCounsellorsOfBooking({ booking, io });
+    }
+  } catch (_error) {
+    // Payment authorization is already committed. Notification delivery is
+    // best-effort and deliberately cannot roll back or duplicate money state.
+    console.error('Payment confirmation notification failed');
+  }
+};
+
+const dispatchWebhookNotification = ({ result, io }) => {
+  if (!result?.shouldNotify || !result.bookingId || !io) return;
+  setImmediate(() => {
+    notifyAfterCommittedAuthorization({ result, io });
+  });
+};
+
+const getOwnedAttempt = async ({ orderId, bookingId, userId }) => {
+  const query = {
+    orderId,
+    user: userId,
+  };
+  if (bookingId) query.booking = bookingId;
+  return PaymentAttempt.findOne(query);
+};
+
+const sendReconciliationResult = (res, result) => {
+  if (result?.decision === 'authorize') {
+    return res.json({ success: true, message: 'Payment verified successfully' });
+  }
+  if (result?.decision === 'already_applied') {
+    return res.json({
+      success: true,
+      message: 'Payment already verified',
+      alreadyProcessed: true,
+    });
+  }
+  if (result?.decision === 'needs_review') {
+    return res.status(409).json({
+      success: false,
+      code: 'PAYMENT_REVIEW_REQUIRED',
+      message: 'The captured payment requires manual reconciliation.',
+    });
+  }
+  return res.status(400).json({
+    success: false,
+    code: 'PAYMENT_NOT_CAPTURED',
+    message: 'Payment could not be verified as captured.',
+  });
+};
+
 router.post('/create-checkout-session', [
   body('bookingId').isMongoId().withMessage('Invalid booking ID'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
-    }
+    if (sendValidationErrors(req, res)) return;
+    if (!isBookingPaymentInitiationEnabled()) return sendPaymentUnavailable(res);
+    const returnUrl = getCheckoutReturnUrl();
 
-    const { bookingId } = req.body;
-
-    const booking = await Booking.findById(bookingId).populate({
-      path: 'counsellor',
-      select: 'user',
-      populate: { path: 'user', select: 'firstName lastName' },
-    });
-
+    let booking = await Booking.findById(req.body.bookingId);
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
-
-    if (booking.user.toString() !== req.user._id.toString()) {
+    if (String(booking.user) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
-
-    if (booking.paymentStatus === 'paid') {
-      return res.status(400).json({ success: false, message: 'Payment already completed' });
+    if (booking.status === 'cancelled') {
+      return res.status(409).json({
+        success: false,
+        code: 'BOOKING_CANCELLED',
+        message: 'This booking has been cancelled and can no longer be paid for.',
+      });
     }
-
-    const razorpay = getRazorpayClient();
-    if (!razorpay) {
-      return res.status(500).json({ success: false, message: 'Razorpay is not configured' });
+    await expireStalePendingBookings(Booking, { _id: booking._id });
+    booking = await Booking.findById(booking._id);
+    if (!booking || booking.status === 'expired') {
+      return res.status(409).json({
+        success: false,
+        code: 'SLOT_EXPIRED',
+        message: SLOT_EXPIRED_MESSAGE,
+      });
     }
-
-    const amount = Math.round(booking.amount * 100); // paise
-    const currency = (booking.currency || 'INR').toUpperCase();
-
-    const order = await razorpay.orders.create({
-      amount,
-      currency,
-      receipt: `booking_${bookingId}`,
-      notes: { bookingId, userId: req.user._id.toString() },
-    });
-
-    // Verify order exists in Razorpay
-    try {
-      await razorpay.orders.fetch(order.id);
-    } catch (verifyError) {
-      console.error('Error verifying Razorpay order:', verifyError);
-      return res.status(500).json({ success: false, message: 'Failed to create valid Razorpay order' });
+    if (
+      booking.paymentStatus === 'paid'
+      && booking.bookingAuthorization?.kind === 'payment'
+      && booking.bookingAuthorization?.status === 'authorized'
+      && booking.bookingAuthorization?.reference === booking.paymentId
+    ) {
+      return res.json({
+        success: true,
+        message: 'Payment already completed',
+        data: {
+          bookingId: booking._id,
+          amount: booking.amountMinor,
+          currency: booking.currency,
+          paymentMethod: booking.paymentMethod,
+          alreadyPaid: true,
+        },
+      });
     }
-
-    booking.razorpayOrderId = order.id;
-    booking.orderStatus = 'created';
-    booking.orderCreatedAt = new Date();
-    await booking.save();
-
-    const returnUrl = process.env.CHECKOUT_RETURN_URL || 'https://menorahhealth.app/checkout/return';
-    const isLocalDev = process.env.NODE_ENV === 'development';
-    const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
-
-    const successUrl = isLocalDev
-      ? `menorah://payments/return?status=success&bookingId=${bookingId}&order_id=${order.id}`
-      : `${returnUrl}?status=success&bookingId=${bookingId}&order_id=${order.id}`;
-
-    const checkoutUrl = isLocalDev
-      ? `https://checkout.razorpay.com/v1/checkout.html?key=${razorpayKeyId}&order_id=${order.id}`
-      : `https://checkout.razorpay.com/v1/checkout.html?key=${razorpayKeyId}&order_id=${order.id}&redirect_url=${encodeURIComponent(successUrl)}`;
-
-    res.json({
-      success: true,
-      data: {
-        orderId: order.id,
-        amount: order.amount,
-        currency: order.currency,
-        keyId: razorpayKeyId,
-        checkoutUrl,
-        sessionUrl: checkoutUrl,
-        url: checkoutUrl,
-        paymentMethod: 'razorpay',
-      },
-    });
-
-  } catch (error) {
-    console.error('Create checkout session error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-// @route   POST /api/payments/razorpay-webhook
-// @desc    Handle Razorpay webhook events
-// @access  Public
-router.post('/razorpay-webhook', async (req, res) => {
-  try {
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
-    const signature = req.headers['x-razorpay-signature'];
-
-    if (!webhookSecret) {
-      console.error('Razorpay webhook secret not configured');
-      return res.status(500).json({ error: 'Webhook secret not configured' });
-    }
-
-    // Always require signature
-    if (!signature) {
-      console.error('Razorpay webhook: missing x-razorpay-signature header');
-      return res.status(400).json({ error: 'Missing signature' });
-    }
-
-    // req.body here is a raw Buffer — server.js registers express.raw() for this route
-    // before express.json() so the signature is computed over the original bytes.
-    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
-    const expectedSignature = crypto
-      .createHmac('sha256', webhookSecret)
-      .update(rawBody)
-      .digest('hex');
-
-    // Timing-safe comparison — prevents side-channel timing oracle
-    const signaturesMatch = (() => {
-      try {
-        return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expectedSignature, 'hex'));
-      } catch { return false; }
-    })();
-
-    if (!signaturesMatch) {
-      console.error('Razorpay webhook signature verification failed');
-      return res.status(400).json({ error: 'Invalid signature' });
-    }
-
-    // Parse the body now that the signature is verified
-    const event = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
-
-    const io = req.app.get('io');
-    switch (event.event) {
-      case 'payment.captured':
-        await handleRazorpayPaymentSuccess(event.payload.payment.entity, io);
-        break;
-      case 'payment.failed':
-        await handleRazorpayPaymentFailure(event.payload.payment.entity);
-        break;
-      case 'order.paid':
-        await handleRazorpayOrderPaid(event.payload.order.entity);
-        break;
-      default:
-        // No-op for unhandled events
-    }
-
-    res.json({ received: true });
-  } catch (error) {
-    console.error('Razorpay webhook error:', error);
-    res.status(500).json({ error: 'Webhook handler failed' });
-  }
-});
-
-// @route   POST /api/payments/verify-razorpay
-// @desc    Verify Razorpay payment and confirm booking
-// @access  Private
-router.post('/verify-razorpay', [
-  body('razorpay_order_id').notEmpty().withMessage('Order ID is required'),
-  body('razorpay_payment_id').notEmpty().withMessage('Payment ID is required'),
-  body('razorpay_signature').notEmpty().withMessage('Signature is required'),
-  body('bookingId').isMongoId().withMessage('Invalid booking ID'),
-], auth, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
-    }
-
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, bookingId } = req.body;
-
-    const booking = await Booking.findById(bookingId);
-    if (!booking) {
-      return res.status(404).json({ success: false, message: 'Booking not found' });
-    }
-
-    // Ownership check — only the booking's user can verify payment
-    if (booking.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Access denied' });
-    }
-
-    // Idempotency — already paid, nothing to do
-    if (booking.paymentStatus === 'paid') {
-      return res.json({ success: true, message: 'Payment already verified' });
-    }
-
-    // Order ID validation — prevent payment-replay across different bookings
-    if (booking.razorpayOrderId && booking.razorpayOrderId !== razorpay_order_id) {
-      return res.status(400).json({ success: false, message: 'Order ID does not match booking' });
-    }
-
-    const text = `${razorpay_order_id}|${razorpay_payment_id}`;
-    const expectedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(text)
-      .digest('hex');
-
-    // Timing-safe signature comparison
-    const signaturesMatch = (() => {
-      try {
-        return crypto.timingSafeEqual(Buffer.from(expectedSignature, 'hex'), Buffer.from(razorpay_signature, 'hex'));
-      } catch { return false; }
-    })();
-
-    if (!signaturesMatch) {
-      return res.status(400).json({ success: false, message: 'Invalid payment signature' });
-    }
-
-    // Verify amount and capture status with Razorpay API
-    const razorpay = getRazorpayClient();
-    if (razorpay) {
-      try {
-        const [order, payment] = await Promise.all([
-          razorpay.orders.fetch(razorpay_order_id),
-          razorpay.payments.fetch(razorpay_payment_id),
-        ]);
-
-        const expectedAmount = Math.round(booking.amount * 100);
-        if (order.amount !== expectedAmount) {
-          return res.status(400).json({ success: false, message: 'Payment amount mismatch' });
-        }
-
-        if (payment.status !== 'captured' && payment.status !== 'authorized') {
-          return res.status(400).json({ success: false, message: 'Payment verification failed' });
-        }
-      } catch (err) {
-        console.error('Error fetching Razorpay order/payment:', err);
-        // Return 503 — don't silently skip amount verification
-        return res.status(503).json({ success: false, message: 'Unable to verify payment with Razorpay. Please try again.' });
-      }
-    }
-
-    booking.paymentStatus = 'paid';
-    booking.paymentId = razorpay_payment_id;
-    booking.transactionId = razorpay_order_id;
-    booking.orderStatus = 'paid';
-    booking.status = 'confirmed';
-    await booking.save();
-
-    // Now that payment is confirmed, notify available counsellors about unassigned bookings
-    if (!booking.counsellor && req.app.get('io')) {
-      const io = req.app.get('io');
-      const CounsellorModel = require('../models/Counsellor');
-      const availableCounsellors = await CounsellorModel.find({ isActive: true, isAvailable: true }).select('_id').lean();
-      const notification = {
-        bookingId: booking._id,
-        sessionType: booking.sessionType,
-        sessionDuration: booking.sessionDuration,
-        scheduledAt: booking.scheduledAt,
-        amount: booking.amount,
-        preferences: booking.preferences,
-        createdAt: booking.createdAt
-      };
-      availableCounsellors.forEach(c => {
-        io.to(`counsellor_${c._id}`).emit('new_booking_available', notification);
+    if (
+      booking.status !== 'pending'
+      || !['pending', 'failed'].includes(booking.paymentStatus)
+    ) {
+      return res.status(409).json({
+        success: false,
+        code: 'BOOKING_NOT_PAYABLE',
+        message: 'This booking is no longer available for payment.',
       });
     }
 
-    res.json({ success: true, message: 'Payment verified successfully' });
+    const razorpay = getRazorpayClient();
+    if (!razorpay) {
+      recordPaymentOperation({
+        provider: 'razorpay',
+        operation: 'order_create',
+        outcome: 'disabled',
+      });
+      return res.status(503).json({
+        success: false,
+        code: 'PAYMENT_PROVIDER_UNAVAILABLE',
+        message: 'The payment provider is unavailable.',
+      });
+    }
 
+    const { order, reused } = await createOrReuseBookingOrder({
+      booking,
+      userId: req.user._id,
+      client: razorpay,
+      providerTimeoutMs: PROVIDER_TIMEOUT_MS,
+    });
+
+    return res.json({
+      success: true,
+      data: buildCheckoutResponse({
+        booking,
+        order,
+        returnUrl,
+        reused,
+      }),
+    });
   } catch (error) {
-    console.error('Verify Razorpay payment error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    if (error instanceof BookingPaymentOrderError) {
+      const isExpired = [
+        'BOOKING_HOLD_EXPIRED',
+        'BOOKING_SCHEDULE_PASSED',
+      ].includes(error.code);
+      return res.status(error.status).json({
+        success: false,
+        code: isExpired ? 'SLOT_EXPIRED' : error.code,
+        message: isExpired ? SLOT_EXPIRED_MESSAGE : error.message,
+        retryable: error.retryable || undefined,
+      });
+    }
+    console.error('Create booking payment order failed');
+    return res.status(503).json({
+      success: false,
+      code: 'PAYMENT_ORDER_UNAVAILABLE',
+      message: 'Unable to create a payment order. Please try again.',
+    });
   }
 });
 
-// @route   GET /api/payments/order/:orderId/status
-// @desc    Get Razorpay order status
-// @access  Private
-router.get('/order/:orderId/status', [
-  param('orderId').notEmpty().withMessage('Order ID is required'),
-], auth, async (req, res) => {
+router.post('/razorpay-webhook', async (req, res) => {
+  const configuration = getRazorpayConfigurationState();
+  if (!configuration.webhookConfigured) {
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'failure',
+    });
+    return res.status(503).json({ error: 'Webhook unavailable' });
+  }
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'failure',
+    });
+    return res.status(400).json({ error: 'Raw request body required' });
+  }
+
+  const signature = req.headers['x-razorpay-signature'];
+  if (!verifyRazorpayWebhookSignature({
+    rawBody: req.body,
+    signature,
+    secret: process.env.RAZORPAY_WEBHOOK_SECRET,
+    previousSecret: process.env.RAZORPAY_WEBHOOK_SECRET_PREVIOUS,
+  })) {
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'signature',
+      outcome: 'failure',
+    });
+    return res.status(400).json({ error: 'Invalid signature' });
+  }
+  recordPaymentWebhook({
+    provider: 'razorpay',
+    event: 'signature',
+    outcome: 'success',
+  });
+
+  let event;
+  let identity;
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    event = parseVerifiedWebhookEnvelope(req.body);
+    identity = buildWebhookIdentity({
+      rawBody: req.body,
+      providerEventId: req.headers['x-razorpay-event-id'],
+    });
+  } catch (_error) {
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'failure',
+    });
+    return res.status(400).json({ error: 'Invalid webhook envelope' });
+  }
+
+  const reference = getWebhookPaymentReference(event);
+  let claim;
+  try {
+    claim = await claimWebhookEvent({
+      ...identity,
+      eventType: event.event,
+      orderId: reference.orderId,
+      paymentId: reference.paymentId,
+    });
+  } catch (_error) {
+    console.error('Payment webhook ledger claim failed');
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'failure',
+    });
+    return res.status(503).json({ error: 'Webhook temporarily unavailable' });
+  }
+
+  if (!claim?.claimed) {
+    if (claim?.inFlight || claim?.retryable) {
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'processing',
+        outcome: 'replay',
+      });
+      return res.status(503).json({ error: 'Webhook processing in progress' });
     }
-
-    const { orderId } = req.params;
-    const razorpay = getRazorpayClient();
-
-    if (!razorpay) {
-      return res.status(500).json({ success: false, message: 'Razorpay is not configured' });
-    }
-
-    let order;
-    try {
-      order = await razorpay.orders.fetch(orderId);
-    } catch (err) {
-      if (err.statusCode === 404) {
-        return res.status(404).json({ success: false, message: 'Order not found' });
+    if (claim?.conflict) {
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'relationship',
+        outcome: 'failure',
+      });
+      recordSecurityEvent('payment_webhook_identity_conflict', {
+        req,
+        outcome: 'failure',
+        statusCode: claim.ackSafe ? 200 : 503,
+        details: {
+          provider: 'razorpay',
+          reason: 'identity_conflict',
+          resource: 'payment_webhook',
+        },
+      });
+      if (!claim?.ackSafe) {
+        return res.status(503).json({ error: 'Webhook temporarily unavailable' });
       }
-      throw err;
+      return res.json({
+        received: true,
+        duplicate: true,
+        reviewRequired: claim.processingState === 'needs_review' || undefined,
+      });
+    }
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'replay',
+    });
+    return res.json({ received: true, duplicate: true });
+  }
+
+  const ledgerEventKey = claim.eventKey;
+  const claimToken = claim.claimToken;
+
+  try {
+    const maxProcessingAttempts = getPaymentWebhookMaxProcessingAttempts();
+    if (
+      claim.reclaimed === true
+      && maxProcessingAttempts !== null
+      && claimToken > maxProcessingAttempts
+    ) {
+      await finalizeWebhookEvent({
+        eventKey: ledgerEventKey,
+        claimToken,
+        processingState: 'needs_review',
+        decision: 'needs_review',
+        mismatchCodes: ['WEBHOOK_RETRY_LIMIT_REACHED'],
+        orderId: reference.orderId,
+        paymentId: reference.paymentId,
+      });
+      recordSecurityEvent('payment_webhook_retry_limit_reached', {
+        req,
+        outcome: 'failure',
+        statusCode: 200,
+        details: {
+          provider: 'razorpay',
+          reason: 'retry_limit_reached',
+          resource: 'payment_webhook',
+        },
+      });
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'processing',
+        outcome: 'failure',
+      });
+      return res.json({ received: true, reviewRequired: true });
     }
 
-    const booking = await Booking.findOne({ razorpayOrderId: orderId });
-
-    // No booking found — don't reveal order data to arbitrary callers
-    if (!booking) {
-      return res.status(403).json({ success: false, message: 'Access denied' });
+    if (!['payment.captured', 'payment.failed'].includes(event.event)) {
+      await finalizeWebhookEvent({
+        eventKey: ledgerEventKey,
+        claimToken,
+        processingState: 'ignored',
+        mismatchCodes: [],
+        orderId: reference.orderId,
+        paymentId: reference.paymentId,
+      });
+      return res.json({ received: true, ignored: true });
     }
 
-    if (booking.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Access denied' });
+    if (!reference.orderId || !reference.paymentId) {
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'relationship',
+        outcome: 'failure',
+      });
+      await finalizeWebhookEvent({
+        eventKey: ledgerEventKey,
+        claimToken,
+        processingState: 'needs_review',
+        decision: 'needs_review',
+        mismatchCodes: ['WEBHOOK_REFERENCE_MISSING'],
+        orderId: reference.orderId,
+        paymentId: reference.paymentId,
+      });
+      return res.json({ received: true, reviewRequired: true });
     }
 
-    // GET endpoints must not mutate state — confirmation is handled by webhook/verify-razorpay
+    const localAttempt = await PaymentAttempt.findOne({ orderId: reference.orderId });
+    if (!localAttempt) {
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'relationship',
+        outcome: 'failure',
+      });
+      await finalizeWebhookEvent({
+        eventKey: ledgerEventKey,
+        claimToken,
+        processingState: 'needs_review',
+        decision: 'needs_review',
+        mismatchCodes: ['ATTEMPT_MISSING'],
+        orderId: reference.orderId,
+        paymentId: reference.paymentId,
+      });
+      return res.json({ received: true, reviewRequired: true });
+    }
 
-    res.json({
+    const razorpay = getRazorpayClient();
+    if (!razorpay) throw new Error('PAYMENT_PROVIDER_UNAVAILABLE');
+    const { order, payment } = await fetchRazorpayEvidence({
+      client: razorpay,
+      orderId: reference.orderId,
+      paymentId: reference.paymentId,
+      timeoutMs: WEBHOOK_PROVIDER_TIMEOUT_MS,
+    });
+
+    if (event.event === 'payment.failed') {
+      const result = await recordBookingPaymentFailure({
+        paymentAttemptId: localAttempt._id,
+        order,
+        payment,
+        source: 'webhook',
+        eventKey: ledgerEventKey,
+        claimToken,
+      });
+      recordPaymentWebhook({
+        provider: 'razorpay',
+        event: 'reconciliation',
+        outcome: result?.decision === 'needs_review' ? 'failure' : 'success',
+      });
+      return res.json({
+        received: true,
+        failedPaymentRecorded: result?.recorded === true,
+        reviewRequired: result?.decision === 'needs_review',
+      });
+    }
+
+    const result = await reconcileCapturedBookingPayment({
+      paymentAttemptId: localAttempt._id,
+      order,
+      payment,
+      source: 'webhook',
+      eventKey: ledgerEventKey,
+      claimToken,
+    });
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'reconciliation',
+      outcome: result?.decision === 'needs_review' ? 'failure' : 'success',
+    });
+    dispatchWebhookNotification({ result, io: req.app.get('io') });
+
+    return res.json({
+      received: true,
+      alreadyProcessed: result?.idempotent || undefined,
+      reviewRequired: result?.decision === 'needs_review' || undefined,
+    });
+  } catch (_error) {
+    recordPaymentWebhook({
+      provider: 'razorpay',
+      event: 'processing',
+      outcome: 'failure',
+    });
+    try {
+      await finalizeWebhookEventFailure({
+        eventKey: ledgerEventKey,
+        claimToken,
+        failureCode: 'WEBHOOK_PROCESSING_FAILED',
+      });
+    } catch (_ledgerError) {
+      console.error('Payment webhook failure ledger update failed');
+    }
+    return res.status(503).json({ error: 'Webhook temporarily unavailable' });
+  }
+});
+
+router.post('/verify-razorpay', [
+  body('razorpay_order_id').matches(PROVIDER_ID_VALIDATOR).withMessage('Invalid order ID'),
+  body('razorpay_payment_id').matches(PROVIDER_ID_VALIDATOR).withMessage('Invalid payment ID'),
+  body('razorpay_signature').matches(/^[a-fA-F0-9]{64}$/).withMessage('Invalid signature'),
+  body('bookingId').isMongoId().withMessage('Invalid booking ID'),
+], verifiedPatientAuth, async (req, res) => {
+  try {
+    if (sendValidationErrors(req, res)) return;
+    const {
+      razorpay_order_id: orderId,
+      razorpay_payment_id: paymentId,
+      razorpay_signature: signature,
+      bookingId,
+    } = req.body;
+
+    const attempt = await getOwnedAttempt({
+      orderId,
+      bookingId,
+      userId: req.user._id,
+    });
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        code: 'PAYMENT_ATTEMPT_NOT_FOUND',
+        message: 'Payment attempt not found.',
+      });
+    }
+
+    const configuration = getRazorpayConfigurationState();
+    if (!configuration.checkoutConfigured) {
+      recordPaymentOperation({
+        provider: 'razorpay',
+        operation: 'payment_verify',
+        outcome: 'disabled',
+      });
+      return res.status(503).json({
+        success: false,
+        code: 'PAYMENT_PROVIDER_UNAVAILABLE',
+        message: 'The payment provider is unavailable.',
+      });
+    }
+    if (!verifyRazorpayCheckoutSignature({
+      orderId,
+      paymentId,
+      signature,
+      secret: process.env.RAZORPAY_KEY_SECRET,
+    })) {
+      recordPaymentOperation({
+        provider: 'razorpay',
+        operation: 'payment_verify',
+        outcome: 'failure',
+      });
+      return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+    }
+
+    const razorpay = getRazorpayClient();
+    const { order, payment } = await fetchRazorpayEvidence({
+      client: razorpay,
+      orderId,
+      paymentId,
+      timeoutMs: PROVIDER_TIMEOUT_MS,
+    });
+    const result = await reconcileCapturedBookingPayment({
+      paymentAttemptId: attempt._id,
+      order,
+      payment,
+      source: 'redirect_verification',
+      eventKey: `redirect:${orderId}:${paymentId}`,
+    });
+    await notifyAfterCommittedAuthorization({ result, io: req.app.get('io') });
+    recordPaymentOperation({
+      provider: 'razorpay',
+      operation: 'payment_verify',
+      outcome: result?.decision === 'needs_review' ? 'failure' : 'success',
+    });
+    return sendReconciliationResult(res, result);
+  } catch (_error) {
+    console.error('Razorpay redirect reconciliation failed');
+    recordPaymentOperation({
+      provider: 'razorpay',
+      operation: 'payment_verify',
+      outcome: 'failure',
+    });
+    return res.status(503).json({
+      success: false,
+      code: 'PAYMENT_RECONCILIATION_UNAVAILABLE',
+      message: 'Unable to verify payment with the provider. Please try again.',
+    });
+  }
+});
+
+router.get('/order/:orderId/status', [
+  param('orderId').matches(PROVIDER_ID_VALIDATOR).withMessage('Invalid order ID'),
+], verifiedPatientAuth, async (req, res) => {
+  try {
+    if (sendValidationErrors(req, res)) return;
+    const attempt = await getOwnedAttempt({
+      orderId: req.params.orderId,
+      userId: req.user._id,
+    });
+    if (!attempt) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const razorpay = getRazorpayClient();
+    if (!razorpay) {
+      return res.status(503).json({ success: false, message: 'Payment provider unavailable' });
+    }
+    const order = await withPaymentProviderTimeout(
+      () => razorpay.orders.fetch(attempt.orderId),
+      PROVIDER_TIMEOUT_MS
+    );
+    const check = validateOrderAgainstExpected({ order, expected: attempt.expected });
+    if (!check.valid || order.id !== attempt.orderId) {
+      return res.status(409).json({
+        success: false,
+        code: 'PAYMENT_REVIEW_REQUIRED',
+        message: 'The payment order requires reconciliation.',
+      });
+    }
+
+    return res.json({
       success: true,
       data: {
         orderId: order.id,
         orderStatus: order.status,
         amount: order.amount,
         currency: order.currency,
-        bookingId: booking ? booking._id.toString() : null,
+        bookingId: String(attempt.booking),
       },
     });
-
-  } catch (error) {
-    console.error('Get order status error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+  } catch (_error) {
+    return res.status(503).json({
+      success: false,
+      code: 'PAYMENT_PROVIDER_UNAVAILABLE',
+      message: 'Unable to retrieve order status.',
+    });
   }
 });
 
-// @route   GET /api/payments/booking/:bookingId
-// @desc    Get payment status for a booking
-// @access  Private
 router.get('/booking/:bookingId', [
   param('bookingId').isMongoId().withMessage('Invalid booking ID'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
-    }
-
+    if (sendValidationErrors(req, res)) return;
     const booking = await Booking.findById(req.params.bookingId);
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
-
-    if (booking.user.toString() !== req.user._id.toString()) {
+    if (String(booking.user) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         paymentStatus: booking.paymentStatus,
         amount: booking.amount,
+        amountMinor: booking.amountMinor,
         currency: booking.currency,
         paymentMethod: booking.paymentMethod,
+        orderStatus: booking.orderStatus,
         transactionId: booking.transactionId,
       },
     });
-
-  } catch (error) {
-    console.error('Get payment status error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+  } catch (_error) {
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
-// Subscription pricing (INR)
-const SUBSCRIPTION_PRICES = { weekly: 500, monthly: 1500, yearly: 12000 };
-
-// @route   POST /api/payments/create-subscription-checkout
-// @desc    Create a Razorpay order for a subscription
-// @access  Private
 router.post('/create-subscription-checkout', [
   body('subscriptionType').isIn(['weekly', 'monthly', 'yearly']).withMessage('Invalid subscription type'),
-], auth, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
-    }
-
-    const { subscriptionType } = req.body;
-    const razorpay = getRazorpayClient();
-    if (!razorpay) {
-      return res.status(500).json({ success: false, message: 'Razorpay is not configured' });
-    }
-
-    const amountInPaise = Math.round(SUBSCRIPTION_PRICES[subscriptionType] * 100);
-    const userIdStr = req.user._id.toString();
-    const receipt = `sub_${subscriptionType.substring(0, 3)}_${userIdStr.substring(userIdStr.length - 8)}`;
-
-    const order = await razorpay.orders.create({
-      amount: amountInPaise,
-      currency: 'INR',
-      receipt,
-      notes: { userId: userIdStr, subscriptionType, type: 'subscription' },
-    });
-
-    const returnUrl = process.env.CHECKOUT_RETURN_URL || 'https://menorahhealth.app/checkout/return';
-    const isLocalDev = process.env.NODE_ENV === 'development';
-    const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
-
-    const successUrl = isLocalDev
-      ? `menorah://payments/subscription/return?status=success&subscriptionType=${subscriptionType}&order_id=${order.id}`
-      : `${returnUrl}?status=success&type=subscription&subscriptionType=${subscriptionType}&order_id=${order.id}`;
-
-    const checkoutUrl = isLocalDev
-      ? `https://checkout.razorpay.com/v1/checkout.html?key=${razorpayKeyId}&order_id=${order.id}`
-      : `https://checkout.razorpay.com/v1/checkout.html?key=${razorpayKeyId}&order_id=${order.id}&redirect_url=${encodeURIComponent(successUrl)}`;
-
-    res.json({
-      success: true,
-      data: {
-        orderId: order.id,
-        amount: order.amount,
-        currency: order.currency,
-        keyId: razorpayKeyId,
-        checkoutUrl,
-        sessionUrl: checkoutUrl,
-        url: checkoutUrl,
-        paymentMethod: 'razorpay',
-        subscriptionType,
-      },
-    });
-
-  } catch (error) {
-    console.error('Create subscription checkout error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
+], verifiedPatientAuth, (req, res) => {
+  if (sendValidationErrors(req, res)) return;
+  if (!isSubscriptionPaymentFlowEnabled()) return sendSubscriptionUnavailable(res);
+  return sendSubscriptionUnavailable(res);
 });
 
-// @route   POST /api/payments/verify-subscription-payment
-// @desc    Verify subscription payment and activate subscription
-// @access  Private
 router.post('/verify-subscription-payment', [
-  body('razorpay_order_id').notEmpty().withMessage('Order ID is required'),
-  body('razorpay_payment_id').notEmpty().withMessage('Payment ID is required'),
-  body('razorpay_signature').notEmpty().withMessage('Signature is required'),
+  body('razorpay_order_id').matches(PROVIDER_ID_VALIDATOR).withMessage('Invalid order ID'),
+  body('razorpay_payment_id').matches(PROVIDER_ID_VALIDATOR).withMessage('Invalid payment ID'),
+  body('razorpay_signature').matches(/^[a-fA-F0-9]{64}$/).withMessage('Invalid signature'),
   body('subscriptionType').isIn(['weekly', 'monthly', 'yearly']).withMessage('Invalid subscription type'),
-], auth, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
-    }
-
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, subscriptionType } = req.body;
-
-    // Verify signature
-    const text = `${razorpay_order_id}|${razorpay_payment_id}`;
-    const expectedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(text)
-      .digest('hex');
-
-    // Timing-safe comparison — prevents signature brute-force via timing side-channel
-    const signaturesMatch = (() => {
-      try {
-        return crypto.timingSafeEqual(
-          Buffer.from(expectedSignature, 'hex'),
-          Buffer.from(razorpay_signature, 'hex')
-        );
-      } catch { return false; }
-    })();
-    if (!signaturesMatch) {
-      return res.status(400).json({ success: false, message: 'Invalid payment signature' });
-    }
-
-    // Verify amount and capture status
-    const razorpay = getRazorpayClient();
-    if (razorpay) {
-      try {
-        const [order, payment] = await Promise.all([
-          razorpay.orders.fetch(razorpay_order_id),
-          razorpay.payments.fetch(razorpay_payment_id),
-        ]);
-
-        const expectedAmount = Math.round(SUBSCRIPTION_PRICES[subscriptionType] * 100);
-        if (order.amount !== expectedAmount) {
-          return res.status(400).json({ success: false, message: 'Payment amount mismatch' });
-        }
-
-        if (payment.status !== 'captured') {
-          return res.status(400).json({ success: false, message: 'Payment not captured' });
-        }
-      } catch (err) {
-        console.error('Error verifying subscription payment with Razorpay:', err);
-        return res.status(400).json({ success: false, message: 'Failed to verify payment with Razorpay' });
-      }
-    }
-
-    const user = await User.findById(req.user._id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    const now = new Date();
-    const durations = { weekly: 7, monthly: 30, yearly: 365 };
-    const expiryDate = new Date(now.getTime() + durations[subscriptionType] * 24 * 60 * 60 * 1000);
-
-    user.subscription = {
-      plan: 'premium',
-      subscriptionType,
-      startDate: now,
-      endDate: expiryDate,
-      isActive: true,
-    };
-    await user.save();
-
-    res.json({
-      success: true,
-      message: 'Subscription activated successfully',
-      data: { subscriptionType, startDate: now, endDate: expiryDate, isActive: true },
-    });
-
-  } catch (error) {
-    console.error('Verify subscription payment error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
-  }
+], verifiedPatientAuth, (req, res) => {
+  if (sendValidationErrors(req, res)) return;
+  if (!isSubscriptionPaymentFlowEnabled()) return sendSubscriptionUnavailable(res);
+  return sendSubscriptionUnavailable(res);
 });
 
-// @route   GET /api/payments/subscription/status
-// @desc    Get subscription status for current user
-// @access  Private
-router.get('/subscription/status', auth, async (req, res) => {
+router.get('/subscription/status', verifiedPatientAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -567,79 +773,25 @@ router.get('/subscription/status', auth, async (req, res) => {
     }
 
     const now = new Date();
-    let isActive = !!(user.subscription.isActive && user.subscription.endDate && new Date(user.subscription.endDate) > now);
+    const isActive = Boolean(
+      user.subscription?.isActive === true
+      && user.subscription?.endDate
+      && new Date(user.subscription.endDate) > now
+    );
 
-    if (!isActive && user.subscription.isActive) {
-      user.subscription.isActive = false;
-      user.subscription.plan = 'free';
-      await user.save();
-    }
-
-    res.json({
+    return res.json({
       success: true,
       data: {
-        plan: user.subscription.plan,
-        subscriptionType: user.subscription.subscriptionType,
+        plan: isActive ? user.subscription.plan : 'free',
+        subscriptionType: isActive ? user.subscription.subscriptionType : null,
         isActive,
-        startDate: user.subscription.startDate,
-        endDate: user.subscription.endDate,
+        startDate: isActive ? user.subscription.startDate : null,
+        endDate: isActive ? user.subscription.endDate : null,
       },
     });
-
-  } catch (error) {
-    console.error('Get subscription status error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+  } catch (_error) {
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
-
-// ── Webhook helpers — all idempotent ──────────────────────────────────────
-const handleRazorpayPaymentSuccess = async (payment, io) => {
-  const bookingId = payment.notes?.bookingId;
-  if (!bookingId) return;
-  const booking = await Booking.findById(bookingId);
-  if (!booking) return;
-  if (booking.paymentStatus === 'paid') return; // idempotency guard
-
-  booking.paymentStatus  = 'paid';
-  booking.paymentId      = payment.id;
-  booking.transactionId  = payment.order_id;
-  booking.orderStatus    = 'paid';
-  booking.status         = 'confirmed';
-  await booking.save();
-
-  if (!booking.counsellor && io) {
-    const CounsellorModel = require('../models/Counsellor');
-    const available = await CounsellorModel.find({ isActive: true, isAvailable: true }).select('_id').lean();
-    const notification = {
-      bookingId: booking._id, sessionType: booking.sessionType,
-      sessionDuration: booking.sessionDuration, scheduledAt: booking.scheduledAt,
-      amount: booking.amount, preferences: booking.preferences, createdAt: booking.createdAt,
-    };
-    available.forEach(c => io.to(`counsellor_${c._id}`).emit('new_booking_available', notification));
-  }
-};
-
-const handleRazorpayPaymentFailure = async (payment) => {
-  const bookingId = payment.notes?.bookingId;
-  if (!bookingId) return;
-  const booking = await Booking.findById(bookingId);
-  if (!booking || booking.paymentStatus === 'paid') return; // don't overwrite a successful payment
-  booking.paymentStatus      = 'failed';
-  booking.orderStatus        = 'failed';
-  booking.paymentAttemptedAt = new Date();
-  await booking.save();
-};
-
-const handleRazorpayOrderPaid = async (order) => {
-  const booking = await Booking.findOne({ razorpayOrderId: order.id });
-  if (!booking) return;
-  if (booking.paymentStatus === 'paid') return; // idempotency guard
-  booking.paymentStatus = 'paid';
-  booking.orderStatus   = 'paid';
-  booking.status        = 'confirmed';
-  // Record payment ID from the order.paid event if available
-  if (order.payment_id) booking.paymentId = order.payment_id;
-  await booking.save();
-};
 
 module.exports = router;

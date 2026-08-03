@@ -35,7 +35,11 @@ const messageSchema = new mongoose.Schema({
     url: String,
     fileName: String,
     fileSize: Number,
-    mimeType: String
+    mimeType: String,
+    storage: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    }
   },
 
   // Message status

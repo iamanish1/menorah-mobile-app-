@@ -10,28 +10,16 @@
 }
 
 .navContainer {
-  max-width: 1280px;
+  max-width: min(92rem, calc(100vw - 1rem));
   margin: 0 auto;
-  padding: 0 var(--spacing-md);
-}
-
-@media (min-width: 640px) {
-  .navContainer {
-    padding: 0 var(--spacing-lg);
-  }
-}
-
-@media (min-width: 1024px) {
-  .navContainer {
-    padding: 0 var(--spacing-xl);
-  }
+  padding: 0 clamp(1rem, 3vw, 2.5rem);
 }
 
 .navContent {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  min-height: 80px;
+  min-height: clamp(68px, 5vw, 92px);
   padding: var(--spacing-md) 0;
 }
 
@@ -62,8 +50,8 @@
 }
 
 .navLogo {
-  width: 48px;
-  height: 48px;
+  width: clamp(42px, 3vw, 56px);
+  height: clamp(42px, 3vw, 56px);
   background: rgba(255, 255, 255, 0.2);
   border-radius: var(--radius-xl);
   display: flex;
@@ -162,4 +150,3 @@
   color: rgba(255, 255, 255, 0.85);
   line-height: 1.2;
 }
-

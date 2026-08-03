@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { FileText, Play, RefreshCw, Search } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { FileText, Play, Plus, RefreshCw, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
@@ -12,6 +13,7 @@ import { formatDate } from '@/lib/utils';
 import type { Article, ArticleGenerationRun, ArticleStatus } from '@/types';
 
 const STATUS_TABS: { key: ArticleStatus | 'all'; label: string }[] = [
+  { key: 'draft', label: 'Drafts' },
   { key: 'review', label: 'Queued' },
   { key: 'published', label: 'Published' },
   { key: 'rejected', label: 'Rejected' },
@@ -28,11 +30,12 @@ const statusVariant = (status: ArticleStatus) => {
 const terminalRunStatuses = ['completed', 'partial', 'failed'];
 
 export default function ArticlesPage() {
+  const router = useRouter();
   const [articles, setArticles] = useState<Article[]>([]);
   const [activeTab, setActiveTab] = useState<ArticleStatus | 'all'>(() => {
-    if (typeof window === 'undefined') return 'review';
+    if (typeof window === 'undefined') return 'draft';
     const status = new URLSearchParams(window.location.search).get('status');
-    return STATUS_TABS.some((tab) => tab.key === status) ? status as ArticleStatus | 'all' : 'review';
+    return STATUS_TABS.some((tab) => tab.key === status) ? status as ArticleStatus | 'all' : 'draft';
   });
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -40,9 +43,16 @@ export default function ArticlesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [count, setCount] = useState(10);
   const [starting, setStarting] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [activeRun, setActiveRun] = useState<ArticleGenerationRun | null>(null);
+  const [newTitle, setNewTitle] = useState('');
+  const [newExcerpt, setNewExcerpt] = useState('');
+  const [newCategory, setNewCategory] = useState('');
+  const [newTags, setNewTags] = useState('');
+  const [newBody, setNewBody] = useState('');
 
   const subtitle = useMemo(() => {
     const label = STATUS_TABS.find((tab) => tab.key === activeTab)?.label || 'Articles';
@@ -105,6 +115,37 @@ export default function ArticlesPage() {
     toast.error(response.message || 'Unable to start article generation');
   };
 
+  const createArticle = async () => {
+    if (newTitle.trim().length < 3 || newExcerpt.trim().length < 10 || newCategory.trim().length < 2 || newBody.trim().length < 20) {
+      toast.error('Add a title, excerpt, category, and at least a short article body');
+      return;
+    }
+
+    setCreating(true);
+    const response = await api.createArticle({
+      title: newTitle.trim(),
+      excerpt: newExcerpt.trim(),
+      category: newCategory.trim(),
+      tags: newTags.split(',').map((tag) => tag.trim()).filter(Boolean),
+      contentBlocks: [{ type: 'paragraph', text: newBody.trim() }]
+    });
+    setCreating(false);
+
+    if (response.success && response.data?.article) {
+      setCreateOpen(false);
+      setNewTitle('');
+      setNewExcerpt('');
+      setNewCategory('');
+      setNewTags('');
+      setNewBody('');
+      toast.success('Draft created. Review and publish it when ready.');
+      router.push(`/articles/${response.data.article.id}`);
+      return;
+    }
+
+    toast.error(response.message || 'Unable to create article');
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -127,11 +168,18 @@ export default function ArticlesPage() {
             />
           </div>
           <button
+            onClick={() => setCreateOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50"
+          >
+            <Plus size={16} />
+            Create Article
+          </button>
+          <button
             onClick={() => setModalOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
           >
             <Play size={16} />
-            Start Generation
+            Generate with AI
           </button>
         </div>
       </div>
@@ -286,6 +334,43 @@ export default function ArticlesPage() {
             className="w-full rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
           >
             {starting ? 'Starting...' : 'Start'}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create Article Draft">
+        <div className="space-y-4">
+          <p className="text-sm leading-6 text-gray-600">
+            Add an existing or editor-written article without depending on the AI pipeline. It stays private until you review and publish it.
+          </p>
+          <label className="block">
+            <span className="text-sm font-semibold text-gray-700">Title</span>
+            <input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" placeholder="Article title" />
+          </label>
+          <label className="block">
+            <span className="text-sm font-semibold text-gray-700">Excerpt</span>
+            <textarea value={newExcerpt} onChange={(event) => setNewExcerpt(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" placeholder="Short summary shown on article cards" />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-semibold text-gray-700">Category</span>
+              <input value={newCategory} onChange={(event) => setNewCategory(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" placeholder="Stress management" />
+            </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-gray-700">Tags</span>
+              <input value={newTags} onChange={(event) => setNewTags(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" placeholder="stress, wellbeing" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="text-sm font-semibold text-gray-700">Opening body</span>
+            <textarea value={newBody} onChange={(event) => setNewBody(event.target.value)} rows={7} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" placeholder="Add the opening paragraph. You can edit the full structured article next." />
+          </label>
+          <button
+            onClick={createArticle}
+            disabled={creating}
+            className="w-full rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            {creating ? 'Creating...' : 'Create Draft'}
           </button>
         </div>
       </Modal>

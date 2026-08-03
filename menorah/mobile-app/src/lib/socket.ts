@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { secureStorage } from './secureStorage';
 import { ENV } from './env';
+import { reportError, reportEvent } from './safeDiagnostics';
 
 export interface ChatMessage {
   id: string;
@@ -37,6 +38,13 @@ export interface MessageReadReceipt {
   roomId?: string; // Added for context
 }
 
+export interface MessageDeletedData {
+  messageId: string;
+  deletedBy: string;
+  timestamp: string;
+  roomId: string;
+}
+
 export interface SessionStartedData {
   bookingId: string;
   status: string;
@@ -45,6 +53,7 @@ export interface SessionStartedData {
   counsellorName: string;
   scheduledAt: string;
   sessionDuration: number;
+  roomId?: string;
 }
 
 export interface BookingStatusData {
@@ -68,12 +77,18 @@ class SocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
+  private connectionGeneration = 0;
+
+  private isCurrentSocket(socket: Socket, generation: number): boolean {
+    return this.socket === socket && this.connectionGeneration === generation;
+  }
 
   // Event listeners
   private messageListeners: ((message: ChatMessage) => void)[] = [];
   private typingListeners: ((typing: TypingIndicator) => void)[] = [];
   private statusListeners: ((status: UserStatus) => void)[] = [];
   private readReceiptListeners: ((receipt: MessageReadReceipt) => void)[] = [];
+  private messageDeletedListeners: ((data: MessageDeletedData) => void)[] = [];
   private connectionListeners: ((connected: boolean) => void)[] = [];
   private sessionStartedListeners: ((data: SessionStartedData) => void)[] = [];
   private bookingStatusListeners: ((data: BookingStatusData) => void)[] = [];
@@ -82,8 +97,18 @@ class SocketService {
 
   // Initialize socket connection
   async connect(): Promise<void> {
+    const generation = ++this.connectionGeneration;
+    const previousSocket = this.socket;
+    this.socket = null;
+    this.isConnected = false;
+    previousSocket?.disconnect();
+
     try {
       const token = await secureStorage.getToken();
+
+      // Logout or a newer account connection superseded this attempt while
+      // SecureStore was resolving. Never create a socket with the stale token.
+      if (generation !== this.connectionGeneration) return;
 
       // Token is required — do not allow unauthenticated socket connections
       if (!token) {
@@ -93,7 +118,7 @@ class SocketService {
       // Socket.IO connects to the deployed origin (no /api prefix).
       const socketUrl = ENV.API_ORIGIN || ENV.API_BASE_URL?.replace(/\/api\/?$/, '') || 'https://api.menorah.me';
 
-      this.socket = io(socketUrl, {
+      const socket = io(socketUrl, {
         auth: { token },
         // polling first — React Native WebSocket upgrade is unreliable in Expo
         transports: ['polling', 'websocket'],
@@ -101,23 +126,29 @@ class SocketService {
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectDelay,
-        forceNew: false,
+        forceNew: true,
         autoConnect: true,
       });
+      this.socket = socket;
 
-      this.setupEventListeners();
+      this.setupEventListeners(socket, generation);
       
       return new Promise((resolve, reject) => {
-        if (this.socket) {
-          this.socket.on('connect', () => {
+        if (this.isCurrentSocket(socket, generation)) {
+          socket.on('connect', () => {
+            if (!this.isCurrentSocket(socket, generation)) return;
             this.isConnected = true;
             this.reconnectAttempts = 0;
             this.notifyConnectionListeners(true);
             resolve();
           });
 
-          this.socket.on('connect_error', (error) => {
-            console.error('Socket.IO connection error:', error.message);
+          socket.on('connect_error', (error) => {
+            if (!this.isCurrentSocket(socket, generation)) {
+              resolve();
+              return;
+            }
+            reportError('socket.connection_failed', error);
             this.isConnected = false;
             this.notifyConnectionListeners(false);
             
@@ -127,82 +158,103 @@ class SocketService {
             }
           });
 
-          this.socket.on('disconnect', (reason) => {
-            console.log('Socket.IO disconnected:', reason);
+          socket.on('disconnect', () => {
+            if (!this.isCurrentSocket(socket, generation)) {
+              resolve();
+              return;
+            }
+            reportEvent('socket.disconnected');
             this.isConnected = false;
             this.notifyConnectionListeners(false);
           });
 
-          this.socket.on('reconnect_attempt', (attemptNumber) => {
-            console.log(`Socket.IO reconnection attempt ${attemptNumber}`);
+          socket.io.on('reconnect_attempt', (attemptNumber) => {
+            if (!this.isCurrentSocket(socket, generation)) return;
+            reportEvent('socket.reconnect_attempt');
             this.reconnectAttempts = attemptNumber;
           });
 
-          this.socket.on('reconnect', (attemptNumber) => {
-            console.log(`Socket.IO reconnected after ${attemptNumber} attempts`);
-            this.isConnected = true;
-            this.notifyConnectionListeners(true);
+          socket.io.on('reconnect', () => {
+            if (!this.isCurrentSocket(socket, generation)) return;
+            reportEvent('socket.reconnected');
           });
 
-          this.socket.on('reconnect_error', (error) => {
-            console.error('Socket.IO reconnection error:', error);
+          socket.io.on('reconnect_error', (error) => {
+            if (!this.isCurrentSocket(socket, generation)) return;
+            reportError('socket.reconnect_failed', error);
           });
 
-          this.socket.on('reconnect_failed', () => {
-            console.error('Socket.IO reconnection failed after all attempts');
+          socket.io.on('reconnect_failed', () => {
+            if (!this.isCurrentSocket(socket, generation)) {
+              resolve();
+              return;
+            }
+            reportError('socket.reconnect_exhausted');
             reject(new Error('Failed to reconnect to Socket.IO server'));
           });
         }
       });
     } catch (error) {
-      console.error('Failed to connect to Socket.IO:', error);
+      reportError('socket.initialization_failed', error);
       throw error;
     }
   }
 
   // Setup socket event listeners
-  private setupEventListeners(): void {
-    if (!this.socket) return;
+  private setupEventListeners(socket: Socket, generation: number): void {
+    const isCurrent = () => this.isCurrentSocket(socket, generation);
 
     // New message received
-    this.socket.on('new_message', (message: ChatMessage) => {
-      console.log('New message received:', message);
+    socket.on('new_message', (message: ChatMessage) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.message_received');
       // Add roomId to message if not present
       const messageWithRoom = { ...message, roomId: message.roomId };
       this.notifyMessageListeners(messageWithRoom);
     });
 
     // Typing indicator
-    this.socket.on('user_typing', (typing: TypingIndicator) => {
-      console.log('Typing indicator:', typing);
+    socket.on('user_typing', (typing: TypingIndicator) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.typing_received');
       // Add roomId to typing indicator if not present
       const typingWithRoom = { ...typing, roomId: typing.roomId };
       this.notifyTypingListeners(typingWithRoom);
     });
 
     // User status change
-    this.socket.on('user_status_changed', (status: UserStatus) => {
-      console.log('User status changed:', status);
+    socket.on('user_status_changed', (status: UserStatus) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.status_received');
       this.notifyStatusListeners(status);
     });
 
     // Message read receipt
-    this.socket.on('message_read', (receipt: MessageReadReceipt) => {
-      console.log('Message read receipt:', receipt);
+    socket.on('message_read', (receipt: MessageReadReceipt) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.read_receipt_received');
       // Add roomId to receipt if not present
       const receiptWithRoom = { ...receipt, roomId: receipt.roomId };
       this.notifyReadReceiptListeners(receiptWithRoom);
     });
 
+    socket.on('message_deleted', (data: MessageDeletedData) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.message_deleted');
+      this.notifyMessageDeletedListeners(data);
+    });
+
     // Message delivered confirmation
-    this.socket.on('message_delivered', (data: { messageId: string; timestamp: string }) => {
-      console.log('Message delivered:', data);
+    socket.on('message_delivered', () => {
+      if (!isCurrent()) return;
+      reportEvent('socket.message_delivered');
       // You can update message status here
     });
 
     // User joined room
-    this.socket.on('user_joined', (data: { userId: string; userName: string; roomId: string; timestamp: string }) => {
-      console.log('User joined room:', data);
+    socket.on('user_joined', (data: { userId: string; userName: string; roomId: string; timestamp: string }) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.room_joined');
       // Notify status listeners that user is online in this room
       this.notifyStatusListeners({
         userId: data.userId,
@@ -214,8 +266,9 @@ class SocketService {
     });
 
     // User left room
-    this.socket.on('user_left', (data: { userId: string; userName: string; roomId: string; timestamp: string }) => {
-      console.log('User left room:', data);
+    socket.on('user_left', (data: { userId: string; userName: string; roomId: string; timestamp: string }) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.room_left');
       // Notify status listeners that user is offline in this room
       this.notifyStatusListeners({
         userId: data.userId,
@@ -227,26 +280,30 @@ class SocketService {
     });
 
     // Session started - counselor is waiting for user to join
-    this.socket.on('session_started', (data: SessionStartedData) => {
-      console.log('Session started notification:', data);
+    socket.on('session_started', (data: SessionStartedData) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.session_started');
       this.notifySessionStartedListeners(data);
     });
 
     // Booking status changed
-    this.socket.on('booking_status_changed', (data: BookingStatusData) => {
-      console.log('Booking status changed:', data);
+    socket.on('booking_status_changed', (data: BookingStatusData) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.booking_status_changed');
       this.notifyBookingStatusListeners(data);
     });
 
     // Booking confirmed by counsellor
-    this.socket.on('booking_confirmed', (data: BookingConfirmedData) => {
-      console.log('Booking confirmed by counsellor:', data);
+    socket.on('booking_confirmed', (data: BookingConfirmedData) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.booking_confirmed');
       this.notifyBookingConfirmedListeners(data);
     });
 
     // Booking rescheduled by counsellor
-    this.socket.on('booking_rescheduled', (data: BookingRescheduledData) => {
-      console.log('Booking rescheduled:', data);
+    socket.on('booking_rescheduled', (data: BookingRescheduledData) => {
+      if (!isCurrent()) return;
+      reportEvent('socket.booking_rescheduled');
       this.notifyBookingRescheduledListeners(data);
     });
   }
@@ -255,9 +312,9 @@ class SocketService {
   joinRoom(roomId: string): void {
     if (this.socket && this.isConnected) {
       this.socket.emit('join_room', roomId);
-      console.log('Joined room:', roomId);
+      reportEvent('socket.room_join_requested');
     } else {
-      console.warn('Socket not connected, cannot join room');
+      reportError('socket.room_join_while_disconnected');
     }
   }
 
@@ -265,9 +322,9 @@ class SocketService {
   leaveRoom(roomId: string): void {
     if (this.socket && this.isConnected) {
       this.socket.emit('leave_room', roomId);
-      console.log('Left room:', roomId);
+      reportEvent('socket.room_leave_requested');
     } else {
-      console.warn('Socket not connected, cannot leave room');
+      reportError('socket.room_leave_while_disconnected');
     }
   }
 
@@ -275,9 +332,9 @@ class SocketService {
   sendMessage(roomId: string, content: string, type: 'text' | 'image' | 'file' = 'text'): void {
     if (this.socket && this.isConnected) {
       this.socket.emit('send_message', { roomId, content, type });
-      console.log('Message sent:', { roomId, content, type });
+      reportEvent('socket.message_sent');
     } else {
-      console.warn('Socket not connected, cannot send message');
+      reportError('socket.message_send_while_disconnected');
     }
   }
 
@@ -311,11 +368,12 @@ class SocketService {
 
   // Disconnect socket
   disconnect(): void {
+    this.connectionGeneration += 1;
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
       this.isConnected = false;
-      console.log('Socket.IO disconnected');
+      reportEvent('socket.disconnected_by_client');
     }
   }
 
@@ -350,6 +408,13 @@ class SocketService {
     this.readReceiptListeners.push(callback);
     return () => {
       this.readReceiptListeners = this.readReceiptListeners.filter(cb => cb !== callback);
+    };
+  }
+
+  onMessageDeleted(callback: (data: MessageDeletedData) => void): () => void {
+    this.messageDeletedListeners.push(callback);
+    return () => {
+      this.messageDeletedListeners = this.messageDeletedListeners.filter(cb => cb !== callback);
     };
   }
 
@@ -403,6 +468,10 @@ class SocketService {
 
   private notifyReadReceiptListeners(receipt: MessageReadReceipt): void {
     this.readReceiptListeners.forEach(callback => callback(receipt));
+  }
+
+  private notifyMessageDeletedListeners(data: MessageDeletedData): void {
+    this.messageDeletedListeners.forEach(callback => callback(data));
   }
 
   private notifyConnectionListeners(connected: boolean): void {

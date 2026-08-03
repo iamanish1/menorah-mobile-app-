@@ -1,14 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   * { box-sizing: border-box; }
+  html {
+    font-size: clamp(14px, 13px + 0.26vw, 16.75px);
+  }
   body {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: var(--font-inter), system-ui, sans-serif;
     background-color: #f8fafc;
     color: #0f172a;
+    min-width: 320px;
+    overflow-x: clip;
     -webkit-font-smoothing: antialiased;
   }
 }
@@ -16,6 +20,9 @@
 @layer components {
   .field-input {
     @apply w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500;
+    min-height: clamp(2.35rem, 2.1rem + 0.45vw, 2.85rem);
+    padding-inline: clamp(0.75rem, 0.62rem + 0.3vw, 1rem);
+    padding-block: clamp(0.5rem, 0.42rem + 0.22vw, 0.7rem);
   }
 }
 

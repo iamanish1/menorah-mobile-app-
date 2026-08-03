@@ -1,0 +1,97 @@
+{
+	admin off
+}
+
+(local_proxy) {
+	# Never promote browser-supplied forwarding or geolocation headers.
+	request_header -Forwarded
+	request_header -X-Forwarded-For
+	request_header -X-Forwarded-Proto
+	request_header -X-Forwarded-Host
+	request_header -X-Forwarded-Port
+	request_header -X-Real-IP
+	request_header -True-Client-IP
+	request_header -CF-Connecting-IP
+	request_header -CF-IPCountry
+	request_header -X-Vercel-IP-Country
+	request_header -X-Country-Code
+	request_header -X-Geo-Country
+
+	reverse_proxy {args[0]} {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto https
+	}
+}
+
+root.staging.localhost, www.staging.localhost, app.staging.localhost, admin.staging.localhost, counsellor.staging.localhost, api-ios.staging.localhost, api-android.staging.localhost, api-web.staging.localhost, api-admin.staging.localhost, calls.staging.localhost, https://root.staging.localhost:28443, https://www.staging.localhost:28443, https://app.staging.localhost:28443, https://admin.staging.localhost:28443, https://counsellor.staging.localhost:28443, https://api-ios.staging.localhost:28443, https://api-android.staging.localhost:28443, https://api-web.staging.localhost:28443, https://api-admin.staging.localhost:28443, https://calls.staging.localhost:28443 {
+	tls internal
+	encode gzip zstd
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
+		-Server
+	}
+
+	log {
+		output file /var/log/menorah/caddy-access.log {
+			roll_size 10MiB
+			roll_keep 3
+			roll_keep_for 168h
+		}
+		format filter {
+			request>uri replace REDACTED
+			request>headers>Cookie delete
+			request>headers>Authorization delete
+			request>headers>Proxy-Authorization delete
+			wrap json
+		}
+	}
+
+	@health path /healthz
+	@private_diagnostics path /metrics/* /health/deep
+	@user host root.staging.localhost www.staging.localhost app.staging.localhost
+	@admin host admin.staging.localhost
+	@counsellor host counsellor.staging.localhost
+	@api_ios host api-ios.staging.localhost
+	@api_android host api-android.staging.localhost
+	@api_web host api-web.staging.localhost
+	@api_admin host api-admin.staging.localhost
+	@calls host calls.staging.localhost
+
+	route {
+		respond @health "ok" 200
+		respond @private_diagnostics 404
+
+		handle @user {
+			import local_proxy private-user-web:3002
+		}
+		handle @admin {
+			import local_proxy private-admin-panel:3003
+		}
+		handle @counsellor {
+			import local_proxy private-counsellor-web:3001
+		}
+		handle @api_ios {
+			import local_proxy private-api-ios:8080
+		}
+		handle @api_android {
+			import local_proxy private-api-android:8080
+		}
+		handle @api_web {
+			import local_proxy private-api-web:8080
+		}
+		handle @api_admin {
+			import local_proxy private-api-admin:8080
+		}
+		handle @calls {
+			import local_proxy private-livekit:7880
+		}
+		handle {
+			respond 421
+		}
+	}
+}

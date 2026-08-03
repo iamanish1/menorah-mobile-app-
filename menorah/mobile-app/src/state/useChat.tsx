@@ -1,7 +1,16 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { socketService, ChatMessage, TypingIndicator, UserStatus, MessageReadReceipt, SessionStartedData, BookingStatusData, BookingConfirmedData, BookingRescheduledData } from '@/lib/socket';
-import { api, ChatRoom, Message } from '@/lib/api';
+import React, { createContext, useContext, useEffect, useLayoutEffect, useState, useCallback } from 'react';
+import {
+  socketService,
+  ChatMessage,
+  TypingIndicator,
+  UserStatus,
+  MessageReadReceipt,
+  MessageDeletedData,
+} from '@/lib/socket';
+import { api, ChatRoom, Message as ApiMessage } from '@/lib/api';
+import { reportError, reportEvent } from '@/lib/safeDiagnostics';
 import { useAuth } from './useAuth';
+import { mergeChatMessages } from '@/lib/chatMessages';
 
 interface ChatContextType {
   // Chat rooms
@@ -11,8 +20,9 @@ interface ChatContextType {
   
   // Messages
   messages: { [roomId: string]: ChatMessage[] };
+  messagePagination: { [roomId: string]: MessagePagination };
   loadingMessages: boolean;
-  fetchMessages: (roomId: string) => Promise<void>;
+  fetchMessages: (roomId: string, options?: FetchMessagesOptions) => Promise<void>;
   sendMessage: (roomId: string, content: string) => Promise<void>;
   
   // Real-time features
@@ -49,12 +59,73 @@ interface ChatProviderProps {
   children: React.ReactNode;
 }
 
+interface AccountScope {
+  userId: string;
+  generation: number;
+}
+
+interface MessagePagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
+
+interface FetchMessagesOptions {
+  page?: number;
+  limit?: number;
+}
+
+function mapApiMessage(message: ApiMessage, roomId: string): ChatMessage {
+  const sender = typeof message.sender === 'object' && message.sender !== null
+    ? message.sender
+    : undefined;
+
+  return {
+    id: message.id || message._id || `${roomId}-${message.timestamp}`,
+    senderId: message.senderId || sender?._id || (typeof message.sender === 'string' ? message.sender : ''),
+    senderName: message.senderName
+      || `${sender?.firstName || ''} ${sender?.lastName || ''}`.trim()
+      || 'User',
+    senderImage: message.senderImage || sender?.profileImage || null,
+    content: message.content || '',
+    timestamp: message.timestamp || message.createdAt || new Date().toISOString(),
+    type: message.type || 'text',
+    status: message.status || 'sent',
+    roomId,
+  };
+}
+
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const { user } = useAuth();
+  const renderedUserId = user?.id ?? null;
+  const activeUserIdRef = React.useRef<string | null>(renderedUserId);
+  const accountGenerationRef = React.useRef(0);
+
+  // Advance during render so a response cannot land between an identity-
+  // changing render and its layout-effect cleanup.
+  if (activeUserIdRef.current !== renderedUserId) {
+    activeUserIdRef.current = renderedUserId;
+    accountGenerationRef.current += 1;
+  }
+
+  const captureAccountScope = useCallback((): AccountScope | null => {
+    const userId = activeUserIdRef.current;
+    return userId
+      ? { userId, generation: accountGenerationRef.current }
+      : null;
+  }, []);
+
+  const isAccountScopeActive = useCallback((scope: AccountScope | null) => (
+    scope !== null &&
+    activeUserIdRef.current === scope.userId &&
+    accountGenerationRef.current === scope.generation
+  ), []);
 
   // State
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [messages, setMessages] = useState<{ [roomId: string]: ChatMessage[] }>({});
+  const [messagePagination, setMessagePagination] = useState<{ [roomId: string]: MessagePagination }>({});
   const [typingUsers, setTypingUsers] = useState<{ [roomId: string]: TypingIndicator[] }>({});
   const [onlineUsers, setOnlineUsers] = useState<{ [userId: string]: UserStatus }>({});
   const [roomPresence, setRoomPresence] = useState<{ [roomId: string]: { [userId: string]: boolean } }>({});
@@ -70,103 +141,98 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // Ref so connection callbacks always see the latest currentRoom without re-registering
   const currentRoomRef = React.useRef<string | null>(null);
 
+  const clearTypingTimeouts = useCallback(() => {
+    Object.values(typingTimeouts.current).forEach(clearTimeout);
+    typingTimeouts.current = {};
+  }, []);
+
+  const resetSensitiveChatState = useCallback(() => {
+    clearTypingTimeouts();
+    currentRoomRef.current = null;
+    setChatRooms([]);
+    setMessages({});
+    setMessagePagination({});
+    setTypingUsers({});
+    setOnlineUsers({});
+    setRoomPresence({});
+    setIsConnected(false);
+    setCurrentRoom(null);
+    setLoadingRooms(false);
+    setLoadingMessages(false);
+  }, [clearTypingTimeouts]);
+
+  // Clear before paint and before the normal socket connection effect runs.
+  // App.tsx also keys the provider subtree by user ID for synchronous isolation.
+  useLayoutEffect(() => {
+    resetSensitiveChatState();
+    return () => {
+      clearTypingTimeouts();
+      currentRoomRef.current = null;
+    };
+  }, [clearTypingTimeouts, resetSensitiveChatState, user?.id]);
+
   // Keep currentRoomRef in sync with currentRoom state
   useEffect(() => {
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
 
-  // Initialize socket connection
-  useEffect(() => {
-    if (user) {
-      initializeSocket();
-    }
-
-    return () => {
-      socketService.disconnect();
-    };
-  }, [user]);
-
-  const initializeSocket = async () => {
-    try {
-      console.log('Initializing Socket.IO connection...');
-      await socketService.connect();
-
-      // Socket is now connected — sync state and join any room that was requested
-      // before the connection was ready (common when ChatThread mounts first)
-      setIsConnected(true);
-      if (currentRoomRef.current) {
-        socketService.joinRoom(currentRoomRef.current);
-      }
-
-      // Set up event listeners
-      const unsubscribeMessage = socketService.onMessage(handleNewMessage);
-      const unsubscribeTyping = socketService.onTyping(handleTyping);
-      const unsubscribeStatus = socketService.onStatusChange(handleStatusChange);
-      const unsubscribeReadReceipt = socketService.onReadReceipt(handleReadReceipt);
-      const unsubscribeConnection = socketService.onConnectionChange(handleConnectionChange);
-      const unsubscribeSessionStarted = socketService.onSessionStarted(handleSessionStarted);
-      const unsubscribeBookingStatus = socketService.onBookingStatusChanged(handleBookingStatus);
-      const unsubscribeBookingConfirmed = socketService.onBookingConfirmed(handleBookingConfirmed);
-      const unsubscribeBookingRescheduled = socketService.onBookingRescheduled(handleBookingRescheduled);
-
-      console.log('Socket.IO event listeners set up successfully');
-
-      return () => {
-        unsubscribeMessage();
-        unsubscribeTyping();
-        unsubscribeStatus();
-        unsubscribeReadReceipt();
-        unsubscribeConnection();
-        unsubscribeSessionStarted();
-        unsubscribeBookingStatus();
-        unsubscribeBookingConfirmed();
-        unsubscribeBookingRescheduled();
-      };
-    } catch (error) {
-      console.error('Failed to initialize socket:', error);
-      // Don't throw error, let the app continue without real-time features
-      setIsConnected(false);
-    }
-  };
-
   // Event handlers
   const handleNewMessage = useCallback((message: ChatMessage) => {
     const roomId = message.roomId;
     if (!roomId) {
-      console.warn('Received message without roomId:', message);
+      reportError('chat.message_missing_room');
       return;
     }
     
+    const isOwnMessage = message.senderId === activeUserIdRef.current;
+    const isActiveRoom = currentRoomRef.current === roomId;
+
     setMessages(prev => {
-      const roomMessages = prev[roomId] || [];
-      // Check if message already exists to prevent duplicates
-      const exists = roomMessages.find((m: ChatMessage) => m.id === message.id);
-      if (exists) {
-        // Update existing message instead of adding duplicate
-        return {
-          ...prev,
-          [roomId]: roomMessages.map((m: ChatMessage) => m.id === message.id ? message : m)
-        };
-      }
-      // Add new message and sort by timestamp
-      const updatedMessages = [...roomMessages, message].sort((a, b) => 
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
+      const updatedMessages = mergeChatMessages(prev[roomId] || [], [message]);
       return {
         ...prev,
         [roomId]: updatedMessages
       };
     });
+
+    setChatRooms((previousRooms) => {
+      const roomIndex = previousRooms.findIndex((room) => room.id === roomId);
+      if (roomIndex === -1) return previousRooms;
+
+      const room = previousRooms[roomIndex];
+      const updatedRoom: ChatRoom = {
+        ...room,
+        lastMessage: message.content,
+        lastMessageTime: message.timestamp,
+        lastMessageSenderId: message.senderId,
+        unreadCount: isOwnMessage || isActiveRoom ? 0 : (room.unreadCount || 0) + 1,
+      };
+
+      return [updatedRoom, ...previousRooms.filter((_, index) => index !== roomIndex)];
+    });
+
+    if (isActiveRoom && !isOwnMessage) {
+      socketService.markMessageAsRead(roomId, message.id);
+    }
+  }, []);
+
+  const handleMessageDeleted = useCallback((data: MessageDeletedData) => {
+    setMessages((previousMessages) => ({
+      ...previousMessages,
+      [data.roomId]: (previousMessages[data.roomId] || []).filter(
+        (message) => message.id !== data.messageId
+      ),
+    }));
   }, []);
 
   const handleTyping = useCallback((typing: TypingIndicator) => {
     const roomId = typing.roomId;
     if (!roomId) {
-      console.warn('Received typing indicator without roomId:', typing);
+      reportError('chat.typing_missing_room');
       return;
     }
     // Ignore own typing events
-    if (user && typing.userId === user.id) return;
+    if (user?.id && typing.userId === user.id) return;
 
     setTypingUsers(prev => {
       const roomTyping = prev[roomId] || [];
@@ -184,7 +250,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         };
       }
     });
-  }, []);
+  }, [user?.id]);
 
   const handleStatusChange = useCallback((status: UserStatus) => {
     setOnlineUsers(prev => ({
@@ -208,7 +274,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const handleReadReceipt = useCallback((receipt: MessageReadReceipt) => {
     const roomId = receipt.roomId;
     if (!roomId) {
-      console.warn('Received read receipt without roomId:', receipt);
+      reportError('chat.receipt_missing_room');
       return;
     }
 
@@ -233,32 +299,89 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     }
   }, []);
 
-  const handleSessionStarted = useCallback((data: SessionStartedData) => {
-    // This will be handled by SessionNotificationHandler component
-    // We can also update local state if needed
-    console.log('Session started:', data);
-  }, []);
+  const initializeSocket = useCallback(async () => {
+    const scope = captureAccountScope();
+    if (!scope) return;
 
-  const handleBookingStatus = useCallback((data: BookingStatusData) => {
-    console.log('Booking status changed:', data);
-  }, []);
+    try {
+      reportEvent('chat.socket_initializing');
+      await socketService.connect();
+      if (!isAccountScopeActive(scope)) return;
 
-  const handleBookingConfirmed = useCallback((data: BookingConfirmedData) => {
-    console.log('Booking confirmed by counsellor:', data);
-  }, []);
+      // Socket is now connected — sync state and join any room that was requested
+      // before the connection was ready (common when ChatThread mounts first)
+      setIsConnected(true);
+      if (currentRoomRef.current) {
+        socketService.joinRoom(currentRoomRef.current);
+      }
 
-  const handleBookingRescheduled = useCallback((data: BookingRescheduledData) => {
-    console.log('Booking rescheduled:', data);
-  }, []);
+      // Set up event listeners
+      const whenActive = <T,>(handler: (value: T) => void) => (value: T) => {
+        if (isAccountScopeActive(scope)) handler(value);
+      };
+      const unsubscribeMessage = socketService.onMessage(whenActive(handleNewMessage));
+      const unsubscribeTyping = socketService.onTyping(whenActive(handleTyping));
+      const unsubscribeStatus = socketService.onStatusChange(whenActive(handleStatusChange));
+      const unsubscribeReadReceipt = socketService.onReadReceipt(whenActive(handleReadReceipt));
+      const unsubscribeMessageDeleted = socketService.onMessageDeleted(whenActive(handleMessageDeleted));
+      const unsubscribeConnection = socketService.onConnectionChange(whenActive(handleConnectionChange));
+      reportEvent('chat.socket_listeners_ready');
+
+      return () => {
+        unsubscribeMessage();
+        unsubscribeTyping();
+        unsubscribeStatus();
+        unsubscribeReadReceipt();
+        unsubscribeMessageDeleted();
+        unsubscribeConnection();
+      };
+    } catch (error) {
+      reportError('chat.socket_initialization_failed', error);
+      // Don't throw error, let the app continue without real-time features
+      if (isAccountScopeActive(scope)) setIsConnected(false);
+    }
+  }, [
+    captureAccountScope,
+    handleConnectionChange,
+    handleNewMessage,
+    handleMessageDeleted,
+    handleReadReceipt,
+    handleStatusChange,
+    handleTyping,
+    isAccountScopeActive,
+  ]);
+
+  // Initialize socket connection
+  useEffect(() => {
+    let cancelled = false;
+    let cleanupListeners: (() => void) | undefined;
+
+    if (renderedUserId) {
+      initializeSocket().then((cleanup) => {
+        if (cancelled) {
+          if (cleanup) cleanup();
+          return;
+        }
+        if (cleanup) cleanupListeners = cleanup;
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      cleanupListeners?.();
+      socketService.disconnect();
+    };
+  }, [initializeSocket, renderedUserId]);
 
   // Chat room management
   const fetchChatRooms = useCallback(async () => {
-    if (!user) return;
+    const scope = captureAccountScope();
+    if (!scope) return;
     
     setLoadingRooms(true);
     try {
       const response = await api.getChatRooms();
-      if (response.success && response.data) {
+      if (isAccountScopeActive(scope) && response.success && response.data) {
         // Ensure all chat rooms have proper counsellorName
         const rooms = (response.data.chatRooms || []).map((room: ChatRoom) => {
           // Check if counsellorName is undefined, null, or the string "undefined undefined"
@@ -275,67 +398,58 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         setChatRooms(rooms);
       }
     } catch (error) {
-      console.error('Failed to fetch chat rooms:', error);
+      if (isAccountScopeActive(scope)) reportError('chat.rooms_fetch_failed', error);
     } finally {
-      setLoadingRooms(false);
+      if (isAccountScopeActive(scope)) setLoadingRooms(false);
     }
-  }, [user]);
+  }, [captureAccountScope, isAccountScopeActive]);
 
   // Message management
-  const fetchMessages = useCallback(async (roomId: string) => {
-    if (!user) return;
-    
-    setLoadingMessages(true);
+  const fetchMessages = useCallback(async (
+    roomId: string,
+    { page = 1, limit = 30 }: FetchMessagesOptions = {}
+  ) => {
+    const scope = captureAccountScope();
+    if (!scope) return;
+
+    if (page === 1) setLoadingMessages(true);
     try {
-      const response = await api.getMessages(roomId);
-      if (response.success && response.data) {
-        const msgs = response.data.messages || [];
-        // Map API messages to ChatMessage format
-        const mappedMessages: ChatMessage[] = msgs.map((msg: any) => ({
-          id: msg.id || msg._id,
-          senderId: msg.senderId || msg.sender?._id || msg.sender,
-          senderName: msg.senderName || `${msg.sender?.firstName || ''} ${msg.sender?.lastName || ''}`.trim() || 'User',
-          senderImage: msg.senderImage || msg.sender?.profileImage || null,
-          content: msg.content || '',
-          timestamp: msg.timestamp || msg.createdAt || new Date().toISOString(),
-          type: msg.type || 'text',
-          status: msg.status || 'sent',
-          roomId: roomId
-        }));
-        // Remove duplicates by ID
-        const uniqueMessages = mappedMessages.reduce((acc: ChatMessage[], msg: ChatMessage) => {
-          if (!acc.find(m => m.id === msg.id)) {
-            acc.push(msg);
-          }
-          return acc;
-        }, []);
-        // Sort by timestamp
-        uniqueMessages.sort((a, b) => 
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      const response = await api.getMessages(roomId, { page, limit });
+      if (isAccountScopeActive(scope) && response.success && response.data) {
+        const mappedMessages = (response.data.messages || []).map(
+          (message) => mapApiMessage(message, roomId)
         );
         setMessages(prev => ({
           ...prev,
-          [roomId]: uniqueMessages
+          [roomId]: mergeChatMessages(prev[roomId] || [], mappedMessages),
         }));
+        setMessagePagination((previousPagination) => ({
+          ...previousPagination,
+          [roomId]: response.data!.pagination,
+        }));
+        setChatRooms((previousRooms) => previousRooms.map((room) =>
+          room.id === roomId ? { ...room, unreadCount: 0 } : room
+        ));
       }
     } catch (error) {
-      console.error('Failed to fetch messages:', error);
+      if (isAccountScopeActive(scope)) reportError('chat.messages_fetch_failed', error);
     } finally {
-      setLoadingMessages(false);
+      if (page === 1 && isAccountScopeActive(scope)) setLoadingMessages(false);
     }
-  }, [user]);
+  }, [captureAccountScope, isAccountScopeActive]);
 
   const sendMessage = useCallback(async (roomId: string, content: string) => {
-    if (!user || !content.trim()) return;
+    const scope = captureAccountScope();
+    if (!scope || !content.trim()) return;
     
     try {
       // Send via REST API for persistence (works even without Socket.IO)
       const response = await api.sendMessage(roomId, content);
       
-      if (response.success && response.data) {
+      if (isAccountScopeActive(scope) && response.success && response.data) {
         const msg = response.data.message;
         const sender = typeof msg.sender === 'object' && msg.sender !== null ? msg.sender : undefined;
-        const senderId = msg.senderId || sender?._id || (typeof msg.sender === 'string' ? msg.sender : undefined) || user.id;
+        const senderId = msg.senderId || sender?._id || (typeof msg.sender === 'string' ? msg.sender : undefined) || scope.userId;
         // Map API message to ChatMessage format
         const newMessage: ChatMessage = {
           id: msg.id || msg._id || `${roomId}-${Date.now()}`,
@@ -366,16 +480,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       // REST API already emits new_message via Socket.IO on the server side,
       // so no need to emit separately via socketService here.
     } catch (error) {
-      console.error('Failed to send message:', error);
-      throw error;
+      if (isAccountScopeActive(scope)) {
+        reportError('chat.message_send_failed', error);
+        throw error;
+      }
     }
-  }, [user, isConnected]);
+  }, [captureAccountScope, isAccountScopeActive]);
 
   const deleteMessage = useCallback(async (roomId: string, messageId: string) => {
-    if (!user) return;
+    const scope = captureAccountScope();
+    if (!scope) return;
     
     try {
       await api.deleteMessage(roomId, messageId);
+      if (!isAccountScopeActive(scope)) return;
       
       // Remove from local state
       setMessages(prev => {
@@ -386,23 +504,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         };
       });
     } catch (error) {
-      console.error('Failed to delete message:', error);
+      if (isAccountScopeActive(scope)) reportError('chat.message_delete_failed', error);
     }
-  }, [user]);
+  }, [captureAccountScope, isAccountScopeActive]);
 
   // Room management
   const joinRoom = useCallback((roomId: string) => {
-    socketService.joinRoom(roomId);
     setCurrentRoom(roomId);
-    
-    // Fetch messages if not already loaded
-    if (!messages[roomId]) {
-      fetchMessages(roomId);
-    }
-  }, [messages, fetchMessages]);
+    currentRoomRef.current = roomId;
+    socketService.joinRoom(roomId);
+  }, []);
 
   const leaveRoom = useCallback((roomId: string) => {
     socketService.leaveRoom(roomId);
+    if (currentRoomRef.current === roomId) currentRoomRef.current = null;
     setCurrentRoom(null);
   }, []);
 
@@ -467,6 +582,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     
     // Messages
     messages,
+    messagePagination,
     loadingMessages,
     fetchMessages,
     sendMessage,

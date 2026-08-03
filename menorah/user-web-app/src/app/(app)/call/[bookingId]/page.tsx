@@ -24,14 +24,28 @@ type PageState =
   | 'waiting'
   | 'joining'
   | 'in-call'
+  | 'external'
+  | 'not-configured'
+  | 'disabled'
   | 'ended'
   | 'cancelled'
   | 'completed'
   | 'error';
 
 interface RoomData {
-  livekitToken: string;
-  livekitUrl: string;
+  provider?: string;
+  joinMode?: string;
+  livekitToken?: string;
+  token?: string;
+  livekitUrl?: string;
+  meetTicket?: string;
+  joinUrl?: string;
+  externalJoinUrl?: string;
+  providerName?: string;
+  externalProviderName?: string;
+  region?: string;
+  status?: string;
+  message?: string;
   counsellorName: string;
   duration: number;
 }
@@ -64,6 +78,17 @@ export default function VideoCallPage() {
     try {
       const res = await api.joinVideoRoom(bookingId);
       if (!res.success || !res.data) {
+        const failedData = res.data as RoomData | undefined;
+        if (failedData?.joinMode === 'external_link' || failedData?.status === 'not_configured') {
+          setRoomData(failedData);
+          setPageState('not-configured');
+          return;
+        }
+        if (failedData?.joinMode === 'disabled' || failedData?.provider === 'disabled') {
+          setRoomData(failedData);
+          setPageState('disabled');
+          return;
+        }
         if (res.message?.toLowerCase().includes('not been started')) {
           setPageState('waiting');
           return;
@@ -71,13 +96,39 @@ export default function VideoCallPage() {
         fatalError(res.message || 'Failed to join session. Please try again.');
         return;
       }
-      setRoomData({
-        livekitToken:   res.data.livekitToken,
-        livekitUrl:     res.data.livekitUrl,
-        counsellorName: res.data.counsellorName,
-        duration:       res.data.duration ?? 0,
-      });
-      setPageState('in-call');
+      const next = res.data as RoomData;
+      if (
+        next.provider === 'livekit'
+        && next.joinMode === 'in_app'
+        && next.livekitUrl
+        && next.meetTicket
+      ) {
+        const redemption = await api.redeemVideoMeetTicket(next.meetTicket);
+        const redeemed = redemption.data;
+        const redeemedToken = redeemed?.livekitToken || redeemed?.token;
+        if (!redemption.success || !redeemed?.livekitUrl || !redeemedToken) {
+          fatalError(redemption.message || 'The secure session ticket expired. Please try joining again.');
+          return;
+        }
+        setRoomData({
+          ...next,
+          livekitUrl: redeemed.livekitUrl,
+          livekitToken: redeemedToken,
+          meetTicket: undefined,
+        });
+        setPageState('in-call');
+        return;
+      }
+      setRoomData(next);
+      if (next.joinMode === 'external_link') {
+        setPageState(next.joinUrl || next.externalJoinUrl ? 'external' : 'not-configured');
+        return;
+      }
+      if (next.joinMode === 'disabled' || next.provider === 'disabled') {
+        setPageState('disabled');
+        return;
+      }
+      fatalError(next.message || 'Failed to join session. Please try again.');
     } catch {
       fatalError('Failed to connect to session. Please check your connection.');
     }
@@ -264,6 +315,56 @@ export default function VideoCallPage() {
     );
   }
 
+  if (pageState === 'external' && roomData) {
+    const joinUrl = roomData.joinUrl || roomData.externalJoinUrl;
+    const providerName = roomData.providerName || roomData.externalProviderName || 'external provider';
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col">
+        {topBar('External Session')}
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center space-y-4 text-white max-w-sm">
+            <h2 className="text-2xl font-bold">Join on {providerName}</h2>
+            <p className="text-gray-400">This session uses an approved external provider link.</p>
+            <Button onClick={() => { if (joinUrl) window.location.href = joinUrl; }}>Open session link</Button>
+            <Button variant="secondary" onClick={() => router.push(`/bookings/${bookingId}`)}>Back to booking</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pageState === 'not-configured') {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col">
+        {topBar('Session Link Pending')}
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center space-y-4 text-white max-w-sm">
+            <Clock className="w-10 h-10 text-primary-400 mx-auto" />
+            <h2 className="text-2xl font-bold">Session link not ready</h2>
+            <p className="text-gray-400">{roomData?.message || 'Your secure video session link is not ready yet. Please wait for your counsellor or admin to prepare it.'}</p>
+            <Button variant="secondary" onClick={() => router.push(`/bookings/${bookingId}`)}>Back to booking</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pageState === 'disabled') {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col">
+        {topBar('Calling Unavailable')}
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center space-y-4 text-white max-w-sm">
+            <PhoneOff className="w-10 h-10 text-red-400 mx-auto" />
+            <h2 className="text-2xl font-bold">Calling unavailable</h2>
+            <p className="text-gray-400">{roomData?.message || 'Video calling is not available until your region is verified.'}</p>
+            <Button variant="secondary" onClick={() => router.push(`/bookings/${bookingId}`)}>Back to booking</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Cancelled ──────────────────────────────────────────────────────────────
 
   if (pageState === 'cancelled') {
@@ -344,7 +445,9 @@ export default function VideoCallPage() {
 
   // ── In-call — LiveKit ──────────────────────────────────────────────────────
 
-  if (pageState === 'in-call' && roomData) {
+	if (pageState === 'in-call' && roomData) {
+    const token = roomData.livekitToken || roomData.token;
+    if (!roomData.livekitUrl || !token) return null;
     return (
       <div style={{ width: '100vw', height: '100vh', background: '#0f172a', position: 'relative' }}>
         {/* Timer overlay */}
@@ -369,9 +472,9 @@ export default function VideoCallPage() {
 
         <LiveKitRoom
           video={true}
-          audio={true}
-          token={roomData.livekitToken}
-          serverUrl={roomData.livekitUrl}
+	          audio={true}
+	          token={token}
+	          serverUrl={roomData.livekitUrl}
           data-lk-theme="default"
           style={{ height: '100vh' }}
           onDisconnected={() => {

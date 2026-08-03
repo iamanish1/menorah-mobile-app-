@@ -1,13 +1,15 @@
 "use client";
 
-import type { CSSProperties, RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Bell,
   BookOpen,
   CalendarDays,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Clock,
   HeartPulse,
@@ -25,6 +27,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, Badge, Button } from "@/components/ui";
+import { useMediaQuery, usePrefersReducedMotion } from "@/components/landing/useLandingMotion";
 
 const webNavItems = [
   { id: "discover", label: "Discover", icon: Search },
@@ -97,32 +100,50 @@ const chatRooms = [
 
 const waveformBars = [14, 24, 32, 18, 28, 38, 22, 34, 26, 42, 30, 20, 36, 44, 24, 34];
 
-export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef: RefObject<HTMLElement | null> }) {
-  const scrollProgress = useScrollProgress(scrollRootRef);
+const demoFilterControls = [
+  {
+    label: "Specialization",
+    initialValue: "Stress",
+    options: ["All specializations", "Stress", "Sleep", "Relationships", "Work pressure"]
+  },
+  {
+    label: "Language",
+    initialValue: "English",
+    options: ["Any language", "English", "Hindi", "Arabic", "Malayalam"]
+  },
+  {
+    label: "Minimum Rating",
+    initialValue: "4.5 stars & above",
+    options: ["5 stars & above", "4.5 stars & above", "4 stars & above", "Any rating"]
+  }
+] as const;
+
+export function AnimatedProductMockupSection({ scrollProgress }: { scrollProgress: number }) {
   const reducedMotion = usePrefersReducedMotion();
   const compactViewport = useMediaQuery("(max-width: 767px)");
   const tabletViewport = useMediaQuery("(max-width: 1023px)");
-  const mockUnfoldEnd = 0.38;
-  const mockUntiltEnd = 0.48;
+  const mockUnfoldEnd = 0.42;
+  const mockUntiltEnd = 0.54;
   const featureCycleStart = mockUntiltEnd;
-  const featureCycleEnd = 0.88;
+  const featureCycleEnd = 0.9;
+  const reducedMotionReveal = Number(scrollProgress >= 0.1);
 
-  const dashboardProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.24));
-  const dashboardLiftProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.08, mockUnfoldEnd));
-  const dashboardUntiltProgress = reducedMotion ? 1 : easeInOutCubic(progressBetween(scrollProgress, 0.1, mockUntiltEnd));
-  const backPanelProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.16));
-  const frameProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.07, 0.24));
-  const contentProgress = reducedMotion ? 1 : easeOutCubic(progressBetween(scrollProgress, 0.16, mockUnfoldEnd));
-  const badgeProgress = reducedMotion ? 1 : easeOutBack(progressBetween(scrollProgress, 0.22, mockUnfoldEnd));
-  const featureProgress = reducedMotion ? 0 : progressBetween(scrollProgress, featureCycleStart, featureCycleEnd);
-  const autoJourneyProgress = reducedMotion ? 0 : featureProgress * (webNavItems.length - 1);
+  const dashboardProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.24));
+  const dashboardLiftProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.08, mockUnfoldEnd));
+  const dashboardUntiltProgress = reducedMotion ? reducedMotionReveal : easeInOutCubic(progressBetween(scrollProgress, 0.1, mockUntiltEnd));
+  const backPanelProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.02, 0.16));
+  const frameProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.07, 0.24));
+  const contentProgress = reducedMotion ? reducedMotionReveal : easeOutCubic(progressBetween(scrollProgress, 0.16, mockUnfoldEnd));
+  const badgeProgress = reducedMotion ? reducedMotionReveal : easeOutBack(progressBetween(scrollProgress, 0.22, mockUnfoldEnd));
+  const featureProgress = progressBetween(scrollProgress, featureCycleStart, featureCycleEnd);
+  const autoJourneyProgress = featureProgress * (webNavItems.length - 1);
   const autoFeatureIndex = Math.min(webNavItems.length - 1, Math.max(0, Math.round(autoJourneyProgress)));
 
-  const dashboardStartY = compactViewport ? 286 : tabletViewport ? 318 : 340;
-  const dashboardEndY = compactViewport ? 12 : tabletViewport ? 24 : 38;
-  const dashboardStartScale = compactViewport ? 0.88 : tabletViewport ? 0.86 : 0.84;
-  const dashboardEndScale = compactViewport ? 1.02 : tabletViewport ? 1.05 : 1.08;
-  const dashboardStartRotateX = compactViewport ? 42 : 60;
+  const dashboardStartY = compactViewport ? 248 : tabletViewport ? 292 : 328;
+  const dashboardEndY = compactViewport ? 10 : tabletViewport ? 20 : 34;
+  const dashboardStartScale = compactViewport ? 0.88 : tabletViewport ? 0.84 : 0.78;
+  const dashboardEndScale = compactViewport ? 0.96 : tabletViewport ? 0.94 : 0.88;
+  const dashboardStartRotateX = compactViewport ? 34 : tabletViewport ? 48 : 56;
   const dashboardRotateX = reducedMotion ? 0 : lerp(dashboardStartRotateX, 0, dashboardUntiltProgress);
   const dashboardDepth = reducedMotion ? 0 : lerp(-92, 0, dashboardLiftProgress);
   const clipTop = reducedMotion ? 0 : lerp(35, 0, dashboardProgress);
@@ -130,7 +151,7 @@ export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef:
   const blur = reducedMotion ? 0 : lerp(3, 0, dashboardProgress);
 
   const dashboardStyle: CSSProperties = {
-    opacity: reducedMotion ? 1 : progressBetween(scrollProgress, 0.05, 0.28),
+    opacity: reducedMotion ? reducedMotionReveal : progressBetween(scrollProgress, 0.05, 0.28),
     clipPath: `inset(${clipTop}% ${clipSide}% 0% ${clipSide}% round 24px)`,
     filter: `blur(${blur}px)`,
     transform: `translateX(-50%) translateY(-50%) translate3d(0, ${lerp(
@@ -145,6 +166,7 @@ export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef:
     transformOrigin: "center center",
     perspectiveOrigin: "50% 50%",
     transformStyle: "preserve-3d",
+    backfaceVisibility: "hidden",
     willChange: reducedMotion ? undefined : "transform, opacity, clip-path, filter"
   };
 
@@ -185,7 +207,8 @@ export function AnimatedProductMockupSection({ scrollRootRef }: { scrollRootRef:
     <div
       data-product-dashboard
       data-menorah-landing-theme="source"
-      className="absolute left-1/2 top-1/2 z-20 w-[min(1560px,calc(100vw-var(--mockup-x-inset)-var(--mockup-x-inset)))] max-h-[calc(100vh-var(--mockup-y-inset)-var(--mockup-y-inset))] [--mockup-x-inset:8px] [--mockup-y-inset:12px] sm:[--mockup-x-inset:clamp(18px,4vw,90px)] sm:[--mockup-y-inset:clamp(18px,4vh,90px)]"
+      data-landing-scroll-feature={webNavItems[autoFeatureIndex].label}
+      className="absolute left-1/2 top-1/2 z-20 w-[var(--landing-dashboard-width)] [--mockup-y-inset:clamp(1rem,5svh,5rem)]"
       style={dashboardStyle}
     >
       <DashboardMockup
@@ -224,21 +247,21 @@ function DashboardMockup({
   const ActiveIcon = selectedNav.icon;
 
   return (
-    <div className="relative mx-auto aspect-[4/5] w-full max-h-[calc(100vh-var(--mockup-y-inset)-var(--mockup-y-inset))] select-none overflow-visible [perspective:1400px] sm:aspect-[16/9]">
+    <div className="relative mx-auto aspect-[16/11] w-full max-h-[calc(100svh-var(--mockup-y-inset)-var(--mockup-y-inset))] select-none overflow-visible [perspective:1400px] sm:aspect-[16/10] lg:aspect-[16/9]">
       <div
-        className="absolute left-6 right-6 top-[-18px] h-full rounded-lg border border-primary-100 bg-white/55 shadow-[0_18px_80px_rgba(45,122,92,0.12)] backdrop-blur-xl sm:left-10 sm:right-10"
+        className="absolute left-[clamp(1.25rem,4vw,2.5rem)] right-[clamp(1.25rem,4vw,2.5rem)] top-[-18px] h-full rounded-lg border border-primary-100 bg-white/55 shadow-[0_18px_80px_rgba(45,122,92,0.12)] backdrop-blur-xl"
         style={backPanelStyle}
       />
       <div
-        className="absolute left-12 right-12 top-[-34px] hidden h-full rounded-lg border border-primary-100 bg-white/35 blur-[1px] sm:block"
+        className="absolute left-[clamp(3rem,7vw,5rem)] right-[clamp(3rem,7vw,5rem)] top-[-34px] hidden h-full rounded-lg border border-primary-100 bg-white/35 blur-[1px] sm:block"
         style={backPanelStyle}
       />
 
       <div
-        className="relative z-10 flex h-full flex-col overflow-hidden rounded-lg border border-primary-100 bg-white text-gray-950 shadow-[0_34px_120px_rgba(45,122,92,0.18),0_0_0_1px_rgba(45,122,92,0.08)]"
+        className="relative z-10 flex h-full flex-col overflow-hidden rounded-[var(--landing-radius-md)] border border-primary-100 bg-white text-gray-950 shadow-[0_34px_120px_rgba(45,122,92,0.18),0_0_0_1px_rgba(45,122,92,0.08)]"
         style={frameStyle}
       >
-        <div className="flex h-12 items-center justify-between border-b border-primary-100 bg-primary-50/95 px-3 sm:h-14 sm:px-5">
+        <div className="flex h-[clamp(3rem,3.6vw,4rem)] items-center justify-between border-b border-primary-100 bg-primary-50/95 px-[clamp(0.75rem,1.3vw,1.5rem)]">
           <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-red-300" />
             <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
@@ -257,9 +280,9 @@ function DashboardMockup({
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[54px_minmax(0,1fr)] sm:grid-cols-[210px_minmax(0,1fr)]" style={contentStyle}>
-          <aside className="border-r border-primary-100 bg-white/95 px-2 py-3 text-gray-950 shadow-[0_22px_60px_-34px_rgba(17,24,39,0.55)] sm:px-3 sm:py-4">
-            <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-2xl bg-primary-600 text-white sm:mx-0 sm:h-11 sm:w-11">
+        <div className="grid min-h-0 flex-1 grid-cols-[clamp(3.25rem,12vw,4.4rem)_minmax(0,1fr)] sm:grid-cols-[clamp(10.5rem,18vw,14.5rem)_minmax(0,1fr)]" style={contentStyle}>
+          <aside className="border-r border-primary-100 bg-white/95 px-[clamp(0.5rem,0.8vw,1rem)] py-[clamp(0.75rem,1.1vw,1.25rem)] text-gray-950 shadow-[0_22px_60px_-34px_rgba(17,24,39,0.55)]">
+            <div className="mx-auto flex h-[clamp(2.25rem,2.8vw,3.1rem)] w-[clamp(2.25rem,2.8vw,3.1rem)] items-center justify-center rounded-2xl bg-primary-600 text-white sm:mx-0">
               <HeartPulse className="h-5 w-5" aria-hidden="true" />
             </div>
             <p className="mt-3 hidden text-lg font-black text-gray-950 sm:block">Menorah</p>
@@ -278,9 +301,9 @@ function DashboardMockup({
             </nav>
           </aside>
 
-          <main className="min-w-0 overflow-hidden bg-[var(--app-bg)] p-3 sm:p-5">
+          <main className="min-w-0 overflow-hidden bg-[var(--app-bg)] p-[clamp(0.65rem,1.8vw,1.45rem)]">
             <div className="flex min-h-0 h-full flex-col">
-              <div className="mb-3 flex flex-col gap-3 rounded-[1.75rem] border border-primary-100 bg-primary-50 px-5 py-4 shadow-[0_14px_32px_-26px_rgba(45,122,92,0.5)] sm:flex-row sm:items-center sm:justify-between">
+              <div className="mb-[clamp(0.6rem,1vw,1rem)] flex flex-col gap-[clamp(0.6rem,1vw,1rem)] rounded-[var(--landing-radius-lg)] border border-primary-100 bg-primary-50 px-[clamp(0.85rem,1.6vw,1.5rem)] py-[clamp(0.85rem,1.3vw,1.25rem)] shadow-[0_14px_32px_-26px_rgba(45,122,92,0.5)] sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-primary-700">
                     <ActiveIcon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -309,7 +332,7 @@ function DashboardMockup({
                 key={activeFeature}
                 className={cn(
                   "min-h-0 flex-1 overflow-hidden",
-                  !reducedMotion && "animate-in fade-in slide-in-from-bottom-2 duration-200"
+                  !reducedMotion && "animate-in fade-in slide-in-from-bottom-2 duration-700 ease-out will-change-[transform,opacity]"
                 )}
               >
                 <WebFeaturePanel
@@ -326,7 +349,7 @@ function DashboardMockup({
       </div>
 
       <div
-        className="absolute bottom-3 right-1 z-20 w-36 rounded-lg border border-primary-200 bg-primary-600 p-3 text-white shadow-[0_22px_60px_rgba(45,122,92,0.28)] sm:-right-5 sm:bottom-2 sm:w-44 sm:p-4"
+        className="absolute bottom-[clamp(0.45rem,2vw,0.75rem)] right-[clamp(0.25rem,1vw,0.75rem)] z-20 w-[clamp(8.5rem,18vw,11rem)] rounded-lg border border-primary-200 bg-primary-600 p-[clamp(0.75rem,1.5vw,1rem)] text-white shadow-[0_22px_60px_rgba(45,122,92,0.28)] sm:-right-5"
         style={badgeStyle}
       >
         <span className="absolute -left-8 top-7 h-10 w-10 rounded-tl-full border-l border-t border-dashed border-primary-200/60" />
@@ -533,25 +556,39 @@ function WebFeaturePanel({
   if (feature === "profile") {
     return (
       <div className="page-container h-full max-w-none overflow-hidden !px-0 !py-0">
-        <div className="grid h-full min-h-0 gap-3 md:grid-cols-[0.9fr_1fr]">
-          <div className="card flex items-center gap-5 bg-primary-600 p-6 text-white">
-          <div className="flex items-center gap-4">
-              <Avatar name="Tej Raj" size="xl" className="border-2 border-white/70 rounded-full" />
-            <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="truncate text-xl font-black text-white">Tej Raj</h4>
-                  <Badge variant="success">Free</Badge>
+        <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[0.92fr_1fr]">
+          <div className="flex min-h-0 flex-col justify-between overflow-hidden rounded-3xl border border-primary-500/20 p-5 text-white shadow-[0_18px_50px_-30px_rgba(45,122,92,0.8)] [background:linear-gradient(135deg,#2d7a5c_0%,#24654c_58%,#1d4f3c_100%)]">
+            <div className="flex min-w-0 items-center gap-4">
+              <Avatar name="John Doe" size="xl" className="rounded-full border-2 border-white/70 shadow-[0_12px_30px_-20px_rgba(0,0,0,0.55)]" />
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h4 className="min-w-0 truncate text-xl font-black text-white">John Doe</h4>
+                  <Badge variant="success" className="shrink-0 bg-white/[0.92] text-primary-700">Member</Badge>
                 </div>
-              <p className="mt-1 truncate text-sm text-white/75">demo@menorah.health</p>
-                <p className="mt-0.5 text-xs text-white/65">+971 50 000 0000</p>
-                <div className="mt-2 flex gap-2">
-                  <Badge variant="success">Email verified</Badge>
-                  <Badge variant="success">Phone verified</Badge>
+                <p className="mt-1 truncate text-sm font-medium text-white/[0.82]">john.doe@example.com</p>
+                <p className="mt-0.5 text-xs text-white/[0.65]">+1 555 013 2048</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant="success" className="bg-white/[0.92] text-primary-700">Email verified</Badge>
+                  <Badge variant="success" className="bg-white/[0.92] text-primary-700">Phone verified</Badge>
                 </div>
               </div>
             </div>
+
+            <div className="mt-6 grid grid-cols-3 gap-2">
+              {[
+                ["Bookings", "Pay per session"],
+                ["Sessions", "Ready"],
+                ["Status", "Verified"]
+              ].map(([label, value]) => (
+                <div key={label} className="min-w-0 rounded-2xl bg-white/[0.14] px-3 py-2 ring-1 ring-white/[0.12]">
+                  <p className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-white/[0.62]">{label}</p>
+                  <p className="mt-1 truncate text-sm font-black text-white">{value}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="space-y-4">
+
+          <div className="min-h-0 space-y-3 overflow-hidden">
             <ProfileMenuSection
               title="Account"
               items={[
@@ -582,16 +619,13 @@ function WebFeaturePanel({
               <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
               Filters
             </div>
-            {["Specialization", "Language", "Minimum Rating"].map((label, index) => (
-              <label key={label} className="block space-y-1.5 text-sm font-semibold text-gray-700">
-                <span>{label}</span>
-                <select className="input-field h-10 py-0 text-sm" defaultValue={index === 0 ? "Stress" : ""}>
-                  <option value="">{index === 0 ? "All specializations" : "Any"}</option>
-                  <option value="Stress">Stress</option>
-                  <option value="English">English</option>
-                  <option value="4.5">4.5 stars & above</option>
-                </select>
-              </label>
+            {demoFilterControls.map((control) => (
+              <DemoFilterControl
+                key={control.label}
+                label={control.label}
+                initialValue={control.initialValue}
+                options={control.options}
+              />
             ))}
             <Button fullWidth size="sm">Apply Filters</Button>
           </div>
@@ -606,6 +640,105 @@ function WebFeaturePanel({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function DemoFilterControl({
+  label,
+  initialValue,
+  options
+}: {
+  label: string;
+  initialValue: string;
+  options: readonly string[];
+}) {
+  const id = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative block space-y-1.5 text-sm font-semibold text-gray-700">
+      <span id={`${id}-label`}>{label}</span>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-labelledby={`${id}-label ${id}-value`}
+        className={cn(
+          "group flex h-10 w-full items-center justify-between gap-2 rounded-2xl border border-primary-100 bg-white px-3 text-left text-xs font-black text-gray-950 shadow-[0_10px_22px_-20px_rgba(17,24,39,0.46)] transition duration-200",
+          "hover:-translate-y-0.5 hover:border-primary-300 hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2",
+          open && "border-primary-400 bg-primary-50 shadow-[0_16px_34px_-26px_rgba(45,122,92,0.62)]"
+        )}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span id={`${id}-value`} className="min-w-0 truncate">{value}</span>
+        <ChevronDown
+          className={cn("h-3.5 w-3.5 shrink-0 text-primary-600 transition-transform duration-200", open && "rotate-180")}
+          aria-hidden="true"
+        />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-labelledby={`${id}-label`}
+          className="absolute left-0 right-0 z-40 mt-2 origin-top overflow-hidden rounded-2xl border border-primary-100 bg-white/[0.98] p-1.5 shadow-[0_22px_60px_-30px_rgba(17,24,39,0.65)] backdrop-blur-xl animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-200"
+        >
+          {options.map((option, index) => {
+            const selected = value === option;
+
+            return (
+              <button
+                key={option}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                className={cn(
+                  "group/option flex min-h-9 w-full items-center justify-between gap-2 rounded-xl px-2.5 py-1.5 text-left text-xs font-black transition duration-200 animate-in fade-in slide-in-from-top-1",
+                  "hover:-translate-y-0.5 hover:bg-primary-50 hover:shadow-[0_12px_22px_-20px_rgba(45,122,92,0.62)] focus-visible:bg-primary-50 focus-visible:outline-none",
+                  selected && "bg-primary-100 text-primary-950"
+                )}
+                style={{ animationDelay: `${index * 24}ms`, animationFillMode: "both" }}
+                onClick={() => {
+                  setValue(option);
+                  setOpen(false);
+                }}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    className={cn(
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition duration-200",
+                      selected ? "border-primary-600 bg-primary-600 text-white" : "border-primary-100 bg-primary-50 text-primary-600"
+                    )}
+                  >
+                    <span className={cn("h-1.5 w-1.5 rounded-full bg-current transition-transform duration-200", selected ? "scale-100" : "scale-0")} />
+                  </span>
+                  <span className="min-w-0 truncate">{option}</span>
+                </span>
+                <Check className={cn("h-3.5 w-3.5 shrink-0 text-primary-700 transition duration-200", selected ? "scale-100 opacity-100" : "scale-75 opacity-0")} aria-hidden="true" />
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -668,8 +801,8 @@ function DemoCounsellorProfileCard({
             <p className="counsellor-profile-card__stat-label">Languages</p>
           </div>
           <div className="counsellor-profile-card__stat">
-            <p className="counsellor-profile-card__stat-value">Free</p>
-            <p className="counsellor-profile-card__stat-label">Per session</p>
+            <p className="counsellor-profile-card__stat-value">INR 1,000</p>
+            <p className="counsellor-profile-card__stat-label">Per hour</p>
           </div>
         </div>
 
@@ -704,7 +837,7 @@ function DemoBookingCard({ booking, compact = false }: { booking: (typeof bookin
         </p>
         <div className="mt-1 flex items-center gap-3 text-xs text-gray-400">
           <span>{booking.time}</span>
-          <span>Free</span>
+          <span>INR 1,000</span>
         </div>
       </div>
     </div>
@@ -802,7 +935,7 @@ function getFeatureHeading(feature: WebMockFeature) {
 
 function getFeatureSubtitle(feature: WebMockFeature) {
   const subtitles: Record<WebMockFeature, string> = {
-    discover: "Browse certified men's mental health counsellors",
+    discover: "Browse verified profiles, availability, and hourly rates",
     articles: "Searchable resources for practical support",
     bookings: "Track and manage your sessions",
     chat: "Chat with a counsellor",
@@ -822,125 +955,6 @@ function getFeatureSearch(feature: WebMockFeature) {
   };
 
   return placeholders[feature];
-}
-
-function useScrollProgress(ref: RefObject<HTMLElement | null>) {
-  const [progress, setProgress] = useState(0);
-  const targetProgressRef = useRef(0);
-  const displayedProgressRef = useRef(0);
-
-  useEffect(() => {
-    let measureFrame = 0;
-    let animationFrame = 0;
-
-    const animateProgress = () => {
-      animationFrame = 0;
-      const currentProgress = displayedProgressRef.current;
-      const targetProgress = targetProgressRef.current;
-      const remainingDistance = targetProgress - currentProgress;
-      const nextProgress =
-        Math.abs(remainingDistance) < 0.0005 ? targetProgress : currentProgress + remainingDistance * 0.14;
-
-      displayedProgressRef.current = nextProgress;
-      setProgress((current) => (Math.abs(current - nextProgress) > 0.0001 ? nextProgress : current));
-
-      if (Math.abs(targetProgress - nextProgress) > 0.0005) {
-        animationFrame = window.requestAnimationFrame(animateProgress);
-      }
-    };
-
-    const queueAnimation = () => {
-      if (animationFrame) {
-        return;
-      }
-
-      animationFrame = window.requestAnimationFrame(animateProgress);
-    };
-
-    const measure = () => {
-      measureFrame = 0;
-      const element = ref.current;
-
-      if (!element) {
-        return;
-      }
-
-      const rect = element.getBoundingClientRect();
-      const travel = Math.max(rect.height - window.innerHeight, 1);
-      const nextProgress = clamp(-rect.top / travel, 0, 1);
-
-      if (Math.abs(targetProgressRef.current - nextProgress) > 0.0001) {
-        targetProgressRef.current = nextProgress;
-        queueAnimation();
-      }
-    };
-
-    const queueMeasure = () => {
-      if (measureFrame) {
-        return;
-      }
-
-      measureFrame = window.requestAnimationFrame(measure);
-    };
-
-    const resizeObserver = new ResizeObserver(queueMeasure);
-
-    if (ref.current) {
-      resizeObserver.observe(ref.current);
-    }
-
-    measure();
-    window.addEventListener("scroll", queueMeasure, { passive: true });
-    window.addEventListener("resize", queueMeasure);
-
-    return () => {
-      if (measureFrame) {
-        window.cancelAnimationFrame(measureFrame);
-      }
-
-      if (animationFrame) {
-        window.cancelAnimationFrame(animationFrame);
-      }
-
-      resizeObserver.disconnect();
-      window.removeEventListener("scroll", queueMeasure);
-      window.removeEventListener("resize", queueMeasure);
-    };
-  }, [ref]);
-
-  return progress;
-}
-
-function usePrefersReducedMotion() {
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => setReducedMotion(media.matches);
-
-    updatePreference();
-    media.addEventListener("change", updatePreference);
-
-    return () => media.removeEventListener("change", updatePreference);
-  }, []);
-
-  return reducedMotion;
-}
-
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const updateMatch = () => setMatches(media.matches);
-
-    updateMatch();
-    media.addEventListener("change", updateMatch);
-
-    return () => media.removeEventListener("change", updateMatch);
-  }, [query]);
-
-  return matches;
 }
 
 function progressBetween(progress: number, start: number, end: number) {

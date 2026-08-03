@@ -266,7 +266,7 @@ export default function Onboarding({ navigation }: any) {
                   You{"'"}re in safe hands
                 </Text>
                 <Text style={{ fontSize: 12, color: isDark ? colors.muted : '#6a7e6a', lineHeight: 18 }}>
-                  Your conversations are 100% private and confidential.
+                  Account controls and secure transport help protect your conversations.
                 </Text>
               </View>
             </View>

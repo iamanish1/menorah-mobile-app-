@@ -1,6 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: "com.google.gms.google-services"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
@@ -11,7 +12,7 @@ def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 react {
     entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
     reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
-    hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+    hermesCommand = new File(["node", "--print", "require.resolve('hermes-compiler/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/hermesc/%OS-BIN%/hermesc"
     codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
 
     enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
@@ -80,6 +81,45 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
  * this variant is about 6MiB larger per architecture than default.
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+def releaseSigningProperty = { String name ->
+    return project.findProperty(name) ?: System.getenv(name)
+}
+def releaseSigningNames = [
+    'ANDROID_KEYSTORE_FILE',
+    'ANDROID_KEYSTORE_PASSWORD',
+    'ANDROID_KEY_ALIAS',
+    'ANDROID_KEY_PASSWORD',
+]
+def releaseSigningValues = releaseSigningNames.collectEntries { name ->
+    [(name): releaseSigningProperty(name)]
+}
+def releaseBuildRequested = gradle.startParameter.taskNames.any {
+    it.toLowerCase().contains('release')
+}
+def releaseSigningPartiallyConfigured = releaseSigningValues.values().any {
+    it != null && !it.toString().trim().isEmpty()
+}
+def easBuildSigningInjected = 'true'.equalsIgnoreCase(System.getenv('EAS_BUILD')) &&
+    file('eas-build.gradle').isFile() &&
+    rootProject.file('../credentials.json').isFile()
+if (releaseSigningPartiallyConfigured) {
+    def missingReleaseSigningNames = releaseSigningNames.findAll {
+        def value = releaseSigningValues[it]
+        value == null || value.toString().trim().isEmpty()
+    }
+    if (!missingReleaseSigningNames.isEmpty()) {
+        throw new GradleException("Release signing is incomplete; missing: ${missingReleaseSigningNames.join(', ')}")
+    }
+    if (!file(releaseSigningValues['ANDROID_KEYSTORE_FILE']).isFile()) {
+        throw new GradleException('ANDROID_KEYSTORE_FILE does not identify a readable file')
+    }
+} else if (releaseBuildRequested && !easBuildSigningInjected) {
+    throw new GradleException(
+        'Release signing requires either the complete ANDROID_KEYSTORE_* configuration or '
+        + 'EAS_BUILD=true with injected eas-build.gradle and credentials.json files'
+    )
+}
+def releaseKeystoreFile = releaseSigningValues['ANDROID_KEYSTORE_FILE']
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -92,8 +132,8 @@ android {
         applicationId 'com.menorah.healthmobile'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 14
-        versionName "2.6.0"
+        versionCode 15
+        versionName "2.7.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -105,11 +145,11 @@ android {
             keyPassword 'android'
         }
         release {
-            if (project.hasProperty('ANDROID_KEYSTORE_FILE')) {
-                storeFile file(ANDROID_KEYSTORE_FILE)
-                storePassword project.property('ANDROID_KEYSTORE_PASSWORD')
-                keyAlias project.property('ANDROID_KEY_ALIAS')
-                keyPassword project.property('ANDROID_KEY_PASSWORD')
+            if (releaseKeystoreFile) {
+                storeFile file(releaseKeystoreFile)
+                storePassword releaseSigningValues['ANDROID_KEYSTORE_PASSWORD']
+                keyAlias releaseSigningValues['ANDROID_KEY_ALIAS']
+                keyPassword releaseSigningValues['ANDROID_KEY_PASSWORD']
             }
         }
     }
@@ -118,7 +158,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig project.hasProperty('ANDROID_KEYSTORE_FILE') ? signingConfigs.release : null
+            signingConfig releaseKeystoreFile ? signingConfigs.release : null
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
@@ -154,6 +194,31 @@ android {
         // Ex: android.packagingOptions.pickFirsts += '**/SCCS/**'
         options.each {
             android.packagingOptions[prop] += it
+        }
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def hasReleaseTask = graph.allTasks.any { task ->
+        task.name.toLowerCase().contains('release')
+    }
+    if (hasReleaseTask) {
+        if (!file('google-services.json').isFile()) {
+            throw new GradleException('Release build requires the validated temporary google-services.json')
+        }
+        def highestPlayVersionCode = System.getenv('PLAY_HIGHEST_VERSION_CODE')
+        if (highestPlayVersionCode == null || !(highestPlayVersionCode ==~ /\d+/)) {
+            throw new GradleException('Release build requires PLAY_HIGHEST_VERSION_CODE from a fresh Play Console check')
+        }
+        if (15 <= highestPlayVersionCode.toInteger()) {
+            throw new GradleException('Release versionCode must be greater than the fresh Play Console maximum')
+        }
+        def signing = android.buildTypes.release.signingConfig
+        if (signing == null || signing.storeFile == null || !signing.storeFile.isFile() ||
+            signing.storePassword == null || signing.storePassword.toString().trim().isEmpty() ||
+            signing.keyAlias == null || signing.keyAlias.toString().trim().isEmpty() ||
+            signing.keyPassword == null || signing.keyPassword.toString().trim().isEmpty()) {
+            throw new GradleException('Release task resolved without a complete readable signing configuration')
         }
     }
 }

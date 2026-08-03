@@ -13,8 +13,11 @@ import Input from '@/components/ui/Input';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { useAuth } from '@/state/useAuth';
+import { usePreventScreenCapture } from 'expo-screen-capture';
+import { isValidPasswordResetToken } from '@/lib/deepLinks';
 
 export default function ResetPassword({ navigation, route }: any) {
+  usePreventScreenCapture('password-reset');
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const isDark = scheme === 'dark';
@@ -23,10 +26,8 @@ export default function ResetPassword({ navigation, route }: any) {
   const { resetPassword } = useAuth();
 
   const token = useMemo(() => {
-    if (typeof route?.params?.token === 'string') {
-      return route.params.token.trim();
-    }
-    return '';
+    const candidate = route?.params?.token;
+    return isValidPasswordResetToken(candidate) ? candidate : '';
   }, [route?.params?.token]);
 
   const [password, setPassword] = useState('');
@@ -49,8 +50,13 @@ export default function ResetPassword({ navigation, route }: any) {
     if (!password.trim()) {
       setPasswordError('New password is required');
       isValid = false;
-    } else if (password.trim().length < 8) {
-      setPasswordError('Password must be at least 8 characters long');
+    } else if (
+      password.trim().length < 8
+      || !/[a-z]/.test(password)
+      || !/[A-Z]/.test(password)
+      || !/\d/.test(password)
+    ) {
+      setPasswordError('Use at least 8 characters with uppercase, lowercase, and a number');
       isValid = false;
     } else {
       setPasswordError('');

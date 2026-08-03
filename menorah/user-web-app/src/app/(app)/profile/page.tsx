@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import {
   User, MapPin, Phone, Shield, Bell, Lock,
-  CreditCard, HeartPulse, ChevronRight, LogOut
+  CreditCard, HeartPulse, ChevronRight, LogOut, ShieldCheck
 } from 'lucide-react';
 import { Avatar, Badge } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
@@ -14,6 +14,7 @@ const sections = [
     title: 'Account',
     items: [
       { href: '/profile/edit',            icon: User,      label: 'Edit Profile' },
+      { href: '/profile/security',        icon: ShieldCheck,label: 'Security & Sign-in' },
       { href: '/profile/change-password', icon: Lock,      label: 'Change Password' },
     ],
   },
@@ -33,7 +34,7 @@ const sections = [
 ];
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { user, logout, logoutAll } = useAuth();
   if (!user) return null;
 
   const plan = user.subscription?.plan ?? 'free';
@@ -51,7 +52,7 @@ export default function ProfilePage() {
             </Badge>
           </div>
           <p className="text-white/80 text-sm mt-0.5 truncate">{user.email}</p>
-          <p className="text-white/65 text-xs mt-0.5">{user.phone}</p>
+          {user.phone ? <p className="text-white/65 text-xs mt-0.5">{user.phone}</p> : null}
           <div className="flex gap-2 mt-2">
             {user.isEmailVerified && <Badge variant="success" size="sm">Email verified</Badge>}
             {user.isPhoneVerified && <Badge variant="success" size="sm">Phone verified</Badge>}
@@ -83,6 +84,20 @@ export default function ProfilePage() {
             </div>
           </div>
         ))}
+
+        <button
+          onClick={() => {
+            if (window.confirm('Sign out every browser and device connected to this account?')) {
+              void logoutAll();
+            }
+          }}
+          className="w-full card flex items-center gap-3 px-4 py-3.5 text-amber-700 hover:bg-amber-50 transition-colors dark:text-amber-200 dark:hover:bg-amber-950"
+        >
+          <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
+            <Shield className="w-4 h-4 text-amber-600" />
+          </div>
+          <span className="flex-1 text-sm font-medium text-left">Sign Out All Devices</span>
+        </button>
 
         <button
           onClick={logout}
