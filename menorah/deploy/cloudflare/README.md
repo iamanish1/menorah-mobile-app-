@@ -74,7 +74,7 @@ the edge intentionally returns `404` for these files. See
 [`../app-links/README.md`](../app-links/README.md) for the exact variables and
 post-deploy verification commands.
 
-Cloudflare HTTP proxying is only for HTTPS/WSS signaling. LiveKit media still needs Hostinger firewall/NAT access to the configured RTC ports, normally `7881/tcp` and `50000-50100/udp`, or clients must rely on LiveKit TCP fallback.
+Cloudflare HTTP proxying is only for HTTPS/WSS signaling. LiveKit media still needs direct Hostinger access to `7881/tcp`, `3478/udp`, `5349/tcp`, and `61000-62000/udp`. The TURN relay allocation range remains internal and is not opened publicly.
 
 ## Dashboard-Managed Tunnel Token
 

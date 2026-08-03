@@ -215,7 +215,8 @@ Admin panel:
 - `LIVEKIT_API_SECRET`
 - `LIVEKIT_UPSTREAM`
 - Host-only config file: `deploy/livekit/livekit.yaml`
-- Hostinger firewall: `443/tcp`, `7881/tcp`, and `50000-50100/udp`
+- Hostinger firewall: `80/tcp`, `443/tcp`, `443/udp`, `3478/udp`, `5349/tcp`, `7881/tcp`, and `61000-62000/udp`
+- `30000-31000/udp` is the internal TURN relay allocation range and is not exposed publicly.
 
 ### Hybrid Calling Policy
 

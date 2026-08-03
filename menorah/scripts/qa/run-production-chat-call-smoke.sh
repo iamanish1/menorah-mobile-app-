@@ -63,5 +63,6 @@ docker run --rm \
   -e QA_API_WEB_URL="${QA_API_WEB_URL:-https://api-web.menorah.me}" \
   -e QA_CALL_API_URL="${QA_CALL_API_URL:-http://127.0.0.1:18082}" \
   -e QA_APP_URL="${QA_APP_URL:-https://app.menorah.me}" \
+  -e QA_WEBRTC_TRANSPORT="${QA_WEBRTC_TRANSPORT:-default}" \
   mcr.microsoft.com/playwright:v1.61.0-noble \
   node /workspace/scripts/qa/production-chat-call-smoke.js

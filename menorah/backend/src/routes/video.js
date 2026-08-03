@@ -994,7 +994,7 @@ router.get('/meet', [
   </div>
 </div>
 
-<script nonce="${cspNonce}" src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<script nonce="${cspNonce}" src="https://cdn.jsdelivr.net/npm/livekit-client@2.20.0/dist/livekit-client.umd.min.js" integrity="sha384-s/eoT8qpr81c6c9MG5V7GA5xi5IzfEUQLyk3liFfzu9seBzZ3beFVjsD3pXTRmUc" crossorigin="anonymous"></script>
 <script nonce="${cspNonce}">
 (async () => {
   const MEET_TICKET = '${safeTicket}';

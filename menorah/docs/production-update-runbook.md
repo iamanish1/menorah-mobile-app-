@@ -60,7 +60,7 @@ The rollback script:
 - [ ] No production env files are changed by git.
 - [ ] `ADMIN_MFA_REQUIRED=true`, `ADMIN_JWT_EXPIRES_IN=30m`, `JWT_ISSUER=menorah-api`, and `TRUST_PROXY=1` are present in production env.
 - [ ] If LiveKit config changed, `deploy/livekit/livekit.yaml` was updated on the Hostinger VPS outside git.
-- [ ] Hostinger firewall still allows LiveKit media ports `7881/tcp` and `50000-50100/udp`.
+- [ ] Hostinger firewall still allows `3478/udp`, `5349/tcp`, `7881/tcp`, and `61000-62000/udp`.
 - [ ] Hybrid calling policy is reviewed: non-blocked countries use LiveKit, countries in `LIVEKIT_BLOCKED_COUNTRIES` use approved external links.
 
 ## Post-Update Checklist

@@ -33,7 +33,7 @@ Do not merge to `main` or send production traffic until this checklist passes on
 - [ ] Backup encryption is enabled before any off-host upload, or off-host upload is blocked.
 - [ ] Public Cloudflare hostnames route to the Ubuntu origin on HTTPS/443, or an optional tunnel targets `https://reverse-proxy:443` with Origin CA trust.
 - [ ] `calls.menorah.me` DNS points to the Hostinger VPS path used for LiveKit signaling.
-- [ ] Hostinger firewall allows `443/tcp`, `7881/tcp`, and `50000-50100/udp` for LiveKit media.
+- [ ] Hostinger firewall allows `443/tcp`, `3478/udp`, `5349/tcp`, `7881/tcp`, and `61000-62000/udp` for LiveKit signaling/media.
 - [ ] Cloudflare proxy/tunnel behavior is understood: WebRTC UDP media is not carried by normal HTTP proxying, so LiveKit media ports must be reachable directly or calls must fall back to LiveKit TCP.
 - [ ] Public domains return 200.
 - [ ] iOS subscription Razorpay routes return 404 on `api-ios`.
