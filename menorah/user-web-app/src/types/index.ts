@@ -4,9 +4,10 @@ export interface User {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
+  phone: string | null;
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
+  profileCompleted?: boolean;
   profileImage?: string;
   dateOfBirth?: string;
   gender?: 'male' | 'female' | 'other' | 'prefer-not-to-say';
@@ -21,7 +22,7 @@ export interface User {
     name?: string;
     relationship?: string;
     phone?: string;
-  };
+  } | null;
   preferredLanguage?: string;
   timezone?: string;
   notificationPreferences?: {
@@ -37,6 +38,10 @@ export interface User {
     isActive?: boolean;
   };
   role: 'user' | 'counsellor' | 'admin';
+  linkedProviders?: {
+    google: boolean;
+    apple: boolean;
+  };
 }
 
 // ─── Counsellor ───────────────────────────────────────────────────────────────
@@ -292,6 +297,7 @@ export interface AppNotification {
 // ─── API Response ─────────────────────────────────────────────────────────────
 export interface ApiResponse<T = unknown> {
   success: boolean;
+  code?: string;
   message?: string;
   data?: T;
   errors?: Array<{ field?: string; path?: string; param?: string; message?: string; msg?: string }>;

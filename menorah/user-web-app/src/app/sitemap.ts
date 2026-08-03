@@ -1,8 +1,10 @@
 import type { MetadataRoute } from "next";
 import { getArticles, type Article } from "@/lib/articles";
-import { getPublicWebUrl } from "@/lib/site";
+import { getArticleCanonicalUrl, getPublicWebUrl } from "@/lib/site";
 
-export const revalidate = 3600;
+// Newly published articles need to enter the canonical sitemap on the next
+// crawler request, rather than waiting up to an hour for a stale sitemap.
+export const dynamic = "force-dynamic";
 
 const STATIC_ROUTES = [
   { path: "/", priority: 1, changeFrequency: "weekly" },
@@ -16,18 +18,16 @@ const STATIC_ROUTES = [
 ] as const;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const now = new Date();
   const articles = await getPublishedArticlesForSitemap();
 
   return [
     ...STATIC_ROUTES.map((route) => ({
-      url: getPublicWebUrl(route.path),
-      lastModified: now,
+      url: route.path === "/articles" ? getArticleCanonicalUrl("") : getPublicWebUrl(route.path),
       changeFrequency: route.changeFrequency,
       priority: route.priority
     })),
     ...articles.map((article) => ({
-      url: getPublicWebUrl(`/articles/${article.slug}`),
+      url: getArticleCanonicalUrl(article.slug),
       lastModified: getArticleLastModified(article),
       changeFrequency: "monthly" as const,
       priority: 0.8

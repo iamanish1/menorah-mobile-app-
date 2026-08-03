@@ -1050,7 +1050,7 @@ run_release_environment_validator() {
     RAZORPAY_X_KEY_ID=""
     NEXT_PUBLIC_RAZORPAY_KEY_ID="rzp_test_A1b2C3d4E5f6G7"
     PASSWORD_RESET_BASE_URL="${reset_origin}"
-    CHECKOUT_RETURN_URL="https://${APP_DOMAIN}/checkout/return"
+    CHECKOUT_RETURN_URL="https://${APP_DOMAIN}/checkout/callback"
     PASSWORD_RESET_URL_TEMPLATE="${reset_template}"
     APPLE_SIGN_IN_ENABLED="${apple_enabled}"
     APPLE_IOS_BUNDLE_ID="${apple_bundle_id}"
@@ -1062,7 +1062,7 @@ run_release_environment_validator() {
       MENORAH_STAGING_EMAIL_DOMAIN=""
       CONTACT_TO_EMAIL="menorahenquiries@gmail.com"
       EMAIL_FROM="Menorah Health <noreply@menorah.me>"
-      CHECKOUT_RETURN_URL="https://app.menorah.me/checkout/return"
+      CHECKOUT_RETURN_URL="https://app.menorah.me/checkout/callback"
     fi
 
     case "${topology_variant}" in
@@ -1093,7 +1093,7 @@ run_release_environment_validator() {
         LIVEKIT_URL="wss://${CALLS_DOMAIN}"
         LIVEKIT_API_URL="https://${CALLS_DOMAIN}"
         PASSWORD_RESET_BASE_URL="https://${APP_DOMAIN}"
-        CHECKOUT_RETURN_URL="https://${APP_DOMAIN}/checkout/return"
+        CHECKOUT_RETURN_URL="https://${APP_DOMAIN}/checkout/callback"
         MENORAH_STAGING_EMAIL_DOMAIN=""
         CONTACT_TO_EMAIL="menorahenquiries@gmail.com"
         EMAIL_FROM="Menorah Health <noreply@menorah.me>"
@@ -1115,9 +1115,9 @@ run_release_environment_validator() {
       livekit-api-url) LIVEKIT_API_URL="https://other.staging.example.com" ;;
       checkout-return)
         if [[ "${deployment_environment}" == "staging" ]]; then
-          CHECKOUT_RETURN_URL="https://app.menorah.me/checkout/return"
+          CHECKOUT_RETURN_URL="https://app.menorah.me/checkout/callback"
         else
-          CHECKOUT_RETURN_URL="https://app.staging.example.com/checkout/return"
+          CHECKOUT_RETURN_URL="https://app.staging.example.com/checkout/callback"
         fi
         ;;
       email-domain) MENORAH_STAGING_EMAIL_DOMAIN="mail.menorah.me" ;;

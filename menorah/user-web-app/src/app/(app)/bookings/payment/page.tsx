@@ -2,10 +2,10 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { CreditCard, Shield, CheckCircle, ArrowLeft } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { CreditCard, Shield, CheckCircle, ArrowLeft, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Button, Spinner } from '@/components/ui';
+import { Button, Modal, Spinner } from '@/components/ui';
 import { formatCurrency } from '@/lib/utils';
 import { getCspNonce } from '@/lib/cspNonce';
 
@@ -31,10 +31,14 @@ function PaymentForm() {
   const searchParams = useSearchParams();
   const bookingId    = searchParams.get('bookingId') ?? '';
   const router       = useRouter();
+  const qc           = useQueryClient();
 
   const [paying, setPaying]   = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError]     = useState('');
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['booking', bookingId],
@@ -93,6 +97,25 @@ function PaymentForm() {
     rzp.open();
   };
 
+  const handleCancel = async () => {
+    if (!bookingId) return;
+
+    setCancelling(true);
+    setError('');
+    const result = await api.cancelBooking(bookingId, cancelReason);
+    setCancelling(false);
+
+    if (!result.success) {
+      setError(result.message || 'Unable to cancel this booking. Please try again.');
+      return;
+    }
+
+    setCancelOpen(false);
+    qc.invalidateQueries({ queryKey: ['bookings'] });
+    qc.invalidateQueries({ queryKey: ['booking', bookingId] });
+    router.replace('/bookings');
+  };
+
 
   if (success) {
     return (
@@ -121,6 +144,10 @@ function PaymentForm() {
   }
 
   const bookingAlreadyPaid = booking?.paymentStatus === 'paid' || booking?.paymentMethod === 'promo';
+  const bookingCancelled = booking?.status === 'cancelled';
+  const canCompletePayment = booking?.status === 'pending'
+    && booking.paymentStatus === 'pending'
+    && !booking.isSubscriptionBooking;
 
   return (
     <div className="page-container max-w-md">
@@ -158,27 +185,82 @@ function PaymentForm() {
         </div>
       )}
 
-      {bookingAlreadyPaid ? (
+      {bookingCancelled ? (
+        <div className="space-y-4">
+          <div role="status" className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            This booking has been cancelled and can no longer be paid for.
+          </div>
+          <Button fullWidth onClick={() => router.push('/bookings')}>
+            View My Bookings
+          </Button>
+        </div>
+      ) : bookingAlreadyPaid ? (
         <Button fullWidth size="lg" onClick={() => router.push('/bookings')}>
           <CheckCircle className="w-5 h-5" />
           View Confirmed Booking
         </Button>
+      ) : canCompletePayment ? (
+        <div className="space-y-3">
+          <Button
+            fullWidth size="lg" loading={paying}
+            onClick={handleRazorpay}
+          >
+            <CreditCard className="w-5 h-5" />
+            Pay Now with Razorpay
+          </Button>
+          <Button
+            variant="secondary"
+            fullWidth
+            disabled={paying}
+            onClick={() => {
+              setError('');
+              setCancelOpen(true);
+            }}
+          >
+            <XCircle className="w-5 h-5" />
+            Cancel booking
+          </Button>
+        </div>
       ) : (
-        <Button
-          fullWidth size="lg" loading={paying}
-          onClick={handleRazorpay}
-        >
-          <CreditCard className="w-5 h-5" />
-          Pay Now with Razorpay
-        </Button>
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          This booking is no longer available for payment. Please return to your bookings for its latest status.
+        </div>
       )}
 
-      {!bookingAlreadyPaid && (
+      {canCompletePayment && (
         <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400 mt-4">
           <Shield className="w-3.5 h-3.5" />
           Secured by Razorpay. Your payment is safe.
         </div>
       )}
+
+      <Modal open={cancelOpen} onClose={() => !cancelling && setCancelOpen(false)} title="Cancel pending booking">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Payment has not been completed. Cancelling this booking releases the held time and cannot be undone.
+          </p>
+          {error && (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+          <textarea
+            value={cancelReason}
+            onChange={(event) => setCancelReason(event.target.value)}
+            placeholder="Reason for cancellation (optional)"
+            rows={3}
+            className="input-field resize-none"
+          />
+          <div className="flex gap-3">
+            <Button variant="secondary" fullWidth disabled={cancelling} onClick={() => setCancelOpen(false)}>
+              Keep booking
+            </Button>
+            <Button variant="danger" fullWidth loading={cancelling} onClick={handleCancel}>
+              Yes, cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

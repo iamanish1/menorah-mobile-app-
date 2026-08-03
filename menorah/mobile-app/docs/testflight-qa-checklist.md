@@ -18,6 +18,9 @@ production merely for convenience.
 - [ ] Try an incorrect password and confirm the error is friendly.
 - [ ] Try an empty email and password and confirm validation appears.
 - [ ] Try an invalid email format and confirm validation appears.
+- [ ] Try an unverified password account: confirm it receives no usable session, lands on email verification, and can request a new code.
+- [ ] Try a counsellor and an admin account: confirm the patient app rejects both and retains neither token.
+- [ ] Open a protected deep link while signed out: confirm it opens sign-in rather than protected content.
 - [ ] Log out.
 - [ ] Log back in after logout.
 
@@ -35,6 +38,9 @@ production merely for convenience.
 - [ ] Restart the phone or simulator and confirm the session still loads.
 - [ ] Log out and confirm the session is cleared after app restart.
 - [ ] Confirm a session token is usable only while the device is unlocked and is not restored onto another device.
+- [ ] Force a temporary offline/5xx startup: confirm the stored session is retained and can be retried after connectivity returns.
+- [ ] Make one authenticated call return 401: confirm token, socket, chat state, and query cache clear before sign-in appears.
+- [ ] Sign in as account A, open chat/bookings, log out, then sign in as account B: confirm no state from A appears.
 
 ## Profile And Settings
 - [ ] Open profile home.
@@ -44,6 +50,8 @@ production merely for convenience.
 - [ ] Open Settings.
 - [ ] Open notification/privacy settings.
 - [ ] Open two-factor or security screens if present.
+- [ ] Open Linked accounts, link Google/Apple after password confirmation, and verify provider state updates without exposing provider subjects.
+- [ ] Change the password and confirm the app signs out rather than retaining a revoked session.
 
 ## Legal Pages
 - [ ] Open Privacy Policy.

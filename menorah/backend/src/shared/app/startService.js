@@ -1,5 +1,6 @@
 const rateLimit = require('express-rate-limit');
 const { RedisStore } = require('rate-limit-redis');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const connectDB = require('../../config/database');
@@ -22,10 +23,53 @@ const { registerGracefulShutdown } = require('./gracefulShutdown');
 const isLocalhost = () => false;
 
 const RATE_LIMIT_STORE_PREFIXES = Object.freeze({
-  auth: 'rl:auth:',
+  credential: 'rl:auth:credential:',
+  resetIp: 'rl:auth:reset-ip:',
+  otp: 'rl:auth:otp:',
+  email: 'rl:auth:email:',
   api: 'rl:api:'
 });
 
+// These routes have exactly one purpose-built authentication limiter. Keep
+// them out of the generic API limiter as well: consuming both counters makes
+// a single login/MFA attempt appear twice and can exhaust the wrong budget.
+const EXACT_AUTH_LIMIT_PATHS = new Set([
+  '/api/auth/login',
+  '/api/auth/admin/login',
+  '/api/auth/google',
+  '/api/auth/apple',
+  '/api/auth/social/link',
+  '/api/auth/reset-password',
+  '/api/auth/login/mfa',
+  '/api/auth/admin/login/mfa',
+  '/api/auth/verify-email-otp',
+  '/api/auth/verify-email',
+  '/api/auth/verify-phone',
+  '/api/auth/register',
+  '/api/auth/forgot-password',
+  '/api/auth/resend-email-otp',
+  '/api/auth/resend-email-verification',
+]);
+
+const authRateLimitResponse = Object.freeze({
+  success: false,
+  message: 'Too many authentication attempts. Please try again later.'
+});
+
+const apiRateLimitResponse = Object.freeze({
+  success: false,
+  message: 'Too many requests. Please try again later.'
+});
+
+const otpRateLimitResponse = Object.freeze({
+  success: false,
+  message: 'Too many verification attempts. Please try again later.'
+});
+
+const emailRateLimitResponse = Object.freeze({
+  success: false,
+  message: 'Too many email requests. Please try again later.'
+});
 const createServiceState = ({ serviceName, routeProfile }) => ({
   serviceName,
   routeProfile,
@@ -49,7 +93,10 @@ const makeRateLimitStore = (redisReady, prefix) =>
     : {};
 
 const createRateLimitStores = (redisReady) => ({
-  auth: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.auth),
+  credential: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.credential),
+  resetIp: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.resetIp),
+  otp: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.otp),
+  email: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.email),
   api: makeRateLimitStore(redisReady, RATE_LIMIT_STORE_PREFIXES.api)
 });
 
@@ -58,17 +105,110 @@ const getRateLimitClientIp = (req) =>
 
 const rateLimitKeyGenerator = (req) => rateLimit.ipKeyGenerator(getRateLimitClientIp(req));
 
+const normalizeRequestPath = (path = '') => {
+  const rawPath = String(path || '').split('?')[0];
+  return rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
+};
+
+const normalizedPathForRequest = (req) => normalizeRequestPath(req.originalUrl || req.path);
+
+const getBearerOrUserCookieToken = (req) => {
+  const authorization = String(req.headers?.authorization || '').trim();
+  const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (bearer) return bearer.trim();
+
+  const cookie = String(req.headers?.cookie || '');
+  const userCookie = cookie.match(/(?:^|;\s*)__Host-menorah-user=([^;]+)/)?.[1];
+  if (!userCookie) return '';
+  try {
+    return decodeURIComponent(userCookie);
+  } catch {
+    return userCookie;
+  }
+};
+
+const getRateLimitSubject = (req) => {
+  // Social linking is a re-authentication operation. The email belongs to the
+  // provider identity and is optional, so it must not let a caller select a
+  // fresh limiter bucket for every current-password guess. Limit by the
+  // authenticated session token instead (then hash before it reaches Redis).
+  const isSocialLink = normalizedPathForRequest(req) === '/api/auth/social/link';
+  const subject = String(
+    (isSocialLink && getBearerOrUserCookieToken(req))
+    || req.body?.email
+    || req.body?.challengeId
+    || req.body?.ticket
+    || req.body?.token
+    || req.body?.credential?.slice?.(0, 64)
+    || req.body?.identityToken?.slice?.(0, 64)
+    || 'anonymous'
+  ).trim().slice(0, 128);
+  const raw = isSocialLink ? subject : subject.toLowerCase();
+  // Redis key names are operational data; never write reset/provider tokens
+  // or email addresses into them in clear text.
+  return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 32);
+};
+
+const authRateLimitKeyGenerator = (req) => `${rateLimitKeyGenerator(req)}:${getRateLimitSubject(req)}`;
+
+const mountExactLimiter = (app, routePath, limiter, method) => {
+  app.use((req, res, next) => {
+    const requestPath = normalizedPathForRequest(req);
+    if (requestPath !== routePath) return next();
+    if (method && req.method !== method) return next();
+    return limiter(req, res, next);
+  });
+};
+
 const mountRateLimiters = (app, { redisReady }) => {
   const stores = createRateLimitStores(redisReady);
-  const authLimiter = rateLimit({
-    ...stores.auth,
+  const credentialLimiter = rateLimit({
+    ...stores.credential,
     windowMs: 15 * 60 * 1000,
-    max: parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10) || 30,
-    keyGenerator: rateLimitKeyGenerator,
-    message: 'Too many requests, please try again later.',
+    max: parseInt(process.env.CREDENTIAL_RATE_LIMIT_MAX || process.env.AUTH_RATE_LIMIT_MAX, 10) || 10,
+    keyGenerator: authRateLimitKeyGenerator,
+    // An object makes express-rate-limit send JSON, so clients can show the
+    // throttle reason instead of treating the response as a generic failure.
+    message: authRateLimitResponse,
     standardHeaders: true,
     legacyHeaders: false,
     skip: isLocalhost
+  });
+
+  // Reset tokens are part of the credential limiter subject, which is useful
+  // for retries but could otherwise let an attacker select a new bucket for
+  // every random token. This second ceiling is keyed only by client IP.
+  const resetIpLimiter = rateLimit({
+    ...stores.resetIp,
+    windowMs: 15 * 60 * 1000,
+    max: parseInt(process.env.RESET_PASSWORD_IP_RATE_LIMIT_MAX, 10) || 30,
+    keyGenerator: rateLimitKeyGenerator,
+    message: authRateLimitResponse,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: isLocalhost,
+  });
+
+  const otpLimiter = rateLimit({
+    ...stores.otp,
+    windowMs: 15 * 60 * 1000,
+    max: parseInt(process.env.OTP_MFA_RATE_LIMIT_MAX, 10) || 10,
+    keyGenerator: authRateLimitKeyGenerator,
+    message: otpRateLimitResponse,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: isLocalhost,
+  });
+
+  const emailLimiter = rateLimit({
+    ...stores.email,
+    windowMs: 15 * 60 * 1000,
+    max: parseInt(process.env.EMAIL_ACTION_RATE_LIMIT_MAX, 10) || 5,
+    keyGenerator: authRateLimitKeyGenerator,
+    message: emailRateLimitResponse,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: isLocalhost,
   });
 
   const apiLimiter = rateLimit({
@@ -76,25 +216,34 @@ const mountRateLimiters = (app, { redisReady }) => {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
     max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 1000,
     keyGenerator: rateLimitKeyGenerator,
-    message: 'Too many requests from this IP, please try again later.',
+    message: apiRateLimitResponse,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: isLocalhost
+    skip: (req) => isLocalhost() || EXACT_AUTH_LIMIT_PATHS.has(normalizedPathForRequest(req))
   });
 
-  app.use('/api/auth/login', authLimiter);
-  app.use('/api/auth/admin/login', authLimiter);
-  app.use('/api/auth/admin/login/mfa', authLimiter);
-  app.use('/api/auth/google', authLimiter);
-  app.use('/api/auth/apple', authLimiter);
-  app.use('/api/auth/register', authLimiter);
-  app.use('/api/auth/forgot-password', authLimiter);
-  app.use('/api/auth/reset-password', authLimiter);
-  app.use('/api/auth/verify-email-otp', authLimiter);
-  app.use('/api/auth/resend-email-otp', authLimiter);
-  app.use('/api/auth/verify-email', authLimiter);
-  app.use('/api/auth/verify-phone', authLimiter);
-  app.use('/api/auth/resend-email-verification', authLimiter);
+  mountExactLimiter(app, '/api/auth/reset-password', resetIpLimiter, 'POST');
+  [
+    '/api/auth/login',
+    '/api/auth/admin/login',
+    '/api/auth/google',
+    '/api/auth/apple',
+    '/api/auth/social/link',
+    '/api/auth/reset-password',
+  ].forEach((routePath) => mountExactLimiter(app, routePath, credentialLimiter));
+  [
+    '/api/auth/login/mfa',
+    '/api/auth/admin/login/mfa',
+    '/api/auth/verify-email-otp',
+    '/api/auth/verify-email',
+    '/api/auth/verify-phone',
+  ].forEach((routePath) => mountExactLimiter(app, routePath, otpLimiter));
+  [
+    '/api/auth/register',
+    '/api/auth/forgot-password',
+    '/api/auth/resend-email-otp',
+    '/api/auth/resend-email-verification',
+  ].forEach((routePath) => mountExactLimiter(app, routePath, emailLimiter));
   app.use('/api/', apiLimiter);
 };
 
@@ -201,5 +350,11 @@ module.exports = {
   createRateLimitStores,
   getRateLimitClientIp,
   mountRateLimiters,
-  RATE_LIMIT_STORE_PREFIXES
+  RATE_LIMIT_STORE_PREFIXES,
+  mountExactLimiter,
+  authRateLimitKeyGenerator,
+  getRateLimitSubject,
+  normalizeRequestPath,
+  normalizedPathForRequest,
+  EXACT_AUTH_LIMIT_PATHS
 };

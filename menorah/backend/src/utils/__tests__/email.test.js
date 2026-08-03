@@ -415,4 +415,46 @@ describe('email delivery logging', () => {
     expect(output).not.toContain('Reset Your Menorah Health Password');
     expect(output).not.toContain(token);
   });
+
+  test.each([
+    ['user', 'https://app.menorah.me/reset-password#token='],
+    ['counsellor', 'https://counsellor.menorah.me/reset-password#token='],
+  ])('sends %s recovery to the correct portal without a query-string token', async (role, expectedUrl) => {
+    process.env.FRONTEND_COUNSELLOR_URL = 'https://counsellor.menorah.me';
+    const token = role === 'user' ? 'b'.repeat(64) : 'c'.repeat(64);
+    const { sendPasswordResetEmail } = loadEmail();
+
+    await expect(
+      sendPasswordResetEmail(`${role}@example.com`, token, { role })
+    ).resolves.toBe(true);
+
+    const [, payload] = axiosPost.mock.calls[0];
+    expect(payload.html).toContain(`${expectedUrl}${token}`);
+    expect(payload.html).not.toContain(`?token=${token}`);
+  });
+
+  test('emails counsellor temporary credentials and the expiring reset link', async () => {
+    process.env.FRONTEND_COUNSELLOR_URL = 'https://counsellor.menorah.me';
+    const { sendCounsellorCredentialsEmail } = loadEmail();
+
+    await expect(sendCounsellorCredentialsEmail({
+      email: 'asha@example.com',
+      name: 'Asha',
+      password: 'TempPass1!',
+      resetToken: 'a'.repeat(64),
+      kind: 'onboarding',
+    })).resolves.toBe(true);
+
+    const [, payload] = axiosPost.mock.calls[0];
+    expect(payload).toMatchObject({
+      to: ['asha@example.com'],
+      subject: 'Your Menorah counsellor account is ready',
+    });
+    expect(payload.html).toContain('TempPass1!');
+    expect(payload.html).toContain(
+      `https://counsellor.menorah.me/reset-password#token=${'a'.repeat(64)}`
+    );
+    expect(payload.html).toContain('Sign in to counsellor portal');
+    expect(payload.html).toContain('expires in <strong>10 minutes</strong>');
+  });
 });

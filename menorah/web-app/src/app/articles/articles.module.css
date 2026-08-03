@@ -256,6 +256,20 @@
   margin: var(--spacing-md) 0 0;
 }
 
+.canonicalLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--spacing-md);
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.canonicalLink:hover {
+  text-decoration: underline;
+}
+
 .heroImage {
   margin-top: var(--spacing-lg);
   overflow: hidden;

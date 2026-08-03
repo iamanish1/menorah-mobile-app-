@@ -1,5 +1,5 @@
 import { View, Text, Pressable, Alert } from 'react-native';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { useAuth } from '@/state/useAuth';
@@ -12,12 +12,36 @@ export default function Verify({ navigation, route }: any) {
   const [resending, setResending] = useState(false);
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
-  const { verifyEmailOtp, resendEmailOtp, user } = useAuth();
+  const {
+    verifyEmail,
+    verifyEmailOtp,
+    resendEmailVerification,
+    resendEmailOtp,
+    user,
+  } = useAuth();
   
   // Get email from route params or user object
   const email = route?.params?.email || user?.email;
-  const fromSignup = route?.params?.fromSignup === true;
-  const shouldOfferIdentityVerification = fromSignup || (route?.params?.fromSignup == null && !user);
+  const flow = route?.params?.flow
+    || (route?.params?.fromSignup === true ? 'signup' : 'account');
+  const shouldOfferIdentityVerification = flow === 'signup';
+  const requestedInitialCode = useRef(false);
+
+  useEffect(() => {
+    if (
+      flow !== 'account'
+      || !route?.params?.requestCode
+      || !email
+      || requestedInitialCode.current
+    ) return;
+
+    requestedInitialCode.current = true;
+    resendEmailVerification(email).then(result => {
+      if (!result.success) {
+        Alert.alert('Could not send code', result.message || 'Tap resend to try again.');
+      }
+    });
+  }, [email, flow, resendEmailVerification, route?.params?.requestCode]);
 
   const handleVerify = async () => {
     if (!code || code.length !== 6) {
@@ -32,9 +56,19 @@ export default function Verify({ navigation, route }: any) {
 
     setLoading(true);
     try {
-      const result = await verifyEmailOtp(email, code);
+      const result = flow === 'signup'
+        ? await verifyEmailOtp(email, code)
+        : await verifyEmail(email, code);
       if (result.success) {
-        Alert.alert('Success', shouldOfferIdentityVerification ? 'Email verified. You can complete the optional face check now or skip it.' : 'Email verified successfully!', [
+        if (result.requiresSignIn) {
+          Alert.alert('Email verified', result.message || 'Please sign in to continue.', [{
+            text: 'Sign in',
+            onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Login' }] }),
+          }]);
+          return;
+        }
+
+        Alert.alert('Success', shouldOfferIdentityVerification ? 'Email verified. You can verify your identity now or skip for later.' : 'Email verified successfully!', [
           {
             text: 'OK',
             onPress: () => {
@@ -67,7 +101,9 @@ export default function Verify({ navigation, route }: any) {
 
     setResending(true);
     try {
-      const result = await resendEmailOtp(email);
+      const result = flow === 'signup'
+        ? await resendEmailOtp(email)
+        : await resendEmailVerification(email);
       if (result.success) {
         Alert.alert('Success', 'Verification code sent successfully!');
       } else {

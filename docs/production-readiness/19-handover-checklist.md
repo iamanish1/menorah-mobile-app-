@@ -1,6 +1,6 @@
 # Production handover checklist
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-08-03.
 
 ## How to use this checklist
 
@@ -212,6 +212,12 @@ map](./18-india-privacy-readiness-map.md). Qualified Indian counsel is required.
 - [ ] `GOOGLE ACTION`: verify Play account ownership, signing, package,
       asset-links, Data Safety, Health Apps declarations, review account
       procedure and internal-track release.
+- [ ] For Android `2.7.0`, record the Play-safe version code, EAS build ID and
+      AAB digest; complete the Play-delivered emulator and physical-device
+      matrix plus a clean pre-launch report.
+- [ ] Obtain a separate owner go/no-go and explicit 100% rollout risk exception,
+      then prove the production promotion used the exact internal-track AAB
+      rather than a rebuild or OTA substitute.
 - [ ] Verify production deep links and both association files from external
       networks.
 - [ ] Review notification content, screenshot protection, secure token storage,

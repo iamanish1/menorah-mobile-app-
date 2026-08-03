@@ -50,8 +50,13 @@ export default function ResetPassword({ navigation, route }: any) {
     if (!password.trim()) {
       setPasswordError('New password is required');
       isValid = false;
-    } else if (password.trim().length < 8) {
-      setPasswordError('Password must be at least 8 characters long');
+    } else if (
+      password.trim().length < 8
+      || !/[a-z]/.test(password)
+      || !/[A-Z]/.test(password)
+      || !/\d/.test(password)
+    ) {
+      setPasswordError('Use at least 8 characters with uppercase, lowercase, and a number');
       isValid = false;
     } else {
       setPasswordError('');

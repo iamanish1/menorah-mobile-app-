@@ -966,7 +966,7 @@ test('real server-staging accepts complete test payment sandboxes', () => {
     RAZORPAY_WEBHOOK_SECRET: `booking_webhook_${'w'.repeat(32)}`,
     NEXT_PUBLIC_RAZORPAY_KEY_ID: `rzp_test_${'i'.repeat(24)}`,
     CHECKOUT_RETURN_URL:
-      'https://app.staging.menorah.me/checkout/return',
+      'https://app.staging.menorah.me/checkout/callback',
     PAYOUTS_ENABLED: 'true',
     RAZORPAY_X_KEY_ID: `rzp_test_${'x'.repeat(24)}`,
     RAZORPAY_X_KEY_SECRET: `payout_secret_${'p'.repeat(32)}`,

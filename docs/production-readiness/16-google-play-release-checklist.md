@@ -1,28 +1,32 @@
 # Google Play release checklist
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-08-03.
 
 ## Verdict and evidence boundary
 
 **NOT READY**
 
-Repository metadata currently describes Menorah Health `2.6.0`, Android
-application ID `com.menorah.healthmobile`, version code `14`, and Expo runtime
-`2.6.0`. Those are source observations, not proof of a signed Android App
-Bundle, internal-track upload, Play App Signing identity, physical-device test
-or Play approval.
+The Android-only release target is Menorah Health `2.7.0`, application ID
+`com.menorah.healthmobile`, runtime `2.7.0`, target SDK 36 and Android version
+code `max(15, highest Play-uploaded versionCode + 1)`. The final value cannot
+be selected until a Google release owner records the highest version code in
+Play Console. Repository values are source observations, not proof of a signed
+Android App Bundle, internal-track upload, Play App Signing identity,
+physical-device test or Play approval.
 
-No Play Console action, Android signing credential use, EAS store build,
-internal-track upload, physical-device test or Google review was performed for
-this handover.
+No Play Console update, Android signing credential use, EAS store build,
+internal-track upload, physical-device test or Google review is evidenced in
+this record. The detailed release-specific gate is
+[the Android 2.7.0 launch record](./30-android-2.7.0-production-launch.md).
 
 ## 1. Immutable candidate and repository checks
 
 - [ ] Record the exact reviewed SHA, clean tree, lockfiles, version, version
       code and runtime version.
-- [ ] Confirm version code `14` is greater than every artifact already uploaded
-      to Play Console. If not, increment the Android and iOS repository/native
-      values together before build.
+- [ ] Record the highest version code already uploaded to Play Console, then
+      set Android `versionCode` and every coupled repository/native build
+      number to `max(15, highest Play-uploaded versionCode + 1)`. Keep EAS
+      version control local and automatic increments disabled.
 - [ ] Confirm Gradle namespace/application ID and manifest package behavior are
       `com.menorah.healthmobile`.
 - [ ] Run and retain exact results:
@@ -53,6 +57,20 @@ this handover.
       the intended Android service before building.
 - [ ] Never build the generic production base directly and never run an
       unqualified `eas update`.
+- [ ] Because the native Android project is checked in, verify Google Services,
+      Firebase/Expo notification services and receivers, permissions,
+      resources and manifest metadata directly in native files; do not assume
+      an Expo config plugin or Continuous Native Generation changed them.
+- [ ] Require EAS file secret `GOOGLE_SERVICES_JSON`; its build hook must
+      validate the expected Firebase project and
+      `com.menorah.healthmobile`, copy the file only to the temporary native
+      build location, and never print or commit its contents.
+- [ ] Configure a dedicated least-privilege FCM V1 service-account key in EAS
+      credentials, separate from the Google Play submission service account.
+- [ ] Enable Expo enhanced push security and keep
+      `EXPO_PUSH_ACCESS_TOKEN` only in the protected backend environment.
+- [ ] Confirm notification channels `general`, `messages`, `sessions` and
+      `articles` exist before producing the candidate.
 
 ## 2. Historical signing incident: hard block
 
@@ -94,12 +112,15 @@ This unresolved incident blocks Google Play release.
 
   ```sh
   cd menorah/mobile-app
-  npm run build:production
+  eas build --platform android --profile production-android --non-interactive
   ```
 
-- [ ] Verify the resulting AAB signature, application ID, version/version code,
-      runtime, permissions, API/public configuration and absence of debug
-      signing/configuration.
+- [ ] Download the resulting AAB once, record its SHA-256 and inspect it with
+      bundletool/apksigner. Require package, `2.7.0`, selected version code,
+      target SDK 36, production signing lineage, Firebase resources,
+      notification services/receivers/channel metadata, App Links, OAuth
+      clients, runtime/API origins and absence of debug/cleartext configuration
+      or prohibited storage/phone permissions.
 - [ ] Upload first to the approved internal track and retain artifact digest,
       Play version, signing certificate, SHA, actor and timestamp.
 
@@ -163,9 +184,11 @@ settings for current features. Validate the merged signed artifact:
       declarations.
 - [ ] Publish approved privacy policy, terms, support, grievance and deletion
       information at real monitored public URLs.
-- [ ] Confirm whether OS push notifications ship. Current code has
-      memory-resident in-app socket notifications and no push-token
-      registration library; declarations must be accurate.
+- [ ] Declare Android push registration and delivery accurately, including
+      notification permission, push tokens/device identifiers, purposes,
+      retention, sharing and deletion. Prove foreground, background, killed,
+      denial/re-enable, token refresh/removal and tap-destination behavior on
+      the Play-delivered candidate.
 - [ ] `LEGAL ACTION`, `PRIVACY ACTION` and `CLINICAL ACTION`: approve
       age/minor, face/biometric, mental-health, counsellor and crisis positions.
 
@@ -197,7 +220,7 @@ settings for current features. Validate the merged signed artifact:
       approve an accurate submission position; never claim unavailable
       controls.
 
-## 9. Internal track and staged release
+## 9. Internal track and exact-artifact production release
 
 - [ ] Upload the exact signed AAB to the internal track.
 - [ ] Complete Play pre-launch results and review every crash, ANR,
@@ -208,19 +231,42 @@ settings for current features. Validate the merged signed artifact:
       the exact mobile candidate.
 - [ ] Complete screenshots/listing with no real user data and no unsupported
       clinical/security/privacy claims.
+- [ ] Rename the existing Play listing from **Menorah Health Plus** to
+      **Menorah Health** and match the reviewed copy under
+      [`store-metadata/android`](../../store-metadata/android/README.md).
+- [ ] Remove claims that the service is fully free, staffed by psychology
+      students, available 24/7, absolutely confidential, diagnostic or an
+      emergency service. Describe paid verified counsellors, visible hourly
+      rates, secure chat, informational wellbeing check-ins and resources
+      without guaranteed outcomes.
 - [ ] Record Data Safety, Health Apps, content, ads, age, deletion, support,
       privacy and payment declarations.
-- [ ] Define staged rollout cohort, monitoring, stop conditions, rollback owner
-      and EAS/native compatibility boundary.
-- [ ] Obtain a separate signed go/no-go before any production rollout.
+- [ ] Complete the same-day Play-delivered QA matrix on an emulator with Play
+      Services and at least one physical Android device. Emulator evidence
+      does not replace the device pass.
+- [ ] Obtain a separate signed owner go/no-go after internal QA. It must record
+      the explicit risk exception for bypassing staged percentages.
+- [ ] Promote the exact internal-track artifact—same EAS build ID and AAB
+      digest—to production at 100% with `releaseStatus=completed`. Do not
+      rebuild it or substitute an OTA update. Google review timing may delay
+      public availability.
+- [ ] Monitor continuously for two hours and review again at 24 hours. A
+      wrong-recipient notification, authorization leak, duplicate active
+      booking, payment mismatch, launch crash or material regression triggers
+      incident response.
+- [ ] If push delivery fails, disable notification jobs on the designated
+      active worker. Android binaries cannot be downgraded; prepare a reviewed
+      higher-version-code hotfix for a client defect.
 
 ## Final Google Play gate
 
 Do not submit or roll out until the historical signing incident, account
-ownership, Play App Signing identity, version-code gate, signed AAB, App Link,
-physical-device QA, Data Safety/Health declarations, policies, reviewer access,
-payment classification and monitoring are complete for one immutable
-candidate.
+ownership, Play App Signing identity, version-code gate, Firebase/FCM and push
+security, signed AAB, App Link, physical-device QA, clean Play pre-launch
+report, Data Safety/Health declarations, policies, reviewer access, payment
+classification and monitoring are complete for one immutable candidate. The
+internal-track pass and separate owner go/no-go must identify the same AAB that
+is promoted to production.
 
 See
 [mobile external actions](../../menorah/mobile-app/docs/mobile-store-external-actions.md)

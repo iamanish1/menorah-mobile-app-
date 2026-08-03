@@ -1,4 +1,7 @@
-export const ARTICLE_REVALIDATE_SECONDS = 60;
+// A publish in the admin panel is a reader-facing and SEO-facing change.
+// Article pages therefore read the canonical public API fresh on each request
+// instead of waiting for a previously rendered ISR entry to expire.
+const ARTICLE_FETCH_CACHE = "no-store" as const;
 
 export type ArticleContentBlock =
   | {
@@ -201,9 +204,7 @@ async function fetchArticleJson(url: string): Promise<unknown | null> {
       headers: {
         Accept: "application/json"
       },
-      next: {
-        revalidate: ARTICLE_REVALIDATE_SECONDS
-      }
+      cache: ARTICLE_FETCH_CACHE
     });
 
     if (!response.ok) {
@@ -359,9 +360,18 @@ function normalizeArticle(value: unknown): Article | null {
   const id = toOptionalString(value.id);
   const mongoId = toOptionalString(value._id);
   const title = toOptionalString(value.title) || "Untitled article";
-  const slug = toOptionalString(value.slug) || id || mongoId;
+  const slug = toOptionalString(value.slug);
+  const status = toOptionalString(value.status)?.toLowerCase();
 
+  // A slug is the durable cross-surface identifier. Never fall back to a
+  // database id here: that creates a second, non-canonical public URL.
   if (!slug) {
+    return null;
+  }
+
+  // The public endpoint already enforces this, but retain the contract if an
+  // API origin is misconfigured or a stale response is returned from cache.
+  if (status && status !== "published") {
     return null;
   }
 
@@ -380,7 +390,7 @@ function normalizeArticle(value: unknown): Article | null {
     seoTitle: toOptionalString(value.seoTitle),
     seoDescription: toOptionalString(value.seoDescription),
     canonicalUrl: toOptionalString(value.canonicalUrl),
-    status: toOptionalString(value.status),
+    status,
     generatedByAi: toOptionalBoolean(value.generatedByAi),
     reviewedByHuman: toOptionalBoolean(value.reviewedByHuman),
     publishedAt: toOptionalString(value.publishedAt),

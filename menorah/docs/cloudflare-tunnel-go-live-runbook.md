@@ -136,7 +136,9 @@ Cloudflare Tunnel/HTTP proxying handles HTTPS/WSS signaling, but it does not car
 
 ```text
 7881/tcp
-50000-50100/udp
+3478/udp
+5349/tcp
+61000-62000/udp
 ```
 
 ## Start And Stop — INFRASTRUCTURE ACTION

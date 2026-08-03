@@ -15,6 +15,7 @@ const STATUS_TABS = [
   { key: 'draft', label: 'Legacy Drafts' },
   { key: 'submitted', label: 'Submitted' },
   { key: 'under_review', label: 'Under Review' },
+  { key: 'manual_review', label: 'Identity Conflicts' },
   { key: 'approved', label: 'Approved' },
   { key: 'suspended', label: 'Suspended' },
   { key: 'expired', label: 'Expired' },
@@ -33,7 +34,7 @@ const statusLabel = (status: Counsellor['status']) => (
 const statusVariant = (status: Counsellor['status']): BadgeVariant => {
   if (status === 'approved') return 'approved';
   if (status === 'rejected') return 'rejected';
-  if (status === 'draft' || status === 'submitted' || status === 'under_review' || status === 'pending') return 'pending';
+  if (status === 'draft' || status === 'submitted' || status === 'under_review' || status === 'manual_review' || status === 'pending') return 'pending';
   if (status === 'suspended' || status === 'expired') return 'blocked';
   return 'default';
 };
@@ -275,6 +276,15 @@ function CounsellorsContent() {
                 {/* Meta */}
                 <div className="flex items-center gap-3 flex-wrap">
                   <Badge variant={statusVariant(c.status)}>{statusLabel(c.status)}</Badge>
+                  {c.identityConflict?.hasConflict ? (
+                    <span className="text-xs font-medium text-orange-700">
+                      {c.identityConflict.email && c.identityConflict.phone
+                        ? 'Email + phone conflict'
+                        : c.identityConflict.email
+                          ? 'Email conflict'
+                          : 'Phone conflict'}
+                    </span>
+                  ) : null}
                   <span className="text-xs text-gray-400">{formatDate(c.createdAt)}</span>
 
                   {/* Actions */}

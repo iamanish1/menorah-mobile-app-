@@ -253,6 +253,9 @@ const pendingApplicationSchema = new mongoose.Schema({
     enum: [
       ...PROFESSIONAL_VERIFICATION_STATES,
       ...LEGACY_PROFESSIONAL_VERIFICATION_STATES,
+      // Transitional compatibility for applications quarantined by the
+      // identity-conflict migration before the verification lifecycle shipped.
+      'manual_review',
     ],
     default: 'submitted',
     index: true,
@@ -315,6 +318,12 @@ const pendingApplicationSchema = new mongoose.Schema({
   statusHistory: {
     type: [statusHistorySchema],
     default: [],
+  },
+  identityConflict: {
+    hasConflict: { type: Boolean, default: false },
+    email: { type: Boolean, default: false },
+    phone: { type: Boolean, default: false },
+    detectedAt: { type: Date, default: null },
   },
   rejectionReason:{ type: String, default: null },
   reviewedBy:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

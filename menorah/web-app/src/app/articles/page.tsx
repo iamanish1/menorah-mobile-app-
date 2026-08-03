@@ -10,6 +10,7 @@ import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
+import { isPublishedArticle } from '@/lib/articles';
 import type { Article } from '@/types';
 import styles from './articles.module.css';
 
@@ -52,6 +53,11 @@ function ArticlesPageContent() {
   } = useQuery({
     queryKey: ['articles', { page, q }],
     enabled: isAuthenticated,
+    // The admin publishes from a separate application, so do not hold a
+    // counsellor on a stale article list when they return to this screen.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const response = await api.getArticles({
         page,
@@ -63,7 +69,10 @@ function ArticlesPageContent() {
         throw new Error(response.message || 'Unable to load articles');
       }
 
-      return response.data;
+      return {
+        ...response.data,
+        articles: response.data.articles.filter(isPublishedArticle),
+      };
     },
   });
 

@@ -32,7 +32,7 @@ export interface Booking {
     name: string;
     phone: string;
     relationship: string;
-  };
+  } | null;
   preferences?: BookingPreferences;
   assignedAt?: string;
   videoCall?: {

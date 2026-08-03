@@ -1,15 +1,15 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { api } from '@/lib/api';
+import { ADMIN_UNAUTHORIZED_EVENT, api } from '@/lib/api';
 import { clearStoredUser, getStoredUser, setStoredUser } from '@/lib/auth';
 import type { AdminUser, User } from '@/types';
 
 interface AuthContextValue {
   user: AdminUser | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; mfaRequired?: boolean; challengeId?: string }>;
-  completeMfa: (challengeId: string, otp: string) => Promise<{ success: boolean; message?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; mfaRequired?: boolean; challengeId?: string; needsVerification?: boolean; email?: string }>;
+  completeMfa: (challengeId: string, otp: string) => Promise<{ success: boolean; message?: string; needsVerification?: boolean; email?: string }>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
 }
@@ -22,6 +22,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    const handleUnauthorized = () => {
+      if (!mounted) return;
+      clearStoredUser();
+      setUser(null);
+    };
+    window.addEventListener(ADMIN_UNAUTHORIZED_EVENT, handleUnauthorized);
 
     const hydrate = async () => {
       const stored = getStoredUser();
@@ -53,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mounted = false;
+      window.removeEventListener(ADMIN_UNAUTHORIZED_EVENT, handleUnauthorized);
     };
   }, []);
 
@@ -67,6 +74,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.login(email, password);
+    if (res.code === 'EMAIL_VERIFICATION_REQUIRED') {
+      return {
+        success: false,
+        needsVerification: true,
+        email: res.data?.email || email,
+        message: res.message || 'Email verification is required before you can sign in.',
+      };
+    }
     if (!res.success || !res.data) return { success: false, message: res.message || 'Login failed' };
 
     if (res.data.mfaRequired) {
@@ -85,6 +100,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const completeMfa = useCallback(async (challengeId: string, otp: string) => {
     const res = await api.verifyMfa(challengeId, otp);
+    if (res.code === 'EMAIL_VERIFICATION_REQUIRED') {
+      return {
+        success: false,
+        needsVerification: true,
+        email: res.data?.email,
+        message: res.message || 'Email verification is required before you can sign in.',
+      };
+    }
     if (!res.success || !res.data?.user) {
       return { success: false, message: res.message || 'MFA verification failed' };
     }

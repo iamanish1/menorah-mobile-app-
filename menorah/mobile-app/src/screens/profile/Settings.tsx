@@ -11,6 +11,7 @@ import {
   FileText,
   HelpCircle,
   KeyRound,
+  Link2,
   LifeBuoy,
   LogOut,
   Moon,
@@ -499,6 +500,15 @@ export default function Settings({ navigation }: any) {
               onPress={() => navigation.navigate("ChangePassword")}
               colors={colors}
             />
+            {user?.role === 'user' && user.isEmailVerified ? (
+              <SettingItem
+                title="Linked Sign-In Accounts"
+                subtitle="Add Google or Apple sign-in securely"
+                icon={Link2}
+                onPress={() => navigation.navigate("LinkedAccounts")}
+                colors={colors}
+              />
+            ) : null}
             <SettingItem
               title="Privacy Settings"
               subtitle="Manage your privacy"

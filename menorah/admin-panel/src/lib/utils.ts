@@ -18,6 +18,7 @@ export const getInitials = (name: string) =>
 export const statusColor = (status: string) => {
   const map: Record<string, string> = {
     pending: 'bg-amber-100 text-amber-700',
+    manual_review: 'bg-orange-100 text-orange-800',
     approved: 'bg-green-100 text-green-700',
     rejected: 'bg-red-100 text-red-700',
     blocked: 'bg-gray-100 text-gray-600',

@@ -10,6 +10,9 @@ const { attachValidatedRequestProvenance } = require('../requestProvenance');
 
 describe('rate limit client IP handling', () => {
   const originalAuthLimit = process.env.AUTH_RATE_LIMIT_MAX;
+  const originalCredentialLimit = process.env.CREDENTIAL_RATE_LIMIT_MAX;
+  const originalResetIpLimit = process.env.RESET_PASSWORD_IP_RATE_LIMIT_MAX;
+  const originalOtpLimit = process.env.OTP_MFA_RATE_LIMIT_MAX;
   const originalApiLimit = process.env.RATE_LIMIT_MAX_REQUESTS;
 
   afterEach(() => {
@@ -24,6 +27,12 @@ describe('rate limit client IP handling', () => {
     } else {
       process.env.RATE_LIMIT_MAX_REQUESTS = originalApiLimit;
     }
+    if (originalCredentialLimit === undefined) delete process.env.CREDENTIAL_RATE_LIMIT_MAX;
+    else process.env.CREDENTIAL_RATE_LIMIT_MAX = originalCredentialLimit;
+    if (originalResetIpLimit === undefined) delete process.env.RESET_PASSWORD_IP_RATE_LIMIT_MAX;
+    else process.env.RESET_PASSWORD_IP_RATE_LIMIT_MAX = originalResetIpLimit;
+    if (originalOtpLimit === undefined) delete process.env.OTP_MFA_RATE_LIMIT_MAX;
+    else process.env.OTP_MFA_RATE_LIMIT_MAX = originalOtpLimit;
   });
 
   test('uses the validated Express IP and ignores raw forwarding headers', () => {
@@ -42,12 +51,45 @@ describe('rate limit client IP handling', () => {
     const stores = createRateLimitStores(true);
 
     expect(RATE_LIMIT_STORE_PREFIXES).toEqual({
-      auth: 'rl:auth:',
+      credential: 'rl:auth:credential:',
+      resetIp: 'rl:auth:reset-ip:',
+      otp: 'rl:auth:otp:',
+      email: 'rl:auth:email:',
       api: 'rl:api:'
     });
-    expect(stores.auth.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.auth);
+    expect(stores.credential.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.credential);
+    expect(stores.resetIp.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.resetIp);
+    expect(stores.otp.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.otp);
+    expect(stores.email.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.email);
     expect(stores.api.store.prefix).toBe(RATE_LIMIT_STORE_PREFIXES.api);
-    expect(stores.auth.store.prefix).not.toBe(stores.api.store.prefix);
+    expect(stores.credential.store.prefix).not.toBe(stores.otp.store.prefix);
+    expect(stores.credential.store.prefix).not.toBe(stores.resetIp.store.prefix);
+  });
+
+  test('returns a JSON message when an authentication request is rate limited', async () => {
+    process.env.AUTH_RATE_LIMIT_MAX = '1';
+    process.env.RATE_LIMIT_MAX_REQUESTS = '100';
+
+    const app = express();
+    app.set('trust proxy', 1);
+    app.use(express.json());
+    mountRateLimiters(app, { redisReady: false });
+    app.post('/api/auth/google', (_req, res) => res.json({ success: true }));
+
+    await request(app)
+      .post('/api/auth/google')
+      .send({})
+      .expect(200);
+
+    await request(app)
+      .post('/api/auth/google')
+      .send({})
+      .expect(429)
+      .expect('Content-Type', /json/)
+      .expect({
+        success: false,
+        message: 'Too many authentication attempts. Please try again later.'
+      });
   });
 
   test('direct spoofed headers cannot create separate login buckets', async () => {
@@ -95,6 +137,103 @@ describe('rate limit client IP handling', () => {
       .post('/api/auth/login')
       .set('X-Forwarded-For', '203.0.113.11')
       .send({})
+      .expect(200);
+  });
+
+  test('does not apply the credential limiter to the MFA endpoint', async () => {
+    process.env.AUTH_RATE_LIMIT_MAX = '1';
+    process.env.OTP_MFA_RATE_LIMIT_MAX = '1';
+    process.env.RATE_LIMIT_MAX_REQUESTS = '100';
+    const app = express();
+    app.set('trust proxy', 1);
+    app.use(express.json());
+    mountRateLimiters(app, { redisReady: false });
+    app.post('/api/auth/login', (_req, res) => res.json({ success: true }));
+    app.post('/api/auth/login/mfa', (_req, res) => res.json({ success: true }));
+
+    await request(app).post('/api/auth/login').send({ email: 'a@example.com' }).expect(200);
+    await request(app)
+      .post('/api/auth/login/mfa')
+      .send({ challengeId: 'challenge-one' })
+      .expect(200);
+    await request(app)
+      .post('/api/auth/login/mfa')
+      .send({ challengeId: 'challenge-one' })
+      .expect(429)
+      .expect({ success: false, message: 'Too many verification attempts. Please try again later.' });
+  });
+
+  test('does not consume the generic API bucket for exact auth paths, including trailing slashes', async () => {
+    process.env.CREDENTIAL_RATE_LIMIT_MAX = '10';
+    process.env.RATE_LIMIT_MAX_REQUESTS = '1';
+    const app = express();
+    app.set('trust proxy', 1);
+    app.use(express.json());
+    mountRateLimiters(app, { redisReady: false });
+    app.post('/api/auth/login', (_req, res) => res.json({ success: true }));
+    app.post('/api/health-check', (_req, res) => res.json({ success: true }));
+
+    await request(app).post('/api/auth/login/').send({ email: 'a@example.com' }).expect(200);
+    await request(app).post('/api/auth/login').send({ email: 'a@example.com' }).expect(200);
+    await request(app).post('/api/health-check').expect(200);
+    await request(app).post('/api/health-check').expect(429);
+  });
+
+  test('social linking is rate limited by session rather than a caller-controlled provider email', async () => {
+    process.env.CREDENTIAL_RATE_LIMIT_MAX = '1';
+    process.env.RATE_LIMIT_MAX_REQUESTS = '100';
+    const app = express();
+    app.set('trust proxy', 1);
+    app.use(express.json());
+    mountRateLimiters(app, { redisReady: false });
+    app.post('/api/auth/social/link', (_req, res) => res.json({ success: true }));
+
+    await request(app)
+      .post('/api/auth/social/link')
+      .set('Authorization', 'Bearer session-token-for-rate-test')
+      .send({ email: 'first-provider@example.com' })
+      .expect(200);
+    await request(app)
+      .post('/api/auth/social/link')
+      .set('Authorization', 'Bearer session-token-for-rate-test')
+      .send({ email: 'different-provider@example.com' })
+      .expect(429);
+  });
+
+  test('caps reset-password attempts by IP even when every request uses a different token', async () => {
+    process.env.CREDENTIAL_RATE_LIMIT_MAX = '10';
+    process.env.RESET_PASSWORD_IP_RATE_LIMIT_MAX = '2';
+    process.env.RATE_LIMIT_MAX_REQUESTS = '100';
+    const app = express();
+    app.set('trust proxy', 1);
+    app.use(express.json());
+    mountRateLimiters(app, { redisReady: false });
+    app.post('/api/auth/reset-password', (_req, res) => res.json({ success: true }));
+
+    await request(app)
+      .post('/api/auth/reset-password')
+      .set('X-Forwarded-For', '203.0.113.20')
+      .send({ token: 'token-one' })
+      .expect(200);
+    await request(app)
+      .post('/api/auth/reset-password')
+      .set('X-Forwarded-For', '203.0.113.20')
+      .send({ token: 'token-two' })
+      .expect(200);
+    await request(app)
+      .post('/api/auth/reset-password')
+      .set('X-Forwarded-For', '203.0.113.20')
+      .send({ token: 'token-three' })
+      .expect(429)
+      .expect({
+        success: false,
+        message: 'Too many authentication attempts. Please try again later.',
+      });
+
+    await request(app)
+      .post('/api/auth/reset-password')
+      .set('X-Forwarded-For', '203.0.113.21')
+      .send({ token: 'token-four' })
       .expect(200);
   });
 });

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useId, KeyboardEvent } from 'reac
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
+import { authStore } from '@/lib/auth';
 import AppLayout from '@/components/layout/AppLayout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -286,7 +287,7 @@ function OptionTagPicker({
 function RateEditor({ currentRate, currency, onSave }: {
   currentRate: number;
   currency: string;
-  onSave: (rate: number) => Promise<void>;
+  onSave: (rate: number) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
   const [rate, setRate] = useState(currentRate);
@@ -300,9 +301,12 @@ function RateEditor({ currentRate, currency, onSave }: {
   const handleSave = async () => {
     if (rate <= 0) return;
     setSaving(true);
-    await onSave(rate);
-    setSaving(false);
-    setEditing(false);
+    try {
+      const saved = await onSave(rate);
+      if (saved) setEditing(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -382,9 +386,7 @@ export default function ProfilePage() {
     specialization: '',
     specializations: [] as string[],
     experience: 0,
-    hourlyRate: 0,
     bio: '',
-    licenseNumber: '',
     languages: [] as string[],
     availability: {} as Record<Day, AvailabilityDay>,
   });
@@ -418,6 +420,7 @@ export default function ProfilePage() {
   const [editingPassword, setEditingPassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.push('/login');
@@ -667,6 +670,15 @@ export default function ProfilePage() {
     });
     setSavingPersonal(false);
     if (res.success) {
+      // Keep the portal chrome in step with the saved User record. Without
+      // this, the profile card changed immediately but the sidebar/topbar kept
+      // the pre-edit name until a full page reload.
+      if (res.data?.user) {
+        const currentUser = authStore.getState().user;
+        if (currentUser) {
+          authStore.setState({ user: { ...currentUser, ...res.data.user } });
+        }
+      }
       await fetchProfile();
       setEditingPersonal(false);
       showSuccess('Personal info updated.');
@@ -696,9 +708,7 @@ export default function ProfilePage() {
       specialization: specializations[0] ?? cp?.specialization ?? '',
       specializations,
       experience: cp?.yearsOfExperience ?? 0,
-      hourlyRate: cp?.hourlyRate ?? 0,
       bio: cp?.bio ?? '',
-      licenseNumber: cp?.licenseNumber ?? '',
       languages: cp?.languages ? [...cp.languages] : [],
       availability: avail,
     });
@@ -725,9 +735,7 @@ export default function ProfilePage() {
       specialization: specializations[0],
       specializations,
       experience: profForm.experience,
-      hourlyRate: profForm.hourlyRate,
       bio: profForm.bio,
-      licenseNumber: profForm.licenseNumber,
       languages,
       availability: profForm.availability,
     });
@@ -793,16 +801,25 @@ export default function ProfilePage() {
 
   // ── Password ───────────────────────────────────────────────────────────────
   const savePassword = async () => {
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setError('New passwords do not match');
+    if (!passwordForm.currentPassword) {
+      setPasswordError('Enter your current password');
       return;
     }
-    if (passwordForm.newPassword.length < 8) {
-      setError('New password must be at least 8 characters');
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+    if (
+      passwordForm.newPassword.length < 8
+      || !/[a-z]/.test(passwordForm.newPassword)
+      || !/[A-Z]/.test(passwordForm.newPassword)
+      || !/\d/.test(passwordForm.newPassword)
+    ) {
+      setPasswordError('Password must be at least 8 characters and include uppercase, lowercase, and a number');
       return;
     }
     setSavingPassword(true);
-    setError(null);
+    setPasswordError(null);
     const res = await api.changePassword({
       currentPassword: passwordForm.currentPassword,
       newPassword: passwordForm.newPassword,
@@ -811,9 +828,9 @@ export default function ProfilePage() {
     if (res.success) {
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setEditingPassword(false);
-      window.location.replace('/login');
+      window.location.replace('/login?password=changed');
     } else {
-      setError(res.message || 'Password change failed');
+      setPasswordError(res.message || 'Password change failed');
     }
   };
 
@@ -1175,24 +1192,6 @@ export default function ProfilePage() {
                       onChange={(e) => setProfForm((p) => ({ ...p, experience: Number(e.target.value) }))}
                     />
                   </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>Hourly Rate (INR)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      className={styles.formInput}
-                      value={profForm.hourlyRate}
-                      onChange={(e) => setProfForm((p) => ({ ...p, hourlyRate: Number(e.target.value) }))}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>License Number</label>
-                    <input
-                      className={styles.formInput}
-                      value={profForm.licenseNumber}
-                      onChange={(e) => setProfForm((p) => ({ ...p, licenseNumber: e.target.value }))}
-                    />
-                  </div>
                 </div>
 
                 <div className={styles.formGroup} style={{ marginTop: 'var(--spacing-lg)' }}>
@@ -1287,12 +1286,6 @@ export default function ProfilePage() {
                       <p className={styles.infoValue}>{cp.yearsOfExperience} years</p>
                     </div>
                   )}
-                  {cp?.hourlyRate !== undefined && (
-                    <div className={styles.infoItem}>
-                      <p className={styles.infoLabel}>Hourly Rate</p>
-                      <p className={styles.infoValue}>{cp.currency || 'INR'} {cp.hourlyRate}</p>
-                    </div>
-                  )}
                   {cp?.licenseNumber && (
                     <div className={styles.infoItem}>
                       <p className={styles.infoLabel}>License Number</p>
@@ -1356,8 +1349,10 @@ export default function ProfilePage() {
                 if (res.success) {
                   await fetchProfile();
                   showSuccess('Hourly rate updated.');
+                  return true;
                 } else {
                   setError(res.message || 'Failed to update rate');
+                  return false;
                 }
               }}
             />
@@ -1481,49 +1476,101 @@ export default function ProfilePage() {
                 <h3 className={styles.cardTitle}>Account Security</h3>
               </div>
               {!editingPassword && (
-                <button className={styles.editBtn} onClick={() => setEditingPassword(true)}>Change Password</button>
+                <button
+                  type="button"
+                  className={styles.editBtn}
+                  onClick={() => {
+                    setPasswordError(null);
+                    setEditingPassword(true);
+                  }}
+                >
+                  Change Password
+                </button>
               )}
             </div>
 
             {editingPassword ? (
               <>
+                {passwordError ? (
+                  <div className={styles.errorAlert} role="alert">
+                    <svg fill="currentColor" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    {passwordError}
+                  </div>
+                ) : null}
                 <div className={styles.passwordSection}>
                   <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>Current Password</label>
+                    <label htmlFor="current-password" className={styles.infoLabel}>Current Password</label>
                     <input
+                      id="current-password"
+                      name="currentPassword"
                       type="password"
+                      autoComplete="current-password"
                       className={styles.formInput}
                       value={passwordForm.currentPassword}
-                      onChange={(e) => setPasswordForm((p) => ({ ...p, currentPassword: e.target.value }))}
+                      onChange={(e) => {
+                        setPasswordError(null);
+                        setPasswordForm((p) => ({ ...p, currentPassword: e.target.value }));
+                      }}
                       placeholder="Enter your current password"
+                      disabled={savingPassword}
                     />
                   </div>
                   <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>New Password</label>
+                    <label htmlFor="profile-new-password" className={styles.infoLabel}>New Password</label>
                     <input
+                      id="profile-new-password"
+                      name="newPassword"
                       type="password"
+                      autoComplete="new-password"
                       className={styles.formInput}
                       value={passwordForm.newPassword}
-                      onChange={(e) => setPasswordForm((p) => ({ ...p, newPassword: e.target.value }))}
+                      onChange={(e) => {
+                        setPasswordError(null);
+                        setPasswordForm((p) => ({ ...p, newPassword: e.target.value }));
+                      }}
                       placeholder="At least 8 characters"
+                      disabled={savingPassword}
+                      aria-describedby="profile-password-requirements"
                     />
+                    <p id="profile-password-requirements" className={styles.securityText}>
+                      Include uppercase, lowercase, and at least one number.
+                    </p>
                   </div>
                   <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>Confirm New Password</label>
+                    <label htmlFor="profile-confirm-password" className={styles.infoLabel}>Confirm New Password</label>
                     <input
+                      id="profile-confirm-password"
+                      name="confirmPassword"
                       type="password"
+                      autoComplete="new-password"
                       className={styles.formInput}
                       value={passwordForm.confirmPassword}
-                      onChange={(e) => setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }))}
+                      onChange={(e) => {
+                        setPasswordError(null);
+                        setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }));
+                      }}
                       placeholder="Re-enter new password"
+                      disabled={savingPassword}
                     />
                   </div>
                 </div>
                 <div className={styles.formActions}>
-                  <Button variant="primary" size="sm" onClick={savePassword} disabled={savingPassword}>
+                  <Button type="button" variant="primary" size="sm" onClick={savePassword} disabled={savingPassword}>
                     {savingPassword ? 'Saving…' : 'Update Password'}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => { setEditingPassword(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); }} disabled={savingPassword}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingPassword(false);
+                      setPasswordError(null);
+                      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                    }}
+                    disabled={savingPassword}
+                  >
                     Cancel
                   </Button>
                 </div>
@@ -1533,6 +1580,7 @@ export default function ProfilePage() {
                 <p className={styles.securityText}>Update your password to keep your account secure.</p>
                 <div className={styles.formActions}>
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => {

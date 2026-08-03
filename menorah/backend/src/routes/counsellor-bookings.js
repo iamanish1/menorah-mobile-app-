@@ -31,6 +31,10 @@ const {
 const {
   serializeUnassignedBookingPreview,
 } = require('../serializers/bookingSerializer');
+const { serializeEmergencyContact } = require('../utils/emergencyContact');
+const {
+  notifyCounsellorProfileUpdated,
+} = require('../utils/counsellorProfileSync');
 
 const SERVER_TZ = process.env.SERVER_TZ || 'Asia/Kolkata';
 const BOOKING_WRITE_TRANSACTION_OPTIONS = Object.freeze({
@@ -541,6 +545,7 @@ router.put('/me/profile-media', profileMediaUploadLimiter, counsellorAuth, uploa
       });
     }
     await invalidateCounsellorDiscoveryCache();
+    notifyCounsellorProfileUpdated(req.app.get('io'));
 
     return res.json({
       success: true,
@@ -746,9 +751,10 @@ router.get('/me/bookings/:id', [
       counsellor: counsellor._id,
       ...buildBookingAuthorizationQuery({ now: accessNow }),
     })
+      .select('-emergencyContact')
       .populate({
         path: 'user',
-        select: 'firstName lastName email phone profileImage gender'
+        select: 'firstName lastName email phone profileImage gender emergencyContact'
       })
       .lean();
 
@@ -777,7 +783,7 @@ router.get('/me/bookings/:id', [
       symptoms: booking.symptoms,
       concerns: booking.concerns,
       goals: booking.goals,
-      emergencyContact: booking.emergencyContact,
+      emergencyContact: serializeEmergencyContact(booking.user?.emergencyContact),
       preferences: booking.preferences,
       videoCall: formatVideoCall(booking.videoCall),
       assignedAt: booking.assignedAt,
@@ -852,6 +858,7 @@ router.get('/me/bookings', [
 
     // Execute query
     const bookings = await Booking.find(query)
+      .select('-emergencyContact')
       .populate({
         path: 'user',
         select: 'firstName lastName email phone profileImage'
@@ -886,7 +893,6 @@ router.get('/me/bookings', [
       symptoms: booking.symptoms,
       concerns: booking.concerns,
       goals: booking.goals,
-      emergencyContact: booking.emergencyContact,
       assignedAt: booking.assignedAt
     }));
 
@@ -1693,14 +1699,14 @@ router.put('/me/profile', [
       return res.status(404).json({ success: false, message: 'Counsellor profile not found' });
     }
 
-    if (req.body.licenseNumber !== undefined || req.body.hourlyRate !== undefined) {
+    if (req.body.licenseNumber !== undefined) {
       return res.status(403).json({
         success: false,
-        message: 'License number and session rate are admin-controlled. Contact support to request changes.'
+        message: 'License number is admin-controlled. Contact support to request changes.'
       });
     }
 
-    const { specialization, specializations, experience, bio, languages, availability } = req.body;
+    const { specialization, specializations, experience, hourlyRate, bio, languages, availability } = req.body;
 
     if (specializations !== undefined || specialization !== undefined) {
       const nextSpecializations = normalizeTagList(
@@ -1719,6 +1725,7 @@ router.put('/me/profile', [
     }
 
     if (experience !== undefined) counsellor.experience = experience;
+    if (hourlyRate !== undefined) counsellor.hourlyRate = hourlyRate;
     if (bio !== undefined) counsellor.bio = bio;
     if (languages !== undefined) {
       const nextLanguages = normalizeTagList(languages);
@@ -1743,6 +1750,7 @@ router.put('/me/profile', [
 
     await counsellor.save();
     await invalidateCounsellorDiscoveryCache();
+    notifyCounsellorProfileUpdated(req.app.get('io'));
 
     res.json({
       success: true,
@@ -1779,6 +1787,8 @@ router.put('/me/status', counsellorAuth, async (req, res) => {
 
     counsellor.isAvailable = isAvailable;
     await counsellor.save();
+    await invalidateCounsellorDiscoveryCache();
+    notifyCounsellorProfileUpdated(req.app.get('io'));
 
     res.json({
       success: true,

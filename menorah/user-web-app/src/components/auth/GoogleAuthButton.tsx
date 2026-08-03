@@ -41,7 +41,7 @@ interface GoogleAuthButtonProps {
   onError: (message: string) => void;
 }
 
-const loadGoogleScript = () =>
+export const loadGoogleScript = () =>
   new Promise<void>((resolve, reject) => {
     if (typeof window === 'undefined') return resolve();
     if (window.google?.accounts?.id) return resolve();
@@ -93,9 +93,17 @@ export function GoogleAuthButton({ mode, onError }: GoogleAuthButtonProps) {
             }
 
             onError('');
-            const result = await loginWithGoogle(credential);
+            const result = await loginWithGoogle(credential, mode);
+            if (result.requiresSignUp) {
+              router.replace('/register');
+              return;
+            }
+            if (result.needsVerification) {
+              router.push('/verify-otp');
+              return;
+            }
             if (result.success) {
-              router.push('/discover');
+              router.replace(result.requiresProfileCompletion ? '/complete-profile' : '/discover');
               return;
             }
             onError(result.message || 'Google sign-in failed. Please try again.');

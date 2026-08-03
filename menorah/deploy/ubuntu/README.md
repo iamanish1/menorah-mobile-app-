@@ -31,6 +31,12 @@ cd menorah-mobile-app-
 git checkout 'release/<reviewed-release-name>'
 ```
 
+The existing Hostinger production checkout predates that clone layout and is
+explicitly supported with Git root `/opt/menorah` and application root
+`/opt/menorah/menorah`. On that host, always invoke guarded scripts with
+`MENORAH_RELEASE_REPO_ROOT=/opt/menorah`; do not relocate the live checkout or
+installed timer working directories as part of an application release.
+
 Run host preparation:
 
 ```bash
@@ -80,6 +86,12 @@ Alertmanager images. The operator group remains read-only so preflight can
 validate the files. `ALERTMANAGER_CONFIG_FILE` must not point at the committed
 non-delivering placeholder.
 
+The previously used Cloudflare Tunnel token is treated as compromised. Rotate
+it in Cloudflare under a separately approved security change, replace only the
+protected host file above, restart only `cloudflared`, and verify every public
+hostname before any release deployment. Never copy the old token into release
+evidence or command output.
+
 ## 3. First Run (Bootstrap Only)
 
 Use this only for initial host provisioning before production traffic exists.
@@ -124,6 +136,18 @@ After Cloudflare public hostnames are mapped and live:
 CHECK_PUBLIC=true bash menorah/deploy/ubuntu/health-check.sh
 ```
 
+Before Android internal testing, configure the Play App Signing SHA-256 and run
+the stricter direct-response gate:
+
+```bash
+CHECK_PUBLIC=true CHECK_ANDROID_APP_LINKS=true \
+  bash menorah/deploy/ubuntu/health-check.sh
+```
+
+This requires `https://app.menorah.me/.well-known/assetlinks.json` to return a
+direct HTTP 200 with JSON content type, the exact Android package, and every
+configured Play signing fingerprint. Redirects and placeholder values fail.
+
 The script checks API health, deep health secret leakage, iOS Razorpay subscription blocking, admin auth protection, and admin route isolation.
 
 ## 5. Cloudflare Ingress
@@ -145,7 +169,8 @@ export DEPLOY_BRANCH='release/<reviewed-release-name>'
 export DEPLOY_RELEASE_SHA='<reviewed-full-40-character-sha>'
 export DEPLOY_MIGRATION_APPROVED_SHA="${DEPLOY_RELEASE_SHA}"
 export DEPLOY_CHANGE_REFERENCE='change-YYYY-NNN'
-bash menorah/deploy/ubuntu/update-from-git.sh
+MENORAH_RELEASE_REPO_ROOT=/opt/menorah \
+  bash menorah/deploy/ubuntu/update-from-git.sh
 ```
 
 The script requires a clean tracked working tree and the reviewed SHA to equal
@@ -204,7 +229,7 @@ production update runbook.
 Prepare the encrypted RAID1 HDD backup volume after both backup disks are installed:
 
 ```bash
-cd /opt/menorah/menorah-mobile-app-/menorah
+cd /opt/menorah/menorah
 sudo BACKUP_DISK_CONFIRM=WIPE_THESE_DISKS \
   bash deploy/ubuntu/setup-backup-raid-luks.sh \
   /dev/disk/by-id/<first-backup-hdd> \
@@ -214,14 +239,14 @@ sudo BACKUP_DISK_CONFIRM=WIPE_THESE_DISKS \
 Install backup, restore-test, pruning, and health-check timers:
 
 ```bash
-cd /opt/menorah/menorah-mobile-app-/menorah
+cd /opt/menorah/menorah
 sudo bash deploy/ubuntu/install-backup-schedule.sh
 ```
 
 Manual backup:
 
 ```bash
-cd /opt/menorah/menorah-mobile-app-/menorah
+cd /opt/menorah/menorah
 bash deploy/ubuntu/backup-now.sh daily
 ```
 

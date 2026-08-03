@@ -1,6 +1,6 @@
 # External vendor and platform action plan
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-08-03.
 
 ## Status
 
@@ -114,15 +114,21 @@ these external actions is evidenced complete.
 
 - `GOOGLE ACTION`: confirm Play organization/account ownership, recovery,
   unique MFA roles and application ID `com.menorah.healthmobile`.
-- Confirm version code `14` is greater than every uploaded artifact; increment
-  the Android and iOS repository/native values together before building if it
-  is not.
+- Record the highest Play-uploaded version code and set Android plus every
+  coupled repository/native build number to
+  `max(15, highest Play-uploaded versionCode + 1)` with local version control
+  and automatic increments disabled.
 - Close the historical Android signing-password incident: determine Play App
   Signing status/key type, reset/recover the affected upload/app-signing path
   as appropriate, replace protected credentials, revoke copies and prove old
   credentials are invalid.
 - Obtain the **Play App Signing** certificate SHA-256 fingerprint, not a debug
   or upload-key fingerprint; render the asset-links file outside Git.
+- Register the Play App Signing SHA-1 with the production Android OAuth client
+  while retaining a separate debug package/SHA-1 client.
+- Configure validated `GOOGLE_SERVICES_JSON`, a dedicated least-privilege FCM
+  V1 credential, Expo enhanced push security and protected
+  `EXPO_PUSH_ACCESS_TOKEN`; keep the Play submission service account separate.
 - Publish it directly at
   `https://app.menorah.me/.well-known/assetlinks.json` with HTTPS 200 JSON, no
   redirect/authentication/geo or IP restriction.
@@ -130,7 +136,15 @@ these external actions is evidenced complete.
   reset link, plus physical screenshot/recent-app tests including the return
   from Razorpay.
 - Complete Data Safety, Health Apps, content rating, ads, account deletion,
-  support, privacy and payment declarations from the final inventory.
+  support, privacy, payments, push/device identifiers, GAD-7, chat and
+  emergency-contact declarations from the final inventory.
+- Rename the listing to **Menorah Health** and use the reviewed Android listing
+  under `store-metadata/android`; remove fully-free, psychology-student, 24/7,
+  absolute-confidentiality, diagnostic and emergency-service claims.
+- Submit the single signed AAB to internal testing, complete Play-delivered
+  emulator/physical-device QA and a clean pre-launch report, then require a
+  separate owner go/no-go and signed 100% rollout risk exception before
+  promoting that exact artifact.
 - Keep digital subscription purchases disabled until applicable Google Play
   Billing implementation and policy review are complete.
 

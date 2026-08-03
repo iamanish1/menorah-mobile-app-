@@ -55,6 +55,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const configuredWebBaseUrl =
     releaseEnvironment.webBaseUrl ||
     process.env.PUBLIC_WEB_BASE_URL?.trim();
+  const configuredArticleCanonicalBaseUrl =
+    process.env.EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL?.trim() ||
+    process.env.ARTICLE_CANONICAL_BASE_URL?.trim();
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
   const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim();
@@ -162,12 +165,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         {
           action: 'VIEW',
           autoVerify: true,
+          category: ['BROWSABLE', 'DEFAULT'],
           data: [
-            { scheme: 'http', host: 'app.menorah.me', path: '/reset-password' },
-            { scheme: 'https', host: 'app.menorah.me', path: '/reset-password' }
+            { scheme: 'https', host: 'app.menorah.me', path: '/reset-password' },
           ],
-          category: ['BROWSABLE', 'DEFAULT']
-        }
+        },
       ],
       permissions: [
         'android.permission.CAMERA',
@@ -198,7 +200,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // In Expo Go on a phone, localhost points to the phone itself.
       // Set EXPO_PUBLIC_API_BASE_URL or EXPO_PUBLIC_LOCAL_IP for local development.
       // All URLs are driven by env vars — no domain is hardcoded in source.
-      // In production, set both platform API variables and EXPO_PUBLIC_WEB_BASE_URL,
+      // In production, set both platform API variables, EXPO_PUBLIC_WEB_BASE_URL,
+      // EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL,
       // EXPO_PUBLIC_CHECKOUT_RETURN_URL, and EXPO_PUBLIC_JITSI_BASE_URL before building. Leaving them unset in
       // production will surface the misconfiguration immediately at startup.
       IOS_API_BASE_URL: configuredIosApiBaseUrl?.replace(/\/+$/, ''),
@@ -211,6 +214,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       WEB_BASE_URL: configuredWebBaseUrl
         ? configuredWebBaseUrl.replace(/\/+$/, '')
         : (isDev ? 'https://app.menorah.me' : undefined),
+
+      // The app shell is hosted at app.menorah.me, but published article HTML
+      // is canonical on the public landing site.
+      ARTICLE_CANONICAL_BASE_URL: configuredArticleCanonicalBaseUrl
+        ? configuredArticleCanonicalBaseUrl.replace(/\/+$/, '')
+        : 'https://menorah.me',
 
       // Checkout Return URL
       CHECKOUT_RETURN_URL: releaseEnvironment.checkoutReturnUrl

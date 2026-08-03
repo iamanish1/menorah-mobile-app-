@@ -13,6 +13,9 @@ export function LearnArticleReader({ slug }: { slug: string }) {
     queryKey: ['app-article', slug],
     queryFn: () => api.getArticle(slug),
     enabled: Boolean(slug),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   const article = articleQuery.data?.data?.article;

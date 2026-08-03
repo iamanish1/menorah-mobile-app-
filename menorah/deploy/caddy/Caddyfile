@@ -36,6 +36,26 @@
 	}
 }
 
+# Keep the larger body allowance limited to the authenticated admin Reel
+# upload route; every other API endpoint remains capped at 20 MB.
+(social_reel_upload_proxy) {
+	import security_headers
+	encode gzip zstd
+	request_body {
+		max_size {$SOCIAL_STUDIO_MAX_VIDEO_REQUEST_SIZE_MB:55}MB
+	}
+}
+
+# Only the signed browser meeting document needs media permissions. Keep the
+# rest of the API under the restrictive default policy.
+(browser_call_api_proxy) {
+	import browser_call_security_headers
+	encode gzip zstd
+	request_body {
+		max_size 20MB
+	}
+}
+
 {$WWW_DOMAIN} {
 	import security_headers
 	encode gzip zstd
@@ -49,6 +69,10 @@
 {$APP_DOMAIN} {
 	import browser_call_security_headers
 	encode gzip zstd
+	@checkout_sensitive path /checkout/callback /checkout/return /checkout/return/*
+	log_skip @checkout_sensitive
+	@password_reset_capability path /reset-password /reset-password/*
+	log_skip @password_reset_capability
 	reverse_proxy user-web-app:3002
 	log {
 		output file /var/log/caddy/app-access.log
@@ -67,8 +91,20 @@
 }
 
 {$API_IOS_DOMAIN} {
-	import api_proxy
-	reverse_proxy api-ios:8080
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		reverse_proxy api-ios:8080
+	}
+	handle {
+		import api_proxy
+		reverse_proxy api-ios:8080
+	}
 	log {
 		output file /var/log/caddy/api-ios-access.log
 		format json
@@ -76,8 +112,20 @@
 }
 
 {$API_ANDROID_DOMAIN} {
-	import api_proxy
-	reverse_proxy api-android:8080
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		reverse_proxy api-android:8080
+	}
+	handle {
+		import api_proxy
+		reverse_proxy api-android:8080
+	}
 	log {
 		output file /var/log/caddy/api-android-access.log
 		format json
@@ -85,8 +133,20 @@
 }
 
 {$API_WEB_DOMAIN} {
-	import api_proxy
-	reverse_proxy api-web:8080
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		reverse_proxy api-web:8080
+	}
+	handle {
+		import api_proxy
+		reverse_proxy api-web:8080
+	}
 	log {
 		output file /var/log/caddy/api-web-access.log
 		format json
@@ -94,8 +154,18 @@
 }
 
 {$API_ADMIN_DOMAIN} {
-	import api_proxy
-	reverse_proxy api-admin:8080
+	@social_reel_upload {
+		method POST
+		path /api/admin/social-studio/posts/video
+	}
+	handle @social_reel_upload {
+		import social_reel_upload_proxy
+		reverse_proxy api-admin:8080
+	}
+	handle {
+		import api_proxy
+		reverse_proxy api-admin:8080
+	}
 	log {
 		output file /var/log/caddy/api-admin-access.log
 		format json

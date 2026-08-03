@@ -106,7 +106,7 @@ export default function SubscriptionPage() {
     queryFn:  () => api.getSubscriptionStatus(),
   });
 
-  const subscription = statusData?.data?.subscription ?? user?.subscription;
+  const subscription = statusData?.data ?? user?.subscription;
   const isActive     = subscription?.isActive && subscription?.plan !== 'free';
   const selectedPlan = plans.find((p) => p.type === selected)!;
 

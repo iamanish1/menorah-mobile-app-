@@ -96,11 +96,18 @@ const authFailure = (
     message = 'Invalid token.',
     reason = 'invalid_token',
     session,
+    code,
+    data,
   } = {}
 ) => {
   if (session) clearSessionCookie(res, session.role);
   recordAccessDenial(req, res, { reason, session, statusCode: status });
-  res.status(status).json({ success: false, message });
+  res.status(status).json({
+    success: false,
+    message,
+    ...(code ? { code } : {}),
+    ...(data ? { data } : {}),
+  });
   return false;
 };
 
@@ -128,6 +135,28 @@ const authorizationFailure = (
   return false;
 };
 
+const attachAuthenticatedUser = (req, user, token, decoded, session = null) => {
+  req.user = user;
+  req.auth = {
+    token,
+    decoded,
+    transport: session ? 'cookie' : 'bearer',
+    cookieName: session?.cookieName,
+    origin: session?.origin,
+    role: session?.role,
+  };
+  return user;
+};
+
+const rejectUnverifiedUser = (req, res, user, session) => authFailure(req, res, {
+  status: 403,
+  message: 'Email verification is required before this account can be used.',
+  reason: 'email_verification_required',
+  code: 'EMAIL_VERIFICATION_REQUIRED',
+  data: { email: user.email },
+  session,
+});
+
 const authenticateToken = async (req, res, token, verifyToken, { optional = false, session = null } = {}) => {
   let decoded;
   try {
@@ -151,6 +180,11 @@ const authenticateToken = async (req, res, token, verifyToken, { optional = fals
     return authFailure(req, res, { reason: 'account_binding_invalid', session });
   }
 
+  if (!user.isEmailVerified) {
+    if (optional) return null;
+    return rejectUnverifiedUser(req, res, user, session);
+  }
+
   if (session && user.role !== session.role) {
     if (optional) return null;
     return authFailure(req, res, {
@@ -161,16 +195,7 @@ const authenticateToken = async (req, res, token, verifyToken, { optional = fals
     });
   }
 
-  req.user = user;
-  req.auth = {
-    token,
-    decoded,
-    transport: session ? 'cookie' : 'bearer',
-    cookieName: session?.cookieName,
-    origin: session?.origin,
-    role: session?.role,
-  };
-  return user;
+  return attachAuthenticatedUser(req, user, token, decoded, session);
 };
 
 const authenticateWithVerifier = async (req, res, verifyToken, { optional = false } = {}) => {
@@ -339,12 +364,60 @@ const counsellorAuth = async (req, res, next) => {
   });
 };
 
+const patientAuth = async (req, res, next) => {
+  await auth(req, res, () => {
+    if (req.user?.role !== 'user') {
+      return authorizationFailure(req, res, {
+        code: 'PATIENT_ROLE_REQUIRED',
+        message: 'Access denied. Patient account required.',
+        reason: 'patient_role_required',
+      });
+    }
+
+    next();
+  });
+};
+
+// Common account-management actions are available to verified patients and
+// counsellors. Admin accounts use their dedicated admin surface and must not
+// inherit end-user profile or credential mutation endpoints.
+const sharedParticipantAuth = async (req, res, next) => {
+  await auth(req, res, () => {
+    if (!['user', 'counsellor'].includes(req.user?.role)) {
+      return authorizationFailure(req, res, {
+        code: 'PARTICIPANT_ROLE_REQUIRED',
+        message: 'Access denied. A patient or counsellor account is required.',
+        reason: 'participant_role_required',
+      });
+    }
+
+    next();
+  });
+};
+
+const verifiedPatientAuth = async (req, res, next) => {
+  await patientAuth(req, res, () => {
+    if (req.user.profileCompleted === false) {
+      return authorizationFailure(req, res, {
+        code: 'PROFILE_COMPLETION_REQUIRED',
+        message: 'Complete your profile before using this feature.',
+        reason: 'profile_completion_required',
+      });
+    }
+
+    next();
+  });
+};
+
 module.exports = {
   auth,
   optionalAuth,
   adminAuth,
   requireRecentAdminMfa,
   counsellorAuth,
+  patientAuth,
+  sharedParticipantAuth,
+  verifiedPatientAuth,
   authAny,
   isTokenBlocked,
   extractBearerToken,

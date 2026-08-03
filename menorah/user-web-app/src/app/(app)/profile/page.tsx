@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import {
   User, MapPin, Phone, Shield, Bell, Lock,
-  CreditCard, HeartPulse, ChevronRight, LogOut
+  CreditCard, HeartPulse, ChevronRight, LogOut, ShieldCheck
 } from 'lucide-react';
 import { Avatar, Badge } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
@@ -14,6 +14,7 @@ const sections = [
     title: 'Account',
     items: [
       { href: '/profile/edit',            icon: User,      label: 'Edit Profile' },
+      { href: '/profile/security',        icon: ShieldCheck,label: 'Security & Sign-in' },
       { href: '/profile/change-password', icon: Lock,      label: 'Change Password' },
     ],
   },
@@ -51,7 +52,7 @@ export default function ProfilePage() {
             </Badge>
           </div>
           <p className="text-white/80 text-sm mt-0.5 truncate">{user.email}</p>
-          <p className="text-white/65 text-xs mt-0.5">{user.phone}</p>
+          {user.phone ? <p className="text-white/65 text-xs mt-0.5">{user.phone}</p> : null}
           <div className="flex gap-2 mt-2">
             {user.isEmailVerified && <Badge variant="success" size="sm">Email verified</Badge>}
             {user.isPhoneVerified && <Badge variant="success" size="sm">Phone verified</Badge>}

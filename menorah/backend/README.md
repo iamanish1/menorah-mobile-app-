@@ -101,7 +101,9 @@ OPENAI_IMAGE_QUALITY=medium
 OPENAI_IMAGE_FORMAT=jpeg
 OPENAI_IMAGE_TIMEOUT_MS=120000
 CLOUDINARY_ARTICLE_FOLDER=menorah/articles
-PUBLIC_WEB_BASE_URL=http://localhost:3000
+# Public landing page that owns canonical article URLs. This is intentionally
+# separate from PUBLIC_WEB_BASE_URL, which Social Studio can use for API-hosted media.
+ARTICLE_CANONICAL_BASE_URL=http://localhost:3002
 ARTICLE_SCHEDULER_ENABLED=false
 ARTICLE_GENERATION_TIMEZONE=Asia/Dubai
 ARTICLE_DAILY_GENERATION_COUNT=10

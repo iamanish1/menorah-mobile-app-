@@ -392,7 +392,7 @@ export const buildEnvironmentValues = ({
       `${adminOrigin}=admin`,
     ].join(','),
     PASSWORD_RESET_BASE_URL: appOrigin,
-    CHECKOUT_RETURN_URL: `${appOrigin}/checkout/return`,
+    CHECKOUT_RETURN_URL: `${appOrigin}/checkout/callback`,
 
     MONGO_ROOT_USER: 'menorah-local-root',
     MONGO_APP_USER: 'menorah-local-app',

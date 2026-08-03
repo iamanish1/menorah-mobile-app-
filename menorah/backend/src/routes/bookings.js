@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
-const { auth, authAny } = require('../middleware/auth');
+const { auth, authAny, verifiedPatientAuth } = require('../middleware/auth');
 const { sendBookingConfirmationEmail, sendSessionReminderEmail } = require('../utils/email');
 const { sendBookingConfirmationSMS, sendSessionReminderSMS, sendCancellationSMS } = require('../utils/sms');
 const {
@@ -246,7 +246,7 @@ router.post('/', [
   body('concerns').optional({ nullable: true }).isString(),
   body('goals').optional({ nullable: true }).isArray(),
   body('emergencyContact').optional({ nullable: true }).isObject()
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -668,8 +668,10 @@ router.post('/', [
       });
     }
 
-    // Send confirmation notifications only if counsellor is assigned
-    if (counsellor) {
+    // Paid promo/subscription bookings are confirmed at creation. Regular
+    // Razorpay bookings stay pending here and are notified only after verified
+    // payment in payments.js.
+    if (counsellor && booking.paymentStatus === 'paid' && booking.status === 'confirmed') {
       try {
         const bookingDetails = {
           scheduledAt: booking.scheduledAt,
@@ -730,7 +732,7 @@ router.get('/', [
   query('status').optional(),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 50 })
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -771,6 +773,9 @@ router.get('/', [
       }
     }
 
+    // Keep a live payment hold visible to its owner. They may return after a
+    // browser/app interruption to either complete checkout or explicitly
+    // cancel the booking and release the held slot.
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -1003,7 +1008,7 @@ router.patch('/:id/call-link', [
 router.put('/:id/cancel', [
   param('id').isMongoId().withMessage('Invalid booking ID'),
   body('reason').optional().isString().trim().isLength({ max: 500 })
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1159,7 +1164,14 @@ router.put('/:id/cancel', [
 
     res.json({
       success: true,
-      message: 'Booking cancelled successfully'
+      message: 'Booking cancelled successfully',
+      data: {
+        booking: {
+          id: cancelledBooking._id,
+          status: cancelledBooking.status,
+          paymentStatus: cancelledBooking.paymentStatus,
+        },
+      },
     });
 
   } catch (error) {

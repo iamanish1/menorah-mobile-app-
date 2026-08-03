@@ -337,6 +337,9 @@ describe('startup validation', () => {
     delete process.env.MENORAH_SERVER_STAGING_PROJECT_NAME;
     delete process.env.MENORAH_SERVER_STAGING_HTTPS_PORT;
     delete process.env.RESEND_API_URL;
+    delete process.env.WORKER_MODE;
+    delete process.env.ENABLE_NOTIFICATION_JOBS;
+    delete process.env.EXPO_PUSH_ACCESS_TOKEN;
   });
 
   afterAll(() => {
@@ -347,6 +350,28 @@ describe('startup validation', () => {
     delete process.env.LIVEKIT_API_URL;
 
     expect(() => validateStartupEnv({ serviceName: 'api-web' })).toThrow(/LIVEKIT_API_URL is missing/);
+  });
+
+  test('requires a protected Expo access token when the active worker enables notification jobs', () => {
+    process.env.WORKER_MODE = 'active';
+    process.env.ENABLE_NOTIFICATION_JOBS = 'true';
+
+    expect(() => validateStartupEnv({ serviceName: 'worker' }))
+      .toThrow(/EXPO_PUSH_ACCESS_TOKEN must contain a non-placeholder protected token/);
+
+    process.env.EXPO_PUSH_ACCESS_TOKEN = 'REPLACE_WITH_EXPO_PUSH_ACCESS_TOKEN';
+    expect(() => validateStartupEnv({ serviceName: 'worker' }))
+      .toThrow(/EXPO_PUSH_ACCESS_TOKEN must contain a non-placeholder protected token/);
+
+    process.env.EXPO_PUSH_ACCESS_TOKEN = `expo_${'a'.repeat(48)}`;
+    expect(() => validateStartupEnv({ serviceName: 'worker' })).not.toThrow();
+  });
+
+  test('does not require an Expo access token for standby or notification-disabled processes', () => {
+    process.env.WORKER_MODE = 'standby';
+    process.env.ENABLE_NOTIFICATION_JOBS = 'false';
+    expect(() => validateStartupEnv({ serviceName: 'worker' })).not.toThrow();
+    expect(() => validateStartupEnv({ serviceName: 'api-web' })).not.toThrow();
   });
 
   test('requires a usable Resend webhook secret on api-web in production', () => {

@@ -114,7 +114,7 @@ const callOpenAiResponses = async ({ schema, name, task, input }) => {
                 'Use warm, human, plain text.',
                 'No Markdown, asterisks, decorative symbols, link syntax, diagnosis, or medical promises.',
                 'Keep image text concise enough for a polished Instagram static post.',
-                'The visual style is editorial and illustrated: a painterly image panel on top, cream copy space below, oversized condensed serif headline, Menorah green and olive brand colors, and logo top-right.',
+                'The visual style is editorial and illustrated: a painterly image panel on top, cream copy space below, oversized condensed serif headline, Menorah green and olive brand colors, and a clean top-right safe area. The app applies the official Menorah watermark after generation; never invent, draw, or describe a logo.',
                 'Write hookText like a short magazine headline, ideally 6 to 10 words.',
                 'Write bodyText as one warm sentence, ideally 12 to 22 words, with no bullet symbols.',
                 'Do not write text that encourages shame, panic, or stereotypes.',
@@ -168,7 +168,7 @@ const mockConcept = (input = {}) => {
     hookText: topic.length > 58 ? topic.slice(0, 55).trim() : topic,
     bodyText: `A grounded reminder that support can start with one honest conversation, one calmer routine, and one practical next step. ${objective}`,
     ctaText: 'Start with one honest check-in.',
-    designBrief: 'Editorial illustrated wellness post with painterly photo-style top scene, warm cream copy field, oversized condensed serif headline, Menorah logo green, olive accent, and logo locked top-right.',
+    designBrief: 'Editorial illustrated wellness post with painterly photo-style top scene, warm cream copy field, oversized condensed serif headline, Menorah green and olive accent, and a clean top-right safe area for the official app-applied watermark.',
     templateKey: 'educational_tip',
     bulletPoints: [
       'Name what feels heavy',
@@ -267,9 +267,10 @@ const buildPremiumSocialImagePrompt = (input = {}) => {
     body ? `Post body context: ${body}.` : '',
     `Audience: ${audience}.`,
     'Visual style: premium animated editorial photo illustration, painterly but refined, cinematic light, quiet luxury mental-health brand aesthetic, unique scene composition, not generic stock.',
-    'Layout requirement: leave clean space and calm composition because typography and the Menorah logo will be added by the app after generation.',
+    'Layout requirement: leave a clean, uncluttered upper-right safe area because typography and the official Menorah watermark will be added by the app after generation.',
     'Color direction: Menorah deep green, olive, warm cream, soft peach, muted violet shadows, natural light.',
     'Subject direction: calm adult men in grounded everyday moments such as office, home, commute, journaling, therapy-adjacent conversation, or quiet reflection.',
+    'Never draw, invent, simulate, or place a logo, badge, emblem, monogram, lettermark, seal, or watermark anywhere in the image.',
     'Avoid: readable text, logos, UI, medical/hospital imagery, stereotypes, distressing crisis scenes, exaggerated sadness, extra limbs, deformed hands, blurry low-quality output.'
   ].filter(Boolean).join('\n');
 };
@@ -317,6 +318,7 @@ const generateBackgroundImage = async (input = {}) => {
 };
 
 module.exports = {
+  buildPremiumSocialImagePrompt,
   generateBackgroundImage,
   generateCaption,
   generateImagePrompt,

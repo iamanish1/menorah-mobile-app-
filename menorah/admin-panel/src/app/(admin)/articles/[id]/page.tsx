@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle, Save, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, ExternalLink, Save, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
@@ -112,14 +112,14 @@ export default function ArticleReviewPage() {
     }
   }, [article?.contentBlocks, contentBlocksJson]);
 
-  const save = async () => {
+  const save = async ({ notify = true }: { notify?: boolean } = {}) => {
     let contentBlocks: ArticleContentBlock[];
     try {
       contentBlocks = JSON.parse(contentBlocksJson) as ArticleContentBlock[];
       if (!Array.isArray(contentBlocks)) throw new Error('Content blocks must be an array');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Invalid content block JSON');
-      return;
+      return null;
     }
 
     setSaving(true);
@@ -137,15 +137,28 @@ export default function ArticleReviewPage() {
 
     if (response.success && response.data?.article) {
       setArticle(response.data.article);
-      toast.success('Article saved');
-      return;
+      if (notify) {
+        toast.success('Article saved');
+      }
+      return response.data.article;
     }
 
     toast.error(response.message || 'Unable to save article');
+    return null;
   };
 
   const publish = async () => {
     setActionLoading('publish');
+
+    // Publication must include the reviewed form values. Previously an admin
+    // could click Publish after editing and ship the older persisted draft.
+    const savedArticle = await save({ notify: false });
+
+    if (!savedArticle) {
+      setActionLoading('');
+      return;
+    }
+
     const response = await api.publishArticle(id);
     setActionLoading('');
 
@@ -206,11 +219,26 @@ export default function ArticleReviewPage() {
           <p className="mt-1 text-sm text-gray-500">
             {article.wordCount || 0} words - Created {formatDate(article.createdAt)}
           </p>
+          {article.canonicalUrl ? (
+            <a
+              href={article.canonicalUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:underline"
+            >
+              <ExternalLink size={13} />
+              Canonical landing URL
+            </a>
+          ) : (
+            <p className="mt-2 text-xs text-gray-400">A canonical landing URL will be assigned when this article is published.</p>
+          )}
         </div>
         <div className="flex gap-2">
           <button
-            onClick={save}
-            disabled={saving}
+            onClick={() => {
+              void save();
+            }}
+            disabled={saving || actionLoading !== ''}
             className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
           >
             <Save size={16} />
@@ -218,7 +246,7 @@ export default function ArticleReviewPage() {
           </button>
           <button
             onClick={() => setRejectOpen(true)}
-            disabled={actionLoading !== ''}
+            disabled={saving || actionLoading !== ''}
             className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
           >
             <XCircle size={16} />
@@ -226,7 +254,7 @@ export default function ArticleReviewPage() {
           </button>
           <button
             onClick={publish}
-            disabled={actionLoading !== ''}
+            disabled={saving || actionLoading !== ''}
             className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
           >
             <CheckCircle size={16} />

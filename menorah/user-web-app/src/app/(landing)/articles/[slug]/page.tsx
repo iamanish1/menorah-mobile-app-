@@ -7,7 +7,7 @@ import { ArrowLeft, BookOpen, CalendarDays, CheckCircle2, Quote, ShieldCheck, Ta
 import { MenorahFooter } from "@/components/site/MenorahFooter";
 import { MenorahNavbar } from "@/components/site/MenorahNavbar";
 import { getArticleBySlug, type Article, type ArticleContentBlock } from "@/lib/articles";
-import { EDITORIAL_REVIEWER_NAME, getPublicWebUrl, SITE_NAME } from "@/lib/site";
+import { EDITORIAL_REVIEWER_NAME, getArticleCanonicalBaseUrl, getArticleCanonicalUrl, SITE_NAME } from "@/lib/site";
 
 type ArticlePageProps = {
   params: Promise<{
@@ -32,12 +32,13 @@ export async function generateMetadata({ params }: ArticlePageProps): Promise<Me
     title,
     description,
     alternates: {
-      canonical: article.canonicalUrl || `/articles/${article.slug}`
+      canonical: getArticleCanonicalUrl(article.slug)
     },
     openGraph: {
       title,
       description,
       type: "article",
+      url: getArticleCanonicalUrl(article.slug),
       publishedTime: article.publishedAt || article.createdAt,
       modifiedTime: article.updatedAt,
       images: article.coverImageUrl
@@ -183,7 +184,7 @@ function JsonLdScript({ data, nonce }: { data: unknown; nonce?: string }) {
 }
 
 function buildArticleJsonLd(article: Article) {
-  const articleUrl = getPublicWebUrl(`/articles/${article.slug}`);
+  const articleUrl = getArticleCanonicalUrl(article.slug);
   const publishedDate = getIsoDate(article.publishedAt || article.createdAt);
   const modifiedDate = getIsoDate(article.updatedAt || article.reviewedAt || article.publishedAt || article.createdAt);
 
@@ -202,18 +203,18 @@ function buildArticleJsonLd(article: Article) {
     author: {
       "@type": "Organization",
       name: EDITORIAL_REVIEWER_NAME,
-      url: getPublicWebUrl("/")
+      url: getArticleCanonicalBaseUrl()
     },
     publisher: {
       "@type": "Organization",
       name: SITE_NAME,
-      url: getPublicWebUrl("/")
+      url: getArticleCanonicalBaseUrl()
     },
     reviewedBy: article.reviewedByHuman
       ? {
           "@type": "Organization",
           name: EDITORIAL_REVIEWER_NAME,
-          url: getPublicWebUrl("/")
+          url: getArticleCanonicalBaseUrl()
         }
       : undefined,
     about: article.tags.length ? article.tags : undefined
@@ -221,7 +222,7 @@ function buildArticleJsonLd(article: Article) {
 }
 
 function buildBreadcrumbJsonLd(article: Article) {
-  const articleUrl = getPublicWebUrl(`/articles/${article.slug}`);
+  const articleUrl = getArticleCanonicalUrl(article.slug);
 
   return {
     "@context": "https://schema.org",
@@ -231,13 +232,13 @@ function buildBreadcrumbJsonLd(article: Article) {
         "@type": "ListItem",
         position: 1,
         name: "Home",
-        item: getPublicWebUrl("/")
+        item: getArticleCanonicalBaseUrl()
       },
       {
         "@type": "ListItem",
         position: 2,
         name: "Articles",
-        item: getPublicWebUrl("/articles")
+        item: getArticleCanonicalUrl("")
       },
       {
         "@type": "ListItem",

@@ -123,6 +123,20 @@ const requireExactValue = (key, expected, errors) => {
   }
 };
 
+const validateNotificationPushSecurity = ({ serviceName, errors }) => {
+  if (serviceName !== 'worker') return;
+  if (String(process.env.WORKER_MODE || '').trim() !== 'active') return;
+  if (String(process.env.ENABLE_NOTIFICATION_JOBS || '').trim() !== 'true') return;
+
+  const token = String(process.env.EXPO_PUSH_ACCESS_TOKEN || '').trim();
+  const placeholder = /(?:replace|placeholder|example|change(?:me)?|todo|your[-_ ]?token)/i;
+  if (token.length < 20 || placeholder.test(token)) {
+    errors.push(
+      'EXPO_PUSH_ACCESS_TOKEN must contain a non-placeholder protected token when the active worker enables notification jobs'
+    );
+  }
+};
+
 const validateAppleSignInConfig = ({ deploymentEnvironment, errors }) => {
   const enabled = String(process.env.APPLE_SIGN_IN_ENABLED || '').trim();
 
@@ -545,6 +559,7 @@ const validateStartupEnv = ({ serviceName, requirePaymentEnv = true } = {}) => {
   requireEnv('MONGODB_URI', errors);
 
   if (process.env.NODE_ENV === 'production') {
+    validateNotificationPushSecurity({ serviceName, errors });
     const isExactServerStaging =
       isExactServerStagingSyntheticRuntime(process.env);
     const requiresApiProviders = (

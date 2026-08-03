@@ -9,6 +9,10 @@ jest.mock('../../middleware/auth', () => ({
     req.user = mockAuthUser;
     next();
   },
+  verifiedPatientAuth: (req, _res, next) => {
+    req.user = mockAuthUser;
+    next();
+  },
   authAny: (req, _res, next) => {
     req.user = mockAuthUser;
     next();

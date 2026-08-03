@@ -90,6 +90,12 @@ Before opening the maintenance window:
   present, matches the checked-out commit.
 - No incident or another maintenance operation is active.
 - Required production environment and host-only secret files are present.
+- The compromised historical Cloudflare Tunnel token has been rotated in a
+  separately approved security change; only `cloudflared` was restarted and
+  all public endpoints were reverified without recording the token.
+- For an Android release, the Play App Signing SHA-256 is configured and
+  `CHECK_PUBLIC=true CHECK_ANDROID_APP_LINKS=true` passes against
+  `https://app.menorah.me/.well-known/assetlinks.json` without a redirect.
 - Public traffic owners know the maintenance boundary and recovery contact.
 - `rollback-last-deploy.sh` and the backup/restore runbook are available to the
   operator.
@@ -97,7 +103,10 @@ Before opening the maintenance window:
 Set the reviewed values without placing secrets in shell history:
 
 ```bash
-cd /opt/menorah/menorah-mobile-app-
+# This Hostinger host intentionally keeps the Git checkout at /opt/menorah;
+# the application/deploy directory is /opt/menorah/menorah.
+cd /opt/menorah
+export MENORAH_RELEASE_REPO_ROOT=/opt/menorah
 export DEPLOY_BRANCH='release/reviewed-release-name'
 export DEPLOY_RELEASE_SHA='<reviewed-full-40-character-sha>'
 export DEPLOY_MIGRATION_APPROVED_SHA="${DEPLOY_RELEASE_SHA}"
@@ -127,7 +136,7 @@ changes while application writers are active.
    IPv4 subnet, and assigned endpoints:
 
    ```bash
-   cd /opt/menorah/menorah-mobile-app-/menorah
+   cd /opt/menorah/menorah
    project_name="$(docker compose \
      --env-file deploy/env/production.env \
      --env-file deploy/env/cloudflare.env \
@@ -157,7 +166,7 @@ changes while application writers are active.
 
    ```bash
    set -euo pipefail
-   cd /opt/menorah/menorah-mobile-app-/menorah
+   cd /opt/menorah/menorah
    compose=(docker compose --env-file deploy/env/production.env \
      --env-file deploy/env/cloudflare.env \
      -f deploy/docker-compose.production.yml \
@@ -235,7 +244,7 @@ test "$(git hash-object "${reviewed_script_tmp}")" = \
   "$(git rev-parse "${DEPLOY_RELEASE_SHA}:menorah/deploy/ubuntu/update-from-git.sh")"
 chmod 0500 "${reviewed_script_tmp}"
 mv -f -- "${reviewed_script_tmp}" "${reviewed_script}"
-MENORAH_RELEASE_REPO_ROOT="$(pwd)" bash "${reviewed_script}"
+MENORAH_RELEASE_REPO_ROOT=/opt/menorah bash "${reviewed_script}"
 ```
 
 This is an `INFRASTRUCTURE ACTION` for the first transition to the guarded
@@ -252,7 +261,8 @@ the updater blob is unchanged, its Git object identity is still verified.
 Run exactly:
 
 ```bash
-bash menorah/deploy/ubuntu/update-from-git.sh
+MENORAH_RELEASE_REPO_ROOT=/opt/menorah \
+  bash menorah/deploy/ubuntu/update-from-git.sh
 ```
 
 If the one-time adoption command above was required, it already performed this
@@ -390,7 +400,7 @@ identifiers, not application secrets.
   after approval:
 
   ```bash
-  cd /opt/menorah/menorah-mobile-app-
+  cd /opt/menorah
   export MENORAH_POST_MIGRATION_RECOVERY_CONFIRM=RESUME_RECORDED_RELEASE
   bash menorah/deploy/ubuntu/resume-post-migration-release.sh
   ```
@@ -408,7 +418,7 @@ identifiers, not application secrets.
 Only when no incompatible or partial migration marker blocks it:
 
 ```bash
-cd /opt/menorah/menorah-mobile-app-
+cd /opt/menorah
 bash menorah/deploy/ubuntu/rollback-last-deploy.sh
 ```
 

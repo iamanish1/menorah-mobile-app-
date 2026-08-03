@@ -1,13 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Eye, EyeOff, Shield } from 'lucide-react';
-import toast from 'react-hot-toast';
 
 export default function LoginPage() {
-  const { login, completeMfa, user } = useAuth();
+  const { login, completeMfa, user, isLoading } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,12 +15,16 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  if (user) { router.replace('/dashboard'); return null; }
+  useEffect(() => {
+    if (!isLoading && user) router.replace('/dashboard');
+  }, [isLoading, router, user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setNotice('');
     if (challengeId) {
       if (!/^\d{6}$/.test(mfaCode)) { setError('Enter the 6-digit verification code.'); return; }
     } else if (!email || !password) {
@@ -35,22 +38,38 @@ export default function LoginPage() {
       : await login(email, password);
     setLoading(false);
 
-    const maybeMfa = res as typeof res & { mfaRequired?: boolean; challengeId?: string };
+    const maybeMfa = res as typeof res & {
+      mfaRequired?: boolean;
+      challengeId?: string;
+      needsVerification?: boolean;
+      email?: string;
+    };
+    if (maybeMfa.needsVerification) {
+      router.replace(`/verify-email?email=${encodeURIComponent(maybeMfa.email || email)}`);
+      return;
+    }
     if (maybeMfa.success && maybeMfa.mfaRequired && maybeMfa.challengeId) {
       setChallengeId(maybeMfa.challengeId);
       setPassword('');
       setMfaCode('');
-      toast.success('Verification code sent');
+      setNotice('Verification code sent. Enter it below to continue.');
       return;
     }
 
     if (res.success) {
-      toast.success('Welcome back!');
       router.replace('/dashboard');
     } else {
       setError(res.message || 'Login failed');
     }
   };
+
+  if (isLoading || user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">
@@ -94,8 +113,13 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-5">
+            <div role="alert" className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-5">
               {error}
+            </div>
+          )}
+          {notice && (
+            <div role="status" className="bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded-xl px-4 py-3 mb-5">
+              {notice}
             </div>
           )}
 
@@ -129,8 +153,8 @@ export default function LoginPage() {
                 />
                 <button
                   type="button"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -140,9 +164,9 @@ export default function LoginPage() {
 
             {challengeId && (
               <div>
-                <label htmlFor="admin-mfa-code" className="block text-sm font-medium text-gray-700 mb-1.5">Verification code</label>
+                <label htmlFor="admin-verification-code" className="block text-sm font-medium text-gray-700 mb-1.5">Verification code</label>
                 <input
-                  id="admin-mfa-code"
+                  id="admin-verification-code"
                   type="text"
                   inputMode="numeric"
                   autoComplete="one-time-code"

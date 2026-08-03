@@ -1,6 +1,6 @@
 # Production-readiness executive summary
 
-Last reviewed: 2026-07-25.
+Last reviewed: 2026-08-03.
 
 ## Verdict
 
@@ -15,6 +15,19 @@ authorize public service.
 No part of this package authorizes deployment, migration, restoration, traffic
 changes, secret changes, provider changes, store submission or production data
 access.
+
+## Android 2.7.0 successor release
+
+The accumulated Android/backend release is now being prepared as Menorah
+Health `2.7.0`. Its intended source lineage, Android-only scope, Play-safe
+version-code rule, build-once artifact invariant, same-day internal QA,
+separate owner go/no-go and explicit 100% rollout risk exception are recorded
+in [the Android 2.7.0 launch record](./30-android-2.7.0-production-launch.md).
+
+That successor has no final exact SHA, signed AAB or Play evidence yet. The
+older frozen runtime and workflow results below remain historical evidence for
+their cited SHA; they must not be relabelled as Android `2.7.0` evidence. The
+public-production verdict remains **NOT READY**.
 
 ## Repository-remediation status
 

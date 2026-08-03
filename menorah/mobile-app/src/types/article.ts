@@ -6,6 +6,8 @@ export type ArticleContentBlockType =
   | 'image'
   | 'callout';
 
+export type ArticleStatus = 'draft' | 'review' | 'published' | 'archived' | 'rejected';
+
 export interface ArticleContentBlock {
   type: ArticleContentBlockType;
   text?: string | null;
@@ -31,6 +33,7 @@ export interface Article {
   seoTitle?: string;
   seoDescription?: string;
   canonicalUrl?: string;
+  status?: ArticleStatus;
   generatedByAi?: boolean;
   reviewedByHuman?: boolean;
   reviewedAt?: string | null;

@@ -65,6 +65,7 @@ QA_PASSWORD="$password" \
 QA_API_WEB_URL="${QA_API_WEB_URL:-https://api-web.menorah.me}" \
 QA_CALL_API_URL="${QA_CALL_API_URL:-http://127.0.0.1:18082}" \
 QA_APP_URL="${QA_APP_URL:-https://app.menorah.me}" \
+QA_WEBRTC_TRANSPORT="${QA_WEBRTC_TRANSPORT:-default}" \
 docker run --rm \
   --network host \
   --shm-size=1gb \
@@ -76,5 +77,6 @@ docker run --rm \
   -e QA_API_WEB_URL \
   -e QA_CALL_API_URL \
   -e QA_APP_URL \
+  -e QA_WEBRTC_TRANSPORT \
   mcr.microsoft.com/playwright:v1.61.0-noble \
   node /workspace/scripts/qa/production-chat-call-smoke.js

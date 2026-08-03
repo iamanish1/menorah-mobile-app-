@@ -116,7 +116,44 @@ apply only to a locally managed YAML configuration.
 LIVEKIT_UPSTREAM=http://livekit:7880
 ```
 
-Cloudflare HTTP proxying is only for HTTPS/WSS signaling. LiveKit media still needs Hostinger firewall/NAT access to the configured RTC ports, normally `7881/tcp` and `50000-50100/udp`, or clients must rely on LiveKit TCP fallback.
+## Native reset-link association files
+
+The mobile apps verify HTTPS ownership through `/.well-known/apple-app-site-association`
+and `/.well-known/assetlinks.json`. Keep the `menorah.me`, `app.menorah.me`,
+`api-ios.menorah.me`, and `api-android.menorah.me` public hostnames pointed at
+`http://reverse-proxy:80`; do not add a redirect, access policy, HTML rewrite,
+or cache rule that intercepts either `/.well-known/` path.
+
+`www.menorah.me` is also an App/Universal Link hostname. Caddy already sends
+both association paths directly to `app-link-associations`, but it cannot
+override a Cloudflare redirect that runs before the Tunnel. If Cloudflare
+redirects `www.menorah.me` to `menorah.me`, edit the redirect rule itself so it
+does **not** match either association path. For a Cloudflare Single Redirect
+rule, use an expression equivalent to:
+
+```text
+http.host eq "www.menorah.me" and not (
+  http.request.uri.path in {
+    "/.well-known/apple-app-site-association"
+    "/.well-known/assetlinks.json"
+  }
+)
+```
+
+Do not rely on a later WAF/Skip rule to repair this: a matching redirect is a
+terminal response. If the redirect is implemented as a Page Rule, Bulk
+Redirect, or Worker, add the same two-path exclusion there or replace it with
+an equivalent conditional redirect rule. The public health gate below must
+return direct `200 application/json` responses for those `www` URLs; `301`,
+`302`, or a redirect followed by `curl -L` is not valid app-link verification.
+
+Set the real Apple Team ID and Android signing SHA-256 fingerprint values in
+the host-only `production.env` before enabling native reset links. Until then,
+the edge intentionally returns `404` for these files. See
+[`../app-links/README.md`](../app-links/README.md) for the exact variables and
+post-deploy verification commands.
+
+Cloudflare HTTP proxying is only for HTTPS/WSS signaling. LiveKit media still needs direct Hostinger access to `7881/tcp`, `3478/udp`, `5349/tcp`, and `61000-62000/udp`. The TURN relay allocation range remains internal and is not opened publicly.
 
 ## Dashboard-Managed Tunnel Token
 
@@ -215,6 +252,11 @@ docker compose \
 docker compose -f docker-compose.production.yml -f docker-compose.tunnel.yml ps cloudflared
 docker compose -f docker-compose.production.yml -f docker-compose.tunnel.yml logs cloudflared --tail=100
 CHECK_PUBLIC=true bash ubuntu/health-check.sh
+
+# Before an internal/native mobile rollout, require the signed association
+# files as well (they intentionally return 404 until identifiers are set).
+# This checks all declared iOS/Android hosts and fails if any path redirects.
+CHECK_PUBLIC=true CHECK_NATIVE_APP_LINKS=true bash ubuntu/health-check.sh
 ```
 
 For a remotely managed tunnel, an operator with a minimally scoped read-only

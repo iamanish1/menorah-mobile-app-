@@ -24,16 +24,16 @@ const {
   resolveCallPolicy
 } = require('../services/callPolicyService');
 const {
-  sendCounsellorApprovalEmail,
+  sendCounsellorCredentialsEmail,
   sendCounsellorReverificationEmail,
 } = require('../utils/email');
-const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const { revokeAllSessions, disconnectUserSockets } = require('../utils/sessionLifecycle');
+const { issuePasswordResetToken } = require('../utils/passwordResetUrl');
 const {
   CounsellorVerificationError,
   approve: approveCounsellorVerification,
   expire: expireCounsellorVerification,
   issueReverificationInvitation,
-  prepareCounsellorActivation,
   reject: rejectCounsellorVerification,
   startReview: startCounsellorReview,
   suspend: suspendCounsellorVerification,
@@ -185,6 +185,28 @@ const serializeBankDetailsForAdmin = (bankDetails = {}) => {
     bankName: bankDetails.bankName || null,
     ifscCode: bankDetails.ifscCode || null,
   };
+};
+
+const generateSecurePassword = () => {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghjkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const special = '@#$!';
+  const all = upper + lower + digits + special;
+  let password = '';
+  password += upper[crypto.randomInt(upper.length)];
+  password += lower[crypto.randomInt(lower.length)];
+  password += digits[crypto.randomInt(digits.length)];
+  password += special[crypto.randomInt(special.length)];
+  for (let i = 4; i < 12; i++) {
+    password += all[crypto.randomInt(all.length)];
+  }
+  const characters = password.split('');
+  for (let index = characters.length - 1; index > 0; index--) {
+    const swapIndex = crypto.randomInt(index + 1);
+    [characters[index], characters[swapIndex]] = [characters[swapIndex], characters[index]];
+  }
+  return characters.join('');
 };
 
 const dateRanges = () => {
@@ -586,7 +608,7 @@ router.get('/stats', requireAdminPermission('platform_read'), async (req, res) =
     ] = await Promise.all([
       User.countDocuments({ role: 'user' }),
       Counsellor.countDocuments(),
-      PendingApplication.countDocuments({ status: { $in: ['pending', 'submitted', 'under_review'] } }),
+      PendingApplication.countDocuments({ status: { $in: ['pending', 'submitted', 'under_review', 'manual_review'] } }),
       Counsellor.countDocuments(buildProfessionallyApprovedCounsellorQuery({ now })),
       Counsellor.countDocuments({ status: 'suspended' }),
       Booking.countDocuments(),
@@ -739,6 +761,7 @@ router.get('/counsellors', [
     'suspended',
     'expired',
     'blocked',
+    'manual_review',
     'all',
   ]),
   query('page').optional().isInt({ min: 1 }),
@@ -751,8 +774,9 @@ router.get('/counsellors', [
     const { status = 'all', page = 1, limit = 20, search } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Pending tab — served from PendingApplication collection
-    if (['pending', 'submitted', 'under_review'].includes(status)) {
+    // Pending and manual-review tabs are served from PendingApplication so
+    // identity conflicts remain visible without bypassing credential review.
+    if (['pending', 'submitted', 'under_review', 'manual_review'].includes(status)) {
       const verificationConfig = readCounsellorVerificationConfig();
       const searchQuery = search
         ? { $or: [
@@ -763,7 +787,9 @@ router.get('/counsellors', [
         : {};
       searchQuery.status = status === 'under_review'
         ? 'under_review'
-        : { $in: ['pending', 'submitted'] };
+        : status === 'manual_review'
+          ? 'manual_review'
+          : { $in: ['pending', 'submitted', 'manual_review'] };
 
       const [apps, total] = await Promise.all([
         PendingApplication.find(searchQuery).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
@@ -782,6 +808,7 @@ router.get('/counsellors', [
         status: a.status === 'pending' ? 'submitted' : a.status,
         linkedCounsellor: a.linkedCounsellor || null,
         legacyReviewRequired: a.legacyReviewRequired === true,
+        identityConflict: a.identityConflict || { hasConflict: false, email: false, phone: false },
         canStartReview: (
           ['pending', 'submitted'].includes(a.status)
           && a.legacyReviewRequired !== true
@@ -944,7 +971,7 @@ router.get('/counsellors/:id', [
     await reconcileCounsellorVerificationExpiry({ counsellorId: req.params.id });
 
     const counsellor = await Counsellor.findById(req.params.id)
-      .populate('user', 'firstName lastName email phone profileImage role isActive createdAt')
+      .populate('user', 'firstName lastName email phone profileImage role isActive createdAt dateOfBirth gender')
       .populate('approvedBy', 'firstName lastName email')
       .lean();
 
@@ -996,6 +1023,7 @@ router.get('/counsellors/:id', [
         reviewCount: 0,
         commissionRate: 0,
         rejectionReason: application.rejectionReason,
+        identityConflict: application.identityConflict || { hasConflict: false, email: false, phone: false },
         reviewedBy: application.reviewedBy || null,
         reviewedAt: application.reviewedAt || null,
         reviewStartedBy: application.reviewStartedBy || null,
@@ -1055,11 +1083,21 @@ router.get('/counsellors/:id', [
       ])
     ]);
 
+    // Approved counsellors keep their personal data on the linked User
+    // document. Keep this response compatible with the pending-application
+    // shape so the admin detail screen always shows the counsellor's latest
+    // date of birth and gender after a self-service profile edit.
+    const formattedCounsellor = {
+      ...counsellor,
+      dateOfBirth: counsellor.user?.dateOfBirth || null,
+      gender: counsellor.user?.gender || null,
+    };
+
     res.json({
       success: true,
       data: {
         counsellor: {
-          ...counsellor,
+          ...formattedCounsellor,
           professionalVerification: counsellor.professionalVerification || null,
           professionallyEligible: isCounsellorProfessionallyApproved(counsellor),
         },
@@ -1106,6 +1144,42 @@ router.put('/counsellors/:id/start-review', [
       },
     });
   } catch (error) {
+    if (error?.code === 'EXISTING_ACCOUNT_REQUIRES_SEPARATE_INTAKE') {
+      const application = await PendingApplication.findById(req.params.id).lean().catch(() => null);
+      if (application) {
+        const [emailConflict, phoneConflict] = await Promise.all([
+          User.exists({ email: application.email }),
+          User.exists({ phone: application.phone }),
+        ]);
+        const conflictState = {
+          hasConflict: true,
+          email: Boolean(emailConflict),
+          phone: Boolean(phoneConflict),
+          detectedAt: new Date(),
+        };
+        const conflictUpdate = await PendingApplication.updateOne(
+          { _id: application._id, status: { $in: ['pending', 'submitted'] } },
+          {
+            $set: {
+              status: 'manual_review',
+              identityConflict: conflictState,
+            },
+          }
+        );
+        if (conflictUpdate.modifiedCount === 1) {
+          return res.status(409).json({
+            success: false,
+            code: 'APPLICATION_IDENTITY_CONFLICT',
+            message: 'This application matches an existing account and requires a separate reviewed intake.',
+            data: {
+              applicationId: application._id,
+              status: 'manual_review',
+              identityConflict: conflictState,
+            },
+          });
+        }
+      }
+    }
     if (sendCounsellorVerificationError(res, error)) return;
     console.error('Admin start counsellor review error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
@@ -1137,7 +1211,7 @@ router.put('/counsellors/:id/approve', [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { application, counsellor, user, activationToken } =
+    const { application, counsellor, user } =
       await approveCounsellorVerification({
         applicationId: req.params.id,
         adminId: req.user._id,
@@ -1147,12 +1221,23 @@ router.put('/counsellors/:id/approve', [
       });
     await invalidateCounsellorDiscoveryCache();
 
+    const plainPassword = generateSecurePassword();
+    user.password = plainPassword;
+    const resetToken = issuePasswordResetToken(user);
+    user.loginAttempts = 0;
+    user.lockUntil = null;
+    revokeAllSessions(user, { passwordChanged: true });
+    await user.save();
+    disconnectUserSockets(req.app.get('io'), user, 'counsellor_approved');
+
     res.locals.securitySessionRevoked = user;
     res.locals.securitySessionRevocationAction = 'counsellor_approved';
-    const credentialEmailSent = await sendCounsellorApprovalEmail({
+    const credentialEmailSent = await sendCounsellorCredentialsEmail({
       email: user.email,
       name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-      activationToken,
+      password: plainPassword,
+      resetToken,
+      kind: 'onboarding',
     }).catch((error) => {
       console.error('Counsellor approval credential email error:', error.message);
       return false;
@@ -1161,8 +1246,8 @@ router.put('/counsellors/:id/approve', [
     return res.json({
       success: true,
       message: credentialEmailSent
-        ? 'Counsellor approved. A one-time password setup link was emailed.'
-        : 'Counsellor approved, but the activation email was not sent. Resend the setup link.',
+        ? 'Counsellor approved. A temporary password and secure reset link were emailed to the counsellor.'
+        : 'Counsellor approved, but the credential email was not sent. Generate a new password to email a fresh secure access link.',
       data: {
         applicationId: application._id,
         counsellorId: counsellor._id,
@@ -1211,8 +1296,8 @@ router.put('/counsellors/:id/reject', [
 });
 
 // POST /api/admin/counsellors/:id/generate-password
-// Historical route name retained for clients. It now sends a one-time setup link
-// and never returns or emails a plaintext password.
+// Generates a new password, invalidates existing sessions, and emails the
+// counsellor the temporary password plus a secure, short-lived reset link.
 router.post('/counsellors/:id/generate-password', [
   requireAdminPermission('clinical_manage'),
   param('id').isMongoId().withMessage('Invalid counsellor ID'),
@@ -1238,33 +1323,43 @@ router.post('/counsellors/:id/generate-password', [
         message: 'The approved counsellor account is not active.'
       });
     }
-    const activationToken = prepareCounsellorActivation(user);
+    const plainPassword = generateSecurePassword();
+    user.password = plainPassword;
+    const resetToken = issuePasswordResetToken(user);
+    user.loginAttempts = 0;
+    // lockUntil is excluded by default, so assigning undefined would not mark
+    // the path as modified. Persist null explicitly to make the new admin-
+    // issued credential usable even when the account was previously locked.
+    user.lockUntil = null;
     revokeAllSessions(user, { passwordChanged: true });
 
     await user.save();
+    disconnectUserSockets(req.app.get('io'), user, 'password_generated');
     res.locals.securitySessionRevoked = user;
-    res.locals.securitySessionRevocationAction = 'activation_link_generated';
+    res.locals.securitySessionRevocationAction = 'password_generated';
 
-    const activationEmailSent = await sendCounsellorApprovalEmail({
+    const credentialEmailSent = await sendCounsellorCredentialsEmail({
       email: user.email,
       name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-      activationToken,
+      password: plainPassword,
+      resetToken,
+      kind: 'password_reset',
     }).catch((error) => {
-      console.error('Counsellor activation email error:', error.message);
+      console.error('Counsellor password reset credential email error:', error.message);
       return false;
     });
 
     res.json({
       success: true,
-      message: activationEmailSent
-        ? 'A one-time password setup link was sent to the counsellor.'
-        : 'The password setup link could not be sent. Retry this action after email delivery is restored.',
+      message: credentialEmailSent
+        ? 'The new temporary password and secure reset link were emailed to the counsellor.'
+        : 'The password was reset, but the email could not be sent. Generate a new password to send a fresh secure access link.',
       data: {
         username: user.email,
         counsellorId: counsellor._id,
         userId: user._id,
-        activationEmailSent,
-        activationEmailRecipient: user.email,
+        credentialEmailSent,
+        credentialEmailRecipient: user.email,
       }
     });
   } catch (error) {
@@ -1290,6 +1385,7 @@ router.put('/counsellors/:id/block', [
       reason: req.body.reason,
     });
     await invalidateCounsellorDiscoveryCache();
+    disconnectUserSockets(req.app.get('io'), user, 'account_blocked');
     res.locals.securitySessionRevoked = user;
     res.locals.securitySessionRevocationAction = 'counsellor_suspended';
 

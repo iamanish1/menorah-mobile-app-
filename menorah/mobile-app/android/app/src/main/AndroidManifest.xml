@@ -38,9 +38,7 @@
         <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="http"/>
-        <data android:scheme="https"/>
-        <data android:host="app.menorah.me" android:path="/reset-password"/>
+        <data android:scheme="https" android:host="app.menorah.me" android:path="/reset-password"/>
       </intent-filter>
     </activity>
   </application>

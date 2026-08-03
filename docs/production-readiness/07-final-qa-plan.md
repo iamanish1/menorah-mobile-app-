@@ -1,6 +1,6 @@
 # Final QA plan
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-08-03.
 
 ## Objective
 
@@ -305,7 +305,20 @@ No production URL should be accepted by a destructive QA harness.
 
 ## Stage 6 — mobile and store QA
 
-- Android internal-track signed build and representative physical devices;
+- for Android `2.7.0`, build one AAB from the exact protected release SHA,
+  submit it to Play internal testing, and install the Play-delivered artifact
+  on an emulator with Play Services and at least one physical device;
+- record clean install and upgrade, password/Play-signed Google auth,
+  first-login tour, counsellor search/profile/hourly-rate/booking behavior,
+  pending-payment cancellation and occupied-slot denial;
+- record web-to-Android chat history/profile pictures/reconnect/duplicate
+  suppression, all seven informational GAD-7 questions and owner-only result
+  access, and Hostinger LiveKit camera/microphone calls;
+- record article/message/session notifications in foreground/background/killed
+  states, denial/re-enable, token refresh/removal and correct tap destinations;
+- record offline/error states, account switching, logout/deletion and a log
+  review proving tokens, assessment answers/scores, emergency contacts and chat
+  content are absent;
 - iOS archive and signed-device tests on an approved macOS builder;
 - login, MFA where applicable, booking, payment test mode, calls/chat,
   notification redaction, account deletion and deep-link authorization;
@@ -315,7 +328,9 @@ No production URL should be accepted by a destructive QA harness.
 - accurate privacy, health, data-safety and required-reason declarations.
 
 These are `APPLE ACTION` and `GOOGLE ACTION`; desktop configuration tests are
-not substitutes.
+not substitutes. The Android pass also requires a clean Play pre-launch report
+and the exact-artifact promotion controls in
+[the Android 2.7.0 launch record](./30-android-2.7.0-production-launch.md).
 
 ## Stage 7 — independent and operational assurance
 

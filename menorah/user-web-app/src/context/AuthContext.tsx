@@ -8,8 +8,9 @@ interface AuthContextValue {
   user: User | null;
   isAuthed: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; needsVerification?: boolean }>;
-  loginWithGoogle: (credential: string) => Promise<{ success: boolean; message?: string; isNewUser?: boolean }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; needsVerification?: boolean; requiresProfileCompletion?: boolean }>;
+  loginWithGoogle: (credential: string, intent: 'signin' | 'signup') => Promise<{ success: boolean; message?: string; isNewUser?: boolean; needsVerification?: boolean; requiresSignUp?: boolean; requiresProfileCompletion?: boolean }>;
+  linkSocialProvider: (provider: 'google' | 'apple', providerToken: string, currentPassword: string) => Promise<{ success: boolean; message?: string }>;
   register: (data: RegisterData) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
@@ -62,9 +63,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const res = await api.login(email, password);
+    if (res.code === 'EMAIL_VERIFICATION_REQUIRED') {
+      const pendingEmail = res.data?.email || email;
+      setUser(null);
+      sessionStorage.setItem('pending_verify_email', pendingEmail);
+      sessionStorage.setItem('pending_verification_mode', 'account');
+      // Login deliberately does not create a session for an unverified
+      // account. Start (or safely coalesce with) the verification-code
+      // delivery before taking the user to the OTP page; otherwise a legacy
+      // account with no outstanding code would be shown a 60-second resend
+      // countdown without having received anything.
+      void api.resendEmailVerification(pendingEmail);
+      return {
+        success: false,
+        needsVerification: true,
+        message: res.message || 'Please verify your email address.',
+      };
+    }
     if (res.success && res.data?.user) {
-      setUser(res.data.user);
       const u = res.data.user;
+      if (u.role !== 'user') {
+        setUser(null);
+        return {
+          success: false,
+          message: u.role === 'admin'
+            ? 'Use the dedicated admin portal for this account.'
+            : 'Use the dedicated counsellor portal for this account.',
+        };
+      }
+      setUser(u);
       if (!u.isEmailVerified) {
         if (typeof window !== 'undefined') {
           sessionStorage.setItem('pending_verify_email', email);
@@ -72,18 +99,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return { success: true, needsVerification: true, message: 'Please verify your email address.' };
       }
-      return { success: true };
+      return { success: true, requiresProfileCompletion: u.profileCompleted === false };
     }
     return { success: false, message: res.message };
   };
 
-  const loginWithGoogle = async (credential: string) => {
-    const res = await api.loginWithGoogle(credential);
+  const loginWithGoogle = async (credential: string, intent: 'signin' | 'signup') => {
+    const res = await api.loginWithGoogle(credential, intent);
+    // Signing in must never silently create an account. When the backend
+    // confirms that this Google identity is new, let the login view take the
+    // person to the explicit sign-up flow instead of leaving them at an error.
+    if (res.code === 'ACCOUNT_NOT_FOUND' && intent === 'signin') {
+      setUser(null);
+      return {
+        success: false,
+        requiresSignUp: true,
+        message: res.message || 'Create a Menorah account to continue with Google.',
+      };
+    }
+    if (res.code === 'EMAIL_VERIFICATION_REQUIRED') {
+      const pendingEmail = res.data?.email;
+      setUser(null);
+      if (pendingEmail) {
+        sessionStorage.setItem('pending_verify_email', pendingEmail);
+        sessionStorage.setItem('pending_verification_mode', 'account');
+        void api.resendEmailVerification(pendingEmail);
+      }
+      return {
+        success: false,
+        needsVerification: true,
+        message: res.message || 'Please verify your email address before signing in.',
+      };
+    }
     if (res.success && res.data?.user) {
+      if (res.data.user.role !== 'user') {
+        setUser(null);
+        return {
+          success: false,
+          message: res.data.user.role === 'admin'
+            ? 'Use the dedicated admin portal for this account.'
+            : 'Use the dedicated counsellor portal for this account.',
+        };
+      }
       setUser(res.data.user);
-      return { success: true, isNewUser: res.data.isNewUser };
+      return {
+        success: true,
+        isNewUser: res.data.isNewUser,
+        requiresProfileCompletion: res.data.user.profileCompleted === false,
+      };
     }
     return { success: false, message: res.message };
+  };
+
+  const linkSocialProvider = async (
+    provider: 'google' | 'apple',
+    providerToken: string,
+    currentPassword: string
+  ) => {
+    const res = await api.linkSocialProvider(provider, providerToken, currentPassword);
+    if (res.success && res.data?.user) {
+      setUser(res.data.user);
+      return { success: true, message: res.message };
+    }
+    const firstValidationMessage = res.errors?.map((error) => error.message || error.msg).find(Boolean);
+    return { success: false, message: firstValidationMessage || res.message };
   };
 
   const register = async (data: RegisterData) => {
@@ -150,15 +229,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resetPassword = async (token: string, password: string) => {
     const res = await api.resetPassword(token, password);
-    return { success: res.success, message: res.message };
+    const firstValidationMessage = res.errors?.map((error) => error.message || error.msg).find(Boolean);
+    return { success: res.success, message: firstValidationMessage || res.message };
   };
 
   const updateUser = (updated: User) => setUser(updated);
 
   return (
     <AuthContext.Provider value={{
-      user, isAuthed: !!user, isLoading,
-      login, loginWithGoogle, register, logout, logoutAll,
+      user, isAuthed: user?.role === 'user', isLoading,
+      login, loginWithGoogle, linkSocialProvider, register, logout, logoutAll,
       verifyEmail, verifyPhone, verifyEmailOTP,
       forgotPassword, resetPassword,
       updateUser, refreshUser,

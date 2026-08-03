@@ -193,6 +193,19 @@ describe('route profiles', () => {
       .send({})
       .expect(400);
 
+    // Verification is intentionally exposed only through the admin-scoped
+    // router; it lets an unverified admin cross the account-state boundary
+    // without mounting the patient registration or social-auth routes here.
+    await request(app)
+      .post('/api/auth/verify-email')
+      .send({})
+      .expect(400);
+
+    await request(app)
+      .post('/api/auth/resend-email-verification')
+      .send({})
+      .expect(200);
+
     await request(app)
       .post('/api/auth/register')
       .send({})
@@ -224,6 +237,16 @@ describe('route profiles', () => {
 
     await request(app)
       .get('/api/admin/server-usage')
+      .expect(401);
+
+    await request(app)
+      .post('/api/articles/admin')
+      .send({})
+      .expect(401);
+
+    await request(app)
+      .post('/api/admin/social-studio/posts')
+      .send({})
       .expect(401);
 
     await request(app)

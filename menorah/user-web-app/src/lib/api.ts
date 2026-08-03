@@ -7,6 +7,20 @@ import type {
 
 export const UNAUTHORIZED_EVENT = 'menorah:unauthorized';
 
+const PUBLIC_AUTH_FAILURE_ENDPOINTS = new Set([
+  '/auth/login',
+  '/auth/google',
+  '/auth/apple',
+  '/auth/register',
+  '/auth/verify-email',
+  '/auth/verify-email-otp',
+  '/auth/verify-phone',
+  '/auth/resend-email-otp',
+  '/auth/resend-email-verification',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+]);
+
 class ApiClient {
   private client: AxiosInstance;
 
@@ -20,7 +34,16 @@ class ApiClient {
     this.client.interceptors.response.use(
       (res) => res,
       (error) => {
-        if (error.response?.status === 401 && typeof window !== 'undefined') {
+        const requestUrl = typeof error.config?.url === 'string' ? error.config.url : '';
+        // A failed credential, OAuth, OTP, or anonymous session probe is an
+        // expected page-level error. Authenticated endpoints such as social
+        // linking still terminate a definitively invalid session on 401.
+        const isExpectedAuthFailure = PUBLIC_AUTH_FAILURE_ENDPOINTS.has(requestUrl) || requestUrl === '/users/me';
+        if (
+          error.response?.status === 401
+          && !isExpectedAuthFailure
+          && typeof window !== 'undefined'
+        ) {
           window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
         }
         return Promise.reject(error);
@@ -77,10 +100,11 @@ class ApiClient {
 
   private handleError<T>(err: unknown, fallback: string): ApiResponse<T> {
     const e = err as { response?: { data?: ApiResponse<T>; status?: number } };
+    if (e.response?.data) return e.response.data;
     return {
       success: false,
-      message: e.response?.data?.message || fallback,
-      errors:  e.response?.data?.errors  || [],
+      message: fallback,
+      errors: [],
     };
   }
 
@@ -92,12 +116,31 @@ class ApiClient {
     return this.post<{ email: string }>('/auth/register', data);
   }
 
-  async login(email: string, password: string): Promise<ApiResponse<{ user: User }>> {
-    return this.post<{ user: User }>('/auth/login', { email, password, transport: 'cookie' });
+  async login(email: string, password: string): Promise<ApiResponse<{ user?: User; email?: string }>> {
+    return this.post<{ user?: User; email?: string }>('/auth/login', { email, password, transport: 'cookie' });
   }
 
-  async loginWithGoogle(credential: string): Promise<ApiResponse<{ user: User; isNewUser?: boolean }>> {
-    return this.post<{ user: User; isNewUser?: boolean }>('/auth/google', { credential, transport: 'cookie' });
+  async loginWithGoogle(
+    credential: string,
+    intent: 'signin' | 'signup'
+  ): Promise<ApiResponse<{ user?: User; isNewUser?: boolean; email?: string }>> {
+    return this.post<{ user?: User; isNewUser?: boolean; email?: string }>('/auth/google', {
+      credential,
+      intent,
+      transport: 'cookie',
+    });
+  }
+
+  async linkSocialProvider(
+    provider: 'google' | 'apple',
+    providerToken: string,
+    currentPassword: string
+  ): Promise<ApiResponse<{ user: User }>> {
+    return this.post<{ user: User }>('/auth/social/link', {
+      provider,
+      providerToken,
+      currentPassword,
+    });
   }
 
   async verifyEmail(email: string, code: string): Promise<ApiResponse<void>> {
@@ -153,16 +196,41 @@ class ApiClient {
     return this.putFormData<{ user: User }>('/users/profile', formData);
   }
 
+  async completeProfile(phone: string): Promise<ApiResponse<{ user: User }>> {
+    return this.put<{ user: User }>('/users/profile/complete', { phone: phone.trim() });
+  }
+
   async updateAddress(data: User['address']): Promise<ApiResponse<{ user: User }>> {
     return this.put<{ user: User }>('/users/address', data);
   }
 
-  async updateEmergencyContact(data: User['emergencyContact']): Promise<ApiResponse<{ user: User }>> {
-    return this.put<{ user: User }>('/users/emergency-contact', data);
+  async updateEmergencyContact(data: {
+    name: string;
+    relationship: string;
+    phone: string;
+  }): Promise<ApiResponse<{
+    emergencyContact: {
+      name: string;
+      relationship: string;
+      phone: string;
+    } | null;
+  }>> {
+    return this.put<{
+      emergencyContact: {
+        name: string;
+        relationship: string;
+        phone: string;
+      } | null;
+    }>('/users/emergency-contact', data);
   }
 
-  async updateNotificationPreferences(data: User['notificationPreferences']): Promise<ApiResponse<{ user: User }>> {
-    return this.put<{ user: User }>('/users/notification-preferences', data);
+  async updateNotificationPreferences(data: { email: boolean }): Promise<ApiResponse<{
+    notificationPreferences: NonNullable<User['notificationPreferences']>;
+  }>> {
+    return this.put<{ notificationPreferences: NonNullable<User['notificationPreferences']> }>(
+      '/users/notification-preferences',
+      data
+    );
   }
 
   async changePassword(currentPassword: string, newPassword: string): Promise<ApiResponse<void>> {
@@ -264,8 +332,8 @@ class ApiClient {
     return this.get<{ booking: Booking }>(`/bookings/${id}`);
   }
 
-  async cancelBooking(id: string, reason?: string): Promise<ApiResponse<{ booking: Booking }>> {
-    return this.put<{ booking: Booking }>(`/bookings/${id}/cancel`, { reason });
+  async cancelBooking(id: string, reason?: string): Promise<ApiResponse<{ booking: Pick<Booking, 'id' | 'status' | 'paymentStatus'> }>> {
+    return this.put<{ booking: Pick<Booking, 'id' | 'status' | 'paymentStatus'> }>(`/bookings/${id}/cancel`, { reason });
   }
 
   async rescheduleBooking(id: string, scheduledAt: string): Promise<ApiResponse<{ booking: Booking }>> {
@@ -318,8 +386,8 @@ class ApiClient {
     return this.post<{ user: User }>('/payments/verify-subscription-payment', data);
   }
 
-  async getSubscriptionStatus(): Promise<ApiResponse<{ subscription: User['subscription'] }>> {
-    return this.get<{ subscription: User['subscription'] }>('/payments/subscription/status');
+  async getSubscriptionStatus(): Promise<ApiResponse<User['subscription']>> {
+    return this.get<User['subscription']>('/payments/subscription/status');
   }
 
   // ─── Chat ──────────────────────────────────────────────────────────────────

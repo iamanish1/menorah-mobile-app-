@@ -13,7 +13,7 @@ function originFromUrl(value?: string) {
   }
 }
 
-function buildCsp(nonce: string) {
+function buildCsp(nonce: string, strictAuthStyles: boolean) {
   const apiOrigin = originFromUrl(process.env.NEXT_PUBLIC_API_URL);
   const socketOrigin = originFromUrl(process.env.NEXT_PUBLIC_SOCKET_URL);
   const isProd = process.env.NODE_ENV === 'production';
@@ -37,7 +37,10 @@ function buildCsp(nonce: string) {
   return [
     "default-src 'self'",
     `script-src ${Array.from(new Set(scriptSrc)).join(' ')}`,
-    `style-src-elem 'self' 'nonce-${nonce}'`,
+    strictAuthStyles ? "style-src-elem 'self'" : "style-src-elem 'self' 'unsafe-inline'",
+    // Auth screens are class-only and can be locked down. Dashboard widgets
+    // still have a small set of dynamic style attributes pending migration.
+    strictAuthStyles ? "style-src-attr 'none'" : "style-src-attr 'unsafe-inline'",
     "font-src 'self' data:",
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https://res.cloudinary.com",
@@ -72,7 +75,13 @@ function nextWithSecurityHeaders(request: NextRequest, nonce: string, csp: strin
 
 export function middleware(request: NextRequest) {
   const nonce = createNonce();
-  const csp = buildCsp(nonce);
+  const pathname = request.nextUrl.pathname;
+  const isAuthRoute = pathname === '/login'
+    || pathname === '/register'
+    || pathname === '/forgot-password'
+    || pathname === '/reset-password'
+    || pathname.startsWith('/verify-email');
+  const csp = buildCsp(nonce, isAuthRoute);
 
   return nextWithSecurityHeaders(request, nonce, csp);
 }

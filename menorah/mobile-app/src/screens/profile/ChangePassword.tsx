@@ -35,8 +35,13 @@ export default function ChangePassword({ navigation }: any) {
 
     if (!newPassword) {
       newErrors.newPassword = 'New password is required';
-    } else if (newPassword.length < 8) {
-      newErrors.newPassword = 'Password must be at least 8 characters';
+    } else if (
+      newPassword.length < 8
+      || !/[a-z]/.test(newPassword)
+      || !/[A-Z]/.test(newPassword)
+      || !/\\d/.test(newPassword)
+    ) {
+      newErrors.newPassword = 'Use at least 8 characters with uppercase, lowercase, and a number';
     }
 
     if (!confirmPassword) {
@@ -125,7 +130,7 @@ export default function ChangePassword({ navigation }: any) {
           marginBottom: 24,
           lineHeight: 20
         }}>
-          Please enter your current password and choose a new password. Make sure your new password is at least 8 characters long.
+          Choose at least 8 characters with uppercase, lowercase, and a number. You will be signed out after the change.
         </Text>
 
         {/* Current Password */}

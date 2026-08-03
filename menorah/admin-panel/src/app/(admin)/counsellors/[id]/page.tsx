@@ -116,7 +116,7 @@ const statusLabel = (status: CounsellorVerificationStatus) => (
 const statusVariant = (status: CounsellorVerificationStatus): BadgeVariant => {
   if (status === 'approved') return 'approved';
   if (status === 'rejected') return 'rejected';
-  if (status === 'submitted' || status === 'under_review' || status === 'pending') return 'pending';
+  if (status === 'submitted' || status === 'under_review' || status === 'manual_review' || status === 'pending') return 'pending';
   if (status === 'suspended' || status === 'expired') return 'blocked';
   return 'default';
 };
@@ -704,6 +704,15 @@ export default function CounsellorDetailPage() {
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-xl font-bold text-gray-900">{displayName || 'Unnamed applicant'}</h2>
               <Badge variant={badgeVariant}>{statusLabel(counsellor.status)}</Badge>
+              {counsellor.identityConflict?.hasConflict ? (
+                <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-800">
+                  {counsellor.identityConflict.email && counsellor.identityConflict.phone
+                    ? 'Email + phone identity conflict'
+                    : counsellor.identityConflict.email
+                      ? 'Email identity conflict'
+                      : 'Phone identity conflict'}
+                </span>
+              ) : null}
               {isApplication && <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Application profile</span>}
             </div>
             <div className="mt-3 grid gap-3 text-sm text-gray-600 sm:grid-cols-2 lg:grid-cols-4">

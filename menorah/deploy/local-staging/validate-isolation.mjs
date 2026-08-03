@@ -431,7 +431,7 @@ const expectedStagingUrls = () => {
     LIVEKIT_API_URL: 'http://livekit:7880',
     PASSWORD_RESET_BASE_URL: origin(EXPECTED_DOMAINS.APP_DOMAIN),
     CHECKOUT_RETURN_URL:
-      `${origin(EXPECTED_DOMAINS.APP_DOMAIN)}/checkout/return`,
+      `${origin(EXPECTED_DOMAINS.APP_DOMAIN)}/checkout/callback`,
     MEDIA_PUBLIC_BASE_URL: origin(EXPECTED_DOMAINS.API_WEB_DOMAIN),
     RESEND_API_URL: 'http://mail-capture:8025/emails',
   };

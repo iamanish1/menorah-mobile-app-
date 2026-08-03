@@ -42,7 +42,6 @@ export default async function RootLayout({
                 const theme = stored === 'dark' || stored === 'light' ? stored : systemTheme;
                 document.documentElement.classList.toggle('dark', theme === 'dark');
                 document.documentElement.dataset.theme = theme;
-                document.documentElement.style.colorScheme = theme;
               } catch {}
             `,
           }}

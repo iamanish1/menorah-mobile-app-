@@ -18,6 +18,7 @@ const { recordSecurityEvent } = require('../utils/securityAudit');
 const {
   enqueueUserPushNotification,
 } = require('../services/pushNotificationService');
+const { getChatSenderImage, getCounsellorProfileImage } = require('../utils/chatProfileImage');
 
 // Socket.IO instance will be set from server.js to avoid circular dependency
 let socketIOInstance = null;
@@ -211,7 +212,7 @@ router.get('/rooms', auth, async (req, res) => {
       return {
         id: room._id.toString(),
         counsellorName: counsellorName,
-        counsellorImage: counsellorUser?.profileImage || null,
+        counsellorImage: getCounsellorProfileImage(room.counsellor),
         counsellorUserId: counsellorUserId, // Add counselor userId for presence tracking
         lastMessage: room.lastMessage?.content || '',
         lastMessageTime: room.lastMessage?.timestamp || room.updatedAt,
@@ -292,7 +293,7 @@ router.get('/rooms/:roomId/messages', [
         id: msg._id.toString(),
         senderId: msg.sender._id.toString(),
         senderName: `${sender.firstName} ${sender.lastName}`,
-        senderImage: sender.profileImage || null,
+        senderImage: getChatSenderImage({ sender, counsellor: room.counsellor }),
         content: msg.content,
         timestamp: msg.createdAt,
         type: msg.type,
@@ -399,7 +400,7 @@ router.post('/rooms/:roomId/messages', [
       id: message._id.toString(),
       senderId: message.sender._id.toString(),
       senderName: `${message.sender.firstName} ${message.sender.lastName}`,
-      senderImage: message.sender.profileImage || null,
+      senderImage: getChatSenderImage({ sender: message.sender, counsellor: room.counsellor }),
       content: message.content,
       timestamp: message.createdAt,
       type: message.type,
@@ -691,7 +692,7 @@ router.get('/available-counsellors', auth, async (req, res) => {
         name: `${counsellorUser.firstName} ${counsellorUser.lastName}`,
         firstName: counsellorUser.firstName,
         lastName: counsellorUser.lastName,
-        profileImage: counsellorUser.profileImage || null,
+        profileImage: getCounsellorProfileImage(counsellor),
         specialization: specializationArray,
         rating: counsellor.rating || 0,
         reviewCount: counsellor.reviewCount || 0,
@@ -789,7 +790,7 @@ router.post('/start', [
         const fullName = `${firstName} ${lastName}`.trim();
         return fullName && fullName !== 'undefined undefined' ? fullName : 'Counsellor';
       })(),
-      counsellorImage: counsellor.user.profileImage || null,
+      counsellorImage: getCounsellorProfileImage(counsellor),
       lastMessage: room.lastMessage?.content || '',
       lastMessageTime: room.lastMessage?.timestamp || room.updatedAt,
       unreadCount: room.unreadCount.user || 0,

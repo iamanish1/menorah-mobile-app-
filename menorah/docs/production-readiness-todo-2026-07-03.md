@@ -58,7 +58,7 @@ Use this as the final go/no-go list. The app is not production-ready until every
 - [ ] Add Cloudflare rate rules for auth, general API, upload routes, and admin hostname.
 - [ ] Confirm backend Redis-backed rate limiting is active in production.
 - [ ] Confirm host firewall does not expose MongoDB, Redis, Prometheus, Loki, Grafana, or Uptime Kuma publicly.
-- [ ] Confirm LiveKit media ports are open as required: `7881/tcp` and `50000-50100/udp`.
+- [ ] Confirm Hostinger LiveKit media ports are open as required: `3478/udp`, `5349/tcp`, `7881/tcp`, and `61000-62000/udp`.
 - [ ] Confirm SSH is private only, preferably via Tailscale or Cloudflare Access, not public port 22.
 
 ### 5. Backend API Readiness
@@ -397,7 +397,7 @@ TODO:
 - [ ] Verify host firewall allows:
   - `443/tcp`.
   - `7881/tcp`.
-  - `50000-50100/udp`.
+  - `3478/udp`, `5349/tcp`, and `61000-62000/udp`.
 - [ ] Verify one full LiveKit call on normal network.
 - [ ] Verify one full LiveKit call on restrictive network/TCP fallback.
 - [ ] Verify Socket.IO connects from user web, mobile, and counsellor web.

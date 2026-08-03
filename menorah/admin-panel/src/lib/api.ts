@@ -9,6 +9,8 @@ import type {
   SocialPromptSettings, SocialStudioStats, SocialWorkflow
 } from '@/types';
 
+export const ADMIN_UNAUTHORIZED_EVENT = 'menorah:admin-unauthorized';
+
 class AdminApiClient {
   private client: AxiosInstance;
 
@@ -23,17 +25,13 @@ class AdminApiClient {
       (res) => res,
       (err) => {
         const requestUrl = typeof err.config?.url === 'string' ? err.config.url : '';
-        const isAuthenticationAttempt = requestUrl === '/auth/admin/login'
-          || requestUrl === '/auth/admin/login/mfa';
-        const isSessionProbe = requestUrl === '/auth/me';
+        const isExpectedAuthFailure = requestUrl.startsWith('/auth/');
         if (
           err.response?.status === 401
-          && !isAuthenticationAttempt
-          && !isSessionProbe
+          && !isExpectedAuthFailure
           && typeof window !== 'undefined'
-          && window.location.pathname !== '/login'
         ) {
-          window.location.replace('/login');
+          window.dispatchEvent(new Event(ADMIN_UNAUTHORIZED_EVENT));
         }
         return Promise.reject(err);
       }
@@ -55,14 +53,26 @@ class AdminApiClient {
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   login(email: string, password: string) {
-    return this.request<{ user?: User; mfaRequired?: boolean; challengeId?: string }>(() =>
+    return this.request<{ user?: User; email?: string; mfaRequired?: boolean; challengeId?: string }>(() =>
       this.client.post('/auth/admin/login', { email, password, transport: 'cookie' })
     );
   }
 
   verifyMfa(challengeId: string, otp: string) {
-    return this.request<{ user: User; mfaRequired?: boolean }>(() =>
+    return this.request<{ user?: User; email?: string; mfaRequired?: boolean }>(() =>
       this.client.post('/auth/admin/login/mfa', { challengeId, otp, transport: 'cookie' })
+    );
+  }
+
+  verifyEmail(email: string, code: string) {
+    return this.request<void>(() =>
+      this.client.post('/auth/verify-email', { email, code, transport: 'cookie' })
+    );
+  }
+
+  resendEmailVerification(email: string) {
+    return this.request<void>(() =>
+      this.client.post('/auth/resend-email-verification', { email })
     );
   }
 
@@ -278,6 +288,12 @@ class AdminApiClient {
     );
   }
 
+  createArticle(payload: Pick<Article, 'title' | 'excerpt' | 'category' | 'contentBlocks'> & Partial<Pick<Article, 'tags' | 'coverImageUrl' | 'coverImagePublicId' | 'seoTitle' | 'seoDescription'>>) {
+    return this.request<{ article: Article }>(
+      () => this.client.post('/articles/admin', payload)
+    );
+  }
+
   updateArticle(id: string, payload: Partial<Article>) {
     return this.request<{ article: Article }>(
       () => this.client.patch(`/articles/admin/${id}`, payload)
@@ -403,6 +419,20 @@ class AdminApiClient {
     );
   }
 
+  createManualSocialPost(payload: Pick<SocialPost, 'topic' | 'caption' | 'imageUrl'> & Partial<Pick<SocialPost, 'campaignName' | 'hookText' | 'bodyText' | 'ctaText' | 'hashtags' | 'postType' | 'aspectRatio' | 'templateKey'>>) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post('/admin/social-studio/posts', payload)
+    );
+  }
+
+  createManualSocialReel(formData: FormData) {
+    return this.request<{ post: SocialPost }>(
+      () => this.client.post('/admin/social-studio/posts/video', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+    );
+  }
+
   updateSocialPost(id: string, payload: Partial<SocialPost> & { selectedAssetIds?: string[] }) {
     return this.request<{ post: SocialPost }>(
       () => this.client.patch(`/admin/social-studio/posts/${id}`, payload)
@@ -447,13 +477,13 @@ class AdminApiClient {
 
   publishSocialPostNow(id: string) {
     return this.request<{ post: SocialPost }>(
-      () => this.client.post(`/admin/social-studio/posts/${id}/publish-now`)
+      () => this.client.post(`/admin/social-studio/posts/${id}/publish-now`, { confirmation: 'publish' })
     );
   }
 
   retrySocialPost(id: string) {
     return this.request<{ post: SocialPost }>(
-      () => this.client.post(`/admin/social-studio/posts/${id}/retry`)
+      () => this.client.post(`/admin/social-studio/posts/${id}/retry`, { confirmation: 'publish' })
     );
   }
 

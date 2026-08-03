@@ -25,6 +25,11 @@ const configWebBaseURL: string | undefined =
   ((Constants.expoConfig?.extra as any)?.WEB_BASE_URL as string | undefined) ||
   ((Constants.expoConfig?.extra as any)?.PUBLIC_WEB_BASE_URL as string | undefined);
 
+const configArticleCanonicalBaseURL: string | undefined =
+  (process.env.EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL?.trim()) ||
+  (process.env.ARTICLE_CANONICAL_BASE_URL?.trim()) ||
+  ((Constants.expoConfig?.extra as any)?.ARTICLE_CANONICAL_BASE_URL as string | undefined);
+
 const configGoogleWebClientId =
   process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ||
   ((Constants.expoConfig?.extra as any)?.GOOGLE_WEB_CLIENT_ID as string | undefined);
@@ -59,6 +64,7 @@ const normalizeBaseURL = (url?: string) => {
 
 const buildAPIBaseURL = () => normalizeBaseURL(configBaseURL);
 const buildWebBaseURL = () => (configWebBaseURL ?? 'https://app.menorah.me').trim().replace(/\/+$/, '');
+const buildArticleCanonicalBaseURL = () => (configArticleCanonicalBaseURL ?? 'https://menorah.me').trim().replace(/\/+$/, '');
 
 const deriveAPIOrigin = (baseUrl: string) => {
   try {
@@ -71,6 +77,7 @@ const deriveAPIOrigin = (baseUrl: string) => {
 const API_BASE_URL = buildAPIBaseURL();
 const API_ORIGIN = deriveAPIOrigin(API_BASE_URL);
 const WEB_BASE_URL = buildWebBaseURL();
+const ARTICLE_CANONICAL_BASE_URL = buildArticleCanonicalBaseURL();
 const IS_EXPO_GO = (Constants.executionEnvironment as string) === 'expo';
 
 // Feature flag for Razorpay SDK integration
@@ -81,6 +88,7 @@ export const ENV = {
   API_BASE_URL,
   API_ORIGIN,
   WEB_BASE_URL,
+  ARTICLE_CANONICAL_BASE_URL,
   CHECKOUT_RETURN_URL: (Constants.expoConfig?.extra as any)?.CHECKOUT_RETURN_URL as string,
   JITSI_BASE_URL: (Constants.expoConfig?.extra as any)?.JITSI_BASE_URL as string,
   GOOGLE_WEB_CLIENT_ID: configGoogleWebClientId,

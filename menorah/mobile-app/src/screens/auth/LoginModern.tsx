@@ -48,7 +48,11 @@ export default function Login({ navigation }: any) {
 
       if (result.success) {
         if (result.needsVerification) {
-          navigation.navigate('Verify', { email: normalizedEmail });
+          navigation.navigate('Verify', {
+            email: result.email || normalizedEmail,
+            flow: result.verificationFlow || 'account',
+            requestCode: true,
+          });
         } else {
           navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
         }
@@ -94,7 +98,23 @@ export default function Login({ navigation }: any) {
 
         <SocialAuthButtons
           mode="signin"
-          onSuccess={() => navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] })}
+          onSignUpRequired={() => navigation.replace('Register', { socialAccountNotFound: true })}
+          onSuccess={(result) => {
+            if (result.needsVerification) {
+              navigation.navigate('Verify', {
+                email: result.email,
+                flow: result.verificationFlow || 'account',
+                requestCode: true,
+              });
+              return;
+            }
+            navigation.reset({
+              index: 0,
+              routes: [result.needsProfileCompletion
+                ? { name: 'EditProfile', params: { fromSocialAuth: true } }
+                : { name: 'Tabs' }],
+            });
+          }}
         />
 
         <Text style={{ color: iosTheme.colors.text, fontSize: 13, lineHeight: 18, fontWeight: '800', marginBottom: iosTheme.spacing.sm }}>

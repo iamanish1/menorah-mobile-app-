@@ -4,12 +4,13 @@ import { useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, BookOpen, CalendarDays, Tag } from 'lucide-react';
+import { ArrowLeft, BookOpen, CalendarDays, ExternalLink, Tag } from 'lucide-react';
 import AppLayout from '@/components/layout/AppLayout';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
+import { getCanonicalArticleUrl, isPublishedArticle } from '@/lib/articles';
 import type { ArticleContentBlock } from '@/types';
 import styles from '../articles.module.css';
 
@@ -34,14 +35,18 @@ export default function ArticleDetailPage() {
   } = useQuery({
     queryKey: ['article', slug],
     enabled: isAuthenticated && Boolean(slug),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const response = await api.getArticle(slug as string);
+      const article = response.data?.article;
 
-      if (!response.success || !response.data?.article) {
+      if (!response.success || !isPublishedArticle(article)) {
         throw new Error(response.message || 'Unable to load article');
       }
 
-      return response.data.article;
+      return article;
     },
   });
 
@@ -109,6 +114,16 @@ export default function ArticleDetailPage() {
                 ))}
               </div>
             ) : null}
+
+            <a
+              href={getCanonicalArticleUrl(article.slug)}
+              target="_blank"
+              rel="noreferrer"
+              className={styles.canonicalLink}
+            >
+              View on the public landing page
+              <ExternalLink size={14} />
+            </a>
           </header>
 
           {article.coverImageUrl ? (

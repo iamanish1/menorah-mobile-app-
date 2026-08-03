@@ -1,6 +1,7 @@
 # Immutable runtime candidate record
 
-Updated for the current runtime candidate: 2026-07-26.
+Historical frozen-runtime record updated: 2026-07-26.
+Android successor status reviewed: 2026-08-03.
 
 Prior repository-remediation verdict (superseded by runtime `1ecd0b379369258be466159364a8a48c79fb65aa`):
 **LOCAL STAGING VALIDATION PASSED — SERVER STAGING REQUIRED**
@@ -12,6 +13,18 @@ Public-production verdict: **NOT READY**
 This record freezes repository-controlled runtime content only. It is not
 authorization to merge, deploy, migrate, restore, change infrastructure,
 enable providers, submit to a store, or use production data.
+
+## Android 2.7.0 successor status
+
+The Android `2.7.0` integration combines later production, PR #4 feature and
+guarded-tooling lineages and therefore requires a new immutable candidate.
+The frozen runtime and workflow evidence below remains valid only for the
+exact historical SHA it names; it is not Android `2.7.0` release evidence.
+
+The successor candidate SHA, tree, final commit ledger and exact-SHA workflow
+runs are pending. Until they are regenerated, independently reviewed and
+recorded in [the Android 2.7.0 launch record](./30-android-2.7.0-production-launch.md),
+the successor is **NOT READY** and no old run may be promoted or relabelled.
 
 ## Frozen identity
 

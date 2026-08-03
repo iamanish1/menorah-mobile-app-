@@ -56,6 +56,7 @@ const CACHE_TTL = {
 const crypto = require('crypto');
 const { sendVerificationEmail } = require('../utils/email');
 const { sendSMS } = require('../utils/sms');
+const { emailNormalizationOptions } = require('../utils/emailNormalization');
 
 const router = express.Router();
 const COUNSELLOR_REGISTRATION_TRANSACTION_OPTIONS = Object.freeze({
@@ -93,13 +94,6 @@ const reconcileElapsedCounsellorForStatus = async (counsellor) => {
     .lean();
 };
 
-const emailNormalizationOptions = {
-  gmail_remove_dots: false,
-  gmail_remove_subaddress: false,
-  outlookdotcom_remove_subaddress: false,
-  yahoo_remove_subaddress: false,
-  icloud_remove_subaddress: false,
-};
 const buildPublicReadyCounsellorQuery = async ({ requireAvailability = false } = {}) => {
   const activeCounsellorUsers = await User.find({
     role: 'counsellor',
@@ -778,7 +772,6 @@ router.post('/register', [
         message: 'The counsellor onboarding consent is missing or no longer current.'
       });
     }
-
     const defaultAvailability = availability || {
       monday:    { start: '09:00', end: '17:00', isAvailable: true },
       tuesday:   { start: '09:00', end: '17:00', isAvailable: true },

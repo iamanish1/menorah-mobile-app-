@@ -19,6 +19,7 @@ const {
   getCookieToken,
   getWebSessionForRequest,
 } = require('../../config/webSessions');
+const { getCounsellorProfileImage } = require('../../utils/chatProfileImage');
 
 const SOCKET_ENABLED_SERVICES = new Set(['api-ios', 'api-android', 'api-web']);
 const DEFAULT_SOCKET_SESSION_REVALIDATION_INTERVAL_MS = 30 * 1000;
@@ -212,9 +213,9 @@ const authenticateSocketHandshake = async (socket, {
     }
 
     const user = await UserModel.findById(decoded.userId)
-      .select('firstName lastName role isActive sessionVersion')
+      .select('firstName lastName profileImage role isActive isEmailVerified sessionVersion')
       .lean();
-    if (!user || !user.isActive || !isCurrentSessionToken(decoded, user)) {
+    if (!user || !user.isActive || !user.isEmailVerified || !isCurrentSessionToken(decoded, user)) {
       return { ok: false, reason: 'account_binding_invalid', transport };
     }
     if (webSession && user.role !== webSession.role) {
@@ -265,11 +266,12 @@ const createSocketSessionRevalidator = ({
   evaluateCounsellorAccess = evaluateCounsellorAccountAccess,
 } = {}) => async (socket) => {
   const user = await UserModel.findById(socket.userId)
-    .select('firstName lastName role isActive sessionVersion')
+    .select('firstName lastName profileImage role isActive isEmailVerified sessionVersion')
     .lean();
   if (
     !user
     || !user.isActive
+    || !user.isEmailVerified
     || !isCurrentSessionToken({
       userId: socket.userId,
       role: socket.userRole,
@@ -287,6 +289,21 @@ const createSocketSessionRevalidator = ({
   }
 
   return true;
+};
+
+const revalidateSocketSession = async (socket) => {
+  try {
+    if (await createSocketSessionRevalidator()(socket)) return true;
+  } catch (error) {
+    console.error(
+      'Socket session revalidation error:',
+      error?.code || 'SOCKET_SESSION_REVALIDATION_FAILED'
+    );
+  }
+
+  socket.emit('session_revoked', { reason: 'session_invalid' });
+  socket.disconnect(true);
+  return false;
 };
 
 const revalidateConnectedSockets = async ({
@@ -376,6 +393,7 @@ const attachSocketHandlers = (io) => {
     socket.userId = decoded.userId;
     socket.userRole = user.role;
     socket.userName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    socket.userProfileImage = user.profileImage || null;
     socket.sessionVersion = decoded.sessionVersion;
     socket.authTransport = transport;
     return next();
@@ -385,6 +403,7 @@ const attachSocketHandlers = (io) => {
     socket.use(async (_event, next) => {
       try {
         if (!await revalidateSocket(socket)) {
+          socket.emit('session_revoked', { reason: 'session_invalid' });
           socket.disconnect(true);
           return;
         }
@@ -394,6 +413,7 @@ const attachSocketHandlers = (io) => {
           'Socket event authorization failed closed:',
           error?.code || 'SOCKET_EVENT_AUTHORIZATION_FAILED'
         );
+        socket.emit('session_revoked', { reason: 'session_invalid' });
         socket.disconnect(true);
       }
     });
@@ -505,10 +525,34 @@ const attachSocketHandlers = (io) => {
           $inc: { [unreadField]: 1 },
         });
 
+        let senderName = socket.userName;
+        let senderImage = socket.userProfileImage || null;
+        if (socket.userRole === 'counsellor') {
+          try {
+            const counsellor = await Counsellor.findOne({ user: socket.userId })
+              .populate('user', 'firstName lastName profileImage')
+              .lean();
+            senderImage = getCounsellorProfileImage(counsellor) || senderImage;
+            const currentName = `${counsellor?.user?.firstName || ''} ${counsellor?.user?.lastName || ''}`.trim();
+            if (currentName) {
+              senderName = currentName;
+              // Socket identity is established at connect time. Refresh the
+              // cached display name after a profile edit so an already-open
+              // chat never emits the counsellor's old name.
+              socket.userName = currentName;
+            }
+          } catch (error) {
+            // Never let optional avatar lookup prevent a chat message from
+            // being delivered. The user-account image remains a safe fallback.
+            console.warn('Could not resolve counsellor chat avatar:', error.message);
+          }
+        }
+
         const payload = {
           id: msg._id.toString(),
           senderId: socket.userId,
-          senderName: socket.userName,
+          senderName,
+          senderImage,
           content: msg.content,
           type: msg.type,
           roomId,
@@ -690,4 +734,5 @@ module.exports = {
     shouldRecordSocketChatDenial,
     startSocketSessionRevalidation,
   },
+  revalidateSocketSession,
 };

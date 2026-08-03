@@ -35,7 +35,7 @@ const isValidPassword = (value: string) => value.length >= 8 && /[A-Z]/.test(val
 
 const getBackendErrorMessage = (error: BackendValidationError) => error.msg || error.message;
 
-export default function Register({ navigation }: any) {
+export default function Register({ navigation, route }: any) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -54,6 +54,7 @@ export default function Register({ navigation }: any) {
   const isDark = scheme === 'dark';
   const primaryActionText = isDark ? colors.primaryDark : 'white';
   const { register } = useAuth();
+  const socialAccountNotFound = Boolean(route?.params?.socialAccountNotFound);
 
   // Validation functions
   const validateEmail = (email: string) => {
@@ -212,7 +213,7 @@ export default function Register({ navigation }: any) {
       if (result.success) {
         navigation.reset({
           index: 0,
-          routes: [{ name: 'Verify', params: { email: payload.email, fromSignup: true } }],
+          routes: [{ name: 'Verify', params: { email: payload.email, flow: 'signup' } }],
         });
       } else {
         const backendFieldErrors = validationErrorsToFieldMap(result.errors);
@@ -271,9 +272,39 @@ export default function Register({ navigation }: any) {
           </Text>
         </View>
 
+        {socialAccountNotFound ? (
+          <View style={{
+            borderWidth: 1,
+            borderColor: colors.primary,
+            backgroundColor: isDark ? colors.surface : `${colors.primary}12`,
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 20,
+          }}>
+            <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
+              No Menorah account was found for that social account. Choose the matching sign-in method below to create one.
+            </Text>
+          </View>
+        ) : null}
+
         <SocialAuthButtons
           mode="signup"
-          onSuccess={() => navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] })}
+          onSuccess={(result) => {
+            if (result.needsVerification) {
+              navigation.navigate('Verify', {
+                email: result.email,
+                flow: result.verificationFlow || 'account',
+                requestCode: true,
+              });
+              return;
+            }
+            navigation.reset({
+              index: 0,
+              routes: [result.needsProfileCompletion
+                ? { name: 'EditProfile', params: { fromSocialAuth: true } }
+                : { name: 'Tabs' }],
+            });
+          }}
         />
 
         {/* Form */}

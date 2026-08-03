@@ -131,6 +131,64 @@ require_code_or_redirect() {
   printf '%s' "${body_file}"
 }
 
+require_json_fragment() {
+  local body_file="$1"
+  local fragment="$2"
+  local label="$3"
+  if tr -d '[[:space:]]' < "${body_file}" | grep -Fq "${fragment}"; then
+    echo "PASS ${label} contains the configured signing metadata" >&2
+    return
+  fi
+  echo "FAIL ${label} does not contain the configured signing metadata" >&2
+  failures=$((failures + 1))
+}
+
+is_blank_or_placeholder() {
+  local value="${1:-}"
+  [[ -z "${value}" || "${value}" == replace_with_* || "${value}" == *"REPLACE_WITH"* ]]
+}
+
+require_android_app_link_signing_value() {
+  local key="$1"
+  local value="${!key:-}"
+  if is_blank_or_placeholder "${value}"; then
+    echo "FAIL Android App Links require a real ${key} before Play rollout." >&2
+    failures=$((failures + 1))
+    return 1
+  fi
+  echo "PASS Android App Link prerequisite ${key} is configured." >&2
+}
+
+require_direct_json_response() {
+  local method="$1"
+  local url="$2"
+  local label="$3"
+  local body_file headers_file code
+  body_file="${TMP_DIR}/$(echo "${method}-${url}" | tr -c 'A-Za-z0-9' '_').body"
+  headers_file="${body_file}.headers"
+  # Never follow redirects: Digital Asset Links must be served directly.
+  if ! code="$(curl --connect-timeout "${HEALTH_CONNECT_TIMEOUT_SECONDS:-5}" \
+    --max-time "${HEALTH_REQUEST_TIMEOUT_SECONDS:-15}" \
+    -sS -X "${method}" -D "${headers_file}" -o "${body_file}" -w "%{http_code}" "${url}")"; then
+    code="000"
+  fi
+
+  if [[ "${code}" != "200" ]]; then
+    echo "FAIL ${label} -> ${code}, expected a direct 200 JSON response." >&2
+    failures=$((failures + 1))
+  elif grep -Eiq '^location:' "${headers_file}"; then
+    echo "FAIL ${label} returned a redirect Location header." >&2
+    failures=$((failures + 1))
+  elif ! grep -Eiq '^content-type:[[:space:]]*application/json([;[:space:]]|$)' "${headers_file}"; then
+    echo "FAIL ${label} is missing an application/json Content-Type." >&2
+    failures=$((failures + 1))
+  else
+    echo "PASS ${label} -> direct 200 application/json" >&2
+  fi
+
+  printf '%s' "${body_file}"
+}
+
 require_service_probe() {
   local service="$1"
   local container
@@ -314,9 +372,9 @@ assert_no_secret_leak() {
     MONGODB_URI MONGODB_BACKUP_URI MONGODB_MONITORING_URI MONGODB_PRODUCTION_RESTORE_URI MONGODB_RESTORE_TEST_URI REDIS_URL \
     MONGO_MONITOR_PASSWORD MONGO_RESTORE_PASSWORD \
     RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET RAZORPAY_WEBHOOK_SECRET_PREVIOUS \
-    RAZORPAY_X_KEY_SECRET RAZORPAY_X_WEBHOOK_SECRET \
+    RAZORPAY_X_KEY_SECRET RAZORPAY_X_WEBHOOK_SECRET CHECKOUT_CALLBACK_SECRET \
     RESEND_API_KEY RESEND_WEBHOOK_SECRET APPLE_PRIVATE_KEY LUXAND_API_TOKEN OPENAI_API_KEY CLOUDINARY_API_SECRET \
-    LIVEKIT_API_SECRET BACKUP_ENCRYPTION_PASSWORD BACKUP_INTEGRITY_HMAC_KEY DATA_ENCRYPTION_KEY AUDIT_LOG_SIGNING_KEY; do
+    LIVEKIT_API_SECRET EXPO_PUSH_ACCESS_TOKEN BACKUP_ENCRYPTION_PASSWORD BACKUP_INTEGRITY_HMAC_KEY DATA_ENCRYPTION_KEY AUDIT_LOG_SIGNING_KEY; do
     value="${!key:-}"
     if [[ ${#value} -ge 12 && "${value}" != replace_with_* ]] && grep -Fq "${value}" "${body_file}"; then
       echo "FAIL ${label} exposes ${key}" >&2
@@ -348,7 +406,7 @@ fi
 for service in \
   landing-page user-web-app web-app admin-panel \
   api-ios api-android api-web api-admin worker \
-  livekit mongo-primary redis reverse-proxy cloudflared \
+  app-link-associations livekit mongo-primary redis reverse-proxy cloudflared \
   prometheus alertmanager blackbox-exporter mongodb-exporter redis-exporter \
   node-exporter backup-metrics grafana uptime-kuma docker-metrics-gateway docker-stats-exporter log-collector loki; do
   require_service_probe "${service}"
@@ -406,6 +464,11 @@ require_code GET "${API_IOS_BASE}/api/admin/stats" 404 >/dev/null
 require_code GET "${API_ANDROID_BASE}/api/admin/stats" 404 >/dev/null
 require_code GET "${API_WEB_BASE}/api/admin/stats" 404 >/dev/null
 
+if [[ "${CHECK_ANDROID_APP_LINKS:-false}" == "true" && "${CHECK_PUBLIC:-false}" != "true" ]]; then
+  echo "CHECK_ANDROID_APP_LINKS=true requires CHECK_PUBLIC=true." >&2
+  exit 2
+fi
+
 if [[ "${CHECK_PUBLIC:-false}" == "true" ]]; then
   require_code GET "https://${API_IOS_DOMAIN:-api-ios.menorah.me}/health/ready" 200 >/dev/null
   require_code GET "https://${API_ANDROID_DOMAIN:-api-android.menorah.me}/health/ready" 200 >/dev/null
@@ -422,8 +485,44 @@ if [[ "${CHECK_PUBLIC:-false}" == "true" ]]; then
   require_code GET "https://${CALLS_DOMAIN:-calls.menorah.me}" 200 >/dev/null
   require_code_or_redirect GET "https://${WWW_DOMAIN:-www.menorah.me}" "^https://${ROOT_DOMAIN:-menorah.me}/?$" 200 >/dev/null
   require_code GET "https://${APP_DOMAIN:-app.menorah.me}" 200 >/dev/null
+  require_code GET "https://${APP_DOMAIN:-app.menorah.me}/forgot-password" 200 >/dev/null
+  require_code GET "https://${APP_DOMAIN:-app.menorah.me}/reset-password" 200 >/dev/null
   require_code_or_redirect GET "https://${ADMIN_DOMAIN:-admin.menorah.me}" "^https://${ADMIN_DOMAIN:-admin.menorah.me}/(dashboard|login)|^/(dashboard|login)" 200 >/dev/null
   require_code_or_redirect GET "https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}" "^https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}/(dashboard|login)|^/(dashboard|login)" 200 >/dev/null
+  require_code GET "https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}/forgot-password" 200 >/dev/null
+  require_code GET "https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}/reset-password" 200 >/dev/null
+
+  if [[ "${CHECK_ANDROID_APP_LINKS:-false}" == "true" ]]; then
+    android_app_link_prerequisites_met=true
+    for key in ANDROID_APP_LINK_PACKAGE_NAME ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS; do
+      if ! require_android_app_link_signing_value "${key}"; then
+        android_app_link_prerequisites_met=false
+      fi
+    done
+
+    if [[ "${android_app_link_prerequisites_met}" == "true" ]]; then
+      android_association_body="$(require_direct_json_response GET \
+        "https://${APP_DOMAIN:-app.menorah.me}/.well-known/assetlinks.json" \
+        "Android association at ${APP_DOMAIN:-app.menorah.me}")"
+      require_json_fragment \
+        "${android_association_body}" \
+        '"relation":["delegate_permission/common.handle_all_urls"]' \
+        "Android association at ${APP_DOMAIN:-app.menorah.me}"
+      require_json_fragment \
+        "${android_association_body}" \
+        "\"package_name\":\"${ANDROID_APP_LINK_PACKAGE_NAME}\"" \
+        "Android association at ${APP_DOMAIN:-app.menorah.me}"
+
+      IFS=',' read -r -a android_fingerprints <<< "${ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS}"
+      for fingerprint in "${android_fingerprints[@]}"; do
+        fingerprint="${fingerprint//[[:space:]]/}"
+        require_json_fragment \
+          "${android_association_body}" \
+          "\"${fingerprint^^}\"" \
+          "Android association at ${APP_DOMAIN:-app.menorah.me}"
+      done
+    fi
+  fi
 
   for mentle_web_domain in \
     mentle.org \

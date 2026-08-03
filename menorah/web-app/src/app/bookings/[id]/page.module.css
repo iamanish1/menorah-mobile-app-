@@ -427,6 +427,130 @@
   color: var(--color-danger);
 }
 
+.emergencyContactCard {
+  border-color: color-mix(in srgb, var(--color-warning) 42%, var(--color-border));
+}
+
+.emergencyContactIcon {
+  color: var(--color-warning);
+}
+
+.emergencyPrivacyNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 34%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-light);
+  color: var(--color-text-base);
+}
+
+.emergencyPrivacyNotice p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
+.emergencyPrivacyNotice strong {
+  font-weight: var(--font-weight-bold);
+}
+
+.emergencyPrivacyIcon {
+  width: 20px;
+  height: 20px;
+  color: var(--color-warning);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.emergencyRelationship {
+  text-transform: capitalize;
+}
+
+.emergencyPhone {
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.emergencyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-lg);
+}
+
+.emergencyAction {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: 9px var(--spacing-md);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.25;
+  text-decoration: none;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.emergencyAction:hover {
+  transform: translateY(-1px);
+}
+
+.emergencyActionIcon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.emergencyCallAction {
+  background: var(--color-primary);
+  color: var(--color-text-invert);
+}
+
+.emergencyCallAction:hover {
+  border-color: var(--color-primary-dark);
+  background: var(--color-primary-dark);
+  color: var(--color-text-invert);
+}
+
+.emergencyCopyAction {
+  background: var(--color-bg-surface);
+  color: var(--color-primary);
+}
+
+.emergencyCopyAction:hover {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+}
+
+.emergencyCopyStatus {
+  min-height: 20px;
+  margin: var(--spacing-sm) 0 0;
+  color: var(--color-success);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: 20px;
+}
+
+.emergencyCopyStatusFailed {
+  color: var(--color-danger);
+}
+
+@media (max-width: 479px) {
+  .emergencyAction {
+    width: 100%;
+  }
+}
+
 .infoGrid {
   display: grid;
   grid-template-columns: 1fr;

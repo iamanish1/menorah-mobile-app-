@@ -1,4 +1,9 @@
 const axios = require('axios');
+const {
+  normalizeContentBlocks,
+  toPlainArticleText,
+  validateContentBlocks
+} = require('./articleContent');
 
 const ARTICLE_SCHEMA = {
   type: 'object',
@@ -140,21 +145,25 @@ const getWordRange = (target = getWordTarget()) => ({
   max: getNumber(process.env.ARTICLE_MAX_WORD_COUNT, target + 100)
 });
 
+const plainTextOrFallback = (value, fallback) => (
+  toPlainArticleText(value) || toPlainArticleText(fallback)
+);
+
 const normalizeInput = (input = {}) => {
   const targetWordCount = getNumber(input.targetWordCount, getWordTarget());
   const range = getWordRange(targetWordCount);
 
   return {
-    topic: String(input.topic || '').trim(),
-    category: String(input.category || 'Mental Health').trim(),
-    audience: String(input.audience || 'Men in India looking for accessible mental health education').trim(),
-    tone: String(input.tone || 'warm, direct, practical, non-clinical, and India-English').trim(),
+    topic: toPlainArticleText(input.topic),
+    category: plainTextOrFallback(input.category, 'Mental Health'),
+    audience: plainTextOrFallback(input.audience, 'Men in India looking for accessible mental health education'),
+    tone: plainTextOrFallback(input.tone, 'warm, direct, practical, non-clinical, and India-English'),
     length: String(input.length || 'long').trim(),
     targetWordCount,
     minWordCount: getNumber(input.minWordCount, range.min),
     maxWordCount: getNumber(input.maxWordCount, range.max),
     strictWordCount: Boolean(input.strictWordCount),
-    wordCountFeedback: String(input.wordCountFeedback || '').trim()
+    wordCountFeedback: toPlainArticleText(input.wordCountFeedback)
   };
 };
 
@@ -260,32 +269,40 @@ const extractOutputText = (responseData) => {
   return content?.text;
 };
 
+const toReviewableContentBlocks = (blocks) => {
+  const supportedTypes = new Set(['heading', 'paragraph', 'quote', 'bullet_list', 'image', 'callout']);
+
+  return normalizeContentBlocks(blocks)
+    .filter((block) => supportedTypes.has(block.type))
+    // A cover image is resolved separately. Empty image placeholders from the
+    // model must not make an otherwise usable review draft invalid.
+    .filter((block) => block.type !== 'image' || block.url);
+};
+
 const sanitizeDraft = (draft, input) => {
   const fallback = buildMockDraft(input);
+  const candidateBlocks = toReviewableContentBlocks(draft?.contentBlocks);
+  let contentBlocks = candidateBlocks;
+
+  try {
+    validateContentBlocks(contentBlocks);
+  } catch {
+    contentBlocks = toReviewableContentBlocks(fallback.contentBlocks);
+  }
+
+  const tags = Array.isArray(draft?.tags)
+    ? draft.tags.map(toPlainArticleText).filter(Boolean).slice(0, 12)
+    : [];
 
   return {
-    title: String(draft?.title || fallback.title).trim(),
-    excerpt: String(draft?.excerpt || fallback.excerpt).trim(),
-    category: String(draft?.category || fallback.category).trim(),
-    tags: Array.isArray(draft?.tags)
-      ? draft.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 12)
-      : fallback.tags,
-    contentBlocks: Array.isArray(draft?.contentBlocks) && draft.contentBlocks.length > 0
-      ? draft.contentBlocks
-        .filter((block) => ['heading', 'paragraph', 'quote', 'bullet_list', 'image', 'callout'].includes(block?.type))
-        .map((block) => ({
-          type: block.type,
-          text: block.text ? String(block.text).trim() : '',
-          level: block.level || null,
-          items: Array.isArray(block.items) ? block.items.map((item) => String(item).trim()).filter(Boolean) : [],
-          url: block.url || null,
-          alt: block.alt || '',
-          caption: block.caption || ''
-        }))
-      : fallback.contentBlocks,
-    seoTitle: String(draft?.seoTitle || fallback.seoTitle).trim(),
-    seoDescription: String(draft?.seoDescription || fallback.seoDescription).trim(),
-    imagePrompt: String(draft?.imagePrompt || fallback.imagePrompt).trim()
+    title: plainTextOrFallback(draft?.title, fallback.title),
+    excerpt: plainTextOrFallback(draft?.excerpt, fallback.excerpt),
+    category: plainTextOrFallback(draft?.category, fallback.category),
+    tags: tags.length ? tags : fallback.tags,
+    contentBlocks,
+    seoTitle: plainTextOrFallback(draft?.seoTitle, fallback.seoTitle),
+    seoDescription: plainTextOrFallback(draft?.seoDescription, fallback.seoDescription),
+    imagePrompt: plainTextOrFallback(draft?.imagePrompt, fallback.imagePrompt)
   };
 };
 
@@ -352,6 +369,8 @@ const generateArticleDraft = async (input = {}) => {
                 'Return structured JSON only.',
                 'Write for India-English readers and men in India without stereotypes, shame, or keyword stuffing.',
                 'Use practical search-intent headlines and readable section headings.',
+                'Write in a warm, natural, plain-spoken editorial voice with concrete examples and no generic filler.',
+                'Never use Markdown or formatting syntax in any field. Use heading blocks for headings and bullet_list items for lists; never use asterisks, hashes, backticks, list prefixes, Markdown links, or decorative symbols.',
                 'Do not diagnose, do not promise medical outcomes, and do not give harmful advice.',
                 'Use supportive, non-alarmist wording.',
                 'Mention professional support when appropriate.',
@@ -376,6 +395,7 @@ const generateArticleDraft = async (input = {}) => {
                   wordCountScope: 'Only contentBlocks text and list items count. Title, excerpt, SEO fields, tags, and imagePrompt do not count.',
                   bodyLengthGuidance: 'For a 700-word target, write a complete article body with enough paragraph and list content to land inside the acceptable range.',
                   contentBlockTypes: ['heading', 'paragraph', 'quote', 'bullet_list', 'image', 'callout'],
+                  plainTextOnly: 'All reader-facing text must be clean plain text. Do not use **bold**, _italics_, # headings, backticks, link syntax, or bullet characters; the structured block type supplies formatting.',
                   noDiagnosis: true,
                   noMedicalPromises: true,
                   noHarmfulAdvice: true,
@@ -438,15 +458,15 @@ const sanitizeTopics = (topics, count, recentArticles = []) => {
 
   return (Array.isArray(topics) ? topics : [])
     .map((topic) => ({
-      topic: String(topic?.topic || '').trim(),
-      category: String(topic?.category || 'Mental Health').trim(),
-      audience: String(topic?.audience || 'Men in India looking for practical mental health support').trim(),
-      tone: String(topic?.tone || 'warm, direct, practical, non-clinical, and India-English').trim(),
-      imagePrompt: String(topic?.imagePrompt || '').trim(),
-      imageStyle: String(topic?.imageStyle || 'premium editorial mental health illustration').trim(),
-      imageMood: String(topic?.imageMood || 'calm, grounded, masculine but inclusive, hopeful').trim(),
-      imageColors: String(topic?.imageColors || 'earthy green, cream, soft shadows').trim(),
-      imageAvoid: String(topic?.imageAvoid || 'no text, no hospital, no doctors, no distressing stereotypes').trim()
+      topic: toPlainArticleText(topic?.topic),
+      category: plainTextOrFallback(topic?.category, 'Mental Health'),
+      audience: plainTextOrFallback(topic?.audience, 'Men in India looking for practical mental health support'),
+      tone: plainTextOrFallback(topic?.tone, 'warm, direct, practical, non-clinical, and India-English'),
+      imagePrompt: toPlainArticleText(topic?.imagePrompt),
+      imageStyle: plainTextOrFallback(topic?.imageStyle, 'premium editorial mental health illustration'),
+      imageMood: plainTextOrFallback(topic?.imageMood, 'calm, grounded, masculine but inclusive, hopeful'),
+      imageColors: plainTextOrFallback(topic?.imageColors, 'earthy green, cream, soft shadows'),
+      imageAvoid: plainTextOrFallback(topic?.imageAvoid, 'no text, no hospital, no doctors, no distressing stereotypes')
     }))
     .filter((topic) => topic.topic.length >= 3)
     .filter((topic) => {
@@ -487,6 +507,7 @@ const generateArticleTopics = async ({ count, recentArticles = [] } = {}) => {
                 'Avoid duplicates and avoid topics that sound too similar to recent articles.',
                 'Prefer practical search-intent topics over vague inspirational topics.',
                 'Avoid keyword stuffing and avoid promising medical outcomes.',
+                'Use plain text only: no Markdown, asterisks, decorative symbols, or link syntax.',
                 'Return structured JSON only.'
               ].join(' ')
             }

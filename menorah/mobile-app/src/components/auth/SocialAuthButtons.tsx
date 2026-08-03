@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Text, TouchableOpacity, View } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
-import { useAuth } from '@/state/useAuth';
+import {
+  GoogleSignin,
+  isCancelledResponse,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
+import { AuthResult, useAuth } from '@/state/useAuth';
 import { ENV } from '@/lib/env';
 import { useIOSTheme } from '@/components/ios';
 
@@ -10,7 +14,8 @@ type Mode = 'signin' | 'signup';
 
 interface SocialAuthButtonsProps {
   mode: Mode;
-  onSuccess: () => void;
+  onSuccess: (result: AuthResult) => void;
+  onSignUpRequired?: () => void;
 }
 
 const getAppleFullName = (name?: AppleAuthentication.AppleAuthenticationFullName | null) => {
@@ -18,7 +23,7 @@ const getAppleFullName = (name?: AppleAuthentication.AppleAuthenticationFullName
   return [name.givenName, name.familyName].filter(Boolean).join(' ').trim() || null;
 };
 
-export function SocialAuthButtons({ mode, onSuccess }: SocialAuthButtonsProps) {
+export function SocialAuthButtons({ mode, onSuccess, onSignUpRequired }: SocialAuthButtonsProps) {
   const iosTheme = useIOSTheme();
   const { loginWithGoogle, loginWithApple } = useAuth();
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'apple' | null>(null);
@@ -73,16 +78,25 @@ export function SocialAuthButtons({ mode, onSuccess }: SocialAuthButtonsProps) {
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const result = await GoogleSignin.signIn();
-      const idToken = (result as any)?.data?.idToken || (result as any)?.idToken;
+      if (isCancelledResponse(result)) return;
+      const idToken = result.data.idToken;
 
       if (!idToken) {
         Alert.alert('Google Sign-In failed', 'Google did not return an identity token.');
         return;
       }
 
-      const authResult = await loginWithGoogle(idToken);
+      const authResult = await loginWithGoogle(idToken, mode);
       if (authResult.success) {
-        onSuccess();
+        onSuccess(authResult);
+        return;
+      }
+      if (authResult.requiresSignUp && mode === 'signin') {
+        if (onSignUpRequired) {
+          onSignUpRequired();
+        } else {
+          Alert.alert('Create an account', authResult.message || 'Create a Menorah account to continue.');
+        }
         return;
       }
       Alert.alert('Google Sign-In failed', authResult.message || 'Please try again.');
@@ -118,11 +132,19 @@ export function SocialAuthButtons({ mode, onSuccess }: SocialAuthButtonsProps) {
         identityToken: credential.identityToken,
         authorizationCode: credential.authorizationCode,
         email: credential.email,
-        fullName: getAppleFullName(credential.fullName)
-      });
+        fullName: getAppleFullName(credential.fullName),
+      }, mode);
 
       if (authResult.success) {
-        onSuccess();
+        onSuccess(authResult);
+        return;
+      }
+      if (authResult.requiresSignUp && mode === 'signin') {
+        if (onSignUpRequired) {
+          onSignUpRequired();
+        } else {
+          Alert.alert('Create an account', authResult.message || 'Create a Menorah account to continue.');
+        }
         return;
       }
       Alert.alert('Apple Sign-In failed', authResult.message || 'Please try again.');

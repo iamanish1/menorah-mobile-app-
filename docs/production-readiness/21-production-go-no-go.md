@@ -1,6 +1,6 @@
 # Production go/no-go record
 
-Decision date: 2026-07-25.
+Decision record updated: 2026-08-03.
 
 ## Verdict
 
@@ -17,6 +17,21 @@ independent VAPT, store validation and vendor evidence are not complete.
 
 No part of this document authorizes deployment, migration, secret changes,
 provider changes, DNS/Cloudflare changes or store submission.
+
+## Android 2.7.0 decision boundary
+
+The planned Android-only `2.7.0` release remains **NO-GO**. A final protected
+release SHA, Play-safe version code, signing-incident closure, Firebase/FCM
+configuration, signed AAB, internal-track Play delivery, clean pre-launch
+report, same-day emulator/physical-device QA and separate owner approval do not
+yet have recorded evidence.
+
+Internal QA, when complete, will not authorize production by itself. The owner
+must separately identify and approve the exact AAB, and explicitly accept the
+risk of a 100% rollout without staged percentages. Production promotion must
+use that same internal-track artifact; a rebuild or OTA update is not an
+acceptable substitute. See
+[the Android 2.7.0 launch record](./30-android-2.7.0-production-launch.md).
 
 ## Evidence boundary
 
@@ -159,8 +174,12 @@ VAPT decision: **NO-GO**.
   entitlements, associated domains, privacy manifest/declarations, CocoaPods,
   archive, device tests and review instructions.
 - `GOOGLE ACTION`: verify account ownership, app signing, package/asset-links,
-  Data Safety, Health Apps declarations, internal-track build/device tests and
+  Firebase/FCM and enhanced push security, Data Safety, Health Apps
+  declarations, internal-track build/device tests, clean pre-launch report and
   review instructions.
+- `GOOGLE ACTION` and `OWNER ACTION`: record the exact AAB identity, obtain the
+  separate go/no-go and 100% rollout risk exception, and promote only that
+  internal-track artifact.
 - Neither desktop tests nor repository templates prove store acceptance.
 
 Store decision: **NO-GO**.
@@ -229,5 +248,5 @@ ISO/management-system decision: **NO-GO**.
 | Apple/Google | No-go | Store and signed-build evidence incomplete |
 | Vendors | No-go | Provider evidence incomplete |
 
-The only evidence-supported public-production verdict on 2026-07-25 is
+The only evidence-supported public-production verdict on 2026-08-03 is
 **NOT READY**.

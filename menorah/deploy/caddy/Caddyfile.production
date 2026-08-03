@@ -12,7 +12,7 @@
 	}
 }
 
-(sanitized_reverse_proxy) {
+(sanitized_request) {
 	# Cloudflare always supplies a valid client IP on HTTP requests. If the
 	# trusted connector reaches Caddy without one, fail closed instead of
 	# collapsing every caller into the connector's rate-limit identity.
@@ -46,13 +46,20 @@
 	request_header -X-Vercel-IP-Country
 	request_header -X-Country-Code
 	request_header -X-Geo-Country
+}
 
+(upstream_proxy) {
 	reverse_proxy {args[0]} {
 		header_up X-Forwarded-For {client_ip}
 		header_up X-Real-IP {client_ip}
 		header_up CF-Connecting-IP {client_ip}
 		header_up X-Forwarded-Proto https
 	}
+}
+
+(sanitized_reverse_proxy) {
+	import sanitized_request
+	import upstream_proxy {args[0]}
 }
 
 (security_headers) {
@@ -80,8 +87,44 @@
 (api_proxy) {
 	import security_headers
 	encode gzip zstd
+	respond /metrics/* 404
+	respond /health/deep 404
 	request_body {
 		max_size 20MB
+	}
+}
+
+# Only the authenticated admin Reel-upload endpoint needs a larger body. Keep
+# the rest of the API on the 20 MB default and preserve the trusted-proxy
+# sanitisation boundary for this exceptional route.
+(social_reel_upload_proxy) {
+	import security_headers
+	encode gzip zstd
+	respond /metrics/* 404
+	respond /health/deep 404
+	request_body {
+		max_size {$SOCIAL_STUDIO_MAX_VIDEO_REQUEST_SIZE_MB:55}MB
+	}
+}
+
+# The signed browser-call document is the sole API response allowed to request
+# camera and microphone access. Meeting tickets stay on the API origin.
+(browser_call_api_proxy) {
+	import browser_call_security_headers
+	encode gzip zstd
+	respond /metrics/* 404
+	respond /health/deep 404
+	request_body {
+		max_size 20MB
+	}
+}
+
+# This upstream fails closed with 404 until real platform signing identifiers
+# are configured. Cloudflare's www-to-apex rule must exclude these two paths.
+(app_link_associations) {
+	@app_link_association path /.well-known/apple-app-site-association /.well-known/assetlinks.json
+	handle @app_link_association {
+		import upstream_proxy app-link-associations:8080
 	}
 }
 
@@ -97,85 +140,128 @@
 }
 
 http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN} {
+	import sanitized_request
 	import security_headers
+	import app_link_associations
 	encode gzip zstd
-	import sanitized_reverse_proxy landing-page:3002
+	import upstream_proxy landing-page:3002
 	import access_log /var/log/caddy/www-access.log
 }
 
 http://{$APP_DOMAIN} {
+	import sanitized_request
 	import browser_call_security_headers
+	import app_link_associations
 	encode gzip zstd
-	import sanitized_reverse_proxy user-web-app:3002
+	# Provider callbacks and reset tokens are short-lived capabilities. Never
+	# persist their query strings or relay cookies in reverse-proxy access logs.
+	@checkout_sensitive path /checkout/callback /checkout/return /checkout/return/*
+	log_skip @checkout_sensitive
+	@password_reset_capability path /reset-password /reset-password/*
+	log_skip @password_reset_capability
+	import upstream_proxy user-web-app:3002
 	import access_log /var/log/caddy/app-access.log
 }
 
 http://{$ADMIN_DOMAIN} {
+	import sanitized_request
 	import security_headers
 	encode gzip zstd
-	import sanitized_reverse_proxy admin-panel:3003
+	import upstream_proxy admin-panel:3003
 	import access_log /var/log/caddy/admin-access.log
 }
 
 http://{$COUNSELLOR_DOMAIN} {
+	import sanitized_request
 	import browser_call_security_headers
 	encode gzip zstd
-	import sanitized_reverse_proxy web-app:3001
+	@password_reset_capability path /reset-password /reset-password/*
+	log_skip @password_reset_capability
+	import upstream_proxy web-app:3001
 	import access_log /var/log/caddy/counsellor-access.log
 }
 
 http://{$API_IOS_DOMAIN} {
-	import api_proxy
-	@reset_link path /api/auth/reset-password
-	log_skip @reset_link
-	route {
-		@private_diagnostics path /metrics/* /health/deep
-		respond @private_diagnostics 404
-		import sanitized_reverse_proxy api-ios:8080
+	import sanitized_request
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		import upstream_proxy api-ios:8080
+	}
+	import app_link_associations
+	handle {
+		import api_proxy
+		import upstream_proxy api-ios:8080
 	}
 	import access_log /var/log/caddy/api-ios-access.log
 }
 
 http://{$API_ANDROID_DOMAIN} {
-	import api_proxy
-	@reset_link path /api/auth/reset-password
-	log_skip @reset_link
-	route {
-		@private_diagnostics path /metrics/* /health/deep
-		respond @private_diagnostics 404
-		import sanitized_reverse_proxy api-android:8080
+	import sanitized_request
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		import upstream_proxy api-android:8080
+	}
+	import app_link_associations
+	handle {
+		import api_proxy
+		import upstream_proxy api-android:8080
 	}
 	import access_log /var/log/caddy/api-android-access.log
 }
 
 http://{$API_WEB_DOMAIN} {
-	import api_proxy
-	@reset_link path /api/auth/reset-password
-	log_skip @reset_link
-	route {
-		@private_diagnostics path /metrics/* /health/deep
-		respond @private_diagnostics 404
-		import sanitized_reverse_proxy api-web:8080
+	import sanitized_request
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		import upstream_proxy api-web:8080
+	}
+	handle {
+		import api_proxy
+		import upstream_proxy api-web:8080
 	}
 	import access_log /var/log/caddy/api-web-access.log
 }
 
 http://{$API_ADMIN_DOMAIN} {
-	import api_proxy
-	@reset_link path /api/auth/reset-password
-	log_skip @reset_link
-	route {
-		@private_diagnostics path /metrics/* /health/deep
-		respond @private_diagnostics 404
-		import sanitized_reverse_proxy api-admin:8080
+	import sanitized_request
+	@social_reel_upload {
+		method POST
+		path /api/admin/social-studio/posts/video
+	}
+	handle @social_reel_upload {
+		import social_reel_upload_proxy
+		import upstream_proxy api-admin:8080
+	}
+	handle {
+		import api_proxy
+		import upstream_proxy api-admin:8080
 	}
 	import access_log /var/log/caddy/api-admin-access.log
 }
 
 http://{$CALLS_DOMAIN} {
+	import sanitized_request
 	import browser_call_security_headers
 	encode gzip zstd
-	import sanitized_reverse_proxy {$LIVEKIT_UPSTREAM}
+	import upstream_proxy {$LIVEKIT_UPSTREAM}
 	import access_log /var/log/caddy/calls-access.log
 }
 

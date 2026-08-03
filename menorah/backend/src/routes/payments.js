@@ -4,7 +4,7 @@ const Razorpay = require('razorpay');
 const Booking = require('../models/Booking');
 const PaymentAttempt = require('../models/PaymentAttempt');
 const User = require('../models/User');
-const { auth } = require('../middleware/auth');
+const { verifiedPatientAuth } = require('../middleware/auth');
 const {
   getRazorpayConfigurationState,
   getPaymentWebhookMaxProcessingAttempts,
@@ -191,7 +191,7 @@ const sendReconciliationResult = (res, result) => {
 
 router.post('/create-checkout-session', [
   body('bookingId').isMongoId().withMessage('Invalid booking ID'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     if (sendValidationErrors(req, res)) return;
     if (!isBookingPaymentInitiationEnabled()) return sendPaymentUnavailable(res);
@@ -203,6 +203,13 @@ router.post('/create-checkout-session', [
     }
     if (String(booking.user) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    if (booking.status === 'cancelled') {
+      return res.status(409).json({
+        success: false,
+        code: 'BOOKING_CANCELLED',
+        message: 'This booking has been cancelled and can no longer be paid for.',
+      });
     }
     await expireStalePendingBookings(Booking, { _id: booking._id });
     booking = await Booking.findById(booking._id);
@@ -229,6 +236,16 @@ router.post('/create-checkout-session', [
           paymentMethod: booking.paymentMethod,
           alreadyPaid: true,
         },
+      });
+    }
+    if (
+      booking.status !== 'pending'
+      || !['pending', 'failed'].includes(booking.paymentStatus)
+    ) {
+      return res.status(409).json({
+        success: false,
+        code: 'BOOKING_NOT_PAYABLE',
+        message: 'This booking is no longer available for payment.',
       });
     }
 
@@ -561,7 +578,7 @@ router.post('/verify-razorpay', [
   body('razorpay_payment_id').matches(PROVIDER_ID_VALIDATOR).withMessage('Invalid payment ID'),
   body('razorpay_signature').matches(/^[a-fA-F0-9]{64}$/).withMessage('Invalid signature'),
   body('bookingId').isMongoId().withMessage('Invalid booking ID'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     if (sendValidationErrors(req, res)) return;
     const {
@@ -649,7 +666,7 @@ router.post('/verify-razorpay', [
 
 router.get('/order/:orderId/status', [
   param('orderId').matches(PROVIDER_ID_VALIDATOR).withMessage('Invalid order ID'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     if (sendValidationErrors(req, res)) return;
     const attempt = await getOwnedAttempt({
@@ -698,7 +715,7 @@ router.get('/order/:orderId/status', [
 
 router.get('/booking/:bookingId', [
   param('bookingId').isMongoId().withMessage('Invalid booking ID'),
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     if (sendValidationErrors(req, res)) return;
     const booking = await Booking.findById(req.params.bookingId);
@@ -728,7 +745,7 @@ router.get('/booking/:bookingId', [
 
 router.post('/create-subscription-checkout', [
   body('subscriptionType').isIn(['weekly', 'monthly', 'yearly']).withMessage('Invalid subscription type'),
-], auth, (req, res) => {
+], verifiedPatientAuth, (req, res) => {
   if (sendValidationErrors(req, res)) return;
   if (!isSubscriptionPaymentFlowEnabled()) return sendSubscriptionUnavailable(res);
   return sendSubscriptionUnavailable(res);
@@ -739,13 +756,13 @@ router.post('/verify-subscription-payment', [
   body('razorpay_payment_id').matches(PROVIDER_ID_VALIDATOR).withMessage('Invalid payment ID'),
   body('razorpay_signature').matches(/^[a-fA-F0-9]{64}$/).withMessage('Invalid signature'),
   body('subscriptionType').isIn(['weekly', 'monthly', 'yearly']).withMessage('Invalid subscription type'),
-], auth, (req, res) => {
+], verifiedPatientAuth, (req, res) => {
   if (sendValidationErrors(req, res)) return;
   if (!isSubscriptionPaymentFlowEnabled()) return sendSubscriptionUnavailable(res);
   return sendSubscriptionUnavailable(res);
 });
 
-router.get('/subscription/status', auth, async (req, res) => {
+router.get('/subscription/status', verifiedPatientAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) {

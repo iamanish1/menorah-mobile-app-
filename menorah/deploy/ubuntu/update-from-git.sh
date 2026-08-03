@@ -1261,7 +1261,7 @@ validate_release_environment() {
         return 1
       fi
       if [[ "${PASSWORD_RESET_BASE_URL:-}" != "https://app.menorah.me" \
-        || "${CHECKOUT_RETURN_URL:-}" != "https://app.menorah.me/checkout/return" \
+        || "${CHECKOUT_RETURN_URL:-}" != "https://app.menorah.me/checkout/callback" \
         || -n "${PASSWORD_RESET_URL_TEMPLATE:-}" ]]; then
         echo "Production reset and checkout returns must use their canonical app.menorah.me targets with no legacy reset template." >&2
         return 1
@@ -1326,7 +1326,7 @@ validate_release_environment() {
       if [[ "${LIVEKIT_URL:-}" != "wss://${CALLS_DOMAIN}" \
         || "${LIVEKIT_API_URL:-}" != "https://${CALLS_DOMAIN}" \
         || "${PASSWORD_RESET_BASE_URL:-}" != "https://${APP_DOMAIN}" \
-        || "${CHECKOUT_RETURN_URL:-}" != "https://${APP_DOMAIN}/checkout/return" \
+        || "${CHECKOUT_RETURN_URL:-}" != "https://${APP_DOMAIN}/checkout/callback" \
         || "${FRONTEND_API_WEB_URL:-}" != "https://${API_WEB_DOMAIN}/api" \
         || "${FRONTEND_API_ADMIN_URL:-}" != "https://${API_ADMIN_DOMAIN}/api" \
         || "${FRONTEND_SOCKET_WEB_URL:-}" != "https://${API_WEB_DOMAIN}" \

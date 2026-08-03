@@ -91,6 +91,12 @@ const main = async () => {
   await expectStatus('api-admin /health/ready', `${config.apiAdmin}/health/ready`, 200);
   await expectStatus('api-admin unauthenticated /api/auth/me', `${config.apiAdmin}/api/auth/me`, 401);
   await expectStatus('api-web unauthenticated /api/auth/me', `${config.apiWeb}/api/auth/me`, 401);
+  // This is a safe edge check: it never creates an order, but catches a proxy
+  // maintenance rule that would make the booking checkout impossible to reach.
+  await expectStatus('api-web payment checkout reaches application auth', `${config.apiWeb}/api/payments/create-checkout-session`, 401, {
+    method: 'POST',
+    body: { bookingId: '64f000000000000000000000' },
+  });
   await expectStatus('api-web wrong-password login', `${config.apiWeb}/api/auth/login`, 401, {
     method: 'POST',
     body: { email: config.qaEmail, password: config.qaWrongPassword },

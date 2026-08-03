@@ -298,6 +298,15 @@ const buildCounsellorAppUrl = (path = '/login') => {
   return new URL(path, `${base.replace(/\/+$/, '')}/`).toString();
 };
 
+const buildPasswordResetUrlForRole = (token, role = 'user') => {
+  if (role !== 'counsellor') return buildPasswordResetUrl(token);
+
+  const url = new URL(buildCounsellorAppUrl('/reset-password'));
+  url.searchParams.delete('token');
+  url.hash = `token=${encodeURIComponent(token)}`;
+  return url.toString();
+};
+
 const layout = (content) => `
 <!DOCTYPE html>
 <html>
@@ -374,8 +383,8 @@ const sendVerificationEmail = async (email, code) => {
   );
 };
 
-const sendPasswordResetEmail = async (email, token) => {
-  const resetUrl = buildPasswordResetUrl(token);
+const sendPasswordResetEmail = async (email, token, { role = 'user' } = {}) => {
+  const resetUrl = buildPasswordResetUrlForRole(token, role);
 
   if (isDev) {
     console.log('[DEV PASSWORD RESET] Reset link generated; destination and token suppressed.');
@@ -402,6 +411,77 @@ const sendPasswordResetEmail = async (email, token) => {
   `);
 
   return sendEmail(email, 'Reset Your Menorah Health Password', html);
+};
+
+const sendCounsellorCredentialsEmail = async ({
+  email,
+  name = '',
+  password,
+  resetToken,
+  kind = 'onboarding',
+}) => {
+  if (!password || !resetToken) {
+    throw new Error('Counsellor credential emails require a temporary password and reset token');
+  }
+
+  const loginUrl = buildCounsellorAppUrl('/login');
+  const resetUrl = buildPasswordResetUrlForRole(resetToken, 'counsellor');
+  const isOnboarding = kind === 'onboarding';
+  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  const safeLoginUrl = escapeHtml(loginUrl);
+  const safeResetUrl = escapeHtml(resetUrl);
+  const heading = isOnboarding
+    ? 'Your counsellor account is ready'
+    : 'Your counsellor password was reset';
+  const introduction = isOnboarding
+    ? 'Your Menorah counsellor application has been approved. Use the temporary credentials below to sign in to your counsellor account.'
+    : 'An administrator reset your Menorah counsellor password. Use the temporary credentials below to sign in to your counsellor account.';
+
+  const html = layout(`
+    <h2 style="color:#111827;margin:0 0 16px;">${heading}</h2>
+    <p style="color:#111827;line-height:1.6;margin:0 0 16px;">${greeting}</p>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 20px;">${introduction}</p>
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin:0 0 24px;">
+      <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+        <span style="color:#9ca3af;font-size:13px;">Email</span><br>
+        <strong style="color:#111827;">${escapeHtml(email)}</strong>
+      </td></tr>
+      <tr><td style="padding:16px 20px;">
+        <span style="color:#9ca3af;font-size:13px;">Temporary password</span><br>
+        <strong style="color:#111827;font-family:'Courier New',monospace;word-break:break-all;">${escapeHtml(password)}</strong>
+      </td></tr>
+    </table>
+    <div style="text-align:center;margin:28px 0 18px;">
+      <a href="${safeLoginUrl}"
+         style="background:#2d7a5c;color:#ffffff;text-decoration:none;border-radius:8px;padding:14px 24px;display:inline-block;font-weight:700;">
+        Sign in to counsellor portal
+      </a>
+    </div>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;">
+      Use this secure link to choose a new password before it expires in <strong>10 minutes</strong>:
+    </p>
+    <div style="text-align:center;margin:24px 0 18px;">
+      <a href="${safeResetUrl}"
+         style="background:#111827;color:#ffffff;text-decoration:none;border-radius:8px;padding:14px 24px;display:inline-block;font-weight:700;">
+        Set a new password
+      </a>
+    </div>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;word-break:break-word;">
+      If the reset button does not work, open this link: <a href="${safeResetUrl}" style="color:#2d7a5c;">${safeResetUrl}</a>
+    </p>
+    <p style="color:#9ca3af;font-size:13px;margin:0;">
+      If you were not expecting this email, contact Menorah support immediately.
+    </p>
+  `);
+
+  return sendEmail(
+    email,
+    isOnboarding
+      ? 'Your Menorah counsellor account is ready'
+      : 'Your Menorah counsellor password was reset',
+    html
+  );
 };
 
 const sendCounsellorApprovalEmail = async ({ email, name = '', activationToken }) => {
@@ -553,9 +633,11 @@ const sendSessionReminderEmail = async (email, sessionDetails) => {
 module.exports = {
   buildPasswordResetUrl,
   buildCounsellorAppUrl,
+  buildPasswordResetUrlForRole,
   sendOTPEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
+  sendCounsellorCredentialsEmail,
   sendCounsellorApprovalEmail,
   sendCounsellorReverificationEmail,
   sendBookingConfirmationEmail,

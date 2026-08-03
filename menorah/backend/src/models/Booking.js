@@ -154,7 +154,7 @@ const bookingSchema = new mongoose.Schema({
   razorpayOrderId: String,
   orderStatus: {
     type: String,
-    enum: ['created', 'attempted', 'paid', 'failed', 'expired'],
+    enum: ['created', 'attempted', 'paid', 'failed', 'expired', 'cancelled'],
     default: null
   },
   orderCreatedAt: Date,
