@@ -123,12 +123,14 @@
   "submit": {
     "internal-android": {
       "android": {
+        "serviceAccountKeyPath": "./credentials/google-play-service-account.json",
         "track": "internal",
         "releaseStatus": "completed"
       }
     },
     "production-android": {
       "android": {
+        "serviceAccountKeyPath": "./credentials/google-play-service-account.json",
         "track": "production",
         "releaseStatus": "completed"
       }
