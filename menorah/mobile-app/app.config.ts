@@ -101,7 +101,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: 'Menorah Health',
     slug: 'menorah-health-app',
     owner: 'menorahsoftware',
-    version: '2.6.0',
+    version: '2.7.0',
     orientation: 'portrait',
     // ─── OTA Updates via EAS Update ──────────────────────────────────────────
     updates: {
@@ -109,7 +109,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       checkAutomatically: 'ON_LOAD',
       fallbackToCacheTimeout: 0,
     },
-    runtimeVersion: '1.0.0',
+    runtimeVersion: '2.7.0',
     // ─────────────────────────────────────────────────────────────────────────
     icon: './assets/brand/menorah_logo.png',
     userInterfaceStyle: 'light',
@@ -136,7 +136,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#f0f9f4'
       },
       package: 'com.menorah.healthmobile',
-      versionCode: 14,
+      versionCode: 15,
       intentFilters: [
         {
           action: 'VIEW',

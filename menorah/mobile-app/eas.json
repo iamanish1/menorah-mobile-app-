@@ -119,5 +119,19 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "873291355021-bi43pprpqlks9hvpjdto7kt0ekcbefr8.apps.googleusercontent.com"
       }
     }
+  },
+  "submit": {
+    "internal-android": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
+      }
+    },
+    "production-android": {
+      "android": {
+        "track": "production",
+        "releaseStatus": "completed"
+      }
+    }
   }
 }

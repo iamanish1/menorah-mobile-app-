@@ -2,7 +2,7 @@
   "expo": {
     "name": "Menorah Health",
     "slug": "menorah-health-app",
-    "version": "2.6.0",
+    "version": "2.7.0",
     "orientation": "portrait",
     "icon": "./assets/brand/menorah_logo.png",
     "userInterfaceStyle": "automatic",
@@ -19,7 +19,7 @@
         "backgroundColor": "#f0f9f4"
       },
       "package": "com.menorah.healthmobile",
-      "versionCode": 14
+      "versionCode": 15
     },
     "androidStatusBar": {
       "barStyle": "light-content",
@@ -39,7 +39,7 @@
     "updates": {
       "url": "https://u.expo.dev/d7fb6e65-3440-4a79-b4b2-6746d2582fa7"
     },
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "2.7.0",
     "extra": {
       "CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
       "eas": {
