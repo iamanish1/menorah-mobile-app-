@@ -2,8 +2,8 @@
 
 Status: **NOT READY — external evidence required**
 
-The repository candidate is `2.7.0` with provisional Android `versionCode` 15 and coupled build
-number 15. Do not start an EAS build merely because repository validation passes. The final Play
+The repository candidate is `2.7.0` with Android `versionCode` 17 and coupled build
+number 17. Do not start an EAS build merely because repository validation passes. The final Play
 maximum, signing lineage, Firebase files, and protected environment must be verified first.
 
 ## One-time protected configuration
@@ -23,13 +23,13 @@ maximum, signing lineage, Firebase files, and protected environment must be veri
 ## Exact pre-build gate
 
 1. Open Play Console and record the highest version code across every track and artifact. EAS's
-   current maximum of 14 is supporting evidence only.
+   current maximum of 16 is supporting evidence only.
 2. Set protected EAS variable `PLAY_HIGHEST_VERSION_CODE` to that freshly checked integer. The
-   production hook refuses to build unless repository versionCode 15 is greater.
+   production hook refuses to build unless repository versionCode 17 is greater.
 3. Set protected EAS variable `MENORAH_APPROVED_RELEASE_SHA` to the independently approved exact
    40-character SHA at the head of `release/android-2.7.0-20260803`. The build hook compares it
    with `EAS_BUILD_GIT_COMMIT_HASH` and rejects any other source commit or EAS project/profile.
-4. If Play reports 15 or higher, stop and increment Android `versionCode`, iOS build number, and
+4. If Play reports 17 or higher, stop and increment Android `versionCode`, iOS build number, and
    all coupled native/repository values together. Re-run validation and regenerate approval
    evidence before any build.
 5. Confirm production build variables still resolve to:
@@ -57,7 +57,7 @@ eas build --platform android --profile production-android --non-interactive
 ```
 
 The post-install hook fails closed if the Firebase file secret is absent, malformed, from the
-wrong project/package, or if the Play maximum is absent/stale relative to versionCode 15. It does
+wrong project/package, or if the Play maximum is absent/stale relative to versionCode 17. It does
 not print file contents. The completion/cancellation hook removes only the marked temporary copy
 at `android/app/google-services.json`.
 

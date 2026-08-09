@@ -143,7 +143,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.menorah.health.app',
-      buildNumber: '15',
+      buildNumber: '17',
       associatedDomains: ['applinks:app.menorah.me'],
       usesAppleSignIn: true,
       infoPlist: {
@@ -164,7 +164,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#f0f9f4'
       },
       package: 'com.menorah.healthmobile',
-      versionCode: 15,
+      versionCode: 17,
       googleServicesFile: './android/app/google-services.json',
       intentFilters: [
         {

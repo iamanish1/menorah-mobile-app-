@@ -6,7 +6,7 @@ const { spawnSync } = require('node:child_process');
 const EXPECTED = Object.freeze({
   packageName: 'com.menorah.healthmobile',
   versionName: '2.7.0',
-  versionCode: 15,
+  versionCode: 17,
   targetSdk: 36,
   firebaseProjectNumber: '873291355021',
   androidApi: 'https://api-android.menorah.me/api',

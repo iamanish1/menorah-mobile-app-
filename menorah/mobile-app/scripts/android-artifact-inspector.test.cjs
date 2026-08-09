@@ -12,7 +12,7 @@ const {
 } = require('./inspect-android-aab.cjs');
 
 const validManifest = `
-<manifest package="com.menorah.healthmobile" android:versionCode="15" android:versionName="2.7.0">
+<manifest package="com.menorah.healthmobile" android:versionCode="17" android:versionName="2.7.0">
   <uses-sdk android:targetSdkVersion="36" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.CAMERA" />
