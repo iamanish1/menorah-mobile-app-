@@ -6,6 +6,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import {
@@ -132,6 +133,10 @@ export default function Discover({ navigation }: any) {
   const { unreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const iosTheme = useIOSTheme();
+  const { width: windowWidth } = useWindowDimensions();
+  const articleCardGap = iosTheme.spacing.lg;
+  const articleCardWidth =
+    (windowWidth - iosTheme.layout.screenPadding * 2 - articleCardGap) / 2;
   const trimmedQuery = q.trim();
   const normalizedQuery = trimmedQuery.toLowerCase();
   const isSearching = normalizedQuery.length > 0;
@@ -818,6 +823,7 @@ export default function Discover({ navigation }: any) {
                 renderItem={({ item }) => (
                   <IOSArticleCard
                     item={item}
+                    width={articleCardWidth}
                     onPress={() => openArticle(item)}
                   />
                 )}
@@ -838,7 +844,7 @@ export default function Discover({ navigation }: any) {
               </IOSCard>
             )}
 
-            <View style={{ marginTop: iosTheme.spacing.xxl }}>
+            <View style={{ marginTop: iosTheme.spacing.xxxl }}>
               <MobileCounsellorDiscovery
                 onOpenDirectory={(search) =>
                   navigation.navigate("CounsellorList", {

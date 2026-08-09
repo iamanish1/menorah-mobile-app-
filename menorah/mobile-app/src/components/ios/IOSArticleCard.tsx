@@ -7,9 +7,14 @@ import { useIOSTheme } from "./iosTheme";
 type IOSArticleCardProps = {
   item: Article;
   onPress: () => void;
+  width?: number;
 };
 
-export default function IOSArticleCard({ item, onPress }: IOSArticleCardProps) {
+export default function IOSArticleCard({
+  item,
+  onPress,
+  width = 238,
+}: IOSArticleCardProps) {
   const iosTheme = useIOSTheme();
   const imageUrl = item.coverImageUrl;
   const category = item.category?.trim() || "Article";
@@ -22,7 +27,7 @@ export default function IOSArticleCard({ item, onPress }: IOSArticleCardProps) {
       accessibilityLabel={`Open article: ${item.title}`}
       style={[
         {
-          width: 238,
+          width,
           height: 206,
           borderRadius: iosTheme.radius.xl,
           backgroundColor: iosTheme.colors.surface,
