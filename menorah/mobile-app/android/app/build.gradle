@@ -121,7 +121,7 @@ android {
         applicationId 'com.menorah.healthmobile'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 17
+        versionCode 18
         versionName "2.7.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
@@ -199,7 +199,7 @@ gradle.taskGraph.whenReady { graph ->
         if (highestPlayVersionCode == null || !(highestPlayVersionCode ==~ /\d+/)) {
             throw new GradleException('Release build requires PLAY_HIGHEST_VERSION_CODE from a fresh Play Console check')
         }
-        if (17 <= highestPlayVersionCode.toInteger()) {
+        if (18 <= highestPlayVersionCode.toInteger()) {
             throw new GradleException('Release versionCode must be greater than the fresh Play Console maximum')
         }
         def signing = android.buildTypes.release.signingConfig

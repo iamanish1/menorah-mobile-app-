@@ -360,9 +360,9 @@ function validateProject(root = projectRoot) {
   fail(app.version === version, 'app.json version must equal package.json version');
   fail(
     version === '2.7.0' &&
-      app.android.versionCode === 17 &&
-      buildNumber === '17',
-    'the Android 2.7.0 release must keep coupled build number/versionCode 17'
+      app.android.versionCode === 18 &&
+      buildNumber === '18',
+    'the Android 2.7.0 release must keep coupled build number/versionCode 18'
   );
   fail(app.runtimeVersion === version, 'Expo runtimeVersion must equal the app version');
   fail(
@@ -584,7 +584,7 @@ function validateProject(root = projectRoot) {
     androidGradle.includes('gradle.taskGraph.whenReady') &&
       androidGradle.includes("file('google-services.json').isFile()") &&
       androidGradle.includes("System.getenv('PLAY_HIGHEST_VERSION_CODE')") &&
-      androidGradle.includes('17 <= highestPlayVersionCode.toInteger()') &&
+      androidGradle.includes('18 <= highestPlayVersionCode.toInteger()') &&
       androidGradle.includes('Release task resolved without a complete readable signing configuration') &&
       !androidGradle.includes('if (releaseBuildRequested || releaseSigningPartiallyConfigured)'),
     'Android release signing must accept verified EAS injection and still fail closed after task resolution'
