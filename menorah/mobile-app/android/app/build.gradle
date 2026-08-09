@@ -99,8 +99,11 @@ def releaseBuildRequested = gradle.startParameter.taskNames.any {
 def releaseSigningPartiallyConfigured = releaseSigningValues.values().any {
     it != null && !it.toString().trim().isEmpty()
 }
-def easBuildSigningInjected = 'true'.equalsIgnoreCase(System.getenv('EAS_BUILD')) &&
-    file('eas-build.gradle').isFile() &&
+// EAS injects these files before Gradle starts. It does not provide an EAS_BUILD
+// environment variable to the Gradle process, so use the injected files as the
+// positive signal and verify the resolved signing config again before a release
+// task executes below.
+def easBuildSigningInjected = file('eas-build.gradle').isFile() &&
     rootProject.file('../credentials.json').isFile()
 if (releaseSigningPartiallyConfigured) {
     def missingReleaseSigningNames = releaseSigningNames.findAll {
