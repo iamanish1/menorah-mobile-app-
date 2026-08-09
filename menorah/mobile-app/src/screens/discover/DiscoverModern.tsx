@@ -6,7 +6,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from "react-native";
 import {
@@ -130,13 +129,15 @@ function getSearchResultSummary(
 export default function Discover({ navigation }: any) {
   const [help, setHelp] = useState(false);
   const [q, setQ] = useState("");
+  const [articleRailWidth, setArticleRailWidth] = useState(0);
   const { unreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const iosTheme = useIOSTheme();
-  const { width: windowWidth } = useWindowDimensions();
   const articleCardGap = iosTheme.spacing.lg;
   const articleCardWidth =
-    (windowWidth - iosTheme.layout.screenPadding * 2 - articleCardGap) / 2;
+    articleRailWidth > 0
+      ? (articleRailWidth - articleCardGap) / 2
+      : undefined;
   const trimmedQuery = q.trim();
   const normalizedQuery = trimmedQuery.toLowerCase();
   const isSearching = normalizedQuery.length > 0;
@@ -817,6 +818,14 @@ export default function Discover({ navigation }: any) {
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={(item) => item.id || item._id || item.slug}
+                onLayout={({ nativeEvent }) => {
+                  const nextWidth = nativeEvent.layout.width;
+                  setArticleRailWidth((currentWidth) =>
+                    Math.abs(currentWidth - nextWidth) > 0.5
+                      ? nextWidth
+                      : currentWidth,
+                  );
+                }}
                 contentContainerStyle={{
                   paddingRight: iosTheme.layout.screenPadding,
                 }}
