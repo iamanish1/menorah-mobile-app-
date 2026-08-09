@@ -31,6 +31,7 @@
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://u.expo.dev/d7fb6e65-3440-4a79-b4b2-6746d2582fa7"/>
     <meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION" android:value="@string/expo_runtime_version"/>
+    <meta-data android:name="expo.modules.updates.ENABLE_BSDIFF_PATCH_SUPPORT" android:value="true"/>
     <service android:name="expo.modules.notifications.service.ExpoFirebaseMessagingService" android:exported="false">
       <intent-filter android:priority="-1">
         <action android:name="com.google.firebase.MESSAGING_EVENT"/>
