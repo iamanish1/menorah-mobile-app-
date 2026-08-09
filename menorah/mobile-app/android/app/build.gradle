@@ -93,18 +93,9 @@ def releaseSigningNames = [
 def releaseSigningValues = releaseSigningNames.collectEntries { name ->
     [(name): releaseSigningProperty(name)]
 }
-def releaseBuildRequested = gradle.startParameter.taskNames.any {
-    it.toLowerCase().contains('release')
-}
 def releaseSigningPartiallyConfigured = releaseSigningValues.values().any {
     it != null && !it.toString().trim().isEmpty()
 }
-// EAS injects these files before Gradle starts. It does not provide an EAS_BUILD
-// environment variable to the Gradle process, so use the injected files as the
-// positive signal and verify the resolved signing config again before a release
-// task executes below.
-def easBuildSigningInjected = file('eas-build.gradle').isFile() &&
-    rootProject.file('../credentials.json').isFile()
 if (releaseSigningPartiallyConfigured) {
     def missingReleaseSigningNames = releaseSigningNames.findAll {
         def value = releaseSigningValues[it]
@@ -116,11 +107,6 @@ if (releaseSigningPartiallyConfigured) {
     if (!file(releaseSigningValues['ANDROID_KEYSTORE_FILE']).isFile()) {
         throw new GradleException('ANDROID_KEYSTORE_FILE does not identify a readable file')
     }
-} else if (releaseBuildRequested && !easBuildSigningInjected) {
-    throw new GradleException(
-        'Release signing requires either the complete ANDROID_KEYSTORE_* configuration or '
-        + 'EAS_BUILD=true with injected eas-build.gradle and credentials.json files'
-    )
 }
 def releaseKeystoreFile = releaseSigningValues['ANDROID_KEYSTORE_FILE']
 

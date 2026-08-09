@@ -581,9 +581,7 @@ function validateProject(root = projectRoot) {
     'Android must resolve the Expo SDK 57 hermes-compiler binary'
   );
   fail(
-    androidGradle.includes("def easBuildSigningInjected = file('eas-build.gradle').isFile()") &&
-      androidGradle.includes("rootProject.file('../credentials.json').isFile()") &&
-      androidGradle.includes('gradle.taskGraph.whenReady') &&
+    androidGradle.includes('gradle.taskGraph.whenReady') &&
       androidGradle.includes("file('google-services.json').isFile()") &&
       androidGradle.includes("System.getenv('PLAY_HIGHEST_VERSION_CODE')") &&
       androidGradle.includes('17 <= highestPlayVersionCode.toInteger()') &&
