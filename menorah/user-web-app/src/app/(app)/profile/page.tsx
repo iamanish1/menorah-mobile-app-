@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import {
-  User, MapPin, Phone, Shield, Bell, Lock,
+  User, MapPin, Phone, Shield, Bell, ClipboardCheck, Lock,
   HeartPulse, ChevronRight, LogOut, ShieldCheck
 } from 'lucide-react';
 import { Avatar, Badge } from '@/components/ui';
@@ -21,6 +21,7 @@ const sections = [
   {
     title: 'Preferences',
     items: [
+      { href: '/wellbeing-check',         icon: ClipboardCheck, label: 'Wellbeing Check' },
       { href: '/profile/notifications',   icon: Bell,      label: 'Notification Preferences' },
     ],
   },

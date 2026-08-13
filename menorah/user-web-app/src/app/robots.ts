@@ -16,6 +16,7 @@ export default function robots(): MetadataRoute.Robots {
         "/reset-password",
         "/complete-profile",
         "/discover",
+        "/wellbeing-check",
         "/bookings",
         "/chat",
         "/profile",

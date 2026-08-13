@@ -6,6 +6,7 @@ import { Search, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { CounsellorCard } from '@/components/discover/CounsellorCard';
 import { FilterPanel } from '@/components/discover/FilterPanel';
+import { WellbeingCheckPrompt } from '@/components/wellbeing/WellbeingCheckPrompt';
 import { Spinner, Button } from '@/components/ui';
 import type { Counsellor, CounsellorFilters } from '@/types';
 
@@ -87,6 +88,8 @@ export default function DiscoverPage() {
           Browse {pagination?.total ?? ''} certified men&apos;s mental health counsellors
         </p>
       </div>
+
+      <WellbeingCheckPrompt />
 
       <div className="mb-6 flex gap-3">
         <div className="relative flex-1">

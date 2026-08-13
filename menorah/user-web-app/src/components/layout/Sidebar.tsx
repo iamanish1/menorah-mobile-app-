@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Search, CalendarDays, MessageCircle, User,
+  Search, CalendarDays, ClipboardCheck, MessageCircle, User,
   Bell, LogOut, Newspaper,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,7 @@ import { useNotifications } from '@/context/NotificationContext';
 
 const navItems = [
   { href: '/discover',      label: 'Discover',       icon: Search,       tourId: 'discover' },
+  { href: '/wellbeing-check', label: 'Wellbeing Check', icon: ClipboardCheck, tourId: 'wellbeing-check' },
   { href: '/bookings',      label: 'My Bookings',    icon: CalendarDays, tourId: 'bookings' },
   { href: '/chat',          label: 'Chat',           icon: MessageCircle, tourId: 'chat' },
   { href: '/notifications', label: 'Notifications',  icon: Bell,          tourId: 'notifications' },
