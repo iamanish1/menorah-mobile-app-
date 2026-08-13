@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import {
   User, MapPin, Phone, Shield, Bell, Lock,
-  CreditCard, HeartPulse, ChevronRight, LogOut, ShieldCheck
+  HeartPulse, ChevronRight, LogOut, ShieldCheck
 } from 'lucide-react';
 import { Avatar, Badge } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
@@ -22,7 +22,6 @@ const sections = [
     title: 'Preferences',
     items: [
       { href: '/profile/notifications',   icon: Bell,      label: 'Notification Preferences' },
-      { href: '/subscription',            icon: CreditCard,label: 'Subscription & Billing' },
     ],
   },
   {

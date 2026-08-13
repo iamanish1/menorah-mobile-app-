@@ -123,7 +123,7 @@ export default function CheckoutReturnClient({
         });
         if (verified.success) {
           await refreshUser();
-          router.replace('/subscription?payment=success');
+          router.replace('/discover?payment=success');
           return;
         }
       }
@@ -132,7 +132,7 @@ export default function CheckoutReturnClient({
         const status = await api.getSubscriptionStatus();
         if (status.success && status.data?.isActive) {
           await refreshUser();
-          router.replace('/subscription?payment=success');
+          router.replace('/discover?payment=success');
           return;
         }
         if (attempt < 4) await delay(1500);
@@ -169,7 +169,7 @@ export default function CheckoutReturnClient({
   }, [callback, hasProof, isAuthed, isLoading, refreshUser, router]);
 
   const recoveryHref = callback.kind === 'subscription'
-    ? '/subscription'
+    ? '/discover'
     : callback.bookingId
       ? `/bookings/${callback.bookingId}`
       : '/bookings';

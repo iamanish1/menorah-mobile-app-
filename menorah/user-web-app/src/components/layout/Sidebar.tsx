@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Search, CalendarDays, MessageCircle, User,
-  Bell, CreditCard, LogOut, Newspaper,
+  Bell, LogOut, Newspaper,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/Avatar';
@@ -18,7 +18,6 @@ const navItems = [
   { href: '/discover',      label: 'Discover',       icon: Search,       tourId: 'discover' },
   { href: '/bookings',      label: 'My Bookings',    icon: CalendarDays, tourId: 'bookings' },
   { href: '/chat',          label: 'Chat',           icon: MessageCircle, tourId: 'chat' },
-  { href: '/subscription',  label: 'Subscription',   icon: CreditCard,    tourId: 'subscription' },
   { href: '/notifications', label: 'Notifications',  icon: Bell,          tourId: 'notifications' },
   { href: '/learn',         label: 'Articles',       icon: Newspaper,     tourId: 'learn' },
   { href: '/profile',       label: 'Profile',        icon: User,          tourId: 'profile' },

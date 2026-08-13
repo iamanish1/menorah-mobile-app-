@@ -20,7 +20,6 @@ export default function robots(): MetadataRoute.Robots {
         "/chat",
         "/profile",
         "/notifications",
-        "/subscription",
         "/call/"
       ]
     },
