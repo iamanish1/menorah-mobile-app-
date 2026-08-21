@@ -32,12 +32,19 @@ export function LearnArticlesPage() {
       q: q || undefined,
       category: category || undefined,
     }),
+    // Publishing happens outside this client. Always re-check canonical
+    // articles when the reader returns to this screen or browser tab.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   const categoriesQuery = useQuery({
     queryKey: ['article-categories'],
     queryFn: () => api.getArticleCategories(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   const pageArticles = useMemo(

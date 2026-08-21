@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+node_modules.root-owned-*/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -12,9 +13,50 @@ pnpm-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+menorah/deploy/env/*.env
+!menorah/deploy/env/*.env.example
+menorah/deploy/env/production.env
+menorah/deploy/env/production.env.*
+!menorah/deploy/env/production.env.example
+menorah/deploy/env/production.env.pre-clean-slate-*
+menorah/deploy/env/cloudflare.env
+deploy/env/production.env
+deploy/env/production.env.*
+deploy/env/production.env.pre-clean-slate-*
+deploy-state/
+menorah/deploy-state/
+menorah/deploy/deploy-state/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+menorah/deploy/livekit/livekit.yaml
+menorah/**/*.bak*
+menorah/deploy/env/*.bak*
+secrets/
+secrets.env-backups/
+*.env.bak*
+*.env-backup*
+*.secret*
+*.secrets*
+!*.env.example
+!*.env.local.example
+menorah/deploy/.local-data/
+mongo-keyfile
+*.backup
+*.dump
+*.archive.gz
+*.archive.gz.enc
+/backups
+/backups/
+/data
+/data/
 
 # Build outputs
 .next/
+.next.root-owned-*/
 out/
 dist/
 build/
@@ -39,6 +81,8 @@ Thumbs.db
 # Logs
 logs/
 *.log
+test-results/
+test-results.root-owned-*/
 
 # Coverage
 coverage/
@@ -89,3 +133,6 @@ temp/
 # Debug files
 *.log
 debug.log
+
+# Performance-test artifacts
+menorah/scripts/performance/results/

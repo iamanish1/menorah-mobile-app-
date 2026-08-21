@@ -11,7 +11,6 @@ import { SupportPathwaySection } from '@/components/landing/SupportPathwaySectio
 import { WhatWeDoSection } from '@/components/landing/WhatWeDoSection';
 import { MenorahFooter } from '@/components/site/MenorahFooter';
 import { MenorahNavbar } from '@/components/site/MenorahNavbar';
-import { Spinner } from '@/components/ui';
 
 export default function HomePage() {
   const { isAuthed, isLoading } = useAuth();
@@ -22,14 +21,6 @@ export default function HomePage() {
       router.replace('/discover');
     }
   }, [isAuthed, isLoading, router]);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Spinner size="lg" />
-      </div>
-    );
-  }
 
   if (isAuthed) return null;
 

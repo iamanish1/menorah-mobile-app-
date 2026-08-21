@@ -1,0 +1,200 @@
+# Cloudflare Production Ingress
+
+Production ingress uses a Cloudflare Tunnel. Browsers connect to Cloudflare over HTTPS and `cloudflared` creates an outbound encrypted tunnel to the host; Caddy then receives HTTP only on the private Docker network. MongoDB and Redis must never be exposed publicly.
+
+## Hostname Map
+
+Configure these as public hostnames on the Cloudflare Tunnel, each targeting `http://reverse-proxy:80`:
+
+```text
+menorah.me
+www.menorah.me
+app.menorah.me
+admin.menorah.me
+counsellor.menorah.me
+api-ios.menorah.me
+api-android.menorah.me
+api-web.menorah.me
+api-admin.menorah.me
+calls.menorah.me
+mentle.org
+www.mentle.org
+mentle.mentle.org
+app.mentle.org
+business.mentle.org
+admin.mentle.org
+counsellor.mentle.org
+api.mentle.org
+api-business.mentle.org
+api-admin.mentle.org
+api-counsellor.mentle.org
+calls.mentle.org
+```
+
+`calls.menorah.me` is proxied by Caddy to `LIVEKIT_UPSTREAM`. For same-VPS Hostinger LiveKit, use:
+
+```env
+LIVEKIT_UPSTREAM=http://livekit:7880
+```
+
+## Native reset-link association files
+
+The mobile apps verify HTTPS ownership through `/.well-known/apple-app-site-association`
+and `/.well-known/assetlinks.json`. Keep the `menorah.me`, `app.menorah.me`,
+`api-ios.menorah.me`, and `api-android.menorah.me` public hostnames pointed at
+`http://reverse-proxy:80`; do not add a redirect, access policy, HTML rewrite,
+or cache rule that intercepts either `/.well-known/` path.
+
+`www.menorah.me` is also an App/Universal Link hostname. Caddy already sends
+both association paths directly to `app-link-associations`, but it cannot
+override a Cloudflare redirect that runs before the Tunnel. If Cloudflare
+redirects `www.menorah.me` to `menorah.me`, edit the redirect rule itself so it
+does **not** match either association path. For a Cloudflare Single Redirect
+rule, use an expression equivalent to:
+
+```text
+http.host eq "www.menorah.me" and not (
+  http.request.uri.path in {
+    "/.well-known/apple-app-site-association"
+    "/.well-known/assetlinks.json"
+  }
+)
+```
+
+Do not rely on a later WAF/Skip rule to repair this: a matching redirect is a
+terminal response. If the redirect is implemented as a Page Rule, Bulk
+Redirect, or Worker, add the same two-path exclusion there or replace it with
+an equivalent conditional redirect rule. The public health gate below must
+return direct `200 application/json` responses for those `www` URLs; `301`,
+`302`, or a redirect followed by `curl -L` is not valid app-link verification.
+
+Set the real Apple Team ID and Android signing SHA-256 fingerprint values in
+the host-only `production.env` before enabling native reset links. Until then,
+the edge intentionally returns `404` for these files. See
+[`../app-links/README.md`](../app-links/README.md) for the exact variables and
+post-deploy verification commands.
+
+Cloudflare HTTP proxying is only for HTTPS/WSS signaling. LiveKit media still needs direct Hostinger access to `7881/tcp`, `3478/udp`, `5349/tcp`, and `61000-62000/udp`. The TURN relay allocation range remains internal and is not opened publicly.
+
+## Dashboard-Managed Tunnel Token
+
+The Cloudflare public hostname service target must remain `http://reverse-proxy:80`. Do not change it to `https://reverse-proxy:443` unless a separate Origin-CA Caddy configuration and trusted certificate mount are deployed together.
+
+1. In Cloudflare Zero Trust, create a tunnel for the Ubuntu host.
+2. Choose Docker as the connector type.
+3. Rotate the tunnel token before this deployment because the previous Compose
+   command exposed it through container inspection.
+4. Write only the rotated token to an untracked root-owned file:
+
+```bash
+sudo install -d -m 0700 /opt/menorah/secrets
+sudo install -m 0400 /dev/null /opt/menorah/secrets/cloudflare-tunnel-token
+sudoedit /opt/menorah/secrets/cloudflare-tunnel-token
+```
+
+5. On the host:
+
+```bash
+cp menorah/deploy/env/cloudflare.env.example menorah/deploy/env/cloudflare.env
+nano menorah/deploy/env/cloudflare.env
+```
+
+6. Set the non-secret file path:
+
+```env
+CLOUDFLARE_TUNNEL_TOKEN_FILE=/opt/menorah/secrets/cloudflare-tunnel-token
+```
+
+The connector receives only `TUNNEL_TOKEN_FILE=/run/secrets/cloudflare_tunnel_token`.
+The token itself is not placed in the container command line or environment.
+
+7. In the Tunnel dashboard, configure every hostname above with the service
+   target `http://reverse-proxy:80`. A missing Mentle hostname produces a
+   Cloudflare 404 before the request reaches Caddy.
+8. Start the combined stack:
+
+```bash
+cd menorah/deploy
+docker compose \
+  -f docker-compose.production.yml \
+  -f docker-compose.tunnel.yml \
+  --env-file ./env/production.env \
+  --env-file ./env/cloudflare.env \
+  up -d --build
+```
+
+## Locally Managed Tunnel Config File
+
+Use this only after the token-based setup is understood.
+
+1. Create a named tunnel with `cloudflared tunnel create`.
+2. Copy `tunnel-config.yml.example` to a host-only config path.
+3. Put the Cloudflare credentials JSON outside git, for example `/opt/menorah/secrets/cloudflared/`.
+4. Run cloudflared with the config file instead of `TUNNEL_TOKEN`.
+
+The example config is:
+
+```text
+menorah/deploy/cloudflare/tunnel-config.yml.example
+```
+
+## Start And Stop
+
+Start:
+
+```bash
+cd menorah/deploy
+docker compose \
+  -f docker-compose.production.yml \
+  -f docker-compose.tunnel.yml \
+  --env-file ./env/production.env \
+  --env-file ./env/cloudflare.env \
+  up -d cloudflared
+```
+
+Stop:
+
+```bash
+cd menorah/deploy
+docker compose \
+  -f docker-compose.production.yml \
+  -f docker-compose.tunnel.yml \
+  --env-file ./env/production.env \
+  --env-file ./env/cloudflare.env \
+  stop cloudflared
+```
+
+## Verify
+
+```bash
+docker compose -f docker-compose.production.yml -f docker-compose.tunnel.yml ps cloudflared
+docker compose -f docker-compose.production.yml -f docker-compose.tunnel.yml logs cloudflared --tail=100
+CHECK_PUBLIC=true bash ubuntu/health-check.sh
+
+# Before an internal/native mobile rollout, require the signed association
+# files as well (they intentionally return 404 until identifiers are set).
+# This checks all declared iOS/Android hosts and fails if any path redirects.
+CHECK_PUBLIC=true CHECK_NATIVE_APP_LINKS=true bash ubuntu/health-check.sh
+```
+
+## Second Connector Later
+
+After the first connector is stable, a second `cloudflared` replica can be added on another machine with the same tunnel token. Do not scale replicas on the same host until resource and routing behavior are verified.
+
+## Safety
+
+The `cloudflared` image is version- and digest-pinned. Review Cloudflare release
+notes and update both values together during planned maintenance.
+
+Do not create public Cloudflare records for:
+
+```text
+mongo-primary
+redis
+prometheus
+grafana
+uptime-kuma
+loki
+```
+
+Grafana and Uptime Kuma are bound to host loopback ports only. Access them over SSH tunnel or a locked-down private admin path, not public DNS.

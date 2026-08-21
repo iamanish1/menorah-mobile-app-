@@ -6,7 +6,7 @@ I've successfully created a comprehensive Node.js/Express.js backend for the Men
 
 ### 📁 Project Structure
 ```
-Menorah/backend/
+menorah/backend/
 ├── src/
 │   ├── config/
 │   │   ├── database.js          # MongoDB connection

@@ -5,6 +5,7 @@ import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
 import { api } from '@/lib/api';
 import { useAuth } from '@/state/useAuth';
+import { displayPhone } from '@/lib/authPolicy';
 
 const RAZORPAY_UNAVAILABLE_MESSAGE =
   'Payments require a development build. Expo Go preview does not support native Razorpay.';
@@ -94,7 +95,7 @@ export default function PaymentSheet({ route, navigation }: any) {
         order_id: orderId,
         prefill: {
           email: user?.email || '',
-          contact: user?.phone || '',
+          contact: displayPhone(user?.phone),
           name: userName,
         },
         theme: { color: colors.primary },

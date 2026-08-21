@@ -51,13 +51,13 @@ const bookingSchema = new mongoose.Schema({
   // Status tracking
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show'],
+    enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'expired'],
     default: 'pending'
   },
   statusHistory: [{
     status: {
       type: String,
-      enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show']
+      enum: ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'expired']
     },
     timestamp: {
       type: Date,
@@ -87,7 +87,7 @@ const bookingSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['razorpay', 'wallet', 'subscription'],
+    enum: ['razorpay', 'wallet', 'subscription', 'promo'],
     required: true
   },
   paymentId: String,
@@ -101,11 +101,20 @@ const bookingSchema = new mongoose.Schema({
   razorpayOrderId: String,
   orderStatus: {
     type: String,
-    enum: ['created', 'attempted', 'paid', 'failed', 'expired'],
+    enum: ['created', 'attempted', 'paid', 'failed', 'expired', 'cancelled'],
     default: null
   },
   orderCreatedAt: Date,
   paymentAttemptedAt: Date,
+  holdExpiresAt: Date,
+  promo: {
+    code: String,
+    appliedAt: Date,
+    discountAmount: {
+      type: Number,
+      default: 0
+    }
+  },
 
   // Session details
   sessionNotes: {
@@ -119,6 +128,35 @@ const bookingSchema = new mongoose.Schema({
 
   // Video call information
   videoCall: {
+    provider: {
+      type: String,
+      enum: ['livekit', 'vsee', 'doxy', 'zoom', 'google_meet', 'teams', 'disabled'],
+      default: 'livekit'
+    },
+    joinMode: {
+      type: String,
+      enum: ['in_app', 'external_link', 'disabled'],
+      default: 'in_app'
+    },
+    externalJoinUrl: String,
+    externalHostUrl: String,
+    externalProviderName: String,
+    region: {
+      type: String,
+      default: 'UNKNOWN'
+    },
+    status: {
+      type: String,
+      enum: ['not_configured', 'scheduled', 'ready', 'started', 'ended', 'cancelled', 'disabled'],
+      default: 'not_configured'
+    },
+    policyReason: String,
+    lastPolicyCheckAt: Date,
+    configuredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    configuredAt: Date,
     roomId: String,
     roomUrl: String,
     startTime: Date,
@@ -228,6 +266,13 @@ bookingSchema.virtual('isPast').get(function() {
 
 // Virtual for can be cancelled
 bookingSchema.virtual('canBeCancelled').get(function() {
+  // A payment hold is not a confirmed session. The patient must always be
+  // able to release it while checkout is outstanding, including when the
+  // session is less than 24 hours away.
+  if (this.status === 'pending' && this.paymentStatus === 'pending') {
+    return true;
+  }
+
   const now = new Date();
   const sessionTime = new Date(this.scheduledAt);
   const hoursUntilSession = (sessionTime - now) / (1000 * 60 * 60);
@@ -253,6 +298,17 @@ bookingSchema.index({ status: 1, scheduledAt: 1 });
 bookingSchema.index({ paymentStatus: 1 });
 bookingSchema.index({ razorpayOrderId: 1 });                          // payment verification lookup
 bookingSchema.index({ 'videoCall.roomId': 1 });
+bookingSchema.index(
+  { counsellor: 1, scheduledAt: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      counsellor: { $exists: true, $type: 'objectId' },
+      status: { $in: ['pending', 'confirmed', 'in-progress'] },
+    },
+  }
+);
+bookingSchema.index({ status: 1, paymentStatus: 1, holdExpiresAt: 1 });
 
 // Pre-save middleware to update status history
 bookingSchema.pre('save', function(next) {

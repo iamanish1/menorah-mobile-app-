@@ -16,7 +16,7 @@ const getEncryptionKey = () => {
 
 const encryptToken = (token) => {
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', getEncryptionKey(), iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', getEncryptionKey(), iv, { authTagLength: 16 });
   const encrypted = Buffer.concat([cipher.update(String(token), 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   return [iv.toString('base64'), tag.toString('base64'), encrypted.toString('base64')].join(':');
@@ -27,8 +27,13 @@ const decryptToken = (encryptedValue) => {
   if (!ivRaw || !tagRaw || !encryptedRaw) {
     throw new Error('Stored Instagram token is invalid');
   }
-  const decipher = crypto.createDecipheriv('aes-256-gcm', getEncryptionKey(), Buffer.from(ivRaw, 'base64'));
-  decipher.setAuthTag(Buffer.from(tagRaw, 'base64'));
+  const iv = Buffer.from(ivRaw, 'base64');
+  const tag = Buffer.from(tagRaw, 'base64');
+  if (iv.length !== 12 || tag.length !== 16) {
+    throw new Error('Stored Instagram token is invalid');
+  }
+  const decipher = crypto.createDecipheriv('aes-256-gcm', getEncryptionKey(), iv, { authTagLength: 16 });
+  decipher.setAuthTag(tag);
   const decrypted = Buffer.concat([
     decipher.update(Buffer.from(encryptedRaw, 'base64')),
     decipher.final()
@@ -45,9 +50,41 @@ const safeErrorMessage = (error) => {
   return String(message).replace(/access_token=[^&\s]+/gi, 'access_token=REDACTED').slice(0, 600);
 };
 
-const createMediaContainer = async ({ igUserId, accessToken, imageUrl, caption }) => {
+const isHttpsUrl = (value) => {
+  try {
+    return new URL(String(value || '').trim()).protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const getReelReadyAttempts = () => {
+  const configured = Number.parseInt(process.env.SOCIAL_STUDIO_REEL_READY_ATTEMPTS, 10);
+  return Number.isFinite(configured) ? Math.max(1, Math.min(configured, 24)) : 12;
+};
+
+const getReelReadyIntervalMs = () => {
+  const configured = Number.parseInt(process.env.SOCIAL_STUDIO_REEL_READY_INTERVAL_MS, 10);
+  return Number.isFinite(configured) ? Math.max(1000, Math.min(configured, 15000)) : 5000;
+};
+
+const delay = (duration) => new Promise((resolve) => setTimeout(resolve, duration));
+
+const createMediaContainer = async ({ igUserId, accessToken, imageUrl, videoUrl, caption, postType = 'single_image' }) => {
   const params = new URLSearchParams();
-  params.set('image_url', imageUrl);
+  if (postType === 'reel') {
+    if (!isHttpsUrl(videoUrl)) {
+      throw new Error('A Reel requires a public HTTPS video URL');
+    }
+    params.set('media_type', 'REELS');
+    params.set('video_url', videoUrl);
+    params.set('share_to_feed', 'true');
+  } else {
+    if (!isHttpsUrl(imageUrl)) {
+      throw new Error('An Instagram image post requires a public HTTPS image URL');
+    }
+    params.set('image_url', imageUrl);
+  }
   params.set('caption', caption);
   params.set('access_token', accessToken);
 
@@ -58,6 +95,34 @@ const createMediaContainer = async ({ igUserId, accessToken, imageUrl, caption }
   );
 
   return response.data?.id;
+};
+
+const getMediaContainerStatus = async ({ creationId, accessToken }) => {
+  const response = await axios.get(
+    `https://graph.facebook.com/${getGraphVersion()}/${creationId}`,
+    {
+      params: {
+        fields: 'status_code,status',
+        access_token: accessToken
+      },
+      timeout: 20000
+    }
+  );
+  return response.data || {};
+};
+
+const waitForReelContainer = async ({ creationId, accessToken, attempts = getReelReadyAttempts(), intervalMs = getReelReadyIntervalMs() }) => {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const media = await getMediaContainerStatus({ creationId, accessToken });
+    const status = String(media.status_code || media.status || '').toUpperCase();
+    if (['FINISHED', 'PUBLISHED'].includes(status)) return media;
+    if (['ERROR', 'EXPIRED'].includes(status)) {
+      throw new Error(media.error_message || `Instagram Reel processing ${status.toLowerCase()}`);
+    }
+    if (attempt < attempts - 1) await delay(intervalMs);
+  }
+
+  throw new Error('Instagram is still processing this Reel. Retry publish after processing completes.');
 };
 
 const publishMediaContainer = async ({ igUserId, accessToken, creationId }) => {
@@ -108,46 +173,84 @@ const verifyInstagramAccount = async (instagramAccountId) => {
   }
 };
 
+const claimApprovedPostForPublishing = async (socialPostId) => {
+  const post = await SocialPost.findOneAndUpdate(
+    { _id: socialPostId, status: { $in: ['approved', 'scheduled'] } },
+    {
+      $set: {
+        status: 'publishing',
+        errorLog: null,
+        publishingStartedAt: new Date()
+      },
+      $inc: { publishAttemptCount: 1 }
+    },
+    { new: true }
+  );
+
+  if (post) return post;
+
+  const existing = await SocialPost.findById(socialPostId);
+  if (!existing) throw new Error('Social post not found');
+  if (existing.status === 'publishing') throw new Error('Social post is already being published');
+  throw new Error('Only approved or scheduled posts can be published');
+};
+
+const validatePostMedia = (post) => {
+  if (post.postType === 'reel') {
+    if (!isHttpsUrl(post.videoUrl)) {
+      throw new Error('A Reel requires a public HTTPS video URL before publishing');
+    }
+    return;
+  }
+
+  if (!isHttpsUrl(post.finalImageUrl)) {
+    throw new Error('A public HTTPS final image URL is required before publishing');
+  }
+};
+
 const publishApprovedPost = async (socialPostId) => {
-  const post = await SocialPost.findById(socialPostId);
-  if (!post) {
-    throw new Error('Social post not found');
-  }
-
-  if (!['approved', 'scheduled'].includes(post.status)) {
-    throw new Error('Only approved or scheduled posts can be published');
-  }
-
-  if (!post.finalImageUrl) {
-    throw new Error('Final image URL is required before publishing');
-  }
+  const post = await claimApprovedPostForPublishing(socialPostId);
+  let account = null;
 
   const accountQuery = post.instagramAccount
     ? { _id: post.instagramAccount, status: 'connected' }
     : { status: 'connected' };
-  const account = await InstagramAccount.findOne(accountQuery).select('+accessTokenEncrypted').sort({ updatedAt: -1 });
-
-  if (!account) {
-    throw new Error('No connected Instagram account is configured');
-  }
-
   try {
-    post.status = 'publishing';
+    validatePostMedia(post);
+    account = await InstagramAccount.findOne(accountQuery).select('+accessTokenEncrypted').sort({ updatedAt: -1 });
+    if (!account) {
+      throw new Error('No connected Instagram account is configured');
+    }
+
     post.instagramAccount = account._id;
-    post.errorLog = null;
     await post.save();
 
     const accessToken = decryptToken(account.accessTokenEncrypted);
     const caption = buildInstagramCaption(post.caption, post.hashtags);
-    const creationId = await createMediaContainer({
-      igUserId: account.igUserId,
-      accessToken,
-      imageUrl: post.finalImageUrl,
-      caption
-    });
-
+    let creationId = post.instagramContainerId;
     if (!creationId) {
-      throw new Error('Instagram did not return a media container ID');
+      creationId = await createMediaContainer({
+        igUserId: account.igUserId,
+        accessToken,
+        imageUrl: post.finalImageUrl,
+        videoUrl: post.videoUrl,
+        caption,
+        postType: post.postType
+      });
+
+      if (!creationId) {
+        throw new Error('Instagram did not return a media container ID');
+      }
+
+      // Persist the container before the final publish request. If that
+      // request times out, retrying resumes this container instead of making a
+      // duplicate Instagram post.
+      post.instagramContainerId = creationId;
+      await post.save();
+    }
+
+    if (post.postType === 'reel') {
+      await waitForReelContainer({ creationId, accessToken });
     }
 
     const published = await publishMediaContainer({
@@ -160,6 +263,7 @@ const publishApprovedPost = async (socialPostId) => {
     post.publishedAt = new Date();
     post.instagramMediaId = published?.id || '';
     post.errorLog = null;
+    post.publishingStartedAt = null;
     await post.save();
 
     return post;
@@ -168,8 +272,9 @@ const publishApprovedPost = async (socialPostId) => {
     const expired = /token|expired|session/i.test(message);
     post.status = expired ? 'expired_token' : 'failed_publish';
     post.errorLog = { message, code: error.response?.data?.error?.code ? String(error.response.data.error.code) : '', at: new Date() };
+    post.publishingStartedAt = null;
     await post.save();
-    if (expired) {
+    if (expired && account) {
       account.status = 'expired';
       await account.save();
     }
@@ -181,7 +286,9 @@ module.exports = {
   createMediaContainer,
   decryptToken,
   encryptToken,
+  getMediaContainerStatus,
   publishApprovedPost,
   publishMediaContainer,
+  waitForReelContainer,
   verifyInstagramAccount
 };

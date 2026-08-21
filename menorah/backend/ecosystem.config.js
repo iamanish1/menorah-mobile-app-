@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'menorah-api',
-      script: 'src/server.js',
+      script: 'src/services/api-web/server.js',
 
       // Cluster mode — one worker per CPU core
       instances: 'max',

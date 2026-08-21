@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Plus, Video, MessageCircle, Headphones, Clock, CreditCard } from 'lucide-react';
+import { CalendarDays, Plus, Video, MessageCircle, Headphones, Clock, CreditCard, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Badge, Button, SegmentedControl, Spinner } from '@/components/ui';
+import { Badge, Button, Modal, SegmentedControl, Spinner } from '@/components/ui';
 import { formatBookingDate, formatCurrency, getStatusColor } from '@/lib/utils';
 import { useSocket } from '@/context/SocketContext';
 
@@ -21,6 +21,11 @@ const sessionIcons = { video: Video, chat: MessageCircle, audio: Headphones };
 
 export default function BookingsPage() {
   const [status, setStatus] = useState<string | undefined>(undefined);
+  const [cancelBookingId, setCancelBookingId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [cancellationError, setCancellationError] = useState('');
+  const [cancellationNotice, setCancellationNotice] = useState('');
   const qc = useQueryClient();
   const { socket } = useSocket();
 
@@ -43,6 +48,26 @@ export default function BookingsPage() {
   }, [socket, qc]);
 
   const bookings = data?.data?.bookings ?? [];
+
+  const handleCancelPendingBooking = async () => {
+    if (!cancelBookingId) return;
+
+    setCancelling(true);
+    setCancellationError('');
+    const result = await api.cancelBooking(cancelBookingId, cancelReason);
+    setCancelling(false);
+
+    if (!result.success) {
+      setCancellationError(result.message || 'Unable to cancel this booking. Please try again.');
+      return;
+    }
+
+    setCancelBookingId(null);
+    setCancelReason('');
+    setCancellationNotice('Your pending booking was cancelled and the held time has been released.');
+    qc.invalidateQueries({ queryKey: ['bookings'] });
+    qc.invalidateQueries({ queryKey: ['booking', cancelBookingId] });
+  };
 
   return (
     <div className="page-container">
@@ -67,6 +92,12 @@ export default function BookingsPage() {
         onChange={(value) => setStatus(value || undefined)}
       />
 
+      {cancellationNotice && (
+        <div role="status" className="mb-4 rounded-2xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-800 dark:border-primary-700 dark:bg-primary-900/60 dark:text-primary-100">
+          {cancellationNotice}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
           <Spinner size="lg" />
@@ -84,7 +115,9 @@ export default function BookingsPage() {
         <div className="space-y-3">
           {bookings.map((booking) => {
             const Icon = sessionIcons[booking.sessionType] ?? Video;
-            const needsPayment = booking.paymentStatus === 'pending' && !booking.isSubscriptionBooking;
+            const needsPayment = booking.status === 'pending'
+              && booking.paymentStatus === 'pending'
+              && !booking.isSubscriptionBooking;
             const cardContent = (
               <div className={`card p-4 hover:shadow-md transition-shadow flex gap-4 ${needsPayment ? 'border border-amber-200 dark:border-amber-700' : ''}`}>
                 <div className="w-10 h-10 rounded-2xl bg-primary-50 dark:bg-primary-800 flex items-center justify-center shrink-0">
@@ -124,9 +157,24 @@ export default function BookingsPage() {
             );
 
             return needsPayment ? (
-              <Link key={booking.id} href={`/bookings/payment?bookingId=${booking.id}`}>
-                {cardContent}
-              </Link>
+              <div key={booking.id}>
+                <Link href={`/bookings/payment?bookingId=${booking.id}`} className="block">
+                  {cardContent}
+                </Link>
+                <div className="mt-2 flex justify-end">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setCancellationError('');
+                      setCancelReason('');
+                      setCancelBookingId(booking.id);
+                    }}
+                  >
+                    <XCircle className="w-4 h-4" /> Cancel booking
+                  </Button>
+                </div>
+              </div>
             ) : (
               <Link key={booking.id} href={`/bookings/${booking.id}`}>
                 {cardContent}
@@ -135,6 +183,38 @@ export default function BookingsPage() {
           })}
         </div>
       )}
+
+      <Modal
+        open={Boolean(cancelBookingId)}
+        onClose={() => !cancelling && setCancelBookingId(null)}
+        title="Cancel pending booking"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-primary-100/75">
+            Payment has not been completed. Cancelling this booking releases the held time and cannot be undone.
+          </p>
+          {cancellationError && (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {cancellationError}
+            </div>
+          )}
+          <textarea
+            value={cancelReason}
+            onChange={(event) => setCancelReason(event.target.value)}
+            placeholder="Reason for cancellation (optional)"
+            rows={3}
+            className="input-field resize-none"
+          />
+          <div className="flex gap-3">
+            <Button variant="secondary" fullWidth disabled={cancelling} onClick={() => setCancelBookingId(null)}>
+              Keep booking
+            </Button>
+            <Button variant="danger" fullWidth loading={cancelling} onClick={handleCancelPendingBooking}>
+              Yes, cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -1,17 +1,28 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { secureStorage } from './secureStorage';
 import { ENV } from './env';
 import type { Article } from '@/types/article';
 
 // Types
+export type UserRole = 'user' | 'counsellor' | 'admin';
+export type SocialAuthIntent = 'signin' | 'signup';
+export type SocialProvider = 'google' | 'apple';
+export type LinkedProviders =
+  | SocialProvider[]
+  | Partial<Record<SocialProvider, boolean>>;
+
 export interface User {
   id: string;
+  role: UserRole;
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
+  phone: string | null;
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
+  linkedProviders?: LinkedProviders;
+  needsProfileCompletion?: boolean;
+  profileCompleted?: boolean;
   profileImage?: string | null;
   dateOfBirth?: string;
   gender?: string;
@@ -85,7 +96,11 @@ export interface Booking {
   amount: number;
   currency: string;
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
-  paymentMethod?: 'razorpay' | 'wallet' | 'subscription';
+  paymentMethod?: 'razorpay' | 'wallet' | 'subscription' | 'promo';
+  promo?: {
+    code?: string;
+    discountAmount?: number;
+  };
   isSubscriptionBooking?: boolean;
   canBeCancelled: boolean;
   canBeRescheduled: boolean;
@@ -93,17 +108,32 @@ export interface Booking {
 }
 
 export interface VideoRoomSession {
-  roomId: string;
-  livekitUrl: string;
-  livekitToken: string;
+  provider?: 'livekit' | 'vsee' | 'doxy' | 'zoom' | 'google_meet' | 'teams' | 'disabled';
+  joinMode?: 'in_app' | 'external_link' | 'disabled';
+  region?: 'IN' | 'AE' | 'UNKNOWN';
+  bookingId?: string;
+  roomName?: string;
+  roomId?: string;
+  livekitUrl?: string;
+  livekitToken?: string;
+  token?: string;
+  meetUrl?: string;
+  meetTicket?: string;
   roomUrl?: string;
   jitsiToken?: string;
+  joinUrl?: string;
+  externalJoinUrl?: string;
+  hostUrl?: string;
+  externalHostUrl?: string;
+  providerName?: string;
+  externalProviderName?: string;
   sessionType: string;
   counsellorName: string;
   userName: string;
   scheduledAt: string;
   duration: number;
   status?: string;
+  message?: string;
 }
 
 export interface ChatRoom {
@@ -167,9 +197,12 @@ export interface ApiValidationError {
 
 export interface ApiResponse<T> {
   success: boolean;
+  code?: string;
   message?: string;
   data?: T;
   errors?: ApiValidationError[];
+  httpStatus?: number;
+  isNetworkError?: boolean;
 }
 
 export interface PaginationResponse<T> {
@@ -188,10 +221,26 @@ export interface ProfileImageUpload {
   type?: string;
 }
 
+/**
+ * A mobile request must declare how it is authenticated. Public is the
+ * fail-closed default, so new calls cannot accidentally disclose the device
+ * bearer token to a route that does not require it.
+ *
+ * `manual` is for one-off candidate/revocation tokens. A 401 for one of those
+ * tokens must not clear the stored session because it may be unrelated to it.
+ */
+type RequestAuthMode = 'public' | 'required' | 'manual';
+
+type MobileApiRequestConfig = AxiosRequestConfig & {
+  authMode?: RequestAuthMode;
+  manualAuthToken?: string;
+};
+
 // API Client
 class ApiClient {
   private client: AxiosInstance;
   private token: string | null = null;
+  private unauthorizedListeners = new Set<() => void | Promise<void>>();
 
   constructor() {
     if (__DEV__) {
@@ -206,14 +255,31 @@ class ApiClient {
       },
     });
 
-    // Request interceptor to add auth token
+    // Bearers are attached only to routes that explicitly require a session.
+    // Public discovery and auth endpoints deliberately omit them, even if a
+    // stale token is still present in secure storage.
     this.client.interceptors.request.use(
       async (config) => {
-        if (!this.token) {
-          this.token = await secureStorage.getToken();
+        const requestConfig = config as MobileApiRequestConfig;
+        const authMode = requestConfig.authMode || 'public';
+
+        delete config.headers.Authorization;
+
+        if (authMode === 'manual') {
+          if (!requestConfig.manualAuthToken) {
+            return Promise.reject(new Error('Manual authentication requires a token.'));
+          }
+          config.headers.Authorization = `Bearer ${requestConfig.manualAuthToken}`;
+        } else if (authMode === 'required') {
+          if (!this.token) {
+            this.token = await secureStorage.getToken();
+          }
+          if (this.token) {
+            config.headers.Authorization = `Bearer ${this.token}`;
+          }
         }
-        if (this.token) {
-          config.headers.Authorization = `Bearer ${this.token}`;
+
+        if (config.headers.Authorization) {
           this.logDebug('[API] Request with token:', {
             method: config.method,
             url: config.url,
@@ -234,9 +300,17 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       async (error) => {
-        if (error.response?.status === 401) {
-          await secureStorage.clearToken();
-          this.token = null;
+        const requestConfig = error.config as MobileApiRequestConfig | undefined;
+        const isStoredSessionRequest = requestConfig?.authMode === 'required';
+
+        // A public 401 or rejected manual candidate token is not evidence that
+        // the signed-in session has expired. Only stored-session requests clear
+        // local private state; 429/5xx/offline responses remain non-terminal.
+        if (error.response?.status === 401 && isStoredSessionRequest) {
+          await this.clearToken();
+          await Promise.allSettled(
+            Array.from(this.unauthorizedListeners, listener => Promise.resolve(listener())),
+          );
         }
         return Promise.reject(error);
       }
@@ -279,6 +353,13 @@ class ApiClient {
     await secureStorage.clearToken();
   }
 
+  onUnauthorized(listener: () => void | Promise<void>) {
+    this.unauthorizedListeners.add(listener);
+    return () => {
+      this.unauthorizedListeners.delete(listener);
+    };
+  }
+
   // Helper method to remove undefined values from request data
   private cleanRequestData(data: any): any {
     if (!data || typeof data !== 'object') {
@@ -303,7 +384,7 @@ class ApiClient {
   }
 
   // Generic request method
-  private async request<T>(config: any): Promise<ApiResponse<T>> {
+  private async request<T>(config: MobileApiRequestConfig): Promise<ApiResponse<T>> {
     try {
       // Clean request data to remove undefined values
       if (config.data) {
@@ -324,7 +405,8 @@ class ApiClient {
         });
         return {
           success: false,
-          message: 'Network error: Unable to connect to server. Please check your internet connection and try again.'
+          message: 'Network error: Unable to connect to server. Please check your internet connection and try again.',
+          isNetworkError: true,
         };
       }
       
@@ -342,7 +424,10 @@ class ApiClient {
       }
       
       if (responseData) {
-        return responseData;
+        return {
+          ...responseData,
+          httpStatus: error.response?.status,
+        };
       }
       
       throw error;
@@ -378,10 +463,15 @@ class ApiClient {
         phone: userData.phone.trim(),
         dateOfBirth: userData.dateOfBirth.trim(),
       },
+      authMode: 'public',
     });
   }
 
-  async login(credentials: { email: string; password: string }): Promise<ApiResponse<{ user: User; token: string }>> {
+  async login(credentials: { email: string; password: string }): Promise<ApiResponse<{
+    user?: User;
+    token?: string;
+    email?: string;
+  }>> {
     const payload = {
       email: credentials.email.trim().toLowerCase(),
       password: credentials.password,
@@ -399,14 +489,72 @@ class ApiClient {
       method: 'POST',
       url: '/auth/login',
       data: payload,
+      authMode: 'public',
     });
   }
 
-  async verifyEmail(code: string): Promise<ApiResponse<void>> {
+  async loginWithGoogle(
+    credential: string,
+    intent: SocialAuthIntent,
+  ): Promise<ApiResponse<{
+    user?: User;
+    token?: string;
+    email?: string;
+    isNewUser?: boolean;
+    needsProfileCompletion?: boolean;
+  }>> {
+    return this.request({
+      method: 'POST',
+      url: '/auth/google',
+      data: { credential, intent },
+      authMode: 'public',
+    });
+  }
+
+  async loginWithApple(data: {
+    identityToken: string;
+    authorizationCode?: string | null;
+    email?: string | null;
+    fullName?: string | null;
+  }, intent: SocialAuthIntent): Promise<ApiResponse<{
+    user?: User;
+    token?: string;
+    email?: string;
+    isNewUser?: boolean;
+    needsProfileCompletion?: boolean;
+  }>> {
+    // Apple only returns name/email on a user's first authorization. Omit the
+    // null repeat-sign-in values entirely so they cannot fail backend optional
+    // string validation or be mistaken for an identity claim.
+    const payload: {
+      identityToken: string;
+      authorizationCode?: string;
+      email?: string;
+      fullName?: string;
+      intent: SocialAuthIntent;
+    } = {
+      identityToken: data.identityToken,
+      intent,
+    };
+
+    if (data.authorizationCode) payload.authorizationCode = data.authorizationCode;
+    if (data.email?.trim()) payload.email = data.email.trim();
+    if (data.fullName?.trim()) payload.fullName = data.fullName.trim();
+
+    return this.request({
+      method: 'POST',
+      url: '/auth/apple',
+      data: payload,
+      authMode: 'public',
+    });
+  }
+
+  async verifyEmail(email: string, code: string): Promise<ApiResponse<{ user?: User; token?: string }>> {
     return this.request({
       method: 'POST',
       url: '/auth/verify-email',
-      data: { code },
+      data: { email: this.normalizeEmail(email), code: code.trim() },
+      authMode: 'public',
     });
   }
 
@@ -415,6 +563,7 @@ class ApiClient {
       method: 'POST',
       url: '/auth/verify-email-otp',
       data: { email: this.normalizeEmail(email), otp: otp.trim() },
+      authMode: 'public',
     });
   }
 
@@ -423,6 +572,7 @@ class ApiClient {
       method: 'POST',
       url: '/auth/resend-email-verification',
       data: { email: this.normalizeEmail(email) },
+      authMode: 'public',
     });
   }
 
@@ -431,6 +581,7 @@ class ApiClient {
       method: 'POST',
       url: '/auth/resend-email-otp',
       data: { email: this.normalizeEmail(email) },
+      authMode: 'public',
     });
   }
 
@@ -439,6 +590,7 @@ class ApiClient {
       method: 'POST',
       url: '/auth/verify-phone',
       data: { phone, otp },
+      authMode: 'public',
     });
   }
 
@@ -446,7 +598,8 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: '/auth/forgot-password',
-      data: { email },
+      data: { email: this.normalizeEmail(email) },
+      authMode: 'public',
     });
   }
 
@@ -455,6 +608,7 @@ class ApiClient {
       method: 'POST',
       url: '/auth/reset-password',
       data: { token, password },
+      authMode: 'public',
     });
   }
 
@@ -467,6 +621,16 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: '/users/me',
+      authMode: 'required',
+    });
+  }
+
+  async getCurrentUserWithToken(token: string): Promise<ApiResponse<{ user: User }>> {
+    return this.request({
+      method: 'GET',
+      url: '/users/me',
+      authMode: 'manual',
+      manualAuthToken: token,
     });
   }
 
@@ -474,6 +638,61 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: '/auth/logout',
+      authMode: 'required',
+    });
+  }
+
+  async logoutToken(token: string): Promise<ApiResponse<void>> {
+    return this.request({
+      method: 'POST',
+      url: '/auth/logout',
+      authMode: 'manual',
+      manualAuthToken: token,
+    });
+  }
+
+  async retryPendingLogouts(): Promise<void> {
+    const pendingTokens = await secureStorage.getPendingLogoutTokens();
+    if (!pendingTokens.length) return;
+
+    const results = await Promise.all(
+      pendingTokens.map(async token => {
+        try {
+          return { token, response: await this.logoutToken(token) };
+        } catch {
+          return {
+            token,
+            response: {
+              success: false,
+              isNetworkError: true,
+            } as ApiResponse<void>,
+          };
+        }
+      }),
+    );
+    const retryableTokens = results
+      .filter(({ response }) =>
+        !response.success
+        && (
+          response.isNetworkError
+          || !response.httpStatus
+          || response.httpStatus >= 500
+        ))
+      .map(({ token }) => token);
+
+    await secureStorage.setPendingLogoutTokens(retryableTokens);
+  }
+
+  async linkSocialProvider(payload: {
+    provider: SocialProvider;
+    providerToken: string;
+    currentPassword: string;
+  }): Promise<ApiResponse<{ user?: User; linkedProviders?: LinkedProviders }>> {
+    return this.request({
+      method: 'POST',
+      url: '/auth/social/link',
+      data: payload,
+      authMode: 'required',
     });
   }
 
@@ -494,6 +713,8 @@ class ApiClient {
       method: 'GET',
       url: '/counsellors',
       params,
+      // This backend route accepts optional auth, but its discovery response is public.
+      authMode: 'public',
     });
   }
 
@@ -501,18 +722,21 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: `/counsellors/${id}`,
+      authMode: 'public',
     });
   }
 
   async getCounsellorAvailability(
     id: string,
     startDate: string,
-    endDate: string
+    endDate: string,
+    duration?: number
   ): Promise<ApiResponse<{ availability: any[] }>> {
     return this.request({
       method: 'GET',
       url: `/counsellors/${id}/availability`,
-      params: { startDate, endDate },
+      params: { startDate, endDate, duration },
+      authMode: 'public',
     });
   }
 
@@ -527,13 +751,15 @@ class ApiClient {
       method: 'GET',
       url: '/articles',
       params,
+      authMode: 'public',
     });
   }
 
   async getArticle(slug: string): Promise<ApiResponse<{ article: Article }>> {
     return this.request({
       method: 'GET',
-      url: `/articles/${slug}`,
+      url: `/articles/${encodeURIComponent(slug)}`,
+      authMode: 'public',
     });
   }
 
@@ -541,6 +767,7 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: '/counsellors/specializations',
+      authMode: 'public',
     });
   }
 
@@ -548,6 +775,7 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: '/counsellors/languages',
+      authMode: 'public',
     });
   }
 
@@ -567,11 +795,13 @@ class ApiClient {
     concerns?: string;
     goals?: string[];
     emergencyContact?: any;
+    promoCode?: string;
   }): Promise<ApiResponse<{ booking: Booking }>> {
     return this.request({
       method: 'POST',
       url: '/bookings',
       data: bookingData,
+      authMode: 'required',
     });
   }
 
@@ -584,6 +814,7 @@ class ApiClient {
       method: 'GET',
       url: '/bookings',
       params,
+      authMode: 'required',
     });
   }
 
@@ -591,6 +822,7 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: `/bookings/${id}`,
+      authMode: 'required',
     });
   }
 
@@ -599,6 +831,7 @@ class ApiClient {
       method: 'PUT',
       url: `/bookings/${id}/cancel`,
       data: { reason },
+      authMode: 'required',
     });
   }
 
@@ -606,6 +839,7 @@ class ApiClient {
     return this.request({
       method: 'PUT',
       url: `/bookings/${id}/start`,
+      authMode: 'required',
     });
   }
 
@@ -613,6 +847,7 @@ class ApiClient {
     return this.request({
       method: 'PUT',
       url: `/bookings/${id}/complete`,
+      authMode: 'required',
     });
   }
 
@@ -622,6 +857,7 @@ class ApiClient {
       method: 'POST',
       url: '/payments/create-checkout-session',
       data: { bookingId },
+      authMode: 'required',
     });
   }
 
@@ -635,6 +871,7 @@ class ApiClient {
       method: 'POST',
       url: '/payments/verify-razorpay',
       data: paymentData,
+      authMode: 'required',
     });
   }
 
@@ -642,6 +879,7 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: `/payments/booking/${bookingId}`,
+      authMode: 'required',
     });
   }
 
@@ -649,6 +887,7 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: `/payments/order/${orderId}/status`,
+      authMode: 'required',
     });
   }
 
@@ -660,20 +899,21 @@ class ApiClient {
       method: 'POST',
       url: '/payments/create-subscription-checkout',
       data: { subscriptionType },
+      authMode: 'required',
     });
   }
 
   async verifySubscriptionPayment(paymentData: {
-    razorpay_order_id?: string;
-    razorpay_payment_id?: string;
-    razorpay_signature?: string;
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
     subscriptionType: 'weekly' | 'monthly' | 'yearly';
-    orderId?: string;
   }): Promise<ApiResponse<any>> {
     return this.request({
       method: 'POST',
       url: '/payments/verify-subscription-payment',
       data: paymentData,
+      authMode: 'required',
     });
   }
 
@@ -681,6 +921,7 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: '/payments/subscription/status',
+      authMode: 'required',
     });
   }
 
@@ -689,6 +930,7 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: '/chat/rooms',
+      authMode: 'required',
     });
   }
 
@@ -697,6 +939,7 @@ class ApiClient {
       method: 'GET',
       url: `/chat/rooms/${roomId}/messages`,
       params,
+      authMode: 'required',
     });
   }
 
@@ -705,6 +948,7 @@ class ApiClient {
       method: 'POST',
       url: `/chat/rooms/${roomId}/messages`,
       data: { content, type },
+      authMode: 'required',
     });
   }
 
@@ -712,6 +956,7 @@ class ApiClient {
     return this.request({
       method: 'PUT',
       url: `/chat/rooms/${roomId}/messages/${messageId}/read`,
+      authMode: 'required',
     });
   }
 
@@ -719,6 +964,7 @@ class ApiClient {
     return this.request({
       method: 'DELETE',
       url: `/chat/rooms/${roomId}/messages/${messageId}`,
+      authMode: 'required',
     });
   }
 
@@ -727,6 +973,7 @@ class ApiClient {
       method: 'POST',
       url: `/chat/rooms/${roomId}/typing`,
       data: { isTyping },
+      authMode: 'required',
     });
   }
 
@@ -736,6 +983,7 @@ class ApiClient {
       method: 'POST',
       url: '/moderation/report-user',
       data: payload,
+      authMode: 'required',
     });
 
     return response.message
@@ -754,6 +1002,7 @@ class ApiClient {
       method: 'POST',
       url: '/moderation/report-content',
       data: payload,
+      authMode: 'required',
     });
 
     return response.message
@@ -772,6 +1021,7 @@ class ApiClient {
       method: 'POST',
       url: '/moderation/block-user',
       data: { userId, roomId },
+      authMode: 'required',
     });
 
     return response.message
@@ -789,6 +1039,7 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: '/chat/available-counsellors',
+      authMode: 'required',
     });
   }
 
@@ -798,6 +1049,7 @@ class ApiClient {
       method: 'POST',
       url: '/chat/start',
       data: { counsellorId },
+      authMode: 'required',
     });
   }
 
@@ -807,6 +1059,7 @@ class ApiClient {
       method: 'POST',
       url: '/video/create-room',
       data: { bookingId },
+      authMode: 'required',
     });
   }
 
@@ -814,6 +1067,7 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: `/video/room/${bookingId}`,
+      authMode: 'required',
     });
   }
 
@@ -821,6 +1075,7 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: `/video/room/${bookingId}/join`,
+      authMode: 'required',
     });
   }
 
@@ -828,6 +1083,7 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: `/video/room/${bookingId}/leave`,
+      authMode: 'required',
     });
   }
 
@@ -845,6 +1101,16 @@ class ApiClient {
       method: 'PUT',
       url: '/users/profile',
       data: profileData,
+      authMode: 'required',
+    });
+  }
+
+  async completeProfile(phone: string): Promise<ApiResponse<{ user: User }>> {
+    return this.request({
+      method: 'PUT',
+      url: '/users/profile/complete',
+      data: { phone: phone.trim() },
+      authMode: 'required',
     });
   }
 
@@ -879,7 +1145,8 @@ class ApiClient {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-      });
+        authMode: 'required',
+      } as MobileApiRequestConfig);
 
       return response.data;
     } catch (error: any) {
@@ -914,6 +1181,7 @@ class ApiClient {
       method: 'PUT',
       url: '/users/address',
       data: addressData,
+      authMode: 'required',
     });
   }
 
@@ -926,6 +1194,7 @@ class ApiClient {
       method: 'PUT',
       url: '/users/emergency-contact',
       data: contactData,
+      authMode: 'required',
     });
   }
 
@@ -934,6 +1203,7 @@ class ApiClient {
       method: 'PUT',
       url: '/users/change-password',
       data: { currentPassword, newPassword },
+      authMode: 'required',
     });
   }
 
@@ -946,6 +1216,7 @@ class ApiClient {
       method: 'PUT',
       url: '/users/notification-preferences',
       data: preferences,
+      authMode: 'required',
     });
   }
 
@@ -953,6 +1224,7 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: '/ekyc/status',
+      authMode: 'required',
     });
   }
 
@@ -972,7 +1244,8 @@ class ApiClient {
       const response = await this.client.post('/ekyc/submit', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 30000,
-      });
+        authMode: 'required',
+      } as MobileApiRequestConfig);
 
       this.logDebug('[API] eKYC submit response:', response.data);
       return response.data;
@@ -1023,6 +1296,7 @@ class ApiClient {
       method: 'PUT',
       url: '/users/privacy-preferences',
       data: preferences,
+      authMode: 'required',
     });
 
     return response.message
@@ -1043,6 +1317,7 @@ class ApiClient {
       data: {
         reason: reason || 'User requested account deletion from the mobile app.',
       },
+      authMode: 'required',
     });
 
     return response.message
@@ -1060,6 +1335,7 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: '/health',
+      authMode: 'public',
     });
   }
 }

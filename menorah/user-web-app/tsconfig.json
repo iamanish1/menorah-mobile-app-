@@ -35,6 +35,10 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "node_modules.root-owned-*",
+    "node_modules.root-owned-*/**/*",
+    ".next.root-owned-*",
+    ".next.root-owned-*/**/*"
   ]
 }

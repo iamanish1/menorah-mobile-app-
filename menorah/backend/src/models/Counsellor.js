@@ -2,6 +2,13 @@ const mongoose = require('mongoose');
 
 const counsellorSchema = new mongoose.Schema({
   // Basic information
+  applicationStatusTokenHash: {
+    type: String,
+    select: false,
+    index: true,
+    unique: true,
+    sparse: true
+  },
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -127,6 +134,35 @@ const counsellorSchema = new mongoose.Schema({
   // Media
   profileImage: {
     type: String,
+    default: null
+  },
+  profileImagePublicId: {
+    type: String,
+    default: null
+  },
+  profileImageLocalPath: {
+    type: String,
+    default: null
+  },
+  voiceIntroUrl: {
+    type: String,
+    default: null
+  },
+  voiceIntroPublicId: {
+    type: String,
+    default: null
+  },
+  voiceIntroLocalPath: {
+    type: String,
+    default: null
+  },
+  voiceIntroDurationSeconds: {
+    type: Number,
+    default: null,
+    min: 0
+  },
+  profileMediaCompletedAt: {
+    type: Date,
     default: null
   },
   gallery: [{

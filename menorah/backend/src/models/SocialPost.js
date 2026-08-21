@@ -24,8 +24,14 @@ const socialPostSchema = new mongoose.Schema({
   },
   postType: {
     type: String,
-    enum: ['single_image', 'carousel', 'reel_cover'],
+    enum: ['single_image', 'carousel', 'reel_cover', 'reel'],
     default: 'single_image'
+  },
+  contentSource: {
+    type: String,
+    enum: ['ai', 'manual'],
+    default: 'ai',
+    index: true
   },
   status: {
     type: String,
@@ -123,6 +129,24 @@ const socialPostSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Reel media is deliberately separate from image fields. A reel must have a
+  // public HTTPS video URL before it can pass review or reach Instagram.
+  videoUrl: {
+    type: String,
+    default: ''
+  },
+  videoPublicId: {
+    type: String,
+    default: ''
+  },
+  videoMimeType: {
+    type: String,
+    default: ''
+  },
+  videoSizeBytes: {
+    type: Number,
+    default: 0
+  },
   aspectRatio: {
     type: String,
     enum: ['1:1', '4:5', '9:16'],
@@ -189,9 +213,23 @@ const socialPostSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Retaining the creation container lets a retry resume publishing instead
+  // of creating a second Instagram post after a network timeout.
+  instagramContainerId: {
+    type: String,
+    default: ''
+  },
   instagramPermalink: {
     type: String,
     default: ''
+  },
+  publishingStartedAt: {
+    type: Date,
+    default: null
+  },
+  publishAttemptCount: {
+    type: Number,
+    default: 0
   },
   errorLog: {
     type: errorLogSchema,

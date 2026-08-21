@@ -20,8 +20,7 @@ export default function DashboardPage() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [statusToggling, setStatusToggling] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
-  const { on, off } = useSocket(token);
+  const { on, off } = useSocket(isAuthenticated);
   const queryClient = useQueryClient();
 
   // ── React Query — replaces manual useState + fetchDashboard ─────────────
@@ -75,7 +74,7 @@ export default function DashboardPage() {
 
   // Socket events → invalidate dashboard cache (React Query re-fetches once, not on every event)
   useEffect(() => {
-    if (!token || !isAuthenticated) return;
+    if (!isAuthenticated) return;
     const invalidate = () => queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     on('new_booking_available', invalidate);
     on('booking_assigned',      invalidate);
@@ -87,7 +86,7 @@ export default function DashboardPage() {
       off('booking_scheduled',     invalidate);
       off('booking_status_changed', invalidate);
     };
-  }, [token, isAuthenticated, on, off, queryClient]);
+  }, [isAuthenticated, on, off, queryClient]);
 
 
   if (isLoading) {
@@ -103,6 +102,10 @@ export default function DashboardPage() {
 
   const handleToggleAvailability = async () => {
     if (!counsellorStatus || statusToggling) return;
+    if (!profileMediaReady) {
+      router.push('/profile#profile-media');
+      return;
+    }
     const newStatus = !counsellorStatus.isAvailable;
     setStatusToggling(true);
     // Optimistic update — show change immediately, then re-validate from server
@@ -172,6 +175,8 @@ export default function DashboardPage() {
       colorClass: styles.statSuccess,
     },
   ];
+  const profileMediaReady = Boolean(counsellorStatus?.profileMediaComplete);
+  const effectiveAvailability = Boolean(counsellorStatus?.isAvailable && profileMediaReady);
 
   return (
     <AppLayout>
@@ -206,21 +211,42 @@ export default function DashboardPage() {
       </div>
 
       {counsellorStatus && (
-        <div className={counsellorStatus.isAvailable ? styles.availabilityBannerGreen : styles.availabilityBannerOrange}>
+        <div className={effectiveAvailability ? styles.availabilityBannerGreen : styles.availabilityBannerOrange}>
           <div className={styles.availabilityBannerLeft}>
-            <span className={counsellorStatus.isAvailable ? styles.availabilityDotGreen : styles.availabilityDotOrange} />
+            <span className={effectiveAvailability ? styles.availabilityDotGreen : styles.availabilityDotOrange} />
             <span className={styles.availabilityBannerText}>
-              {counsellorStatus.isAvailable ? 'You are available to accept bookings' : 'You are currently unavailable — counsellors won\'t see you as available'}
+              {effectiveAvailability
+                ? 'You are available to accept bookings'
+                : counsellorStatus.message || 'Complete your profile setup before going live'}
             </span>
           </div>
           <Button
-            variant={counsellorStatus.isAvailable ? 'outline' : 'primary'}
+            variant={effectiveAvailability ? 'outline' : 'primary'}
             size="sm"
             onClick={handleToggleAvailability}
             isLoading={statusToggling}
+            disabled={statusToggling}
           >
-            {counsellorStatus.isAvailable ? 'Set Unavailable' : 'Set Available'}
+            {!profileMediaReady
+              ? 'Complete Profile Setup'
+              : effectiveAvailability
+              ? 'Set Unavailable'
+              : 'Set Available'}
           </Button>
+        </div>
+      )}
+
+      {counsellorStatus && !profileMediaReady && (
+        <div className={styles.profileMediaBanner}>
+          <div>
+            <h2 className={styles.profileMediaTitle}>Finish your public profile</h2>
+            <p className={styles.profileMediaText}>
+              Add your mandatory selfie and voice intro so users can see you on Menorah.
+            </p>
+          </div>
+          <Link href="/profile">
+            <Button variant="primary" size="sm">Complete Profile</Button>
+          </Link>
         </div>
       )}
 

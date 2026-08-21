@@ -1,121 +1,250 @@
-# ── Menorah Health — GCP Cloud Build CI/CD ──────────────────────────────────
+# Menorah Health - GCP Cloud Build CI/CD
 #
-# Triggered on push to main branch → builds Docker image → pushes to Artifact
-# Registry → deploys to Cloud Run (burst/failover backend).
+# Config file path:
+#   menorah/backend/cloudbuild.yaml
 #
-# One-time setup (run these in your GCP project, replace PROJECT_ID):
+# This build produces:
+#   - one backend image deployed to four audience-specific API services
+#   - one user web image deployed to landing and webapp services
+#   - one admin image deployed to the admin panel service
 #
-#   # Enable required APIs
-#   gcloud services enable cloudbuild.googleapis.com run.googleapis.com artifactregistry.googleapis.com
+# Required trigger substitutions:
+#   _PROJECT_ID
+#   _REGION
+#   _REPO
+#   _NEXT_PUBLIC_API_URL
+#   _NEXT_PUBLIC_SOCKET_URL
+#   _NEXT_PUBLIC_RAZORPAY_KEY_ID
+#   _NEXT_PUBLIC_JITSI_DOMAIN
 #
-#   # Create Artifact Registry repo
-#   gcloud artifacts repositories create menorah \
-#     --repository-format=docker \
-#     --location=asia-south1 \
-#     --description="Menorah Health API images"
+# Optional trigger substitutions:
+#   _NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+#   _NEXT_PUBLIC_WEB_BASE_URL
+#   _PUBLIC_WEB_BASE_URL
+#   _ARTICLE_CANONICAL_BASE_URL
+#   _CONTACT_TO_EMAIL
+#   _MONGO_DATABASE
 #
-#   # Grant Cloud Build permission to deploy to Cloud Run
-#   PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format='value(projectNumber)')
-#   gcloud projects add-iam-policy-binding PROJECT_ID \
-#     --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
-#     --role="roles/run.admin"
-#   gcloud iam service-accounts add-iam-policy-binding \
-#     ${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
-#     --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
-#     --role="roles/iam.serviceAccountUser"
-#
-#   # Store all backend secrets in Secret Manager (run once for each):
-#   for SECRET in MONGODB_URI JWT_SECRET JWT_REFRESH_SECRET ALLOWED_ORIGINS \
-#     REDIS_URL \
-#     MSG91_AUTH_KEY MSG91_OTP_TEMPLATE_ID MSG91_SMS_TEMPLATE_ID \
-#     MSG91_EMAIL_DOMAIN MSG91_EMAIL_TEMPLATE_ID EMAIL_FROM \
-#     RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET \
-#     RAZORPAY_X_KEY_ID RAZORPAY_X_KEY_SECRET RAZORPAY_PAYOUT_ACCOUNT_NUMBER RAZORPAY_X_WEBHOOK_SECRET \
-#     CHECKOUT_RETURN_URL \
-#     LIVEKIT_URL LIVEKIT_API_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET \
-#     CLOUDINARY_CLOUD_NAME CLOUDINARY_API_KEY CLOUDINARY_API_SECRET \
-#     LUXAND_API_TOKEN; do
-#     echo -n "REPLACE_WITH_VALUE" | gcloud secrets create $SECRET --data-file=-
-#     gcloud secrets add-iam-policy-binding $SECRET \
-#       --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
-#       --role="roles/secretmanager.secretAccessor"
-#   done
-#
-#   # Connect this repo to Cloud Build:
-#   #   GCP Console → Cloud Build → Triggers → Connect Repository
-#   #   Add trigger: push to branch "main", config file "Menorah/backend/cloudbuild.yaml"
-#
-# Substitution variables (set in the Cloud Build trigger, not here):
-#   _PROJECT_ID   — your GCP project ID
-#   _REGION       — Cloud Run region (e.g. asia-south1)
-#   _SERVICE_NAME — Cloud Run service name (e.g. menorah-api)
+# Store backend and frontend server secrets in Secret Manager before deploying.
+# Real production values must be exported outside git first; see:
+#   menorah/docs/current-production-setup.md
 
 substitutions:
   _PROJECT_ID: your-gcp-project-id
   _REGION: asia-south1
-  _SERVICE_NAME: menorah-api
   _REPO: menorah
-  _IMAGE: asia-south1-docker.pkg.dev/$_PROJECT_ID/$_REPO/$_SERVICE_NAME
+  _NEXT_PUBLIC_API_URL: https://api.menorah.me/api
+  _NEXT_PUBLIC_SOCKET_URL: https://api.menorah.me
+  _NEXT_PUBLIC_RAZORPAY_KEY_ID: REPLACE_WITH_RAZORPAY_PUBLIC_KEY
+  _NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: REPLACE_WITH_STRIPE_PUBLIC_KEY_OR_EMPTY
+  _NEXT_PUBLIC_JITSI_DOMAIN: meet.jit.si
+  _NEXT_PUBLIC_WEB_BASE_URL: https://www.menorah.me
+  _PUBLIC_WEB_BASE_URL: https://www.menorah.me
+  _ARTICLE_CANONICAL_BASE_URL: https://menorah.me
+  _CONTACT_TO_EMAIL: menorahenquiries@gmail.com
+  _MONGO_DATABASE: menorah
 
 steps:
-  # ── Step 1: Build Docker image ─────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
-    id: build
+    id: build-backend
     args:
       - build
-      - --tag=$_IMAGE:$COMMIT_SHA
-      - --tag=$_IMAGE:latest
-      - --cache-from=$_IMAGE:latest   # reuse previous layer cache to speed up builds
-      - --file=Menorah/backend/Dockerfile
-      - Menorah/backend              # build context = backend directory
-    waitFor: ['-']                   # start immediately
+      - --tag=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-api:$COMMIT_SHA
+      - --file=menorah/backend/Dockerfile
+      - menorah/backend
+    waitFor: ['-']
 
-  # ── Step 2: Push image to Artifact Registry ────────────────────────────────
   - name: gcr.io/cloud-builders/docker
-    id: push
+    id: push-backend
     args:
       - push
-      - --all-tags
-      - $_IMAGE
-    waitFor: [build]
+      - ${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-api:$COMMIT_SHA
+    waitFor: [build-backend]
 
-  # ── Step 3: Deploy to Cloud Run ────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: build-user-web
+    args:
+      - build
+      - --tag=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-landing:$COMMIT_SHA
+      - --tag=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-webapp:$COMMIT_SHA
+      - --build-arg=NEXT_PUBLIC_API_URL=${_NEXT_PUBLIC_API_URL}
+      - --build-arg=NEXT_PUBLIC_SOCKET_URL=${_NEXT_PUBLIC_SOCKET_URL}
+      - --build-arg=NEXT_PUBLIC_RAZORPAY_KEY_ID=${_NEXT_PUBLIC_RAZORPAY_KEY_ID}
+      - --build-arg=NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${_NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+      - --build-arg=NEXT_PUBLIC_JITSI_DOMAIN=${_NEXT_PUBLIC_JITSI_DOMAIN}
+      - --build-arg=NEXT_PUBLIC_WEB_BASE_URL=${_NEXT_PUBLIC_WEB_BASE_URL}
+      - --build-arg=NEXT_PUBLIC_SITE_URL=${_PUBLIC_WEB_BASE_URL}
+      - --build-arg=PUBLIC_WEB_BASE_URL=${_PUBLIC_WEB_BASE_URL}
+      - --build-arg=ARTICLE_CANONICAL_BASE_URL=${_ARTICLE_CANONICAL_BASE_URL}
+      - --build-arg=MENORAH_API_BASE_URL=${_NEXT_PUBLIC_API_URL}
+      - --file=menorah/user-web-app/Dockerfile
+      - menorah/user-web-app
+    waitFor: ['-']
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-landing
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-landing:$COMMIT_SHA
+    waitFor: [build-user-web]
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-webapp
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-webapp:$COMMIT_SHA
+    waitFor: [build-user-web]
+
+  - name: gcr.io/cloud-builders/docker
+    id: build-admin-panel
+    args:
+      - build
+      - --tag=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-admin-panel:$COMMIT_SHA
+      - --build-arg=NEXT_PUBLIC_API_URL=${_NEXT_PUBLIC_API_URL}
+      - --file=menorah/admin-panel/Dockerfile
+      - menorah/admin-panel
+    waitFor: ['-']
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-admin-panel
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-admin-panel:$COMMIT_SHA
+    waitFor: [build-admin-panel]
+
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    id: deploy
+    id: deploy-api-services
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+
+        BACKEND_SECRETS="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,ALLOWED_ORIGINS=ALLOWED_ORIGINS:latest,REDIS_URL=REDIS_URL:latest,RESEND_API_KEY=RESEND_API_KEY:latest,EMAIL_FROM=EMAIL_FROM:latest,RAZORPAY_KEY_ID=RAZORPAY_KEY_ID:latest,RAZORPAY_KEY_SECRET=RAZORPAY_KEY_SECRET:latest,RAZORPAY_WEBHOOK_SECRET=RAZORPAY_WEBHOOK_SECRET:latest,RAZORPAY_X_KEY_ID=RAZORPAY_X_KEY_ID:latest,RAZORPAY_X_KEY_SECRET=RAZORPAY_X_KEY_SECRET:latest,RAZORPAY_PAYOUT_ACCOUNT_NUMBER=RAZORPAY_PAYOUT_ACCOUNT_NUMBER:latest,RAZORPAY_X_WEBHOOK_SECRET=RAZORPAY_X_WEBHOOK_SECRET:latest,CHECKOUT_RETURN_URL=CHECKOUT_RETURN_URL:latest,LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_URL=LIVEKIT_API_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,CLOUDINARY_CLOUD_NAME=CLOUDINARY_CLOUD_NAME:latest,CLOUDINARY_API_KEY=CLOUDINARY_API_KEY:latest,CLOUDINARY_API_SECRET=CLOUDINARY_API_SECRET:latest,LUXAND_API_TOKEN=LUXAND_API_TOKEN:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,SOCIAL_TOKEN_ENCRYPTION_KEY=SOCIAL_TOKEN_ENCRYPTION_KEY:latest"
+        BACKEND_ENV="NODE_ENV=production,SERVICE_RUNTIME=cloudrun,ENABLE_SOCKET_IO=false,ENABLE_SOCKET_ADAPTER=false,SERVER_TZ=Asia/Kolkata,BCRYPT_ROUNDS=12,MAX_FILE_SIZE=5242880,MOBILE_APP_SCHEME=menorah-health://reset-password,UPLOAD_PATH=./uploads,LUXAND_DETECT_URL=https://api.luxand.cloud/photo/detect,LUXAND_FACE_CONFIDENCE_THRESHOLD=90,EKYC_MAX_FILE_SIZE=15728640,SOCIAL_STUDIO_ENABLED=true,SOCIAL_STUDIO_STORAGE=cloudinary,SOCIAL_STUDIO_MAX_VIDEO_SIZE_MB=50,SOCIAL_STUDIO_REEL_READY_ATTEMPTS=12,SOCIAL_STUDIO_REEL_READY_INTERVAL_MS=5000,CLOUDINARY_ARTICLE_FOLDER=menorah/articles,CLOUDINARY_SOCIAL_STUDIO_FOLDER=menorah/social-studio,CLOUDINARY_SOCIAL_STUDIO_ASSET_FOLDER=menorah/social-studio-assets,CLOUDINARY_SOCIAL_STUDIO_VIDEO_FOLDER=menorah/social-studio-videos,ARTICLE_CANONICAL_BASE_URL=${_ARTICLE_CANONICAL_BASE_URL}"
+
+        deploy_backend_service() {
+          local service="$$1"
+          local entrypoint="$$2"
+
+          gcloud run deploy "$$service" \
+            --image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-api:$COMMIT_SHA \
+            --region=${_REGION} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=8080 \
+            --command=node \
+            --args="$$entrypoint" \
+            --min-instances=0 \
+            --max-instances=10 \
+            --memory=512Mi \
+            --cpu=1 \
+            --timeout=60 \
+            --concurrency=80 \
+            --startup-probe=httpGet.path=/health/ready,periodSeconds=10,timeoutSeconds=5,failureThreshold=12 \
+            --liveness-probe=httpGet.path=/health/live,periodSeconds=30,timeoutSeconds=5,failureThreshold=3 \
+            --set-secrets="$$BACKEND_SECRETS" \
+            --set-env-vars="$$BACKEND_ENV"
+        }
+
+        deploy_backend_service menorah-api-ios src/services/api-ios/server.js
+        deploy_backend_service menorah-api-android src/services/api-android/server.js
+        deploy_backend_service menorah-api-web src/services/api-web/server.js
+        deploy_backend_service menorah-api-admin src/services/api-admin/server.js
+
+        gcloud run deploy menorah-worker \
+          --image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-api:$COMMIT_SHA \
+          --region=${_REGION} \
+          --platform=managed \
+          --no-allow-unauthenticated \
+          --port=8080 \
+          --command=node \
+          --args=src/services/worker/worker.js \
+          --min-instances=0 \
+          --max-instances=1 \
+          --memory=512Mi \
+          --cpu=1 \
+          --timeout=60 \
+          --concurrency=10 \
+          --startup-probe=httpGet.path=/health/ready,periodSeconds=10,timeoutSeconds=5,failureThreshold=12 \
+          --liveness-probe=httpGet.path=/health/live,periodSeconds=30,timeoutSeconds=5,failureThreshold=3 \
+          --set-secrets="$$BACKEND_SECRETS" \
+          --set-env-vars="$$BACKEND_ENV,WORKER_MODE=standby,ENABLE_ARTICLE_SCHEDULER=false,ENABLE_SOCIAL_SCHEDULER=false,ENABLE_BACKUP_JOBS=false,ENABLE_EMAIL_JOBS=false,ENABLE_NOTIFICATION_JOBS=false"
+    waitFor: [push-backend]
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-landing
     entrypoint: gcloud
     args:
       - run
       - deploy
-      - $_SERVICE_NAME
-      - --image=$_IMAGE:$COMMIT_SHA
-      - --region=$_REGION
+      - menorah-landing
+      - --image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-landing:$COMMIT_SHA
+      - --region=${_REGION}
       - --platform=managed
-      - --allow-unauthenticated         # Cloudflare Worker calls this without a GCP token
-      - --port=8080                     # matches Dockerfile EXPOSE
-      - --min-instances=0              # scale to zero when no traffic (cost saving)
-      - --max-instances=10             # cap burst scale-out
+      - --allow-unauthenticated
+      - --port=8080
+      - --min-instances=0
+      - --max-instances=5
       - --memory=512Mi
       - --cpu=1
-      - --timeout=60                   # max request duration (seconds)
-      - --concurrency=80               # requests per container instance
-      # Mount all secrets from Secret Manager as env vars.
-      # Format: ENV_VAR_NAME=secret-name:version
-      # Create each secret once with: echo -n "value" | gcloud secrets create SECRET_NAME --data-file=-
-      - --set-secrets=MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,ALLOWED_ORIGINS=ALLOWED_ORIGINS:latest,REDIS_URL=REDIS_URL:latest,MSG91_AUTH_KEY=MSG91_AUTH_KEY:latest,MSG91_OTP_TEMPLATE_ID=MSG91_OTP_TEMPLATE_ID:latest,MSG91_SMS_TEMPLATE_ID=MSG91_SMS_TEMPLATE_ID:latest,MSG91_EMAIL_DOMAIN=MSG91_EMAIL_DOMAIN:latest,MSG91_EMAIL_TEMPLATE_ID=MSG91_EMAIL_TEMPLATE_ID:latest,EMAIL_FROM=EMAIL_FROM:latest,RAZORPAY_KEY_ID=RAZORPAY_KEY_ID:latest,RAZORPAY_KEY_SECRET=RAZORPAY_KEY_SECRET:latest,RAZORPAY_WEBHOOK_SECRET=RAZORPAY_WEBHOOK_SECRET:latest,RAZORPAY_X_KEY_ID=RAZORPAY_X_KEY_ID:latest,RAZORPAY_X_KEY_SECRET=RAZORPAY_X_KEY_SECRET:latest,RAZORPAY_PAYOUT_ACCOUNT_NUMBER=RAZORPAY_PAYOUT_ACCOUNT_NUMBER:latest,RAZORPAY_X_WEBHOOK_SECRET=RAZORPAY_X_WEBHOOK_SECRET:latest,CHECKOUT_RETURN_URL=CHECKOUT_RETURN_URL:latest,LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_URL=LIVEKIT_API_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,CLOUDINARY_CLOUD_NAME=CLOUDINARY_CLOUD_NAME:latest,CLOUDINARY_API_KEY=CLOUDINARY_API_KEY:latest,CLOUDINARY_API_SECRET=CLOUDINARY_API_SECRET:latest,LUXAND_API_TOKEN=LUXAND_API_TOKEN:latest
-      # Non-secret env vars set inline.
-      # ENABLE_SOCKET_ADAPTER=false: Cloud Run receives no socket.io traffic
-      # (Cloudflare Worker pins /socket.io/ to VPS), so skip the Redis pub/sub pair.
-      - --set-env-vars=NODE_ENV=production,SERVER_TZ=Asia/Kolkata,BCRYPT_ROUNDS=12,MAX_FILE_SIZE=5242880,MOBILE_APP_SCHEME=menorah-health://reset-password,ENABLE_SOCKET_ADAPTER=false,UPLOAD_PATH=./uploads,LUXAND_DETECT_URL=https://api.luxand.cloud/photo/detect,LUXAND_FACE_CONFIDENCE_THRESHOLD=90,EKYC_MAX_FILE_SIZE=15728640
-    waitFor: [push]
+      - --timeout=60
+      - --concurrency=80
+      - --set-secrets=MONGODB_URI=MONGODB_URI:latest,RESEND_API_KEY=RESEND_API_KEY:latest,EMAIL_FROM=EMAIL_FROM:latest
+      - --set-env-vars=NODE_ENV=production,NEXT_PUBLIC_API_URL=${_NEXT_PUBLIC_API_URL},NEXT_PUBLIC_SOCKET_URL=${_NEXT_PUBLIC_SOCKET_URL},NEXT_PUBLIC_RAZORPAY_KEY_ID=${_NEXT_PUBLIC_RAZORPAY_KEY_ID},NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${_NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY},NEXT_PUBLIC_JITSI_DOMAIN=${_NEXT_PUBLIC_JITSI_DOMAIN},NEXT_PUBLIC_WEB_BASE_URL=${_NEXT_PUBLIC_WEB_BASE_URL},NEXT_PUBLIC_SITE_URL=${_PUBLIC_WEB_BASE_URL},PUBLIC_WEB_BASE_URL=${_PUBLIC_WEB_BASE_URL},ARTICLE_CANONICAL_BASE_URL=${_ARTICLE_CANONICAL_BASE_URL},MENORAH_API_BASE_URL=${_NEXT_PUBLIC_API_URL},MONGO_DATABASE=${_MONGO_DATABASE},CONTACT_TO_EMAIL=${_CONTACT_TO_EMAIL}
+    waitFor: [push-landing]
 
-# Store the built image in Artifact Registry (required for Cloud Build to push)
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-webapp
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - menorah-webapp
+      - --image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-webapp:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --min-instances=0
+      - --max-instances=10
+      - --memory=512Mi
+      - --cpu=1
+      - --timeout=60
+      - --concurrency=80
+      - --set-secrets=MONGODB_URI=MONGODB_URI:latest,RESEND_API_KEY=RESEND_API_KEY:latest,EMAIL_FROM=EMAIL_FROM:latest
+      - --set-env-vars=NODE_ENV=production,NEXT_PUBLIC_API_URL=${_NEXT_PUBLIC_API_URL},NEXT_PUBLIC_SOCKET_URL=${_NEXT_PUBLIC_SOCKET_URL},NEXT_PUBLIC_RAZORPAY_KEY_ID=${_NEXT_PUBLIC_RAZORPAY_KEY_ID},NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${_NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY},NEXT_PUBLIC_JITSI_DOMAIN=${_NEXT_PUBLIC_JITSI_DOMAIN},NEXT_PUBLIC_WEB_BASE_URL=${_NEXT_PUBLIC_WEB_BASE_URL},NEXT_PUBLIC_SITE_URL=${_PUBLIC_WEB_BASE_URL},PUBLIC_WEB_BASE_URL=${_PUBLIC_WEB_BASE_URL},ARTICLE_CANONICAL_BASE_URL=${_ARTICLE_CANONICAL_BASE_URL},MENORAH_API_BASE_URL=${_NEXT_PUBLIC_API_URL},MONGO_DATABASE=${_MONGO_DATABASE},CONTACT_TO_EMAIL=${_CONTACT_TO_EMAIL}
+    waitFor: [push-webapp]
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-admin-panel
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - menorah-admin-panel
+      - --image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-admin-panel:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --min-instances=0
+      - --max-instances=5
+      - --memory=512Mi
+      - --cpu=1
+      - --timeout=60
+      - --concurrency=80
+      - --set-env-vars=NODE_ENV=production,NEXT_PUBLIC_API_URL=${_NEXT_PUBLIC_API_URL}
+    waitFor: [push-admin-panel]
+
 images:
-  - $_IMAGE:$COMMIT_SHA
-  - $_IMAGE:latest
+  - ${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-api:$COMMIT_SHA
+  - ${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-landing:$COMMIT_SHA
+  - ${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-webapp:$COMMIT_SHA
+  - ${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO}/menorah-admin-panel:$COMMIT_SHA
 
-# Build timeout — 15 min should be plenty for this image
-timeout: 900s
+timeout: 1800s
 
 options:
   logging: CLOUD_LOGGING_ONLY
-  machineType: E2_HIGHCPU_8   # faster builds — costs a few extra cents per build
+  machineType: E2_HIGHCPU_8

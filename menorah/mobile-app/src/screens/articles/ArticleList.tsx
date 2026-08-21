@@ -48,6 +48,17 @@ export default function ArticleList({ navigation, route }: any) {
     q: query || undefined,
   });
 
+  // Returning from another screen (or selecting the Articles tab again) is a
+  // meaningful chance that an administrator has published a new article.
+  // Fetch the canonical public list instead of waiting for a manual pull.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener?.('focus', () => {
+      void refetch();
+    });
+
+    return typeof unsubscribe === 'function' ? unsubscribe : undefined;
+  }, [navigation, refetch]);
+
   const articles = data?.articles || [];
   const pageBg = isDark ? colors.bg : '#f8faf8';
   const cardBg = isDark ? colors.surface : '#ffffff';
@@ -123,7 +134,7 @@ export default function ArticleList({ navigation, route }: any) {
         </View>
       )}
 
-      <View style={{ flex: 1, minHeight: 92 }}>
+      <View style={{ flex: 1, minHeight: 92, justifyContent: 'space-between' }}>
         <Text
           style={{
             color: colors.primary,
@@ -142,26 +153,14 @@ export default function ArticleList({ navigation, route }: any) {
             fontWeight: '800',
             lineHeight: 21,
           }}
-          numberOfLines={2}
+          numberOfLines={3}
         >
           {item.title}
-        </Text>
-        <Text
-          style={{
-            color: colors.muted,
-            fontSize: 13,
-            lineHeight: 18,
-            marginTop: 6,
-          }}
-          numberOfLines={2}
-        >
-          {item.excerpt}
         </Text>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            marginTop: 'auto',
             paddingTop: 8,
           }}
         >

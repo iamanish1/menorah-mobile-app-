@@ -12,7 +12,7 @@ Your mobile app configuration had the wrong IP address:
 
 ### 1. Make Sure Backend Server is Running
 ```bash
-cd Menorah/backend
+cd menorah/backend
 npm run dev
 ```
 
@@ -35,7 +35,7 @@ Should show:
 
 ### 3. Restart Your Mobile App
 ```bash
-cd Menorah/mobile-app
+cd menorah/mobile-app
 npm start
 ```
 

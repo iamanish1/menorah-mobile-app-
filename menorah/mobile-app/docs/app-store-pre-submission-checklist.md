@@ -81,7 +81,8 @@
 - [ ] Export compliance, content rights, privacy, and age rating forms are complete.
 
 ## Production Build
-- [ ] `eas build --profile production --platform ios` succeeds.
+- [ ] `eas build --profile production-ios --platform ios` succeeds.
+- [ ] Generic EAS profiles `development`, `preview`, and `production` were not used directly for release builds.
 - [ ] Bundle identifier matches App Store Connect.
 - [ ] iOS camera, microphone, and photo permission descriptions are present.
 - [ ] No secrets are hardcoded in the app bundle.

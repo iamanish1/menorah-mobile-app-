@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, ChevronRight, RefreshCw, Copy, CheckCheck } from 'lucide-react';
+import { Search, ChevronRight } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import { api } from '@/lib/api';
@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 
 const STATUS_TABS = [
   { key: 'pending', label: 'Pending Review' },
+  { key: 'manual_review', label: 'Identity Conflicts' },
   { key: 'approved', label: 'Approved' },
   { key: 'rejected', label: 'Rejected' },
   { key: 'blocked', label: 'Blocked' },
@@ -32,10 +33,14 @@ function CounsellorsContent() {
   // Modals
   const [rejectModal, setRejectModal] = useState<{ open: boolean; id: string; name: string }>({ open: false, id: '', name: '' });
   const [blockModal, setBlockModal] = useState<{ open: boolean; id: string; name: string; isBlocked: boolean }>({ open: false, id: '', name: '', isBlocked: false });
-  const [credModal, setCredModal] = useState<{ open: boolean; username: string; password: string }>({ open: false, username: '', password: '' });
+  const [credModal, setCredModal] = useState<{
+    open: boolean;
+    username: string;
+    emailSent?: boolean;
+    emailRecipient?: string;
+  }>({ open: false, username: '' });
   const [reason, setReason] = useState('');
   const [actionLoading, setActionLoading] = useState('');
-  const [copied, setCopied] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,7 +61,12 @@ function CounsellorsContent() {
     setActionLoading('');
     if (res.success && res.data) {
       toast.success(`${name} approved`);
-      setCredModal({ open: true, username: res.data.username, password: res.data.password });
+      setCredModal({
+        open: true,
+        username: res.data.username,
+        emailSent: res.data.credentialEmailSent,
+        emailRecipient: res.data.credentialEmailRecipient
+      });
       load();
     } else {
       toast.error(res.message || 'Failed to approve');
@@ -83,7 +93,12 @@ function CounsellorsContent() {
     const res = await api.generatePassword(id);
     setActionLoading('');
     if (res.success && res.data) {
-      setCredModal({ open: true, username: res.data.username, password: res.data.password });
+      setCredModal({
+        open: true,
+        username: res.data.username,
+        emailSent: res.data.credentialEmailSent,
+        emailRecipient: res.data.credentialEmailRecipient,
+      });
       load();
     } else {
       toast.error(res.message || 'Failed to generate credentials');
@@ -107,20 +122,14 @@ function CounsellorsContent() {
     }
   };
 
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(key);
-    setTimeout(() => setCopied(''), 2000);
-  };
-
   const getBadgeVariant = (c: Counsellor) => {
     if (!c.isActive && c.status === 'approved') return 'blocked';
-    return c.status as 'pending' | 'approved' | 'rejected';
+    return c.status as 'pending' | 'manual_review' | 'approved' | 'rejected';
   };
 
   const getBadgeLabel = (c: Counsellor) => {
     if (!c.isActive && c.status === 'approved') return 'blocked';
-    return c.status;
+    return c.status === 'manual_review' ? 'Manual review' : c.status;
   };
 
   return (
@@ -195,6 +204,15 @@ function CounsellorsContent() {
                 {/* Meta */}
                 <div className="flex items-center gap-3 flex-wrap">
                   <Badge variant={getBadgeVariant(c)}>{getBadgeLabel(c)}</Badge>
+                  {c.identityConflict?.hasConflict && (
+                    <span className="text-xs font-medium text-orange-700">
+                      {c.identityConflict.email && c.identityConflict.phone
+                        ? 'Email + phone conflict'
+                        : c.identityConflict.email
+                          ? 'Email conflict'
+                          : 'Phone conflict'}
+                    </span>
+                  )}
                   <span className="text-xs text-gray-400">{formatDate(c.createdAt)}</span>
 
                   {/* Actions */}
@@ -216,6 +234,14 @@ function CounsellorsContent() {
                         </button>
                       </>
                     )}
+                    {c.status === 'manual_review' && (
+                      <button
+                        onClick={() => { setRejectModal({ open: true, id: c.id, name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}` }); setReason(''); }}
+                        className="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold rounded-lg transition-colors"
+                      >
+                        Reject
+                      </button>
+                    )}
                     {c.status === 'approved' && c.isActive && (
                       <>
                         <button
@@ -223,7 +249,7 @@ function CounsellorsContent() {
                           disabled={actionLoading === c.id + '-creds'}
                           className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg transition-colors disabled:opacity-60"
                         >
-                          {actionLoading === c.id + '-creds' ? '...' : 'Reset Password'}
+                          {actionLoading === c.id + '-creds' ? '...' : 'Reset & Email Password'}
                         </button>
                         <button
                           onClick={() => { setBlockModal({ open: true, id: c.id, name: `${c.user?.firstName ?? ''} ${c.user?.lastName ?? ''}`, isBlocked: false }); setReason(''); }}
@@ -243,6 +269,8 @@ function CounsellorsContent() {
                     )}
                     <button
                       onClick={() => router.push(`/counsellors/${c.id}`)}
+                      aria-label={`View ${c.user?.firstName ?? 'counsellor'} ${c.user?.lastName ?? ''} details`}
+                      title="View details"
                       className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                       <ChevronRight size={16} />
@@ -317,23 +345,17 @@ function CounsellorsContent() {
       </Modal>
 
       {/* Credentials Modal */}
-      <Modal open={credModal.open} onClose={() => setCredModal({ open: false, username: '', password: '' })} title="Counsellor Login Credentials" size="sm">
+      <Modal open={credModal.open} onClose={() => setCredModal({ open: false, username: '' })} title="Counsellor Access Email" size="sm">
         <div className="space-y-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
-            Share these credentials with the counsellor. The password will not be shown again.
+          <div className={`border rounded-xl px-4 py-3 text-sm ${credModal.emailSent === true ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+            {credModal.emailSent === true
+              ? `A temporary password and secure reset link were emailed to ${credModal.emailRecipient || credModal.username}.`
+              : credModal.emailSent === false
+                ? 'The password was reset, but the email was not sent. Reset it again to send a fresh secure access link.'
+                : 'The counsellor will receive their temporary password and secure reset link by email.'}
           </div>
-          {[{ label: 'Username (Email)', value: credModal.username, key: 'user' }, { label: 'Password', value: credModal.password, key: 'pass' }].map(({ label, value, key }) => (
-            <div key={key}>
-              <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
-              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
-                <code className="flex-1 text-sm font-mono text-gray-800 break-all">{value}</code>
-                <button onClick={() => copyToClipboard(value, key)} className="text-gray-400 hover:text-blue-600 flex-shrink-0">
-                  {copied === key ? <CheckCheck size={16} className="text-green-500" /> : <Copy size={16} />}
-                </button>
-              </div>
-            </div>
-          ))}
-          <button onClick={() => setCredModal({ open: false, username: '', password: '' })} className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors mt-1">
+          <p className="text-xs text-gray-500">The password is intentionally not shown here; it is delivered only to the counsellor along with a one-time link that expires in 10 minutes.</p>
+          <button onClick={() => setCredModal({ open: false, username: '' })} className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors mt-1">
             Done
           </button>
         </div>

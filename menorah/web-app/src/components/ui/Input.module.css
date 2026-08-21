@@ -1,6 +1,7 @@
 .input {
   width: 100%;
-  padding: 12px 16px;
+  min-height: clamp(44px, 2.9vw, 56px);
+  padding: clamp(10px, 0.7vw, 14px) clamp(14px, 0.95vw, 20px);
   font-size: var(--font-size-base);
   line-height: var(--line-height-normal);
   color: var(--color-text-base);
@@ -45,7 +46,7 @@
 
 .inputIcon {
   position: absolute;
-  left: 16px;
+  left: clamp(14px, 0.9vw, 20px);
   top: 50%;
   transform: translateY(-50%);
   color: var(--color-text-muted);
@@ -53,7 +54,7 @@
 }
 
 .inputWithIcon {
-  padding-left: 48px;
+  padding-left: clamp(44px, 3vw, 58px);
 }
 
 .label {
@@ -72,4 +73,3 @@
   font-size: var(--font-size-sm);
   color: var(--color-danger);
 }
-

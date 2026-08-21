@@ -1,9 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET"/>
-  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
-  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
   <uses-permission android:name="android.permission.RECORD_AUDIO"/>
   <uses-permission android:name="android.permission.CAMERA"/>
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
@@ -20,6 +18,7 @@
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://u.expo.dev/d7fb6e65-3440-4a79-b4b2-6746d2582fa7"/>
     <meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION" android:value="@string/expo_runtime_version"/>
+    <meta-data android:name="expo.modules.updates.ENABLE_BSDIFF_PATCH_SUPPORT" android:value="true"/>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait" android:hardwareAccelerated="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
@@ -31,6 +30,16 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="menorah-health"/>
         <data android:scheme="exp+menorah-health-app"/>
+      </intent-filter>
+      <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="https" android:host="app.menorah.me" android:pathPrefix="/reset-password"/>
+        <data android:scheme="https" android:host="www.menorah.me" android:pathPrefix="/articles"/>
+        <data android:scheme="https" android:host="menorah.me" android:pathPrefix="/articles"/>
+        <data android:scheme="https" android:host="menorah.me" android:pathPrefix="/reset-password"/>
+        <data android:scheme="https" android:host="api-android.menorah.me" android:pathPrefix="/api/auth/reset-password"/>
       </intent-filter>
     </activity>
   </application>

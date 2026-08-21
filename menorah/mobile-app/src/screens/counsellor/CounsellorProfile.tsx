@@ -1,20 +1,19 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  ActivityIndicator, Alert, Dimensions,
+  ActivityIndicator, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import {
   ArrowLeft, Star, MessageCircle, CalendarDays, Heart, Share2,
-  IndianRupee, BadgeCheck, ShieldCheck, Brain, Users, Lock,
+  IndianRupee, BadgeCheck, ShieldCheck, Brain, Users,
 } from 'lucide-react-native';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { palettes } from '@/theme/colors';
-import { Counsellor } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useCounsellor } from '@/hooks/useQueries';
 
-const { width } = Dimensions.get('window');
 const HERO_GREEN = '#2d5c3e';
 
 function generateDates(n = 30): Date[] {
@@ -29,9 +28,22 @@ const ALL_SLOTS = [
   '14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00',
 ];
 
+type SlotStatus = 'available' | 'booked' | 'pending' | 'unavailable' | 'past';
+type AvailabilitySlot = {
+  startTime: string;
+  startsAt: string;
+  status: SlotStatus;
+  isSelectable: boolean;
+  label: string;
+  statusLabel: string;
+};
+
 function fmt(t: string) {
   const h = parseInt(t); const h12 = h % 12 || 12;
   return `${h12}:00 ${h < 12 ? 'AM' : 'PM'}`;
+}
+function dateValue(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 function isPast(date: Date, t: string) {
   const [h] = t.split(':').map(Number);
@@ -56,6 +68,9 @@ export default function CounsellorProfile({ navigation, route }: any) {
   const [dateIdx,      setDateIdx] = useState(0);
   const [selectedTime, setTime]    = useState<string | null>(null);
   const [showAllSlots, setShowAll] = useState(false);
+  const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState(false);
 
   const dates = useMemo(() => generateDates(30), []);
   const selectedDate = dates[dateIdx];
@@ -63,18 +78,55 @@ export default function CounsellorProfile({ navigation, route }: any) {
   // React Query — cached for 5 min, shared with other screens that show this counsellor
   const { data: counsellor, isLoading: loading, isError } = useCounsellor(counsellorId);
 
+  useEffect(() => {
+    if (!counsellor?.id) return;
+    let cancelled = false;
+    setSlotsLoading(true);
+    setSlotsError(false);
+    setTime(null);
+
+    api.getCounsellorAvailability(
+      counsellor.id,
+      dateValue(selectedDate),
+      dateValue(selectedDate),
+      counsellor.sessionDuration || 60
+    ).then((response) => {
+      if (cancelled) return;
+      const nextSlots = response.success ? response.data?.availability?.[0]?.slots || [] : [];
+      setSlots(nextSlots);
+      setSlotsError(!response.success);
+    }).catch(() => {
+      if (!cancelled) {
+        setSlots([]);
+        setSlotsError(true);
+      }
+    }).finally(() => {
+      if (!cancelled) setSlotsLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [counsellor?.id, counsellor?.sessionDuration, selectedDate]);
+
   // Navigate back if the profile fails to load
-  useMemo(() => {
+  useEffect(() => {
     if (isError) {
       Alert.alert('Error', 'Failed to load profile.');
       navigation.goBack();
     }
-  }, [isError]);
+  }, [isError, navigation]);
 
   const handleBook = () => {
     if (!selectedTime) { Alert.alert('Select Time', 'Please pick a time slot first.'); return; }
-    const [h] = selectedTime.split(':').map(Number);
-    const at = new Date(selectedDate); at.setHours(h, 0, 0, 0);
+    const selectedSlot = slots.find((slot) => slot.startTime === selectedTime);
+    if (selectedSlot && !selectedSlot.isSelectable) {
+      Alert.alert('Slot unavailable', 'This time slot was just booked by someone else. Please choose another available slot.');
+      return;
+    }
+    const at = selectedSlot?.startsAt ? new Date(selectedSlot.startsAt) : (() => {
+      const [h] = selectedTime.split(':').map(Number);
+      const fallback = new Date(selectedDate); fallback.setHours(h, 0, 0, 0);
+      return fallback;
+    })();
     navigation.navigate('BookingReview', {
       counsellorId: counsellor?.id,
       counsellorName: counsellor?.name,
@@ -90,8 +142,18 @@ export default function CounsellorProfile({ navigation, route }: any) {
     navigation.navigate('ChatThread', { counsellorId: counsellor?.id });
   };
 
-  const visibleSlots = showAllSlots ? ALL_SLOTS : ALL_SLOTS.filter(t => !isPast(selectedDate, t)).slice(0, 4);
-  const hasMore = !showAllSlots && ALL_SLOTS.filter(t => !isPast(selectedDate, t)).length > 4;
+  const fallbackSlots: AvailabilitySlot[] = ALL_SLOTS.map((time) => ({
+    startTime: time,
+    startsAt: '',
+    status: isPast(selectedDate, time) ? 'past' : 'available',
+    isSelectable: !isPast(selectedDate, time),
+    label: fmt(time),
+    statusLabel: isPast(selectedDate, time) ? 'Past' : 'Available',
+  }));
+  const slotSource = slots.length > 0 ? slots : (slotsLoading || slotsError ? [] : fallbackSlots);
+  const selectableSlots = slotSource.filter((slot) => slot.isSelectable);
+  const visibleSlots = showAllSlots ? slotSource : slotSource.slice(0, 6);
+  const hasMore = !showAllSlots && slotSource.length > 6;
 
   const price = counsellor ? `₹${(counsellor.hourlyRate || 0).toLocaleString('en-IN')}` : '₹0';
 
@@ -377,33 +439,58 @@ export default function CounsellorProfile({ navigation, route }: any) {
 
             {/* Time slots */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-              {visibleSlots.map((t) => {
-                const past = isPast(selectedDate, t);
-                const isSel = selectedTime === t;
+              {slotsLoading && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600' }}>Loading available slots...</Text>
+                </View>
+              )}
+              {!slotsLoading && slotsError && (
+                <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600' }}>
+                  Could not refresh availability. Please try again in a moment.
+                </Text>
+              )}
+              {!slotsLoading && !slotsError && visibleSlots.length === 0 && (
+                <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600' }}>
+                  No slots are available for this day.
+                </Text>
+              )}
+              {!slotsLoading && !slotsError && visibleSlots.map((slot) => {
+                const isSel = selectedTime === slot.startTime;
+                const disabled = !slot.isSelectable;
+                const statusColor =
+                  slot.status === 'booked' ? '#EF4444' :
+                  slot.status === 'pending' ? '#F59E0B' :
+                  colors.muted;
                 return (
                   <TouchableOpacity
-                    key={t}
-                    onPress={() => { if (!past) setTime(t); }}
-                    disabled={past}
+                    key={slot.startsAt || slot.startTime}
+                    onPress={() => { if (!disabled) setTime(slot.startTime); }}
+                    disabled={disabled}
                     style={{
                       paddingHorizontal: 12, paddingVertical: 9,
                       borderRadius: 10,
                       backgroundColor: isSel ? colors.primary : (isDark ? colors.surface : '#ffffff'),
                       borderWidth: 1.5,
-                      borderColor: isSel ? colors.primary : (isDark ? colors.border : '#e2e8e2'),
-                      opacity: past ? 0.4 : 1,
+                      borderColor: isSel ? colors.primary : disabled ? statusColor + '55' : (isDark ? colors.border : '#e2e8e2'),
+                      opacity: disabled ? 0.55 : 1,
                     }}
                   >
                     <Text style={{
                       fontSize: 12, fontWeight: '700',
-                      color: isSel ? 'white' : (past ? colors.muted : colors.text),
+                      color: isSel ? 'white' : (disabled ? statusColor : colors.text),
                     }}>
-                      {fmt(t)}
+                      {slot.label || fmt(slot.startTime)}
                     </Text>
+                    {slot.status !== 'available' && (
+                      <Text style={{ marginTop: 2, fontSize: 9, fontWeight: '700', color: isSel ? 'white' : statusColor }}>
+                        {slot.statusLabel}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 );
               })}
-              {hasMore && (
+              {!slotsLoading && !slotsError && hasMore && (
                 <TouchableOpacity
                   onPress={() => setShowAll(true)}
                   style={{
@@ -437,15 +524,16 @@ export default function CounsellorProfile({ navigation, route }: any) {
         }}>
           <TouchableOpacity
             onPress={handleBook}
+            disabled={!selectedTime || slotsLoading || slotsError || selectableSlots.length === 0}
             activeOpacity={0.88}
             style={{
-              backgroundColor: selectedTime ? HERO_GREEN : (isDark ? colors.surface : '#e2e8e2'),
+              backgroundColor: selectedTime && !slotsLoading && !slotsError ? HERO_GREEN : (isDark ? colors.surface : '#e2e8e2'),
               paddingVertical: 17, borderRadius: 50,
               alignItems: 'center', justifyContent: 'center',
             }}
           >
             <Text style={{
-              color: selectedTime ? 'white' : colors.muted,
+              color: selectedTime && !slotsLoading && !slotsError ? 'white' : colors.muted,
               fontSize: 16, fontWeight: '800', letterSpacing: 0.1,
             }}>
               {selectedTime ? `Book ${fmt(selectedTime)} · ${price}` : 'Select a Time Slot'}

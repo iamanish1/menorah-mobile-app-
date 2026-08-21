@@ -1,38 +1,75 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Eye, EyeOff, Shield } from 'lucide-react';
-import toast from 'react-hot-toast';
 
 export default function LoginPage() {
-  const { login, user } = useAuth();
+  const { login, completeMfa, user, isLoading } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [challengeId, setChallengeId] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  if (user) { router.replace('/dashboard'); return null; }
+  useEffect(() => {
+    if (!isLoading && user) router.replace('/dashboard');
+  }, [isLoading, router, user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!email || !password) { setError('Please enter your email and password.'); return; }
+    setNotice('');
+    if (challengeId) {
+      if (!/^\d{6}$/.test(mfaCode)) { setError('Enter the 6-digit verification code.'); return; }
+    } else if (!email || !password) {
+      setError('Please enter your email and password.');
+      return;
+    }
 
     setLoading(true);
-    const res = await login(email, password);
+    const res = challengeId
+      ? await completeMfa(challengeId, mfaCode)
+      : await login(email, password);
     setLoading(false);
 
+    const maybeMfa = res as typeof res & {
+      mfaRequired?: boolean;
+      challengeId?: string;
+      needsVerification?: boolean;
+      email?: string;
+    };
+    if (maybeMfa.needsVerification) {
+      router.replace(`/verify-email?email=${encodeURIComponent(maybeMfa.email || email)}`);
+      return;
+    }
+    if (maybeMfa.success && maybeMfa.mfaRequired && maybeMfa.challengeId) {
+      setChallengeId(maybeMfa.challengeId);
+      setPassword('');
+      setMfaCode('');
+      setNotice('Verification code sent. Enter it below to continue.');
+      return;
+    }
+
     if (res.success) {
-      toast.success('Welcome back!');
       router.replace('/dashboard');
     } else {
       setError(res.message || 'Login failed');
     }
   };
+
+  if (isLoading || user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">
@@ -76,18 +113,25 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-5">
+            <div role="alert" className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-5">
               {error}
+            </div>
+          )}
+          {notice && (
+            <div role="status" className="bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded-xl px-4 py-3 mb-5">
+              {notice}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
+              <label htmlFor="admin-email" className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
               <input
+                id="admin-email"
                 type="email"
                 autoComplete="email"
                 value={email}
+                disabled={Boolean(challengeId)}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@menorahhealth.app"
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
@@ -95,12 +139,14 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+              <label htmlFor="admin-password" className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
               <div className="relative">
                 <input
+                  id="admin-password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   value={password}
+                  disabled={Boolean(challengeId)}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   className="w-full px-4 py-2.5 pr-11 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
@@ -108,12 +154,29 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
+
+            {challengeId && (
+              <div>
+                <label htmlFor="admin-verification-code" className="block text-sm font-medium text-gray-700 mb-1.5">Verification code</label>
+                <input
+                  id="admin-verification-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="123456"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                />
+              </div>
+            )}
 
             <button
               type="submit"
@@ -122,7 +185,7 @@ export default function LoginPage() {
             >
               {loading ? (
                 <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Signing in...</>
-              ) : 'Sign In'}
+              ) : challengeId ? 'Verify Code' : 'Sign In'}
             </button>
           </form>
 

@@ -24,6 +24,28 @@ export interface BankDetails {
   bankName?: string;
 }
 
+export interface CounsellorEducation {
+  degree?: string;
+  institution?: string;
+  year?: number;
+  description?: string;
+}
+
+export interface CounsellorCertification {
+  name?: string;
+  issuingBody?: string;
+  year?: number;
+  expiryDate?: string;
+}
+
+export interface CounsellorAvailabilityDay {
+  start?: string;
+  end?: string;
+  isAvailable?: boolean;
+}
+
+export type CounsellorAvailability = Record<string, CounsellorAvailabilityDay>;
+
 export interface CounsellorStats {
   totalEarnings: number;
   monthlyEarnings: number;
@@ -35,9 +57,13 @@ export interface CounsellorStats {
 export interface Counsellor {
   id: string;
   _id?: string;
+  isPendingApplication?: boolean;
   user: CounsellorUser;
+  dateOfBirth?: string;
+  gender?: string;
   licenseNumber: string;
   specialization: string;
+  specializations?: string[];
   experience: number;
   hourlyRate: number;
   currency: string;
@@ -45,11 +71,22 @@ export interface Counsellor {
   reviewCount: number;
   bio?: string;
   languages?: string[];
-  status: 'pending' | 'approved' | 'rejected';
+  education?: CounsellorEducation[];
+  certifications?: CounsellorCertification[];
+  availability?: CounsellorAvailability;
+  status: 'pending' | 'manual_review' | 'approved' | 'rejected';
+  identityConflict?: {
+    hasConflict: boolean;
+    email?: boolean;
+    phone?: boolean;
+    detectedAt?: string | null;
+  };
   isActive: boolean;
   isVerified: boolean;
   approvedBy?: { firstName: string; lastName: string; email: string };
   approvedAt?: string;
+  reviewedBy?: { firstName: string; lastName: string; email: string };
+  reviewedAt?: string;
   rejectionReason?: string;
   blockedAt?: string;
   blockedReason?: string;
@@ -96,12 +133,190 @@ export interface User {
   };
 }
 
+export type CallProvider = 'livekit' | 'vsee' | 'doxy' | 'zoom' | 'google_meet' | 'teams' | 'disabled';
+export type CallJoinMode = 'in_app' | 'external_link' | 'disabled';
+export type CallStatus = 'not_configured' | 'ready' | 'started' | 'ended' | 'disabled';
+
+export interface SessionVideoCall {
+  provider?: CallProvider;
+  joinMode?: CallJoinMode;
+  externalProviderName?: string;
+  externalJoinUrl?: string;
+  externalHostUrl?: string;
+  region?: string;
+  status?: CallStatus;
+  policyReason?: string;
+  lastPolicyCheckAt?: string;
+  configuredAt?: string;
+  roomId?: string;
+  roomUrl?: string;
+}
+
+export interface AdminBooking {
+  id: string;
+  _id?: string;
+  user?: Pick<User, '_id' | 'firstName' | 'lastName' | 'email' | 'phone'>;
+  counsellor?: {
+    _id?: string;
+    user?: Pick<User, '_id' | 'firstName' | 'lastName' | 'email' | 'phone'>;
+    specialization?: string;
+  } | null;
+  sessionType: 'video' | 'audio' | 'chat';
+  sessionDuration: number;
+  scheduledAt: string;
+  status: string;
+  paymentStatus?: string;
+  amount?: number;
+  currency?: string;
+  videoCall?: SessionVideoCall;
+  createdAt?: string;
+}
+
 export interface PlatformStats {
   users: { total: number; newToday: number; newThisMonth: number };
   counsellors: { total: number; pending: number; approved: number; blocked: number };
   bookings: { total: number; active: number; completed: number; today: number };
   revenue: { total: number; monthly: number; weekly: number; today: number };
   kyc?: { pendingReview: number; verified: number; rejected: number };
+}
+
+export interface ServerUsage {
+  sampledAt: string;
+  host: {
+    hostname: string;
+    platform: string;
+    release: string;
+    uptimeSeconds: number;
+  };
+  server?: HostUsage;
+  cpu: {
+    usagePercent: number;
+    loadAverage: number[];
+  };
+  memory: {
+    total: number;
+    used: number;
+    free: number;
+    usagePercent: number;
+  };
+  container: {
+    memory: {
+      current: number;
+      max: number | null;
+      usagePercent: number | null;
+    } | null;
+  };
+  disk: {
+    root: DiskUsage;
+    uploads: DiskUsage;
+  };
+  backup?: BackupUsage;
+  network: {
+    rxBytes: number;
+    txBytes: number;
+  };
+  process: {
+    pid: number;
+    uptimeSeconds: number;
+    memory: {
+      rss: number;
+      heapTotal: number;
+      heapUsed: number;
+      external: number;
+      arrayBuffers: number;
+    };
+  };
+}
+
+export interface BackupSnapshot {
+  type: string;
+  timestamp: string;
+  ageHours: number | null;
+  encrypted: boolean;
+  checksumPresent: boolean;
+  sizeBytes: number;
+}
+
+export interface BackupUsage {
+  status: 'ok' | 'warning' | 'critical';
+  headline: string;
+  message: string;
+  backupRoot: string;
+  mounted: boolean;
+  automationEnabled: boolean;
+  volume: DiskUsage;
+  latest: BackupSnapshot | null;
+  byType: Record<string, BackupSnapshot | null>;
+  restoreTest: {
+    ok: boolean;
+    timestamp: string | null;
+    ageHours: number | null;
+    mode: string | null;
+    message: string;
+  };
+  raid: {
+    configured: boolean;
+    ok: boolean;
+    device: string | null;
+    activeDevices: number | null;
+    totalDevices: number | null;
+    mirrorState: string | null;
+    resyncPercent: number | null;
+    message: string;
+  };
+  coldStorage: {
+    mode: 'manual';
+    label: string;
+    message: string;
+  };
+  schedule: {
+    daily: string;
+    weekly: string;
+    restoreTest: string;
+    monthly: string;
+    healthCheck: string;
+  };
+  retention: {
+    sixHourlyDays: number;
+    dailyDays: number;
+    weeklyDays: number;
+    monthlyDays: number;
+  };
+  issues: string[];
+}
+
+export interface HostUsage {
+  label: string;
+  hostname: string;
+  platform: string;
+  release: string;
+  uptimeSeconds: number;
+  cpu: {
+    usagePercent: number;
+    loadAverage: number[];
+  };
+  memory: {
+    total: number;
+    used: number;
+    free: number;
+    usagePercent: number;
+  };
+  disk: {
+    root: DiskUsage;
+    data: DiskUsage;
+  };
+  network: {
+    rxBytes: number;
+    txBytes: number;
+  };
+}
+
+export interface DiskUsage {
+  path: string;
+  total: number;
+  used: number;
+  free: number;
+  usagePercent: number;
 }
 
 export type KycStatus = 'not_started' | 'pending' | 'verified' | 'manual_review' | 'rejected';
@@ -236,7 +451,7 @@ export type SocialPostStatus =
   | 'failed_publish'
   | 'expired_token';
 
-export type SocialPostType = 'single_image' | 'carousel' | 'reel_cover';
+export type SocialPostType = 'single_image' | 'carousel' | 'reel_cover' | 'reel';
 export type SocialAspectRatio = '1:1' | '4:5' | '9:16';
 export type SocialTemplateKey = 'thought_leadership' | 'educational_tip' | 'announcement';
 
@@ -311,6 +526,7 @@ export interface SocialPost {
   _id?: string;
   platform: 'instagram';
   postType: SocialPostType;
+  contentSource?: 'ai' | 'manual';
   status: SocialPostStatus;
   topic: string;
   campaignName?: string;
@@ -329,6 +545,10 @@ export interface SocialPost {
   imageUrl?: string;
   finalImageUrl?: string;
   thumbnailUrl?: string;
+  videoUrl?: string;
+  videoPublicId?: string;
+  videoMimeType?: string;
+  videoSizeBytes?: number;
   aspectRatio: SocialAspectRatio;
   width?: number;
   height?: number;
@@ -340,7 +560,10 @@ export interface SocialPost {
   publishedAt?: string | null;
   instagramAccount?: InstagramAccount | string | null;
   instagramMediaId?: string;
+  instagramContainerId?: string;
   instagramPermalink?: string;
+  publishingStartedAt?: string | null;
+  publishAttemptCount?: number;
   errorLog?: { message?: string; code?: string; at?: string } | null;
   createdAt: string;
   updatedAt?: string;
@@ -450,6 +673,7 @@ export interface Pagination {
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
+  code?: string;
   message?: string;
   data?: T;
   errors?: { field?: string; message?: string }[];

@@ -31,19 +31,63 @@ export interface Booking {
     name: string;
     phone: string;
     relationship: string;
-  };
+  } | null;
   preferences?: {
     gender?: string;
     sessionType?: string;
     categoryId?: string;
   };
   assignedAt?: string;
+  videoCall?: {
+    provider?: CallProvider;
+    joinMode?: CallJoinMode;
+    externalProviderName?: string;
+    externalJoinUrl?: string;
+    externalHostUrl?: string;
+    region?: 'IN' | 'AE' | 'UNKNOWN';
+    status?: CallStatus;
+    policyReason?: string;
+    roomId?: string;
+    roomUrl?: string;
+  };
   createdAt?: string;
+}
+
+export type CallProvider = 'livekit' | 'vsee' | 'doxy' | 'zoom' | 'google_meet' | 'teams' | 'disabled';
+export type CallJoinMode = 'in_app' | 'external_link' | 'disabled';
+export type CallStatus = 'not_configured' | 'scheduled' | 'ready' | 'started' | 'ended' | 'cancelled' | 'disabled';
+
+export interface VideoRoom {
+  provider?: CallProvider;
+  joinMode?: CallJoinMode;
+  region?: 'IN' | 'AE' | 'UNKNOWN';
+  bookingId?: string;
+  roomName?: string;
+  roomId?: string;
+  livekitUrl?: string;
+  token?: string;
+  livekitToken?: string;
+  joinUrl?: string;
+  externalJoinUrl?: string;
+  hostUrl?: string;
+  externalHostUrl?: string;
+  providerName?: string;
+  externalProviderName?: string;
+  sessionType: 'video' | 'audio' | 'chat';
+  counsellorName: string;
+  userName: string;
+  scheduledAt: string;
+  duration: number;
+  status: string;
+  message?: string;
 }
 
 export interface CounsellorStatus {
   isActive: boolean;
   isAvailable: boolean;
+  profileMediaComplete?: boolean;
+  profileImage?: string | null;
+  voiceIntroUrl?: string | null;
   message: string;
 }
 
@@ -69,6 +113,7 @@ export interface TodaySchedule {
 
 export interface ApiResponse<T> {
   success: boolean;
+  code?: string;
   message?: string;
   data?: T;
   errors?: any[];
@@ -121,4 +166,3 @@ export interface ArticlePagination {
   total: number;
   pages: number;
 }
-

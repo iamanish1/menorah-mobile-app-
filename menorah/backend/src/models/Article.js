@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { validateContentBlocks } = require('../services/articleContent');
 
 const contentBlockSchema = new mongoose.Schema({
   type: {
@@ -77,7 +78,17 @@ const articleSchema = new mongoose.Schema({
   },
   contentBlocks: {
     type: [contentBlockSchema],
-    default: []
+    default: [],
+    validate: {
+      validator: (blocks) => {
+        try {
+          return validateContentBlocks(blocks);
+        } catch {
+          return false;
+        }
+      },
+      message: 'Article content must use supported, renderable content blocks'
+    }
   },
   seoTitle: {
     type: String,

@@ -1,0 +1,70 @@
+groups:
+  - name: menorah-core
+    rules:
+      - alert: ApiHealthEndpointDown
+        expr: up{job="api-services"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API health endpoint is down"
+          description: "{{ $labels.instance }} has not responded for 2 minutes."
+
+      - alert: ContainerMetricsDown
+        expr: up{job="cadvisor"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container metrics are unavailable"
+
+      - alert: PrometheusDown
+        expr: up{job="prometheus"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape itself"
+
+  - name: menorah-security
+    rules:
+      - alert: AuthenticationFailureSpike
+        expr: sum(increase(menorah_security_events_total{event=~"login_attempt|mfa_attempt|otp_verification|password_reset",outcome="failure"}[10m])) > 20
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Authentication failures exceed the expected threshold"
+          description: "More than 20 login, MFA, OTP, or reset failures occurred in 10 minutes."
+
+      - alert: CsrfBlocksDetected
+        expr: sum(increase(menorah_security_events_total{event="csrf_blocked",outcome="failure"}[10m])) > 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Repeated CSRF blocks detected"
+
+      - alert: AuthorizationDenialSpike
+        expr: sum(increase(menorah_security_events_total{event="authorization_denied",outcome="failure"}[10m])) > 30
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Authorization denials exceed the expected threshold"
+
+      - alert: PayoutActionFailed
+        expr: sum(increase(menorah_security_events_total{event="payout_action",outcome="failure"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A payout action failed"
+
+      - alert: AdminChangeBurst
+        expr: sum(increase(menorah_security_events_total{event="admin_change",outcome="success"}[10m])) > 20
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unusually high volume of admin changes"

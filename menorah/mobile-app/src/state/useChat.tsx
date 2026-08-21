@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { socketService, ChatMessage, TypingIndicator, UserStatus, MessageReadReceipt, SessionStartedData, BookingStatusData, BookingConfirmedData, BookingRescheduledData } from '@/lib/socket';
-import { api, ChatRoom, Message } from '@/lib/api';
+import { api, ChatRoom } from '@/lib/api';
 import { useAuth } from './useAuth';
 
 interface ChatContextType {
@@ -69,65 +69,29 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const typingTimeouts = React.useRef<{ [roomId: string]: ReturnType<typeof setTimeout> }>({});
   // Ref so connection callbacks always see the latest currentRoom without re-registering
   const currentRoomRef = React.useRef<string | null>(null);
+  const activeUserIdRef = React.useRef<string | null>(user?.id || null);
 
   // Keep currentRoomRef in sync with currentRoom state
   useEffect(() => {
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
 
-  // Initialize socket connection
+  // Private chat state must never survive a logout or account switch.
   useEffect(() => {
-    if (user) {
-      initializeSocket();
-    }
-
-    return () => {
-      socketService.disconnect();
-    };
-  }, [user]);
-
-  const initializeSocket = async () => {
-    try {
-      console.log('Initializing Socket.IO connection...');
-      await socketService.connect();
-
-      // Socket is now connected — sync state and join any room that was requested
-      // before the connection was ready (common when ChatThread mounts first)
-      setIsConnected(true);
-      if (currentRoomRef.current) {
-        socketService.joinRoom(currentRoomRef.current);
-      }
-
-      // Set up event listeners
-      const unsubscribeMessage = socketService.onMessage(handleNewMessage);
-      const unsubscribeTyping = socketService.onTyping(handleTyping);
-      const unsubscribeStatus = socketService.onStatusChange(handleStatusChange);
-      const unsubscribeReadReceipt = socketService.onReadReceipt(handleReadReceipt);
-      const unsubscribeConnection = socketService.onConnectionChange(handleConnectionChange);
-      const unsubscribeSessionStarted = socketService.onSessionStarted(handleSessionStarted);
-      const unsubscribeBookingStatus = socketService.onBookingStatusChanged(handleBookingStatus);
-      const unsubscribeBookingConfirmed = socketService.onBookingConfirmed(handleBookingConfirmed);
-      const unsubscribeBookingRescheduled = socketService.onBookingRescheduled(handleBookingRescheduled);
-
-      console.log('Socket.IO event listeners set up successfully');
-
-      return () => {
-        unsubscribeMessage();
-        unsubscribeTyping();
-        unsubscribeStatus();
-        unsubscribeReadReceipt();
-        unsubscribeConnection();
-        unsubscribeSessionStarted();
-        unsubscribeBookingStatus();
-        unsubscribeBookingConfirmed();
-        unsubscribeBookingRescheduled();
-      };
-    } catch (error) {
-      console.error('Failed to initialize socket:', error);
-      // Don't throw error, let the app continue without real-time features
-      setIsConnected(false);
-    }
-  };
+    activeUserIdRef.current = user?.id || null;
+    Object.values(typingTimeouts.current).forEach(clearTimeout);
+    typingTimeouts.current = {};
+    currentRoomRef.current = null;
+    setChatRooms([]);
+    setMessages({});
+    setTypingUsers({});
+    setOnlineUsers({});
+    setRoomPresence({});
+    setCurrentRoom(null);
+    setIsConnected(false);
+    setLoadingRooms(false);
+    setLoadingMessages(false);
+  }, [user?.id]);
 
   // Event handlers
   const handleNewMessage = useCallback((message: ChatMessage) => {
@@ -166,7 +130,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       return;
     }
     // Ignore own typing events
-    if (user && typing.userId === user.id) return;
+    if (user?.id && typing.userId === user.id) return;
 
     setTypingUsers(prev => {
       const roomTyping = prev[roomId] || [];
@@ -184,7 +148,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         };
       }
     });
-  }, []);
+  }, [user?.id]);
 
   const handleStatusChange = useCallback((status: UserStatus) => {
     setOnlineUsers(prev => ({
@@ -251,14 +215,94 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     console.log('Booking rescheduled:', data);
   }, []);
 
+  const initializeSocket = useCallback(async () => {
+    try {
+      console.log('Initializing Socket.IO connection...');
+      await socketService.connect();
+
+      // Socket is now connected — sync state and join any room that was requested
+      // before the connection was ready (common when ChatThread mounts first)
+      setIsConnected(true);
+      if (currentRoomRef.current) {
+        socketService.joinRoom(currentRoomRef.current);
+      }
+
+      // Set up event listeners
+      const unsubscribeMessage = socketService.onMessage(handleNewMessage);
+      const unsubscribeTyping = socketService.onTyping(handleTyping);
+      const unsubscribeStatus = socketService.onStatusChange(handleStatusChange);
+      const unsubscribeReadReceipt = socketService.onReadReceipt(handleReadReceipt);
+      const unsubscribeConnection = socketService.onConnectionChange(handleConnectionChange);
+      const unsubscribeSessionStarted = socketService.onSessionStarted(handleSessionStarted);
+      const unsubscribeBookingStatus = socketService.onBookingStatusChanged(handleBookingStatus);
+      const unsubscribeBookingConfirmed = socketService.onBookingConfirmed(handleBookingConfirmed);
+      const unsubscribeBookingRescheduled = socketService.onBookingRescheduled(handleBookingRescheduled);
+
+      console.log('Socket.IO event listeners set up successfully');
+
+      return () => {
+        unsubscribeMessage();
+        unsubscribeTyping();
+        unsubscribeStatus();
+        unsubscribeReadReceipt();
+        unsubscribeConnection();
+        unsubscribeSessionStarted();
+        unsubscribeBookingStatus();
+        unsubscribeBookingConfirmed();
+        unsubscribeBookingRescheduled();
+      };
+    } catch (error) {
+      console.error('Failed to initialize socket:', error);
+      // Don't throw error, let the app continue without real-time features
+      setIsConnected(false);
+    }
+  }, [
+    handleBookingConfirmed,
+    handleBookingRescheduled,
+    handleBookingStatus,
+    handleConnectionChange,
+    handleNewMessage,
+    handleReadReceipt,
+    handleSessionStarted,
+    handleStatusChange,
+    handleTyping,
+  ]);
+
+  // Initialize socket connection
+  useEffect(() => {
+    let cancelled = false;
+    let cleanupListeners: (() => void) | undefined;
+
+    if (user) {
+      initializeSocket().then((cleanup) => {
+        if (cancelled) {
+          if (cleanup) cleanup();
+          return;
+        }
+        if (cleanup) cleanupListeners = cleanup;
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      cleanupListeners?.();
+      socketService.disconnect();
+    };
+  }, [initializeSocket, user]);
+
   // Chat room management
   const fetchChatRooms = useCallback(async () => {
     if (!user) return;
+    const requestUserId = user.id;
     
     setLoadingRooms(true);
     try {
       const response = await api.getChatRooms();
-      if (response.success && response.data) {
+      if (
+        response.success
+        && response.data
+        && activeUserIdRef.current === requestUserId
+      ) {
         // Ensure all chat rooms have proper counsellorName
         const rooms = (response.data.chatRooms || []).map((room: ChatRoom) => {
           // Check if counsellorName is undefined, null, or the string "undefined undefined"
@@ -277,18 +321,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     } catch (error) {
       console.error('Failed to fetch chat rooms:', error);
     } finally {
-      setLoadingRooms(false);
+      if (activeUserIdRef.current === requestUserId) setLoadingRooms(false);
     }
   }, [user]);
 
   // Message management
   const fetchMessages = useCallback(async (roomId: string) => {
     if (!user) return;
+    const requestUserId = user.id;
     
     setLoadingMessages(true);
     try {
       const response = await api.getMessages(roomId);
-      if (response.success && response.data) {
+      if (
+        response.success
+        && response.data
+        && activeUserIdRef.current === requestUserId
+      ) {
         const msgs = response.data.messages || [];
         // Map API messages to ChatMessage format
         const mappedMessages: ChatMessage[] = msgs.map((msg: any) => ({
@@ -321,18 +370,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     } catch (error) {
       console.error('Failed to fetch messages:', error);
     } finally {
-      setLoadingMessages(false);
+      if (activeUserIdRef.current === requestUserId) setLoadingMessages(false);
     }
   }, [user]);
 
   const sendMessage = useCallback(async (roomId: string, content: string) => {
     if (!user || !content.trim()) return;
+    const requestUserId = user.id;
     
     try {
       // Send via REST API for persistence (works even without Socket.IO)
       const response = await api.sendMessage(roomId, content);
       
-      if (response.success && response.data) {
+      if (
+        response.success
+        && response.data
+        && activeUserIdRef.current === requestUserId
+      ) {
         const msg = response.data.message;
         const sender = typeof msg.sender === 'object' && msg.sender !== null ? msg.sender : undefined;
         const senderId = msg.senderId || sender?._id || (typeof msg.sender === 'string' ? msg.sender : undefined) || user.id;
@@ -369,15 +423,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       console.error('Failed to send message:', error);
       throw error;
     }
-  }, [user, isConnected]);
+  }, [user]);
 
   const deleteMessage = useCallback(async (roomId: string, messageId: string) => {
     if (!user) return;
+    const requestUserId = user.id;
     
     try {
       await api.deleteMessage(roomId, messageId);
       
       // Remove from local state
+      if (activeUserIdRef.current !== requestUserId) return;
       setMessages(prev => {
         const roomMessages = prev[roomId] || [];
         return {

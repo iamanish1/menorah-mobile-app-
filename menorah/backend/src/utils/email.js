@@ -1,110 +1,132 @@
 const axios = require('axios');
+const { buildPasswordResetUrl } = require('./passwordResetUrl');
 
-const MSG91_EMAIL_URL = 'https://control.msg91.com/api/v5/email/send';
+const RESEND_EMAIL_URL = 'https://api.resend.com/emails';
+const FROM_NAME = 'Menorah Health';
+const isDev = process.env.NODE_ENV !== 'production';
 
-const FROM_EMAIL = process.env.EMAIL_FROM    || 'noreply@menorahhealth.app';
-const FROM_NAME  = 'Menorah Health';
-const DOMAIN     = process.env.MSG91_EMAIL_DOMAIN || 'menorahhealth.app';
+const isPlaceholder = (value) =>
+  !value || /^REPLACE/i.test(value) || value.includes('replace_with');
+
+const safeErrorResponse = (error) => {
+  const data = error.response?.data;
+  if (data && typeof data === 'object') return data;
+  if (data) return { response: String(data).slice(0, 500) };
+  return {
+    message: error.message,
+    status: error.response?.status,
+  };
+};
+
+const escapeHtml = (value = '') =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 const isConfigured = () => {
-  if (!process.env.MSG91_AUTH_KEY || process.env.MSG91_AUTH_KEY.startsWith('REPLACE_')) {
-    console.error('❌ MSG91_AUTH_KEY is not set. Email sending is disabled.');
+  if (isPlaceholder(process.env.RESEND_API_KEY)) {
+    console.error('\u274C RESEND_API_KEY is not set. Email sending is disabled.');
     return false;
   }
+
+  if (isPlaceholder(process.env.EMAIL_FROM)) {
+    console.error('\u274C EMAIL_FROM is not set. Email sending is disabled.');
+    return false;
+  }
+
   return true;
 };
 
-const isDev = process.env.NODE_ENV !== 'production';
-
-// ─── Core send helper ─────────────────────────────────────────────────────
-const sendEmail = async (to, subject, html, toName = '') => {
-  // In development, log the email to console instead of sending
+const sendEmail = async (to, subject, html) => {
   if (isDev) {
-    console.log('\n📧 ─── DEV EMAIL (not sent) ───────────────────────');
-    console.log(`   To:      ${to}`);
-    console.log(`   Subject: ${subject}`);
-    console.log(`   (HTML content suppressed — check reset link below if applicable)`);
-    console.log('──────────────────────────────────────────────────\n');
+    console.log('\n[DEV EMAIL - not sent]');
+    console.log(`To: ${to}`);
+    console.log(`Subject: ${subject}`);
+    console.log('[HTML content suppressed]');
     return true;
   }
 
   if (!isConfigured()) return false;
 
-  const templateId = process.env.MSG91_EMAIL_TEMPLATE_ID;
-  if (!templateId || templateId.startsWith('REPLACE_')) {
-    console.error('❌ MSG91_EMAIL_TEMPLATE_ID is not set. Email sending is disabled.');
-    return false;
-  }
-
   try {
-    const { data } = await axios.post(
-      MSG91_EMAIL_URL,
+    await axios.post(
+      RESEND_EMAIL_URL,
       {
-        template_id: templateId,
-        recipients: [{
-          to: [{ email: to, name: toName || to }],
-          variables: { body: html, subject },
-        }],
-        from: { email: FROM_EMAIL, name: FROM_NAME },
-        domain: DOMAIN,
+        from: process.env.EMAIL_FROM,
+        to: [to],
+        subject,
+        html,
       },
       {
         headers: {
-          authkey: process.env.MSG91_AUTH_KEY,
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
           'Content-Type': 'application/json',
         },
       }
     );
-    const success = !data?.hasError && (data?.type === 'success' || data?.status === 'success' || data?.message === 'Email queued successfully');
-    if (success) {
-      console.log(`✅ Email sent via MSG91 to: ${to}`);
-    } else {
-      console.error('❌ MSG91 email error:', data);
-    }
-    return success;
+
+    console.log(`\u2705 Email sent via Resend to: ${to}`);
+    return true;
   } catch (error) {
-    console.error('❌ MSG91 email error:', error.response?.data ?? error.message);
+    console.error('\u274C Resend email error:', safeErrorResponse(error));
     return false;
   }
 };
 
-// ─── Reset URL builder ────────────────────────────────────────────────────
-const buildPasswordResetUrl = (token) => {
-  const template  = process.env.PASSWORD_RESET_URL_TEMPLATE?.trim();
-  const base      = process.env.PASSWORD_RESET_BASE_URL?.trim();
-  const apiBase   = process.env.API_BASE_URL?.trim();
-  const scheme    = process.env.MOBILE_APP_SCHEME?.trim() || 'menorah-health://reset-password';
-
-  if (template) {
-    return template.includes('{token}')
-      ? template.replace('{token}', encodeURIComponent(token))
-      : `${template.replace(/\/+$/, '')}?token=${encodeURIComponent(token)}`;
+const normalizeBaseUrl = (value) => {
+  if (!value) return null;
+  try {
+    const url = new URL(value.trim());
+    return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return null;
   }
-  if (base) {
-    const sep = base.includes('?') ? '&' : '?';
-    return `${base}${sep}token=${encodeURIComponent(token)}`;
-  }
-  if (apiBase && !/localhost|127\.0\.0\.1/i.test(apiBase)) {
-    const cleanBase = apiBase.replace(/\/+$/, '').replace(/\/api$/i, '');
-    return `${cleanBase}/api/auth/reset-password?token=${encodeURIComponent(token)}`;
-  }
-  const sep = scheme.includes('?') ? '&' : '?';
-  return `${scheme}${sep}token=${encodeURIComponent(token)}`;
 };
 
-// ─── Shared HTML wrapper ──────────────────────────────────────────────────
+const localUrlFromPort = (value, fallbackPort) => {
+  const port = String(value || '').match(/:(\d+)$/)?.[1] || fallbackPort;
+  return port ? `http://localhost:${port}` : null;
+};
+
+const buildCounsellorAppUrl = (path = '/login') => {
+  const base =
+    normalizeBaseUrl(process.env.FRONTEND_COUNSELLOR_URL) ||
+    normalizeBaseUrl(process.env.COUNSELLOR_WEB_BASE_URL) ||
+    normalizeBaseUrl(process.env.COUNSELLOR_APP_URL) ||
+    (process.env.COUNSELLOR_DOMAIN ? `https://${process.env.COUNSELLOR_DOMAIN}` : null) ||
+    localUrlFromPort(process.env.WEB_APP_LOCAL_PORT) ||
+    (process.env.NODE_ENV !== 'production' ? localUrlFromPort(process.env.WEB_APP_LOCAL_PORT, '18086') : null) ||
+    'https://counsellor.menorah.me';
+
+  return new URL(path, `${base.replace(/\/+$/, '')}/`).toString();
+};
+
+const buildPasswordResetUrlForRole = (token, role = 'user') => {
+  if (role === 'counsellor') {
+    return buildCounsellorAppUrl(`/reset-password?token=${encodeURIComponent(token)}`);
+  }
+  return buildPasswordResetUrl(token);
+};
+
 const layout = (content) => `
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${FROM_NAME}</title>
+</head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 0;">
     <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;max-width:600px;">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;max-width:600px;">
         <tr>
           <td style="background:linear-gradient(135deg,#3d9470 0%,#2d7a5c 100%);padding:28px 32px;text-align:center;">
-            <h1 style="color:#fff;margin:0;font-size:24px;letter-spacing:0.5px;">Menorah Health</h1>
-            <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px;">Your Mental Wellness Partner</p>
+            <h1 style="color:#ffffff;margin:0;font-size:24px;letter-spacing:0;">Menorah Health</h1>
+            <p style="color:rgba(255,255,255,0.82);margin:4px 0 0;font-size:13px;">Your Mental Wellness Partner</p>
           </td>
         </tr>
         <tr>
@@ -115,7 +137,7 @@ const layout = (content) => `
         <tr>
           <td style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #e5e7eb;">
             <p style="color:#9ca3af;font-size:12px;margin:0;">
-              © ${new Date().getFullYear()} Menorah Health. All rights reserved.
+              &copy; ${new Date().getFullYear()} Menorah Health. All rights reserved.
             </p>
           </td>
         </tr>
@@ -125,59 +147,18 @@ const layout = (content) => `
 </body>
 </html>`;
 
-// ─── Email: OTP for registration ─────────────────────────────────────────
-const sendOTPEmail = async (email, otp, name = '') => {
-  if (!isConfigured()) return false;
+const otpEmailHtml = (otp, name = '') => {
+  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
 
-  const templateId = process.env.MSG91_EMAIL_OTP_TEMPLATE_ID;
-  if (!templateId || templateId.startsWith('REPLACE_')) {
-    console.error('❌ MSG91_EMAIL_OTP_TEMPLATE_ID is not set.');
-    return false;
-  }
-
-  if (isDev) {
-    console.log('\n📧 ─── DEV OTP EMAIL (not sent) ───────────────────');
-    console.log(`   To:  ${email}`);
-    console.log(`   OTP: ${otp}`);
-    console.log('──────────────────────────────────────────────────\n');
-    return true;
-  }
-
-  try {
-    const { data } = await axios.post(
-      MSG91_EMAIL_URL,
-      {
-        template_id: templateId,
-        recipients: [{
-          to: [{ email, name: name || email }],
-          variables: { otp_code: otp },
-        }],
-        from: { email: FROM_EMAIL, name: FROM_NAME },
-        domain: DOMAIN,
-      },
-      { headers: { authkey: process.env.MSG91_AUTH_KEY, 'Content-Type': 'application/json' } }
-    );
-    const success = !data?.hasError && (data?.type === 'success' || data?.status === 'success' || data?.message === 'Email queued successfully');
-    if (success) console.log(`✅ OTP email sent to: ${email}`);
-    else console.error('❌ MSG91 OTP email error:', data);
-    return success;
-  } catch (err) {
-    console.error('❌ MSG91 OTP email error:', err.response?.data ?? err.message);
-    return false;
-  }
-};
-
-// ─── Email: Verification code ─────────────────────────────────────────────
-const sendVerificationEmail = async (email, code) => {
-  const html = layout(`
-    <h2 style="color:#111827;margin:0 0 16px;">Welcome to Menorah Health!</h2>
+  return layout(`
+    <h2 style="color:#111827;margin:0 0 16px;">${greeting}</h2>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">
-      Thank you for signing up. Enter the code below to verify your email address.
+      Welcome to Menorah Health. Use the verification code below to complete your account setup.
     </p>
     <div style="text-align:center;margin:32px 0;">
       <div style="display:inline-block;background:#f0f9f4;border:2px solid #2d7a5c;border-radius:12px;padding:20px 40px;">
         <p style="color:#2d7a5c;font-size:40px;font-weight:700;letter-spacing:12px;margin:0;font-family:'Courier New',monospace;">
-          ${code}
+          ${escapeHtml(otp)}
         </p>
       </div>
     </div>
@@ -185,100 +166,189 @@ const sendVerificationEmail = async (email, code) => {
       Enter this 6-digit code in the app. <strong>It expires in 10 minutes.</strong>
     </p>
     <p style="color:#9ca3af;font-size:13px;margin:0;">
-      If you didn't create a Menorah Health account, you can safely ignore this email.
+      If you did not create a Menorah Health account, you can safely ignore this email.
     </p>
   `);
-  return sendEmail(email, 'Verify Your Email – Menorah Health', html);
 };
 
-// ─── Email: Password reset ────────────────────────────────────────────────
-const sendPasswordResetEmail = async (email, token) => {
-  const resetUrl = buildPasswordResetUrl(token);
+const sendOTPEmail = async (email, otp, name = '') => {
+  return sendEmail(
+    email,
+    'Menorah Health \u2013 Email Verification',
+    otpEmailHtml(otp, name)
+  );
+};
 
-  // Always log links in dev for easy testing
+const sendVerificationEmail = async (email, code) => {
+  return sendEmail(
+    email,
+    'Menorah Health \u2013 Email Verification',
+    otpEmailHtml(code)
+  );
+};
+
+const sendPasswordResetEmail = async (email, token, { role = 'user' } = {}) => {
+  const resetUrl = buildPasswordResetUrlForRole(token, role);
+
   if (isDev) {
-    const encodedToken = encodeURIComponent(token);
-    const apkLink     = `menorah-health://reset-password?token=${encodedToken}`;
-    const expoGoLink  = `exp+menorah-health-app://reset-password?token=${encodedToken}`;
-    console.log('\n🔑 ─── DEV PASSWORD RESET ────────────────────────');
-    console.log(`   Email:          ${email}`);
-    console.log(`   If using APK:   ${apkLink}`);
-    console.log(`   If using Expo Go: ${expoGoLink}`);
-    console.log(`   → Paste the correct link in your phone Chrome address bar`);
-    console.log('──────────────────────────────────────────────────\n');
+    console.log('[DEV PASSWORD RESET] Reset link generated; destination and token suppressed.');
   }
 
-  // Production: use dedicated MSG91 template with {{reset_link}} variable
-  const templateId = process.env.MSG91_EMAIL_TEMPLATE_ID;
-  if (!templateId || templateId.startsWith('REPLACE_')) {
-    console.error('❌ MSG91_EMAIL_TEMPLATE_ID not set');
-    return false;
-  }
-  if (!isConfigured()) return false;
+  const safeResetUrl = escapeHtml(resetUrl);
+  const html = layout(`
+    <h2 style="color:#111827;margin:0 0 16px;">Reset your password</h2>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">
+      We received a request to reset your Menorah Health password. Use the secure link below to choose a new password.
+    </p>
+    <div style="text-align:center;margin:32px 0;">
+      <a href="${safeResetUrl}"
+         style="background:#2d7a5c;color:#ffffff;text-decoration:none;border-radius:8px;padding:14px 24px;display:inline-block;font-weight:700;">
+        Reset Password
+      </a>
+    </div>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;word-break:break-word;">
+      If the button does not work, open this link: <a href="${safeResetUrl}" style="color:#2d7a5c;">${safeResetUrl}</a>
+    </p>
+    <p style="color:#9ca3af;font-size:13px;margin:0;">
+      If you did not request a password reset, you can safely ignore this email. Your password will not change.
+    </p>
+  `);
 
-  try {
-    const { data } = await axios.post(
-      MSG91_EMAIL_URL,
-      {
-        template_id: templateId,
-        recipients: [{
-          to: [{ email, name: email }],
-          variables: { reset_link: resetUrl },
-        }],
-        from: { email: FROM_EMAIL, name: FROM_NAME },
-        domain: DOMAIN,
-      },
-      { headers: { authkey: process.env.MSG91_AUTH_KEY, 'Content-Type': 'application/json' } }
-    );
-    const success = !data?.hasError && (data?.type === 'success' || data?.status === 'success');
-    if (success) console.log(`✅ Password reset email sent to: ${email}`);
-    else console.error('❌ MSG91 password reset email error:', data);
-    return success;
-  } catch (err) {
-    console.error('❌ MSG91 password reset email error:', err.response?.data ?? err.message);
-    return false;
-  }
+  return sendEmail(email, 'Reset Your Menorah Health Password', html);
 };
 
-// ─── Email: Booking confirmation ──────────────────────────────────────────
+const sendCounsellorCredentialsEmail = async ({
+  email,
+  name = '',
+  password,
+  resetToken,
+  kind = 'onboarding',
+}) => {
+  if (!password || !resetToken) {
+    throw new Error('Counsellor credential emails require a temporary password and reset token');
+  }
+
+  const loginUrl = buildCounsellorAppUrl('/login');
+  const resetUrl = buildPasswordResetUrlForRole(resetToken, 'counsellor');
+  const isOnboarding = kind === 'onboarding';
+  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  const safeLoginUrl = escapeHtml(loginUrl);
+  const safeResetUrl = escapeHtml(resetUrl);
+  const heading = isOnboarding ? 'Your counsellor account is ready' : 'Your counsellor password was reset';
+  const introduction = isOnboarding
+    ? 'Your Menorah counsellor application has been approved. Use the temporary credentials below to sign in to your counsellor account.'
+    : 'An administrator reset your Menorah counsellor password. Use the temporary credentials below to sign in to your counsellor account.';
+
+  const html = layout(`
+    <h2 style="color:#111827;margin:0 0 16px;">${heading}</h2>
+    <p style="color:#111827;line-height:1.6;margin:0 0 16px;">${greeting}</p>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 20px;">
+      ${introduction}
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin:0 0 24px;">
+      <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+        <span style="color:#9ca3af;font-size:13px;">Email</span><br>
+        <strong style="color:#111827;">${escapeHtml(email)}</strong>
+      </td></tr>
+      <tr><td style="padding:16px 20px;">
+        <span style="color:#9ca3af;font-size:13px;">Temporary password</span><br>
+        <strong style="color:#111827;font-family:'Courier New',monospace;word-break:break-all;">${escapeHtml(password)}</strong>
+      </td></tr>
+    </table>
+    <div style="text-align:center;margin:28px 0 18px;">
+      <a href="${safeLoginUrl}"
+         style="background:#2d7a5c;color:#ffffff;text-decoration:none;border-radius:8px;padding:14px 24px;display:inline-block;font-weight:700;">
+        Sign in to counsellor portal
+      </a>
+    </div>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;">
+      For your security, use this secure link to choose a new password before it expires in <strong>10 minutes</strong>:
+    </p>
+    <div style="text-align:center;margin:24px 0 18px;">
+      <a href="${safeResetUrl}"
+         style="background:#111827;color:#ffffff;text-decoration:none;border-radius:8px;padding:14px 24px;display:inline-block;font-weight:700;">
+        Set a new password
+      </a>
+    </div>
+    <p style="color:#6b7280;line-height:1.6;margin:0 0 12px;word-break:break-word;">
+      If the reset button does not work, open this link: <a href="${safeResetUrl}" style="color:#2d7a5c;">${safeResetUrl}</a>
+    </p>
+    <p style="color:#9ca3af;font-size:13px;margin:0;">
+      If you were not expecting this email, contact Menorah support immediately.
+    </p>
+  `);
+
+  return sendEmail(
+    email,
+    isOnboarding ? 'Your Menorah counsellor account is ready' : 'Your Menorah counsellor password was reset',
+    html
+  );
+};
+
+// Retain this name for existing callers while making the credential email
+// reusable whenever an administrator issues a fresh counsellor password.
+const sendCounsellorApprovalEmail = (options) =>
+  sendCounsellorCredentialsEmail({ ...options, kind: 'onboarding' });
+
 const sendBookingConfirmationEmail = async (email, bookingDetails) => {
   const { scheduledAt, sessionDuration, sessionType, counsellorName } = bookingDetails;
-  const dateStr = new Date(scheduledAt).toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-  const timeStr = new Date(scheduledAt).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+  const date = new Date(scheduledAt);
+  const dateStr = date.toLocaleDateString('en-IN', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const timeStr = date.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
   const html = layout(`
-    <h2 style="color:#111827;margin:0 0 8px;">Booking Confirmed ✓</h2>
+    <h2 style="color:#111827;margin:0 0 8px;">Booking Confirmed</h2>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">Your session has been confirmed. Here are your details:</p>
     <table width="100%" cellpadding="0" cellspacing="0"
            style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin:0 0 24px;">
       <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
         <span style="color:#9ca3af;font-size:13px;">Counsellor</span><br>
-        <strong style="color:#111827;">${counsellorName}</strong>
+        <strong style="color:#111827;">${escapeHtml(counsellorName)}</strong>
       </td></tr>
       <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
         <span style="color:#9ca3af;font-size:13px;">Date &amp; Time</span><br>
-        <strong style="color:#111827;">${dateStr} at ${timeStr}</strong>
+        <strong style="color:#111827;">${escapeHtml(dateStr)} at ${escapeHtml(timeStr)}</strong>
       </td></tr>
       <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
         <span style="color:#9ca3af;font-size:13px;">Duration</span><br>
-        <strong style="color:#111827;">${sessionDuration} minutes</strong>
+        <strong style="color:#111827;">${escapeHtml(sessionDuration)} minutes</strong>
       </td></tr>
       <tr><td style="padding:16px 20px;">
         <span style="color:#9ca3af;font-size:13px;">Session Type</span><br>
-        <strong style="color:#111827;text-transform:capitalize;">${sessionType}</strong>
+        <strong style="color:#111827;text-transform:capitalize;">${escapeHtml(sessionType)}</strong>
       </td></tr>
     </table>
     <p style="color:#6b7280;font-size:13px;margin:0;">
       Please join your session 5 minutes early. You can cancel at least 24 hours before.
     </p>
   `);
-  return sendEmail(email, 'Booking Confirmed – Menorah Health', html);
+
+  return sendEmail(email, 'Booking Confirmed \u2013 Menorah Health', html);
 };
 
-// ─── Email: Session reminder ──────────────────────────────────────────────
 const sendSessionReminderEmail = async (email, sessionDetails) => {
   const { scheduledAt, sessionDuration, sessionType, counsellorName } = sessionDetails;
-  const dateStr = new Date(scheduledAt).toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-  const timeStr = new Date(scheduledAt).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+  const date = new Date(scheduledAt);
+  const dateStr = date.toLocaleDateString('en-IN', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const timeStr = date.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
   const html = layout(`
     <h2 style="color:#111827;margin:0 0 8px;">Session Reminder</h2>
     <p style="color:#6b7280;line-height:1.6;margin:0 0 24px;">
@@ -288,28 +358,34 @@ const sendSessionReminderEmail = async (email, sessionDetails) => {
            style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin:0 0 24px;">
       <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
         <span style="color:#9ca3af;font-size:13px;">Counsellor</span><br>
-        <strong style="color:#111827;">${counsellorName}</strong>
+        <strong style="color:#111827;">${escapeHtml(counsellorName)}</strong>
       </td></tr>
       <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
         <span style="color:#9ca3af;font-size:13px;">Date &amp; Time</span><br>
-        <strong style="color:#111827;">${dateStr} at ${timeStr}</strong>
+        <strong style="color:#111827;">${escapeHtml(dateStr)} at ${escapeHtml(timeStr)}</strong>
       </td></tr>
       <tr><td style="padding:16px 20px;">
         <span style="color:#9ca3af;font-size:13px;">Session Type</span><br>
-        <strong style="color:#111827;text-transform:capitalize;">${sessionType} · ${sessionDuration} min</strong>
+        <strong style="color:#111827;text-transform:capitalize;">${escapeHtml(sessionType)} &middot; ${escapeHtml(sessionDuration)} min</strong>
       </td></tr>
     </table>
     <p style="color:#6b7280;font-size:13px;margin:0;">
       Ensure you have a stable internet connection and are in a quiet, private space.
     </p>
   `);
-  return sendEmail(email, 'Session Reminder – Menorah Health', html);
+
+  return sendEmail(email, 'Session Reminder \u2013 Menorah Health', html);
 };
 
 module.exports = {
+  buildPasswordResetUrl,
+  buildCounsellorAppUrl,
+  buildPasswordResetUrlForRole,
   sendOTPEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
+  sendCounsellorCredentialsEmail,
+  sendCounsellorApprovalEmail,
   sendBookingConfirmationEmail,
   sendSessionReminderEmail,
 };

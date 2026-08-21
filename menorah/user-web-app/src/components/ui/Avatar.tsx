@@ -1,4 +1,7 @@
+'use client';
+
 import Image from 'next/image';
+import { useEffect, useState } from 'react';
 import { cn, getInitials } from '@/lib/utils';
 
 interface AvatarProps {
@@ -26,19 +29,28 @@ const dotSizes = {
 };
 
 export function Avatar({ src, name, size = 'md', className, online }: AvatarProps) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const initial = getInitials(name).slice(0, 1) || 'U';
+  const showImage = Boolean(src) && !imageFailed;
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [src]);
+
   return (
     <div className={cn('relative inline-flex shrink-0', sizes[size], className)}>
-      {src ? (
+      {showImage ? (
         <Image
-          src={src}
+          src={src as string}
           alt={name}
           fill
           className="rounded-full object-cover"
           sizes="80px"
+          onError={() => setImageFailed(true)}
         />
       ) : (
         <div className={cn('rounded-full bg-primary-600 text-white flex items-center justify-center font-bold w-full h-full shadow-sm dark:bg-primary-500')}>
-          {getInitials(name)}
+          {initial}
         </div>
       )}
       {online !== undefined && (

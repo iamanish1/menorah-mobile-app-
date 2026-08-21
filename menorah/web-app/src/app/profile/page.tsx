@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, KeyboardEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, useId, KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
+import { authStore } from '@/lib/auth';
 import AppLayout from '@/components/layout/AppLayout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -11,6 +12,7 @@ import Badge from '@/components/ui/Badge';
 import styles from './page.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+const MAX_PROFILE_TAGS = 20;
 
 type Day = typeof DAYS[number];
 
@@ -44,20 +46,50 @@ interface ProfileData {
     bio?: string;
     languages?: string[];
     licenseNumber?: string;
+    profileImage?: string;
+    voiceIntroUrl?: string;
+    voiceIntroDurationSeconds?: number;
+    profileMediaCompletedAt?: string;
+    profileMediaComplete?: boolean;
     availability?: Record<Day, AvailabilityDay>;
     bankDetails?: BankDetails;
   };
 }
 
 // ── TagInput ─────────────────────────────────────────────────────────────────
-function TagInput({ tags, onChange }: { tags: string[]; onChange: (tags: string[]) => void }) {
+const normalizeTag = (value: string) => value.trim().replace(/\s+/g, ' ');
+
+const normalizeTags = (tags: string[]) => {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const raw of tags) {
+    const tag = normalizeTag(raw);
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(tag);
+    if (normalized.length >= MAX_PROFILE_TAGS) break;
+  }
+
+  return normalized;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function TagInput({
+  tags,
+  onChange,
+  placeholder = 'Type and press Enter...',
+}: {
+  tags: string[];
+  onChange: (tags: string[]) => void;
+  placeholder?: string;
+}) {
   const [input, setInput] = useState('');
 
   const addTag = (value: string) => {
-    const trimmed = value.trim();
-    if (trimmed && !tags.includes(trimmed)) {
-      onChange([...tags, trimmed]);
-    }
+    const nextTags = normalizeTags([...tags, value]);
+    if (nextTags.join('\n') !== tags.join('\n')) onChange(nextTags);
     setInput('');
   };
 
@@ -88,17 +120,174 @@ function TagInput({ tags, onChange }: { tags: string[]; onChange: (tags: string[
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         onBlur={() => addTag(input)}
-        placeholder="Type and press Enter…"
+        placeholder={placeholder}
       />
     </div>
   );
 }
 
 // ── RateEditor ────────────────────────────────────────────────────────────────
+function OptionTagPicker({
+  tags,
+  options,
+  onChange,
+  placeholder,
+  loading = false,
+  emptyMessage,
+  allowCustomWhenEmpty = false,
+}: {
+  tags: string[];
+  options: string[];
+  onChange: (tags: string[]) => void;
+  placeholder: string;
+  loading?: boolean;
+  emptyMessage: string;
+  allowCustomWhenEmpty?: boolean;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+
+  const normalizedOptions = useMemo(() => normalizeTags(options), [options]);
+  const selectedKeys = useMemo(() => new Set(tags.map((tag) => tag.toLowerCase())), [tags]);
+  const filteredOptions = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return normalizedOptions;
+    return normalizedOptions.filter((option) => option.toLowerCase().includes(needle));
+  }, [normalizedOptions, query]);
+
+  const removeTag = (tag: string) => {
+    onChange(tags.filter((t) => t !== tag));
+  };
+
+  const toggleTag = (tag: string) => {
+    if (selectedKeys.has(tag.toLowerCase())) {
+      removeTag(tag);
+      return;
+    }
+
+    if (tags.length >= MAX_PROFILE_TAGS) return;
+    onChange(normalizeTags([...tags, tag]));
+    setQuery('');
+  };
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [open]);
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const firstAvailable = filteredOptions.find((option) => !selectedKeys.has(option.toLowerCase()));
+      if (firstAvailable) {
+        toggleTag(firstAvailable);
+      } else if (allowCustomWhenEmpty && normalizedOptions.length === 0 && query.trim()) {
+        onChange(normalizeTags([...tags, query]));
+        setQuery('');
+      }
+    } else if (e.key === 'Backspace' && !query && tags.length > 0) {
+      removeTag(tags[tags.length - 1]);
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    }
+  };
+
+  const reachedLimit = tags.length >= MAX_PROFILE_TAGS;
+
+  return (
+    <div ref={rootRef} className={styles.optionPicker}>
+      <div
+        className={styles.tagInput}
+        onClick={() => setOpen(true)}
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        aria-haspopup="listbox"
+      >
+        {tags.map((tag) => (
+          <span key={tag} className={styles.tag}>
+            {tag}
+            <button
+              type="button"
+              className={styles.tagRemove}
+              onClick={(event) => {
+                event.stopPropagation();
+                removeTag(tag);
+              }}
+              aria-label={`Remove ${tag}`}
+            >
+              x
+            </button>
+          </span>
+        ))}
+        <input
+          className={styles.tagTextInput}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={tags.length ? 'Search more options...' : placeholder}
+          disabled={loading || (!allowCustomWhenEmpty && normalizedOptions.length === 0) || reachedLimit}
+        />
+      </div>
+
+      {open && (
+        <div id={listboxId} className={styles.optionMenu} role="listbox">
+          {loading ? (
+            <div className={styles.optionEmpty}>Loading options...</div>
+          ) : filteredOptions.length === 0 ? (
+            <div className={styles.optionEmpty}>
+              {allowCustomWhenEmpty && normalizedOptions.length === 0 && query.trim()
+                ? `Press Enter to add "${query.trim()}"`
+                : emptyMessage}
+            </div>
+          ) : (
+            filteredOptions.map((option) => {
+              const selected = selectedKeys.has(option.toLowerCase());
+              const disabled = !selected && reachedLimit;
+
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  disabled={disabled}
+                  className={`${styles.optionItem} ${selected ? styles.optionItemSelected : ''}`}
+                  onClick={() => toggleTag(option)}
+                >
+                  <span>{option}</span>
+                  <span className={styles.optionCheck}>{selected ? 'Selected' : 'Add'}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RateEditor({ currentRate, currency, onSave }: {
   currentRate: number;
   currency: string;
-  onSave: (rate: number) => Promise<void>;
+  onSave: (rate: number) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
   const [rate, setRate] = useState(currentRate);
@@ -112,9 +301,12 @@ function RateEditor({ currentRate, currency, onSave }: {
   const handleSave = async () => {
     if (rate <= 0) return;
     setSaving(true);
-    await onSave(rate);
-    setSaving(false);
-    setEditing(false);
+    try {
+      const saved = await onSave(rate);
+      if (saved) setEditing(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -176,7 +368,7 @@ function RateEditor({ currentRate, currency, onSave }: {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, logoutAll } = useAuth();
 
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -192,14 +384,32 @@ export default function ProfilePage() {
   const [editingProfessional, setEditingProfessional] = useState(false);
   const [profForm, setProfForm] = useState({
     specialization: '',
+    specializations: [] as string[],
     experience: 0,
-    hourlyRate: 0,
     bio: '',
-    licenseNumber: '',
     languages: [] as string[],
     availability: {} as Record<Day, AvailabilityDay>,
   });
   const [savingProf, setSavingProf] = useState(false);
+  const [lookupSpecializations, setLookupSpecializations] = useState<string[]>([]);
+  const [lookupLanguages, setLookupLanguages] = useState<string[]>([]);
+  const [loadingLookups, setLoadingLookups] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+
+  // Mandatory profile media state
+  const selfieInputRef = useRef<HTMLInputElement>(null);
+  const voiceInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingChunksRef = useRef<BlobPart[]>([]);
+  const [selfieFile, setSelfieFile] = useState<File | null>(null);
+  const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
+  const [voiceIntroFile, setVoiceIntroFile] = useState<File | null>(null);
+  const [voiceIntroPreview, setVoiceIntroPreview] = useState<string | null>(null);
+  const [voiceIntroDuration, setVoiceIntroDuration] = useState(0);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [savingMedia, setSavingMedia] = useState(false);
 
   // Bank details state
   const [editingBank, setEditingBank] = useState(false);
@@ -210,14 +420,27 @@ export default function ProfilePage() {
   const [editingPassword, setEditingPassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.push('/login');
   }, [isAuthenticated, isLoading, router]);
 
   useEffect(() => {
-    if (isAuthenticated) fetchProfile();
+    if (isAuthenticated) {
+      fetchProfile();
+      fetchTagLookups();
+    }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+      if (selfiePreview) URL.revokeObjectURL(selfiePreview);
+      if (voiceIntroPreview) URL.revokeObjectURL(voiceIntroPreview);
+    };
+  }, [selfiePreview, voiceIntroPreview]);
 
   const fetchProfile = async () => {
     try {
@@ -230,6 +453,192 @@ export default function ProfilePage() {
       setError(err.message || 'Failed to load profile');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTagLookups = async () => {
+    try {
+      setLoadingLookups(true);
+      setLookupError(null);
+      const [specializationsResponse, languagesResponse] = await Promise.all([
+        api.getSpecializations(),
+        api.getLanguages(),
+      ]);
+
+      if (specializationsResponse.success && specializationsResponse.data) {
+        setLookupSpecializations(normalizeTags(specializationsResponse.data.specializations));
+      } else {
+        setLookupError(specializationsResponse.message || 'Failed to load specialization options');
+      }
+
+      if (languagesResponse.success && languagesResponse.data) {
+        setLookupLanguages(normalizeTags(languagesResponse.data.languages));
+      } else {
+        setLookupError(languagesResponse.message || 'Failed to load language options');
+      }
+    } catch (err: any) {
+      setLookupError(err.message || 'Failed to load tag options');
+    } finally {
+      setLoadingLookups(false);
+    }
+  };
+
+  const handleSelfieChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Upload a valid image file for your profile selfie.');
+      return;
+    }
+
+    if (selfiePreview) URL.revokeObjectURL(selfiePreview);
+    setSelfieFile(file);
+    setSelfiePreview(URL.createObjectURL(file));
+  };
+
+  const clearVoiceIntroPreview = () => {
+    if (voiceIntroPreview) URL.revokeObjectURL(voiceIntroPreview);
+    setVoiceIntroFile(null);
+    setVoiceIntroPreview(null);
+    setVoiceIntroDuration(0);
+    if (voiceInputRef.current) voiceInputRef.current.value = '';
+  };
+
+  const setVoiceIntroFromBlob = (blob: Blob, fileName: string, durationSeconds?: number) => {
+    const file = blob instanceof File
+      ? blob
+      : new File([blob], fileName, { type: blob.type || 'audio/webm' });
+    const previewUrl = URL.createObjectURL(blob);
+
+    if (voiceIntroPreview) URL.revokeObjectURL(voiceIntroPreview);
+    setVoiceIntroFile(file);
+    setVoiceIntroPreview(previewUrl);
+    setVoiceIntroDuration(durationSeconds ? Math.round(durationSeconds * 10) / 10 : 0);
+
+    return previewUrl;
+  };
+
+  const handleVoiceIntroFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const supportedByName = /\.(webm|ogg|mp3|m4a|wav)$/i.test(file.name);
+    const supportedByMime = file.type.startsWith('audio/') || file.type === 'video/webm';
+
+    if (!supportedByMime && !supportedByName) {
+      setError('Upload a valid WebM, OGG, MP3, M4A, or WAV voice intro.');
+      event.target.value = '';
+      return;
+    }
+
+    setError(null);
+    const previewUrl = setVoiceIntroFromBlob(file, file.name);
+    const audio = new Audio(previewUrl);
+    audio.preload = 'metadata';
+    audio.onloadedmetadata = () => {
+      const duration = audio.duration;
+      if (!Number.isFinite(duration)) return;
+
+      setVoiceIntroDuration(Math.round(duration * 10) / 10);
+    };
+    audio.onerror = () => {
+      setError('The selected audio file can be uploaded, but the browser could not preview its duration.');
+    };
+  };
+
+  const stopVoiceRecording = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+    }
+  };
+
+  const startVoiceRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('Voice recording is not supported in this browser. Upload an audio file instead.');
+      return;
+    }
+
+    try {
+      setError(null);
+      recordingChunksRef.current = [];
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const startedAt = Date.now();
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = () => {
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+
+        stream.getTracks().forEach((track) => track.stop());
+        const duration = Math.max(1, (Date.now() - startedAt) / 1000);
+        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        setVoiceIntroFromBlob(blob, `menorah-voice-intro-${Date.now()}.webm`, duration);
+        setVoiceIntroDuration(Math.round(duration * 10) / 10);
+        setIsRecordingVoice(false);
+        setRecordingSeconds(0);
+      };
+
+      recorder.start();
+      setIsRecordingVoice(true);
+      setRecordingSeconds(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        const elapsedSeconds = Math.ceil((Date.now() - startedAt) / 1000);
+        setRecordingSeconds(elapsedSeconds);
+      }, 1000);
+    } catch (err: any) {
+      const name = err?.name || '';
+      const message =
+        name === 'NotFoundError' || name === 'DevicesNotFoundError'
+          ? 'No microphone was found on this device. Connect a microphone or upload an audio file instead.'
+          : name === 'NotAllowedError' || name === 'SecurityError'
+          ? 'Microphone permission is blocked. Allow microphone access in the browser, or upload an audio file instead.'
+          : name === 'NotReadableError'
+          ? 'The microphone is unavailable or being used by another app. Close other apps or upload an audio file instead.'
+          : err.message || 'Unable to access microphone. You can upload an audio file instead.';
+      setError(message);
+      setIsRecordingVoice(false);
+    }
+  };
+
+  const saveProfileMedia = async () => {
+    if (!selfieFile && !voiceIntroFile) {
+      showSuccess('Profile media is already complete.');
+      return;
+    }
+
+    const formData = new FormData();
+    if (selfieFile) formData.append('profileImage', selfieFile);
+    if (voiceIntroFile) formData.append('voiceIntro', voiceIntroFile);
+
+    setSavingMedia(true);
+    setError(null);
+    const response = await api.updateCounsellorProfileMedia(formData);
+    setSavingMedia(false);
+
+    if (response.success) {
+      setSelfieFile(null);
+      if (selfiePreview) URL.revokeObjectURL(selfiePreview);
+      setSelfiePreview(null);
+      clearVoiceIntroPreview();
+      await fetchProfile();
+      showSuccess(response.message || 'Profile media updated.');
+    } else {
+      setError(response.message || 'Failed to save profile media.');
     }
   };
 
@@ -261,6 +670,15 @@ export default function ProfilePage() {
     });
     setSavingPersonal(false);
     if (res.success) {
+      // Keep the portal chrome in step with the saved User record. Without
+      // this, the profile card changed immediately but the sidebar/topbar kept
+      // the pre-edit name until a full page reload.
+      if (res.data?.user) {
+        const currentUser = authStore.getState().user;
+        if (currentUser) {
+          authStore.setState({ user: { ...currentUser, ...res.data.user } });
+        }
+      }
       await fetchProfile();
       setEditingPersonal(false);
       showSuccess('Personal info updated.');
@@ -271,6 +689,10 @@ export default function ProfilePage() {
 
   // ── Professional edit ──────────────────────────────────────────────────────
   const startEditProfessional = () => {
+    if (!loadingLookups && (lookupSpecializations.length === 0 || lookupLanguages.length === 0)) {
+      fetchTagLookups();
+    }
+
     const cp = profileData?.counsellorProfile;
     const defaultDay: AvailabilityDay = { start: '09:00', end: '17:00', isAvailable: false };
     const avail: Record<Day, AvailabilityDay> = {} as Record<Day, AvailabilityDay>;
@@ -279,12 +701,14 @@ export default function ProfilePage() {
         ? { ...(cp.availability as Record<Day, AvailabilityDay>)[d] }
         : { ...defaultDay, isAvailable: d !== 'saturday' && d !== 'sunday' };
     });
+    const specializations = normalizeTags(
+      cp?.specializations?.length ? cp.specializations : cp?.specialization ? [cp.specialization] : []
+    );
     setProfForm({
-      specialization: cp?.specialization ?? '',
+      specialization: specializations[0] ?? cp?.specialization ?? '',
+      specializations,
       experience: cp?.yearsOfExperience ?? 0,
-      hourlyRate: cp?.hourlyRate ?? 0,
       bio: cp?.bio ?? '',
-      licenseNumber: cp?.licenseNumber ?? '',
       languages: cp?.languages ? [...cp.languages] : [],
       availability: avail,
     });
@@ -292,20 +716,33 @@ export default function ProfilePage() {
   };
 
   const saveProfessional = async () => {
+    const specializations = normalizeTags(profForm.specializations);
+    const languages = normalizeTags(profForm.languages);
+
+    if (specializations.length === 0) {
+      setError('Add at least one specialization before saving.');
+      return;
+    }
+
+    if (languages.length === 0) {
+      setError('Add at least one language before saving.');
+      return;
+    }
+
     setSavingProf(true);
     setError(null);
     const res = await api.updateCounsellorProfile({
-      specialization: profForm.specialization,
+      specialization: specializations[0],
+      specializations,
       experience: profForm.experience,
-      hourlyRate: profForm.hourlyRate,
       bio: profForm.bio,
-      licenseNumber: profForm.licenseNumber,
-      languages: profForm.languages,
+      languages,
       availability: profForm.availability,
     });
     setSavingProf(false);
     if (res.success) {
       await fetchProfile();
+      await fetchTagLookups();
       setEditingProfessional(false);
       showSuccess('Professional info updated.');
     } else {
@@ -355,16 +792,25 @@ export default function ProfilePage() {
 
   // ── Password ───────────────────────────────────────────────────────────────
   const savePassword = async () => {
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setError('New passwords do not match');
+    if (!passwordForm.currentPassword) {
+      setPasswordError('Enter your current password');
       return;
     }
-    if (passwordForm.newPassword.length < 8) {
-      setError('New password must be at least 8 characters');
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+    if (
+      passwordForm.newPassword.length < 8
+      || !/[a-z]/.test(passwordForm.newPassword)
+      || !/[A-Z]/.test(passwordForm.newPassword)
+      || !/\d/.test(passwordForm.newPassword)
+    ) {
+      setPasswordError('Password must be at least 8 characters and include uppercase, lowercase, and a number');
       return;
     }
     setSavingPassword(true);
-    setError(null);
+    setPasswordError(null);
     const res = await api.changePassword({
       currentPassword: passwordForm.currentPassword,
       newPassword: passwordForm.newPassword,
@@ -373,9 +819,9 @@ export default function ProfilePage() {
     if (res.success) {
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setEditingPassword(false);
-      showSuccess('Password changed successfully.');
+      window.location.replace('/login?password=changed');
     } else {
-      setError(res.message || 'Password change failed');
+      setPasswordError(res.message || 'Password change failed');
     }
   };
 
@@ -392,6 +838,14 @@ export default function ProfilePage() {
 
   const profile = profileData || (user as ProfileData | null);
   const cp = profile?.counsellorProfile;
+  const specializationTags = normalizeTags(
+    cp?.specializations?.length ? cp.specializations : cp?.specialization ? [cp.specialization] : []
+  );
+  const currentProfileImage = selfiePreview || cp?.profileImage || null;
+  const currentVoiceIntroUrl = voiceIntroPreview || cp?.voiceIntroUrl || null;
+  const profileMediaComplete = Boolean(cp?.profileMediaComplete || (cp?.profileImage && cp?.voiceIntroUrl));
+  const hasPendingProfileMediaChanges = Boolean(selfieFile || voiceIntroFile);
+  const canSaveProfileMedia = hasPendingProfileMediaChanges;
 
   return (
     <AppLayout>
@@ -446,6 +900,133 @@ export default function ProfilePage() {
 
         {/* Info Cards */}
         <div className={styles.infoSection}>
+          <div id="profile-media" className={styles.profileMediaAnchor}>
+            <Card padding="lg" className={`${styles.infoCard} ${!profileMediaComplete ? styles.requiredMediaCard : ''}`}>
+              <div className={styles.cardHeaderRow}>
+                <div className={styles.cardHeaderLeft}>
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className={styles.cardIcon}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.55-2.28A1 1 0 0121 8.62v6.76a1 1 0 01-1.45.9L15 14M4 6h8a3 3 0 013 3v6a3 3 0 01-3 3H4a2 2 0 01-2-2V8a2 2 0 012-2z" />
+                  </svg>
+                  <div>
+                    <h3 className={styles.cardTitle}>Required Profile Media</h3>
+                    <p className={styles.mediaSubtitle}>Add a clear selfie and a short voice intro before your profile appears to users.</p>
+                  </div>
+                </div>
+                <Badge variant={profileMediaComplete ? 'success' : 'warning'} size="sm">
+                  {profileMediaComplete ? 'Complete' : 'Required'}
+                </Badge>
+              </div>
+
+              {!profileMediaComplete && (
+                <div className={styles.mediaNotice}>
+                  Your account is approved, but your public profile stays hidden until both media items are saved.
+                </div>
+              )}
+
+              <div className={styles.mediaGrid}>
+                <div className={styles.mediaPanel}>
+                  <div className={styles.mediaPanelHeader}>
+                    <p className={styles.mediaPanelTitle}>Profile selfie</p>
+                    <span className={currentProfileImage ? styles.mediaStatusDone : styles.mediaStatusMissing}>
+                      {currentProfileImage ? 'Added' : 'Missing'}
+                    </span>
+                  </div>
+                  <div className={styles.selfiePreviewBox}>
+                    {currentProfileImage ? (
+                      <img src={currentProfileImage} alt="Counsellor profile selfie preview" className={styles.selfiePreviewImage} />
+                    ) : (
+                      <div className={styles.selfiePreviewEmpty}>
+                        <span>
+                          {(profile?.firstName?.charAt(0) || 'C').toUpperCase()}
+                          {(profile?.lastName?.charAt(0) || '').toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <p className={styles.mediaHelper}>Use a well-lit, front-facing photo. This becomes your public profile image.</p>
+                  <input
+                    ref={selfieInputRef}
+                    type="file"
+                    accept="image/*"
+                    className={styles.hiddenFileInput}
+                    onChange={handleSelfieChange}
+                  />
+                  <Button variant="outline" size="sm" onClick={() => selfieInputRef.current?.click()}>
+                    {currentProfileImage ? 'Replace selfie' : 'Add selfie'}
+                  </Button>
+                  {selfieFile && (
+                    <p className={styles.mediaHelper}>Background cleanup happens after you save.</p>
+                  )}
+                </div>
+
+                <div className={styles.mediaPanel}>
+                  <div className={styles.mediaPanelHeader}>
+                    <p className={styles.mediaPanelTitle}>Voice intro</p>
+                    <span className={currentVoiceIntroUrl ? styles.mediaStatusDone : styles.mediaStatusMissing}>
+                      {currentVoiceIntroUrl ? 'Added' : 'Missing'}
+                    </span>
+                  </div>
+                  <div className={styles.voiceRecorderBox}>
+                    {currentVoiceIntroUrl ? (
+                      <audio className={styles.voiceAudio} src={currentVoiceIntroUrl} controls />
+                    ) : (
+                      <div className={styles.voiceEmpty}>Introduce your approach in a calm, short message.</div>
+                    )}
+                    <div className={styles.recordingMeter} aria-hidden="true">
+                      <span style={{ width: isRecordingVoice ? '100%' : '0%' }} />
+                    </div>
+                    <p className={styles.mediaHelper}>
+                      {isRecordingVoice
+                        ? `Recording ${recordingSeconds}s`
+                        : voiceIntroDuration
+                        ? `Recorded ${voiceIntroDuration.toFixed(1)}s`
+                        : 'Record your intro, then stop when finished.'}
+                    </p>
+                  </div>
+                  <input
+                    ref={voiceInputRef}
+                    type="file"
+                    accept="audio/*,.webm,.ogg,.mp3,.m4a,.wav"
+                    className={styles.hiddenFileInput}
+                    onChange={handleVoiceIntroFileChange}
+                  />
+                  <div className={styles.voiceActions}>
+                    <Button
+                      variant={isRecordingVoice ? 'danger' : 'outline'}
+                      size="sm"
+                      onClick={isRecordingVoice ? stopVoiceRecording : startVoiceRecording}
+                      disabled={savingMedia}
+                    >
+                      {isRecordingVoice ? 'Stop recording' : currentVoiceIntroUrl ? 'Record again' : 'Record intro'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => voiceInputRef.current?.click()}
+                      disabled={savingMedia || isRecordingVoice}
+                    >
+                      Upload audio
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className={styles.mediaActions}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={saveProfileMedia}
+                  disabled={!hasPendingProfileMediaChanges || !canSaveProfileMedia || isRecordingVoice}
+                  isLoading={savingMedia}
+                >
+                  Save profile media
+                </Button>
+                <span className={styles.mediaSaveHint}>
+                  {hasPendingProfileMediaChanges ? 'Save to update your public profile.' : 'No unsaved media changes.'}
+                </span>
+              </div>
+            </Card>
+          </div>
 
           {/* ── Personal Information ── */}
           <Card padding="lg" className={styles.infoCard}>
@@ -567,15 +1148,30 @@ export default function ProfilePage() {
 
             {editingProfessional ? (
               <>
+                {lookupError && (
+                  <div className={styles.lookupWarning}>
+                    {lookupError}. The current saved tags remain visible, but new choices need the Discover options to load.
+                  </div>
+                )}
                 <div className={styles.infoGrid}>
                   <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>Specialization</label>
-                    <input
-                      className={styles.formInput}
-                      value={profForm.specialization}
-                      onChange={(e) => setProfForm((p) => ({ ...p, specialization: e.target.value }))}
-                      placeholder="e.g. Anxiety, Depression"
+                    <label className={styles.infoLabel}>Specializations</label>
+                    <OptionTagPicker
+                      tags={profForm.specializations}
+                      options={lookupSpecializations}
+                      onChange={(tags) => setProfForm((p) => ({
+                        ...p,
+                        specialization: tags[0] ?? '',
+                        specializations: tags,
+                      }))}
+                      placeholder="Search specialization options"
+                      loading={loadingLookups}
+                      emptyMessage="No specialization options found"
+                      allowCustomWhenEmpty
                     />
+                    <p style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                      Choose up to {MAX_PROFILE_TAGS} support areas from the same Discover filter options users see.
+                    </p>
                   </div>
                   <div className={styles.formGroup}>
                     <label className={styles.infoLabel}>Years of Experience</label>
@@ -587,34 +1183,21 @@ export default function ProfilePage() {
                       onChange={(e) => setProfForm((p) => ({ ...p, experience: Number(e.target.value) }))}
                     />
                   </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>Hourly Rate (INR)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      className={styles.formInput}
-                      value={profForm.hourlyRate}
-                      onChange={(e) => setProfForm((p) => ({ ...p, hourlyRate: Number(e.target.value) }))}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>License Number</label>
-                    <input
-                      className={styles.formInput}
-                      value={profForm.licenseNumber}
-                      onChange={(e) => setProfForm((p) => ({ ...p, licenseNumber: e.target.value }))}
-                    />
-                  </div>
                 </div>
 
                 <div className={styles.formGroup} style={{ marginTop: 'var(--spacing-lg)' }}>
                   <label className={styles.infoLabel}>Languages</label>
-                  <TagInput
+                  <OptionTagPicker
                     tags={profForm.languages}
+                    options={lookupLanguages}
                     onChange={(tags) => setProfForm((p) => ({ ...p, languages: tags }))}
+                    placeholder="Search language options"
+                    loading={loadingLookups}
+                    emptyMessage="No language options found"
+                    allowCustomWhenEmpty
                   />
                   <p style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                    Type a language and press Enter to add
+                    Choose up to {MAX_PROFILE_TAGS} languages from the same Discover filter options users see.
                   </p>
                 </div>
 
@@ -678,22 +1261,20 @@ export default function ProfilePage() {
             ) : (
               <>
                 <div className={styles.infoGrid}>
-                  {cp?.specialization && (
+                  {specializationTags.length > 0 && (
                     <div className={styles.infoItem}>
-                      <p className={styles.infoLabel}>Specialization</p>
-                      <p className={styles.infoValue}>{cp.specialization}</p>
+                      <p className={styles.infoLabel}>Specializations</p>
+                      <div className={styles.languageBadges}>
+                        {specializationTags.map((specialization) => (
+                          <Badge key={specialization} variant="default" size="sm">{specialization}</Badge>
+                        ))}
+                      </div>
                     </div>
                   )}
                   {cp?.yearsOfExperience !== undefined && (
                     <div className={styles.infoItem}>
                       <p className={styles.infoLabel}>Years of Experience</p>
                       <p className={styles.infoValue}>{cp.yearsOfExperience} years</p>
-                    </div>
-                  )}
-                  {cp?.hourlyRate !== undefined && (
-                    <div className={styles.infoItem}>
-                      <p className={styles.infoLabel}>Hourly Rate</p>
-                      <p className={styles.infoValue}>{cp.currency || 'INR'} {cp.hourlyRate}</p>
                     </div>
                   )}
                   {cp?.licenseNumber && (
@@ -759,8 +1340,10 @@ export default function ProfilePage() {
                 if (res.success) {
                   await fetchProfile();
                   showSuccess('Hourly rate updated.');
+                  return true;
                 } else {
                   setError(res.message || 'Failed to update rate');
+                  return false;
                 }
               }}
             />
@@ -873,55 +1456,123 @@ export default function ProfilePage() {
                 <h3 className={styles.cardTitle}>Account Security</h3>
               </div>
               {!editingPassword && (
-                <button className={styles.editBtn} onClick={() => setEditingPassword(true)}>Change Password</button>
+                <button
+                  type="button"
+                  className={styles.editBtn}
+                  onClick={() => {
+                    setPasswordError(null);
+                    setEditingPassword(true);
+                  }}
+                >
+                  Change Password
+                </button>
               )}
             </div>
 
             {editingPassword ? (
               <>
+                {passwordError ? (
+                  <div className={styles.errorAlert} role="alert">
+                    <svg fill="currentColor" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    {passwordError}
+                  </div>
+                ) : null}
                 <div className={styles.passwordSection}>
                   <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>Current Password</label>
+                    <label htmlFor="current-password" className={styles.infoLabel}>Current Password</label>
                     <input
+                      id="current-password"
+                      name="currentPassword"
                       type="password"
+                      autoComplete="current-password"
                       className={styles.formInput}
                       value={passwordForm.currentPassword}
-                      onChange={(e) => setPasswordForm((p) => ({ ...p, currentPassword: e.target.value }))}
+                      onChange={(e) => {
+                        setPasswordError(null);
+                        setPasswordForm((p) => ({ ...p, currentPassword: e.target.value }));
+                      }}
                       placeholder="Enter your current password"
+                      disabled={savingPassword}
                     />
                   </div>
                   <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>New Password</label>
+                    <label htmlFor="profile-new-password" className={styles.infoLabel}>New Password</label>
                     <input
+                      id="profile-new-password"
+                      name="newPassword"
                       type="password"
+                      autoComplete="new-password"
                       className={styles.formInput}
                       value={passwordForm.newPassword}
-                      onChange={(e) => setPasswordForm((p) => ({ ...p, newPassword: e.target.value }))}
+                      onChange={(e) => {
+                        setPasswordError(null);
+                        setPasswordForm((p) => ({ ...p, newPassword: e.target.value }));
+                      }}
                       placeholder="At least 8 characters"
+                      disabled={savingPassword}
+                      aria-describedby="profile-password-requirements"
                     />
+                    <p id="profile-password-requirements" className={styles.securityText}>
+                      Include uppercase, lowercase, and at least one number.
+                    </p>
                   </div>
                   <div className={styles.formGroup}>
-                    <label className={styles.infoLabel}>Confirm New Password</label>
+                    <label htmlFor="profile-confirm-password" className={styles.infoLabel}>Confirm New Password</label>
                     <input
+                      id="profile-confirm-password"
+                      name="confirmPassword"
                       type="password"
+                      autoComplete="new-password"
                       className={styles.formInput}
                       value={passwordForm.confirmPassword}
-                      onChange={(e) => setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }))}
+                      onChange={(e) => {
+                        setPasswordError(null);
+                        setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }));
+                      }}
                       placeholder="Re-enter new password"
+                      disabled={savingPassword}
                     />
                   </div>
                 </div>
                 <div className={styles.formActions}>
-                  <Button variant="primary" size="sm" onClick={savePassword} disabled={savingPassword}>
+                  <Button type="button" variant="primary" size="sm" onClick={savePassword} disabled={savingPassword}>
                     {savingPassword ? 'Saving…' : 'Update Password'}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => { setEditingPassword(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); }} disabled={savingPassword}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingPassword(false);
+                      setPasswordError(null);
+                      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                    }}
+                    disabled={savingPassword}
+                  >
                     Cancel
                   </Button>
                 </div>
               </>
             ) : (
-              <p className={styles.securityText}>Update your password to keep your account secure.</p>
+              <>
+                <p className={styles.securityText}>Update your password to keep your account secure.</p>
+                <div className={styles.formActions}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (window.confirm('Sign out every browser and device connected to this account?')) {
+                        void logoutAll();
+                      }
+                    }}
+                  >
+                    Sign Out All Devices
+                  </Button>
+                </div>
+              </>
             )}
           </Card>
 

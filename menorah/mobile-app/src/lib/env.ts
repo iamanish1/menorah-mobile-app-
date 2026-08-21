@@ -12,8 +12,33 @@ const configWebBaseURL: string | undefined =
   ((Constants.expoConfig?.extra as any)?.WEB_BASE_URL as string | undefined) ||
   ((Constants.expoConfig?.extra as any)?.PUBLIC_WEB_BASE_URL as string | undefined);
 
+const configArticleCanonicalBaseURL: string | undefined =
+  (process.env.EXPO_PUBLIC_ARTICLE_CANONICAL_BASE_URL?.trim()) ||
+  (process.env.ARTICLE_CANONICAL_BASE_URL?.trim()) ||
+  ((Constants.expoConfig?.extra as any)?.ARTICLE_CANONICAL_BASE_URL as string | undefined);
+
+const configGoogleWebClientId =
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ||
+  ((Constants.expoConfig?.extra as any)?.GOOGLE_WEB_CLIENT_ID as string | undefined);
+
+const configGoogleIosClientId =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ||
+  ((Constants.expoConfig?.extra as any)?.GOOGLE_IOS_CLIENT_ID as string | undefined);
+
+const configGoogleAndroidClientId =
+  process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ||
+  ((Constants.expoConfig?.extra as any)?.GOOGLE_ANDROID_CLIENT_ID as string | undefined);
+
+const configGoogleIosUrlScheme =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME?.trim() ||
+  ((Constants.expoConfig?.extra as any)?.GOOGLE_IOS_URL_SCHEME as string | undefined);
+
 const normalizeBaseURL = (url?: string) => {
-  const fallbackUrl = __DEV__ ? 'http://localhost:3000/api' : 'https://api.menorah.me/api';
+  if (!url && !__DEV__) {
+    throw new Error('EXPO_PUBLIC_API_BASE_URL is required for production builds');
+  }
+
+  const fallbackUrl = 'http://localhost:3000/api';
   const candidate = (url ?? fallbackUrl).trim().replace(/\/+$/, '');
 
   // Only remap localhost for Android emulator (emulator can't reach host via localhost)
@@ -25,7 +50,8 @@ const normalizeBaseURL = (url?: string) => {
 };
 
 const buildAPIBaseURL = () => normalizeBaseURL(configBaseURL);
-const buildWebBaseURL = () => (configWebBaseURL ?? 'https://menorahhealth.app').trim().replace(/\/+$/, '');
+const buildWebBaseURL = () => (configWebBaseURL ?? 'https://app.menorah.me').trim().replace(/\/+$/, '');
+const buildArticleCanonicalBaseURL = () => (configArticleCanonicalBaseURL ?? 'https://menorah.me').trim().replace(/\/+$/, '');
 
 const deriveAPIOrigin = (baseUrl: string) => {
   try {
@@ -38,6 +64,7 @@ const deriveAPIOrigin = (baseUrl: string) => {
 const API_BASE_URL = buildAPIBaseURL();
 const API_ORIGIN = deriveAPIOrigin(API_BASE_URL);
 const WEB_BASE_URL = buildWebBaseURL();
+const ARTICLE_CANONICAL_BASE_URL = buildArticleCanonicalBaseURL();
 const IS_EXPO_GO = (Constants.executionEnvironment as string) === 'expo';
 
 // Feature flag for Razorpay SDK integration
@@ -48,20 +75,38 @@ export const ENV = {
   API_BASE_URL,
   API_ORIGIN,
   WEB_BASE_URL,
+  ARTICLE_CANONICAL_BASE_URL,
   CHECKOUT_RETURN_URL: (Constants.expoConfig?.extra as any)?.CHECKOUT_RETURN_URL as string,
   JITSI_BASE_URL: (Constants.expoConfig?.extra as any)?.JITSI_BASE_URL as string,
+  GOOGLE_WEB_CLIENT_ID: configGoogleWebClientId,
+  GOOGLE_IOS_CLIENT_ID: configGoogleIosClientId,
+  GOOGLE_ANDROID_CLIENT_ID: configGoogleAndroidClientId,
+  GOOGLE_IOS_URL_SCHEME: configGoogleIosUrlScheme,
+  SOCIAL_GOOGLE_CONFIGURED: Boolean(configGoogleWebClientId && (
+    Platform.OS === 'ios'
+      ? configGoogleIosClientId
+      : Platform.OS === 'android'
+        ? configGoogleAndroidClientId
+        : true
+  )),
   IS_EXPO_GO,
   USE_RAZORPAY_SDK,
 };
 
-// Debug logging
-console.log('Environment Configuration:', {
-  Platform: Platform.OS,
-  __DEV__,
-  IS_EXPO_GO: ENV.IS_EXPO_GO,
-  API_BASE_URL: ENV.API_BASE_URL,
-  API_ORIGIN: ENV.API_ORIGIN,
-  WEB_BASE_URL: ENV.WEB_BASE_URL,
-  CHECKOUT_RETURN_URL: ENV.CHECKOUT_RETURN_URL,
-  JITSI_BASE_URL: ENV.JITSI_BASE_URL,
-});
+if (__DEV__) {
+  console.log('Environment Configuration:', {
+    Platform: Platform.OS,
+    __DEV__,
+    IS_EXPO_GO: ENV.IS_EXPO_GO,
+    API_BASE_URL: ENV.API_BASE_URL,
+    API_ORIGIN: ENV.API_ORIGIN,
+    WEB_BASE_URL: ENV.WEB_BASE_URL,
+    ARTICLE_CANONICAL_BASE_URL: ENV.ARTICLE_CANONICAL_BASE_URL,
+    CHECKOUT_RETURN_URL: ENV.CHECKOUT_RETURN_URL,
+    JITSI_BASE_URL: ENV.JITSI_BASE_URL,
+    GOOGLE_WEB_CLIENT_ID: ENV.GOOGLE_WEB_CLIENT_ID ? 'set' : 'missing',
+    GOOGLE_IOS_CLIENT_ID: ENV.GOOGLE_IOS_CLIENT_ID ? 'set' : 'missing',
+    GOOGLE_ANDROID_CLIENT_ID: ENV.GOOGLE_ANDROID_CLIENT_ID ? 'set' : 'missing',
+    GOOGLE_IOS_URL_SCHEME: ENV.GOOGLE_IOS_URL_SCHEME ? 'set' : 'missing',
+  });
+}

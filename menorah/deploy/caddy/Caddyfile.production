@@ -1,0 +1,326 @@
+{
+	email {$PUBLIC_EMAIL}
+	# Cloudflare Tunnel terminates public TLS and connects to Caddy over the
+	# private Docker network. Do not redirect this origin hop to HTTPS.
+	auto_https off
+	servers {
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+}
+
+(browser_call_security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
+		-Server
+	}
+}
+
+(api_proxy) {
+	import security_headers
+	encode gzip zstd
+	@private_metrics path /metrics/*
+	respond @private_metrics 404
+	request_body {
+		max_size 20MB
+	}
+}
+
+# Only the authenticated admin Reel-upload endpoint needs a larger request
+# body. All other API routes retain the 20 MB default limit above.
+(social_reel_upload_proxy) {
+	import security_headers
+	encode gzip zstd
+	@private_metrics path /metrics/*
+	respond @private_metrics 404
+	request_body {
+		max_size {$SOCIAL_STUDIO_MAX_VIDEO_REQUEST_SIZE_MB:55}MB
+	}
+}
+
+# The signed browser call page is intentionally served by the API so that a
+# one-time meeting ticket never has to be exposed to another origin. It is the
+# only API document that needs access to camera and microphone; all JSON API
+# routes continue to receive the stricter policy above.
+(browser_call_api_proxy) {
+	import browser_call_security_headers
+	encode gzip zstd
+	@private_metrics path /metrics/*
+	respond @private_metrics 404
+	request_body {
+		max_size 20MB
+	}
+}
+
+# The upstream returns a strict 404 until the corresponding platform signing
+# identifiers are configured. Keeping this route at the edge prevents the web
+# app from accidentally serving a fallback HTML page for association requests.
+# A Cloudflare www-to-apex redirect executes before Caddy, so that edge rule
+# must explicitly exclude these exact paths; see deploy/cloudflare/README.md.
+(app_link_associations) {
+	@app_link_association path /.well-known/apple-app-site-association /.well-known/assetlinks.json
+	handle @app_link_association {
+		reverse_proxy app-link-associations:8080
+	}
+}
+
+http://{$ROOT_DOMAIN}, http://{$WWW_DOMAIN} {
+	import security_headers
+	import app_link_associations
+	encode gzip zstd
+	reverse_proxy landing-page:3002
+	log {
+		output file /var/log/caddy/www-access.log
+		format json
+	}
+}
+
+http://{$APP_DOMAIN} {
+	import browser_call_security_headers
+	import app_link_associations
+	encode gzip zstd
+	# Razorpay may fall back to a GET redirect. Do not write its signed callback
+	# values — or the short-lived callback cookie sent to the return screen — to
+	# the reverse-proxy access log.
+	@checkout_sensitive path /checkout/callback /checkout/return /checkout/return/*
+	log_skip @checkout_sensitive
+	# Password reset links carry a short-lived one-time capability in the query
+	# string so installed mobile apps can receive it through Universal/App Links.
+	# Never persist that capability in the reverse-proxy access log.
+	@password_reset_capability path /reset-password /reset-password/*
+	log_skip @password_reset_capability
+	reverse_proxy user-web-app:3002
+	log {
+		output file /var/log/caddy/app-access.log
+		format json
+	}
+}
+
+http://{$ADMIN_DOMAIN} {
+	import security_headers
+	encode gzip zstd
+	reverse_proxy admin-panel:3003
+	log {
+		output file /var/log/caddy/admin-access.log
+		format json
+	}
+}
+
+http://{$COUNSELLOR_DOMAIN} {
+	import browser_call_security_headers
+	encode gzip zstd
+	@password_reset_capability path /reset-password /reset-password/*
+	log_skip @password_reset_capability
+	reverse_proxy web-app:3001
+	log {
+		output file /var/log/caddy/counsellor-access.log
+		format json
+	}
+}
+
+http://{$API_IOS_DOMAIN} {
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		reverse_proxy api-ios:8080
+	}
+	import app_link_associations
+	handle {
+		import api_proxy
+		reverse_proxy api-ios:8080
+	}
+	log {
+		output file /var/log/caddy/api-ios-access.log
+		format json
+	}
+}
+
+http://{$API_ANDROID_DOMAIN} {
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		reverse_proxy api-android:8080
+	}
+	import app_link_associations
+	handle {
+		import api_proxy
+		reverse_proxy api-android:8080
+	}
+	log {
+		output file /var/log/caddy/api-android-access.log
+		format json
+	}
+}
+
+http://{$API_WEB_DOMAIN} {
+	@password_reset_capability path /api/auth/reset-password /api/auth/reset-password/*
+	log_skip @password_reset_capability
+	@video_meet_page {
+		method GET
+		path /api/video/meet
+	}
+	handle @video_meet_page {
+		import browser_call_api_proxy
+		reverse_proxy api-web:8080
+	}
+	handle {
+		import api_proxy
+		reverse_proxy api-web:8080
+	}
+	log {
+		output file /var/log/caddy/api-web-access.log
+		format json
+	}
+}
+
+http://{$API_ADMIN_DOMAIN} {
+	@social_reel_upload {
+		method POST
+		path /api/admin/social-studio/posts/video
+	}
+	handle @social_reel_upload {
+		import social_reel_upload_proxy
+		reverse_proxy api-admin:8080
+	}
+	handle {
+		import api_proxy
+		reverse_proxy api-admin:8080
+	}
+	log {
+		output file /var/log/caddy/api-admin-access.log
+		format json
+	}
+}
+
+http://{$CALLS_DOMAIN} {
+	import browser_call_security_headers
+	encode gzip zstd
+	reverse_proxy {$LIVEKIT_UPSTREAM}
+	log {
+		output file /var/log/caddy/calls-access.log
+		format json
+	}
+}
+
+http://mentle.org, http://www.mentle.org, http://mentle.mentle.org {
+	import security_headers
+	encode gzip zstd
+	reverse_proxy mentle-landing-web:3101
+	log {
+		output file /var/log/caddy/mentle-www-access.log
+		format json
+	}
+}
+
+http://app.mentle.org {
+	import browser_call_security_headers
+	encode gzip zstd
+	reverse_proxy mentle-consumer-web:3100
+	log {
+		output file /var/log/caddy/mentle-app-access.log
+		format json
+	}
+}
+
+http://business.mentle.org {
+	import security_headers
+	encode gzip zstd
+	reverse_proxy mentle-business-portal:3102
+	log {
+		output file /var/log/caddy/mentle-business-access.log
+		format json
+	}
+}
+
+http://admin.mentle.org {
+	import security_headers
+	encode gzip zstd
+	reverse_proxy mentle-admin-panel:3103
+	log {
+		output file /var/log/caddy/mentle-admin-access.log
+		format json
+	}
+}
+
+http://counsellor.mentle.org {
+	import browser_call_security_headers
+	encode gzip zstd
+	reverse_proxy mentle-counsellor-portal:3104
+	log {
+		output file /var/log/caddy/mentle-counsellor-access.log
+		format json
+	}
+}
+
+http://api.mentle.org {
+	import api_proxy
+	reverse_proxy mentle-api-consumer:4100
+	log {
+		output file /var/log/caddy/mentle-api-access.log
+		format json
+	}
+}
+
+http://api-business.mentle.org {
+	import api_proxy
+	reverse_proxy mentle-api-business:4101
+	log {
+		output file /var/log/caddy/mentle-api-business-access.log
+		format json
+	}
+}
+
+http://api-admin.mentle.org {
+	import api_proxy
+	reverse_proxy mentle-api-admin:4102
+	log {
+		output file /var/log/caddy/mentle-api-admin-access.log
+		format json
+	}
+}
+
+http://api-counsellor.mentle.org {
+	import api_proxy
+	reverse_proxy mentle-api-counsellor:4103
+	log {
+		output file /var/log/caddy/mentle-api-counsellor-access.log
+		format json
+	}
+}
+
+http://calls.mentle.org {
+	import browser_call_security_headers
+	encode gzip zstd
+	# Mentle has its own credential entry on this host's LiveKit instance. Keep
+	# its call traffic local instead of forwarding it to Menorah's managed
+	# upstream, which intentionally accepts a different credential set.
+	reverse_proxy http://livekit:7880
+	log {
+		output file /var/log/caddy/mentle-calls-access.log
+		format json
+	}
+}

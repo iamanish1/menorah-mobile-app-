@@ -1,20 +1,33 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
-import { Toaster } from 'react-hot-toast';
+import { AdminToaster } from '@/components/ui/AdminToaster';
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Menorah Health — Admin Panel',
   description: 'Admin control panel for Menorah Health platform'
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+
   return (
     <html lang="en">
-      <body>
+      <head>
+        {nonce ? <meta name="csp-nonce" content={nonce} /> : null}
+      </head>
+      <body className={inter.variable}>
         <AuthProvider>
           {children}
-          <Toaster position="top-right" toastOptions={{ duration: 4000, style: { borderRadius: '10px', fontSize: '14px' } }} />
+          <AdminToaster />
         </AuthProvider>
       </body>
     </html>

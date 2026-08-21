@@ -1,24 +1,71 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const { body, query, param, validationResult } = require('express-validator');
 const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const axios = require('axios');
 const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
 const Booking = require('../models/Booking');
 const PendingApplication = require('../models/PendingApplication');
 const KycVerification = require('../models/KycVerification');
-const { adminAuth, auth } = require('../middleware/auth');
+const { adminAuth } = require('../middleware/auth');
+const {
+  isAllowedExternalProvider,
+  isSafeHttpsUrl,
+  normalizeProvider,
+  providerDisplayName,
+  resolveCallPolicy
+} = require('../services/callPolicyService');
+const { sendCounsellorCredentialsEmail } = require('../utils/email');
+const { revokeAllSessions, disconnectUserSockets } = require('../utils/sessionLifecycle');
+const { normalizeEmail } = require('../utils/emailNormalization');
+const { issuePasswordResetToken } = require('../utils/passwordResetUrl');
 
 const router = express.Router();
 
-// All routes require auth + admin role
-router.use(auth, adminAuth);
+// All routes require an admin-scoped token.
+router.use(adminAuth);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // Escapes all special regex metacharacters so user-supplied search strings
 // cannot be used to craft catastrophic backtracking (ReDoS) patterns.
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const formatVideoCall = (videoCall = {}) => ({
+  provider: videoCall.provider,
+  joinMode: videoCall.joinMode,
+  externalProviderName: videoCall.externalProviderName,
+  externalJoinUrl: videoCall.externalJoinUrl,
+  externalHostUrl: videoCall.externalHostUrl,
+  region: videoCall.region,
+  status: videoCall.status,
+  policyReason: videoCall.policyReason,
+  lastPolicyCheckAt: videoCall.lastPolicyCheckAt,
+  configuredAt: videoCall.configuredAt
+});
+
+const formatAdminBooking = (booking) => ({
+  id: booking._id,
+  user: booking.user || null,
+  userName: booking.user ? `${booking.user.firstName} ${booking.user.lastName}` : 'Unknown user',
+  userEmail: booking.user?.email || '',
+  userPhone: booking.user?.phone || '',
+  counsellor: booking.counsellor || null,
+  counsellorName: booking.counsellor?.user
+    ? `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`
+    : 'Unassigned',
+  sessionType: booking.sessionType,
+  sessionDuration: booking.sessionDuration,
+  scheduledAt: booking.scheduledAt,
+  status: booking.status,
+  paymentStatus: booking.paymentStatus,
+  videoCall: formatVideoCall(booking.videoCall),
+  createdAt: booking.createdAt
+});
 
 const generateSecurePassword = () => {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -34,7 +81,12 @@ const generateSecurePassword = () => {
   for (let i = 4; i < 12; i++) {
     password += all[crypto.randomInt(all.length)];
   }
-  return password.split('').sort(() => Math.random() - 0.5).join('');
+  const characters = password.split('');
+  for (let index = characters.length - 1; index > 0; index--) {
+    const swapIndex = crypto.randomInt(index + 1);
+    [characters[index], characters[swapIndex]] = [characters[swapIndex], characters[index]];
+  }
+  return characters.join('');
 };
 
 const dateRanges = () => {
@@ -44,6 +96,364 @@ const dateRanges = () => {
   weekStart.setDate(todayStart.getDate() - todayStart.getDay());
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   return { todayStart, weekStart, monthStart, now };
+};
+
+const bytes = (value) => Number.isFinite(value) ? value : 0;
+
+const readProcStat = () => {
+  const line = fs.readFileSync('/proc/stat', 'utf8').split('\n')[0];
+  const parts = line.trim().split(/\s+/).slice(1).map(Number);
+  const [user = 0, nice = 0, system = 0, idle = 0, iowait = 0, irq = 0, softirq = 0, steal = 0] = parts;
+  const idleAll = idle + iowait;
+  const nonIdle = user + nice + system + irq + softirq + steal;
+  return { idle: idleAll, total: idleAll + nonIdle };
+};
+
+const getCpuSample = () => new Promise((resolve) => {
+  try {
+    const start = readProcStat();
+    setTimeout(() => {
+      try {
+        const end = readProcStat();
+        const totalDiff = end.total - start.total;
+        const idleDiff = end.idle - start.idle;
+        const usagePercent = totalDiff > 0 ? Math.max(0, Math.min(100, (1 - idleDiff / totalDiff) * 100)) : 0;
+        resolve(usagePercent);
+      } catch {
+        resolve(0);
+      }
+    }, 250);
+  } catch {
+    resolve(0);
+  }
+});
+
+const getDiskUsage = (targetPath) => {
+  try {
+    const stats = fs.statfsSync(targetPath);
+    const total = bytes(stats.blocks * stats.bsize);
+    const free = bytes(stats.bavail * stats.bsize);
+    const used = Math.max(0, total - free);
+    return {
+      path: targetPath,
+      total,
+      used,
+      free,
+      usagePercent: total > 0 ? Math.round((used / total) * 1000) / 10 : 0
+    };
+  } catch {
+    return { path: targetPath, total: 0, used: 0, free: 0, usagePercent: 0 };
+  }
+};
+
+const getMemoryUsage = () => {
+  const total = os.totalmem();
+  const free = os.freemem();
+  const used = Math.max(0, total - free);
+  return {
+    total,
+    used,
+    free,
+    usagePercent: total > 0 ? Math.round((used / total) * 1000) / 10 : 0
+  };
+};
+
+const createHostUsageSnapshot = ({ label, cpuUsagePercent, diskPath }) => {
+  const roundedCpuUsage = Math.round(cpuUsagePercent * 10) / 10;
+  const rootDisk = getDiskUsage('/');
+  const dataDisk = diskPath ? getDiskUsage(diskPath) : rootDisk;
+
+  return {
+    label,
+    hostname: os.hostname(),
+    platform: os.platform(),
+    release: os.release(),
+    uptimeSeconds: Math.round(os.uptime()),
+    cpu: {
+      usagePercent: roundedCpuUsage,
+      loadAverage: os.loadavg()
+    },
+    memory: getMemoryUsage(),
+    disk: {
+      root: rootDisk,
+      data: dataDisk
+    },
+    network: getNetworkStats()
+  };
+};
+
+const readNumberFile = (filePath) => {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8').trim();
+    if (raw === 'max') return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+};
+
+const getCgroupMemory = () => {
+  const current = readNumberFile('/sys/fs/cgroup/memory.current');
+  const max = readNumberFile('/sys/fs/cgroup/memory.max');
+  if (current === null) return null;
+  return {
+    current,
+    max,
+    usagePercent: max ? Math.round((current / max) * 1000) / 10 : null
+  };
+};
+
+const getNetworkStats = () => {
+  try {
+    const lines = fs.readFileSync('/proc/net/dev', 'utf8').trim().split('\n').slice(2);
+    return lines.reduce((acc, line) => {
+      const [ifacePart, dataPart] = line.split(':');
+      const iface = ifacePart.trim();
+      if (!iface || iface === 'lo') return acc;
+      const values = dataPart.trim().split(/\s+/).map(Number);
+      acc.rxBytes += bytes(values[0]);
+      acc.txBytes += bytes(values[8]);
+      return acc;
+    }, { rxBytes: 0, txBytes: 0 });
+  } catch {
+    return { rxBytes: 0, txBytes: 0 };
+  }
+};
+
+const isTrue = (value) => ['1', 'true', 'yes', 'y'].includes(String(value || '').toLowerCase());
+
+const safeReadJson = (filePath) => {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+};
+
+const parseBackupTimestamp = (timestamp) => {
+  if (!timestamp || typeof timestamp !== 'string') return null;
+  const compactMatch = timestamp.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/);
+  if (compactMatch) {
+    const [, year, month, day, hour, minute, second] = compactMatch.map(Number);
+    return new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  }
+  const parsed = new Date(timestamp);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const hoursSince = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  return Math.max(0, Math.round(((Date.now() - date.getTime()) / 36e5) * 10) / 10);
+};
+
+const isPathMounted = (targetPath) => {
+  try {
+    const resolvedTarget = path.resolve(targetPath);
+    const mountInfo = fs.readFileSync('/proc/self/mountinfo', 'utf8');
+    return mountInfo.split('\n').some((line) => {
+      const fields = line.split(' ');
+      const mountPoint = fields[4]?.replace(/\\040/g, ' ');
+      return mountPoint === resolvedTarget;
+    });
+  } catch {
+    return false;
+  }
+};
+
+const findLatestArchive = (backupRoot, backupType) => {
+  const typeRoot = path.join(backupRoot, backupType);
+  const archives = [];
+
+  const visit = (directory, depth = 0) => {
+    if (depth > 4) return;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(fullPath, depth + 1);
+      } else if (entry.isFile() && /\.archive\.gz(\.enc)?$/.test(entry.name)) {
+        try {
+          const stat = fs.statSync(fullPath);
+          archives.push({ path: fullPath, sizeBytes: stat.size, modifiedAt: stat.mtime });
+        } catch {
+          // Ignore files that disappear while the directory is being scanned.
+        }
+      }
+    });
+  };
+
+  visit(typeRoot);
+  return archives.sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime())[0] || null;
+};
+
+const getBackupEntry = (backupRoot, backupType) => {
+  const metadata = safeReadJson(path.join(backupRoot, 'metadata', `latest-success-${backupType}.json`));
+  const archiveFromMetadata = metadata?.mongoArchive && fs.existsSync(metadata.mongoArchive)
+    ? metadata.mongoArchive
+    : null;
+  const archive = archiveFromMetadata
+    ? {
+        path: archiveFromMetadata,
+        sizeBytes: fs.statSync(archiveFromMetadata).size,
+        modifiedAt: fs.statSync(archiveFromMetadata).mtime
+      }
+    : findLatestArchive(backupRoot, backupType);
+
+  if (!archive) return null;
+
+  const timestamp = parseBackupTimestamp(metadata?.timestamp) || archive.modifiedAt;
+  const checksumPath = `${archive.path}.sha256`;
+
+  return {
+    type: backupType,
+    timestamp: timestamp.toISOString(),
+    ageHours: hoursSince(timestamp),
+    encrypted: archive.path.endsWith('.enc') || metadata?.encrypted === true,
+    checksumPresent: fs.existsSync(checksumPath),
+    sizeBytes: archive.sizeBytes
+  };
+};
+
+const getRaidStatus = () => {
+  const configured = isTrue(process.env.BACKUP_EXPECT_RAID);
+  try {
+    const mdstat = fs.readFileSync('/proc/mdstat', 'utf8');
+    const activeLine = mdstat.split('\n').find((line) => /active\s+raid1/.test(line));
+    const healthLine = mdstat.split('\n').find((line) => /\[\d+\/\d+\]\s+\[[U_]+\]/.test(line));
+    const healthMatch = healthLine?.match(/\[(\d+)\/(\d+)\]\s+\[([U_]+)\]/);
+    const resyncMatch = mdstat.match(/resync\s*=\s*([0-9.]+)%/);
+    const deviceName = activeLine?.split(':')[0]?.trim() || null;
+    const activeDevices = healthMatch ? Number(healthMatch[1]) : null;
+    const totalDevices = healthMatch ? Number(healthMatch[2]) : null;
+    const mirrorState = healthMatch?.[3] || null;
+    const healthy = Boolean(mirrorState && !mirrorState.includes('_') && activeDevices === totalDevices);
+
+    return {
+      configured,
+      ok: healthy,
+      device: deviceName,
+      activeDevices,
+      totalDevices,
+      mirrorState,
+      resyncPercent: resyncMatch ? Number(resyncMatch[1]) : null,
+      message: healthy
+        ? 'Both backup drives are healthy and mirrored.'
+        : 'The backup drive mirror needs attention.'
+    };
+  } catch {
+    return {
+      configured,
+      ok: !configured,
+      device: null,
+      activeDevices: null,
+      totalDevices: null,
+      mirrorState: null,
+      resyncPercent: null,
+      message: configured ? 'RAID mirror status is not readable.' : 'RAID mirror is not configured for this environment.'
+    };
+  }
+};
+
+const getBackupStatus = () => {
+  const backupRoot = process.env.MENORAH_BACKUP_ROOT || '/opt/menorah/backups';
+  const maxDailyAgeHours = Number(process.env.BACKUP_MAX_AGE_HOURS) || 30;
+  const maxRestoreAgeHours = Number(process.env.BACKUP_RESTORE_TEST_MAX_AGE_HOURS) || 192;
+  const diskUsageLimit = Number(process.env.BACKUP_DISK_USAGE_MAX_PERCENT) || 80;
+  const automationEnabled = isTrue(process.env.BACKUP_AUTOMATION_ENABLED);
+  const rootExists = fs.existsSync(backupRoot);
+  const mounted = isPathMounted(backupRoot);
+  const volume = rootExists ? getDiskUsage(backupRoot) : {
+    path: backupRoot,
+    total: 0,
+    used: 0,
+    free: 0,
+    usagePercent: 0
+  };
+  const backupTypes = ['six-hourly', 'daily', 'weekly', 'monthly'];
+  const entries = backupTypes.reduce((acc, type) => {
+    acc[type] = rootExists ? getBackupEntry(backupRoot, type) : null;
+    return acc;
+  }, {});
+  const latest = Object.values(entries)
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0] || null;
+
+  const restoreMarker = rootExists
+    ? safeReadJson(path.join(backupRoot, 'restore-tests', 'latest-success.json'))
+    : null;
+  const restoreTimestamp = parseBackupTimestamp(restoreMarker?.timestamp);
+  const restoreAgeHours = hoursSince(restoreTimestamp);
+  const restoreTest = {
+    ok: Boolean(restoreMarker && restoreTimestamp && restoreAgeHours <= maxRestoreAgeHours),
+    timestamp: restoreTimestamp ? restoreTimestamp.toISOString() : null,
+    ageHours: restoreAgeHours,
+    mode: restoreMarker?.mode || null,
+    message: restoreMarker
+      ? 'Latest restore test completed successfully.'
+      : 'No successful restore test marker found yet.'
+  };
+
+  const daily = entries.daily;
+  const raid = getRaidStatus();
+  const issues = [];
+  if (!rootExists) issues.push('Backup storage is not visible.');
+  if (backupRoot.startsWith('/mnt/') && !mounted) issues.push('Backup storage is not mounted.');
+  if (!latest) issues.push('No backup archive has been found.');
+  if (daily && daily.ageHours !== null && daily.ageHours > maxDailyAgeHours) issues.push('The latest daily backup is older than expected.');
+  if (daily && !daily.encrypted) issues.push('The latest daily backup is not encrypted.');
+  if (daily && !daily.checksumPresent) issues.push('The latest daily backup checksum is missing.');
+  if (volume.usagePercent >= diskUsageLimit) issues.push('Backup storage is getting full.');
+  if (raid.configured && !raid.ok) issues.push('The backup drive mirror is not healthy.');
+  if (!restoreTest.ok) issues.push('The weekly restore test needs attention.');
+
+  const status = issues.length === 0 ? 'ok' : issues.some((issue) => (
+    issue.includes('not visible')
+    || issue.includes('not mounted')
+    || issue.includes('not healthy')
+    || issue.includes('not encrypted')
+  )) ? 'critical' : 'warning';
+
+  return {
+    status,
+    headline: status === 'ok' ? 'Protected' : status === 'warning' ? 'Needs review' : 'Action needed',
+    message: status === 'ok'
+      ? 'Backups are encrypted, the mirror is healthy, and the latest restore test passed.'
+      : issues[0],
+    backupRoot,
+    mounted,
+    automationEnabled,
+    volume,
+    latest,
+    byType: entries,
+    restoreTest,
+    raid,
+    coldStorage: {
+      mode: 'manual',
+      label: process.env.BACKUP_COLD_STORAGE_LABEL || '2 TB cold storage HDD',
+      message: 'Plug in weekly, copy encrypted backups, verify checksums, then disconnect.'
+    },
+    schedule: {
+      daily: 'Daily at 02:30 UTC',
+      weekly: 'Sunday at 03:00 UTC',
+      restoreTest: 'Sunday at 05:00 UTC',
+      monthly: 'First day of each month at 04:00 UTC',
+      healthCheck: 'Every hour'
+    },
+    retention: {
+      sixHourlyDays: Number(process.env.SIX_HOURLY_RETENTION_DAYS) || 7,
+      dailyDays: Number(process.env.DAILY_RETENTION_DAYS) || 30,
+      weeklyDays: Number(process.env.WEEKLY_RETENTION_DAYS) || 84,
+      monthlyDays: Number(process.env.MONTHLY_RETENTION_DAYS) || 366
+    },
+    issues
+  };
 };
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
@@ -75,7 +485,7 @@ router.get('/stats', async (req, res) => {
     ] = await Promise.all([
       User.countDocuments({ role: 'user' }),
       Counsellor.countDocuments(),
-      PendingApplication.countDocuments({ status: 'pending' }),
+      PendingApplication.countDocuments({ status: { $in: ['pending', 'manual_review'] } }),
       Counsellor.countDocuments({ status: 'approved' }),
       Counsellor.countDocuments({ isActive: false, status: 'approved' }),
       Booking.countDocuments(),
@@ -162,11 +572,62 @@ router.get('/stats/users', async (req, res) => {
   }
 });
 
+// GET /api/admin/server-usage — live server/container resource telemetry
+router.get('/server-usage', async (_req, res) => {
+  try {
+    const cpuUsagePercent = await getCpuSample();
+    const uploadPath = path.resolve(process.cwd(), process.env.UPLOAD_PATH || './uploads');
+    const serverDiskPath = process.env.SERVER_USAGE_PATH
+      ? path.resolve(process.env.SERVER_USAGE_PATH)
+      : uploadPath;
+    const server = createHostUsageSnapshot({
+      label: process.env.SERVER_USAGE_LABEL || 'On-prem server',
+      cpuUsagePercent,
+      diskPath: serverDiskPath
+    });
+    const cgroupMemory = getCgroupMemory();
+    const host = {
+      hostname: server.hostname,
+      platform: server.platform,
+      release: server.release,
+      uptimeSeconds: server.uptimeSeconds
+    };
+
+    res.json({
+      success: true,
+      data: {
+        sampledAt: new Date().toISOString(),
+        host,
+        server,
+        cpu: server.cpu,
+        memory: server.memory,
+        container: {
+          memory: cgroupMemory
+        },
+        disk: {
+          root: server.disk.root,
+          uploads: getDiskUsage(uploadPath)
+        },
+        backup: getBackupStatus(),
+        network: server.network,
+        process: {
+          pid: process.pid,
+          uptimeSeconds: Math.round(process.uptime()),
+          memory: process.memoryUsage()
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Admin server usage error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // ─── Counsellor Management ────────────────────────────────────────────────────
 
 // GET /api/admin/counsellors
 router.get('/counsellors', [
-  query('status').optional().isIn(['pending', 'approved', 'rejected', 'blocked', 'all']),
+  query('status').optional().isIn(['pending', 'manual_review', 'approved', 'rejected', 'blocked', 'all']),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 100 }),
   query('search').optional().isString().trim()
@@ -175,8 +636,9 @@ router.get('/counsellors', [
     const { status = 'all', page = 1, limit = 20, search } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Pending tab — served from PendingApplication collection
-    if (status === 'pending') {
+    // Pending tab includes identity conflicts so they cannot disappear from the
+    // admin queue. A dedicated manual_review filter is also available.
+    if (status === 'pending' || status === 'manual_review') {
       const searchQuery = search
         ? { $or: [
             { firstName: { $regex: escapeRegex(search), $options: 'i' } },
@@ -184,7 +646,7 @@ router.get('/counsellors', [
             { email: { $regex: escapeRegex(search), $options: 'i' } }
           ]}
         : {};
-      searchQuery.status = 'pending';
+      searchQuery.status = status === 'manual_review' ? 'manual_review' : { $in: ['pending', 'manual_review'] };
 
       const [apps, total] = await Promise.all([
         PendingApplication.find(searchQuery).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
@@ -200,7 +662,8 @@ router.get('/counsellors', [
         experience: a.experience,
         hourlyRate: a.hourlyRate,
         currency: a.currency,
-        status: 'pending',
+        status: a.status,
+        identityConflict: a.identityConflict || { hasConflict: false, email: false, phone: false },
         isActive: false,
         isVerified: false,
         createdAt: a.createdAt,
@@ -333,11 +796,69 @@ router.get('/counsellors/:id', [
     if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid ID' });
 
     const counsellor = await Counsellor.findById(req.params.id)
-      .populate('user', 'firstName lastName email phone profileImage isActive createdAt')
+      .populate('user', 'firstName lastName email phone profileImage isActive createdAt dateOfBirth gender')
       .populate('approvedBy', 'firstName lastName email')
       .lean();
 
-    if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
+    if (!counsellor) {
+      const application = await PendingApplication.findById(req.params.id)
+        .populate('reviewedBy', 'firstName lastName email')
+        .lean();
+
+      if (!application) return res.status(404).json({ success: false, message: 'Counsellor not found' });
+
+      const formattedApplication = {
+        id: application._id,
+        _id: application._id,
+        isPendingApplication: true,
+        user: {
+          firstName: application.firstName,
+          lastName: application.lastName,
+          email: application.email,
+          phone: application.phone,
+          isActive: false,
+          createdAt: application.createdAt
+        },
+        dateOfBirth: application.dateOfBirth,
+        gender: application.gender,
+        licenseNumber: application.licenseNumber,
+        specialization: application.specialization,
+        specializations: application.specializations || [],
+        experience: application.experience,
+        bio: application.bio,
+        languages: application.languages || [],
+        hourlyRate: application.hourlyRate,
+        currency: application.currency || 'INR',
+        education: application.education || [],
+        certifications: application.certifications || [],
+        availability: application.availability || {},
+        status: application.status,
+        isActive: false,
+        isVerified: false,
+        rating: 0,
+        reviewCount: 0,
+        commissionRate: 0,
+        rejectionReason: application.rejectionReason,
+        identityConflict: application.identityConflict || { hasConflict: false, email: false, phone: false },
+        reviewedBy: application.reviewedBy || null,
+        reviewedAt: application.reviewedAt || null,
+        createdAt: application.createdAt,
+        updatedAt: application.updatedAt
+      };
+
+      return res.json({
+        success: true,
+        data: {
+          counsellor: formattedApplication,
+          bookingStats: {
+            allTime: { total: 0, completed: 0, cancelled: 0, revenue: 0 },
+            today: { total: 0, completed: 0, cancelled: 0 },
+            thisWeek: { total: 0, revenue: 0 },
+            thisMonth: { total: 0, revenue: 0 }
+          }
+        }
+      });
+    }
 
     // Booking stats (all time + today)
     const { todayStart, weekStart, monthStart } = dateRanges();
@@ -360,10 +881,20 @@ router.get('/counsellors/:id', [
       ])
     ]);
 
+    // Approved counsellors keep their personal data on the linked User
+    // document. Keep this response compatible with the pending-application
+    // shape so the admin detail screen always shows the counsellor's latest
+    // date of birth and gender after a self-service profile edit.
+    const formattedCounsellor = {
+      ...counsellor,
+      dateOfBirth: counsellor.user?.dateOfBirth || null,
+      gender: counsellor.user?.gender || null,
+    };
+
     res.json({
       success: true,
       data: {
-        counsellor,
+        counsellor: formattedCounsellor,
         bookingStats: {
           allTime: allTimeStats[0] || { total: 0, completed: 0, cancelled: 0, revenue: 0 },
           today: todayStats[0] || { total: 0, completed: 0, cancelled: 0 },
@@ -379,70 +910,165 @@ router.get('/counsellors/:id', [
 });
 
 // PUT /api/admin/counsellors/:id/approve
-// Creates User + Counsellor from PendingApplication, generates credentials, deletes pending record.
+// Creates a new User + Counsellor only when both supplied identities are unused.
+// Existing accounts are never converted or overwritten by an application.
 router.put('/counsellors/:id/approve', [
   param('id').isMongoId().withMessage('Invalid ID')
 ], async (req, res) => {
+  let session;
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid ID' });
+    let result = null;
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const application = await PendingApplication.findOne({
+        _id: req.params.id,
+        status: 'pending',
+      }).select('+statusLookupTokenHash').session(session);
 
-    const application = await PendingApplication.findById(req.params.id);
-    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
-    if (application.status !== 'pending') return res.status(400).json({ success: false, message: 'Application is not pending' });
+      if (!application) {
+        result = { kind: 'not_pending' };
+        return;
+      }
 
-    const existingUser = await User.findOne({ $or: [{ email: application.email }, { phone: application.phone }] });
-    if (existingUser) return res.status(400).json({ success: false, message: 'A user with this email or phone already exists' });
+      const [existingByEmail, existingByPhone, existingLicense] = await Promise.all([
+        User.findOne({ email: normalizeEmail(application.email) }).session(session),
+        User.findOne({ phone: application.phone }).session(session),
+        Counsellor.findOne({ licenseNumber: application.licenseNumber }).session(session),
+      ]);
 
-    const plainPassword = generateSecurePassword();
+      if (existingByEmail || existingByPhone) {
+        application.status = 'manual_review';
+        application.identityConflict = {
+          hasConflict: true,
+          email: Boolean(existingByEmail),
+          phone: Boolean(existingByPhone),
+          detectedAt: new Date(),
+        };
+        await application.save({ session });
+        result = { kind: 'identity_conflict', application };
+        return;
+      }
 
-    const user = new User({
-      firstName: application.firstName,
-      lastName: application.lastName,
-      email: application.email,
-      phone: application.phone,
+      if (existingLicense) {
+        result = { kind: 'license_conflict' };
+        return;
+      }
+
+      const plainPassword = generateSecurePassword();
+      const user = new User({
+        firstName: application.firstName,
+        lastName: application.lastName,
+        email: normalizeEmail(application.email),
+        phone: application.phone,
+        password: plainPassword,
+        dateOfBirth: application.dateOfBirth,
+        gender: application.gender || 'prefer-not-to-say',
+        role: 'counsellor',
+        isActive: true,
+        isEmailVerified: true,
+        isPhoneVerified: true,
+        profileCompleted: true,
+      });
+      // A new counsellor receives a temporary password plus a separately
+      // revocable, short-lived reset link. Store only the token hash with the
+      // account before committing the approval transaction.
+      const resetToken = issuePasswordResetToken(user);
+      await user.save({ session });
+
+      const counsellor = new Counsellor({
+        user: user._id,
+        licenseNumber: application.licenseNumber,
+        specialization: application.specialization,
+        specializations: application.specializations?.length ? application.specializations : [application.specialization],
+        experience: application.experience,
+        bio: application.bio,
+        languages: application.languages,
+        hourlyRate: application.hourlyRate,
+        currency: application.currency || 'INR',
+        education: application.education || [],
+        certifications: application.certifications || [],
+        availability: application.availability,
+        status: 'approved',
+        isVerified: true,
+        isActive: true,
+        isAvailable: true,
+        approvedBy: req.user._id,
+        approvedAt: new Date(),
+        applicationStatusTokenHash: application.statusLookupTokenHash,
+      });
+      await counsellor.save({ session });
+      await PendingApplication.deleteOne({ _id: application._id }, { session });
+      result = { kind: 'approved', application, user, counsellor, plainPassword, resetToken };
+    });
+
+    if (result?.kind === 'not_pending') {
+      return res.status(400).json({ success: false, message: 'Application is not pending' });
+    }
+    if (result?.kind === 'identity_conflict') {
+      return res.status(409).json({
+        success: false,
+        code: 'APPLICATION_IDENTITY_CONFLICT',
+        message: 'This application has been moved to manual review because its email or phone belongs to an existing account.',
+        data: { applicationId: result.application._id, status: 'manual_review' },
+      });
+    }
+    if (result?.kind === 'license_conflict') {
+      return res.status(409).json({ success: false, message: 'A counsellor with this license number already exists.' });
+    }
+    if (!result || result.kind !== 'approved') {
+      return res.status(404).json({ success: false, message: 'Application not found' });
+    }
+
+    const { user, counsellor, plainPassword, resetToken } = result;
+
+    const credentialEmailSent = await sendCounsellorCredentialsEmail({
+      email: user.email,
+      name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
       password: plainPassword,
-      dateOfBirth: application.dateOfBirth,
-      gender: application.gender,
-      role: 'counsellor',
-      isActive: true,
-      isEmailVerified: true,
-      isPhoneVerified: true,
+      resetToken,
+      kind: 'onboarding',
+    }).catch((error) => {
+      console.error('Counsellor approval credential email error:', error.message);
+      return false;
     });
-    await user.save();
-
-    const counsellor = new Counsellor({
-      user: user._id,
-      licenseNumber: application.licenseNumber,
-      specialization: application.specialization,
-      specializations: application.specializations?.length ? application.specializations : [application.specialization],
-      experience: application.experience,
-      bio: application.bio,
-      languages: application.languages,
-      hourlyRate: application.hourlyRate,
-      currency: application.currency || 'INR',
-      education: application.education || [],
-      certifications: application.certifications || [],
-      availability: application.availability,
-      status: 'approved',
-      isVerified: true,
-      isActive: true,
-      isAvailable: true,
-      approvedBy: req.user._id,
-      approvedAt: new Date(),
-    });
-    await counsellor.save();
-
-    await PendingApplication.findByIdAndDelete(application._id);
 
     res.json({
       success: true,
-      message: 'Counsellor approved. Credentials generated — share them now, the password will not be shown again.',
-      data: { counsellorId: counsellor._id, status: 'approved', username: user.email, password: plainPassword }
+      message: credentialEmailSent
+        ? 'Counsellor approved. A temporary password and secure reset link were emailed to the counsellor.'
+        : 'Counsellor approved, but the credential email was not sent. Generate a new password to email a fresh secure access link.',
+      data: {
+        counsellorId: counsellor._id,
+        status: 'approved',
+        username: user.email,
+        credentialEmailSent,
+        credentialEmailRecipient: user.email
+      }
     });
   } catch (error) {
+    if (error?.code === 11000) {
+      await PendingApplication.findOneAndUpdate(
+        { _id: req.params.id, status: 'pending' },
+        {
+          $set: {
+            status: 'manual_review',
+            'identityConflict.hasConflict': true,
+            'identityConflict.detectedAt': new Date(),
+          },
+        }
+      ).catch(() => {});
+      return res.status(409).json({
+        success: false,
+        code: 'APPLICATION_IDENTITY_CONFLICT',
+        message: 'The application identity changed while it was being approved and now requires manual review.',
+      });
+    }
     console.error('Admin approve counsellor error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
+  } finally {
+    if (session) await session.endSession();
   }
 });
 
@@ -477,7 +1103,8 @@ router.put('/counsellors/:id/reject', [
 });
 
 // POST /api/admin/counsellors/:id/generate-password
-// Generates a new password for the counsellor and activates their account. Returns the plain-text password once.
+// Generates a new password, invalidates existing sessions, and emails the
+// counsellor the temporary password plus a secure, short-lived reset link.
 router.post('/counsellors/:id/generate-password', [
   param('id').isMongoId().withMessage('Invalid counsellor ID')
 ], async (req, res) => {
@@ -491,21 +1118,46 @@ router.post('/counsellors/:id/generate-password', [
 
     const plainPassword = generateSecurePassword();
     const user = await User.findById(counsellor.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'Counsellor user account not found' });
     user.password = plainPassword;
+    const resetToken = issuePasswordResetToken(user);
     user.isActive = true;
+    user.loginAttempts = 0;
+    // lockUntil is excluded by default, so assigning undefined would not mark
+    // the path as modified. Persist null explicitly to make the new admin-
+    // issued credential usable even when the account was previously locked.
+    user.lockUntil = null;
+    revokeAllSessions(user, { passwordChanged: true });
     counsellor.isActive = true;
     counsellor.isAvailable = true;
 
     await Promise.all([user.save(), counsellor.save()]);
+    disconnectUserSockets(req.app.get('io'), user, 'password_generated');
+    res.locals.securitySessionRevoked = user;
+    res.locals.securitySessionRevocationAction = 'password_generated';
+
+    const credentialEmailSent = await sendCounsellorCredentialsEmail({
+      email: user.email,
+      name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      password: plainPassword,
+      resetToken,
+      kind: 'password_reset',
+    }).catch((error) => {
+      console.error('Counsellor password reset credential email error:', error.message);
+      return false;
+    });
 
     res.json({
       success: true,
-      message: 'Credentials generated. Share these with the counsellor — the password will not be shown again.',
+      message: credentialEmailSent
+        ? 'The new temporary password and secure reset link were emailed to the counsellor.'
+        : 'The password was reset, but the email could not be sent. Generate a new password to send a fresh secure access link.',
       data: {
         username: user.email,
-        password: plainPassword,
         counsellorId: counsellor._id,
-        userId: user._id
+        userId: user._id,
+        credentialEmailSent,
+        credentialEmailRecipient: user.email,
       }
     });
   } catch (error) {
@@ -534,8 +1186,12 @@ router.put('/counsellors/:id/block', [
 
     const user = await User.findById(counsellor.user._id);
     user.isActive = false;
+    revokeAllSessions(user);
 
     await Promise.all([counsellor.save(), user.save()]);
+    disconnectUserSockets(req.app.get('io'), user, 'account_blocked');
+    res.locals.securitySessionRevoked = user;
+    res.locals.securitySessionRevocationAction = 'account_blocked';
 
     res.json({ success: true, message: 'Counsellor blocked. They cannot receive new bookings or log in.', data: { counsellorId: counsellor._id } });
   } catch (error) {
@@ -560,8 +1216,12 @@ router.put('/counsellors/:id/unblock', [
 
     const user = await User.findById(counsellor.user._id);
     user.isActive = true;
+    revokeAllSessions(user);
 
     await Promise.all([counsellor.save(), user.save()]);
+    disconnectUserSockets(req.app.get('io'), user, 'account_unblocked');
+    res.locals.securitySessionRevoked = user;
+    res.locals.securitySessionRevocationAction = 'account_unblocked';
 
     res.json({ success: true, message: 'Counsellor unblocked. They can now receive bookings.', data: { counsellorId: counsellor._id } });
   } catch (error) {
@@ -650,7 +1310,7 @@ router.get('/users', [
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [users, total] = await Promise.all([
       User.find(userQuery)
-        .select('-password -passwordResetToken -passwordResetExpires -emailVerificationToken')
+        .select('firstName lastName email phone role isEmailVerified isPhoneVerified profileImage kyc subscription isActive lastLogin createdAt updatedAt')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
@@ -890,20 +1550,8 @@ router.get('/revenue/counsellors/:id', [
 
 const Payout = require('../models/Payout');
 
-// SMS helper — notify counsellor of payout status
-async function sendPayoutSms(phone, firstName, amountRupees, payoutId, status) {
-  const key = process.env.MSG91_AUTH_KEY;
-  if (!key || !phone) return;
-  try {
-    const message = status === 'initiated'
-      ? `Dear ${firstName}, a payout of Rs.${amountRupees} has been initiated by Menorah Health. ID: ${payoutId}. Expected within 1-2 business days.`
-      : `Dear ${firstName}, your payout of Rs.${amountRupees} was processed successfully. ID: ${payoutId}. Thank you - Menorah Health.`;
-    await axios.post('https://api.msg91.com/api/sendhttp.php', null, {
-      params: { authkey: key, mobiles: phone.replace(/^\+/, ''), message, sender: 'MENRH', route: 4 }
-    });
-  } catch (err) {
-    console.error('Payout SMS notification error:', err.message);
-  }
+async function sendPayoutSms() {
+  return false;
 }
 
 // POST /api/admin/payouts/:counsellorId — Initiate payout
@@ -1042,7 +1690,10 @@ router.post('/payouts/:counsellorId', [
     });
   } catch (error) {
     const rzpErr = error.response?.data;
-    console.error('Admin payout error:', rzpErr || error.message);
+    console.error('Admin payout error:', {
+      status: error.response?.status,
+      code: rzpErr?.error?.code,
+    });
     res.status(500).json({
       success: false,
       message: rzpErr?.error?.description || 'Payout failed. Please verify Razorpay X is activated and credentials are correct.'
@@ -1251,6 +1902,117 @@ router.put('/ekyc/reviews/:id/reject', [
     res.json({ success: true, message: 'KYC review rejected.', data: { reviewId: review._id, status: review.status } });
   } catch (error) {
     console.error('Admin reject KYC error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/bookings — recent booking/session list for call operations
+router.get('/bookings', [
+  query('status').optional().isString(),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 100 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+
+    const page = parseInt(req.query.page || '1', 10);
+    const limit = parseInt(req.query.limit || '25', 10);
+    const filter = { sessionType: 'video' };
+    if (req.query.status) {
+      const statuses = String(req.query.status)
+        .split(',')
+        .map((status) => status.trim())
+        .filter(Boolean);
+      filter.status = statuses.length > 1 ? { $in: statuses } : statuses[0];
+    }
+
+    const [bookings, total] = await Promise.all([
+      Booking.find(filter)
+        .populate('user', 'firstName lastName email phone address country accountRegion region')
+        .populate({
+          path: 'counsellor',
+          select: 'user',
+          populate: { path: 'user', select: 'firstName lastName email phone' }
+        })
+        .sort({ scheduledAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Booking.countDocuments(filter)
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        bookings: bookings.map(formatAdminBooking),
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+      }
+    });
+  } catch (error) {
+    console.error('Admin bookings error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// PATCH /api/admin/bookings/:id/call-link — configure approved external session link
+router.patch('/bookings/:id/call-link', [
+  param('id').isMongoId().withMessage('Invalid booking ID'),
+  body('provider').isString().trim().notEmpty(),
+  body('externalJoinUrl').isString().trim().custom(isSafeHttpsUrl).withMessage('External join URL must be HTTPS'),
+  body('externalHostUrl').optional({ nullable: true, checkFalsy: true }).isString().trim().custom(isSafeHttpsUrl).withMessage('External host URL must be HTTPS'),
+  body('externalProviderName').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 80 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+
+    const provider = normalizeProvider(req.body.provider, '');
+    if (!isAllowedExternalProvider(provider)) {
+      return res.status(400).json({ success: false, message: 'Unsupported external provider.' });
+    }
+
+    const booking = await Booking.findById(req.params.id)
+      .populate('user', 'firstName lastName phone address country accountRegion region')
+      .populate({
+        path: 'counsellor',
+        select: 'user',
+        populate: { path: 'user', select: 'firstName lastName phone address country accountRegion region' }
+      });
+
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+    const policy = resolveCallPolicy({ user: booking.user, booking, req: { headers: req.headers, user: req.user } });
+    if (policy.provider === 'livekit') {
+      return res.status(400).json({ success: false, message: 'LiveKit is enabled for this session region; external links are only for external-provider sessions.' });
+    }
+    if (policy.joinMode === 'disabled') {
+      return res.status(403).json({ success: false, message: 'Video calling is disabled until this session region is verified.' });
+    }
+
+    booking.videoCall.provider = provider;
+    booking.videoCall.joinMode = 'external_link';
+    booking.videoCall.region = policy.region;
+    booking.videoCall.status = 'ready';
+    booking.videoCall.policyReason = policy.reason;
+    booking.videoCall.lastPolicyCheckAt = new Date();
+    booking.videoCall.externalJoinUrl = req.body.externalJoinUrl.trim();
+    booking.videoCall.externalHostUrl = req.body.externalHostUrl ? req.body.externalHostUrl.trim() : undefined;
+    booking.videoCall.externalProviderName = req.body.externalProviderName?.trim() || providerDisplayName(provider);
+    booking.videoCall.configuredBy = req.user._id;
+    booking.videoCall.configuredAt = new Date();
+    await booking.save();
+
+    res.json({
+      success: true,
+      message: 'External session link saved.',
+      data: {
+        bookingId: booking._id,
+        videoCall: formatVideoCall(booking.videoCall)
+      }
+    });
+  } catch (error) {
+    console.error('Admin configure call link error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });

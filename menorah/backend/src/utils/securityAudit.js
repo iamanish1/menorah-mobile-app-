@@ -1,0 +1,210 @@
+const fs = require('fs');
+const path = require('path');
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const SAFE_DETAIL_KEYS = new Set([
+  'action',
+  'actorId',
+  'actorRole',
+  'provider',
+  'reason',
+  'resource',
+  'targetId',
+  'transport',
+]);
+const counters = new Map();
+
+const sanitizeLabel = (value, fallback = 'unknown') => {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]/g, '_')
+    .slice(0, 64);
+  return normalized || fallback;
+};
+
+const sanitizeId = (value) => {
+  const raw = value?._id || value?.id || value;
+  const normalized = String(raw || '').trim();
+  return /^[a-zA-Z0-9_-]{1,128}$/.test(normalized) ? normalized : undefined;
+};
+
+const sanitizeDetails = (details = {}) => Object.fromEntries(
+  Object.entries(details)
+    .filter(([key, value]) => SAFE_DETAIL_KEYS.has(key) && value !== undefined && value !== null)
+    .map(([key, value]) => {
+      if (key.endsWith('Id')) return [key, sanitizeId(value)];
+      return [key, sanitizeLabel(value)];
+    })
+    .filter(([, value]) => value !== undefined)
+);
+
+const getServiceName = () => sanitizeLabel(process.env.SERVICE_NAME || 'api');
+
+const getSafeRequestPath = (req) => {
+  const raw = String(req?.originalUrl || req?.url || '/');
+  const queryIndex = raw.indexOf('?');
+  return (queryIndex >= 0 ? raw.slice(0, queryIndex) : raw).slice(0, 256) || '/';
+};
+
+const incrementCounter = (event, outcome, service) => {
+  const key = `${event}|${outcome}|${service}`;
+  counters.set(key, (counters.get(key) || 0) + 1);
+};
+
+const appendAuditFile = (line) => {
+  const directory = String(process.env.SECURITY_AUDIT_LOG_DIR || '').trim();
+  if (!directory || process.env.NODE_ENV === 'test') return;
+
+  try {
+    fs.mkdirSync(directory, { recursive: true, mode: 0o750 });
+    const filename = `security-audit-${getServiceName()}.log`;
+    fs.appendFile(path.join(directory, filename), `${line}\n`, { encoding: 'utf8', mode: 0o640 }, () => {});
+  } catch {
+    // Audit events are still emitted to stdout when file logging is unavailable.
+  }
+};
+
+const recordSecurityEvent = (eventName, {
+  req,
+  user,
+  outcome = 'success',
+  details = {},
+  statusCode,
+} = {}) => {
+  const event = sanitizeLabel(eventName);
+  const normalizedOutcome = sanitizeLabel(outcome);
+  const service = getServiceName();
+  const actorId = sanitizeId(user);
+  const actorRole = sanitizeLabel(user?.role || details.actorRole, 'anonymous');
+  const safeDetails = sanitizeDetails(details);
+
+  const entry = {
+    timestamp: new Date().toISOString(),
+    category: 'security',
+    event,
+    outcome: normalizedOutcome,
+    service,
+    method: sanitizeLabel(req?.method),
+    path: getSafeRequestPath(req),
+    statusCode: Number.isInteger(statusCode) ? statusCode : undefined,
+    actorId,
+    actorRole,
+    sourceIp: String(req?.ip || req?.socket?.remoteAddress || '').slice(0, 128) || undefined,
+    ...safeDetails,
+  };
+
+  const line = JSON.stringify(Object.fromEntries(Object.entries(entry).filter(([, value]) => value !== undefined)));
+  incrementCounter(event, normalizedOutcome, service);
+
+  if (process.env.NODE_ENV !== 'test' || process.env.SECURITY_AUDIT_TEST_OUTPUT === 'true') {
+    const output = normalizedOutcome === 'success' ? console.info : console.warn;
+    output(line);
+  }
+  appendAuditFile(line);
+  return entry;
+};
+
+const classifyAuthEvent = (requestPath) => {
+  if (/\/auth\/(?:admin\/)?login\/mfa$/.test(requestPath)) return 'mfa_attempt';
+  if (/\/auth\/(?:admin\/)?login$/.test(requestPath)) return 'login_attempt';
+  if (/\/auth\/reset-password$/.test(requestPath)) return 'password_reset';
+  if (/\/auth\/(?:verify-email-otp|verify-email|verify-phone)$/.test(requestPath)) return 'otp_verification';
+  return null;
+};
+
+const classifySessionRevocation = (requestPath) => {
+  if (/\/auth\/(?:admin\/)?logout-all$/.test(requestPath)) return 'all_devices';
+  if (/\/auth\/(?:admin\/)?logout$/.test(requestPath)) return 'current_session';
+  if (/\/auth\/reset-password$/.test(requestPath)) return 'password_reset';
+  if (/\/users\/change-password$/.test(requestPath)) return 'password_change';
+  if (/\/users\/account$/.test(requestPath)) return 'account_disabled';
+  return null;
+};
+
+const securityAuditTrail = (req, res, next) => {
+  res.on('finish', () => {
+    const requestPath = getSafeRequestPath(req);
+    const method = String(req.method || '').toUpperCase();
+    const statusCode = res.statusCode;
+    const outcome = statusCode < 400 ? 'success' : 'failure';
+    const user = req.user || res.locals.securityActor;
+
+    const authEvent = classifyAuthEvent(requestPath);
+    if (authEvent && !SAFE_METHODS.has(method)) {
+      recordSecurityEvent(authEvent, { req, user, outcome, statusCode });
+    }
+
+    if (statusCode < 400 && res.locals.securitySessionCreated) {
+      recordSecurityEvent('session_created', {
+        req,
+        user,
+        outcome,
+        statusCode,
+        details: { transport: res.locals.securitySessionTransport },
+      });
+    }
+
+    const revocationAction = classifySessionRevocation(requestPath);
+    if (revocationAction && statusCode < 400) {
+      recordSecurityEvent('session_revoked', {
+        req,
+        user,
+        outcome,
+        statusCode,
+        details: { action: revocationAction },
+      });
+    }
+
+    if (!revocationAction && statusCode < 400 && res.locals.securitySessionRevoked) {
+      recordSecurityEvent('session_revoked', {
+        req,
+        user: res.locals.securitySessionRevoked,
+        outcome,
+        statusCode,
+        details: { action: res.locals.securitySessionRevocationAction },
+      });
+    }
+
+    if (!SAFE_METHODS.has(method) && requestPath.startsWith('/api/admin')) {
+      recordSecurityEvent(requestPath.includes('/payouts/') ? 'payout_action' : 'admin_change', {
+        req,
+        user,
+        outcome,
+        statusCode,
+        details: { resource: requestPath },
+      });
+    }
+
+    if ((statusCode === 401 || statusCode === 403) && !authEvent && !res.locals.securityAuthorizationLogged) {
+      recordSecurityEvent('authorization_denied', { req, user, outcome: 'failure', statusCode });
+    }
+  });
+  next();
+};
+
+const renderSecurityMetrics = () => {
+  const lines = [
+    '# HELP menorah_security_events_total Security-relevant application events.',
+    '# TYPE menorah_security_events_total counter',
+  ];
+
+  Array.from(counters.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .forEach(([key, value]) => {
+      const [event, outcome, service] = key.split('|');
+      lines.push(`menorah_security_events_total{event="${event}",outcome="${outcome}",service="${service}"} ${value}`);
+    });
+
+  return `${lines.join('\n')}\n`;
+};
+
+const resetSecurityMetricsForTests = () => counters.clear();
+
+module.exports = {
+  recordSecurityEvent,
+  renderSecurityMetrics,
+  resetSecurityMetricsForTests,
+  sanitizeDetails,
+  securityAuditTrail,
+};

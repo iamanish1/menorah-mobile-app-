@@ -1,7 +1,7 @@
 import { TouchableOpacity, View } from 'react-native';
 import type { ReactNode } from 'react';
 import { Image } from 'expo-image';
-import { Bell, Menu, MessageCircle } from 'lucide-react-native';
+import { Bell, Lightbulb, MessageCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import IOSBadge from './IOSBadge';
 import { useIOSTheme } from './iosTheme';
@@ -79,8 +79,8 @@ export default function IOSDiscoverHeader({
             marginLeft: iosTheme.spacing.sm,
           }}
         >
-          <HeaderAction onPress={onMenuPress} accessibilityLabel="Open menu">
-            <Menu size={35} color={iconColor} strokeWidth={2.35} />
+          <HeaderAction onPress={onMenuPress} accessibilityLabel="Open help">
+            <Lightbulb size={33} color={iconColor} strokeWidth={2.35} />
           </HeaderAction>
 
           <HeaderAction onPress={onNotificationsPress} accessibilityLabel="Open notifications">

@@ -2,11 +2,12 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { CreditCard, Shield, CheckCircle, ArrowLeft } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { CreditCard, Shield, CheckCircle, ArrowLeft, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Button, Spinner } from '@/components/ui';
+import { Button, Modal, Spinner } from '@/components/ui';
 import { formatCurrency } from '@/lib/utils';
+import { getCspNonce } from '@/lib/cspNonce';
 
 declare global {
   interface Window {
@@ -18,6 +19,7 @@ function loadRazorpay(): Promise<boolean> {
   return new Promise((resolve) => {
     if (typeof window !== 'undefined' && window.Razorpay) { resolve(true); return; }
     const script = document.createElement('script');
+    script.nonce = getCspNonce() || '';
     script.src    = 'https://checkout.razorpay.com/v1/checkout.js';
     script.onload  = () => resolve(true);
     script.onerror = () => resolve(false);
@@ -29,10 +31,14 @@ function PaymentForm() {
   const searchParams = useSearchParams();
   const bookingId    = searchParams.get('bookingId') ?? '';
   const router       = useRouter();
+  const qc           = useQueryClient();
 
   const [paying, setPaying]   = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError]     = useState('');
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['booking', bookingId],
@@ -51,8 +57,16 @@ function PaymentForm() {
     if (!loaded) { setError('Failed to load payment gateway. Please try again.'); setPaying(false); return; }
 
     const sessionRes = await api.createCheckoutSession(bookingId);
+    if (sessionRes.success && sessionRes.data?.alreadyPaid) {
+      setPaying(false);
+      setSuccess(true);
+      return;
+    }
+
     if (!sessionRes.success || !sessionRes.data?.orderId) {
-      setError(sessionRes.message || 'Failed to create payment session');
+      setError(/expired|slot/i.test(sessionRes.message || '')
+        ? 'This slot expired while waiting for payment. Please choose another available time.'
+        : sessionRes.message || 'Failed to create payment session');
       setPaying(false);
       return;
     }
@@ -73,12 +87,33 @@ function PaymentForm() {
         if (verify.success) {
           setSuccess(true);
         } else {
-          setError(verify.message || 'Payment verification failed');
+          setError(/expired|slot/i.test(verify.message || '')
+            ? 'This slot expired while waiting for payment. Please choose another available time.'
+            : verify.message || 'Payment verification failed');
         }
       },
       modal: { ondismiss: () => setPaying(false) },
     });
     rzp.open();
+  };
+
+  const handleCancel = async () => {
+    if (!bookingId) return;
+
+    setCancelling(true);
+    setError('');
+    const result = await api.cancelBooking(bookingId, cancelReason);
+    setCancelling(false);
+
+    if (!result.success) {
+      setError(result.message || 'Unable to cancel this booking. Please try again.');
+      return;
+    }
+
+    setCancelOpen(false);
+    qc.invalidateQueries({ queryKey: ['bookings'] });
+    qc.invalidateQueries({ queryKey: ['booking', bookingId] });
+    router.replace('/bookings');
   };
 
 
@@ -108,6 +143,12 @@ function PaymentForm() {
     );
   }
 
+  const bookingAlreadyPaid = booking?.paymentStatus === 'paid' || booking?.paymentMethod === 'promo';
+  const bookingCancelled = booking?.status === 'cancelled';
+  const canCompletePayment = booking?.status === 'pending'
+    && booking.paymentStatus === 'pending'
+    && !booking.isSubscriptionBooking;
+
   return (
     <div className="page-container max-w-md">
       <button onClick={() => router.back()} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-6">
@@ -132,7 +173,7 @@ function PaymentForm() {
           <div className="border-t border-gray-100 pt-3 flex justify-between">
             <span className="font-semibold text-gray-900">Total</span>
             <span className="font-bold text-lg text-primary-600">
-              {booking.amount ? formatCurrency(booking.amount, booking.currency) : 'TBD'}
+              {bookingAlreadyPaid ? 'Free' : booking.amount ? formatCurrency(booking.amount, booking.currency) : 'TBD'}
             </span>
           </div>
         </div>
@@ -144,18 +185,82 @@ function PaymentForm() {
         </div>
       )}
 
-      <Button
-        fullWidth size="lg" loading={paying}
-        onClick={handleRazorpay}
-      >
-        <CreditCard className="w-5 h-5" />
-        Pay Now with Razorpay
-      </Button>
+      {bookingCancelled ? (
+        <div className="space-y-4">
+          <div role="status" className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            This booking has been cancelled and can no longer be paid for.
+          </div>
+          <Button fullWidth onClick={() => router.push('/bookings')}>
+            View My Bookings
+          </Button>
+        </div>
+      ) : bookingAlreadyPaid ? (
+        <Button fullWidth size="lg" onClick={() => router.push('/bookings')}>
+          <CheckCircle className="w-5 h-5" />
+          View Confirmed Booking
+        </Button>
+      ) : canCompletePayment ? (
+        <div className="space-y-3">
+          <Button
+            fullWidth size="lg" loading={paying}
+            onClick={handleRazorpay}
+          >
+            <CreditCard className="w-5 h-5" />
+            Pay Now with Razorpay
+          </Button>
+          <Button
+            variant="secondary"
+            fullWidth
+            disabled={paying}
+            onClick={() => {
+              setError('');
+              setCancelOpen(true);
+            }}
+          >
+            <XCircle className="w-5 h-5" />
+            Cancel booking
+          </Button>
+        </div>
+      ) : (
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          This booking is no longer available for payment. Please return to your bookings for its latest status.
+        </div>
+      )}
 
-      <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400 mt-4">
-        <Shield className="w-3.5 h-3.5" />
-        Secured by Razorpay. Your payment is safe.
-      </div>
+      {canCompletePayment && (
+        <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400 mt-4">
+          <Shield className="w-3.5 h-3.5" />
+          Secured by Razorpay. Your payment is safe.
+        </div>
+      )}
+
+      <Modal open={cancelOpen} onClose={() => !cancelling && setCancelOpen(false)} title="Cancel pending booking">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Payment has not been completed. Cancelling this booking releases the held time and cannot be undone.
+          </p>
+          {error && (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+          <textarea
+            value={cancelReason}
+            onChange={(event) => setCancelReason(event.target.value)}
+            placeholder="Reason for cancellation (optional)"
+            rows={3}
+            className="input-field resize-none"
+          />
+          <div className="flex gap-3">
+            <Button variant="secondary" fullWidth disabled={cancelling} onClick={() => setCancelOpen(false)}>
+              Keep booking
+            </Button>
+            <Button variant="danger" fullWidth loading={cancelling} onClick={handleCancel}>
+              Yes, cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

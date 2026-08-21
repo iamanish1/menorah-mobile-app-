@@ -154,7 +154,7 @@ const checkPermissions = async () => {
 
 1. **Rebuild the app**:
    ```bash
-   cd Menorah/mobile-app
+   cd menorah/mobile-app
    npm run android
    ```
 

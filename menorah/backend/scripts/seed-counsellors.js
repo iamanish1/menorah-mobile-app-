@@ -6,10 +6,35 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const bcrypt   = require('bcryptjs');
+const crypto   = require('crypto');
 const User      = require('../src/models/User');
 const Counsellor = require('../src/models/Counsellor');
 
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/menorah';
+
+const isStrongPassword = (password) =>
+  typeof password === 'string' &&
+  password.length >= 14 &&
+  /[a-z]/.test(password) &&
+  /[A-Z]/.test(password) &&
+  /\d/.test(password) &&
+  /[^A-Za-z0-9]/.test(password);
+
+const requireSeedConfirmation = () => {
+  if (process.env.ALLOW_COUNSELLOR_SEED !== 'true') {
+    throw new Error('Refusing to seed counsellors without ALLOW_COUNSELLOR_SEED=true');
+  }
+
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_COUNSELLOR_SEED !== 'true') {
+    throw new Error('Refusing production counsellor seed without ALLOW_PRODUCTION_COUNSELLOR_SEED=true');
+  }
+
+  if (process.env.SEED_COUNSELLOR_PASSWORD && !isStrongPassword(process.env.SEED_COUNSELLOR_PASSWORD)) {
+    throw new Error('SEED_COUNSELLOR_PASSWORD must be at least 14 chars and include upper, lower, number, and symbol');
+  }
+};
+
+const seedPasswordFor = () => process.env.SEED_COUNSELLOR_PASSWORD || crypto.randomBytes(24).toString('base64url');
 
 const availability = {
   monday:    { start: '09:00', end: '18:00', isAvailable: true  },
@@ -249,12 +274,14 @@ const COUNSELLORS = [
 ];
 
 async function seed() {
+  requireSeedConfirmation();
+
   await mongoose.connect(MONGO_URI);
   console.log('✅ Connected to MongoDB');
 
-  const passwordHash = await bcrypt.hash('Counsellor@123', 12);
   let created = 0;
   let skipped = 0;
+  const markVerified = process.env.SEED_COUNSELLORS_VERIFIED === 'true' && process.env.NODE_ENV !== 'production';
 
   for (const data of COUNSELLORS) {
     try {
@@ -266,13 +293,15 @@ async function seed() {
         continue;
       }
 
+      const passwordHash = await bcrypt.hash(seedPasswordFor(), parseInt(process.env.BCRYPT_ROUNDS) || 12);
+
       // Create user account
       const user = await User.create({
         ...data.user,
         password:        passwordHash,
         role:            'counsellor',
-        isEmailVerified: true,
-        isPhoneVerified: true,
+        isEmailVerified: markVerified,
+        isPhoneVerified: markVerified,
         isActive:        true,
       });
 
@@ -284,9 +313,9 @@ async function seed() {
         sessionDuration: 60,
         timezone:        'Asia/Kolkata',
         currency:        'INR',
-        isVerified:      true,
-        isActive:        true,
-        isAvailable:     true,
+        isVerified:      markVerified,
+        isActive:        markVerified,
+        isAvailable:     markVerified,
         commissionRate:  20,
       });
 
@@ -298,6 +327,7 @@ async function seed() {
   }
 
   console.log(`\nDone. Created: ${created}, Skipped: ${skipped}`);
+  console.log('Seed passwords were not printed. Set SEED_COUNSELLOR_PASSWORD for a known local-only password.');
   await mongoose.disconnect();
 }
 

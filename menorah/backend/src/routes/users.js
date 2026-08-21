@@ -3,8 +3,24 @@ const { body, param, validationResult } = require('express-validator');
 const multer = require('multer');
 const User = require('../models/User');
 const Counsellor = require('../models/Counsellor');
-const { auth } = require('../middleware/auth');
+const { auth, patientAuth, sharedParticipantAuth } = require('../middleware/auth');
 const { uploadBuffer } = require('../utils/cloudinary');
+const { clearMappedSessionCookie } = require('../config/webSessions');
+const { revokeAllSessions } = require('../utils/sessionLifecycle');
+const { disconnectUserSockets } = require('../utils/sessionLifecycle');
+const { passwordValidator } = require('../utils/passwordPolicy');
+const {
+  inspectEmergencyContact,
+  emergencyContactValidator,
+} = require('../utils/emergencyContact');
+const {
+  invalidateCounsellorDiscoveryCache,
+  notifyCounsellorProfileUpdated,
+} = require('../utils/counsellorProfileSync');
+const {
+  serializePublicUser,
+  serializeUserProfile,
+} = require('../serializers/userSerializer');
 
 const router = express.Router();
 const upload = multer({
@@ -25,7 +41,13 @@ const upload = multer({
 // @access  Private
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password').lean();
+    const user = await User.findById(req.user._id).lean();
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
 
     let counsellorProfile = null;
     if (user.role === 'counsellor') {
@@ -53,6 +75,11 @@ router.get('/me', auth, async (req, res) => {
           availability:      c.availability,
           isVerified:        c.isVerified,
           isActive:          c.isActive,
+          profileImage:      c.profileImage || null,
+          voiceIntroUrl:     c.voiceIntroUrl || null,
+          voiceIntroDurationSeconds: c.voiceIntroDurationSeconds || null,
+          profileMediaCompletedAt: c.profileMediaCompletedAt || null,
+          profileMediaComplete: Boolean(c.profileImage && c.voiceIntroUrl),
           // commissionRate omitted — internal business metric
           bankDetails:       maskedBank,
         };
@@ -61,7 +88,7 @@ router.get('/me', auth, async (req, res) => {
 
     res.json({
       success: true,
-      data: { user: { ...user, counsellorProfile } }
+      data: { user: serializeUserProfile(user, { counsellorProfile }) }
     });
 
   } catch (error) {
@@ -78,14 +105,17 @@ router.get('/me', auth, async (req, res) => {
 // @access  Private
 router.get('/profile', auth, async (req, res) => {
   try {
-    // Exclude internal/sensitive fields from profile response
-    const user = await User.findById(req.user._id).select(
-      '-password -emailVerificationToken -passwordResetToken -passwordResetExpires -loginAttempts -lockUntil'
-    );
+    const user = await User.findById(req.user._id).lean();
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
 
     res.json({
       success: true,
-      data: { user }
+      data: { user: serializeUserProfile(user) }
     });
 
   } catch (error) {
@@ -100,7 +130,7 @@ router.get('/profile', auth, async (req, res) => {
 // @route   PUT /api/users/profile
 // @desc    Update current user's profile
 // @access  Private
-router.put('/profile', auth, upload.single('profileImage'), [
+router.put('/profile', sharedParticipantAuth, upload.single('profileImage'), [
   body('firstName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
   body('dateOfBirth').optional().isISO8601().withMessage('Please provide a valid date of birth'),
@@ -163,10 +193,19 @@ router.put('/profile', auth, upload.single('profileImage'), [
 
     await user.save();
 
+    // A counsellor's name and fallback image are stored on User, while the
+    // public directory caches joined User + Counsellor records. Clear that
+    // cache and notify active clients so personal edits are visible wherever
+    // the counsellor appears, not only after its normal cache TTL.
+    if (user.role === 'counsellor') {
+      await invalidateCounsellorDiscoveryCache();
+      notifyCounsellorProfileUpdated(req.app.get('io'));
+    }
+
     res.json({
       success: true,
       message: 'Profile updated successfully',
-      data: { user }
+      data: { user: serializeUserProfile(user) }
     });
 
   } catch (error) {
@@ -175,6 +214,37 @@ router.put('/profile', auth, upload.single('profileImage'), [
       success: false,
       message: 'Internal server error'
     });
+  }
+});
+
+// @route   PUT /api/users/profile/complete
+// @desc    Complete the required contact data for a social-signup account
+// @access  Verified patient account (profile completion itself is allowed)
+router.put('/profile/complete', [
+  body('phone').matches(/^\+[1-9]\d{1,14}$/).withMessage('Please provide a valid phone number with country code'),
+], patientAuth, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    user.phone = req.body.phone;
+    user.profileCompleted = true;
+    await user.save();
+    return res.json({
+      success: true,
+      message: 'Profile completed successfully',
+      data: { user: serializeUserProfile(user) },
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ success: false, message: 'That phone number is already in use.' });
+    }
+    console.error('Complete profile error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
@@ -187,7 +257,7 @@ router.put('/address', [
   body('state').optional().isString(),
   body('country').optional().isString(),
   body('zipCode').optional().isString()
-], auth, async (req, res) => {
+], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -236,10 +306,8 @@ router.put('/address', [
 // @desc    Update user's emergency contact
 // @access  Private
 router.put('/emergency-contact', [
-  body('name').notEmpty().withMessage('Emergency contact name is required'),
-  body('relationship').notEmpty().withMessage('Relationship is required'),
-  body('phone').isMobilePhone().withMessage('Please provide a valid phone number')
-], auth, async (req, res) => {
+  body().custom(emergencyContactValidator),
+], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -250,8 +318,6 @@ router.put('/emergency-contact', [
       });
     }
 
-    const { name, relationship, phone } = req.body;
-
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({
@@ -260,19 +326,19 @@ router.put('/emergency-contact', [
       });
     }
 
-    // Update emergency contact
-    user.emergencyContact = {
-      name,
-      relationship,
-      phone
-    };
+    const { contact } = inspectEmergencyContact(req.body);
+    // This endpoint replaces the whole contact. An entirely blank payload is
+    // an intentional clear; partial contacts were rejected by validation.
+    user.emergencyContact = contact || undefined;
 
     await user.save();
 
     res.json({
       success: true,
-      message: 'Emergency contact updated successfully',
-      data: { emergencyContact: user.emergencyContact }
+      message: contact
+        ? 'Emergency contact updated successfully'
+        : 'Emergency contact cleared successfully',
+      data: { emergencyContact: contact }
     });
 
   } catch (error) {
@@ -291,7 +357,7 @@ router.put('/notification-preferences', [
   body('email').optional().isBoolean().withMessage('Email preference must be a boolean'),
   body('sms').optional().isBoolean().withMessage('SMS preference must be a boolean'),
   body('push').optional().isBoolean().withMessage('Push preference must be a boolean')
-], auth, async (req, res) => {
+], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -339,8 +405,8 @@ router.put('/notification-preferences', [
 // @access  Private
 router.put('/change-password', [
   body('currentPassword').notEmpty().withMessage('Current password is required'),
-  body('newPassword').isLength({ min: 8 }).withMessage('New password must be at least 8 characters long')
-], auth, async (req, res) => {
+  body('newPassword').custom(passwordValidator)
+], sharedParticipantAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -353,7 +419,8 @@ router.put('/change-password', [
 
     const { currentPassword, newPassword } = req.body;
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id)
+      .select('+password +passwordResetToken +passwordResetExpires +lockUntil');
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -370,9 +437,29 @@ router.put('/change-password', [
       });
     }
 
+    // Compare against the stored bcrypt hash instead of only comparing the two
+    // submitted strings. This also rejects values that bcrypt would treat as
+    // equivalent because of its input-length limit.
+    const isPasswordReused = await user.comparePassword(newPassword);
+    if (isPasswordReused) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be different from current password'
+      });
+    }
+
     // Update password
     user.password = newPassword;
+    // A successful authenticated password change supersedes every outstanding
+    // recovery link and clears any stale failed-login state.
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    user.loginAttempts = 0;
+    user.lockUntil = null;
+    revokeAllSessions(user, { passwordChanged: true });
     await user.save();
+    clearMappedSessionCookie(req, res);
+    disconnectUserSockets(req.app.get('io'), user, 'password_changed');
 
     res.json({
       success: true,
@@ -393,7 +480,7 @@ router.put('/change-password', [
 // @access  Private
 router.delete('/account', [
   body('password').notEmpty().withMessage('Password is required for account deletion')
-], auth, async (req, res) => {
+], patientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -406,7 +493,7 @@ router.delete('/account', [
 
     const { password } = req.body;
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).select('+password');
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -425,7 +512,10 @@ router.delete('/account', [
 
     // Soft delete - mark account as inactive
     user.isActive = false;
+    revokeAllSessions(user);
     await user.save();
+    clearMappedSessionCookie(req, res);
+    disconnectUserSockets(req.app.get('io'), user, 'account_disabled');
 
     res.json({
       success: true,
@@ -472,7 +562,7 @@ router.get('/:id', [
 
     res.json({
       success: true,
-      data: { user }
+      data: { user: serializePublicUser(user) }
     });
 
   } catch (error) {

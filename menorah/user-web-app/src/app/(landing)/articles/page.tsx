@@ -6,19 +6,20 @@ import { ArrowRight, BookOpen, CalendarDays, Search, Tag } from "lucide-react";
 import { MenorahFooter } from "@/components/site/MenorahFooter";
 import { MenorahNavbar } from "@/components/site/MenorahNavbar";
 import { getArticleCategories, getArticles, type Article } from "@/lib/articles";
+import { getArticleCanonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Men's Mental Health Articles",
   description:
     "Read practical Menorah articles for men in India on stress, burnout, anxiety, relationships, counselling stigma, self-help tools, and private mental health support.",
   alternates: {
-    canonical: "/articles"
+    canonical: getArticleCanonicalUrl("")
   },
   openGraph: {
     title: "Men's Mental Health Articles | Menorah Health",
     description:
       "Practical mental health articles for Indian men navigating stress, burnout, anxiety, relationships, counselling stigma, and help-seeking.",
-    url: "/articles",
+    url: getArticleCanonicalUrl(""),
     type: "website"
   }
 };

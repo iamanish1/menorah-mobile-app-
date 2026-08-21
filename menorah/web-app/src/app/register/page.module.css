@@ -429,3 +429,191 @@
   margin-bottom: var(--spacing-lg);
 }
 
+.statusChecking,
+.statusPanel {
+  padding: 24px 0;
+  text-align: center;
+}
+
+.statusChecking {
+  padding: 32px 0;
+  color: #6b7280;
+}
+
+.statusSpinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 16px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.statusCheckingText {
+  font-size: 0.95rem;
+}
+
+.statusIcon {
+  display: flex;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.statusIconApproved { background: #dcfce7; }
+.statusIconRejected { background: #fee2e2; }
+.statusIconPending { background: #dbeafe; }
+
+.statusTitle {
+  margin-bottom: 12px;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.statusTitleApproved { color: #15803d; }
+.statusTitleRejected { color: #dc2626; }
+
+.statusDescription {
+  max-width: 380px;
+  margin: 0 auto;
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+.statusDescriptionWithAction { margin-bottom: 24px; }
+
+.statusAction {
+  width: 100%;
+  max-width: 320px;
+}
+
+.rejectionReason {
+  max-width: 380px;
+  margin: 16px auto 0;
+  padding: 12px 16px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 14px;
+  background: var(--color-danger-light);
+  text-align: left;
+}
+
+.rejectionReasonText {
+  margin: 0;
+  color: #991b1b;
+  font-size: 0.875rem;
+}
+
+.statusActions {
+  display: flex;
+  margin-top: 24px;
+  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.statusHelp {
+  margin: 0;
+  color: #9ca3af;
+  font-size: 0.8rem;
+}
+
+.supportLink { color: #2563eb; }
+
+.statusHint {
+  margin-top: 16px;
+  color: #9ca3af;
+  font-size: 0.8rem;
+}
+
+.themeToggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 20;
+}
+
+.registrationForm {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.stepPanel { animation: fadeIn 0.3s ease-out; }
+
+.infoNotice {
+  padding: 12px 16px;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 14px;
+  background: var(--color-info-light);
+}
+
+.infoNoticeText {
+  margin: 0;
+  color: #1d4ed8;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.fullWidthButton { width: 100%; }
+.warningMessage { color: var(--color-warning); }
+.addLanguageButton { margin-top: 8px; }
+
+.availabilityList {
+  display: flex;
+  margin-top: 8px;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.availabilityDay {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.availabilityLabel {
+  display: flex;
+  min-width: 110px;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.availabilityCheckbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-primary, #16a34a);
+}
+
+.availabilityDayName { text-transform: capitalize; }
+.availabilityDayAvailable { font-weight: 600; }
+.availabilityDayUnavailable { color: #9ca3af; font-weight: 400; }
+
+.timeFields {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeInput {
+  width: 130px;
+  padding: 6px 10px;
+}
+
+.timeSeparator {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.unavailableText {
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.actionButton { flex: 1; }

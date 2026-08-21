@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import { Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react-native';
 import Input from '@/components/ui/Input';
+import CountryPhoneInput from '@/components/ui/CountryPhoneInput';
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { useAuth } from '@/state/useAuth';
+import { SocialAuthButtons } from '@/components/auth/SocialAuthButtons';
 
 type RegisterPayload = {
   firstName: string;
@@ -26,8 +27,10 @@ type BackendValidationError = {
 };
 
 const validGenders = ['male', 'female', 'other', 'prefer-not-to-say'];
+const passwordRuleMessage = 'Password must be at least 8 characters and include uppercase, lowercase, and a number';
 
 const normalizePhone = (value: string) => value.trim().replace(/[\s()-]/g, '');
+const isValidPassword = (value: string) => value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value);
 
 const sanitizeRegisterPayload = (payload: RegisterPayload) => ({
   ...payload,
@@ -36,7 +39,7 @@ const sanitizeRegisterPayload = (payload: RegisterPayload) => ({
 
 const getBackendErrorMessage = (error: BackendValidationError) => error.msg || error.message;
 
-export default function Register({ navigation }: any) {
+export default function Register({ navigation, route }: any) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -53,10 +56,9 @@ export default function Register({ navigation }: any) {
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
   const isDark = scheme === 'dark';
-  const brandSurface = isDark ? colors.primaryDark : '#2d5c3e';
-  const brandAccent = isDark ? colors.primary : '#2d5c3e';
   const primaryActionText = isDark ? colors.primaryDark : 'white';
   const { register } = useAuth();
+  const socialAccountNotFound = Boolean(route?.params?.socialAccountNotFound);
 
   // Validation functions
   const validateEmail = (email: string) => {
@@ -79,10 +81,10 @@ export default function Register({ navigation }: any) {
     if (password.length === 0) return { strength: 0, label: '', color: colors.muted };
     if (password.length < 6) return { strength: 1, label: 'Weak', color: '#EF4444' };
     if (password.length < 8) return { strength: 2, label: 'Fair', color: '#F59E0B' };
-    if (password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password)) {
+    if (isValidPassword(password)) {
       return { strength: 3, label: 'Strong', color: '#10B981' };
     }
-    return { strength: 2, label: 'Good', color: '#10B981' };
+    return { strength: 2, label: 'Needs Aa and 1', color: '#F59E0B' };
   };
 
   const validateField = (field: string, value: string) => {
@@ -116,8 +118,8 @@ export default function Register({ navigation }: any) {
         }
         break;
       case 'password':
-        if (value && value.length < 8) {
-          newErrors.password = 'Password must be at least 8 characters';
+        if (value && !isValidPassword(value)) {
+          newErrors.password = passwordRuleMessage;
         }
         break;
       case 'confirmPassword':
@@ -195,14 +197,14 @@ export default function Register({ navigation }: any) {
     if (!validGenders.includes(payload.gender)) newErrors.gender = 'Please select a valid gender';
 
     if (!payload.password) newErrors.password = 'Password is required';
-    else if (payload.password.length < 8) newErrors.password = 'Password must be at least 8 characters';
+    else if (!isValidPassword(payload.password)) newErrors.password = passwordRuleMessage;
 
     if (!confirmPassword) newErrors.confirmPassword = 'Please confirm your password';
     else if (payload.password !== confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      Alert.alert('Validation Error', 'Please fill in all fields correctly');
+      Alert.alert('Registration needs attention', Object.values(newErrors)[0] || 'Please fix the highlighted field and try again.');
       return;
     }
 
@@ -223,7 +225,7 @@ export default function Register({ navigation }: any) {
 
         navigation.reset({
           index: 0,
-          routes: [{ name: 'Verify', params: { email: payload.email, fromSignup: true } }],
+          routes: [{ name: 'Verify', params: { email: payload.email, flow: 'signup' } }],
         });
       } else {
         const backendFieldErrors = validationErrorsToFieldMap(result.errors);
@@ -264,29 +266,6 @@ export default function Register({ navigation }: any) {
         >
         {/* Header */}
         <View style={{ alignItems: 'center', marginBottom: 32 }}>
-          <View style={{
-            width: 100, height: 100, borderRadius: 50,
-            backgroundColor: colors.card,
-            alignItems: 'center', justifyContent: 'center',
-            marginBottom: 20,
-            shadowColor: brandAccent,
-            shadowOffset: { width: 0, height: 5 },
-            shadowOpacity: 0.15, shadowRadius: 14, elevation: 8,
-            padding: 4,
-          }}>
-            <View style={{
-              width: 92, height: 92, borderRadius: 46,
-              backgroundColor: brandSurface,
-              alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden',
-            }}>
-              <Image
-                source={require('../../../assets/brand/menorah-logo-no-bg.png')}
-                style={{ width: 70, height: 70 }}
-                contentFit="contain"
-              />
-            </View>
-          </View>
           <Text style={{
             fontSize: 28,
             fontWeight: '700',
@@ -304,6 +283,41 @@ export default function Register({ navigation }: any) {
             Join Menorah Health and start your mental health journey
           </Text>
         </View>
+
+        {socialAccountNotFound ? (
+          <View style={{
+            borderWidth: 1,
+            borderColor: colors.primary,
+            backgroundColor: isDark ? colors.surface : `${colors.primary}12`,
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 20,
+          }}>
+            <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
+              No Menorah account was found for that social account. Choose the matching sign-in method below to create one.
+            </Text>
+          </View>
+        ) : null}
+
+        <SocialAuthButtons
+          mode="signup"
+          onSuccess={(result) => {
+            if (result.needsVerification) {
+              navigation.navigate('Verify', {
+                email: result.email,
+                flow: result.verificationFlow || 'account',
+                requestCode: true,
+              });
+              return;
+            }
+            navigation.reset({
+              index: 0,
+              routes: [result.needsProfileCompletion
+                ? { name: 'EditProfile', params: { fromSocialAuth: true } }
+                : { name: 'Tabs' }],
+            });
+          }}
+        />
 
         {/* Form */}
         <View>
@@ -354,31 +368,17 @@ export default function Register({ navigation }: any) {
           />
 
           {/* Phone */}
-          <View style={{ marginBottom: 16 }}>
-            <Input
-              label="Phone Number"
-              placeholder="+1234567890"
-              value={phone}
-              onChangeText={(text) => {
-                const formatted = text.length > 0 && !text.startsWith('+') ? `+${text}` : text;
-                setPhone(formatted);
-                validateField('phone', formatted);
-              }}
-              keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'phone-pad'}
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="telephoneNumber"
-              error={errors.phone}
-            />
-            <Text style={{
-              fontSize: 12,
-              color: colors.muted,
-              marginTop: 4,
-              marginLeft: 4
-            }}>
-              Include country code (e.g., +1 for US, +44 for UK)
-            </Text>
-          </View>
+          <CountryPhoneInput
+            label="Phone Number"
+            value={phone}
+            onChangeText={(nextPhone) => {
+              setPhone(nextPhone);
+              validateField('phone', nextPhone);
+            }}
+            error={errors.phone}
+            hint="Choose a country code, then enter the local number."
+            required
+          />
 
           {/* Date of Birth */}
           <View style={{ marginBottom: 16 }}>

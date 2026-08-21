@@ -2,15 +2,10 @@
   "expo": {
     "name": "Menorah Health",
     "slug": "menorah-health-app",
-    "version": "2.6.0",
+    "version": "2.7.0",
     "orientation": "portrait",
     "icon": "./assets/brand/menorah_logo.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/brand/menorah_logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#f0f9f4"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -24,29 +19,28 @@
         "backgroundColor": "#f0f9f4"
       },
       "package": "com.menorah.healthmobile",
-      "versionCode": 14,
-      "statusBar": {
-        "barStyle": "light-content",
-        "backgroundColor": "#314830",
-        "translucent": false
-      },
-      "navigationBar": {
-        "visible": "leanback",
-        "backgroundColor": "#ffffff",
-        "barStyle": "dark-content"
-      }
+      "versionCode": 16
+    },
+    "androidStatusBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#314830",
+      "translucent": false
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "splash": {
+        "image": "./assets/brand/menorah_logo.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#f0f9f4"
+      }
     },
     "plugins": [],
     "updates": {
       "url": "https://u.expo.dev/d7fb6e65-3440-4a79-b4b2-6746d2582fa7"
     },
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "2.7.0",
     "extra": {
-      "API_BASE_URL": "https://api.menorah.me/api",
       "CHECKOUT_RETURN_URL": "https://menorah.me/checkout/return",
       "eas": {
         "projectId": "d7fb6e65-3440-4a79-b4b2-6746d2582fa7"

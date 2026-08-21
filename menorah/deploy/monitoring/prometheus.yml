@@ -1,0 +1,49 @@
+global:
+  scrape_interval: 60s
+  evaluation_interval: 60s
+
+rule_files:
+  - /etc/prometheus/alert-rules.yml
+
+scrape_configs:
+  - job_name: api-services
+    metrics_path: /health/ready
+    static_configs:
+      - targets:
+          - api-ios:8080
+          - api-android:8080
+          - api-web:8080
+          - api-admin:8080
+          - worker:8080
+
+  - job_name: api-services-deep
+    metrics_path: /health/deep
+    scrape_interval: 10m
+    static_configs:
+      - targets:
+          - api-ios:8080
+          - api-android:8080
+          - api-web:8080
+          - api-admin:8080
+          - worker:8080
+
+  - job_name: security-events
+    metrics_path: /metrics/security
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - api-ios:8080
+          - api-android:8080
+          - api-web:8080
+          - api-admin:8080
+          - worker:8080
+
+  - job_name: cadvisor
+    static_configs:
+      - targets:
+          - cadvisor:8080
+
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090

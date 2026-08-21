@@ -24,21 +24,21 @@
 
 /* Sizes */
 .sizeSm {
-  padding: 8px 16px;
+  padding: clamp(7px, 0.42vw, 10px) clamp(14px, 0.85vw, 20px);
   font-size: var(--font-size-sm);
-  min-height: 38px;
+  min-height: clamp(36px, 2.35vw, 44px);
 }
 
 .sizeMd {
-  padding: 11px 22px;
+  padding: clamp(10px, 0.62vw, 14px) clamp(18px, 1.2vw, 28px);
   font-size: var(--font-size-sm);
-  min-height: 44px;
+  min-height: clamp(42px, 2.75vw, 52px);
 }
 
 .sizeLg {
-  padding: 13px 28px;
+  padding: clamp(12px, 0.78vw, 16px) clamp(22px, 1.55vw, 34px);
   font-size: var(--font-size-base);
-  min-height: 48px;
+  min-height: clamp(46px, 3.1vw, 58px);
 }
 
 /* Variants */
@@ -95,10 +95,16 @@
   pointer-events: none;
 }
 
+.loadingContent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .spinner {
   display: inline-block;
-  width: 14px;
-  height: 14px;
+  width: clamp(13px, 0.85em, 16px);
+  height: clamp(13px, 0.85em, 16px);
   border: 2px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;

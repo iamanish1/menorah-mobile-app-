@@ -14,12 +14,13 @@ export default function robots(): MetadataRoute.Robots {
         "/verify-email",
         "/forgot-password",
         "/reset-password",
+        "/complete-profile",
         "/discover",
+        "/wellbeing-check",
         "/bookings",
         "/chat",
         "/profile",
         "/notifications",
-        "/subscription",
         "/call/"
       ]
     },

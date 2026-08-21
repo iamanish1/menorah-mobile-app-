@@ -17,6 +17,7 @@ const MENORAH_GREEN = '#2B4F32';
 const MENORAH_OLIVE = '#706E43';
 const WARM_CREAM = '#F8EADA';
 const DEEP_PLUM = '#321533';
+const CANONICAL_LOGO_PATH = path.resolve(__dirname, '../../assets/brand/menorah-logo-no-bg.png');
 
 const escapeXml = (value) => String(value || '')
   .replace(/&/g, '&amp;')
@@ -183,17 +184,43 @@ const getLayout = (aspectRatio, width, height) => {
   };
 };
 
-const renderLogoMark = ({ width, palette }) => {
-  const size = 104;
-  const x = width - size - 58;
-  const y = 56;
+const getLogoWatermarkLayout = ({ width, brandGuideline = {} }) => {
+  const configuredSize = Number(brandGuideline.logoRules?.minWidth) || 120;
+  const configuredClearSpace = Number(brandGuideline.logoRules?.clearSpace) || 48;
+  const size = Math.round(Math.max(104, Math.min(configuredSize, Math.round(width * 0.16))));
+  const clearSpace = Math.round(Math.max(36, Math.min(configuredClearSpace, Math.round(width * 0.08))));
+  return { size, clearSpace };
+};
+
+const loadCanonicalLogoWatermark = async ({ width, brandGuideline = {} }) => {
+  const { size, clearSpace } = getLogoWatermarkLayout({ width, brandGuideline });
+  const buffer = await sharp(CANONICAL_LOGO_PATH)
+    .resize({ width: size, height: size, fit: 'contain' })
+    .png()
+    .toBuffer();
+
+  return {
+    dataUri: `data:image/png;base64,${buffer.toString('base64')}`,
+    size,
+    clearSpace
+  };
+};
+
+// The logo is deliberately post-produced from the approved Menorah asset.
+// Never ask an image model to draw a brand mark: it can invent or distort one.
+const renderLogoWatermark = ({ width, logoWatermark }) => {
+  if (!logoWatermark?.dataUri) {
+    throw new Error('The canonical Menorah logo watermark is required to render a social post');
+  }
+
+  const x = width - logoWatermark.size - logoWatermark.clearSpace;
+  const y = logoWatermark.clearSpace;
+  const center = logoWatermark.size / 2;
 
   return [
-    `<g transform="translate(${x} ${y})">`,
-    `<circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="${palette.cream}" opacity="0.93" />`,
-    `<circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 10}" fill="${palette.primary}" />`,
-    `<path d="M36 70 L50 32 L61 70 L72 32 L83 70" fill="none" stroke="${palette.white}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.96" />`,
-    `<path d="M42 72 L57 44 L68 72" fill="none" stroke="${palette.olive}" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.78" />`,
+    `<g opacity="0.98">`,
+    `<circle cx="${x + center}" cy="${y + center}" r="${center + 6}" fill="${WARM_CREAM}" opacity="0.3" />`,
+    `<image href="${logoWatermark.dataUri}" x="${x}" y="${y}" width="${logoWatermark.size}" height="${logoWatermark.size}" preserveAspectRatio="xMidYMid meet" />`,
     '</g>'
   ].join('');
 };
@@ -219,7 +246,7 @@ const renderSpeckles = ({ width, heroHeight, palette, seedValue }) => {
   ].join('');
 };
 
-const renderEditorialIllustration = ({ width, heroHeight, palette }) => {
+const renderEditorialIllustration = ({ width, heroHeight, palette, logoWatermark }) => {
   const windowX = Math.round(width * 0.58);
   const figureX = Math.round(width * 0.37);
   const deskY = heroHeight - 118;
@@ -248,14 +275,14 @@ const renderEditorialIllustration = ({ width, heroHeight, palette }) => {
     `<path d="M${figureX + 160} ${deskY - 98} C ${figureX + 120} ${deskY - 176}, ${figureX + 72} ${deskY - 142}, ${figureX + 120} ${deskY - 102}" fill="#315C39" />`,
     `<path d="M${figureX + 164} ${deskY - 102} C ${figureX + 238} ${deskY - 188}, ${figureX + 248} ${deskY - 110}, ${figureX + 176} ${deskY - 98}" fill="#315C39" opacity="0.86" />`,
     `<rect width="${width}" height="${heroHeight + 60}" fill="url(#grain)" opacity="0.19" />`,
-    renderLogoMark({ width, palette }),
+    renderLogoWatermark({ width, logoWatermark }),
     '</g>'
   ].join('');
 };
 
-const renderHeroImage = ({ width, heroHeight, palette, heroImageDataUri }) => {
+const renderHeroImage = ({ width, heroHeight, palette, heroImageDataUri, logoWatermark }) => {
   if (!heroImageDataUri) {
-    return renderEditorialIllustration({ width, heroHeight, palette });
+    return renderEditorialIllustration({ width, heroHeight, palette, logoWatermark });
   }
 
   return [
@@ -264,7 +291,7 @@ const renderHeroImage = ({ width, heroHeight, palette, heroImageDataUri }) => {
     `<rect x="0" y="0" width="${width}" height="${heroHeight + 74}" fill="${palette.primary}" opacity="0.08" />`,
     `<rect x="0" y="0" width="${width}" height="${heroHeight + 74}" fill="url(#heroVignette)" opacity="0.72" />`,
     `<rect width="${width}" height="${heroHeight + 74}" fill="url(#grain)" opacity="0.13" />`,
-    renderLogoMark({ width, palette }),
+    renderLogoWatermark({ width, logoWatermark }),
     '</g>'
   ].join('');
 };
@@ -302,7 +329,7 @@ const renderHeadline = ({ lines, x, y, fontSize, lineHeight, palette }) => lines
   })
   .join('');
 
-const buildSvg = ({ socialPost, brandGuideline, assets, heroImageDataUri }) => {
+const buildSvg = ({ socialPost, brandGuideline, assets, heroImageDataUri, logoWatermark }) => {
   const { width, height } = SIZE_BY_RATIO[socialPost.aspectRatio] || SIZE_BY_RATIO['4:5'];
   const palette = getPalette(brandGuideline);
   const layout = getLayout(socialPost.aspectRatio, width, height);
@@ -350,7 +377,7 @@ const buildSvg = ({ socialPost, brandGuideline, assets, heroImageDataUri }) => {
     '</linearGradient>',
     '</defs>',
     `<rect width="${width}" height="${height}" fill="${palette.cream}" />`,
-    renderHeroImage({ width, heroHeight: layout.heroHeight, palette, heroImageDataUri }),
+    renderHeroImage({ width, heroHeight: layout.heroHeight, palette, heroImageDataUri, logoWatermark }),
     renderSpeckles({ width, heroHeight: layout.heroHeight, palette, seedValue: `${socialPost._id || ''}${headline}` }),
     renderHeadline({
       lines: headlineLines,
@@ -419,7 +446,11 @@ const renderStaticPost = async ({ socialPost, brandGuideline, assets = [], backg
     width: size.width,
     heroHeight: getLayout(socialPost.aspectRatio, size.width, size.height).heroHeight
   });
-  const svg = buildSvg({ socialPost, brandGuideline, assets, heroImageDataUri });
+  const logoWatermark = await loadCanonicalLogoWatermark({
+    width: size.width,
+    brandGuideline
+  });
+  const svg = buildSvg({ socialPost, brandGuideline, assets, heroImageDataUri, logoWatermark });
   const imageBuffer = await sharp(Buffer.from(svg))
     .jpeg({ quality: 92, mozjpeg: true })
     .toBuffer();
@@ -457,7 +488,9 @@ const generateThumbnail = async (finalImageUrl) => ({
 });
 
 module.exports = {
+  buildSvg,
   generateThumbnail,
+  loadCanonicalLogoWatermark,
   renderStaticPost,
   SIZE_BY_RATIO
 };

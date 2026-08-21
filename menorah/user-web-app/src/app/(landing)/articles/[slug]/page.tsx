@@ -1,12 +1,13 @@
 /* eslint-disable @next/next/no-img-element */
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, BookOpen, CalendarDays, CheckCircle2, Quote, ShieldCheck, Tag } from "lucide-react";
 import { MenorahFooter } from "@/components/site/MenorahFooter";
 import { MenorahNavbar } from "@/components/site/MenorahNavbar";
 import { getArticleBySlug, type Article, type ArticleContentBlock } from "@/lib/articles";
-import { EDITORIAL_REVIEWER_NAME, getPublicWebUrl, SITE_NAME } from "@/lib/site";
+import { EDITORIAL_REVIEWER_NAME, getArticleCanonicalBaseUrl, getArticleCanonicalUrl, SITE_NAME } from "@/lib/site";
 
 type ArticlePageProps = {
   params: Promise<{
@@ -31,12 +32,13 @@ export async function generateMetadata({ params }: ArticlePageProps): Promise<Me
     title,
     description,
     alternates: {
-      canonical: article.canonicalUrl || `/articles/${article.slug}`
+      canonical: getArticleCanonicalUrl(article.slug)
     },
     openGraph: {
       title,
       description,
       type: "article",
+      url: getArticleCanonicalUrl(article.slug),
       publishedTime: article.publishedAt || article.createdAt,
       modifiedTime: article.updatedAt,
       images: article.coverImageUrl
@@ -67,12 +69,13 @@ export default async function ArticleDetailPage({ params }: ArticlePageProps) {
 
   const articleJsonLd = buildArticleJsonLd(article);
   const breadcrumbJsonLd = buildBreadcrumbJsonLd(article);
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
     <div className="min-h-screen bg-menorah-page text-foreground">
       <MenorahNavbar elevated />
       <main className="px-6 pb-16 pt-10 md:px-10 lg:px-20">
-        <JsonLdScript data={[articleJsonLd, breadcrumbJsonLd]} />
+        <JsonLdScript data={[articleJsonLd, breadcrumbJsonLd]} nonce={nonce} />
         <article className="mx-auto max-w-4xl">
           <Link href="/articles" className="inline-flex items-center gap-2 text-sm font-semibold text-menorah-green transition hover:text-menorah-olive">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -170,9 +173,10 @@ function ArticleSupportCta() {
   );
 }
 
-function JsonLdScript({ data }: { data: unknown }) {
+function JsonLdScript({ data, nonce }: { data: unknown; nonce?: string }) {
   return (
     <script
+      nonce={nonce}
       type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, "\\u003c") }}
     />
@@ -180,7 +184,7 @@ function JsonLdScript({ data }: { data: unknown }) {
 }
 
 function buildArticleJsonLd(article: Article) {
-  const articleUrl = getPublicWebUrl(`/articles/${article.slug}`);
+  const articleUrl = getArticleCanonicalUrl(article.slug);
   const publishedDate = getIsoDate(article.publishedAt || article.createdAt);
   const modifiedDate = getIsoDate(article.updatedAt || article.reviewedAt || article.publishedAt || article.createdAt);
 
@@ -199,18 +203,18 @@ function buildArticleJsonLd(article: Article) {
     author: {
       "@type": "Organization",
       name: EDITORIAL_REVIEWER_NAME,
-      url: getPublicWebUrl("/")
+      url: getArticleCanonicalBaseUrl()
     },
     publisher: {
       "@type": "Organization",
       name: SITE_NAME,
-      url: getPublicWebUrl("/")
+      url: getArticleCanonicalBaseUrl()
     },
     reviewedBy: article.reviewedByHuman
       ? {
           "@type": "Organization",
           name: EDITORIAL_REVIEWER_NAME,
-          url: getPublicWebUrl("/")
+          url: getArticleCanonicalBaseUrl()
         }
       : undefined,
     about: article.tags.length ? article.tags : undefined
@@ -218,7 +222,7 @@ function buildArticleJsonLd(article: Article) {
 }
 
 function buildBreadcrumbJsonLd(article: Article) {
-  const articleUrl = getPublicWebUrl(`/articles/${article.slug}`);
+  const articleUrl = getArticleCanonicalUrl(article.slug);
 
   return {
     "@context": "https://schema.org",
@@ -228,13 +232,13 @@ function buildBreadcrumbJsonLd(article: Article) {
         "@type": "ListItem",
         position: 1,
         name: "Home",
-        item: getPublicWebUrl("/")
+        item: getArticleCanonicalBaseUrl()
       },
       {
         "@type": "ListItem",
         position: 2,
         name: "Articles",
-        item: getPublicWebUrl("/articles")
+        item: getArticleCanonicalUrl("")
       },
       {
         "@type": "ListItem",

@@ -495,7 +495,10 @@ export default function BookingReview({ navigation, route }: any) {
                     paymentMethod: 'razorpay',
                   });
                 } else {
-                  Alert.alert('Error', bookingResponse.message || 'Failed to create booking. Please try again.');
+                  const message = /slot|booked|pending/i.test(bookingResponse.message || '')
+                    ? 'This time slot was just booked by someone else. Please choose another available slot.'
+                    : bookingResponse.message || 'Failed to create booking. Please try again.';
+                  Alert.alert('Error', message);
                 }
               } catch (error: any) {
                 console.error('Error creating direct booking:', error);
@@ -654,9 +657,12 @@ export default function BookingReview({ navigation, route }: any) {
                   bookingId: bookingResponse.data.booking.id,
                   paymentMethod: 'razorpay'
                 });
-              } else {
-                Alert.alert('Error', bookingResponse.message || 'Failed to create booking. Please try again.');
-              }
+            } else {
+                const message = /slot|booked|pending/i.test(bookingResponse.message || '')
+                  ? 'This time slot was just booked by someone else. Please choose another available slot.'
+                  : bookingResponse.message || 'Failed to create booking. Please try again.';
+                Alert.alert('Error', message);
+            }
             } catch (error: any) {
               console.error('Error creating booking:', error);
               Alert.alert('Error', 'Failed to create booking. Please try again.');

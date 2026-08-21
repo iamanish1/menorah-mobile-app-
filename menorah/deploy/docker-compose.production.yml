@@ -1,0 +1,625 @@
+x-backend-env: &backend-env
+  NODE_ENV: ${NODE_ENV:-production}
+  SERVICE_RUNTIME: ${SERVICE_RUNTIME:-home}
+  PORT: "8080"
+  PUBLIC_EMAIL: ${PUBLIC_EMAIL:-}
+  ROOT_DOMAIN: ${ROOT_DOMAIN:-menorah.me}
+  WWW_DOMAIN: ${WWW_DOMAIN:-www.menorah.me}
+  APP_DOMAIN: ${APP_DOMAIN:-app.menorah.me}
+  ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.menorah.me}
+  COUNSELLOR_DOMAIN: ${COUNSELLOR_DOMAIN:-counsellor.menorah.me}
+  API_IOS_DOMAIN: ${API_IOS_DOMAIN:-api-ios.menorah.me}
+  API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN:-api-android.menorah.me}
+  API_WEB_DOMAIN: ${API_WEB_DOMAIN:-api-web.menorah.me}
+  API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN:-api-admin.menorah.me}
+  # Always generate externally reachable HTTPS meeting URLs behind Cloudflare
+  # Tunnel rather than relying on the internal HTTP proxy hop.
+  PUBLIC_API_ORIGIN: ${PUBLIC_API_ORIGIN:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}
+  CALLS_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+  # The public landing page owns canonical article HTML. Do not use the API
+  # media origin (PUBLIC_WEB_BASE_URL) for this value.
+  ARTICLE_CANONICAL_BASE_URL: ${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}
+  LIVEKIT_UPSTREAM: ${LIVEKIT_UPSTREAM:-}
+  LIVEKIT_URL: ${LIVEKIT_URL:-wss://calls.menorah.me}
+  LIVEKIT_API_URL: ${LIVEKIT_API_URL:-https://calls.menorah.me}
+  LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+  LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+  CALLING_REGION_MODE: ${CALLING_REGION_MODE:-hybrid}
+  LIVEKIT_BLOCKED_COUNTRIES: ${LIVEKIT_BLOCKED_COUNTRIES:-AE}
+  BLOCKED_COUNTRY_CALL_PROVIDER: ${BLOCKED_COUNTRY_CALL_PROVIDER:-zoom}
+  BLOCK_LIVEKIT_FOR_UAE: ${BLOCK_LIVEKIT_FOR_UAE:-true}
+  BLOCK_LIVEKIT_FOR_UNKNOWN_REGION: ${BLOCK_LIVEKIT_FOR_UNKNOWN_REGION:-false}
+  UAE_CALL_PROVIDER: ${UAE_CALL_PROVIDER:-zoom}
+  UAE_CALLING_ENABLED: ${UAE_CALLING_ENABLED:-true}
+  VSEE_ENABLED: ${VSEE_ENABLED:-true}
+  VSEE_INTEGRATION_MODE: ${VSEE_INTEGRATION_MODE:-external_link}
+  DOXY_ENABLED: ${DOXY_ENABLED:-false}
+  ZOOM_ENABLED: ${ZOOM_ENABLED:-true}
+  GOOGLE_MEET_ENABLED: ${GOOGLE_MEET_ENABLED:-false}
+  TEAMS_ENABLED: ${TEAMS_ENABLED:-false}
+  MONGODB_URI: ${MONGODB_URI:-}
+  MONGODB_BACKUP_URI: ${MONGODB_BACKUP_URI:-}
+  MONGODB_RESTORE_TEST_URI: ${MONGODB_RESTORE_TEST_URI:-}
+  MONGODB_REPLICA_SET_NAME: ${MONGODB_REPLICA_SET_NAME:-menorah-rs}
+  MONGODB_READ_PREFERENCE: ${MONGODB_READ_PREFERENCE:-primaryPreferred}
+  MONGODB_RETRY_WRITES: ${MONGODB_RETRY_WRITES:-true}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+  SERVER_USAGE_LABEL: ${SERVER_USAGE_LABEL:-On-prem server}
+  SERVER_USAGE_PATH: ${SERVER_USAGE_PATH:-}
+  JWT_SECRET: ${JWT_SECRET:-}
+  JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-}
+  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+  JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
+  ADMIN_JWT_EXPIRES_IN: ${ADMIN_JWT_EXPIRES_IN:-8h}
+  RESET_PASSWORD_IP_RATE_LIMIT_MAX: ${RESET_PASSWORD_IP_RATE_LIMIT_MAX:-30}
+  PASSWORD_RESET_URL_TEMPLATE: ${PASSWORD_RESET_URL_TEMPLATE:-https://${APP_DOMAIN:-app.menorah.me}/reset-password?token={token}}
+  GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:-${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}}
+  GOOGLE_IOS_CLIENT_ID: ${GOOGLE_IOS_CLIENT_ID:-${EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID:-}}
+  GOOGLE_ANDROID_CLIENT_ID: ${GOOGLE_ANDROID_CLIENT_ID:-${EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:-}}
+  APPLE_IOS_BUNDLE_ID: ${APPLE_IOS_BUNDLE_ID:-com.menorah.health.app}
+  APPLE_WEB_SERVICE_ID: ${APPLE_WEB_SERVICE_ID:-}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+  WEB_SESSION_ORIGINS: ${WEB_SESSION_ORIGINS:-https://${WWW_DOMAIN:-www.menorah.me}=user,https://${APP_DOMAIN:-app.menorah.me}=user,https://${COUNSELLOR_DOMAIN:-counsellor.menorah.me}=counsellor,https://${ADMIN_DOMAIN:-admin.menorah.me}=admin}
+  ENABLE_SOCKET_IO: ${ENABLE_SOCKET_IO:-true}
+  ENABLE_SOCKET_ADAPTER: ${ENABLE_SOCKET_ADAPTER:-true}
+  WORKER_MODE: ${WORKER_MODE:-standby}
+  ENABLE_ARTICLE_SCHEDULER: ${ENABLE_ARTICLE_SCHEDULER:-false}
+  ENABLE_SOCIAL_SCHEDULER: ${ENABLE_SOCIAL_SCHEDULER:-false}
+  ENABLE_BACKUP_JOBS: ${ENABLE_BACKUP_JOBS:-false}
+  ENABLE_EMAIL_JOBS: ${ENABLE_EMAIL_JOBS:-false}
+  ENABLE_NOTIFICATION_JOBS: ${ENABLE_NOTIFICATION_JOBS:-false}
+  MENORAH_BACKUP_ROOT: ${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}
+  BACKUP_AUTOMATION_ENABLED: ${BACKUP_AUTOMATION_ENABLED:-false}
+  BACKUP_EXPECT_RAID: ${BACKUP_EXPECT_RAID:-false}
+  BACKUP_RAID_DEVICE: ${BACKUP_RAID_DEVICE:-/dev/md/menorah-backups}
+  BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-30}
+  BACKUP_RESTORE_TEST_MAX_AGE_HOURS: ${BACKUP_RESTORE_TEST_MAX_AGE_HOURS:-192}
+  BACKUP_DISK_USAGE_MAX_PERCENT: ${BACKUP_DISK_USAGE_MAX_PERCENT:-80}
+  BACKUP_COLD_STORAGE_LABEL: ${BACKUP_COLD_STORAGE_LABEL:-2 TB cold storage HDD}
+  SIX_HOURLY_RETENTION_DAYS: ${SIX_HOURLY_RETENTION_DAYS:-7}
+  DAILY_RETENTION_DAYS: ${DAILY_RETENTION_DAYS:-30}
+  WEEKLY_RETENTION_DAYS: ${WEEKLY_RETENTION_DAYS:-84}
+  MONTHLY_RETENTION_DAYS: ${MONTHLY_RETENTION_DAYS:-366}
+  RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+  RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+  RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+  CHECKOUT_RETURN_URL: ${CHECKOUT_RETURN_URL:-https://${APP_DOMAIN:-app.menorah.me}/checkout/callback}
+  RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
+  EMAIL_FROM: "${EMAIL_FROM:-Menorah Health <noreply@menorah.me>}"
+  LUXAND_API_TOKEN: ${LUXAND_API_TOKEN:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+  CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+  CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+  # Social Studio uses Cloudinary in production. Local API-service upload
+  # volumes are deliberately not a publishable Reel origin.
+  PUBLIC_WEB_BASE_URL: ${PUBLIC_WEB_BASE_URL:-https://${API_ADMIN_DOMAIN:-api-admin.menorah.me}}
+  SOCIAL_STUDIO_ENABLED: ${SOCIAL_STUDIO_ENABLED:-true}
+  SOCIAL_STUDIO_AUTO_PUBLISH: ${SOCIAL_STUDIO_AUTO_PUBLISH:-false}
+  SOCIAL_STUDIO_GENERATION_RATE_LIMIT: ${SOCIAL_STUDIO_GENERATION_RATE_LIMIT:-10}
+  SOCIAL_STUDIO_VIDEO_UPLOAD_RATE_LIMIT: ${SOCIAL_STUDIO_VIDEO_UPLOAD_RATE_LIMIT:-10}
+  SOCIAL_STUDIO_MAX_POSTS_PER_RUN: ${SOCIAL_STUDIO_MAX_POSTS_PER_RUN:-20}
+  SOCIAL_STUDIO_MAX_VIDEO_SIZE_MB: ${SOCIAL_STUDIO_MAX_VIDEO_SIZE_MB:-50}
+  SOCIAL_STUDIO_REEL_READY_ATTEMPTS: ${SOCIAL_STUDIO_REEL_READY_ATTEMPTS:-12}
+  SOCIAL_STUDIO_REEL_READY_INTERVAL_MS: ${SOCIAL_STUDIO_REEL_READY_INTERVAL_MS:-5000}
+  SOCIAL_STUDIO_STORAGE: ${SOCIAL_STUDIO_STORAGE:-cloudinary}
+  SOCIAL_STUDIO_OPENAI_API_KEY: ${SOCIAL_STUDIO_OPENAI_API_KEY:-}
+  SOCIAL_STUDIO_AI_PROVIDER: ${SOCIAL_STUDIO_AI_PROVIDER:-openai}
+  SOCIAL_STUDIO_AI_TEXT_MODEL: ${SOCIAL_STUDIO_AI_TEXT_MODEL:-gpt-4o-mini}
+  SOCIAL_STUDIO_AI_IMAGE_MODEL: ${SOCIAL_STUDIO_AI_IMAGE_MODEL:-gpt-image-2}
+  SOCIAL_STUDIO_AI_IMAGE_SIZE: ${SOCIAL_STUDIO_AI_IMAGE_SIZE:-1536x1024}
+  SOCIAL_STUDIO_AI_IMAGE_QUALITY: ${SOCIAL_STUDIO_AI_IMAGE_QUALITY:-medium}
+  SOCIAL_STUDIO_AI_IMAGE_FORMAT: ${SOCIAL_STUDIO_AI_IMAGE_FORMAT:-jpeg}
+  SOCIAL_STUDIO_AI_IMAGE_TIMEOUT_MS: ${SOCIAL_STUDIO_AI_IMAGE_TIMEOUT_MS:-120000}
+  CLOUDINARY_SOCIAL_STUDIO_FOLDER: ${CLOUDINARY_SOCIAL_STUDIO_FOLDER:-menorah/social-studio}
+  CLOUDINARY_SOCIAL_STUDIO_ASSET_FOLDER: ${CLOUDINARY_SOCIAL_STUDIO_ASSET_FOLDER:-menorah/social-studio-assets}
+  CLOUDINARY_SOCIAL_STUDIO_VIDEO_FOLDER: ${CLOUDINARY_SOCIAL_STUDIO_VIDEO_FOLDER:-menorah/social-studio-videos}
+  META_APP_ID: ${META_APP_ID:-}
+  META_APP_SECRET: ${META_APP_SECRET:-}
+  META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
+  SOCIAL_TOKEN_ENCRYPTION_KEY: ${SOCIAL_TOKEN_ENCRYPTION_KEY:-}
+  BACKUP_ENCRYPTION_PASSWORD: ${BACKUP_ENCRYPTION_PASSWORD:-}
+
+services:
+  app-link-associations:
+    build:
+      context: ./app-links
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      # Keep these blank until the real signing identifiers are available. The
+      # service then responds 404 instead of publishing placeholder metadata.
+      APPLE_APP_LINK_TEAM_ID: ${APPLE_APP_LINK_TEAM_ID:-}
+      APPLE_APP_LINK_BUNDLE_ID: ${APPLE_APP_LINK_BUNDLE_ID:-}
+      ANDROID_APP_LINK_PACKAGE_NAME: ${ANDROID_APP_LINK_PACKAGE_NAME:-}
+      ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS: ${ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS:-}
+    networks:
+      - app_net
+
+  reverse-proxy:
+    image: caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
+    restart: unless-stopped
+    environment:
+      PUBLIC_EMAIL: ${PUBLIC_EMAIL:-}
+      LIVEKIT_UPSTREAM: ${LIVEKIT_UPSTREAM:-}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:-menorah.me}
+      WWW_DOMAIN: ${WWW_DOMAIN:-www.menorah.me}
+      APP_DOMAIN: ${APP_DOMAIN:-app.menorah.me}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.menorah.me}
+      COUNSELLOR_DOMAIN: ${COUNSELLOR_DOMAIN:-counsellor.menorah.me}
+      API_IOS_DOMAIN: ${API_IOS_DOMAIN:-api-ios.menorah.me}
+      API_ANDROID_DOMAIN: ${API_ANDROID_DOMAIN:-api-android.menorah.me}
+      API_WEB_DOMAIN: ${API_WEB_DOMAIN:-api-web.menorah.me}
+      API_ADMIN_DOMAIN: ${API_ADMIN_DOMAIN:-api-admin.menorah.me}
+      CALLS_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+      # Multipart boundaries add a little overhead above the backend's file
+      # limit. Keep this narrowly scoped proxy allowance at 55 MB for a 50 MB
+      # file, rather than raising the global API limit.
+      SOCIAL_STUDIO_MAX_VIDEO_REQUEST_SIZE_MB: ${SOCIAL_STUDIO_MAX_VIDEO_REQUEST_SIZE_MB:-55}
+    ports:
+      - "${CADDY_HTTP_PORT:-127.0.0.1:8080}:80"
+    volumes:
+      - ./caddy/Caddyfile.production:/etc/caddy/Caddyfile:ro
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/caddy/data:/data
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/caddy/config:/config
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/logs/caddy:/var/log/caddy
+    networks:
+      - public_net
+      - app_net
+      - monitoring_net
+      - mentle_internal
+    depends_on:
+      - app-link-associations
+      - landing-page
+      - user-web-app
+      - web-app
+      - admin-panel
+      - livekit
+      - api-ios
+      - api-android
+      - api-web
+      - api-admin
+
+  livekit:
+    image: livekit/livekit-server:v1.13.3@sha256:483b8b7b5b0654f91f1e8bdc7b46fcd37fd9911612ecf627f97e3185a89825bd
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      NODE_IP: ${LIVEKIT_NODE_IP:-}
+    volumes:
+      - ${LIVEKIT_CONFIG_FILE:-./livekit/livekit.yaml}:/etc/livekit.yaml:ro
+    ports:
+      - "${LIVEKIT_RTC_TCP_PORT:-7881}:7881/tcp"
+      - "${LIVEKIT_RTC_UDP_PORT_RANGE:-50000-50100}:50000-50100/udp"
+    networks:
+      - app_net
+
+  landing-page:
+    build:
+      context: ../user-web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-${RAZORPAY_KEY_ID:-}}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+        # The public landing host is the SEO canonical origin. Keep this on
+        # the apex domain because Cloudflare redirects www -> apex.
+        NEXT_PUBLIC_WEB_BASE_URL: "https://${ROOT_DOMAIN:-menorah.me}"
+        NEXT_PUBLIC_SITE_URL: "https://${ROOT_DOMAIN:-menorah.me}"
+        PUBLIC_WEB_BASE_URL: "https://${ROOT_DOMAIN:-menorah.me}"
+        ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
+        MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
+    restart: unless-stopped
+    environment:
+      PORT: "3002"
+      NODE_ENV: production
+      MONGODB_URI: ${MONGODB_URI:-}
+      MONGO_DATABASE: ${MONGO_DATABASE:-menorah}
+      RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
+      EMAIL_FROM: "${EMAIL_FROM:-Menorah Health <noreply@menorah.me>}"
+      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:-menorahenquiries@gmail.com}
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
+      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
+      ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
+    ports:
+      - "${LANDING_LOCAL_PORT:-127.0.0.1:18085}:3002"
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+
+  user-web-app:
+    build:
+      context: ../user-web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-${RAZORPAY_KEY_ID:-}}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+        NEXT_PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:-app.menorah.me}"
+        NEXT_PUBLIC_SITE_URL: "https://${APP_DOMAIN:-app.menorah.me}"
+        PUBLIC_WEB_BASE_URL: "https://${APP_DOMAIN:-app.menorah.me}"
+        ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
+        MENORAH_API_BASE_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
+    restart: unless-stopped
+    environment:
+      PORT: "3002"
+      NODE_ENV: production
+      MONGODB_URI: ${MONGODB_URI:-}
+      MONGO_DATABASE: ${MONGO_DATABASE:-menorah}
+      RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
+      EMAIL_FROM: "${EMAIL_FROM:-Menorah Health <noreply@menorah.me>}"
+      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:-menorahenquiries@gmail.com}
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
+      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_WEB_CLIENT_ID:-}}
+      ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
+      # Independent HMAC secret for the HttpOnly Razorpay callback relay. This
+      # must not reuse the backend JWT or Razorpay signing secrets.
+      CHECKOUT_CALLBACK_SECRET: ${CHECKOUT_CALLBACK_SECRET:?CHECKOUT_CALLBACK_SECRET is required}
+    ports:
+      - "${USER_WEB_APP_LOCAL_PORT:-127.0.0.1:18087}:3002"
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+
+  web-app:
+    build:
+      context: ../web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
+        NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
+        NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+        NEXT_PUBLIC_ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
+    restart: unless-stopped
+    environment:
+      PORT: "3001"
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}/api}"
+      NEXT_PUBLIC_SOCKET_URL: "${FRONTEND_SOCKET_WEB_URL:-https://${API_WEB_DOMAIN:-api-web.menorah.me}}"
+      NEXT_PUBLIC_JITSI_DOMAIN: ${CALLS_DOMAIN:-calls.menorah.me}
+      NEXT_PUBLIC_ARTICLE_CANONICAL_BASE_URL: "${ARTICLE_CANONICAL_BASE_URL:-https://${ROOT_DOMAIN:-menorah.me}}"
+    ports:
+      - "${WEB_APP_LOCAL_PORT:-127.0.0.1:18086}:3001"
+    networks:
+      - local_probe_net
+      - app_net
+
+  admin-panel:
+    build:
+      context: ../admin-panel
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:-https://${API_ADMIN_DOMAIN:-api-admin.menorah.me}/api}"
+    restart: unless-stopped
+    environment:
+      PORT: "3003"
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: "${FRONTEND_API_ADMIN_URL:-https://${API_ADMIN_DOMAIN:-api-admin.menorah.me}/api}"
+    ports:
+      - "${ADMIN_PANEL_LOCAL_PORT:-127.0.0.1:18088}:3003"
+    networks:
+      - local_probe_net
+      - app_net
+
+  api-ios:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["node", "src/services/api-ios/server.js"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: api-ios
+    ports:
+      - "${API_IOS_LOCAL_PORT:-127.0.0.1:18080}:8080"
+    volumes:
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/uploads/api-ios:/app/uploads
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  api-android:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["node", "src/services/api-android/server.js"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: api-android
+    ports:
+      - "${API_ANDROID_LOCAL_PORT:-127.0.0.1:18084}:8080"
+    volumes:
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/uploads/api-android:/app/uploads
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  api-web:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["node", "src/services/api-web/server.js"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: api-web
+    ports:
+      - "${API_WEB_LOCAL_PORT:-127.0.0.1:18082}:8080"
+    volumes:
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/uploads/api-web:/app/uploads
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  api-admin:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["node", "src/services/api-admin/server.js"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: api-admin
+      ENABLE_SOCKET_IO: "false"
+      ENABLE_SOCKET_ADAPTER: "false"
+    ports:
+      - "${API_ADMIN_LOCAL_PORT:-127.0.0.1:18083}:8080"
+    volumes:
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/uploads/api-admin:/app/uploads
+      - ${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}:${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}:ro
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["node", "src/services/worker/worker.js"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: worker
+      WORKER_MODE: ${WORKER_MODE:-active}
+    ports:
+      - "${WORKER_LOCAL_PORT:-127.0.0.1:18090}:8080"
+    volumes:
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/uploads/worker:/app/uploads
+    networks:
+      - local_probe_net
+      - app_net
+      - db_net
+    depends_on:
+      mongo-replica-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  mongo-primary:
+    image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
+    restart: unless-stopped
+    entrypoint:
+      - bash
+      - -lc
+      - |
+        install -m 400 /mongo-keyfile-source/mongo-keyfile /data/db/mongo-keyfile
+        exec docker-entrypoint.sh mongod --config /etc/mongod.conf --keyFile /data/db/mongo-keyfile
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
+      MONGO_ROOT_USER: ${MONGO_ROOT_USER:-}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
+      MONGO_APP_USER: ${MONGO_APP_USER:-}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:-}
+      MONGO_BACKUP_USER: ${MONGO_BACKUP_USER:-}
+      MONGO_BACKUP_PASSWORD: ${MONGO_BACKUP_PASSWORD:-}
+      MONGO_RESTORE_TEST_USER: ${MONGO_RESTORE_TEST_USER:-}
+      MONGO_RESTORE_TEST_PASSWORD: ${MONGO_RESTORE_TEST_PASSWORD:-}
+    volumes:
+      - ./mongo/mongod-primary.conf:/etc/mongod.conf:ro
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/mongo/primary:/data/db
+      - ${MONGO_KEYFILE_PATH:-/opt/menorah/secrets/mongo-keyfile}:/mongo-keyfile-source/mongo-keyfile:ro
+      - ./mongo/create-users.js:/docker-entrypoint-initdb.d/20-create-users.js:ro
+    networks:
+      - db_net
+
+  mongo-replica-init:
+    image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
+    restart: "no"
+    environment:
+      MONGO_ROOT_USER: ${MONGO_ROOT_USER:-}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
+      MONGODB_REPLICA_SET_NAME: ${MONGODB_REPLICA_SET_NAME:-menorah-rs}
+      MONGO_PRIMARY_HOST: ${MONGO_PRIMARY_HOST:-mongo-primary:27017}
+    command:
+      - bash
+      - -lc
+      - |
+        until mongosh --host mongo-primary:27017 \
+          -u "$$MONGO_ROOT_USER" \
+          -p "$$MONGO_ROOT_PASSWORD" \
+          --authenticationDatabase admin \
+          --quiet \
+          --eval "db.adminCommand({ ping: 1 }).ok" >/dev/null; do
+          echo "Waiting for mongo-primary auth..."
+          sleep 2
+        done
+
+        mongosh --host mongo-primary:27017 \
+          -u "$$MONGO_ROOT_USER" \
+          -p "$$MONGO_ROOT_PASSWORD" \
+          --authenticationDatabase admin \
+          --quiet \
+          --eval "try { printjson(rs.status()) } catch (e) { printjson(rs.initiate({_id: '$${MONGODB_REPLICA_SET_NAME:-menorah-rs}', members: [{_id: 0, host: '$${MONGO_PRIMARY_HOST:-mongo-primary:27017}'}]})) }"
+    networks:
+      - db_net
+    depends_on:
+      - mongo-primary
+
+  mongo-restore-test:
+    image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
+    profiles: ["restore-test"]
+    restart: "no"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
+      MONGO_ROOT_USER: ${MONGO_ROOT_USER:-}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
+      MONGO_APP_USER: ${MONGO_APP_USER:-}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:-}
+      MONGO_BACKUP_USER: ${MONGO_BACKUP_USER:-}
+      MONGO_BACKUP_PASSWORD: ${MONGO_BACKUP_PASSWORD:-}
+      MONGO_RESTORE_TEST_USER: ${MONGO_RESTORE_TEST_USER:-}
+      MONGO_RESTORE_TEST_PASSWORD: ${MONGO_RESTORE_TEST_PASSWORD:-}
+    volumes:
+      - ${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}/restore-tests/mongo-data:/data/db
+      - ./mongo/create-users.js:/docker-entrypoint-initdb.d/20-create-users.js:ro
+    networks:
+      - db_net
+
+  redis:
+    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/redis:/data
+    networks:
+      - db_net
+
+  backup-runner:
+    image: mongo:7@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      BACKUP_ROOT: /backups/six-hourly
+    volumes:
+      - ./backup:/scripts:ro
+      - ${MENORAH_BACKUP_ROOT:-/opt/menorah/backups}:/backups
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/uploads:/uploads:ro
+    command: ["bash", "-lc", "while true; do /scripts/backup-mongo.sh; sleep 21600; done"]
+    networks:
+      - db_net
+    depends_on:
+      mongo-primary:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v2.55.1@sha256:2659f4c2ebb718e7695cb9b25ffa7d6be64db013daba13e05c875451cf51b0d3
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/prometheus:/prometheus
+    networks:
+      - monitoring_net
+      - app_net
+
+  grafana:
+    image: grafana/grafana:11.3.0@sha256:a0f881232a6fb71a0554a47d0fe2203b6888fe77f4cefb7ea62bed7eb54e13c3
+    restart: unless-stopped
+    volumes:
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/grafana:/var/lib/grafana
+    ports:
+      - "${GRAFANA_LOCAL_PORT:-127.0.0.1:18100}:3000"
+    networks:
+      - monitoring_net
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1@sha256:3d632903e6af34139a37f18055c4f1bfd9b7205ae1138f1e5e8940ddc1d176f9
+    restart: unless-stopped
+    volumes:
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/uptime-kuma:/app/data
+    ports:
+      - "${UPTIME_KUMA_LOCAL_PORT:-127.0.0.1:18101}:3001"
+    networks:
+      - monitoring_net
+      - app_net
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1@sha256:3cde6faf0791ebf7b41d6f8ae7145466fed712ea6f252c935294d2608b1af388
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - monitoring_net
+
+  log-collector:
+    image: grafana/promtail:3.2.1@sha256:bf617e9d67e80247a59f717f9c1ad388d7d32dc0a1d29abd5799516d15e0a9b5
+    restart: unless-stopped
+    volumes:
+      - ./logging/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/logs:/var/log/menorah:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: ["-config.file=/etc/promtail/config.yml"]
+    networks:
+      - monitoring_net
+    depends_on:
+      - loki
+
+  loki:
+    image: grafana/loki:3.2.1@sha256:09a53b4a4ff81ffcd8f13886df19d33fac7a8d3aaf952e3c7e66cbade5b2fc31
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/config.yml"]
+    volumes:
+      - ./logging/loki-config.yml:/etc/loki/config.yml:ro
+      - ${MENORAH_DATA_ROOT:-/opt/menorah/data}/loki:/loki
+    networks:
+      - monitoring_net
+
+networks:
+  public_net:
+  local_probe_net:
+  app_net:
+    internal: true
+  db_net:
+    internal: true
+  monitoring_net:
+    internal: true
+  mentle_internal:
+    external: true

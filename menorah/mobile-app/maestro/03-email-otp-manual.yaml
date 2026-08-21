@@ -1,0 +1,13 @@
+appId: com.menorah.healthmobile
+env:
+  QA_EMAIL: ""
+---
+- launchApp
+- tapOn:
+    text: ".*(Login|Sign in).*"
+    optional: true
+- assertVisible:
+    text: ".*(Verify|verification|code|OTP).*"
+    optional: true
+- assertVisible:
+    text: ".*(code|OTP|Verification).*"

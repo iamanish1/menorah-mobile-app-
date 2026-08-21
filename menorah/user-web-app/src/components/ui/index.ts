@@ -7,3 +7,4 @@ export { Spinner }  from './Spinner';
 export { Select }   from './Select';
 export { SegmentedControl } from './SegmentedControl';
 export { ToggleSwitch } from './ToggleSwitch';
+export { CountryPhoneInput } from './CountryPhoneInput';

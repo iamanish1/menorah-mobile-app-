@@ -33,16 +33,9 @@ jobs:
       packages: write          # push to GHCR
       id-token: write          # needed for GCP Workload Identity (if used later)
 
-    outputs:
-      short_sha: ${{ steps.sha.outputs.short }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Short SHA
-        id: sha
-        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       # ── Auth to GHCR ─────────────────────────────────────────────────────
       - name: Log in to GitHub Container Registry
@@ -79,10 +72,8 @@ jobs:
           file:       ./menorah/backend/Dockerfile
           push:       true
           tags: |
-            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE }}:latest
-            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE }}:sha-${{ steps.sha.outputs.short }}
-            ${{ env.AR_IMAGE }}:latest
-            ${{ env.AR_IMAGE }}:sha-${{ steps.sha.outputs.short }}
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.AR_IMAGE }}:sha-${{ github.sha }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -109,8 +100,8 @@ jobs:
           port:     ${{ secrets.VPS_PORT || 22 }}
           script: |
             set -e
-            SHORT_SHA="${{ needs.build.outputs.short_sha }}"
-            IMAGE="${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE }}:sha-${SHORT_SHA}"
+            COMMIT_SHA="${{ github.sha }}"
+            IMAGE="${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE }}:sha-${COMMIT_SHA}"
 
             echo "==> Logging into GHCR"
             echo "${{ secrets.GHCR_PAT }}" \
@@ -136,7 +127,8 @@ jobs:
             fi
 
             echo "==> Ensuring local Redis is running"
-            docker pull redis:7-alpine
+            REDIS_IMAGE="redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99"
+            docker pull "$REDIS_IMAGE"
             if docker inspect menorah-redis >/dev/null 2>&1; then
               docker start menorah-redis >/dev/null 2>&1 || true
             else
@@ -145,7 +137,7 @@ jobs:
                 --restart unless-stopped \
                 -p 127.0.0.1:6379:6379 \
                 -v menorah-redis-data:/data \
-                redis:7-alpine \
+                "$REDIS_IMAGE" \
                 redis-server --appendonly yes
             fi
 
@@ -262,7 +254,7 @@ jobs:
               "${IMAGE}"
 
             echo "==> Updating nginx config"
-            NGINX_TMP="/tmp/menorah-nginx-${SHORT_SHA}.conf"
+            NGINX_TMP="/tmp/menorah-nginx-${COMMIT_SHA}.conf"
             curl -fsSL \
               "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/menorah/backend/nginx.conf" \
               -o "${NGINX_TMP}"
@@ -348,7 +340,7 @@ jobs:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCP_REGION:     ${{ secrets.GCP_REGION }}
           GCP_AR_REGION:  ${{ secrets.GCP_AR_REGION }}
-          IMAGE_TAG:      sha-${{ needs.build.outputs.short_sha }}
+          IMAGE_TAG:      sha-${{ github.sha }}
         run: |
           # envsubst replaces ${VAR} placeholders in the YAML with real values
           envsubst < gcp/cloudrun.yaml > /tmp/cloudrun-final.yaml
@@ -428,7 +420,7 @@ jobs:
         run: |
           VPS_STATUS="${{ needs.deploy-vps.result }}"
           GCP_STATUS="${{ needs.deploy-cloudrun.result }}"
-          SHA="sha-${{ needs.build.outputs.short_sha }}"
+          SHA="sha-${{ github.sha }}"
 
           echo "╔══════════════════════════════════════════════════╗"
           echo "║         Menorah Health — Deploy Summary          ║"

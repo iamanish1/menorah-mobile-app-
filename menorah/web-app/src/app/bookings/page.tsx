@@ -30,8 +30,7 @@ function BookingsContent() {
     activeTab === 'all' ? { status: statusFilter || undefined } : undefined
   );
   const { bookings: pendingBookings, loading: pendingLoading, error: pendingError, refetch: refetchPendingBookings } = usePendingBookings();
-  const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
-  const { on, off } = useSocket(token);
+  const { on, off } = useSocket(isAuthenticated);
 
   // Helper that invalidates both booking queries at once
   const invalidateAll = () => { refetchAllBookings(); refetchPendingBookings(); };
@@ -44,7 +43,7 @@ function BookingsContent() {
 
   // Refresh bookings list on real-time events
   useEffect(() => {
-    if (!token || !isAuthenticated) return;
+    if (!isAuthenticated) return;
     on('new_booking_available',  invalidateAll);
     on('booking_assigned',       invalidateAll);
     on('booking_status_changed', invalidateAll);
@@ -53,7 +52,7 @@ function BookingsContent() {
       off('booking_assigned',       invalidateAll);
       off('booking_status_changed', invalidateAll);
     };
-  }, [token, isAuthenticated, on, off]);
+  }, [isAuthenticated, on, off]);
 
   const getBookingsForTab = (): Booking[] => {
     let bookings: Booking[] = [];

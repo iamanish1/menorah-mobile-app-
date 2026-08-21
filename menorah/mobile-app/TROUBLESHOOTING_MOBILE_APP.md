@@ -6,7 +6,7 @@
 
 1. **Check if Backend Server is Running**
    ```bash
-   cd Menorah/backend
+   cd menorah/backend
    npm run dev
    ```
    The server should start on port 3000 and show:
@@ -33,7 +33,7 @@
 
 3. **Update IP Address in app.config.ts**
    
-   Open `Menorah/mobile-app/app.config.ts` and update line 8:
+   Open `menorah/mobile-app/app.config.ts` and update line 8:
    ```typescript
    const LOCAL_IP = 'YOUR_ACTUAL_IP_HERE'; // e.g., '192.168.1.5'
    ```
@@ -57,7 +57,7 @@
 
 5. **Restart Mobile App**
    ```bash
-   cd Menorah/mobile-app
+   cd menorah/mobile-app
    npm start
    ```
    Then reload the app on your device (shake device → Reload)
@@ -67,7 +67,7 @@
 #### Issue 1: "Network error: Unable to connect to server"
 **Cause:** Backend server not running or wrong IP address
 **Solution:**
-1. Start backend: `cd Menorah/backend && npm run dev`
+1. Start backend: `cd menorah/backend && npm run dev`
 2. Verify IP address matches your current network IP
 3. Ensure mobile device and computer are on same WiFi network
 

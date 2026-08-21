@@ -16,9 +16,10 @@ function maskEmail(email?: string) {
 
 function VerifyOtpForm() {
   const router = useRouter();
-  const { verifyEmailOTP, user, isLoading } = useAuth();
+  const { verifyEmail, verifyEmailOTP, user, isLoading } = useAuth();
 
   const [pendingEmail, setPendingEmail] = useState('');
+  const [verificationMode, setVerificationMode] = useState<'registration' | 'account'>('registration');
   const [otp, setOtp]             = useState(['', '', '', '', '', '']);
   const [error, setError]         = useState('');
   const [loading, setLoading]     = useState(false);
@@ -35,6 +36,7 @@ function VerifyOtpForm() {
       return;
     }
     setPendingEmail(email);
+    setVerificationMode(sessionStorage.getItem('pending_verification_mode') === 'account' ? 'account' : 'registration');
     inputRefs.current[0]?.focus();
   }, [router]);
 
@@ -78,7 +80,9 @@ function VerifyOtpForm() {
     if (!pendingEmail) { setError('Email not found. Please register again.'); return; }
     setLoading(true);
     setError('');
-    const res = await verifyEmailOTP(pendingEmail, code);
+    const res = verificationMode === 'account'
+      ? await verifyEmail(pendingEmail, code)
+      : await verifyEmailOTP(pendingEmail, code);
     setLoading(false);
     if (!res.success) {
       setError(res.message || 'Invalid code. Please try again.');
@@ -92,11 +96,17 @@ function VerifyOtpForm() {
     if (countdown > 0 || !pendingEmail) return;
     setResending(true);
     setError('');
-    await api.resendEmailOTP(pendingEmail);
+    const res = verificationMode === 'account'
+      ? await api.resendEmailVerification(pendingEmail)
+      : await api.resendEmailOTP(pendingEmail);
     setResending(false);
-    setCountdown(60);
-    setOtp(['', '', '', '', '', '']);
-    inputRefs.current[0]?.focus();
+    if (res.success) {
+      setCountdown(60);
+      setOtp(['', '', '', '', '', '']);
+      inputRefs.current[0]?.focus();
+    } else {
+      setError(res.message || 'We could not resend the code. Please try again.');
+    }
   };
 
   const displayEmail = maskEmail(pendingEmail);
@@ -155,7 +165,7 @@ function VerifyOtpForm() {
       <div className="space-y-1">
         <button
           onClick={handleResend}
-          disabled={countdown > 0 || resending || !user?.email}
+          disabled={countdown > 0 || resending || !pendingEmail}
           className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-primary-600 dark:text-primary-100/70 dark:hover:text-primary-50
                      disabled:opacity-50 disabled:cursor-not-allowed mx-auto transition-colors"
         >

@@ -4,8 +4,12 @@ const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
 const PendingApplication = require('../models/PendingApplication');
 const { optionalAuth } = require('../middleware/auth');
-const jwt = require('jsonwebtoken');
 const { getRedisClient } = require('../config/redis');
+const Booking = require('../models/Booking');
+const {
+  expireStalePendingBookings,
+  generateAvailabilityForDate,
+} = require('../utils/bookingAvailability');
 
 // ── Regex safety helper ────────────────────────────────────────────────────
 // Escapes regex metacharacters to prevent ReDoS via user-supplied search strings
@@ -31,17 +35,69 @@ const CACHE_TTL = {
   STATIC_LOOKUPS: 30 * 60,  // 30 min — specializations + languages (rarely change)
 };
 
-// Generate JWT Token (same as in auth.js)
-const generateToken = (userId, role = 'user', fullName = '') => {
-  return jwt.sign({ userId, role, fullName }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
-  });
-};
 const crypto = require('crypto');
 const { sendVerificationEmail } = require('../utils/email');
 const { sendSMS } = require('../utils/sms');
+const { emailNormalizationOptions, normalizeEmail } = require('../utils/emailNormalization');
 
 const router = express.Router();
+const publicReadyCounsellorQuery = {
+  isActive: true,
+  status: 'approved',
+};
+const DEFAULT_SPECIALIZATIONS = Object.freeze([
+  'Stress',
+  'Sleep',
+  'Relationships',
+  'Work pressure',
+  'Anxiety',
+  'Depression',
+  'Burnout',
+  'Self-esteem',
+  'Trauma',
+  'Grief',
+  'Addiction',
+  'Career',
+  'Family conflict',
+]);
+const DEFAULT_LANGUAGES = Object.freeze([
+  'English',
+  'Hindi',
+  'Arabic',
+  'Malayalam',
+  'Tamil',
+  'Telugu',
+  'Kannada',
+  'Marathi',
+  'Bengali',
+  'Gujarati',
+  'Punjabi',
+  'Urdu',
+]);
+const CACHE_VERSION = 'v4';
+
+const normalizeLookupValues = (values) => {
+  const seen = new Set();
+  return values.flat()
+    .map(value => (typeof value === 'string' ? value.trim() : ''))
+    .filter(value => {
+      if (!value) return false;
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const mergeLookupCatalog = (defaults, dbValues) => {
+  const normalizedDefaults = normalizeLookupValues(defaults);
+  const defaultKeys = new Set(normalizedDefaults.map(value => value.toLowerCase()));
+  const extras = normalizeLookupValues(dbValues)
+    .filter(value => !defaultKeys.has(value.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+
+  return [...normalizedDefaults, ...extras];
+};
 
 // @route   GET /api/counsellors
 // @desc    Get all counsellors with filtering and search
@@ -81,10 +137,22 @@ router.get('/', [
       sortOrder = 'desc'
     } = req.query;
 
+    const parsedMinPrice = minPrice !== undefined ? parseFloat(minPrice) : undefined;
+    const parsedMaxPrice = maxPrice !== undefined ? parseFloat(maxPrice) : undefined;
+
+    if (
+      parsedMinPrice !== undefined &&
+      parsedMaxPrice !== undefined &&
+      parsedMinPrice > parsedMaxPrice
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Minimum price cannot be greater than maximum price'
+      });
+    }
+
     // Build query
-    const query = {
-      isActive: true,
-    };
+    const query = { ...publicReadyCounsellorQuery };
 
     // Collect top-level $or conditions to combine later
     const orConditions = [];
@@ -138,22 +206,27 @@ router.get('/', [
     }
 
     // Filter by price
-    if (minPrice || maxPrice) {
+    if (parsedMinPrice !== undefined || parsedMaxPrice !== undefined) {
       query.hourlyRate = {};
-      if (minPrice) query.hourlyRate.$gte = parseFloat(minPrice);
-      if (maxPrice) query.hourlyRate.$lte = parseFloat(maxPrice);
+      if (parsedMinPrice !== undefined) query.hourlyRate.$gte = parsedMinPrice;
+      if (parsedMaxPrice !== undefined) query.hourlyRate.$lte = parsedMaxPrice;
     }
 
     // Build sort object — map frontend sort keys to actual MongoDB field names
     const sortFieldMap = { rating: 'rating', price: 'hourlyRate', experience: 'experience' };
+    const sortDirection = sortOrder === 'asc' ? 1 : -1;
     const sort = {};
     if (sortBy === 'name') {
-      sort['user.firstName'] = sortOrder === 'asc' ? 1 : -1;
-      sort['user.lastName']  = sortOrder === 'asc' ? 1 : -1;
+      sort['user.firstName'] = sortDirection;
+      sort['user.lastName']  = sortDirection;
     } else {
       const field = sortFieldMap[sortBy] || 'rating';
-      sort[field] = sortOrder === 'asc' ? 1 : -1;
+      sort[field] = sortDirection;
     }
+    sort.rating = sort.rating || -1;
+    sort.reviewCount = -1;
+    sort.totalSessions = -1;
+    sort._id = 1;
 
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -161,7 +234,7 @@ router.get('/', [
     // Build a deterministic cache key from the query params.
     // Skip cache for free-text searches (too many unique keys, low reuse value).
     const cacheKey = !search
-      ? `counsellors:list:${JSON.stringify({ specialization, language, minRating, minPrice, maxPrice, page, limit, sortBy, sortOrder })}`
+      ? `counsellors:${CACHE_VERSION}:list:${JSON.stringify({ specialization, language, minRating, minPrice, maxPrice, page, limit, sortBy, sortOrder })}`
       : null;
 
     const fetchFromDB = async () => {
@@ -187,6 +260,8 @@ router.get('/', [
         hourlyRate: counsellor.hourlyRate,
         currency: counsellor.currency,
         profileImage: counsellor.profileImage || counsellor.user.profileImage,
+        voiceIntroUrl: counsellor.voiceIntroUrl,
+        voiceIntroDurationSeconds: counsellor.voiceIntroDurationSeconds,
         bio: counsellor.bio,
         isAvailable: counsellor.isAvailable,
         totalSessions: counsellor.totalSessions,
@@ -223,22 +298,10 @@ router.get('/', [
 // @access  Public
 router.get('/specializations', async (req, res) => {
   try {
-    const specializations = await withCache('counsellors:specializations', CACHE_TTL.STATIC_LOOKUPS, async () => {
-      const [singular, plural] = await Promise.all([
-        Counsellor.distinct('specialization'),
-        Counsellor.distinct('specializations'),
-      ]);
-      const seen = new Set();
-      return [...singular, ...plural.flat()]
-        .map(s => s.trim())
-        .filter(s => {
-          if (!s) return false;
-          const key = s.toLowerCase();
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .sort();
+    const specializations = await withCache(`counsellors:${CACHE_VERSION}:specializations`, CACHE_TTL.STATIC_LOOKUPS, async () => {
+      const plural = await Counsellor.distinct('specializations', publicReadyCounsellorQuery);
+      const singular = await Counsellor.distinct('specialization', publicReadyCounsellorQuery);
+      return mergeLookupCatalog(DEFAULT_SPECIALIZATIONS, [...plural, ...singular]);
     });
 
     res.json({ success: true, data: { specializations } });
@@ -253,19 +316,9 @@ router.get('/specializations', async (req, res) => {
 // @access  Public
 router.get('/languages', async (req, res) => {
   try {
-    const languages = await withCache('counsellors:languages', CACHE_TTL.STATIC_LOOKUPS, async () => {
-      const raw = await Counsellor.distinct('languages');
-      const seen = new Set();
-      return raw.flat()
-        .map(l => l.trim())
-        .filter(l => {
-          if (!l) return false;
-          const key = l.toLowerCase();
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .sort();
+    const languages = await withCache(`counsellors:${CACHE_VERSION}:languages`, CACHE_TTL.STATIC_LOOKUPS, async () => {
+      const raw = await Counsellor.distinct('languages', publicReadyCounsellorQuery);
+      return mergeLookupCatalog(DEFAULT_LANGUAGES, raw);
     });
 
     res.json({ success: true, data: { languages } });
@@ -275,20 +328,21 @@ router.get('/languages', async (req, res) => {
   }
 });
 
-// @route   GET /api/counsellors/application-status?email=xxx
-// @desc    Check counsellor application status by email (public — used by registration page)
-// @access  Public
+// @route   GET /api/counsellors/application-status?ticket=xxx
+// @desc    Check counsellor application status with an opaque applicant ticket
+// @access  Ticket protected
 router.get('/application-status', [
-  query('email').isEmail().normalizeEmail().withMessage('Valid email required')
+  query('ticket').isHexadecimal().isLength({ min: 64, max: 64 }).withMessage('Valid status ticket required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Valid email is required' });
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Valid status ticket is required' });
 
-    const emailQuery = req.query.email;
+    const ticketHash = crypto.createHash('sha256').update(req.query.ticket).digest('hex');
 
-    // Check pending/rejected applications first
-    const pending = await PendingApplication.findOne({ email: emailQuery }).select('status rejectionReason').lean();
+    const pending = await PendingApplication.findOne({ statusLookupTokenHash: ticketHash })
+      .select('status rejectionReason')
+      .lean();
     if (pending) {
       return res.json({
         success: true,
@@ -296,16 +350,14 @@ router.get('/application-status', [
       });
     }
 
-    // Check approved counsellors (application was approved and User/Counsellor were created)
-    const user = await User.findOne({ email: emailQuery, role: 'counsellor' }).select('_id isActive').lean();
-    if (!user) return res.status(404).json({ success: false, message: 'No application found for this email' });
-
-    const counsellor = await Counsellor.findOne({ user: user._id }).select('status').lean();
-    if (!counsellor) return res.status(404).json({ success: false, message: 'No application found' });
+    const counsellor = await Counsellor.findOne({ applicationStatusTokenHash: ticketHash })
+      .select('status isActive')
+      .lean();
+    if (!counsellor) return res.status(404).json({ success: false, message: 'Application status not found' });
 
     res.json({
       success: true,
-      data: { status: counsellor.status, rejectionReason: null, isActive: user.isActive }
+      data: { status: counsellor.status, rejectionReason: null, isActive: counsellor.isActive }
     });
   } catch (error) {
     console.error('Application status check error:', error);
@@ -342,7 +394,7 @@ router.get('/:id', [
       });
     }
 
-    if (!counsellor.isActive) {
+    if (!counsellor.isActive || counsellor.status !== 'approved') {
       return res.status(404).json({
         success: false,
         message: 'Counsellor not available'
@@ -362,6 +414,8 @@ router.get('/:id', [
       hourlyRate: counsellor.hourlyRate,
       currency: counsellor.currency,
       profileImage: counsellor.profileImage || counsellor.user.profileImage,
+      voiceIntroUrl: counsellor.voiceIntroUrl,
+      voiceIntroDurationSeconds: counsellor.voiceIntroDurationSeconds,
       bio: counsellor.bio,
       education: counsellor.education,
       certifications: counsellor.certifications,
@@ -398,8 +452,10 @@ router.get('/:id', [
 // @access  Public
 router.get('/:id/availability', [
   param('id').isMongoId().withMessage('Invalid counsellor ID'),
-  query('startDate').isISO8601().withMessage('Start date must be a valid date'),
-  query('endDate').isISO8601().withMessage('End date must be a valid date')
+  query('startDate').optional().isISO8601().withMessage('Start date must be a valid date'),
+  query('endDate').optional().isISO8601().withMessage('End date must be a valid date'),
+  query('date').optional().isISO8601().withMessage('Date must be a valid date'),
+  query('duration').optional().isInt({ min: 15, max: 180 }).withMessage('Duration must be between 15 and 180 minutes')
 ], optionalAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -412,7 +468,16 @@ router.get('/:id/availability', [
     }
 
     const { id } = req.params;
-    const { startDate, endDate } = req.query;
+    const requestedStartDate = req.query.date || req.query.startDate;
+    const requestedEndDate = req.query.date || req.query.endDate || requestedStartDate;
+    const duration = req.query.duration ? parseInt(req.query.duration, 10) : undefined;
+
+    if (!requestedStartDate || !requestedEndDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'A date or startDate/endDate is required'
+      });
+    }
 
     const counsellor = await Counsellor.findById(id);
     if (!counsellor || !counsellor.isActive || !counsellor.isVerified) {
@@ -422,28 +487,42 @@ router.get('/:id/availability', [
       });
     }
 
-    // Generate availability slots for the date range
+    await expireStalePendingBookings(Booking, { counsellor: id });
+
+    const timezone = counsellor.timezone || 'Asia/Kolkata';
+    const start = new Date(requestedStartDate);
+    const end = new Date(requestedEndDate);
+    const rangeStart = new Date(start);
+    rangeStart.setUTCHours(0, 0, 0, 0);
+    rangeStart.setUTCDate(rangeStart.getUTCDate() - 1);
+    const rangeEnd = new Date(end);
+    rangeEnd.setUTCHours(23, 59, 59, 999);
+    rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
+
+    const bookings = await Booking.find({
+      counsellor: id,
+      status: { $in: ['pending', 'confirmed', 'in-progress'] },
+      scheduledAt: { $gte: rangeStart, $lte: rangeEnd },
+    }).select('scheduledAt sessionDuration status paymentStatus holdExpiresAt').lean();
+
     const availability = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-
-    for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
-      const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-      const daySchedule = counsellor.availability[dayOfWeek];
-
-      if (daySchedule && daySchedule.isAvailable) {
-        const slots = generateTimeSlots(daySchedule.start, daySchedule.end, counsellor.sessionDuration);
-        availability.push({
-          date: date.toISOString().split('T')[0],
-          dayOfWeek: dayOfWeek,
-          slots: slots
-        });
-      }
+    for (let date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
+      availability.push(generateAvailabilityForDate({
+        counsellor,
+        date,
+        bookings,
+        duration,
+      }));
     }
 
     res.json({
       success: true,
-      data: { availability }
+      data: {
+        availability,
+        date: req.query.date ? availability[0]?.date : undefined,
+        timezone,
+        holdMinutes: 15,
+      }
     });
 
   } catch (error) {
@@ -462,7 +541,7 @@ router.post('/register', [
   // User fields
   body('firstName').trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
-  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
+  body('email').isEmail().normalizeEmail(emailNormalizationOptions).withMessage('Please provide a valid email'),
   body('phone').matches(/^\+[1-9]\d{1,14}$/).withMessage('Please provide a valid phone number with country code'),
   body('dateOfBirth').isISO8601().withMessage('Please provide a valid date of birth'),
   body('gender').isIn(['male', 'female', 'other', 'prefer-not-to-say']).withMessage('Please provide a valid gender'),
@@ -537,17 +616,17 @@ router.post('/register', [
       availability
     } = req.body;
 
-    // Block if already an active/approved counsellor with this email
-    const existingUser = await User.findOne({ email, role: 'counsellor' });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'A counsellor account with this email already exists'
-      });
-    }
+    const normalizedEmail = normalizeEmail(email);
+    const [existingByEmail, existingByPhone, existingCounsellor, activeApplication] = await Promise.all([
+      User.findOne({ email: normalizedEmail }),
+      User.findOne({ phone }),
+      Counsellor.findOne({ licenseNumber }),
+      PendingApplication.findOne({
+        $or: [{ email: normalizedEmail }, { phone }],
+        status: { $in: ['pending', 'manual_review'] },
+      }).select('_id status'),
+    ]);
 
-    // Block duplicate license numbers already in the approved counsellors
-    const existingCounsellor = await Counsellor.findOne({ licenseNumber });
     if (existingCounsellor) {
       return res.status(400).json({
         success: false,
@@ -555,8 +634,22 @@ router.post('/register', [
       });
     }
 
-    // If a previous application exists for this email, replace it (re-apply after rejection)
-    await PendingApplication.deleteOne({ email });
+    // Do not delete an in-flight/manual-review record; it may be evidence of
+    // an identity conflict that an administrator must resolve.
+    if (activeApplication) {
+      return res.status(202).json({
+        success: true,
+        message: 'Your application is already under review. We will contact you after review is complete.',
+        data: { applicationId: activeApplication._id, status: activeApplication.status },
+      });
+    }
+
+    // Re-application after a decision is allowed, but only old completed
+    // application records are replaced.
+    await PendingApplication.deleteMany({
+      $or: [{ email: normalizedEmail }, { phone }],
+      status: 'rejected',
+    });
 
     const defaultAvailability = availability || {
       monday:    { start: '09:00', end: '17:00', isAvailable: true },
@@ -568,8 +661,9 @@ router.post('/register', [
       sunday:    { start: '09:00', end: '17:00', isAvailable: false }
     };
 
+    const statusTicket = crypto.randomBytes(32).toString('hex');
     const application = new PendingApplication({
-      firstName, lastName, email, phone, dateOfBirth, gender,
+      firstName, lastName, email: normalizedEmail, phone, dateOfBirth, gender,
       licenseNumber, specialization,
       specializations: specializations || [specialization],
       experience, bio, languages, hourlyRate,
@@ -577,7 +671,14 @@ router.post('/register', [
       education: education || [],
       certifications: certifications || [],
       availability: defaultAvailability,
-      status: 'pending'
+      statusLookupTokenHash: crypto.createHash('sha256').update(statusTicket).digest('hex'),
+      status: existingByEmail || existingByPhone ? 'manual_review' : 'pending',
+      identityConflict: {
+        hasConflict: Boolean(existingByEmail || existingByPhone),
+        email: Boolean(existingByEmail),
+        phone: Boolean(existingByPhone),
+        detectedAt: existingByEmail || existingByPhone ? new Date() : null,
+      },
     });
 
     await application.save();
@@ -585,7 +686,7 @@ router.post('/register', [
     res.status(201).json({
       success: true,
       message: 'Registration submitted successfully. Your profile is under review by our admin team. You will receive your login credentials once approved.',
-      data: { applicationId: application._id, email: application.email }
+      data: { applicationId: application._id, email: application.email, statusTicket }
     });
 
   } catch (error) {
@@ -596,19 +697,5 @@ router.post('/register', [
     });
   }
 });
-
-// Helper function to generate time slots
-const generateTimeSlots = (startTime, endTime, duration) => {
-  const slots = [];
-  const start = new Date(`2000-01-01T${startTime}`);
-  const end = new Date(`2000-01-01T${endTime}`);
-
-  while (start < end) {
-    slots.push(start.toTimeString().slice(0, 5));
-    start.setMinutes(start.getMinutes() + duration);
-  }
-
-  return slots;
-};
 
 module.exports = router;

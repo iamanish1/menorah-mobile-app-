@@ -4,11 +4,66 @@ const moment = require('moment');
 const Booking = require('../models/Booking');
 const Counsellor = require('../models/Counsellor');
 const User = require('../models/User');
-const { auth } = require('../middleware/auth');
+const { auth, authAny, verifiedPatientAuth } = require('../middleware/auth');
 const { sendBookingConfirmationEmail, sendSessionReminderEmail } = require('../utils/email');
 const { sendBookingConfirmationSMS, sendSessionReminderSMS, sendCancellationSMS } = require('../utils/sms');
+const {
+  getPendingHoldExpiresAt,
+  expireStalePendingBookings,
+  isBlockingBooking,
+} = require('../utils/bookingAvailability');
+const {
+  isAllowedExternalProvider,
+  isSafeHttpsUrl,
+  normalizeProvider,
+  providerDisplayName,
+  resolveCallPolicy
+} = require('../services/callPolicyService');
 
 const router = express.Router();
+const FREE_CONSULTATION_PROMO_CODE = 'MENORAHFREECALL';
+const SLOT_TAKEN_MESSAGE = 'This time slot was just booked by someone else. Please choose another available slot.';
+
+const normalizePromoCode = (value) => String(value || '').trim().toUpperCase();
+const formatVideoCall = (videoCall = {}, { includeHostUrl = false } = {}) => {
+  const payload = {
+    provider: videoCall.provider,
+    joinMode: videoCall.joinMode,
+    externalProviderName: videoCall.externalProviderName,
+    externalJoinUrl: videoCall.externalJoinUrl,
+    region: videoCall.region,
+    status: videoCall.status,
+    policyReason: videoCall.policyReason,
+    lastPolicyCheckAt: videoCall.lastPolicyCheckAt,
+    configuredAt: videoCall.configuredAt,
+    roomId: videoCall.roomId,
+    roomUrl: videoCall.roomUrl
+  };
+
+  if (includeHostUrl) {
+    payload.externalHostUrl = videoCall.externalHostUrl;
+  }
+
+  return payload;
+};
+
+const canManageSessionState = (booking, user) => {
+  if (user?.role === 'admin') return true;
+  const counsellorUserId = booking.counsellor?.user?._id?.toString?.()
+    || booking.counsellor?.user?.toString?.();
+  return Boolean(counsellorUserId && counsellorUserId === user?._id?.toString());
+};
+
+const canCancelBooking = (booking, now = new Date()) => {
+  if (booking?.status === 'pending' && booking.paymentStatus === 'pending') {
+    return true;
+  }
+
+  const scheduledAt = new Date(booking?.scheduledAt);
+  return booking?.status === 'confirmed'
+    && !Number.isNaN(scheduledAt.getTime())
+    && scheduledAt.getTime() - now.getTime() > 24 * 60 * 60 * 1000;
+};
 
 // @route   POST /api/bookings
 // @desc    Create a new booking
@@ -29,12 +84,13 @@ router.post('/', [
   body('sessionDuration').isInt({ min: 15, max: 180 }).withMessage('Session duration must be between 15 and 180 minutes'),
   body('scheduledAt').isISO8601().withMessage('Invalid scheduled date'),
   body('amount').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Invalid amount'),
+  body('promoCode').optional({ nullable: true }).isString().trim().isLength({ max: 64 }).withMessage('Invalid promo code'),
   body('preferences').optional({ nullable: true }).isObject(),
   body('symptoms').optional({ nullable: true }).isArray(),
   body('concerns').optional({ nullable: true }).isString(),
   body('goals').optional({ nullable: true }).isArray(),
   body('emergencyContact').optional({ nullable: true }).isObject()
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -55,7 +111,8 @@ router.post('/', [
       symptoms,
       concerns,
       goals,
-      emergencyContact
+      emergencyContact,
+      promoCode
     } = req.body;
 
     let counsellor = null;
@@ -83,6 +140,8 @@ router.post('/', [
         });
       }
 
+      await expireStalePendingBookings(Booking, { counsellor: counsellorId });
+
       // Check counsellor availability using their stored timezone
       const tz = counsellor.timezone || 'Asia/Kolkata';
       const tzParts = new Intl.DateTimeFormat('en-US', {
@@ -108,20 +167,30 @@ router.post('/', [
         });
       }
 
-      // Check for conflicting bookings
-      const conflictingBooking = await Booking.findOne({
+      // Check for conflicting bookings. Pending payment bookings only block while
+      // their short hold is still alive; confirmed/paid bookings block permanently.
+      const possibleConflicts = await Booking.find({
         counsellor: counsellorId,
         scheduledAt: {
           $gte: new Date(scheduledTime.getTime() - sessionDuration * 60 * 1000),
           $lte: new Date(scheduledTime.getTime() + sessionDuration * 60 * 1000)
         },
-        status: { $in: ['pending', 'confirmed'] }
+        status: { $in: ['pending', 'confirmed', 'in-progress'] }
+      }).lean();
+
+      const requestedEnd = new Date(scheduledTime.getTime() + sessionDuration * 60 * 1000);
+      const conflictingBooking = possibleConflicts.find((booking) => {
+        if (!isBlockingBooking(booking)) return false;
+        const bookingStart = new Date(booking.scheduledAt);
+        const bookingEnd = new Date(bookingStart.getTime() + (booking.sessionDuration || sessionDuration) * 60 * 1000);
+        return scheduledTime < bookingEnd && requestedEnd > bookingStart;
       });
 
       if (conflictingBooking) {
         return res.status(400).json({
           success: false,
-          message: 'This time slot is already booked'
+          code: conflictingBooking.status === 'pending' ? 'SLOT_PENDING' : 'SLOT_BOOKED',
+          message: SLOT_TAKEN_MESSAGE
         });
       }
 
@@ -161,6 +230,7 @@ router.post('/', [
     let isSubscriptionBooking = false;
     let paymentStatus = 'pending';
     let paymentMethod = 'razorpay';
+    let appliedPromo = null;
     
     if (user && user.subscription) {
       const now = new Date();
@@ -175,6 +245,37 @@ router.post('/', [
       }
     }
 
+    const normalizedPromoCode = normalizePromoCode(promoCode);
+    if (!isSubscriptionBooking && normalizedPromoCode) {
+      if (normalizedPromoCode !== FREE_CONSULTATION_PROMO_CODE) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid promo code'
+        });
+      }
+
+      const previousPromoBooking = await Booking.exists({
+        user: req.user._id,
+        'promo.code': FREE_CONSULTATION_PROMO_CODE
+      });
+
+      if (previousPromoBooking) {
+        return res.status(400).json({
+          success: false,
+          message: 'This free consultation promo has already been used on your account.'
+        });
+      }
+
+      appliedPromo = {
+        code: FREE_CONSULTATION_PROMO_CODE,
+        appliedAt: new Date(),
+        discountAmount: amount
+      };
+      amount = 0;
+      paymentStatus = 'paid';
+      paymentMethod = 'promo';
+    }
+
     // Create booking
     const scheduledTime = new Date(scheduledAt);
     const booking = new Booking({
@@ -187,8 +288,10 @@ router.post('/', [
       currency: currency,
       paymentMethod: paymentMethod,
       paymentStatus: paymentStatus,
-      status: isSubscriptionBooking ? 'confirmed' : 'pending',
+      status: isSubscriptionBooking || appliedPromo ? 'confirmed' : 'pending',
+      holdExpiresAt: paymentStatus === 'pending' ? getPendingHoldExpiresAt() : undefined,
       isSubscriptionBooking: isSubscriptionBooking,
+      promo: appliedPromo || undefined,
       preferences: preferences || {},
       symptoms,
       concerns,
@@ -196,13 +299,59 @@ router.post('/', [
       emergencyContact
     });
 
-    await booking.save();
+    if (sessionType === 'video') {
+      const policy = resolveCallPolicy({
+        user: user || req.user,
+        booking,
+        req: { headers: req.headers, user: req.user }
+      });
+      booking.videoCall.provider = policy.provider;
+      booking.videoCall.joinMode = policy.joinMode;
+      booking.videoCall.region = policy.region;
+      booking.videoCall.status = policy.joinMode === 'disabled' ? 'disabled' : 'not_configured';
+      booking.videoCall.policyReason = policy.reason;
+      booking.videoCall.lastPolicyCheckAt = new Date();
+      if (policy.providerName) {
+        booking.videoCall.externalProviderName = policy.providerName;
+      }
+    }
+
+    try {
+      await booking.save();
+    } catch (error) {
+      if (error && error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          code: 'SLOT_BOOKED',
+          message: SLOT_TAKEN_MESSAGE
+        });
+      }
+      throw error;
+    }
 
     // NOTE: counsellor socket notifications are sent only after payment is confirmed
     // (see payments.js verify-razorpay handler)
+    if (appliedPromo && !booking.counsellor && req.app.get('io')) {
+      const io = req.app.get('io');
+      const availableCounsellors = await Counsellor.find({ isActive: true, isAvailable: true }).select('_id').lean();
+      const notification = {
+        bookingId: booking._id,
+        sessionType: booking.sessionType,
+        sessionDuration: booking.sessionDuration,
+        scheduledAt: booking.scheduledAt,
+        amount: booking.amount,
+        preferences: booking.preferences,
+        createdAt: booking.createdAt
+      };
+      availableCounsellors.forEach(c => {
+        io.to(`counsellor_${c._id}`).emit('new_booking_available', notification);
+      });
+    }
 
-    // Send confirmation notifications only if counsellor is assigned
-    if (counsellor) {
+    // Paid promo/subscription bookings are confirmed at creation. Regular
+    // Razorpay bookings stay pending here and are notified only after verified
+    // payment in payments.js.
+    if (counsellor && booking.paymentStatus === 'paid' && booking.status === 'confirmed') {
       try {
         const bookingDetails = {
           scheduledAt: booking.scheduledAt,
@@ -233,7 +382,11 @@ router.post('/', [
           status: booking.status,
           paymentStatus: booking.paymentStatus,
           paymentMethod: booking.paymentMethod,
-          isSubscriptionBooking: booking.isSubscriptionBooking || false
+          isSubscriptionBooking: booking.isSubscriptionBooking || false,
+          promo: booking.promo?.code ? {
+            code: booking.promo.code,
+            discountAmount: booking.promo.discountAmount || 0
+          } : undefined
         }
       }
     });
@@ -254,7 +407,7 @@ router.get('/', [
   query('status').optional(),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 50 })
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -267,7 +420,7 @@ router.get('/', [
 
     const { status, page = 1, limit = 10 } = req.query;
 
-    const validStatuses = ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show'];
+    const validStatuses = ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'expired'];
 
     // Build query — support comma-separated status list (e.g. "pending,confirmed")
     const dbQuery = { user: req.user._id };
@@ -280,14 +433,9 @@ router.get('/', [
       }
     }
 
-    // Never show bookings that are awaiting payment (created but payment not yet completed).
-    // These are excluded from all list views — they only exist temporarily while the
-    // user is in the Razorpay modal, and are auto-cancelled if payment is abandoned.
-    dbQuery.$nor = [{
-      status: 'pending',
-      paymentStatus: 'pending',
-      isSubscriptionBooking: { $ne: true }
-    }];
+    // Keep a live payment hold visible to its owner. They may return after a
+    // browser/app interruption to either complete checkout or explicitly
+    // cancel the booking and release the held slot.
 
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -323,7 +471,14 @@ router.get('/', [
       amount: booking.amount,
       currency: booking.currency,
       paymentStatus: booking.paymentStatus,
-      canBeCancelled: booking.canBeCancelled,
+      paymentMethod: booking.paymentMethod,
+      isSubscriptionBooking: booking.isSubscriptionBooking || false,
+      promo: booking.promo?.code ? {
+        code: booking.promo.code,
+        discountAmount: booking.promo.discountAmount || 0
+      } : undefined,
+      videoCall: formatVideoCall(booking.videoCall),
+      canBeCancelled: canCancelBooking(booking),
       canBeRescheduled: booking.canBeRescheduled,
       createdAt: booking.createdAt // Add createdAt for date display
     }));
@@ -413,7 +568,12 @@ router.get('/:id', [
       paymentStatus: booking.paymentStatus,
       paymentMethod: booking.paymentMethod,
       isSubscriptionBooking: booking.isSubscriptionBooking || false,
-      canBeCancelled: booking.canBeCancelled,
+      promo: booking.promo?.code ? {
+        code: booking.promo.code,
+        discountAmount: booking.promo.discountAmount || 0
+      } : undefined,
+      videoCall: formatVideoCall(booking.videoCall, { includeHostUrl: isCounsellor }),
+      canBeCancelled: canCancelBooking(booking),
       canBeRescheduled: booking.canBeRescheduled,
       createdAt: booking.createdAt,
     };
@@ -432,13 +592,85 @@ router.get('/:id', [
   }
 });
 
+// @route   PATCH /api/bookings/:id/call-link
+// @desc    Configure approved external call link for an assigned session
+// @access  Private (admin or assigned counsellor)
+router.patch('/:id/call-link', [
+  param('id').isMongoId().withMessage('Invalid booking ID'),
+  body('provider').isString().trim().notEmpty(),
+  body('externalJoinUrl').isString().trim().custom(isSafeHttpsUrl).withMessage('External join URL must be HTTPS'),
+  body('externalHostUrl').optional({ nullable: true, checkFalsy: true }).isString().trim().custom(isSafeHttpsUrl).withMessage('External host URL must be HTTPS'),
+  body('externalProviderName').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 80 })
+], auth, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const booking = await Booking.findById(req.params.id)
+      .populate({
+        path: 'counsellor',
+        select: 'user',
+        populate: { path: 'user', select: 'firstName lastName phone address country accountRegion region' }
+      })
+      .populate('user', 'firstName lastName phone address country accountRegion region');
+
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+    const isAdmin = req.user.role === 'admin';
+    const isAssignedCounsellor = booking.counsellor?.user?._id?.toString() === req.user._id.toString();
+    if (!isAdmin && !isAssignedCounsellor) {
+      return res.status(403).json({ success: false, message: 'Only an admin or assigned counsellor can configure this session link.' });
+    }
+
+    const provider = normalizeProvider(req.body.provider, '');
+    if (!isAllowedExternalProvider(provider)) {
+      return res.status(400).json({ success: false, message: 'Unsupported external provider.' });
+    }
+
+    const policy = resolveCallPolicy({ user: booking.user, booking, req: { headers: req.headers, user: req.user } });
+    if (policy.provider === 'livekit') {
+      return res.status(400).json({ success: false, message: 'External links are only required for external-provider sessions.' });
+    }
+    if (policy.joinMode === 'disabled') {
+      return res.status(403).json({ success: false, message: 'Video calling is disabled until this session region is verified.' });
+    }
+
+    booking.videoCall.provider = provider;
+    booking.videoCall.joinMode = 'external_link';
+    booking.videoCall.region = policy.region;
+    booking.videoCall.status = 'ready';
+    booking.videoCall.policyReason = policy.reason;
+    booking.videoCall.lastPolicyCheckAt = new Date();
+    booking.videoCall.externalJoinUrl = req.body.externalJoinUrl.trim();
+    booking.videoCall.externalHostUrl = req.body.externalHostUrl ? req.body.externalHostUrl.trim() : undefined;
+    booking.videoCall.externalProviderName = req.body.externalProviderName?.trim() || providerDisplayName(provider);
+    booking.videoCall.configuredBy = req.user._id;
+    booking.videoCall.configuredAt = new Date();
+    await booking.save();
+
+    res.json({
+      success: true,
+      message: 'External session link saved.',
+      data: {
+        bookingId: booking._id,
+        videoCall: formatVideoCall(booking.videoCall, { includeHostUrl: true })
+      }
+    });
+  } catch (error) {
+    console.error('Configure booking call link error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // @route   PUT /api/bookings/:id/cancel
 // @desc    Cancel a booking
 // @access  Private
 router.put('/:id/cancel', [
   param('id').isMongoId().withMessage('Invalid booking ID'),
   body('reason').optional().isString()
-], auth, async (req, res) => {
+], verifiedPatientAuth, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -472,31 +704,81 @@ router.put('/:id/cancel', [
       });
     }
 
-    if (!booking.canBeCancelled) {
+    const isUnpaidHold = booking.status === 'pending' && booking.paymentStatus === 'pending';
+    if (!isUnpaidHold && !booking.canBeCancelled) {
       return res.status(400).json({
         success: false,
         message: 'Booking cannot be cancelled at this time'
       });
     }
 
-    // Cancel booking
-    await booking.cancel(reason, req.user._id);
+    let cancelledBooking = booking;
+    if (isUnpaidHold) {
+      // Claim the outstanding checkout atomically. A payment verifier and a
+      // cancellation can race; only one is allowed to transition a pending
+      // booking. Once this update succeeds, every payment-confirmation path
+      // rejects the booking because it is no longer pending.
+      cancelledBooking = await Booking.findOneAndUpdate({
+        _id: booking._id,
+        user: req.user._id,
+        status: 'pending',
+        paymentStatus: 'pending',
+      }, {
+        $set: {
+          status: 'cancelled',
+          orderStatus: 'cancelled',
+          cancellationReason: reason,
+          cancelledBy: req.user._id,
+          cancelledAt: new Date(),
+        },
+        $unset: { holdExpiresAt: '' },
+        $push: {
+          statusHistory: {
+            status: 'cancelled',
+            timestamp: new Date(),
+            reason: reason || 'Cancelled before payment',
+            updatedBy: req.user._id,
+          },
+        },
+      }, { new: true, runValidators: true });
+
+      if (!cancelledBooking) {
+        return res.status(409).json({
+          success: false,
+          code: 'PAYMENT_STATE_CHANGED',
+          message: 'This booking was updated while you were cancelling it. Please refresh to see its latest status.',
+        });
+      }
+    } else {
+      await booking.cancel(reason, req.user._id);
+    }
 
     // Send cancellation notifications
     try {
       const sessionDetails = {
-        counsellorName: `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`,
+        counsellorName: booking.counsellor?.user
+          ? `${booking.counsellor.user.firstName} ${booking.counsellor.user.lastName}`.trim()
+          : 'Your counsellor',
         scheduledAt: booking.scheduledAt
       };
 
-      await sendCancellationSMS(booking.user.phone, sessionDetails);
+      if (booking.user?.phone) {
+        await sendCancellationSMS(booking.user.phone, sessionDetails);
+      }
     } catch (error) {
       console.error('Error sending cancellation notification:', error);
     }
 
     res.json({
       success: true,
-      message: 'Booking cancelled successfully'
+      message: 'Booking cancelled successfully',
+      data: {
+        booking: {
+          id: cancelledBooking._id,
+          status: cancelledBooking.status,
+          paymentStatus: cancelledBooking.paymentStatus,
+        },
+      },
     });
 
   } catch (error) {
@@ -513,7 +795,7 @@ router.put('/:id/cancel', [
 // @access  Private
 router.put('/:id/start', [
   param('id').isMongoId().withMessage('Invalid booking ID')
-], auth, async (req, res) => {
+], authAny, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -537,14 +819,10 @@ router.put('/:id/start', [
       });
     }
 
-    // Check if user can start this session
-    const isUser = booking.user._id.toString() === req.user._id.toString();
-    const isCounsellor = booking.counsellor.user._id.toString() === req.user._id.toString();
-
-    if (!isUser && !isCounsellor) {
+    if (!canManageSessionState(booking, req.user)) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'Only the assigned counsellor or an administrator can start this session.'
       });
     }
 
@@ -575,17 +853,53 @@ router.put('/:id/start', [
       });
     }
 
+    let startCallPolicy = null;
+    if (booking.sessionType === 'video') {
+      startCallPolicy = resolveCallPolicy({
+        user: booking.user,
+        booking,
+        req: { headers: req.headers, user: req.user }
+      });
+
+      if (startCallPolicy.joinMode === 'disabled') {
+        booking.videoCall.provider = 'disabled';
+        booking.videoCall.joinMode = 'disabled';
+        booking.videoCall.region = startCallPolicy.region;
+        booking.videoCall.status = 'disabled';
+        booking.videoCall.policyReason = startCallPolicy.reason;
+        booking.videoCall.lastPolicyCheckAt = new Date();
+        await booking.save();
+        return res.status(403).json({
+          success: false,
+          provider: 'disabled',
+          joinMode: 'disabled',
+          region: startCallPolicy.region,
+          status: 'disabled',
+          message: 'Video calling is not available until your region is verified.'
+        });
+      }
+    }
+
     // Start session
     await booking.startSession();
 
     // Generate video call room URL if it's a video session
     let roomUrl = null;
     if (booking.sessionType === 'video') {
-      const roomId = `menorah-${booking._id}`;
-      roomUrl = `${process.env.JITSI_BASE_URL}/${roomId}`;
-      
-      booking.videoCall.roomId = roomId;
-      booking.videoCall.roomUrl = roomUrl;
+      const policy = startCallPolicy;
+      const configuredExternalProvider = policy.joinMode === 'external_link'
+        && booking.videoCall.provider
+        && !['livekit', 'disabled'].includes(booking.videoCall.provider);
+      booking.videoCall.provider = configuredExternalProvider ? booking.videoCall.provider : policy.provider;
+      booking.videoCall.joinMode = policy.joinMode;
+      booking.videoCall.region = policy.region;
+      booking.videoCall.policyReason = policy.reason;
+      booking.videoCall.lastPolicyCheckAt = new Date();
+      booking.videoCall.status = policy.joinMode === 'disabled'
+        ? 'disabled'
+        : policy.joinMode === 'external_link'
+          ? (booking.videoCall.externalJoinUrl ? 'started' : 'not_configured')
+          : 'started';
       await booking.save();
     }
 
@@ -645,7 +959,7 @@ router.put('/:id/start', [
 // @access  Private
 router.put('/:id/complete', [
   param('id').isMongoId().withMessage('Invalid booking ID')
-], auth, async (req, res) => {
+], authAny, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -669,14 +983,10 @@ router.put('/:id/complete', [
       });
     }
 
-    // Check if user can complete this session
-    const isUser = booking.user._id.toString() === req.user._id.toString();
-    const isCounsellor = booking.counsellor.user._id.toString() === req.user._id.toString();
-
-    if (!isUser && !isCounsellor) {
+    if (!canManageSessionState(booking, req.user)) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'Only the assigned counsellor or an administrator can complete this session.'
       });
     }
 

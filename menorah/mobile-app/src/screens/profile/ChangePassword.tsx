@@ -6,6 +6,7 @@ import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
 import { api } from "@/lib/api";
 import Input from "@/components/ui/Input";
+import { useAuth } from '@/state/useAuth';
 
 export default function ChangePassword({ navigation }: any) {
   const [currentPassword, setCurrentPassword] = useState('');
@@ -19,6 +20,7 @@ export default function ChangePassword({ navigation }: any) {
 
   const { scheme } = useThemeMode();
   const colors = palettes[scheme];
+  const { logout } = useAuth();
   const isDark = scheme === 'dark';
   const headerBg = isDark ? colors.primaryDark : colors.primary;
   const primaryActionText = isDark ? colors.primaryDark : 'white';
@@ -32,8 +34,13 @@ export default function ChangePassword({ navigation }: any) {
 
     if (!newPassword) {
       newErrors.newPassword = 'New password is required';
-    } else if (newPassword.length < 8) {
-      newErrors.newPassword = 'Password must be at least 8 characters';
+    } else if (
+      newPassword.length < 8
+      || !/[a-z]/.test(newPassword)
+      || !/[A-Z]/.test(newPassword)
+      || !/\d/.test(newPassword)
+    ) {
+      newErrors.newPassword = 'Use at least 8 characters with uppercase, lowercase, and a number';
     }
 
     if (!confirmPassword) {
@@ -60,13 +67,14 @@ export default function ChangePassword({ navigation }: any) {
       const response = await api.changePassword(currentPassword, newPassword);
 
       if (response.success) {
+        await logout();
         Alert.alert(
-          'Success',
-          'Your password has been changed successfully.',
+          'Password changed',
+          'Your password was changed. For your security, please sign in again.',
           [
             {
-              text: 'OK',
-              onPress: () => navigation.goBack()
+              text: 'Sign in',
+              onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Login' }] }),
             }
           ]
         );
@@ -113,7 +121,7 @@ export default function ChangePassword({ navigation }: any) {
           marginBottom: 24,
           lineHeight: 20
         }}>
-          Please enter your current password and choose a new password. Make sure your new password is at least 8 characters long.
+          Choose at least 8 characters with uppercase, lowercase, and a number. You will be signed out after the change.
         </Text>
 
         {/* Current Password */}

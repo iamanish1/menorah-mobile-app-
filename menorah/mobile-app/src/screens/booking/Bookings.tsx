@@ -11,7 +11,7 @@ import {
 import { Image } from "expo-image";
 import { useThemeMode } from "@/theme/ThemeProvider";
 import { palettes } from "@/theme/colors";
-import { api, Booking } from "@/lib/api";
+import { Booking } from "@/lib/api";
 import { socketService } from "@/lib/socket";
 import { useBookings, useInvalidateBookings } from "@/hooks/useQueries";
 
@@ -38,7 +38,7 @@ export default function Bookings({ navigation }: any) {
     const u2 = socketService.onBookingRescheduled(invalidateBookings);
     const u3 = socketService.onBookingStatusChanged(invalidateBookings);
     return () => { u1(); u2(); u3(); };
-  }, []);
+  }, [invalidateBookings]);
 
   const onRefresh = () => { refetch(); };
 
@@ -329,7 +329,10 @@ export default function Bookings({ navigation }: any) {
 
             {/* Consistency banner */}
             <TouchableOpacity
+              onPress={() => navigation.navigate('GenderSelection')}
               activeOpacity={0.88}
+              accessibilityRole="button"
+              accessibilityLabel="Book a session"
               style={{
                 backgroundColor: bannerBg, borderRadius: 18, padding: 16,
                 flexDirection: 'row', alignItems: 'center', gap: 14,

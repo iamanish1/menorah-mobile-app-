@@ -9,18 +9,23 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+    match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please enter a valid email']
   },
   phone: {
     type: String,
-    required: [true, 'Phone number is required'],
-    unique: true,
+    required: function phoneRequired() {
+      // Social identities are created without inventing a pseudo phone number.
+      // They must complete the profile before patient-only features are usable.
+      return !(this.socialAuth?.googleSub || this.socialAuth?.appleSub);
+    },
+    default: null,
     trim: true
   },
   password: {
     type: String,
     required: [true, 'Password is required'],
-    minlength: [8, 'Password must be at least 8 characters long']
+    minlength: [8, 'Password must be at least 8 characters long'],
+    select: false
   },
   isEmailVerified: {
     type: Boolean,
@@ -30,9 +35,9 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  emailVerificationToken: String,
-  passwordResetToken: String,
-  passwordResetExpires: Date,
+  emailVerificationToken: { type: String, select: false },
+  passwordResetToken: { type: String, select: false },
+  passwordResetExpires: { type: Date, select: false },
 
   // Profile information
   firstName: {
@@ -103,7 +108,22 @@ const userSchema = new mongoose.Schema({
   },
   lockUntil: {
     type: Date,
-    default: null
+    default: null,
+    select: false
+  },
+  sessionVersion: {
+    type: Number,
+    default: 0
+  },
+  lastSessionRevokedAt: {
+    type: Date,
+    default: null,
+    select: false
+  },
+  lastPasswordChangeAt: {
+    type: Date,
+    default: null,
+    select: false
   },
 
   // Subscription and billing
@@ -148,6 +168,26 @@ const userSchema = new mongoose.Schema({
     faceCheckConfidence: Number
   },
 
+  socialAuth: {
+    googleSub: {
+      type: String,
+      default: undefined
+    },
+    appleSub: {
+      type: String,
+      default: undefined
+    },
+    appleEmailPrivateRelay: {
+      type: Boolean,
+      default: false
+    }
+  },
+
+  profileCompleted: {
+    type: Boolean,
+    default: true,
+  },
+
   // Role
   role: {
     type: String,
@@ -184,9 +224,20 @@ userSchema.index({ firstName: 1, lastName: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ 'kyc.status': 1 });
 
+const uniqueStringIndex = (field) => ({
+  unique: true,
+  partialFilterExpression: { [field]: { $type: 'string' } },
+});
+
 // Sparse indexes on token fields — speeds up password-reset and email-verify lookups
 userSchema.index({ passwordResetToken:     1 }, { sparse: true });
 userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
+userSchema.index(
+  { phone: 1 },
+  { unique: true, partialFilterExpression: { phone: { $type: 'string' } } }
+);
+userSchema.index({ 'socialAuth.googleSub': 1 }, uniqueStringIndex('socialAuth.googleSub'));
+userSchema.index({ 'socialAuth.appleSub': 1 }, uniqueStringIndex('socialAuth.appleSub'));
 
 // Pre-save middleware to hash password
 userSchema.pre('save', async function(next) {

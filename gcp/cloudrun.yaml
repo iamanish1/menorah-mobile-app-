@@ -76,7 +76,7 @@ spec:
             - name: JWT_REFRESH_EXPIRES_IN
               value: 30d
             - name: EMAIL_FROM
-              value: noreply@menorah.me
+              value: "Menorah Health <noreply@menorah.me>"
             - name: MOBILE_APP_SCHEME
               value: menorah-health://reset-password
             - name: CHECKOUT_RETURN_URL
@@ -127,30 +127,10 @@ spec:
                 secretKeyRef:
                   name: ALLOWED_ORIGINS
                   key: latest
-            - name: MSG91_AUTH_KEY
+            - name: RESEND_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: MSG91_AUTH_KEY
-                  key: latest
-            - name: MSG91_OTP_TEMPLATE_ID
-              valueFrom:
-                secretKeyRef:
-                  name: MSG91_OTP_TEMPLATE_ID
-                  key: latest
-            - name: MSG91_SMS_TEMPLATE_ID
-              valueFrom:
-                secretKeyRef:
-                  name: MSG91_SMS_TEMPLATE_ID
-                  key: latest
-            - name: MSG91_EMAIL_DOMAIN
-              valueFrom:
-                secretKeyRef:
-                  name: MSG91_EMAIL_DOMAIN
-                  key: latest
-            - name: MSG91_EMAIL_TEMPLATE_ID
-              valueFrom:
-                secretKeyRef:
-                  name: MSG91_EMAIL_TEMPLATE_ID
+                  name: RESEND_API_KEY
                   key: latest
             - name: RAZORPAY_KEY_ID
               valueFrom:
@@ -181,11 +161,6 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: CLOUDINARY_API_SECRET
-                  key: latest
-            - name: SENDGRID_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: SENDGRID_API_KEY
                   key: latest
             - name: WEB_APP_URL
               valueFrom:

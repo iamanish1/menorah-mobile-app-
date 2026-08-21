@@ -24,8 +24,7 @@ A comprehensive Node.js/Express.js backend API for the Menorah Health mobile app
 - **Stripe** & **Razorpay** for payments
 - **Jitsi** for video calls
 - **Cloudinary** for file storage
-- **Nodemailer** for emails
-- **Twilio** for SMS
+- **Resend** for transactional emails
 - **Express Validator** for input validation
 - **Helmet** for security headers
 - **Rate Limiting** for API protection
@@ -40,7 +39,7 @@ A comprehensive Node.js/Express.js backend API for the Menorah Health mobile app
 
 1. **Clone the repository and navigate to backend directory:**
 ```bash
-cd Menorah/backend
+cd menorah/backend
 ```
 
 2. **Install dependencies:**
@@ -78,17 +77,9 @@ JWT_EXPIRES_IN=7d
 JWT_REFRESH_SECRET=your-refresh-secret-key
 JWT_REFRESH_EXPIRES_IN=30d
 
-# Email Configuration (Nodemailer)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-EMAIL_FROM=noreply@menorahhealth.com
-
-# SMS Configuration (Twilio)
-TWILIO_ACCOUNT_SID=your-twilio-account-sid
-TWILIO_AUTH_TOKEN=your-twilio-auth-token
-TWILIO_PHONE_NUMBER=+1234567890
+# Email Configuration (Resend)
+RESEND_API_KEY=REPLACE_WITH_RESEND_API_KEY
+EMAIL_FROM="Menorah Health <noreply@menorah.me>"
 
 # Payment Gateway Configuration
 STRIPE_SECRET_KEY=sk_test_your-stripe-secret-key
@@ -110,7 +101,9 @@ OPENAI_IMAGE_QUALITY=medium
 OPENAI_IMAGE_FORMAT=jpeg
 OPENAI_IMAGE_TIMEOUT_MS=120000
 CLOUDINARY_ARTICLE_FOLDER=menorah/articles
-PUBLIC_WEB_BASE_URL=http://localhost:3000
+# Public landing page that owns canonical article URLs. This is intentionally
+# separate from PUBLIC_WEB_BASE_URL, which Social Studio can use for API-hosted media.
+ARTICLE_CANONICAL_BASE_URL=http://localhost:3002
 ARTICLE_SCHEDULER_ENABLED=false
 ARTICLE_GENERATION_TIMEZONE=Asia/Dubai
 ARTICLE_DAILY_GENERATION_COUNT=10
@@ -284,7 +277,7 @@ docker run -p 3000:3000 --env-file .env menorah-backend
 npm install -g pm2
 
 # Start application
-pm2 start src/server.js --name "menorah-backend"
+pm2 start src/services/api-web/server.js --name "menorah-backend"
 
 # Monitor application
 pm2 monit
@@ -305,8 +298,7 @@ pm2 monit
 - Webhook handling for payment status updates
 
 ### Communication
-- **Nodemailer**: Email notifications
-- **Twilio**: SMS notifications
+- **Resend**: Transactional email notifications
 - **Socket.io**: Real-time chat
 
 ### Video Calls

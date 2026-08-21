@@ -5,6 +5,7 @@ const ChatRoom = require('../models/ChatRoom');
 const Message = require('../models/Message');
 const Counsellor = require('../models/Counsellor');
 const { getRedisClient } = require('../config/redis');
+const { getChatSenderImage, getCounsellorProfileImage } = require('../utils/chatProfileImage');
 
 // Socket.IO instance will be set from server.js to avoid circular dependency
 let socketIOInstance = null;
@@ -47,6 +48,42 @@ const isUserOnline = async (userId) => {
   } catch {
     return false;
   }
+};
+
+const isRoomMember = (room, userId) => {
+  const id = userId.toString();
+  const roomUserId = room.user?._id?.toString?.() || room.user?.toString?.();
+  const counsellorUserId = room.counsellor?.user?._id?.toString?.()
+    || room.counsellor?.user?.toString?.();
+
+  return roomUserId === id || counsellorUserId === id;
+};
+
+const getVisiblePresenceUserIds = async (requester) => {
+  const requesterId = requester._id.toString();
+
+  if (requester.role === 'user') {
+    const rooms = await ChatRoom.find({ user: requester._id, isActive: true })
+      .populate({ path: 'counsellor', select: 'user' })
+      .lean();
+    return rooms
+      .map((room) => room.counsellor?.user?.toString?.())
+      .filter(Boolean);
+  }
+
+  if (requester.role === 'counsellor') {
+    const counsellor = await Counsellor.findOne({ user: requester._id }).select('_id').lean();
+    if (!counsellor) return [];
+
+    const rooms = await ChatRoom.find({ counsellor: counsellor._id, isActive: true })
+      .select('user')
+      .lean();
+    return rooms
+      .map((room) => room.user?.toString?.())
+      .filter((userId) => userId && userId !== requesterId);
+  }
+
+  return [];
 };
 
 // @route   GET /api/chat/rooms
@@ -95,7 +132,7 @@ router.get('/rooms', auth, async (req, res) => {
       return {
         id: room._id.toString(),
         counsellorName: counsellorName,
-        counsellorImage: counsellorUser?.profileImage || null,
+        counsellorImage: getCounsellorProfileImage(room.counsellor),
         counsellorUserId: counsellorUserId, // Add counselor userId for presence tracking
         lastMessage: room.lastMessage?.content || '',
         lastMessageTime: room.lastMessage?.timestamp || room.updatedAt,
@@ -203,7 +240,7 @@ router.get('/rooms/:roomId/messages', [
         id: msg._id.toString(),
         senderId: msg.sender._id.toString(),
         senderName: `${sender.firstName} ${sender.lastName}`,
-        senderImage: sender.profileImage || null,
+        senderImage: getChatSenderImage({ sender, counsellor: room.counsellor }),
         content: msg.content,
         timestamp: msg.createdAt,
         type: msg.type,
@@ -329,7 +366,7 @@ router.post('/rooms/:roomId/messages', [
       id: message._id.toString(),
       senderId: message.sender._id.toString(),
       senderName: `${message.sender.firstName} ${message.sender.lastName}`,
-      senderImage: message.sender.profileImage || null,
+      senderImage: getChatSenderImage({ sender: message.sender, counsellor: room.counsellor }),
       content: message.content,
       timestamp: message.createdAt,
       type: message.type,
@@ -466,8 +503,8 @@ router.delete('/rooms/:roomId/messages/:messageId', [
     const { roomId, messageId } = req.params;
     const userId = req.user._id;
 
-    // Verify room exists and user has access
-    const room = await ChatRoom.findById(roomId);
+    const room = await ChatRoom.findById(roomId)
+      .populate({ path: 'counsellor', select: 'user' });
     if (!room) {
       return res.status(404).json({
         success: false,
@@ -475,8 +512,14 @@ router.delete('/rooms/:roomId/messages/:messageId', [
       });
     }
 
-    // Find message
-    const message = await Message.findById(messageId);
+    if (!isRoomMember(room, userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    const message = await Message.findOne({ _id: messageId, room: roomId });
     if (!message) {
       return res.status(404).json({
         success: false,
@@ -597,14 +640,13 @@ router.post('/rooms/:roomId/typing', [
 router.get('/online-status', auth, async (req, res) => {
   try {
     const redis = getRedisClient();
-    const keys = await redis.keys('presence:*');
-    const onlineStatus = await Promise.all(
-      keys.map(async (key) => {
-        const userId   = key.replace('presence:', '');
-        const userName = await redis.get(key);
-        return { userId, userName: userName || '', isOnline: true };
+    const visibleUserIds = await getVisiblePresenceUserIds(req.user);
+    const onlineStatus = (await Promise.all(
+      visibleUserIds.map(async (userId) => {
+        const userName = await redis.get(`presence:${userId}`);
+        return userName === null ? null : { userId, userName: userName || '', isOnline: true };
       })
-    );
+    )).filter(Boolean);
 
     res.json({ success: true, data: { onlineStatus } });
   } catch (error) {
@@ -667,7 +709,7 @@ router.get('/available-counsellors', auth, async (req, res) => {
         name: `${counsellorUser.firstName} ${counsellorUser.lastName}`,
         firstName: counsellorUser.firstName,
         lastName: counsellorUser.lastName,
-        profileImage: counsellorUser.profileImage || null,
+        profileImage: getCounsellorProfileImage(counsellor),
         specialization: specializationArray,
         rating: counsellor.rating || 0,
         reviewCount: counsellor.reviewCount || 0,
@@ -756,7 +798,7 @@ router.post('/start', [
         const fullName = `${firstName} ${lastName}`.trim();
         return fullName && fullName !== 'undefined undefined' ? fullName : 'Counsellor';
       })(),
-      counsellorImage: counsellor.user.profileImage || null,
+      counsellorImage: getCounsellorProfileImage(counsellor),
       lastMessage: room.lastMessage?.content || '',
       lastMessageTime: room.lastMessage?.timestamp || room.updatedAt,
       unreadCount: room.unreadCount.user || 0,

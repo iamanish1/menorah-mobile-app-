@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 import { ActivityIndicator, Animated, FlatList, Linking, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -158,7 +158,7 @@ export default function Discover({ navigation }: any) {
     limit: isSearching ? 30 : 8,
     q: isSearching ? trimmedQuery : undefined,
   });
-  const articles = articlesData?.articles || [];
+  const articles = useMemo(() => articlesData?.articles || [], [articlesData?.articles]);
 
   useEffect(() => {
     const checkModal = async () => {
@@ -188,18 +188,18 @@ export default function Discover({ navigation }: any) {
     navigation.navigate('GenderSelection');
   };
 
-  const handleSessionSelect = (sessionType: SessionType) => {
+  const handleSessionSelect = useCallback((sessionType: SessionType) => {
     const details = SESSION_DETAILS[sessionType];
     navigation.navigate('GenderSelection', {
       sessionType,
       duration: details.duration,
       price: details.price,
     });
-  };
+  }, [navigation]);
 
-  const openArticle = (article: Article) => {
+  const openArticle = useCallback((article: Article) => {
     navigation.navigate('ArticleDetail', { slug: article.slug });
-  };
+  }, [navigation]);
 
   const searchGroups = useMemo<SearchGroup[]>(() => {
     if (!isSearching) {
@@ -486,7 +486,7 @@ export default function Discover({ navigation }: any) {
       { title: 'Counsellors', results: counsellorResults },
       { title: 'App features', results: featureResults },
     ].filter((group) => group.results.length > 0);
-  }, [articles, isSearching, navigation, normalizedQuery, trimmedQuery]);
+  }, [articles, handleSessionSelect, isSearching, navigation, normalizedQuery, openArticle, trimmedQuery]);
 
   const totalResults = searchGroups.reduce((sum, group) => sum + group.results.length, 0);
   const headerFullHeight = insets.top + iosTheme.spacing.xl + 68 + iosTheme.spacing.lg;

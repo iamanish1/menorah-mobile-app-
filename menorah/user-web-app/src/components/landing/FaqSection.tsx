@@ -1,10 +1,11 @@
 "use client";
 
-import type { CSSProperties, RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { useRef } from "react";
 import { HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FaqQuestionForm } from "@/components/site/FaqQuestionForm";
+import { useInView, usePrefersReducedMotion } from "@/components/landing/useLandingMotion";
 
 const faqs = [
   {
@@ -71,11 +72,11 @@ export function FaqSection({ headingLevel = "h2" }: { headingLevel?: "h1" | "h2"
     <section
       id="faq"
       aria-labelledby="faq-title"
-      className="relative overflow-hidden bg-menorah-page px-6 py-16 font-body text-foreground md:px-10 lg:px-20"
+      className="relative overflow-hidden bg-menorah-page px-[var(--landing-page-x)] py-[var(--landing-section-y-tight)] font-body text-foreground"
     >
       <div className="what-we-do-backdrop" aria-hidden="true" />
 
-      <div className="relative z-10 mx-auto max-w-6xl">
+      <div className="relative z-10 mx-auto w-[min(var(--landing-container),78rem)]">
         <div
           ref={headerRef}
           className={cn(
@@ -83,18 +84,18 @@ export function FaqSection({ headingLevel = "h2" }: { headingLevel?: "h1" | "h2"
             headerVisible || reducedMotion ? "is-visible" : ""
           )}
         >
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-menorah-cream bg-background shadow-dashboard">
+          <div className="mx-auto flex h-[clamp(3.5rem,4.4vw,4.75rem)] w-[clamp(3.5rem,4.4vw,4.75rem)] items-center justify-center rounded-full border border-menorah-cream bg-background shadow-dashboard">
             <HelpCircle className="h-8 w-8 text-menorah-olive" aria-hidden="true" />
           </div>
-          <Heading id="faq-title" className="mt-6 font-display text-4xl leading-tight tracking-[0.08em] md:text-5xl">
+          <Heading id="faq-title" className="mt-[clamp(1.25rem,2vw,1.9rem)] font-display text-[length:var(--landing-h2)] leading-tight tracking-[0.08em]">
             FAQ&apos;S
           </Heading>
-          <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-foreground/75">
+          <p className="mx-auto mt-[clamp(1rem,1.6vw,1.45rem)] max-w-[min(44rem,88vw)] text-[length:var(--landing-body-lg)] leading-[1.65] text-foreground/75">
             Straight answers about Menorah, confidentiality, peer support, safety, and getting started.
           </p>
         </div>
 
-        <div className="mx-auto mt-12 max-w-4xl space-y-4">
+        <div className="mx-auto mt-[var(--landing-stack-gap)] max-w-[min(56rem,92vw)] space-y-[clamp(0.8rem,1.2vw,1.2rem)]">
           {faqs.map((faq, index) => (
             <FaqItem key={faq.question} faq={faq} index={index} reducedMotion={reducedMotion} />
           ))}
@@ -102,11 +103,11 @@ export function FaqSection({ headingLevel = "h2" }: { headingLevel?: "h1" | "h2"
 
         <section
           ref={formRef}
-          className="mx-auto mt-16 max-w-4xl rounded-[2rem] border border-menorah-cream bg-background px-6 py-10 text-center shadow-dashboard transition duration-700 ease-out md:px-10"
+          className="mx-auto mt-[clamp(3rem,5vw,5rem)] max-w-[min(56rem,92vw)] rounded-[var(--landing-radius-xl)] border border-menorah-cream bg-background px-[var(--landing-card-pad-lg)] py-[clamp(2rem,3.6vw,3.6rem)] text-center shadow-dashboard transition duration-700 ease-out"
           style={getRevealStyle(formVisible, reducedMotion, 0)}
         >
-          <h3 className="font-display text-3xl tracking-[0.08em]">Still have a question?</h3>
-          <p className="mt-3 text-foreground/70">Ask your question here.</p>
+          <h3 className="font-display text-[length:var(--landing-h3)] tracking-[0.08em]">Still have a question?</h3>
+          <p className="mt-[clamp(0.75rem,1vw,1rem)] text-[length:var(--landing-body)] text-foreground/70">Ask your question here.</p>
           <FaqQuestionForm />
         </section>
       </div>
@@ -134,19 +135,19 @@ function FaqItem({
     >
       <details
         className={cn(
-          "group rounded-2xl border border-menorah-cream bg-background p-5 shadow-sm transition-all duration-300 ease-out open:border-menorah-olive/35 open:shadow-dashboard",
+          "group rounded-[var(--landing-radius-md)] border border-menorah-cream bg-background p-[var(--landing-card-pad)] shadow-sm transition-all duration-300 ease-out open:border-menorah-olive/35 open:shadow-dashboard",
           reducedMotion ? "duration-0" : "open:-translate-y-1 open:scale-[1.015]"
         )}
       >
-        <summary className="flex cursor-pointer list-none items-start justify-between gap-5 text-left">
-          <span className="text-base font-semibold leading-7">
+        <summary className="flex cursor-pointer list-none items-start justify-between gap-[clamp(1rem,1.5vw,1.4rem)] text-left">
+          <span className="text-[length:var(--landing-body)] font-semibold leading-[1.7]">
             {index + 1}. {faq.question}
           </span>
-          <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-menorah-page font-semibold text-menorah-olive transition-transform group-open:rotate-45">
+          <span className="mt-1 flex h-[clamp(1.75rem,2vw,2.15rem)] w-[clamp(1.75rem,2vw,2.15rem)] shrink-0 items-center justify-center rounded-full bg-menorah-page font-semibold text-menorah-olive transition-transform group-open:rotate-45">
             +
           </span>
         </summary>
-        <p className="mt-4 text-left text-[15px] leading-7 text-foreground/75">{faq.answer}</p>
+        <p className="mt-[clamp(0.9rem,1.2vw,1.15rem)] text-left text-[length:var(--landing-body-sm)] leading-[1.7] text-foreground/75">{faq.answer}</p>
       </details>
     </div>
   );
@@ -158,47 +159,4 @@ function getRevealStyle(isVisible: boolean, reducedMotion: boolean, delay: numbe
     transform: reducedMotion || isVisible ? "translate3d(0, 0, 0)" : "translate3d(0, 28px, 0)",
     transitionDelay: `${delay}ms`
   };
-}
-
-function useInView(ref: RefObject<HTMLElement | null>, threshold = 0.24) {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    const element = ref.current;
-
-    if (!element) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-        }
-      },
-      { rootMargin: "0px 0px -12% 0px", threshold }
-    );
-
-    observer.observe(element);
-
-    return () => observer.disconnect();
-  }, [ref, threshold]);
-
-  return isVisible;
-}
-
-function usePrefersReducedMotion() {
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => setReducedMotion(media.matches);
-
-    updatePreference();
-    media.addEventListener("change", updatePreference);
-
-    return () => media.removeEventListener("change", updatePreference);
-  }, []);
-
-  return reducedMotion;
 }

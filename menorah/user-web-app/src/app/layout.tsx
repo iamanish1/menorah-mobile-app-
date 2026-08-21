@@ -1,9 +1,35 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
+import { Adamina, Fjalla_One, Inter, Poppins } from 'next/font/google';
 import './globals.css';
 import './landing-effects.css';
 import { Providers } from './providers';
 import { SiteLoadingScreen } from '@/components/site/SiteLoadingScreen';
 import { getPublicWebBaseUrl, SITE_NAME } from '@/lib/site';
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+const adamina = Adamina({
+  subsets: ['latin'],
+  weight: '400',
+  variable: '--font-adamina',
+  display: 'swap',
+});
+const fjallaOne = Fjalla_One({
+  subsets: ['latin'],
+  weight: '400',
+  variable: '--font-fjalla-one',
+  display: 'swap',
+});
+const poppins = Poppins({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-poppins',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(getPublicWebBaseUrl()),
@@ -35,12 +61,18 @@ export const metadata: Metadata = {
   icons: { icon: '/favicon.ico' },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>
+      <head>
+        {nonce ? <meta name="csp-nonce" content={nonce} /> : null}
+      </head>
+      <body className={`${inter.variable} ${adamina.variable} ${fjallaOne.variable} ${poppins.variable}`}>
         <SiteLoadingScreen />
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `
               try {
