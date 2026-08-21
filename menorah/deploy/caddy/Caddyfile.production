@@ -315,7 +315,10 @@ http://api-counsellor.mentle.org {
 http://calls.mentle.org {
 	import browser_call_security_headers
 	encode gzip zstd
-	reverse_proxy {$LIVEKIT_UPSTREAM}
+	# Mentle has its own credential entry on this host's LiveKit instance. Keep
+	# its call traffic local instead of forwarding it to Menorah's managed
+	# upstream, which intentionally accepts a different credential set.
+	reverse_proxy http://livekit:7880
 	log {
 		output file /var/log/caddy/mentle-calls-access.log
 		format json
