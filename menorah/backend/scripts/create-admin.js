@@ -59,6 +59,11 @@ async function main() {
     existing.isActive = true;
     existing.isEmailVerified = true;
     existing.isPhoneVerified = true;
+    // A credential reset must also recover an account that was locked after
+    // repeated failed sign-in attempts; otherwise the new password is unusable
+    // until the lockout period expires.
+    existing.loginAttempts = 0;
+    existing.lockUntil = null;
     existing.sessionVersion = (existing.sessionVersion || 0) + 1;
     await existing.save();
 
