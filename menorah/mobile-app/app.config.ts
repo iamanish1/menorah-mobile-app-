@@ -136,7 +136,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#f0f9f4'
       },
       package: 'com.menorah.healthmobile',
-      versionCode: 15,
+      versionCode: 16,
       intentFilters: [
         {
           action: 'VIEW',
